@@ -1,0 +1,73 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: praxis_postgres
+    environment:
+      POSTGRES_DB: ${DB_NAME:-praxislsdata}
+      POSTGRES_USER: ${DB_USER:-praxis-admin}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    ports:
+      - "5432:5432"
+    volumes:
+      - praxis_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: praxis_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - pixie_redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      target: runtime
+    container_name: praxis-ls
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+      ENABLE_WORKERS: "false"
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./media:/app/media
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+
+  worker:
+    build:
+      context: .
+      target: worker
+    container_name: praxis_worker
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      DB_HOST: postgres
+      REDIS_HOST: redis
+    volumes:
+      - ./media:/app/media
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+
+volumes:
+  praxis_pgdata:
+  praxis_redisdata:

@@ -1,0 +1,9 @@
+node_modules/
+dist/
+build/
+coverage/
+logs/
+media/
+uploads/
+*.min.js
+package-lock.json

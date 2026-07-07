@@ -1,0 +1,10 @@
+"use strict";
+const express = require("express");
+const c = require("./financial_dictionary.controller");
+const v = require("./financial_dictionary.validator");
+const router = express.Router();
+router.get("/", c.list);
+router.post("/", v.create, c.create);
+router.get("/:id", c.get);
+router.patch("/:id", v.update, c.update);
+module.exports = { basePath: "/financial-dictionary", feature: null, router };

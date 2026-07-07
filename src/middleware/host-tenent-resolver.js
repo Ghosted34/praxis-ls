@@ -1,11 +1,8 @@
 /**
- * Host → tenant resolver (implements the empty stub).
- *
- * Reads the request Host header, resolves it to a tenant via the connection
- * registry, and attaches `req.tenant` (metadata) for downstream middleware.
- *   - Platform/admin hosts (the company dashboard) are skipped: req.isPlatform.
- *   - Unknown host → 404. Suspended tenant → 403.
- * No business query may run without a resolved tenant (PRD §5.3 [RULE]).
+ * Host -> tenant resolver (implements the empty stub).
+ * Resolves the request Host header to a tenant via the connection registry and
+ * attaches req.tenant. Platform/admin hosts are skipped (req.isPlatform).
+ * Unknown host -> 404; suspended -> 403; not-yet-live -> 423.
  */
 "use strict";
 
@@ -34,26 +31,17 @@ async function hostTenantResolver(req, res, next) {
     const meta = await registry.resolveByHost(host);
     if (!meta) {
       return res.status(404).json({
-        error: {
-          code: "TENANT_NOT_FOUND",
-          message: `No tenant for host '${host}'`,
-        },
+        error: { code: "TENANT_NOT_FOUND", message: `No tenant for host '${host}'` },
       });
     }
     if (meta.status === "SUSPENDED") {
       return res.status(403).json({
-        error: {
-          code: "TENANT_SUSPENDED",
-          message: "This workspace is suspended.",
-        },
+        error: { code: "TENANT_SUSPENDED", message: "This workspace is suspended." },
       });
     }
     if (meta.status !== "LIVE") {
       return res.status(423).json({
-        error: {
-          code: "TENANT_NOT_READY",
-          message: "This workspace is being provisioned.",
-        },
+        error: { code: "TENANT_NOT_READY", message: "This workspace is being provisioned." },
       });
     }
     req.tenant = meta;

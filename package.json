@@ -22,7 +22,11 @@
     "db:provision": "node scripts/db/provision-tenant.js",
     "db:sandbox:wipe": "node scripts/db/sandbox-wipe.js",
     "db:reset:local": "node scripts/db/migrate-platform.js && node scripts/db/provision-tenant.js --slug=smartls --name=\"Smart Logistics\"",
-    "setup": "npm install && npm run db:migrate:platform"
+    "setup": "npm install && npm run db:migrate:platform",
+    "db:migrate:tenants": "node scripts/db/migrate-tenants.js",
+    "platform:create-admin": "node scripts/platform/create-admin.js",
+    "ai:reindex": "node scripts/ai/reindex.js",
+    "ai:reindex:all": "node scripts/ai/reindex.js --all"
   },
   "dependencies": {
     "@google/generative-ai": "^0.21.0",

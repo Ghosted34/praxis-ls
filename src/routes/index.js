@@ -3,7 +3,7 @@
  *   /api/health              liveness
  *   /api/platform/*          company dashboard (Praxis-only) — tenant controls
  *   /api/tenant/*            tenant app (subdomain-resolved, live/sandbox bound)
- * Tenant feature modules mount under the tenant router (behind host+context).
+ *                            all feature modules auto-mounted (module-loader)
  */
 "use strict";
 
@@ -11,10 +11,13 @@ const express = require("express");
 const platformRoutes = require("../modules/platform/platform.routes");
 const { hostTenantResolver } = require("../middleware/host-tenent-resolver");
 const { tenantContext } = require("../middleware/tenant-context");
+const { mountTenantModules } = require("../shared/http/module-loader");
 
 const router = express.Router();
 
-router.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+router.get("/health", (_req, res) =>
+  res.json({ ok: true, ts: new Date().toISOString() }),
+);
 
 // Company dashboard (its own auth; not tenant-scoped).
 router.use("/platform", platformRoutes);
@@ -25,7 +28,7 @@ tenantRouter.use(hostTenantResolver, tenantContext);
 tenantRouter.get("/whoami", (req, res) =>
   res.json({ data: { tenant: req.tenant.slug, env: req.env, is_live: req.tenant.is_live } }),
 );
-// e.g. tenantRouter.use("/invoices", require("../modules/invoicing/invoice.routes"));
+mountTenantModules(tenantRouter); // discovers src/modules/<group>/<module>/*.routes.js
 router.use("/tenant", tenantRouter);
 
 module.exports = router;

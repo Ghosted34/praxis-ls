@@ -64,3 +64,51 @@ The migration set has been applied against a real PostgreSQL 16: **151 tenant ta
 
 ## Note on the AI layer (next phase)
 The schema already includes the per-tenant AI corpus (`ai_document`/`ai_chunk` with pgvector), assistant sessions, the Zod-gated `ai_action_run`, and governance/usage tables — all inside each tenant DB so embeddings never cross tenants. The next build is the ingestion/self-learning pipeline that indexes the tenant DB + platform + codebase into those tables and wires function-calling + vector recall.
+
+---
+
+## Company dashboard API & the service/middleware split
+
+The provisioning logic now lives in **services** (reusable by both the CLI and the dashboard), request-time tenant resolution lives in **middleware**, and only pure terminal ops stay in `scripts/`.
+
+### Layers
+- `src/services/platform/migrator.js` — migration-file applier + a per-DB migration ledger (`public.schema_migration`) so applies are idempotent and existing tenants can be upgraded.
+- `src/services/platform/provisioning.service.js` — `migratePlatform`, `provisionTenant`, `migrateTenant`/`migrateAllTenants` (upgrades), `wipeSandbox`, `projectFeatures`.
+- `src/services/platform/tenants.service.js` — dashboard controls: list/health, suspend/resume, go-live, capacity, sandbox interval, feature on/off (+re-project), catalogue reads. Every write → `platform.platform_audit`.
+- `src/services/tenant/registry.service.js` — per-tenant connection pool manager; `resolveByHost`, `withTenantConnection(meta, env, fn)`.
+- `src/middleware/host-tenent-resolver.js` — Host header → tenant (or platform); 404/403/423 as appropriate.
+- `src/middleware/tenant-context.js` — picks live/sandbox, binds request context, exposes `req.tenantDb(fn)`.
+- `src/middleware/platform-auth.js` — platform JWT + `PLATFORM_ROOT_ADMIN` guard.
+
+### Dashboard endpoints (mounted at `/api/platform`, Praxis-only)
+```
+GET    /catalogue/modules            list the 70 modules
+GET    /catalogue/features           list switchable features
+GET    /plans                        list plans
+GET    /tenants                      list tenants + health
+POST   /tenants                      provision {slug,name,plan,subdomain}
+GET    /tenants/:slug                tenant detail (db, subdomains)
+POST   /tenants/:slug/suspend        suspend
+POST   /tenants/:slug/resume         resume
+POST   /tenants/:slug/go-live        mark Live (hides Test/Live toggle)
+PATCH  /tenants/:slug/capacity       {tier: S|M|L|XL}
+PATCH  /tenants/:slug/sandbox        {days}
+POST   /tenants/:slug/sandbox/wipe   rebuild sandbox now
+POST   /tenants/:slug/migrate        upgrade this tenant to latest migrations
+GET    /tenants/:slug/features       resolved feature state
+PATCH  /tenants/:slug/features/:key  {state: on|off}   ← the toggle
+DELETE /tenants/:slug/features/:key  clear override (revert to plan)
+```
+Tenant app: `/api/tenant/*` runs behind `hostTenantResolver` + `tenantContext` (subdomain-resolved, live/sandbox bound). `GET /api/tenant/whoami` is a smoke endpoint.
+
+### Terminal-only scripts (run regardless of the frontend)
+```
+npm run db:migrate:platform            create/migrate platform DB + catalogue
+npm run db:provision -- --slug --name  provision a tenant
+npm run db:migrate:tenants [--slug]    upgrade existing tenant(s) after new migrations
+npm run db:sandbox:wipe   [--slug]     rebuild sandbox schema(s)  (cron)
+npm run platform:create-admin -- --email --password    dashboard login (Argon2id)
+```
+
+> **Boot:** `npm run dev` serves `/api/platform` (dashboard) and `/api/tenant` (app). `src/server.js` is a lean Express boot; Redis/Socket.IO/worker wiring is added as those land.
+> **Note:** running the JS requires `npm install` (the deps in package.json). The provisioning/registry SQL was verified against a real PostgreSQL 16; the JS passes `node --check`.

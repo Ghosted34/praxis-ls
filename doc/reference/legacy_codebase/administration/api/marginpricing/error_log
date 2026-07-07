@@ -1,0 +1,249 @@
+[16-Jan-2026 15:28:43 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 15:54:17 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 15:59:06 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 16:03:26 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 16:10:58 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 16:12:07 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 16:12:11 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 16:13:24 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:48
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 48
+[16-Jan-2026 16:15:35 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:48
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 48
+[16-Jan-2026 16:34:20 UTC] PHP Fatal error:  Uncaught Error: mysqli_stmt::bind_param(): Argument #2 cannot be passed by reference in /home/smartqaq/public_html/administration/api/marginpricing/get.php:29
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get.php on line 29
+[16-Jan-2026 22:29:58 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting "]" in /home/smartqaq/public_html/administration/api/marginpricing/quote.php on line 183
+[16-Jan-2026 22:34:03 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting "]" in /home/smartqaq/public_html/administration/api/marginpricing/quote.php on line 183
+[16-Jan-2026 22:34:23 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting "]" in /home/smartqaq/public_html/administration/api/marginpricing/quote.php on line 183
+[24-Jan-2026 22:18:03 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '=' in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:81
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(81): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 81
+[24-Jan-2026 22:18:26 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '=' in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:81
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(81): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 81
+[24-Jan-2026 22:18:36 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '=' in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:81
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(81): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 81
+[24-Jan-2026 22:19:33 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '=' in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:81
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(81): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 81
+[24-Jan-2026 22:19:38 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Illegal mix of collations (utf8mb4_0900_ai_ci,IMPLICIT) and (utf8mb4_general_ci,IMPLICIT) for operation '=' in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:81
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(81): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 81
+[24-Jan-2026 23:07:21 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:05 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/financial-dictionary.php(13): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:13 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:38 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(12): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:44 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:08:47 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/financial-dictionary.php(13): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:09:44 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:10:04 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:10:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(12): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:10:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:11:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:11:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/save.php(13): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:11:18 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/submit.php(13): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:12:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[24-Jan-2026 23:12:44 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Too many connections in /home/smartqaq/public_html/administration/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/administration/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', 'info@smartls.cm', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/administration/api/marginpricing/list.php(10): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/config/db.php on line 22
+[26-Jan-2026 16:50:17 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[26-Jan-2026 19:05:51 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[26-Jan-2026 19:14:31 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 15:49:15 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 15:49:45 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 16:21:37 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 16:23:42 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 16:31:37 UTC] PHP Parse error:  syntax error, unexpected variable "$role" in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 20
+[27-Jan-2026 16:31:43 UTC] PHP Parse error:  syntax error, unexpected variable "$role" in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 20
+[27-Jan-2026 16:46:54 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[27-Jan-2026 16:47:06 UTC] PHP Warning:  Undefined variable $toXaf in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 119
+[28-Jan-2026 16:12:32 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/marginpricing/save.php:246
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/save.php(246): mysqli_stmt->bind_param('ssssssdddddddis...', 'SL7547002SM', '22f11a19-d9dd-4...', 'SLAS-COST-00000...', 'SLAS-CL-0001324', 'Zion Global Ltd', 'XAF', 1.0, 13909165.01, 15982165.01, 370562.5, 16352727.51, 2073000.0, 12.970708278277, 0, '', 'DRAFT', 'f01c5e9dc1af0e0...', 111)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/save.php on line 246
+[29-Jan-2026 01:26:40 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '.place_delivery,
+
+    ofm.sea_bl,
+    ofm.air_mawb,
+    ofm.inland_decl,
+
+' at line 43 in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:95
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(95): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 95
+[29-Jan-2026 01:34:07 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '.place_delivery,
+
+    ofm.sea_bl,
+    ofm.air_mawb,
+    ofm.inland_decl,
+
+' at line 43 in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:95
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(95): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 95
+[29-Jan-2026 01:39:29 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '.place_delivery,
+
+    ofm.sea_bl,
+    ofm.air_mawb,
+    ofm.inland_decl,
+
+' at line 43 in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php:111
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php(111): mysqli->prepare('\r\n  SELECT\r\n   ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/get-costing-ssdc.php on line 111
+[29-Jan-2026 03:12:09 UTC] PHP Warning:  Undefined variable $T_SIM in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:12:09 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'WHERE simulation_ref = ? LIMIT 1' at line 1 in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:70
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(70): mysqli->prepare('SELECT id, simu...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:12:48 UTC] PHP Warning:  Undefined variable $T_SIM in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:12:48 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'WHERE simulation_ref = ? LIMIT 1' at line 1 in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:70
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(70): mysqli->prepare('SELECT id, simu...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:14:42 UTC] PHP Warning:  Undefined variable $T_SIM in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:14:42 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'WHERE simulation_ref = ? LIMIT 1' at line 1 in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:70
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(70): mysqli->prepare('SELECT id, simu...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:30:16 UTC] PHP Warning:  Undefined variable $T_SIM in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:30:16 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near 'WHERE simulation_ref = ? LIMIT 1' at line 1 in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:70
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(70): mysqli->prepare('SELECT id, simu...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 70
+[29-Jan-2026 03:43:25 UTC] PHP Fatal error:  Uncaught RuntimeException: Simulation not found in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:83
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 83
+[29-Jan-2026 03:46:25 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 281
+[29-Jan-2026 04:06:38 UTC] PHP Warning:  Undefined variable $T_SIM in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 58
+[29-Jan-2026 04:06:38 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: You have an error in your SQL syntax; check the manual that corresponds to your MySQL server version for the right syntax to use near '(status, created_at) VALUES ('DRAFT', NOW())' at line 1 in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php:58
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php(58): mysqli->prepare('INSERT INTO  (s...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 58
+[29-Jan-2026 04:10:13 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/marginpricing/link-costing.php on line 283

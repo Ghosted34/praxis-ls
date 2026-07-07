@@ -1,0 +1,120 @@
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:45:48 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 16
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 14:45:48 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php:81
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 17
+[04-Feb-2026 14:45:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[04-Feb-2026 14:45:48 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php:80
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[04-Feb-2026 14:46:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:46:48 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:46:48 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:47:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:47:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:47:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:48:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:48:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:48:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:49:24 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:49:24 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:49:24 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:49:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:49:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:49:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:50:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:50:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:50:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:51:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:51:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:51:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:52:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:52:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:52:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:53:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:53:49 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:53:49 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:55:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 17
+[04-Feb-2026 14:55:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[04-Feb-2026 14:55:33 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php:80
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[04-Feb-2026 14:55:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 16
+[04-Feb-2026 14:55:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 14:55:33 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php:81
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 14:57:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:57:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:57:34 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:58:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:58:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:58:34 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:59:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 15
+[04-Feb-2026 14:59:34 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 14:59:34 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:69
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 69
+[04-Feb-2026 15:00:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 16
+[04-Feb-2026 15:00:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 15:00:33 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php:81
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/approvals.php on line 81
+[04-Feb-2026 15:00:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 17
+[04-Feb-2026 15:00:33 UTC] PHP Warning:  Undefined variable $mysqli in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[04-Feb-2026 15:00:33 UTC] PHP Fatal error:  Uncaught Error: Call to a member function close() on null in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php:80
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/chart_data.php on line 80
+[06-Feb-2026 10:15:42 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'im.id' in 'on clause' in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php:32
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php(32): mysqli->prepare('\r\n        SELEC...')
+#1 /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php(55): getFinancials(Object(mysqli), '2026-02-01 00:0...', '2026-02-28 23:5...')
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/management-dashboard/kpi_summary.php on line 32

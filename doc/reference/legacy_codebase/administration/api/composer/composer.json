@@ -1,0 +1,14 @@
+{
+    "name": "vend/pack",
+    "description": "My Composer",
+    "type": "project",
+    "authors": [
+        {
+            "name": "Victor"
+        }
+    ],
+    "minimum-stability": "stable",
+    "require": {
+        "phpmailer/phpmailer": "^7.0"
+    }
+}

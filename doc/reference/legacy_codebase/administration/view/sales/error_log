@@ -1,0 +1,17 @@
+[02-Feb-2026 01:34:32 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function h() in /home/smartqaq/public_html/administration/view/sales/smart-quote-intake.php:277
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/view/sales/smart-quote-intake.php on line 277
+[02-Feb-2026 01:34:49 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function h() in /home/smartqaq/public_html/administration/view/sales/smart-quote-intake.php:277
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/view/sales/smart-quote-intake.php on line 277
+[02-Feb-2026 01:35:39 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function h() in /home/smartqaq/public_html/administration/view/sales/client-master-registry.php:234
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/view/sales/client-master-registry.php on line 234
+[02-Feb-2026 02:27:38 UTC] PHP Parse error:  syntax error, unexpected token "<", expecting end of file in /home/smartqaq/public_html/administration/view/sales/extra-charges-simulator.php on line 11
+[02-Feb-2026 15:37:07 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function e() in /home/smartqaq/public_html/administration/view/sales/index.php:253
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/view/sales/index.php on line 253

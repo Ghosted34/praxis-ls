@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Free Global Location Autocomplete</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+
+<style>
+#suggestions {
+  max-height: 260px;
+  overflow-y: auto;
+  z-index: 1000;
+}
+.suggestion-item {
+  cursor: pointer;
+}
+.suggestion-item:hover {
+  background: #f0f4f8;
+}
+</style>
+</head>
+
+<body class="bg-light">
+
+<div class="container py-5">
+  <div class="row justify-content-center">
+    <div class="col-md-6">
+
+      <h3 class="mb-3 text-center">🌍 Global Location Search (100% Free)</h3>
+      <p class="text-muted text-center">Type any city, port, airport, street or country</p>
+
+      <div class="position-relative">
+        <input type="text" id="locationInput" class="form-control form-control-lg" placeholder="Start typing a location...">
+        <div id="suggestions" class="list-group position-absolute w-100 shadow"></div>
+      </div>
+
+      <div class="mt-4 bg-white p-3 rounded shadow-sm">
+        <h6>Selected Location</h6>
+        <div><strong>Place:</strong> <span id="place">—</span></div>
+        <div><strong>Latitude:</strong> <span id="lat">—</span></div>
+        <div><strong>Longitude:</strong> <span id="lng">—</span></div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+const input = document.getElementById("locationInput");
+const suggestions = document.getElementById("suggestions");
+
+const placeDisplay = document.getElementById("place");
+const latDisplay = document.getElementById("lat");
+const lngDisplay = document.getElementById("lng");
+
+let controller;
+
+input.addEventListener("input", async () => {
+  const query = input.value.trim();
+  if (query.length < 2) {
+    suggestions.innerHTML = "";
+    return;
+  }
+
+  // Cancel previous request
+  if (controller) controller.abort();
+  controller = new AbortController();
+
+  try {
+    const response = await fetch(
+      `https://photon.komoot.io/api/?q=${encodeURIComponent(query)}&limit=6`,
+      { signal: controller.signal }
+    );
+
+    const data = await response.json();
+
+    suggestions.innerHTML = "";
+
+    data.features.forEach(feature => {
+      const name = feature.properties.name || "";
+      const city = feature.properties.city || "";
+      const country = feature.properties.country || "";
+      const lat = feature.geometry.coordinates[1];
+      const lng = feature.geometry.coordinates[0];
+
+      const display = [name, city, country].filter(Boolean).join(", ");
+
+      const item = document.createElement("button");
+      item.type = "button";
+      item.className = "list-group-item list-group-item-action suggestion-item";
+      item.textContent = display;
+
+      item.onclick = () => {
+        input.value = display;
+        suggestions.innerHTML = "";
+        placeDisplay.textContent = display;
+        latDisplay.textContent = lat;
+        lngDisplay.textContent = lng;
+      };
+
+      suggestions.appendChild(item);
+    });
+
+  } catch (err) {
+    if (err.name !== "AbortError") {
+      console.error(err);
+    }
+  }
+});
+
+// Hide suggestions when clicking outside
+document.addEventListener("click", e => {
+  if (!e.target.closest(".position-relative")) {
+    suggestions.innerHTML = "";
+  }
+});
+</script>
+
+</body>
+</html>

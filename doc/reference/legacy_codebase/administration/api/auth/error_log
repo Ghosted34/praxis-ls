@@ -1,0 +1,121 @@
+[12-Jan-2026 06:05:25 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:05:33 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:05:36 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:05:37 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:05:47 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:05:51 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:06:10 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:07:19 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:11:15 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:14:05 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 06:14:13 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 06:15:04 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:18:16 UTC] LOGIN_API_ERROR: Access denied for user 'smartls'@'localhost' (using password: YES)
+[12-Jan-2026 06:29:58 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' to database 'smartqaq_smartls'
+[12-Jan-2026 06:32:26 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' to database 'smartqaq_smartls'
+[12-Jan-2026 06:37:06 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' to database 'smartqaq_smartls'
+[12-Jan-2026 06:39:54 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 06:41:44 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 06:41:44 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 06:42:36 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 06:42:36 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 06:43:03 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' to database 'smartqaq_smartls'
+[12-Jan-2026 09:54:23 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/create_admin.php:11
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 11
+[12-Jan-2026 09:58:31 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 09:59:43 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 09:59:45 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 09:59:46 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 09:59:47 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:00:45 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:00:46 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:01:08 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:01:09 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:02:37 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:02:38 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:02:47 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:06:35 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:06:37 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:17:07 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:17:09 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:18:06 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:18:08 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:18:09 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:18:10 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 15
+[12-Jan-2026 10:42:31 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 10:43:22 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 10:44:48 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 10:44:52 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function csrf_verify() in /home/smartqaq/public_html/administration/api/auth/login.php:16
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 16
+[12-Jan-2026 10:46:30 UTC] LOGIN_API_ERROR: Call to undefined function db()
+[12-Jan-2026 10:46:30 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function json_response() in /home/smartqaq/public_html/administration/api/auth/login.php:114
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 114
+[12-Jan-2026 10:46:32 UTC] LOGIN_API_ERROR: Call to undefined function db()
+[12-Jan-2026 10:46:32 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function json_response() in /home/smartqaq/public_html/administration/api/auth/login.php:114
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 114
+[12-Jan-2026 10:46:48 UTC] LOGIN_API_ERROR: Call to undefined function db()
+[12-Jan-2026 10:46:48 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function json_response() in /home/smartqaq/public_html/administration/api/auth/login.php:114
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 114
+[12-Jan-2026 10:47:25 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:47:25 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:47:54 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:47:54 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:47:55 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:47:55 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/../../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:48:25 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/auth/includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 10:48:25 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/auth/includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/auth/login.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/auth/login.php on line 4
+[12-Jan-2026 16:21:21 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 16:31:19 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 16:31:30 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 16:31:32 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 16:31:59 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[12-Jan-2026 16:32:00 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/auth/create_admin.php on line 14
+[22-Feb-2026 05:17:35 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)
+[22-Feb-2026 05:17:44 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)
+[22-Feb-2026 20:00:02 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)
+[22-Feb-2026 20:00:06 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)
+[22-Feb-2026 20:00:11 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)
+[22-Feb-2026 20:00:12 UTC] LOGIN_API_ERROR: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES)

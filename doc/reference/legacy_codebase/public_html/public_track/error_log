@@ -1,0 +1,69 @@
+[07-Jan-2026 22:34:57 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'smartls'@'localhost' (using password: YES) in /home/smartqaq/public_html/api/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/api/config/db.php(22): mysqli->__construct('localhost', 'smartls', 'info@smartls.co...', 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/api/public_track/get.php(32): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/api/config/db.php on line 22
+[25-Jan-2026 01:16:50 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:16:50 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:16:57 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:16:57 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:36:25 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:36:25 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:51:38 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:51:38 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:58:54 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 01:58:54 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 02:00:30 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 6
+[25-Jan-2026 02:00:30 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:6
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 6
+[25-Jan-2026 02:00:54 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 6
+[25-Jan-2026 02:00:54 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:6
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 6
+[25-Jan-2026 02:05:00 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 02:05:00 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 02:08:52 UTC] PHP Warning:  Undefined variable $por in /home/smartqaq/public_html/api/public_track/get.php on line 115
+[25-Jan-2026 02:17:37 UTC] PHP Warning:  Undefined variable $por in /home/smartqaq/public_html/api/public_track/get.php on line 115
+[25-Jan-2026 02:55:45 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../config/db.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 02:55:45 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../config/db.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 03:00:21 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../config/db.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 03:00:21 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../config/db.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 5
+[25-Jan-2026 03:07:06 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/api/public_track/../../config/db.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/api/public_track/get.php on line 4
+[25-Jan-2026 03:07:06 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/api/public_track/../../config/db.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/api/public_track/get.php:4
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/api/public_track/get.php on line 4
+[20-Apr-2026 11:35:17 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Access denied for user 'smartqaq_smartls'@'localhost' (using password: YES) in /home/smartqaq/public_html/api/config/db.php:22
+Stack trace:
+#0 /home/smartqaq/public_html/api/config/db.php(22): mysqli->__construct('localhost', 'smartqaq_smartl...', Object(SensitiveParameterValue), 'smartqaq_smartl...')
+#1 /home/smartqaq/public_html/api/public_track/get.php(32): db()
+#2 {main}
+  thrown in /home/smartqaq/public_html/api/config/db.php on line 22

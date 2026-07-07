@@ -1,0 +1,8 @@
+RewriteEngine On
+
+# If the request is not a real file or folder
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+
+# Load .php file automatically
+RewriteRule ^(.+)$ $1.php [L]

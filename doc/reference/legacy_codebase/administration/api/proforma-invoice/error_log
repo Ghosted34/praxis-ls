@@ -1,0 +1,12 @@
+[19-Jan-2026 08:39:48 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function getKPIs() in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php:66
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php on line 66
+[19-Jan-2026 08:39:55 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function getKPIs() in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php:66
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php on line 66
+[19-Jan-2026 08:40:04 UTC] PHP Fatal error:  Uncaught Error: Call to undefined function getKPIs() in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php:66
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/proforma-invoice/proforma-api.php on line 66

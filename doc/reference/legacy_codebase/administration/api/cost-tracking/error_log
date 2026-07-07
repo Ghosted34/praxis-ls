@@ -1,0 +1,60 @@
+[17-Jan-2026 12:33:17 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[17-Jan-2026 12:33:31 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[17-Jan-2026 12:41:50 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[17-Jan-2026 13:54:46 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[18-Jan-2026 05:29:19 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[19-Jan-2026 15:46:43 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[27-Jan-2026 17:02:42 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[27-Jan-2026 17:03:48 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:437
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(437): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(78): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 437
+[27-Jan-2026 17:18:18 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:445
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(445): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(83): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 445
+[27-Jan-2026 17:22:16 UTC] PHP Fatal error:  Uncaught TypeError: number_format(): Argument #1 ($num) must be of type float, string given in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php:445
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(445): number_format('0.00', 2, '.', '')
+#1 /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php(83): exportToCSV(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/cost-tracking/cost-tracking-api.php on line 445

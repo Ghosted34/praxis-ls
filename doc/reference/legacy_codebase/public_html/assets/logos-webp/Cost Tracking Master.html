@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cost Tracking Master Sheet | Smart LS</title>
+    
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&family=Montserrat:wght@400;600;700;800;900&family=Inconsolata:wght@500;700&display=swap" rel="stylesheet">
+
+    <style>
+        /* ==========================================================================
+           1. DESIGN SYSTEM
+           ========================================================================== */
+        :root {
+            /* Smart LS Brand */
+            --brand-blue: #1F99D8;
+            --brand-dark: #055B83;
+            --brand-orange: #EE7D04;
+            --brand-bg: #F8FAFC;
+            --brand-text: #231F20;
+
+            /* Sheet Specific Colors */
+            --header-orange: #EE7D04;
+            --header-blue: #1F99D8;
+            --cell-bg-balance: #E0F2FE; /* Light Blue for Balance Columns */
+            --cell-bg-total: #FFF7ED;   /* Light Orange for Totals */
+
+            /* Dimensions */
+            --sidebar-w: 260px;
+            --header-h: 70px;
+        }
+
+        * { box-sizing: border-box; outline: none; }
+        body { font-family: 'Manrope', sans-serif; background: var(--brand-bg); color: var(--brand-text); font-size: 0.85rem; overflow-x: hidden; }
+        
+        /* Typography */
+        h1, h2, h3, h4, h5 { font-family: 'Montserrat', sans-serif; }
+        .font-mono { font-family: 'Inconsolata', monospace; letter-spacing: -0.5px; }
+        .fw-black { font-weight: 800; }
+        .text-orange { color: var(--brand-orange) !important; }
+
+        /* ==========================================================================
+           2. LAYOUT & SIDEBAR
+           ========================================================================== */
+        .sidebar {
+            width: var(--sidebar-w); height: 100vh; position: fixed; top: 0; left: 0;
+            background: white; border-right: 1px solid #E2E8F0; z-index: 1050; display: flex; flex-direction: column;
+        }
+        .sidebar-header { height: var(--header-h); display: flex; align-items: center; padding: 0 24px; border-bottom: 1px solid #E2E8F0; }
+        .logo { font-size: 1.1rem; font-weight: 800; color: var(--brand-dark); text-decoration: none; display: flex; align-items: center; gap: 8px; }
+        
+        .nav-link { display: flex; align-items: center; padding: 12px 24px; color: #64748B; text-decoration: none; font-weight: 600; border-left: 3px solid transparent; }
+        .nav-link:hover, .nav-link.active { background: #F0F9FF; color: var(--brand-blue); border-left-color: var(--brand-blue); }
+        .nav-link i { width: 20px; margin-right: 10px; text-align: center; }
+
+        .main-content { margin-left: var(--sidebar-w); padding: 30px; min-height: 100vh; padding-bottom: 100px; }
+
+        /* Header */
+        .page-header { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 30px; }
+        .page-title h2 { margin: 0; font-weight: 800; color: var(--brand-dark); }
+
+        /* ==========================================================================
+           3. EDITOR SECTION (HYBRID VIEW)
+           ========================================================================== */
+        .editor-card {
+            background: white; border: 1px solid #E2E8F0; border-radius: 12px;
+            box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02); overflow: hidden; margin-bottom: 30px;
+        }
+        .editor-header {
+            padding: 20px 24px; background: #F8FAFC; border-bottom: 1px solid #E2E8F0;
+            display: flex; justify-content: space-between; align-items: center;
+        }
+
+        /* Tabs */
+        .nav-tabs .nav-link { border: none; color: #64748B; font-weight: 700; padding: 12px 20px; }
+        .nav-tabs .nav-link.active { color: var(--brand-blue); background: none; border-bottom: 3px solid var(--brand-blue); }
+        .tab-content { padding: 24px; }
+
+        /* Inputs */
+        .form-label { font-size: 0.7rem; font-weight: 800; text-transform: uppercase; color: #64748B; margin-bottom: 5px; }
+        .form-control, .form-select { font-size: 0.9rem; border-color: #CBD5E1; border-radius: 6px; }
+        .form-control:focus, .form-select:focus { border-color: var(--brand-blue); box-shadow: 0 0 0 3px rgba(31, 153, 216, 0.15); }
+        
+        .inp-money { font-family: 'Inconsolata', monospace; font-weight: 700; text-align: right; }
+        .inp-money:focus { background: #F0F9FF; }
+
+        /* Read Only Logic Fields */
+        .inp-locked { background: #F1F5F9; border-color: transparent; color: #475569; pointer-events: none; }
+        .inp-balance { background: var(--cell-bg-balance); color: var(--brand-dark); font-weight: 800; }
+
+        /* ==========================================================================
+           4. MASTER SHEET (THE BIG GRID)
+           ========================================================================== */
+        .sheet-container {
+            background: white; border: 1px solid #E2E8F0; border-radius: 8px;
+            overflow-x: auto; /* Horizontal Scroll */
+            position: relative;
+        }
+        
+        .master-table { border-collapse: separate; border-spacing: 0; font-size: 0.75rem; white-space: nowrap; }
+        
+        /* Headers */
+        .master-table th { position: sticky; top: 0; z-index: 10; border-bottom: 2px solid #fff; color: white; text-transform: uppercase; font-weight: 800; padding: 8px 10px; text-align: center; }
+        .th-orange { background: var(--header-orange); }
+        .th-blue { background: var(--brand-dark); }
+        .th-sub { background: #F1F5F9; color: #475569; border-bottom: 1px solid #CBD5E1; font-size: 0.7rem; }
+
+        /* Cells */
+        .master-table td { border-bottom: 1px solid #E2E8F0; border-right: 1px solid #F1F5F9; padding: 6px 10px; vertical-align: middle; }
+        .master-table tr:hover td { background: #FFF7ED; }
+
+        /* Column Specifics */
+        .col-desc { text-align: left; font-weight: 700; min-width: 150px; position: sticky; left: 0; background: white; z-index: 5; border-right: 2px solid #E2E8F0; }
+        .col-money { text-align: right; font-family: 'Inconsolata', monospace; }
+        .col-bal { background: var(--cell-bg-balance); font-weight: 700; color: var(--brand-dark); }
+        .col-total { font-weight: 900; background: #FFF7ED; }
+        
+        /* Status Badges in Grid */
+        .status-cell { font-weight: 800; text-align: center; }
+        .st-not-started { color: #94A3B8; }
+        .st-in-progress { color: var(--brand-orange); }
+        .st-completed { color: #16A34A; }
+        .st-hold { color: #DC2626; }
+
+    </style>
+</head>
+<body>
+
+    <nav class="sidebar">
+        <div class="sidebar-header">
+            <a href="#" class="logo"><i class="fa-solid fa-cube text-primary"></i> SMART <span class="text-orange">LS</span></a>
+        </div>
+        <div class="p-3">
+            <div class="d-grid gap-2">
+                <a href="#" class="nav-link"><i class="fa-solid fa-chart-pie"></i> Overview</a>
+                <a href="#" class="nav-link active"><i class="fa-solid fa-table-cells"></i> Cost Tracking Sheet</a>
+                <a href="#" class="nav-link"><i class="fa-solid fa-file-invoice-dollar"></i> OCR Validation</a>
+            </div>
+            <hr>
+            <div class="small text-muted text-uppercase fw-bold px-3 mb-2">Filters Applied</div>
+            <div class="px-3">
+                <span class="badge bg-light text-dark border mb-1">Sea Freight Import</span>
+                <span class="badge bg-light text-dark border mb-1">Hinterland</span>
+                <span class="badge bg-light text-dark border mb-1">End-to-End</span>
+            </div>
+        </div>
+    </nav>
+
+    <main class="main-content">
+        
+        <div class="page-header">
+            <div class="page-title">
+                <h2>Cost Tracking Master Sheet</h2>
+                <p>Monitor operational expenses, advances, and balances per file.</p>
+            </div>
+            <div class="d-flex gap-2">
+                <div class="bg-white border rounded p-2 px-3 text-center">
+                    <div class="small text-muted fw-bold">TOTAL SPEND</div>
+                    <div class="fw-black font-mono text-primary" id="kpiTotalCost">0 XAF</div>
+                </div>
+                <div class="bg-white border rounded p-2 px-3 text-center">
+                    <div class="small text-muted fw-bold">TOTAL BALANCE</div>
+                    <div class="fw-black font-mono text-danger" id="kpiTotalBal">0 XAF</div>
+                </div>
+                <button class="btn btn-success fw-bold" onclick="exportToCSV()"><i class="fa-solid fa-file-excel me-2"></i>Export Excel</button>
+            </div>
+        </div>
+
+        <div class="editor-card" id="editorSection">
+            <div class="editor-header">
+                <div class="d-flex align-items-center gap-3" style="width: 50%;">
+                    <div class="bg-light rounded p-2"><i class="fa-solid fa-pen-to-square text-primary"></i></div>
+                    <div style="flex: 1;">
+                        <label class="form-label mb-0">Select File to Track</label>
+                        <select class="form-select fw-bold border-primary" id="fileSelector" onchange="loadFile()">
+                            <option value="">-- Choose Active Operation --</option>
+                            </select>
+                    </div>
+                </div>
+                <div class="text-end">
+                    <div class="small text-muted fw-bold">EXECUTION STATUS</div>
+                    <div class="badge bg-light text-muted border px-3 py-2 fs-6" id="statusDisplay">NOT STARTED</div>
+                </div>
+            </div>
+            
+            <div class="card-body p-0">
+                <ul class="nav nav-tabs" role="tablist">
+                    <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#tabCosts">1. Actual Costs</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabAdvances">2. Advances Received</a></li>
+                    <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#tabSummary">3. Summary & Balance</a></li>
+                </ul>
+
+                <div class="tab-content">
+                    
+                    <div class="tab-pane fade show active" id="tabCosts">
+                        <div class="alert alert-info py-2 small"><i class="fa-solid fa-circle-info me-2"></i>Enter the <strong>Total Cost</strong> incurred for each line item (Gross XAF).</div>
+                        <div class="row g-3" id="costInputs">
+                            </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="tabAdvances">
+                         <div class="alert alert-warning py-2 small text-dark"><i class="fa-solid fa-circle-info me-2"></i>Enter the <strong>Advance Amount</strong> received/allocated for each line item.</div>
+                        <div class="row g-3" id="advInputs">
+                            </div>
+                    </div>
+
+                    <div class="tab-pane fade" id="tabSummary">
+                        <div class="row g-4">
+                            <div class="col-md-8">
+                                <h6 class="fw-bold text-primary mb-3">Balance Due (Auto-Calculated)</h6>
+                                <div class="table-responsive border rounded">
+                                    <table class="table table-sm table-striped m-0" style="font-size: 0.8rem;">
+                                        <thead><tr class="table-light"><th>Item</th><th class="text-end">Cost</th><th class="text-end">Advance</th><th class="text-end text-primary">Balance</th></tr></thead>
+                                        <tbody id="summaryTableBody"></tbody>
+                                    </table>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="bg-light p-3 rounded border h-100">
+                                    <h6 class="fw-bold mb-3">Performance</h6>
+                                    
+                                    <div class="mb-3">
+                                        <label class="form-label">Total Cost</label>
+                                        <input type="text" class="form-control fw-bold" id="sumTotalCost" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Total Advance</label>
+                                        <input type="text" class="form-control fw-bold" id="sumTotalAdv" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Total Balance</label>
+                                        <input type="text" class="form-control fw-black text-danger border-danger" id="sumTotalBal" readonly>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Coverage %</label>
+                                        <div class="progress" style="height: 25px;">
+                                            <div class="progress-bar bg-success" id="coverageBar" style="width: 0%">0%</div>
+                                        </div>
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label">Manual Override Status</label>
+                                        <select class="form-select form-select-sm" id="manualStatus" onchange="overrideStatus()">
+                                            <option value="AUTO">Auto-Detect</option>
+                                            <option value="ON HOLD">On Hold</option>
+                                        </select>
+                                    </div>
+
+                                    <button class="btn btn-primary w-100 fw-bold mt-2" onclick="saveData()"><i class="fa-solid fa-save me-2"></i>Save Updates</button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="fw-bold m-0 text-dark">Master Ledger</h5>
+            <div class="small text-muted"><i class="fa-solid fa-arrows-left-right me-1"></i> Scroll horizontally to view all columns</div>
+        </div>
+
+        <div class="sheet-container">
+            <table class="master-table">
+                <thead>
+                    <tr>
+                        <th class="th-blue" colspan="6">File Descriptors</th>
+                        <th class="th-orange" colspan="13">Total Cost Section</th>
+                        <th class="th-orange" colspan="13">Advance Total Section</th>
+                        <th class="th-orange" colspan="13">Unpaid / Balance Section</th>
+                        <th class="th-blue" colspan="2">Status</th>
+                    </tr>
+                    <tr id="gridHeaderRow">
+                        </tr>
+                </thead>
+                <tbody id="gridBody">
+                    </tbody>
+            </table>
+        </div>
+
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        /**
+         * COST TRACKING ENGINE v1.0
+         * -------------------------
+         * 1. Auto-Calculation of Balances
+         * 2. Strict Filtering (Sea Freight/Hinterland only)
+         * 3. Hybrid UI (Editor + Grid)
+         */
+
+        // --- CONFIG & CONSTANTS ---
+        
+        const COST_ITEMS = [
+            "CLEARANCE", "TRANSPORT", "ENDORSEMENT", "CAUTION", 
+            "DESTINATION FEES", "DETENTION", "DEMURRAGE", "STORAGE", 
+            "YARD OCCUPANCY", "TRANSFER TO ICD", "MANIFEST RELEASE", "FREIGHT COST"
+        ];
+
+        // Mock Ops DB (Source of Files)
+        const OPS_DB = [
+            { id: "SLAS-FR-101", client: "TOTALENERGIES", bl: "HLCU123456", ata: "2025-12-01", dest: "DOUALA", service: "Sea Freight Import" },
+            { id: "SLAS-FR-102", client: "MAERSK", bl: "MSKU987654", ata: "2025-12-05", dest: "NDJAMENA", service: "Hinterland" },
+            { id: "SLAS-FR-103", client: "CIMENCAM", bl: "CMAU112233", ata: "2025-12-10", dest: "YAOUNDE", service: "End-to-End Sea Freight" },
+            { id: "SLAS-FR-104", client: "DHL", bl: "DHLU556677", ata: "2025-12-12", dest: "DOUALA", service: "Air Freight" } // Should be hidden
+        ];
+
+        // Local Storage for Costs (Simulating Database)
+        // Structure: { "SLAS-FR-101": { costs: [..], adv: [..], status: "IN PROGRESS" } }
+        let TRACKER_DB = {};
+
+        let currentFileId = null;
+
+        // --- INITIALIZATION ---
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            initFileSelector();
+            initFormInputs();
+            renderGrid();
+        });
+
+        function initFileSelector() {
+            const sel = document.getElementById('fileSelector');
+            const validServices = ["Sea Freight Import", "Hinterland", "End-to-End Sea Freight"];
+            
+            OPS_DB.forEach(f => {
+                if (validServices.includes(f.service)) {
+                    const opt = document.createElement('option');
+                    opt.value = f.id;
+                    opt.text = `${f.id} - ${f.client} (${f.service})`;
+                    sel.appendChild(opt);
+                }
+            });
+        }
+
+        function initFormInputs() {
+            const costContainer = document.getElementById('costInputs');
+            const advContainer = document.getElementById('advInputs');
+            
+            COST_ITEMS.forEach((item, idx) => {
+                // Cost Input
+                costContainer.innerHTML += `
+                    <div class="col-md-3">
+                        <label class="form-label">${item}</label>
+                        <input type="number" class="form-control inp-money" id="cost_${idx}" placeholder="0" oninput="calculate()">
+                    </div>
+                `;
+                // Advance Input
+                advContainer.innerHTML += `
+                    <div class="col-md-3">
+                        <label class="form-label">Adv: ${item}</label>
+                        <input type="number" class="form-control inp-money" id="adv_${idx}" placeholder="0" oninput="calculate()">
+                    </div>
+                `;
+            });
+        }
+
+        // --- CORE LOGIC ---
+
+        function loadFile() {
+            currentFileId = document.getElementById('fileSelector').value;
+            if(!currentFileId) return resetForm();
+
+            // Load Existing Data or Init New
+            const data = TRACKER_DB[currentFileId] || { 
+                costs: Array(12).fill(0), 
+                adv: Array(12).fill(0),
+                status: "NOT STARTED" 
+            };
+
+            // Populate Inputs
+            data.costs.forEach((val, idx) => document.getElementById(`cost_${idx}`).value = val || '');
+            data.adv.forEach((val, idx) => document.getElementById(`adv_${idx}`).value = val || '');
+            
+            calculate(); // Run math
+        }
+
+        function calculate() {
+            if(!currentFileId) return;
+
+            let totalCost = 0;
+            let totalAdv = 0;
+            let summaryHTML = '';
+            let hasAnyCost = false;
+
+            // Loop through all 12 items
+            COST_ITEMS.forEach((item, idx) => {
+                const c = parseFloat(document.getElementById(`cost_${idx}`).value) || 0;
+                const a = parseFloat(document.getElementById(`adv_${idx}`).value) || 0;
+                const b = c - a;
+
+                totalCost += c;
+                totalAdv += a;
+                if(c > 0) hasAnyCost = true;
+
+                // Add to Summary Table
+                summaryHTML += `
+                    <tr>
+                        <td>${item}</td>
+                        <td class="text-end font-mono">${c > 0 ? c.toLocaleString() : '-'}</td>
+                        <td class="text-end font-mono">${a > 0 ? a.toLocaleString() : '-'}</td>
+                        <td class="text-end font-mono fw-bold ${b > 0 ? 'text-danger' : 'text-success'}">${b > 0 ? b.toLocaleString() : '-'}</td>
+                    </tr>
+                `;
+            });
+
+            const totalBal = totalCost - totalAdv;
+            const coverage = totalCost > 0 ? (totalAdv / totalCost) * 100 : 0;
+
+            // Update Summary Tab UI
+            document.getElementById('summaryTableBody').innerHTML = summaryHTML;
+            document.getElementById('sumTotalCost').value = totalCost.toLocaleString() + " XAF";
+            document.getElementById('sumTotalAdv').value = totalAdv.toLocaleString() + " XAF";
+            document.getElementById('sumTotalBal').value = totalBal.toLocaleString() + " XAF";
+            
+            const bar = document.getElementById('coverageBar');
+            bar.style.width = `${Math.min(coverage, 100)}%`;
+            bar.innerText = `${coverage.toFixed(1)}%`;
+
+            // Auto Status Logic
+            const manStatus = document.getElementById('manualStatus').value;
+            let status = "NOT STARTED";
+            let statusClass = "bg-light text-muted";
+
+            if (manStatus !== 'AUTO') {
+                status = manStatus;
+                statusClass = status === 'ON HOLD' ? "bg-danger text-white" : "bg-light";
+            } else {
+                if (!hasAnyCost) {
+                    status = "NOT STARTED";
+                } else if (totalBal <= 0) {
+                    status = "COMPLETED";
+                    statusClass = "bg-success text-white";
+                } else {
+                    status = "IN PROGRESS";
+                    statusClass = "bg-warning text-dark";
+                }
+            }
+
+            // Update Status Badge
+            const badge = document.getElementById('statusDisplay');
+            badge.innerText = status;
+            badge.className = `badge border px-3 py-2 fs-6 ${statusClass}`;
+        }
+
+        function saveData() {
+            if(!currentFileId) return;
+
+            // Harvest Data
+            const costs = COST_ITEMS.map((_, i) => parseFloat(document.getElementById(`cost_${i}`).value) || 0);
+            const adv = COST_ITEMS.map((_, i) => parseFloat(document.getElementById(`adv_${i}`).value) || 0);
+            const status = document.getElementById('statusDisplay').innerText;
+
+            // Save to DB
+            TRACKER_DB[currentFileId] = { costs, adv, status };
+            
+            renderGrid();
+            alert("File Updated Successfully!");
+        }
+
+        function overrideStatus() {
+            calculate(); // Re-run logic to apply override
+        }
+
+        // --- GRID RENDERER ---
+
+        function renderGrid() {
+            const hRow = document.getElementById('gridHeaderRow');
+            const tbody = document.getElementById('gridBody');
+            
+            // 1. Build Headers (Once)
+            if(!hRow.innerHTML) {
+                // Descriptors
+                const descs = ["Ref", "Client", "BL No", "ATA", "Dest", "Service"];
+                descs.forEach(d => hRow.innerHTML += `<th class="th-sub col-desc">${d}</th>`);
+                
+                // Costs
+                COST_ITEMS.forEach(d => hRow.innerHTML += `<th class="th-sub">${d}</th>`);
+                hRow.innerHTML += `<th class="th-sub col-total">TOTAL COST</th>`;
+
+                // Advances
+                COST_ITEMS.forEach(d => hRow.innerHTML += `<th class="th-sub">Adv ${d}</th>`);
+                hRow.innerHTML += `<th class="th-sub col-total">TOTAL ADV</th>`;
+
+                // Balances
+                COST_ITEMS.forEach(d => hRow.innerHTML += `<th class="th-sub">Bal ${d}</th>`);
+                hRow.innerHTML += `<th class="th-sub col-total">TOTAL BAL</th>`;
+
+                // Status
+                hRow.innerHTML += `<th class="th-sub">Status</th><th class="th-sub">Coverage</th>`;
+            }
+
+            // 2. Build Rows
+            tbody.innerHTML = '';
+            const validServices = ["Sea Freight Import", "Hinterland", "End-to-End Sea Freight"];
+            let globalCost = 0, globalBal = 0;
+
+            OPS_DB.forEach(f => {
+                if (!validServices.includes(f.service)) return;
+
+                const data = TRACKER_DB[f.id] || { costs: Array(12).fill(0), adv: Array(12).fill(0), status: "NOT STARTED" };
+                
+                let rowCost = 0, rowAdv = 0;
+                let costCells = '', advCells = '', balCells = '';
+
+                // Generate Cells
+                COST_ITEMS.forEach((_, i) => {
+                    const c = data.costs[i];
+                    const a = data.adv[i];
+                    const b = c - a;
+                    
+                    rowCost += c;
+                    rowAdv += a;
+
+                    costCells += `<td class="col-money">${c || '-'}</td>`;
+                    advCells += `<td class="col-money">${a || '-'}</td>`;
+                    balCells += `<td class="col-money col-bal">${b > 0 ? b.toLocaleString() : '-'}</td>`;
+                });
+
+                const rowBal = rowCost - rowAdv;
+                const cov = rowCost > 0 ? (rowAdv/rowCost)*100 : 0;
+                
+                // Styling Status
+                let stClass = "st-not-started";
+                if(data.status === "COMPLETED") stClass = "st-completed";
+                if(data.status === "IN PROGRESS") stClass = "st-in-progress";
+                if(data.status === "ON HOLD") stClass = "st-hold";
+
+                globalCost += rowCost;
+                globalBal += rowBal;
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td class="col-desc text-primary font-mono">${f.id}</td>
+                    <td>${f.client}</td>
+                    <td>${f.bl}</td>
+                    <td>${f.ata}</td>
+                    <td>${f.dest}</td>
+                    <td>${f.service}</td>
+                    
+                    ${costCells}
+                    <td class="col-money col-total">${rowCost.toLocaleString()}</td>
+                    
+                    ${advCells}
+                    <td class="col-money col-total">${rowAdv.toLocaleString()}</td>
+                    
+                    ${balCells}
+                    <td class="col-money col-total text-danger">${rowBal.toLocaleString()}</td>
+                    
+                    <td class="status-cell ${stClass}">${data.status}</td>
+                    <td class="text-center font-mono">${cov.toFixed(0)}%</td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // Update KPIs
+            document.getElementById('kpiTotalCost').innerText = globalCost.toLocaleString() + " XAF";
+            document.getElementById('kpiTotalBal').innerText = globalBal.toLocaleString() + " XAF";
+        }
+
+        function resetForm() {
+            document.querySelectorAll('input[type="number"]').forEach(i => i.value = '');
+            document.getElementById('summaryTableBody').innerHTML = '';
+            document.getElementById('statusDisplay').innerText = "NOT STARTED";
+            document.getElementById('statusDisplay').className = "badge bg-light text-muted border px-3 py-2 fs-6";
+        }
+
+function exportToCSV() {
+            // 1. Define Headers
+            const headers = [
+                "Ref", "Client", "BL No", "ATA", "Dest", "Service",
+                ...COST_ITEMS.map(i => `Cost: ${i}`), "TOTAL COST",
+                ...COST_ITEMS.map(i => `Adv: ${i}`), "TOTAL ADV",
+                ...COST_ITEMS.map(i => `Bal: ${i}`), "TOTAL BAL",
+                "Status", "Coverage %"
+            ];
+
+            // 2. Build Rows
+            const validServices = ["Sea Freight Import", "Hinterland", "End-to-End Sea Freight"];
+            const rows = [];
+
+            OPS_DB.forEach(f => {
+                if (!validServices.includes(f.service)) return;
+
+                const data = TRACKER_DB[f.id] || { costs: Array(12).fill(0), adv: Array(12).fill(0), status: "NOT STARTED" };
+                
+                // Calculate Row Totals
+                let rowCost = 0, rowAdv = 0;
+                const balances = [];
+                
+                data.costs.forEach((c, i) => {
+                    const a = data.adv[i];
+                    rowCost += c;
+                    rowAdv += a;
+                    balances.push(c - a);
+                });
+                
+                const rowBal = rowCost - rowAdv;
+                const cov = rowCost > 0 ? ((rowAdv / rowCost) * 100).toFixed(0) + "%" : "0%";
+
+                // Construct CSV Row
+                const row = [
+                    f.id, f.client, f.bl, f.ata, f.dest, f.service,
+                    ...data.costs, rowCost,
+                    ...data.adv, rowAdv,
+                    ...balances, rowBal,
+                    data.status, cov
+                ];
+                
+                // Escape special characters (commas) in data
+                const escapedRow = row.map(cell => {
+                    const str = String(cell);
+                    return str.includes(",") ? `"${str}"` : str;
+                });
+                
+                rows.push(escapedRow.join(","));
+            });
+
+            // 3. Combine and Download
+            const csvContent = [headers.join(","), ...rows].join("\n");
+            const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+            const url = URL.createObjectURL(blob);
+            
+            // Create Hidden Link
+            const link = document.createElement("a");
+            link.setAttribute("href", url);
+            link.setAttribute("download", `Cost_Tracking_Master_${new Date().toISOString().slice(0,10)}.csv`);
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        }
+
+    </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+2026-02-07T18:35:59+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-07T18:36:48+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-07T18:40:37+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-07T18:43:58+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-07T19:00:57+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-07T19:01:06+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"
+2026-02-14T00:50:41+00:00 result=true headers="From: Smart LS <noreply@smartls.cm>\r\nReply-To: support@smartls.cm\r\nX-Mailer: PHP\/8.1.29\r\n"

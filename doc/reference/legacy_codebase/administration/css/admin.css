@@ -1,0 +1,348 @@
+/* ==============
+Admin and other dashboard 
+============== */
+:root {
+    --smart-blue: #1F99D8;
+    --smart-dark: #055B83;
+    --smart-orange: #EE7D04;
+    --smart-charcoal: #231F20;
+    --smart-bg: #F0F4F8;
+    --sidebar-width: 260px; /* Slightly narrower to give main content more room */
+}
+
+body {
+    font-family: 'Manrope', sans-serif;
+    background-color: var(--smart-bg);
+    color: var(--smart-charcoal);
+    overflow-x: hidden; /* CRITICAL: Prevents horizontal scroll */
+}
+
+h1, h2, h3, h4, h5, h6 { font-family: 'Montserrat', sans-serif;
+  
+ }
+
+.active{
+    color: var(--smart-orange); background-color: #fff9f2;
+}
+
+/* --- SIDEBAR (FIXED DESKTOP) --- */
+.sidebar {
+    width: var(--sidebar-width);
+    height: 100vh;
+    position: fixed;
+    top: 0;
+    left: 0;
+    background-color: #ffffff;
+    border-right: 1px solid #e0e0e0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 2px 0 10px rgba(0,0,0,0.02);
+}
+
+.sidebar-header {
+    height: 70px;
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    border-bottom: 1px solid #f0f0f0;
+}
+
+.brand-logo {
+    font-weight: 800;
+    font-size: 1.1rem;
+    color: var(--smart-charcoal);
+    text-decoration: none;
+    letter-spacing: -0.5px;
+}
+
+/* Sidebar Accordion */
+.sidebar-menu { overflow-y: auto; flex-grow: 1; padding: 10px 0; }
+
+.menu-btn {
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    padding: 12px 20px;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #555;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.2s;
+    border-left: 3px solid transparent;
+}
+
+.menu-btn:hover, .menu-btn[aria-expanded="true"] {
+    color: var(--smart-blue);
+    background-color: #f8fbff;
+    border-left-color: var(--smart-blue);
+}
+
+.menu-btn i.category-icon { width: 20px; margin-right: 8px; color: #888; transition: color 0.2s; }
+.menu-btn:hover i.category-icon { color: var(--smart-blue); }
+.menu-chevron { font-size: 0.7rem; transition: transform 0.3s; }
+.menu-btn[aria-expanded="true"] .menu-chevron { transform: rotate(180deg); }
+
+.sub-link {
+    display: block;
+    padding: 8px 20px 8px 48px;
+    font-size: 0.75rem;
+    color: #666;
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.2s;
+}
+.sub-link:hover { color: var(--smart-orange); background-color: #fff9f2; }
+
+.sidebar-footer { border-top: 1px solid #f0f0f0; padding: 16px; }
+
+/* --- MAIN LAYOUT --- */
+.main-content {
+    margin-left: var(--sidebar-width);
+    padding-top: 70px;
+    min-height: 100vh;
+    width: calc(100% - var(--sidebar-width)); /* Ensures fit */
+}
+
+.top-navbar {
+    height: 70px;
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: var(--sidebar-width);
+    background-color: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid #e0e0e0;
+    z-index: 900;
+    padding: 0 30px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* --- DASHBOARD WIDGETS --- */
+.welcome-card {
+    background: linear-gradient(135deg, var(--smart-charcoal) 0%, #2c3e50 100%);
+    color: white;
+    border-radius: 12px;
+    padding: 1.5rem 2rem;
+    position: relative;
+    overflow: hidden;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+    width: 100%; /* Force full width */
+}
+
+.card-custom {
+    background: white;
+    border-radius: 12px;
+    border: 1px solid rgba(0,0,0,0.05);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.02);
+    height: 100%;
+    transition: transform 0.2s;
+}
+.card-custom:hover { transform: translateY(-2px); box-shadow: 0 5px 20px rgba(0,0,0,0.05); }
+
+/* KPI Specifics */
+.kpi-title { font-size: 0.7rem; font-weight: 700; text-transform: uppercase; color: #888; letter-spacing: 0.5px; white-space: nowrap; }
+.kpi-value { font-size: 1.6rem; font-weight: 800; color: var(--smart-charcoal); line-height: 1.2; }
+
+/* Table Styles */
+.table-custom th { font-size: 0.75rem; text-transform: uppercase; color: #888; font-weight: 700; border-bottom: 2px solid #f0f0f0; }
+.table-custom td { font-size: 0.85rem; vertical-align: middle; padding: 12px 8px; }
+
+/* CLOCK BTN */
+.clock-pill {
+    background: #f1f5f9; padding: 6px 12px; border-radius: 30px;
+    display: flex; align-items: center; gap: 10px; font-size: 0.85rem; font-weight: 600; color: var(--smart-dark);
+}
+.btn-clock {
+    background: #e2e8f0; border: none; border-radius: 20px;
+    padding: 4px 12px; font-size: 0.75rem; font-weight: 700; color: #64748b; transition: 0.3s;
+}
+.btn-clock.active { background: var(--smart-orange); color: white; box-shadow: 0 2px 10px rgba(238, 125, 4, 0.3); }
+
+ /* Scrollable Activity  on Finance dasboard*/
+        .log-container {
+            max-height: 250px;
+            overflow-y: auto;
+            padding-right: 5px;
+        }
+        .log-container::-webkit-scrollbar { width: 4px; }
+        .log-container::-webkit-scrollbar-track { background: #f1f1f1; }
+        .log-container::-webkit-scrollbar-thumb { background: #ccc; border-radius: 4px; }
+
+        /* ==== Attendance Page ==== */
+        .kpi-present { color: #166534; }
+    .kpi-absent  { color: #991b1b; }
+    .kpi-late    { color: #92400e; }
+    .kpi-remote  { color: #0c4a6e; }
+
+    .status-badge { padding: 4px 10px; border-radius: 20px; font-size: 0.7rem; font-weight: 800; text-transform: uppercase; display: inline-flex; align-items: center; gap: 6px; }
+    .status-present { background: #dcfce7; color: #166534; border: 1px solid #bbf7d0; }
+    .status-absent  { background: #fee2e2; color: #991b1b; border: 1px solid #fecaca; }
+    .status-late    { background: #fef3c7; color: #92400e; border: 1px solid #fde68a; }
+
+    .ip-badge { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 0.75rem; padding: 2px 6px; border-radius: 6px; background: #f1f5f9; color: #475569; display: inline-flex; align-items: center; gap: 6px; }
+    .ip-office { color: #166534; background: #dcfce7; }
+    .ip-remote { color: #9a3412; background: #ffedd5; }
+
+    /* =========================
+   SMART Shared UI Utilities
+   ========================= */
+
+.hidden { display: none !important; }
+
+/* Form */
+.smart-form-label{
+  font-size: .78rem;
+  font-weight: 800;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: .4px;
+  margin-bottom: .25rem;
+}
+
+.smart-input{
+  font-size: 0.9rem;
+  padding: 0.6rem;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+}
+
+.smart-input:focus{
+  border-color: var(--smart-blue);
+  box-shadow: 0 0 0 3px rgba(31,153,216,0.12);
+  outline: none;
+}
+
+/* Offcanvas sizing helpers */
+.smart-offcanvas--wide { width: 700px !important; }
+.smart-offcanvas--medium { width: 450px !important; }
+
+/* Tabs */
+.smart-tabs .nav-link{
+  border: none;
+  color: #64748B;
+  font-weight: 700;
+  font-size: 0.85rem;
+  padding: 1rem 1.2rem;
+  border-bottom: 2px solid transparent;
+}
+
+.smart-tabs .nav-link:hover{
+  color: var(--smart-blue);
+}
+
+.smart-tabs .nav-link.active{
+  color: var(--smart-blue);
+  background: transparent;
+  border-bottom: 2px solid var(--smart-blue);
+}
+
+/* Access blocker overlay */
+.smart-access-blocker{
+  position: absolute;
+  inset: 0;
+  z-index: 50;
+  background: rgba(255, 255, 255, 0.90);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ========= Export Attendance ========== */
+
+/* --- PDF/PRINT EXPORT (ONLY #print-area) --- */
+@page {
+  size: landscape;
+  margin: 12mm;
+}
+
+@media print {
+  /* Hide everything */
+  body * {
+    visibility: hidden !important;
+  }
+
+  /* Show only print-area */
+  #print-area, #print-area * {
+    visibility: visible !important;
+  }
+
+  /* Move print-area to top-left and full width */
+  #print-area {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+
+  /* Ensure layout is not pushed by sidebar widths */
+  .main-content {
+    margin-left: 0 !important;
+    width: 100% !important;
+    padding-top: 0 !important;
+  }
+
+  /* Hide controls inside print-area (filters + export button row) */
+  #print-area .d-flex.flex-wrap.justify-content-between,
+  #btn-export-pdf,
+  #search-input,
+  #filter-dept,
+  #filter-loc,
+  #print-area label,
+  #print-area .input-group,
+  #print-area select,
+  .sidebar,
+  nav.sidebar,
+  .top-navbar,
+  #print-area button {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  /* Clean paper look */
+  body {
+    background: #fff !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .card-custom {
+    box-shadow: none !important;
+    border: 1px solid #e5e7eb !important;
+  }
+
+  /* Table print tuning */
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+  }
+  thead {
+    display: table-header-group;
+  }
+  th, td {
+    border: 1px solid #ddd !important;
+    padding: 6px 8px !important;
+    vertical-align: top !important;
+  }
+  tr {
+    page-break-inside: avoid;
+  }
+
+  /* Slightly smaller to fit landscape */
+  .table-custom th { font-size: 11px !important; }
+  .table-custom td { font-size: 11px !important; }
+  .kpi-value { font-size: 22px !important; }
+  .kpi-title { font-size: 10px !important; }
+}
+
+
+

@@ -1,0 +1,30 @@
+[23-Apr-2026 13:58:21 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 13:58:21 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 13:59:53 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 13:59:53 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 14:03:39 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 14:03:39 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 17:36:28 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[23-Apr-2026 17:36:28 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[13-May-2026 20:19:18 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[13-May-2026 20:19:18 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[13-May-2026 20:19:35 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/praxis/../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12
+[13-May-2026 20:19:35 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/praxis/../includes/init.php' (include_path='.:/opt/cpanel/ea-php83/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/praxis/command_engine.php:12
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/praxis/command_engine.php on line 12

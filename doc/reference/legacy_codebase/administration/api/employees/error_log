@@ -1,0 +1,131 @@
+[12-Jan-2026 06:59:56 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 07:00:01 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 07:01:15 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 07:04:56 UTC] PHP Warning:  Undefined variable $conn in /home/smartqaq/public_html/administration/api/employees/save.php on line 61
+[12-Jan-2026 07:04:56 UTC] PHP Fatal error:  Uncaught Error: Call to a member function begin_transaction() on null in /home/smartqaq/public_html/administration/api/employees/save.php:61
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 61
+[12-Jan-2026 07:05:23 UTC] PHP Warning:  Undefined variable $conn in /home/smartqaq/public_html/administration/api/employees/save.php on line 61
+[12-Jan-2026 07:05:23 UTC] PHP Fatal error:  Uncaught Error: Call to a member function begin_transaction() on null in /home/smartqaq/public_html/administration/api/employees/save.php:61
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 61
+[12-Jan-2026 07:05:43 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 08:11:32 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 08:45:55 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 11:48:17 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 11:55:28 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 145
+[12-Jan-2026 12:10:52 UTC] PHP Warning:  Undefined variable $user_id in /home/smartqaq/public_html/administration/includes/auth_guard.php on line 7
+[12-Jan-2026 12:11:15 UTC] PHP Warning:  Undefined variable $user_it in /home/smartqaq/public_html/administration/includes/auth_guard.php on line 7
+[12-Jan-2026 12:11:42 UTC] PHP Warning:  Undefined variable $user_it in /home/smartqaq/public_html/administration/includes/auth_guard.php on line 7
+[23-Jan-2026 00:53:07 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-135', 'Jerry Wick', 'Jerry ADAMS', 'adam@gmail.com', '', '', 'ADMIN', 'Administrator', 'PERMANENT', 'SLAS-CONT-00123', '2025-05-08', 'ACTIVE', 'Cameroonian', '100376467', 4, '2000-12-23', 'MARRIED', 'Timoth\xC3\xA9e ELOMB...', 950000.0, 'BANK_TRANSFER', 'Afriland First ...', '8373jfk38282UI', 'ISSUER')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:53:52 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-133', 'John Wick', 'John', 'john.wick@gmail...', '90000000', '', 'OPERATIONS', 'Administrator', 'FIXED_TERM', '', '2007-08-02', 'ACTIVE', '', '', 0, '1981-08-12', 'SINGLE', 'Michelle DJOUMB...', 9090000.0, 'BANK_TRANSFER', '', '', 'ISSUER,VALIDATO...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:54:06 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-133', 'John Wick', 'John', 'john.wick@gmail...', '90000000', '', 'OPERATIONS', 'Administrator', 'FIXED_TERM', '', '2007-08-02', 'ACTIVE', '', '', 0, '1981-08-12', 'SINGLE', 'Michelle DJOUMB...', 9090000.0, 'BANK_TRANSFER', '', '', 'ISSUER,VALIDATO...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:54:28 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-133', 'John Wick', 'John', 'john.wick@gmail...', '90000000', '', 'OPERATIONS', 'Administrator', 'FIXED_TERM', '', '2007-08-02', 'ACTIVE', '', '', 0, '1981-08-12', 'SINGLE', 'Timoth\xC3\xA9e ELOMB...', 9090000.0, 'BANK_TRANSFER', '', '', 'ISSUER,VALIDATO...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:54:33 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-133', 'John Wick', 'John', 'john.wick@gmail...', '90000000', '', 'OPERATIONS', 'Administrator', 'FIXED_TERM', '', '2007-08-02', 'ACTIVE', '', '', 0, '1981-08-12', 'SINGLE', 'Timoth\xC3\xA9e ELOMB...', 9090000.0, 'BANK_TRANSFER', '', '', 'ISSUER,VALIDATO...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:54:55 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL/001', 'Miari', 'Jones', 'miari@gmail.com', '', '', 'SALES', 'Sales Personel', 'PERMANENT', '', '2026-01-21', 'PENDING', '', '', 0, '2003-06-08', 'SINGLE', NULL, 8999999.0, 'BANK_TRANSFER', 'Keystone Bank', '', 'ISSUER')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 00:55:46 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/employees/save.php:141
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/employees/save.php(141): mysqli_stmt->bind_param('sssssssssssssis...', 'SL-9925480', 'Timoth\xC3\xA9e ELOMB...', 'Timoth\xC3\xA9e MASSO...', 'timothee.massom...', '+237 696 291 80...', 'Ndogbong, Doual...', 'MANAGEMENT', 'Managing Direct...', 'PERMANENT', 'SLAS-CONT-001', '2021-08-04', 'ACTIVE', 'Cameroon', '114520067', 5, '1981-06-08', 'MARRIED', NULL, 1500000.0, 'BANK_TRANSFER', 'Afriland First ...', '329 - 0111749 -...', 'ISSUER,VALIDATO...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/save.php on line 141
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[23-Jan-2026 01:10:10 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[28-Jan-2026 15:50:11 UTC] PHP Warning:  Undefined array key "reports_to_employee_id" in /home/smartqaq/public_html/administration/api/employees/export_employees.php on line 34
+[07-Feb-2026 07:28:34 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/employees/../../config/mail.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 07:28:34 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/employees/../../config/mail.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 07:32:20 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/employees/../../config/mail.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 07:32:20 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/employees/../../config/mail.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 07:32:49 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/employees/../../config/mail.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 07:32:49 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/employees/../../config/mail.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 08:12:51 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/employees/../../config/mail.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 08:12:51 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/employees/../../config/mail.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 08:13:05 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/employees/../../config/mail.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 08:13:05 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/employees/../../config/mail.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php:13
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 13
+[07-Feb-2026 12:32:14 UTC] PHP Parse error:  syntax error, unexpected token "use" in /home/smartqaq/public_html/administration/api/employees/provision_pending_update.php on line 159
+[07-Feb-2026 17:53:50 UTC] PHP Warning:  Undefined property: mysqli::$in_transaction in /home/smartqaq/public_html/administration/api/employees/save.php on line 253
+[07-Feb-2026 17:58:35 UTC] Vendor autoload not found: /home/smartqaq/public_html/administration/api/employees/../../vendor/autoload.php
+[07-Feb-2026 18:02:12 UTC] Vendor autoload not found: /home/smartqaq/public_html/administration/api/employees/../../composer/vendor/autoload.php
+[07-Feb-2026 18:20:49 UTC] SMTP config missing for send_activation_email. MAIL_USER or MAIL_PASS or MAIL_HOST empty.

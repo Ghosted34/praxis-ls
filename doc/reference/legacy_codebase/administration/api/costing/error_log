@@ -1,0 +1,15 @@
+[21-Jan-2026 14:38:08 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'cm.approved_by_employee_id' in 'on clause' in /home/smartqaq/public_html/administration/api/costing/get.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/costing/get.php(31): mysqli->prepare('\r\n  SELECT \r\n  ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/costing/get.php on line 31
+[21-Jan-2026 14:38:19 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'cm.approved_by_employee_id' in 'on clause' in /home/smartqaq/public_html/administration/api/costing/get.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/costing/get.php(31): mysqli->prepare('\r\n  SELECT \r\n  ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/costing/get.php on line 31
+[21-Jan-2026 14:40:53 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'cm.approved_by_employee_id' in 'on clause' in /home/smartqaq/public_html/administration/api/costing/get.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/costing/get.php(31): mysqli->prepare('\r\n  SELECT \r\n  ...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/costing/get.php on line 31

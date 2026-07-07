@@ -1,0 +1,10 @@
+[29-Jan-2026 21:19:52 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/operation/delivery_note/../../../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php on line 5
+[29-Jan-2026 21:19:52 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/operation/delivery_note/../../../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php on line 5
+[29-Jan-2026 21:21:38 UTC] PHP Warning:  require_once(/home/smartqaq/public_html/administration/api/operation/delivery_note/../../../../includes/init.php): Failed to open stream: No such file or directory in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php on line 5
+[29-Jan-2026 21:21:38 UTC] PHP Fatal error:  Uncaught Error: Failed opening required '/home/smartqaq/public_html/administration/api/operation/delivery_note/../../../../includes/init.php' (include_path='.:/opt/cpanel/ea-php81/root/usr/share/pear') in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php:5
+Stack trace:
+#0 {main}
+  thrown in /home/smartqaq/public_html/administration/api/operation/delivery_note/create.php on line 5

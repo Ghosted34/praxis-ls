@@ -1,0 +1,509 @@
+{
+  "nav_home": "Accueil",
+  "nav_services": "Services",
+  "nav_portfolio": "Réalisations",
+  "nav_kaizen": "Hub Kaizen",
+  "nav_about": "À propos",
+  "nav_quote": "DEMANDER UN DEVIS",
+   "footer_brand_blurb": "SMART LOGISTICS & SERVICES LTD fournit des solutions logistiques conformes et fiables, avec une visibilité de niveau entreprise sur l’ensemble de la région CEMAC.",
+  "footer_quick_links_title": "Liens rapides",
+  "footer_quick_services": "Services",
+  "footer_quick_industries": "Secteurs",
+  "footer_quick_portfolio": "Réalisations",
+  "footer_quick_contact": "Contact",
+  "footer_newsletter_title": "Abonnez-vous à notre newsletter",
+  "footer_newsletter_email_ph": "Votre e-mail",
+  "footer_newsletter_btn": "S’abonner",
+  "footer_contact_title": "Contact",
+  "footer_contact_location": "Douala, Cameroun",
+  "footer_rights_prefix": "©",
+  "footer_rights_suffix": "SMART LOGISTICS & SERVICES LTD. Tous droits réservés.",
+  "footer_privacy_link": "Politique de confidentialité",
+  "footer_terms_link": "Conditions d’utilisation",
+  "legal_privacy_title": "Politique de confidentialité",
+  "legal_privacy_body_html": "<p>Smart Logistics &amp; Services Ltd s’engage à protéger les informations personnelles et professionnelles qui nous sont confiées.</p><p>Les données personnelles sont collectées et traitées de manière licite, loyale et transparente, à des fins légitimes, notamment la prestation de services, la conformité réglementaire et la communication opérationnelle.</p><ul><li>Les données ne sont collectées que lorsque cela est nécessaire et utilisées à des fins définies.</li><li>Des mesures de protection techniques et organisationnelles appropriées sont mises en place.</li><li>L’accès aux données est limité au personnel autorisé.</li><li>Les données sont conservées uniquement pendant la durée requise par les obligations opérationnelles ou légales.</li><li>Les personnes concernées peuvent demander l’accès, la rectification ou la suppression de leurs données personnelles.</li></ul><p>Pour toute question relative à la protection des données, contactez <a href=\"mailto:info@smartls.cm\">info@smartls.cm</a>.</p>",
+  "legal_terms_title": "Conditions d’utilisation",
+  "legal_terms_body_html": "<p>Ce site web est fourni à des fins d’information et d’activité uniquement. En y accédant, les utilisateurs acceptent de se conformer aux présentes conditions.</p><ul><li>Smart Logistics &amp; Services Ltd conserve l’ensemble des droits de propriété intellectuelle relatifs au contenu du site.</li><li>Les informations sont fournies sans garantie d’exhaustivité ni de disponibilité ininterrompue.</li><li>La société ne saurait être tenue responsable des dommages résultant de l’utilisation du site ou de liens externes.</li></ul><p>L’utilisation de ce site vaut acceptation des présentes conditions, conformément aux lois et réglementations applicables.</p>",
+  "about_hero_kicker": "À PROPOS",
+  "about_hero_title": "VOTRE PARTENAIRE DE CONFIANCE DANS LA RÉGION CEMAC",
+  "about_hero_lead": "Conçus pour la conformité, la visibilité et une exécution fiable, nous opérons depuis Douala, porte d’entrée vers la région CEMAC.",
+  "about_stats_founded_k": "Création",
+  "about_stats_base_k": "Base",
+  "about_stats_focus_k": "Focus",
+  "about_stats_focus_v": "Région CEMAC",
+  "about_hero_cta": "Nous contacter",
+
+  "about_overview_title": "PRÉSENTATION DE L’ENTREPRISE",
+  "about_overview_body": "Fondée en 2020, Smart Logistics & Services Ltd s’est rapidement développée, passant du transit et dédouanement à un prestataire 3PL complet. Basés à Douala, nous servons de porte d’entrée vers la région CEMAC.",
+  "about_overview_caption_sub": "Douala • Porte d’entrée CEMAC",
+
+  "about_mission_vision_title": "MISSION & VISION",
+  "about_mission_label": "Mission :",
+  "about_mission_body": "Fournir des solutions logistiques d’excellence, en dépassant les attentes des clients grâce à des services ponctuels, compétitifs et innovants.",
+  "about_vision_label": "Vision :",
+  "about_vision_body": "Devenir l’entreprise logistique de référence de la région CEMAC, reconnue pour son expertise, sa fiabilité et son approche centrée client.",
+
+  "about_operational_title": "PRIORITÉS OPÉRATIONNELLES",
+  "about_operational_li_1": "Processus rigoureux et conformité réglementaire",
+  "about_operational_li_2": "Visibilité et contrôle dans des environnements opérationnels complexes",
+  "about_operational_li_3": "Livraison du dernier kilomètre fiable pour les opérations orientées projets",
+  "about_operational_li_4": "Systèmes, expertise et partenariats pour un commerce transfrontalier fluide",
+  "about_operational_note": "Conçus pour soutenir les corridors commerciaux à mesure que les chaînes d’approvisionnement régionales se développent.",
+
+  "about_ceo_title": "Message du Directeur Général",
+  "about_ceo_role": "Directeur Général",
+  "about_ceo_p1": "Chez Smart Logistics, nous considérons la logistique comme un levier stratégique du commerce, de la croissance et de la compétitivité. Notre responsabilité dépasse le simple transport de marchandises. Il s’agit d’apporter contrôle, visibilité et exécution fiable dans des environnements opérationnels complexes.",
+  "about_ceo_p2": "Depuis notre siège à Douala, nous opérons à une passerelle clé vers la région CEMAC et le marché africain au sens large. Nous accompagnons des organisations internationales, des multinationales et des opérations orientées projets qui exigent des processus rigoureux, la conformité réglementaire et une livraison du dernier kilomètre fiable.",
+  "about_ceo_p3": "L’Afrique entre dans une phase renforcée d’intégration économique grâce à la Zone de libre-échange continentale africaine. À mesure que les flux transfrontaliers augmentent et que les chaînes d’approvisionnement se régionalisent, le besoin en transit international efficace, dédouanement, transport coordonné et exécution de projets de confiance s’intensifiera. C’est précisément là que Smart Logistics & Services Ltd se positionne. Nous développons les systèmes, l’expertise et les partenariats nécessaires pour soutenir un commerce fluide à travers les frontières et les corridors.",
+  "about_ceo_p4": "Notre ambition est claire : devenir une autorité logistique durable et une passerelle de choix pour le commerce régional et international. Nous restons engagés à dépasser les attentes et à permettre à nos clients d’opérer et de se développer en toute confiance.",
+
+  "about_esg_title": "Notre engagement ESG",
+  "about_esg_sub": "Une logistique responsable, conçue pour un impact durable dans la région CEMAC.",
+
+  "about_esg_env_title": "Environnement",
+  "about_esg_env_p": "Smart Logistics intègre des pratiques écoresponsables afin de réduire les émissions, limiter les déchets et optimiser l’utilisation des ressources tout au long de la chaîne logistique.",
+  "about_esg_env_li_1": "Optimisation des itinéraires pour réduire la consommation de carburant et les émissions",
+  "about_esg_env_li_2": "Gestion responsable des marchandises dangereuses et réglementées",
+  "about_esg_env_li_3": "Réduction des déchets et recyclage dans les opérations d’entreposage",
+  "about_esg_env_li_4": "Transition progressive vers des flottes et équipements plus économes en carburant",
+  "about_esg_env_li_5": "Conformité aux réglementations environnementales locales et internationales",
+
+  "about_esg_soc_title": "Social",
+  "about_esg_soc_p": "Nous priorisons la sécurité, le bien-être et le développement de nos équipes et des communautés où nous opérons, en reconnaissant que la logistique repose sur l’expertise humaine.",
+  "about_esg_soc_li_1": "Normes strictes de santé, sécurité et sûreté sur l’ensemble des opérations",
+  "about_esg_soc_li_2": "Formation continue des équipes opérationnelles et conformité",
+  "about_esg_soc_li_3": "Pratiques de travail éthiques et tolérance zéro face à la discrimination",
+  "about_esg_soc_li_4": "Soutien aux chaînes d’approvisionnement humanitaires, de développement et des ONG",
+  "about_esg_soc_li_5": "Engagement de la main-d’œuvre locale dans la région CEMAC",
+
+  "about_esg_gov_title": "Gouvernance",
+  "about_esg_gov_p": "Nos opérations sont encadrées par un Comité de planification stratégique et un Comité d’excellence opérationnelle, assurant une supervision solide, la conformité réglementaire, la gestion des risques et l’intégrité opérationnelle sur chaque expédition prise en charge.",
+  "about_esg_gov_li_1": "Responsabilités claires et structures de décision",
+  "about_esg_gov_li_2": "Conformité aux normes douanières, commerciales et logistiques internationales",
+  "about_esg_gov_li_3": "Maîtrise des risques et procédures de contrôle interne",
+  "about_esg_gov_li_4": "Conduite éthique des affaires et transparence",
+
+  "about_cta_title": "Prêt à travailler avec un partenaire logistique rigoureux ?",
+  "about_cta_email": "Nous écrire",
+  "airfreight_kicker": "TRANSIT AÉRIEN",
+  "airfreight_title": "Rapide. Maîtrisé. Critique en délais.",
+
+  "airfreight_overview_title": "Aperçu",
+  "airfreight_overview_body": "SMART LOGISTICS & SERVICES LTD propose des solutions de fret aérien de bout en bout pour les marchandises urgentes, à forte valeur ou sensibles. De la documentation à la livraison finale, nous pilotons chaque étape afin d’assurer rapidité, conformité et visibilité.",
+
+  "airfreight_delivery_title": "Notre mode d’exécution",
+  "airfreight_delivery_li_1": "Gestion du préavis et réservation auprès des principales compagnies aériennes internationales",
+  "airfreight_delivery_li_2": "Préparation et vérification des documents d’export et d’import",
+  "airfreight_delivery_li_3": "Dédouanement prioritaire pour les expéditions sensibles aux délais",
+  "airfreight_delivery_li_4": "Acheminement sécurisé aéroport–entrepôt et livraison du dernier kilomètre",
+  "airfreight_delivery_li_5": "Mises à jour en temps réel via Smart Track",
+
+  "airfreight_ideal_title": "Idéal pour",
+  "airfreight_ideal_li_1": "Produits pharmaceutiques et fournitures médicales",
+  "airfreight_ideal_li_2": "Fret humanitaire et d’urgence",
+  "airfreight_ideal_li_3": "Marchandises à forte valeur ou critiques en délais",
+  "airfreight_ideal_li_4": "Échantillons, pièces de rechange et équipements urgents",
+
+  "airfreight_advantage_title": "Notre avantage",
+  "airfreight_advantage_body": "Délais de transit réduits, dédouanement prévisible et visibilité complète des expéditions, de l’aéroport d’origine à la destination finale.",
+
+  "airfreight_cta": "Demander un devis pour ce service",
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  "home_hero_kicker": "Hub logistique digital • Conformité • Visibilité",
+  "home_hero_tagline": "Aller au-delà de vos attentes",
+  "home_hero_subtext": "Découvrez comment nous optimisons la gestion de la chaîne d’approvisionnement pour les organisations internationales, les multinationales, les entreprises locales et l’exécution de projets dans la sous-région CEMAC.",
+  "home_track_placeholder": "Saisir la référence de suivi…",
+  "home_track_btn": "SUIVRE",
+
+  "home_trust_title": "Approuvé par des leaders internationaux",
+
+  "home_services_title": "Déverrouillez des solutions logistiques performantes",
+  "home_services_sub": "SMART LOGISTICS & SERVICES LTD est une entreprise de logistique et de supply chain basée à Douala (Cameroun), au service de toute la région CEMAC. Nous simplifions les opérations des organisations internationales et des multinationales via le fret aérien, terrestre et maritime, le dédouanement, la représentation et l’entreposage.",
+  "home_services_feature_1_title": "Expertise multimodale",
+  "home_services_feature_1_sub": "Fret aérien, terrestre et maritime avec excellence opérationnelle.",
+  "home_services_feature_2_title": "Exécution orientée conformité",
+  "home_services_feature_2_sub": "Documentation fiable, procédures de dédouanement et visibilité.",
+  "home_services_feature_3_title": "Logistique de projet à grande échelle",
+  "home_services_feature_3_sub": "Solutions adaptées aux projets Santé, Construction, Industrie et Humanitaire.",
+
+  "home_stat_cbm_title": "CBM gérés",
+  "home_stat_cbm_sub": "Projets financés à l’international",
+  "home_stat_clearance_title": "Délai de dédouanement",
+  "home_stat_clearance_unit": "Heures",
+  "home_stat_clearance_sub": "Moyenne de dédouanement",
+  "home_stat_perf_title": "Performance opérationnelle dans la région CEMAC.",
+  "home_stat_perf_sub": "Miles parcourus en transport terrestre",
+
+  "home_industries_title": "Secteurs desservis",
+  "home_industries_sub": "Logistique à fort impact sur des secteurs critiques",
+  "home_industries_cta": "Parler à un expert",
+  "home_industry_1_title": "Pétrole & Gaz / Énergie",
+  "home_industry_1_sub": "Gestion de fret complexe et hors gabarit pour des projets amont et aval, avec conformité HSE stricte.",
+  "home_industry_2_title": "Humanitaire & Aide",
+  "home_industry_2_sub": "Déploiement rapide pour les ONG et agences onusiennes, afin que les fournitures vitales atteignent le dernier kilomètre à temps.",
+  "home_industry_3_title": "Construction & Infrastructures",
+  "home_industry_3_sub": "Gestion de projet de bout en bout pour engins et matériaux, au service de grands programmes d’infrastructures.",
+  "home_industry_4_title": "Santé & Pharma",
+  "home_industry_4_sub": "Chaînes du froid pour produits pharmaceutiques sensibles, garantissant l’intégrité du port jusqu’au patient/entrepôt.",
+
+  "home_pillars_title": "Services",
+  "home_pillars_sub": "Trois piliers conçus pour la rapidité, la conformité et une exécution fiable dans la région CEMAC",
+  "home_pillars_cta": "Découvrir nos services",
+  "home_pillar_1_badge": "Solutions de fret",
+  "home_pillar_1_body": "Transit aérien, terrestre et maritime efficace pour les expéditions sensibles aux délais, avec coordination multimodale, options conteneurs flexibles (FCL/LCL, RF/DC) et visibilité via le suivi en temps réel.",
+  "home_pillar_2_badge": "Solutions logistiques",
+  "home_pillar_2_body": "Services logistiques orientés conformité incluant le dédouanement, les opérations import/export et la représentation—conçus pour réduire les délais, maîtriser les coûts et garantir une documentation et un alignement réglementaire corrects.",
+  "home_pillar_3_badge": "Solutions à valeur ajoutée",
+  "home_pillar_3_body": "Transport fiable pour fret de projet et marchandises sensibles, plus entreposage sécurisé avec stockage flexible et visibilité inventaire via WMS—pensés pour le dernier kilomètre et la manutention contrôlée.",
+
+  "home_testimonials_title": "Ce que nos clients disent",
+  "home_testimonial_1_quote": "« SMART LOGISTICS AND SERVICES LTD. est un partenaire inestimable. Leur expertise en dédouanement et en transport nous a permis d’économiser des millions de FCFA. Leur professionnalisme est remarquable. »",
+  "home_testimonial_2_quote": "« Nous avons confié à SMART LOGISTICS nos expéditions pharmaceutiques sensibles. Leur suivi et monitoring en temps réel ont assuré une livraison fluide, avec un service client de très haut niveau. »",
+  "home_testimonial_3_quote": "« SMART LOGISTICS a dépassé nos attentes lors de la réexportation d’équipements lourds du Cameroun vers la Côte d’Ivoire. Leur expertise nous a fait gagner un temps précieux. »",
+
+  "home_partner_kicker": "DEVENIR PARTENAIRE",
+  "home_partner_title": "Rejoignez notre réseau international",
+  "home_partner_sub": "SMART LOGISTICS & SERVICES LTD recherche en permanence à étendre son réseau d’agents et de partenaires de confiance. Si vous êtes transitaire, NVOCC ou prestataire logistique à la recherche d’un partenaire fiable dans la région CEMAC, contactez-nous.",
+  "home_partner_point_1": "Exécution en zone CEMAC avec discipline de conformité",
+  "home_partner_point_2": "Onboarding partenaires conçu pour la clarté et la rapidité",
+  "home_partner_point_3": "Alignement réseau (WCA • FIATA • JC Trans)",
+  "home_partner_note": "Nous examinons les demandes et revenons vers vous avec les prochaines étapes.",
+  "home_partner_form_title": "Champs du formulaire",
+  "home_partner_form_badge": "Demande de partenariat",
+  "home_partner_company_label": "Nom de l’entreprise",
+  "home_partner_company_ph": "Nom de l’entreprise",
+  "home_partner_country_label": "Pays d’origine",
+  "home_partner_country_ph": "Pays",
+  "home_partner_network_label": "Adhésions réseau (WCA, FIATA, JC Trans)",
+  "home_partner_network_ph": "ex. : WCA, FIATA",
+  "home_partner_contact_label": "Contact & fonction",
+  "home_partner_contact_ph": "Nom complet et fonction",
+  "home_partner_proposal_label": "Type de proposition (Partenariat agence / Enregistrement fournisseur)",
+  "home_partner_proposal_opt_1": "Partenariat agence",
+  "home_partner_proposal_opt_2": "Enregistrement fournisseur",
+  "home_partner_upload_label": "Téléverser le profil corporate (PDF) si applicable",
+  "home_partner_upload_hint": "PDF uniquement. Taille de fichier raisonnable.",
+  "home_partner_submit": "Soumettre",
+  "home_partner_email_instead": "Envoyer par e-mail",
+
+  "home_contact_title": "Contact",
+  "home_contact_sub": "Échangez avec notre équipe opérations",
+  "home_contact_btn_email": "E-mail",
+  "home_contact_btn_call": "Appeler",
+  "home_contact_form_title": "Envoyer un message",
+  "home_contact_name_label": "Nom complet",
+  "home_contact_name_ph": "Votre nom",
+  "home_contact_email_label": "E-mail",
+  "home_contact_email_ph": "nom@entreprise.com",
+  "home_contact_phone_label": "Téléphone (optionnel)",
+  "home_contact_phone_ph": "+237 …",
+  "home_contact_message_label": "Message",
+  "home_contact_message_ph": "Décrivez brièvement votre demande…",
+  "home_contact_send_btn": "Envoyer",
+  "home_contact_prefer_email": "Vous préférez l’e-mail ?",
+  "home_contact_office_title": "Siège",
+  "home_contact_office_sub": "B.P. 5120, Douala, Cameroun",
+  "home_contact_open_maps": "Ouvrir dans Maps",
+  "home_contact_address_label": "Adresse",
+  "home_contact_address_value": "1030, Avenue Douala Manga Bell, Douala, Cameroun",
+  "home_contact_phone_value_label": "Téléphone",
+  "home_contact_whatsapp_label": "WhatsApp",
+  "home_contact_email_value_label": "E-mail",
+   "kaizen_not_found_title": "Article introuvable",
+  "kaizen_not_found_lead": "L’article demandé n’a pas pu être trouvé.",
+  "kaizen_not_found_cta": "Retour au Kaizen Hub",
+
+  "kaizen_crumb_hub": "Kaizen Hub",
+  "kaizen_crumb_article": "Article",
+  "kaizen_back_to_hub": "Retour au hub",
+
+  "kaizen_next_label": "Article suivant",
+  "kaizen_prev_label": "Article précédent",
+  "kaizen_kicker": "HUB DE CONNAISSANCES",
+  "kaizen_title": "KAIZEN HUB",
+  "kaizen_search_ph": "Rechercher des articles…",
+  "kaizen_filter_all": "Tous",
+  "kaizen_filter_strategy": "Stratégie",
+  "kaizen_filter_humanitarian": "Humanitaire",
+  "kaizen_filter_technology": "Technologie",
+  "kaizen_browse_cta": "Parcourir les articles",
+
+  "kaizen_pill_strategy": "Stratégie",
+  "kaizen_pill_technology": "Technologie",
+  "kaizen_pill_humanitarian": "Humanitaire",
+  "kaizen_pill_operations": "Opérations",
+
+  "kaizen_by_prefix": "Par",
+  "kaizen_at": "chez",
+  "kaizen_role_coo": "Directeur des opérations",
+  "kaizen_role_ceo": "Directeur Général",
+  "kaizen_read": "Lire l’article",
+
+  "kaizen_a1_title": "Révéler la puissance de la logistique, moteur de la croissance des entreprises",
+  "kaizen_a2_title": "Le rôle des prestataires logistiques locaux pour garantir l’efficacité opérationnelle dans les projets humanitaires et de développement",
+
+  "landfreight_kicker": "🚚 TRANSPORT ROUTIER / TRANSPORT INTÉRIEUR",
+  "landfreight_title": "Fiable. Sécurisé. Axé région.",
+
+  "landfreight_overview_title": "Aperçu",
+  "landfreight_overview_body": "SMART LOGISTICS & SERVICES LTD assure le transport intérieur au Cameroun et dans l’ensemble de la région CEMAC, avec une livraison sûre et conforme, y compris en zones éloignées ou sur des terrains difficiles.",
+
+  "landfreight_delivery_title": "Notre mode d’exécution",
+  "landfreight_delivery_li_1": "Études d’itinéraire et évaluation des risques avant départ",
+  "landfreight_delivery_li_2": "Transport spécialisé pour charges lourdes, hors gabarit (OOG) et sensibles",
+  "landfreight_delivery_li_3": "Documents de transit transfrontalier et coordination douanière",
+  "landfreight_delivery_li_4": "Suivi GPS des convois et services d’escorte",
+  "landfreight_delivery_li_5": "Livraison directe sur sites de projets, entrepôts ou chez le client final",
+
+  "landfreight_ideal_title": "Idéal pour",
+  "landfreight_ideal_li_1": "Cargaisons de projets et de construction",
+  "landfreight_ideal_li_2": "Distribution humanitaire",
+  "landfreight_ideal_li_3": "Équipements industriels et du secteur énergie",
+  "landfreight_ideal_li_4": "Mouvements transfrontaliers au sein de la CEMAC",
+
+  "landfreight_advantage_title": "Notre avantage",
+  "landfreight_advantage_body": "Expertise régionale approfondie, maîtrise réglementaire et exécution fiable au-delà des principaux corridors.",
+
+  "landfreight_cta": "Demander un devis pour ce service",
+
+  "case_not_found_title": "Étude de cas introuvable",
+  "case_not_found_lead": "L’étude de cas demandée n’existe pas.",
+  "case_not_found_cta": "Retour au portfolio",
+
+  "case_back_to_portfolio": "Retour au portfolio",
+  "case_tag_challenge": "Défi",
+  "case_tag_solution": "Solution",
+  "case_tag_impact": "Impact",
+  "portfolio_kicker": "DES SOLUTIONS EN ACTION",
+  "portfolio_title": "PORTFOLIO PROJETS",
+  "portfolio_sub": "Études de cas détaillées, structurées autour de sections distinctes : « Défi », « Solution » et « Impact »",
+  "portfolio_read_full_case": "Lire l’étude complète",
+  
+  "seafreight_kicker": "🚢 FRET MARITIME",
+  "seafreight_title": "Flexible. Scalable. Optimisé coûts.",
+
+  "seafreight_overview_title": "Aperçu",
+  "seafreight_overview_body": "Nous proposons des solutions de fret maritime fiables via les principales compagnies maritimes, en gérant les expéditions en conteneur complet (FCL) et en groupage (LCL). Notre équipe pilote les opérations portuaires, les formalités douanières et l’évacuation vers l’intérieur de manière fluide.",
+
+  "seafreight_delivery_title": "Notre mode d’exécution",
+  "seafreight_delivery_li_1": "Réservation navire et optimisation d’espace (FCL / LCL)",
+  "seafreight_delivery_li_2": "Documentation pré-arrivée et pré-dédouanement",
+  "seafreight_delivery_li_3": "Coordination du déchargement portuaire et évacuation cargo",
+  "seafreight_delivery_li_4": "Gestion des conteneurs (DC, RF, équipements spéciaux)",
+  "seafreight_delivery_li_5": "Intégration avec le transport intérieur et l’entreposage",
+
+  "seafreight_ideal_title": "Idéal pour",
+  "seafreight_ideal_li_1": "Cargaisons de projets et équipements lourds",
+  "seafreight_ideal_li_2": "Marchandises en vrac et commerciales",
+  "seafreight_ideal_li_3": "Expéditions long terme et grands volumes",
+  "seafreight_ideal_li_4": "Import, export et opérations de réexportation",
+
+  "seafreight_advantage_title": "Notre avantage",
+  "seafreight_advantage_body": "Surestaries minimisées, temps de séjour portuaire maîtrisé et transition fluide du navire vers la destination finale.",
+
+  "seafreight_cta": "Demander un devis pour ce service",
+  "services_kicker": "AVEC L’EXCELLENCE OPÉRATIONNELLE",
+  "services_title": "SERVICES",
+
+  "services_jump_freight": "Transit & Freight Forwarding",
+  "services_jump_solutions": "Solutions Logistiques",
+  "services_jump_value_added": "Services à Valeur Ajoutée",
+
+  "services_a_head_title": "Solutions de fret aérien, terrestre et maritime efficaces et sécurisées",
+  "services_a_head_sub": "Des solutions complètes pour les expéditions sensibles aux délais",
+
+  "services_a_list_title_1": "Maîtrise multimodale",
+  "services_a_list_text_1": "Intégration fluide du transport aérien, maritime et terrestre.",
+  "services_a_list_title_2": "Rapidité",
+  "services_a_list_text_2": "Délais de transit rapides avec suivi en temps réel.",
+  "services_a_list_title_3": "Flexibilité",
+  "services_a_list_text_3": "Options conteneurs flexibles (FCL/LCL), types (RF/DC) et tarification compétitive.",
+  "services_a_list_title_4": "Documentation",
+  "services_a_list_text_4": "Formalités de transit/douane et traitement documentaire par des experts.",
+
+  "services_a_panel_title": "Solutions de fret aérien, terrestre et maritime efficaces et sécurisées",
+  "services_a_panel_sub": "Des solutions complètes pour les expéditions sensibles aux délais.",
+  "services_a_mode_air": "Aérien",
+  "services_a_mode_land": "Terrestre",
+  "services_a_mode_sea": "Maritime",
+
+  "services_b_title": "Solutions Logistiques",
+
+  "services_b1_title": "Dédouanement expert.",
+  "services_b1_body": "Réduction des délais et des coûts grâce à une parfaite maîtrise des réglementations et à des procédures de dédouanement efficaces.",
+  "services_b1_kv": "Tarification compétitive et délai moyen de dédouanement de 48 heures.",
+
+  "services_b2_title": "Commerce international fluide.",
+  "services_b2_body": "Conformité réglementaire et traitement documentaire efficace pour des opérations d’import et d’export sans friction.",
+  "services_b2_kv": "Suivi en temps réel et services de transit/douane assurés par des experts.",
+
+  "services_b3_title": "Votre partenaire local.",
+  "services_b3_body": "Représentation locale pour les entreprises internationales : expertise du marché et gestion de la conformité réglementaire.",
+  "services_b3_kv": "Accès marché plus rapide grâce à une représentation locale conforme et une gestion réglementaire opérationnelle.",
+
+  "services_c_title": "Services à Valeur Ajoutée",
+
+  "services_c1_title": "Livraison dernier kilomètre fiable",
+  "services_c1_body": "Solutions de transport pour équipements lourds, cargaisons de projets, périssables et produits pharmaceutiques, avec livraison sûre et ponctuelle dans la zone CEMAC grâce à un routage optimisé et une manutention conforme.",
+  "services_c1_kv": "Options de transport flexibles et suivi en temps réel.",
+
+  "services_c2_title": "Entrepôts et stockage sécurisés",
+  "services_c2_body": "Entrepôts sécurisés pour des solutions de stockage fiables.",
+  "services_c2_kv": "Stockage flexible et suivi d’inventaire en temps réel via WMS.",
+  "quote_badge": "Portail interactif",
+
+  "quote_title_main": "Devis Smart",
+  "quote_title_accent": "Assistant",
+
+  "quote_lead_line1": "Configurez vos besoins logistiques en 4 étapes simples.",
+  "quote_lead_line2": "Nous gérons la complexité ; vous obtenez la précision.",
+
+  "quote_step1_label": "Besoin",
+  "quote_step2_label": "Itinéraire",
+  "quote_step3_label": "Détails",
+  "quote_step4_label": "Contact",
+
+  "quote_step_counter_prefix": "Étape",
+  "quote_step_counter_of": "sur",
+
+  "quote_s1_title": "Votre besoin",
+  "quote_s1_sub": "Sélectionnez le service logistique adapté à votre demande.",
+
+  "quote_service_air_title": "Fret aérien",
+  "quote_service_air_sub": "Transport international urgent.",
+  "quote_service_popular": "POPULAIRE",
+
+  "quote_service_sea_title": "Fret maritime",
+  "quote_service_sea_sub": "FCL & LCL économiques.",
+
+  "quote_service_land_title": "Transport terrestre",
+  "quote_service_land_sub": "Routier CEMAC transfrontalier.",
+
+  "quote_service_wh_title": "Entreposage",
+  "quote_service_wh_sub": "Stockage et manutention sécurisés.",
+
+  "quote_btn_continue": "Continuer",
+  "quote_btn_back": "Retour",
+  "quote_btn_next_step": "Étape suivante",
+
+  "quote_s2_title": "Votre itinéraire",
+  "quote_s2_sub": "Où votre cargaison se déplace-t-elle ?",
+  "quote_origin_label": "Ville/port d’origine",
+  "quote_origin_ph": "ex. Dubaï, EAU",
+  "quote_dest_label": "Destination",
+  "quote_dest_ph": "ex. Bangui, RCA",
+
+  "quote_wh_loc_label": "Localisation souhaitée",
+  "quote_wh_loc_ph": "ex. Zone Portuaire de Douala",
+  "quote_wh_duration_label": "Durée souhaitée",
+  "quote_wh_duration_opt_1": "Court terme (< 1 mois)",
+  "quote_wh_duration_opt_2": "Moyen terme (1–6 mois)",
+  "quote_wh_duration_opt_3": "Long terme (> 6 mois)",
+  "quote_wh_duration_opt_4": "Indéterminée / Récurrente",
+
+  "quote_s3_title": "Détails de la cargaison",
+  "quote_s3_sub": "Décrivez votre expédition.",
+  "quote_bulk_title": "Projet / Grand volume ?",
+  "quote_bulk_sub": "Sélectionnez pour cargaison hors gabarit (OOG) ou hors normes.",
+
+  "quote_weight_label": "Poids total estimé",
+  "quote_weight_min": "1 Kg",
+  "quote_weight_max": "30 000 Kg+",
+
+  "quote_bulk_desc_label": "Description de la cargaison projet",
+  "quote_bulk_desc_ph": "Décrivez votre expédition : nombre de conteneurs, dimensions pour cargaison hors gabarit (OOG), exigences de manutention, etc.",
+
+  "quote_upload_label": "Téléverser des documents (optionnel)",
+  "quote_upload_title": "Cliquez pour téléverser la facture / la liste de colisage",
+  "quote_upload_sub": "PDF, JPG, PNG (Max 10 Mo)",
+
+  "quote_s4_title": "Dernière étape",
+  "quote_s4_sub": "Où devons-nous envoyer le devis ?",
+  "quote_contact_name_label": "Nom complet",
+  "quote_contact_name_ph": "John Doe",
+  "quote_contact_email_label": "Adresse e-mail",
+  "quote_contact_email_ph": "john@company.com",
+  "quote_contact_phone_label": "Numéro de téléphone",
+  "quote_contact_phone_ph": "+237 ...",
+  "quote_contact_org_label": "Organisation",
+  "quote_contact_org_ph": "Nom de l’entreprise",
+  "quote_contact_notes_label": "Notes (optionnel)",
+  "quote_contact_notes_ph": "Des instructions particulières ?",
+
+  "quote_submit_btn": "ENVOYER LA DEMANDE",
+
+  "quote_success_title": "Demande reçue !",
+  "quote_success_id_label": "Votre ID de devis :",
+  "quote_success_body_html": "Nous avons envoyé une confirmation à votre e-mail.<br>Votre demande a été transmise à <strong>customerservice@smartls.cm</strong><br>(CC : info@smartls.cm)",
+  "quote_start_new": "Démarrer un nouveau devis",
+  
+  "track_pill": "Hub logistique en temps réel",
+  "track_lead": "Suivez votre cargaison avec précision.",
+  "track_placeholder": "Saisir la référence (ex. SL0256721SM)",
+  "track_btn": "SUIVRE",
+
+  "track_demo_label": "Vues de démonstration :",
+  "track_demo_sea_imp": "Mer Import",
+  "track_demo_sea_exp": "Mer Export",
+  "track_demo_hinterland": "Hinterland",
+  "track_demo_inland": "Inland",
+  "track_demo_warehousing": "Entreposage",
+  "track_demo_air_exp": "Air Export",
+  "track_demo_air_imp": "Air Import",
+  "track_demo_e2e_air": "Air E2E",
+  "track_demo_e2e_sea": "Mer E2E",
+
+  "track_file_reference": "Référence dossier",
+  "track_status_in_progress": "En cours",
+  "track_last_update": "Dernière mise à jour :",
+  "track_just_now": "À l’instant",
+
+  "track_service_type": "Type de service",
+  "track_key_details": "Détails clés",
+  "track_origin": "Origine",
+  "track_destination": "Destination",
+  "track_warehouse_location": "Lieu d’entreposage",
+  "track_inbound_date": "Date d’entrée",
+
+  "track_request_more_info": "DEMANDER PLUS D’INFOS",
+
+  "track_alert_not_found": "Référence introuvable. Essayez SL0256721SM",
+
+  "track_badge_completed": "Terminé",
+  "track_badge_in_progress": "En cours",
+  "track_badge_pending": "En attente",
+  "kaizen_a3_title": "Surestaries, détention et stockage : comprendre et éviter les frais logistiques",
+  "kaizen_a3_author": "Par Clovis Tiako, Responsable des opérations, Smart Logistics & Services Ltd",
+
+  "kaizen_a4_title": "Amélioration de la performance de la chaîne d'approvisionnement par l'intégration intelligente : étude de cas",
+  "kaizen_a4_author": "Par Joseph Moukoko, Directeur des opérations, Smart Logistics & Services Ltd",
+
+  "kaizen_a5_title": "L'avenir est vert : la logistique durable en zone CEMAC",
+  "kaizen_a5_author": "Par Timothée Massomba, Directeur Général, Smart Logistics & Services Ltd"
+
+
+
+
+
+
+
+
+
+
+}

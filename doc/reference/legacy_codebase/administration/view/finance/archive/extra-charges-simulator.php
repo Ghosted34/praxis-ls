@@ -1,0 +1,1170 @@
+<?php
+declare(strict_types=1);
+
+require_once __DIR__ . '/../../includes/init.php';
+require_once __DIR__ . '/../../includes/role_guard.php';
+require_role(['ADMIN','OPERATIONS','MANAGEMENT','FINANCE', 'SALES']);
+
+$conn = db();
+
+function e(string $v): string { return htmlspecialchars($v, ENT_QUOTES, 'UTF-8'); }
+
+function jexit(array $p, int $code=200): void {
+  http_response_code($code);
+  header('Content-Type: application/json; charset=utf-8');
+  echo json_encode($p);
+  exit;
+}
+
+const DEFAULT_WEIGHT_UNIT   = "KG";
+
+/* =========================================================
+   AJAX ENDPOINTS
+   ========================================================= */
+if (isset($_GET['ajax'])) {
+  $ajax = (string)$_GET['ajax'];
+
+  $serviceFilter = "(
+      INSTR(service_type, 'SEA') > 0
+      OR INSTR(service_type, 'INLAND') > 0
+      OR INSTR(service_type, 'INTER_LAND') > 0
+      OR INSTR(service_type, 'INTERLAND') > 0
+    )";
+
+  if ($ajax === 'search_files') {
+    $q = trim((string)($_GET['q'] ?? ''));
+    if ($q === '' || mb_strlen($q) < 2) {
+      jexit(['ok'=>true,'items'=>[]]);
+    }
+
+    $like = '%' . $q . '%';
+
+    $sql = "
+      SELECT
+        operations_file_reference,
+        COALESCE(NULLIF(client_bill_to,''), client_name) AS consignee_display,
+        service_type,
+        ata,
+        sea_bl
+      FROM operations_file_master
+      WHERE operations_status <> 'NOT_AWARDED'
+        AND {$serviceFilter}
+        AND (
+          operations_file_reference LIKE ?
+          OR client_bill_to LIKE ?
+          OR client_name LIKE ?
+          OR sea_bl LIKE ?
+        )
+      ORDER BY updated_at DESC
+      LIMIT 25
+    ";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('ssss', $like, $like, $like, $like);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    $items = [];
+    while ($row = $res->fetch_assoc()) {
+      $ref = (string)$row['operations_file_reference'];
+      $cons = (string)($row['consignee_display'] ?? '');
+      $svc = (string)($row['service_type'] ?? '');
+      $bl  = (string)($row['sea_bl'] ?? '');
+      $ata = $row['ata'] ? date('Y-m-d', strtotime((string)$row['ata'])) : '';
+
+      $labelBits = array_filter([
+        $ref,
+        $cons !== '' ? $cons : null,
+        $bl !== '' ? "BL: {$bl}" : null,
+        $svc !== '' ? $svc : null,
+        $ata !== '' ? "ATA: {$ata}" : null,
+      ]);
+      $items[] = [
+        'ref'   => $ref,
+        'label' => implode(' — ', $labelBits),
+      ];
+    }
+
+    jexit(['ok'=>true,'items'=>$items]);
+  }
+
+  if ($ajax === 'file_details') {
+    $ref = trim((string)($_GET['ref'] ?? ''));
+    if ($ref === '') {
+      jexit(['ok'=>false,'error'=>'Missing ref'], 400);
+    }
+
+    $sql = "
+      SELECT
+        operations_file_reference,
+        service_type,
+        operations_status,
+        COALESCE(NULLIF(client_bill_to,''), client_name) AS consignee_display,
+        ata,
+        eta,
+        sea_bl,
+        gross_weight,
+        weight_unit,
+        marks_numbers
+      FROM operations_file_master
+      WHERE operations_file_reference = ?
+        AND operations_status <> 'NOT_AWARDED'
+        AND {$serviceFilter}
+      LIMIT 1
+    ";
+    $stmt = $conn->prepare($sql);
+    $stmt->bind_param('s', $ref);
+    $stmt->execute();
+    $row = $stmt->get_result()->fetch_assoc();
+
+    if (!$row) {
+      jexit(['ok'=>false,'error'=>'File not found / not eligible'], 404);
+    }
+
+    $ataDate = $row['ata'] ? date('Y-m-d', strtotime((string)$row['ata'])) : '';
+    $bl      = (string)($row['sea_bl'] ?? '');
+    $cons    = (string)($row['consignee_display'] ?? '');
+
+    $gwRaw = $row['gross_weight'];
+    $gw = ($gwRaw === null || $gwRaw === '') ? '' : number_format((float)$gwRaw, 2, '.', '');
+    $wu = strtoupper(trim((string)($row['weight_unit'] ?? DEFAULT_WEIGHT_UNIT)));
+    if (!in_array($wu, ['KG','TON','LB'], true)) $wu = DEFAULT_WEIGHT_UNIT;
+
+    $containerStr = (string)($row['marks_numbers'] ?? '');
+
+    jexit([
+      'ok'=>true,
+      'data'=>[
+        'ref'            => (string)$row['operations_file_reference'],
+        'service'        => (string)($row['service_type'] ?? ''),
+        'status'         => (string)($row['operations_status'] ?? ''),
+        'ata_date'       => $ataDate,
+        'sea_bl'         => $bl,
+        'consignee'      => $cons,
+        'gross_weight'   => $gw,
+        'weight_unit'    => $wu,
+        'containers'     => $containerStr,
+      ]
+    ]);
+  }
+
+  jexit(['ok'=>false,'error'=>'Unknown ajax'], 400);
+}
+
+/* =========================================================
+   AUTH PROFILE
+   ========================================================= */
+$employeeId = (string)($_SESSION['auth']['employee_id'] ?? '');
+$userId     = (int)($_SESSION['auth']['user_id'] ?? 0);
+
+if ($employeeId === '' || $userId <= 0) {
+  header('Location: ../../api/auth/logout.php');
+  exit;
+}
+
+$sql = "
+  SELECT
+    em.employee_id,
+    em.full_name,
+    em.email,
+    em.department,
+    em.job_title,
+    ua.username,
+    ua.role,
+    ua.authority_capabilities,
+    ua.last_login
+  FROM user_auth ua
+  JOIN employee_master em ON em.employee_id = ua.employee_id
+  WHERE ua.user_id = ? AND em.employee_id = ?
+  LIMIT 1
+";
+$stmt = $conn->prepare($sql);
+$stmt->bind_param('is', $userId, $employeeId);
+$stmt->execute();
+$me = $stmt->get_result()->fetch_assoc();
+
+if (!$me) {
+  header('Location: ../../api/auth/logout.php');
+  exit;
+}
+
+$fullName  = $me['full_name'] ?: 'User';
+$firstName = trim(explode(' ', $fullName)[0] ?? 'User');
+
+$roleLabelMap = [
+  'ADMIN'      => 'SYSTEM ADMIN',
+  'FINANCE'    => 'FINANCE',
+  'SALES'      => 'SALES',
+  'OPERATIONS' => 'OPERATIONS',
+  'MANAGEMENT' => 'MANAGEMENT',
+];
+$role      = strtoupper((string)($me['role'] ?? 'OPERATIONS'));
+$roleLabel = $roleLabelMap[$role] ?? $role;
+
+$avatarName = urlencode($fullName);
+$avatarUrl  = "https://ui-avatars.com/api/?name={$avatarName}&background=231F20&color=fff";
+?>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Extra Charges Simulator | Smart LS</title>
+
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link rel="stylesheet" href="../../css/admin.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700&family=Montserrat:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <style>
+    /* =========================================
+       SCREEN STYLES
+       ========================================= */
+    :root{
+      --smart-blue: #1F99D8; --smart-dark: #055B83; --smart-orange: #EE7D04;
+      --smart-charcoal: #231F20; --smart-bg: #F0F4F8;
+      --smart-success: #16a34a; --smart-danger: #dc2626;
+    }
+    h1,h2,h3,h4,h5,h6,.font-heading{ font-family:'Montserrat',sans-serif; }
+    
+    .card-custom{
+      background:#fff; border-radius:12px; border:1px solid rgba(0,0,0,0.05);
+      box-shadow:0 2px 12px rgba(0,0,0,0.02); height:100%; transition:transform .2s, box-shadow .2s;
+    }
+    .card-custom:hover{ transform: translateY(-2px); box-shadow:0 5px 20px rgba(0,0,0,0.05); }
+
+    .form-section-title{
+      font-size:.75rem; font-weight:800; color: var(--smart-charcoal);
+      border-bottom:2px solid #f1f5f9; padding-bottom:8px; margin-bottom:16px;
+      text-transform:uppercase; letter-spacing:.5px;
+    }
+
+    .smart-input{
+      border-radius:8px; font-size:.9rem; padding:.6rem .8rem;
+      border:1px solid #dee2e6; background:#fff; transition: all .2s;
+    }
+    .smart-input:focus{
+      border-color: var(--smart-orange); box-shadow:0 0 0 3px rgba(238,125,4,0.12); outline:none;
+    }
+    .smart-input[readonly]{
+      background:#f8f9fa; color:#6c757d; border-color:#e9ecef; cursor:not-allowed;
+    }
+
+    .kpi-title{
+      font-size:.7rem; font-weight:700; text-transform:uppercase; color:#888;
+      letter-spacing:.5px; white-space:nowrap;
+    }
+    .kpi-value{
+      font-size:1.6rem; font-weight:800; color: var(--smart-charcoal); line-height:1.2;
+      font-variant-numeric: tabular-nums;
+    }
+    .kpi-sub{ font-size:.7rem; font-weight:600; }
+
+    .filter-pill{
+      font-size:.75rem; padding:6px 16px; border-radius:999px;
+      border:1px solid #e0e0e0; cursor:pointer; background:#fff; transition: all .2s;
+      font-weight:600; color:#64748b;
+    }
+    .filter-pill:hover{ background:#f8fafc; }
+    .filter-pill.active{
+      background: var(--smart-orange); color:#fff; border-color: var(--smart-orange);
+      box-shadow:0 2px 6px rgba(238,125,4,0.2);
+    }
+
+    .table-custom th{
+      font-size:.7rem; text-transform:uppercase; color:#64748b; font-weight:700;
+      border-bottom:2px solid #f1f5f9; background:#f8fafc; padding:12px 16px;
+    }
+    .table-custom td{
+      font-size:.85rem; vertical-align:middle; padding:12px 16px; border-bottom:1px solid #f1f5f9;
+    }
+    .table-custom tr:last-child td{ border-bottom:none; }
+
+    .totals-container{
+      background:#f8fafc; border-radius:12px; padding:1.5rem; margin-top:1rem;
+    }
+    .total-row{
+      display:flex; justify-content:space-between; margin-bottom:.5rem; font-size:.9rem; color:#64748b;
+    }
+    .grand-total{
+      border-top:2px solid #cbd5e1; padding-top:1rem; margin-top:.5rem;
+      font-size:1.25rem; font-weight:800; color: var(--smart-charcoal);
+    }
+    .hint-muted{ font-size:.75rem; color:#6b7280; }
+    .validation-alert { color: var(--smart-danger); font-weight: 700; }
+  </style>
+</head>
+
+<body>
+
+   <nav class="sidebar">
+    <div class="sidebar-header">
+        <a href="index.php" class="brand-logo"><i class="fa-solid fa-cube text-primary me-2"></i>SMART <span style="color: var(--smart-orange);">LS</span></a>
+    </div>
+
+    <div class="px-3 mb-2 mt-2">
+        <a href="index.php" class="btn btn-primary w-100 text-start d-flex align-items-center" style="background-color: transparent; color: inherit; border: none; padding-left: 0;">
+            <i class="fa-solid fa-house category-icon me-2"></i> 
+            <span class="fw-bold">Admin Dashboard GM</span> 
+        </a>
+    </div>
+
+    <div class="sidebar-menu accordion" id="adminMenu">
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin1">
+                <span><i class="fa-solid fa-database category-icon"></i> MASTER DATA MGMT</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin1" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="client-master-registry.php" class="sub-link">Client Master Registry</a>
+                    <a href="supplier-master-registry" class="sub-link">Supplier Master Registry</a>
+                    <a href="employee-master.php" class="sub-link">Employee Master Registry</a>
+                    <a href="financial-dictionary.php" class="sub-link">Financial Dictionary</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin2">
+                <span><i class="fa-solid fa-users category-icon"></i> CRM & ACQUISITION</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin2" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="contact-us-intake.php" class="sub-link">Contact Us Intake</a>
+                    <a href="partnership-portal-intake.php" class="sub-link">Partnership Portal Intake</a>
+                    <a href="market-campaign-registration.php" class="sub-link">Marketing Campaign Register</a>
+                    <a href="sales-pipelining.php" class="sub-link">Sales Pipeline</a>
+                    <a href="smart-quote-intake.php" class="sub-link">Smart Quote Intake</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin3">
+                <span><i class="fa-solid fa-calculator category-icon"></i> COMMERCIAL & PRICING</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin3" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="margin-simulator-billing.php" class="sub-link">Margin Simulator & Pricing System</a>
+                    <a href="extra-charges-simulator.php" class="sub-link">Extra Charges Simulator</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin4">
+                <span><i class="fa-solid fa-truck-fast category-icon"></i> LOGISTICS OPERATIONS</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin4" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="operations-registry.php" class="sub-link">Operations File Registry</a>
+                    <a href="transit-order.php" class="sub-link">Transit Order (OT)</a>
+                    <a href="operational-milestone-tracking.php" class="sub-link">Operational Milestone Tracking</a>
+                    <a href="delivery-note.php" class="sub-link">Delivery Note</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin5">
+                <span><i class="fa-solid fa-money-bill-trend-up category-icon"></i> OPS COST CONTROL</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin5" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="costing-module.php" class="sub-link">Costing Module</a>
+                    <a href="cost-tracking.php" class="sub-link">Cost Tracking Master</a>
+                    <a href="operational-cost-reconciliation.php" class="sub-link">Operational Cost Reconciliation</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin6">
+                <span><i class="fa-solid fa-building-columns category-icon"></i> FINANCE & TREASURY</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin6" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="cash-request.php" class="sub-link">Cash Request</a>
+                    <a href="purchase-order.php" class="sub-link">Purchase Order</a>
+                    <a href="proforma-invoice-portal.php" class="sub-link">Proforma Invoice Portal</a>
+                    <a href="final-invoice.php" class="sub-link">Final Invoice System</a>
+                    <a href="smart-receivables-ledger.php" class="sub-link">Smart Receivables Ledger (SRL)</a>
+                    <a href="debt-management.php" class="sub-link">Debt Management</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="accordion-item border-0">
+            <button class="menu-btn" type="button" data-bs-toggle="collapse" data-bs-target="#admin7">
+                <span><i class="fa-solid fa-folder-open category-icon"></i> HR & ARCHIVE</span>
+                <i class="fa-solid fa-chevron-down menu-chevron"></i>
+            </button>
+            <div id="admin7" class="accordion-collapse collapse" data-bs-parent="#adminMenu">
+                <div class="sub-menu">
+                    <a href="user-role-management.php" class="sub-link">User & Role Management (IAM)</a>
+                    <a href="payroll-management.php" class="sub-link">Payroll Management</a>
+                    <a href="attendance-logs.php" class="sub-link">Attendance & Time Logging</a>
+                    <a href="documents-vault.php" class="sub-link">Documents Vault</a>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="sidebar-footer">
+        <a class="btn btn-outline-danger w-100 btn-sm fw-bold" href="../../api/auth/logout.php">
+            <i class="fa-solid fa-right-from-bracket me-2"></i> Sign Out
+        </a>
+    </div>
+</nav>
+
+  <div class="top-navbar">
+    <div>
+      <h5 class="mb-0 fw-bold text-dark">Extra Charges Simulator</h5>
+      <small class="text-muted" style="font-size: 0.7rem;">SEA FREIGHT DEMURRAGE, STORAGE & DETENTION</small>
+    </div>
+
+    <div class="d-flex align-items-center gap-4">
+      <div class="clock-pill">
+        <span id="realtime-clock" style="font-family: monospace;">12:00:00</span>
+        <button class="btn-clock" id="btn-clock" onclick="toggleClock()">
+          <i class="fa-solid fa-fingerprint"></i> <span>Clock In</span>
+        </button>
+      </div>
+
+      <div class="d-flex align-items-center gap-3 ps-3 border-start">
+        <div class="text-end lh-1 d-none d-md-block">
+          <div class="fw-bold fs-6"><?php echo e($fullName); ?></div>
+          <small class="text-primary fw-bold" style="font-size: 0.65rem; letter-spacing: 0.5px;">
+            <?php echo e($roleLabel); ?>
+          </small>
+        </div>
+        <img src="<?php echo e($avatarUrl); ?>" class="rounded-circle shadow-sm" width="38" height="38" alt="<?php echo e($firstName); ?>">
+      </div>
+    </div>
+  </div>
+
+  <div class="main-content px-4 pb-5">
+    
+    <div class="row py-4 align-items-center">
+      <div class="col-md-6">
+        <h2 class="fw-bold font-heading mb-0">Cost Calculation</h2>
+        <p class="text-muted mb-0 small">Select an active Ops File or use Manual Mode for leads.</p>
+      </div>
+      <div class="col-md-6 text-end">
+        <div class="d-flex justify-content-end gap-2 flex-wrap">
+          <select id="currency" class="form-select smart-input fw-bold" style="width: 120px;" onchange="updateCalc()">
+            <option value="XAF">XAF</option>
+            <option value="USD">USD</option>
+            <option value="EUR">EUR</option>
+          </select>
+          <button class="btn btn-warning text-white fw-bold shadow-sm" onclick="openSummaryModal()">
+             <i class="fa-solid fa-list-check me-2"></i>View Summary
+          </button>
+          <button class="btn btn-light fw-bold border shadow-sm" onclick="openAdminModal()">
+            <i class="fa-solid fa-gear me-2"></i>Admin Rates
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-4">
+      <div class="col-lg-4">
+        <div class="card-custom p-4">
+          <h6 class="form-section-title"><i class="fa-solid fa-ship me-2 text-primary"></i>Shipment Parameters</h6>
+
+          <div class="mb-3">
+  <label class="form-label small fw-bold text-muted">Select File / Client</label>
+  <div class="input-group">
+    <span class="input-group-text bg-white border-end-0 text-muted"><i class="fa-solid fa-magnifying-glass"></i></span>
+    <input class="form-control smart-input border-start-0" list="fileOptions" id="fileRefInput" placeholder="Search Active File..." autocomplete="off">
+    <datalist id="fileOptions"></datalist>
+  </div>
+  
+  <div class="d-flex justify-content-between align-items-start mt-2">
+      <div id="filePickMeta" class="hint-muted" style="max-width: 60%;"></div>
+      <a href="#" id="manualModeLink" onclick="toggleManualMode(); return false;" class="small fw-bold text-decoration-underline text-primary">
+          Switch to Manual Mode
+      </a>
+  </div>
+</div>
+          
+          <div class="mb-3">
+             <label class="form-label small fw-bold text-muted">Marks & Numbers</label>
+             <div class="input-group">
+                <input type="text" id="containers" class="form-control smart-input" placeholder="e.g. 02*40'RF, 1*20'DC">
+                <button class="btn btn-light border no-print" onclick="unlockContainers()" title="Edit Manually">
+                  <i class="fa-solid fa-pen-to-square text-muted"></i>
+                </button>
+             </div>
+             <div id="container-help" class="form-text text-muted" style="font-size: 0.7rem;">
+                Format: <strong>QTY*SIZE'TYPE</strong> (e.g. 02*40'RF)
+             </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">BL Number</label>
+            <input type="text" id="bl" class="form-control smart-input" placeholder="Auto from DB" readonly>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label small fw-bold text-muted">Consignee</label>
+            <input type="text" id="consignee" class="form-control smart-input" placeholder="Auto from DB" readonly>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-7">
+              <label class="form-label small fw-bold text-muted">Gross Weight</label>
+              <input type="text" id="grossWeight" class="form-control smart-input" placeholder="Auto from DB" readonly>
+            </div>
+            <div class="col-5">
+              <label class="form-label small fw-bold text-muted">Unit</label>
+              <input type="text" id="weightUnit" class="form-control smart-input" placeholder="KG" readonly>
+            </div>
+          </div>
+
+          <hr class="my-4" style="opacity: 0.08;">
+
+          <h6 class="form-section-title"><i class="fa-solid fa-calendar-days me-2 text-primary"></i>Timeline & Assumptions</h6>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">ATA (Arrival)</label>
+              <input type="date" id="ata" class="form-control smart-input" readonly>
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Free Days</label>
+              <input type="number" id="freeTime" class="form-control smart-input" value="11" min="0">
+            </div>
+          </div>
+
+          <div class="row g-2 mb-3">
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Gate Out</label>
+              <input type="date" id="gateOut" class="form-control smart-input">
+            </div>
+            <div class="col-6">
+              <label class="form-label small fw-bold text-muted">Empty Return</label>
+              <input type="date" id="emptyReturn" class="form-control smart-input">
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="col-lg-8">
+
+        <div class="row g-3 mb-4">
+          <div class="col-4">
+            <div class="card-custom p-3 d-flex align-items-center">
+              <div class="me-3 rounded-3 bg-secondary bg-opacity-10 text-secondary d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 1.2rem;">
+                <i class="fa-solid fa-hourglass-start"></i>
+              </div>
+              <div>
+                <div class="kpi-title">Free Time</div>
+                <div class="kpi-value" id="mFree">0</div>
+                <div class="kpi-sub text-muted">Days Allowed</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-custom p-3 d-flex align-items-center">
+              <div class="me-3 rounded-3 bg-primary bg-opacity-10 text-primary d-flex align-items-center justify-content-center" style="width: 48px; height: 48px; font-size: 1.2rem;">
+                <i class="fa-solid fa-calendar-check"></i>
+              </div>
+              <div>
+                <div class="kpi-title">Chargeable</div>
+                <div class="kpi-value text-primary" id="mCharge">0</div>
+                <div class="kpi-sub text-muted">Total Billable Days</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="col-4">
+            <div class="card-custom p-3 d-flex align-items-center">
+              <div class="me-3 rounded-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center" id="status-icon-bg" style="width: 48px; height: 48px; font-size: 1.2rem;">
+                <i class="fa-solid fa-check" id="status-icon"></i>
+              </div>
+              <div>
+                <div class="kpi-title">Timeline Status</div>
+                <div class="kpi-value text-success" id="mDue">OK</div>
+                <div class="kpi-sub text-muted">Within Limits</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="d-flex gap-2 mb-3 flex-wrap">
+          <div class="filter-pill active" data-f="ALL" onclick="toggleFilter(this)">All Charges</div>
+          <div class="filter-pill" data-f="Storage" onclick="toggleFilter(this)">Storage</div>
+          <div class="filter-pill" data-f="Demurrage" onclick="toggleFilter(this)">Demurrage</div>
+          <div class="filter-pill" data-f="Yard Occupancy" onclick="toggleFilter(this)">Yard Occupancy</div>
+          <div class="filter-pill" data-f="Plugging" onclick="toggleFilter(this)">Plugging</div>
+          <div class="filter-pill" data-f="Detention" onclick="toggleFilter(this)">Detention</div>
+        </div>
+
+        <div class="card-custom overflow-hidden">
+          <div class="table-responsive">
+            <table class="table table-custom mb-0">
+              <thead>
+                <tr>
+                  <th style="width: 35%;">Charge Description</th>
+                  <th style="width: 15%;">Basis (Days/Qty)</th>
+                  <th class="text-end" style="width: 15%;">Amount HT</th>
+                  <th class="text-end" style="width: 15%;">VAT (19.25%)</th>
+                  <th class="text-end" style="width: 20%;">Total TTC</th>
+                </tr>
+              </thead>
+              <tbody id="chargesTableBody"></tbody>
+            </table>
+          </div>
+
+          <div class="totals-container border-top rounded-0 rounded-bottom">
+            <div class="row">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold text-muted text-uppercase mb-2">Audit / Approval Notes</label>
+                <textarea class="form-control smart-input" rows="3" placeholder="Enter notes..."></textarea>
+              </div>
+              <div class="col-md-6">
+                <div class="ps-md-5">
+                  <div class="total-row">
+                    <span>Total HT</span>
+                    <span class="fw-bold font-monospace" id="tHT">0</span>
+                  </div>
+                  <div class="total-row">
+                    <span>VAT (19.25%)</span>
+                    <span class="fw-bold font-monospace" id="tVAT">0</span>
+                  </div>
+                  <div class="d-flex justify-content-between grand-total">
+                    <span>NET PAYABLE</span>
+                    <span class="text-primary font-monospace" id="tTTC">0</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="adminModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-centered modal-dialog-scrollable">
+      <div class="modal-content border-0 shadow-lg">
+        <div class="modal-header bg-light border-bottom">
+          <div><h5 class="modal-title fw-bold">Rate Configuration</h5></div>
+          <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <h6 class="form-section-title text-primary">Exchange Rates & Triggers</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-4"><label class="small fw-bold">USD Rate</label><input type="number" id="fxUSD" class="form-control smart-input"></div>
+            <div class="col-4"><label class="small fw-bold">EUR Rate</label><input type="number" id="fxEUR" class="form-control smart-input"></div>
+            <div class="col-4"><label class="small fw-bold">Yard Occ. Min Days</label><input type="number" id="yardTrigger" class="form-control smart-input" value="14"></div>
+          </div>
+
+          <h6 class="form-section-title text-primary">Demurrage (Per Day / XAF)</h6>
+          <div class="table-responsive mb-4 border rounded">
+            <table class="table table-sm table-borderless mb-0">
+              <thead class="bg-light">
+                 <tr><th class="ps-3">Window</th><th>20' DC</th><th>40' DC</th><th>20' RF</th><th>40' RF</th><th>20' HC</th><th>40' HC</th><th>20' FR</th><th>40' FR</th></tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="ps-3 fw-bold small text-muted align-middle">Days 12–21</td>
+                  <td><input id="dem20_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20RF_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40RF_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20HC_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40HC_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20FR_1" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40FR_1" type="number" class="form-control form-control-sm smart-input"></td>
+                </tr>
+                <tr>
+                  <td class="ps-3 fw-bold small text-muted align-middle">Days 22+</td>
+                  <td><input id="dem20_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20RF_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40RF_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20HC_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40HC_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem20FR_2" type="number" class="form-control form-control-sm smart-input"></td>
+                  <td><input id="dem40FR_2" type="number" class="form-control form-control-sm smart-input"></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h6 class="form-section-title text-primary">Storage (Per Day / XAF)</h6>
+          <div class="table-responsive mb-4 border rounded">
+            <table class="table table-sm table-borderless mb-0">
+              <thead class="bg-light"><tr><th class="ps-3">Tier</th><th>20'</th><th>40'</th></tr></thead>
+              <tbody>
+                <tr><td class="ps-3 fw-bold small text-muted align-middle">12–20 Days</td><td><input id="st20_12" type="number" class="form-control form-control-sm smart-input"></td><td><input id="st40_12" type="number" class="form-control form-control-sm smart-input"></td></tr>
+                <tr><td class="ps-3 fw-bold small text-muted align-middle">21–40 Days</td><td><input id="st20_21" type="number" class="form-control form-control-sm smart-input"></td><td><input id="st40_21" type="number" class="form-control form-control-sm smart-input"></td></tr>
+                <tr><td class="ps-3 fw-bold small text-muted align-middle">41–70 Days</td><td><input id="st20_41" type="number" class="form-control form-control-sm smart-input"></td><td><input id="st40_41" type="number" class="form-control form-control-sm smart-input"></td></tr>
+                <tr><td class="ps-3 fw-bold small text-muted align-middle">71+ Days</td><td><input id="st20_71" type="number" class="form-control form-control-sm smart-input"></td><td><input id="st40_71" type="number" class="form-control form-control-sm smart-input"></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="row g-3">
+            <div class="col-md-6">
+              <h6 class="form-section-title text-primary">Yard & Plugging</h6>
+              <div class="row g-2">
+                 <div class="col-12"><label class="small fw-bold text-muted">Yard Occupancy</label></div>
+                 <div class="col-6 input-group input-group-sm"><span class="input-group-text bg-light">20'</span><input id="yard20" type="number" class="form-control smart-input"></div>
+                 <div class="col-6 input-group input-group-sm"><span class="input-group-text bg-light">40'</span><input id="yard40" type="number" class="form-control smart-input"></div>
+                 <div class="col-12 mt-2"><label class="small fw-bold text-muted">Plugging (Reefer/Day)</label></div>
+                 <div class="col-6 input-group input-group-sm"><span class="input-group-text bg-light">20'</span><input id="plug20" type="number" class="form-control smart-input"></div>
+                 <div class="col-6 input-group input-group-sm"><span class="input-group-text bg-light">40'</span><input id="plug40" type="number" class="form-control smart-input"></div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <h6 class="form-section-title text-primary">Detention (Per Day)</h6>
+              <div class="row g-1">
+                <div class="col-6"><small class="d-block text-muted fw-bold mb-1">Dry 20'</small><input id="detDC20" type="number" class="form-control form-control-sm smart-input"></div>
+                <div class="col-6"><small class="d-block text-muted fw-bold mb-1">Dry 40'</small><input id="detDC40" type="number" class="form-control form-control-sm smart-input"></div>
+                <div class="col-6"><small class="d-block text-muted fw-bold mb-1">RF 20'</small><input id="detRF20" type="number" class="form-control form-control-sm smart-input"></div>
+                <div class="col-6"><small class="d-block text-muted fw-bold mb-1">RF 40'</small><input id="detRF40" type="number" class="form-control form-control-sm smart-input"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-link text-muted fw-bold text-decoration-none" data-bs-dismiss="modal">Cancel</button>
+          <button type="button" class="btn btn-dark fw-bold" onclick="saveAdminSettings()">Save Configuration</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" id="summaryModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered">
+      <div class="modal-content border-0 shadow">
+        <div class="modal-header bg-warning text-white border-bottom-0">
+          <h5 class="modal-title fw-bold font-heading"><i class="fa-solid fa-calculator me-2"></i>Charges Summary</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        </div>
+        <div class="modal-body p-4">
+          <div class="alert alert-light border mb-4">
+             <h6 class="fw-bold small text-uppercase text-muted mb-2">Calculation Assumptions</h6>
+             <div class="row g-2" style="font-size: 0.8rem;">
+                <div class="col-6"><strong>ATA:</strong> <span id="sumATA">-</span></div>
+                <div class="col-6"><strong>Gate Out:</strong> <span id="sumGate">-</span></div>
+                <div class="col-6"><strong>Currency:</strong> <span id="sumCur">-</span></div>
+                <div class="col-6"><strong>Exch. Rate:</strong> <span id="sumRate">-</span></div>
+             </div>
+          </div>
+          <p class="small text-muted mb-2">Global totals (Tax Exclusive) for copy/paste:</p>
+          <ul class="list-group list-group-flush mb-4" id="summaryList"></ul>
+          <div class="text-end">
+            <h4 class="fw-bold text-dark" id="summaryTotal">0</h4>
+            <small class="text-muted">Total (HT)</small>
+          </div>
+        </div>
+        <div class="modal-footer bg-light">
+          <button type="button" class="btn btn-dark w-100 fw-bold" onclick="copySummaryToClipboard()">
+            <i class="fa-regular fa-copy me-2"></i>Copy for Excel
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="../../js/admin.js"></script>
+
+  <script>
+    // --- UTILITIES ---
+    if (typeof toggleClock !== 'function') { function toggleClock(){} }
+    function tickClock(){
+      const el = document.getElementById('realtime-clock');
+      if (el) el.textContent = new Date().toLocaleTimeString('en-GB');
+    }
+    setInterval(tickClock, 1000);
+    tickClock();
+
+    const $ = id => document.getElementById(id);
+    const setText = (id, val) => { const el = $(id); if(el) el.innerHTML = val; };
+    const setVal = (id, val) => { const el = $(id); if(el) el.value = val; };
+
+    const fmt = (n, cur) => {
+      return new Intl.NumberFormat("en-US", {
+        style: 'decimal', minimumFractionDigits: 0, maximumFractionDigits: 0
+      }).format(n) + " <span style='font-size:0.7em; color:#999'>" + cur + "</span>";
+    };
+
+    // --- STATE ---
+    let IS_MANUAL_MODE = false;
+    let searchTimer = null;
+
+    let STATE = {
+      fx: { XAF: 1, USD: 615, EUR: 655.957 },
+      yardTrigger: 14,
+      demurrage: { 
+         20: [7092, 12962.4], 40: [13465.2, 25444.8],
+         '20RF': [7092, 12962.4], '40RF': [13465.2, 25444.8],
+         '20HC': [7092, 12962.4], '40HC': [13465.2, 25444.8],
+         '20FR': [7092, 12962.4], '40FR': [13465.2, 25444.8]
+      },
+      storage: { 20: [300, 1200, 3600, 6000], 40: [600, 2400, 7200, 12000] },
+      yard: { 20: 100000, 40: 200000 },
+      detention: { dry: { 20: 7400, 40: 15000 }, rf: { 20: 37500, 40: 75000 } },
+      plug: { 20: 13000, 40: 13000 }
+    };
+
+    let GLOBAL_SUMS = {};
+
+    // --- MANUAL TOGGLE (Updated for Text Link) ---
+    function toggleManualMode() {
+        IS_MANUAL_MODE = !IS_MANUAL_MODE; 
+        
+        const link = $("manualModeLink"); // The new text link
+        const fields = ['bl', 'consignee', 'grossWeight', 'weightUnit', 'ata', 'gateOut', 'emptyReturn', 'containers'];
+        const searchBox = $("fileRefInput");
+
+        if (IS_MANUAL_MODE) {
+            // UI Update: Red Text
+            if(link) {
+                link.innerText = "Exit Manual Mode";
+                link.className = "small fw-bold text-decoration-underline text-danger";
+            }
+            
+            // Logic
+            fields.forEach(id => { const el = $(id); if(el) { el.removeAttribute('readonly'); el.classList.remove('bg-light'); } });
+            if(searchBox) { searchBox.value = ''; searchBox.placeholder = "Type Client Name..."; searchBox.removeAttribute('list'); }
+            alert("Manual Mode Active");
+
+        } else {
+            // UI Update: Blue Text
+            if(link) {
+                link.innerText = "Switch to Manual Mode";
+                link.className = "small fw-bold text-decoration-underline text-primary";
+            }
+
+            // Logic
+            fields.forEach(id => { const el = $(id); if(el) { el.value = ''; el.setAttribute('readonly', true); } });
+            if(searchBox) { searchBox.value = ''; searchBox.placeholder = "Search Active File..."; searchBox.setAttribute('list', 'fileOptions'); }
+            updateCalc();
+        }
+    }
+
+    function unlockContainers() { const el = $("containers"); if(el) { el.removeAttribute('readonly'); el.focus(); } }
+
+    function parseContainers(s) {
+      if (!s) return [];
+      const parts = s.split(/[,;]/);
+      const result = [];
+      const regex = /(?:(\d+)\s*[\*xX\s]\s*)?(20|40|45)(?:['"’]|ft|FT)?\s*([a-zA-Z0-9]*)/i;
+      parts.forEach(p => {
+        p = p.trim(); if(!p) return;
+        const m = p.match(regex);
+        if (m) { 
+           const qty = m[1] ? parseInt(m[1]) : 1;
+           const size = parseInt(m[2]);
+           const type = m[3] ? m[3].toUpperCase() : 'DC';
+           result.push({ q: qty, s: size, t: type }); 
+        }
+      });
+      return result;
+    }
+
+    // --- CALC LOGIC ---
+    function updateCalc() {
+      const ataVal = $("ata").value;
+      const gateVal = $("gateOut").value;
+      const contVal = $("containers").value;
+      const freeVal = $("freeTime").value || 0;
+      const free = parseInt(freeVal);
+
+      // 1. KPI Updates
+      setText("mFree", free);
+      let portStay = 0;
+      let dATA = null, dGate = null;
+
+      if (ataVal && gateVal) {
+         dATA = new Date(ataVal); dATA.setHours(12,0,0,0);
+         dGate = new Date(gateVal); dGate.setHours(12,0,0,0);
+         
+         portStay = Math.max(0, Math.round((dGate - dATA) / 86400000));
+         setText("mCharge", portStay);
+
+         const dueDate = new Date(dATA.getTime() + ((free - 1) * 86400000));
+         const statusEl = $("mDue");
+         const iconEl = $("status-icon");
+         const bgEl = $("status-icon-bg");
+
+         if (dGate > dueDate) {
+            if(statusEl) { statusEl.innerText = "EXCEEDED"; statusEl.className = "kpi-value text-danger"; }
+            if(iconEl) iconEl.className = "fa-solid fa-triangle-exclamation";
+            if(bgEl) bgEl.className = "me-3 rounded-3 bg-danger bg-opacity-10 text-danger d-flex align-items-center justify-content-center";
+         } else {
+            if(statusEl) { statusEl.innerText = "OK"; statusEl.className = "kpi-value text-success"; }
+            if(iconEl) iconEl.className = "fa-solid fa-check";
+            if(bgEl) bgEl.className = "me-3 rounded-3 bg-success bg-opacity-10 text-success d-flex align-items-center justify-content-center";
+         }
+      } else {
+         setText("mCharge", "0");
+         setText("mDue", "WAITING");
+      }
+
+      // 2. Stop if missing info
+      if (!ataVal || !gateVal || !contVal) {
+        const body = $("chargesTableBody");
+        if(body) body.innerHTML = `<tr><td colspan="5" class="text-center text-muted py-4">Enter ATA, Gate Out and Container info.</td></tr>`;
+        setText("tHT", "0"); setText("tVAT", "0"); setText("tTTC", "0");
+        return;
+      }
+
+      // 3. Financials
+      const containerList = parseContainers(contVal);
+      if (containerList.length === 0) return; 
+
+      const dRetInput = $("emptyReturn").value;
+      const dRet = dRetInput ? new Date(dRetInput) : dGate; 
+      if(dRetInput) dRet.setHours(12,0,0,0);
+
+      GLOBAL_SUMS = { 'Demurrage':0, 'Storage':0, 'Yard Occupancy':0, 'Plugging':0, 'Detention':0 };
+      let rows = [];
+
+      containerList.forEach(c => {
+        let typeCode = 'DC';
+        if(c.t.includes('RF') || c.t.includes('RE')) typeCode = 'RF';
+        else if(c.t.includes('HC')) typeCode = 'HC';
+        else if(c.t.includes('FR')) typeCode = 'FR';
+
+        const sizeKey = (c.s === 40 || c.s === 45) ? 40 : 20;
+        let demKey = sizeKey;
+        if(typeCode === 'HC') demKey = sizeKey + 'HC';
+        if(typeCode === 'FR') demKey = sizeKey + 'FR';
+        if(typeCode === 'RF') demKey = sizeKey + 'RF';
+
+        // Demurrage
+        const startBill = Math.max(12, free + 1);
+        const d1 = Math.max(0, Math.min(portStay, 21) - startBill + 1);
+        if (d1 > 0) {
+           const rate = STATE.demurrage[demKey] ? STATE.demurrage[demKey][0] : STATE.demurrage[sizeKey][0];
+           const amt = d1 * rate * c.q;
+           GLOBAL_SUMS['Demurrage'] += amt;
+           rows.push({cat:'Demurrage', desc:`${c.s}' ${typeCode} Tier 1 (${d1}d)`, qty:d1, unit:rate, total:amt});
+        }
+        const startBill2 = Math.max(22, free + 1);
+        const d2 = Math.max(0, portStay - startBill2 + 1);
+        if (d2 > 0) {
+           const rate = STATE.demurrage[demKey] ? STATE.demurrage[demKey][1] : STATE.demurrage[sizeKey][1];
+           const amt = d2 * rate * c.q;
+           GLOBAL_SUMS['Demurrage'] += amt;
+           rows.push({cat:'Demurrage', desc:`${c.s}' ${typeCode} Tier 2 (${d2}d)`, qty:d2, unit:rate, total:amt});
+        }
+
+        // Storage
+        const sRules = [[12,20,0],[21,40,1],[41,70,2],[71,9999,3]];
+        sRules.forEach(r => {
+            const sDays = Math.max(0, Math.min(portStay, r[1]) - r[0] + 1); 
+            if(sDays > 0) {
+                const rate = STATE.storage[sizeKey][r[2]];
+                const amt = sDays * rate * c.q;
+                GLOBAL_SUMS['Storage'] += amt;
+                rows.push({cat:'Storage', desc:`${r[0]}-${r[1]}d`, qty:sDays, unit:rate, total:amt});
+            }
+        });
+
+        // Yard
+        if (portStay >= STATE.yardTrigger) {
+           const rate = STATE.yard[sizeKey] || 0;
+           const amt = rate * c.q;
+           GLOBAL_SUMS['Yard Occupancy'] += amt;
+           rows.push({cat:'Yard Occupancy', desc:`${c.s}' One-off`, qty:1, unit:rate, total:amt});
+        }
+
+        // Plugging
+        if (typeCode === 'RF') {
+           const startPlug = new Date(dATA.getTime() + 86400000); 
+           let pDays = 0;
+           if(dGate >= startPlug) {
+             pDays = Math.round((dGate - startPlug) / 86400000) + 1;
+           }
+           if (pDays > 0) {
+              const pRate = STATE.plug[sizeKey] || 13000;
+              const amt = pDays * pRate * c.q;
+              GLOBAL_SUMS['Plugging'] += amt;
+              rows.push({cat:'Plugging', desc:`${c.s}' RF (${pDays}d)`, qty:pDays, unit:pRate, total:amt});
+           }
+        }
+        
+        // Detention
+        const trans = Math.max(0, Math.round((dRet - dGate) / 86400000));
+        const detD = Math.max(0, trans - 2);
+        if (detD > 0) {
+           let detKey = (typeCode === 'RF') ? 'rf' : 'dry';
+           const rate = STATE.detention[detKey][sizeKey];
+           const amt = detD * rate * c.q;
+           GLOBAL_SUMS['Detention'] += amt;
+           rows.push({cat:'Detention', desc:`${c.s}' Return`, qty:detD, unit:rate, total:amt});
+        }
+      });
+
+      renderTable(rows);
+    }
+
+    function renderTable(rows) {
+      const tbody = $("chargesTableBody");
+      const activePill = document.querySelector('.filter-pill.active');
+      const filter = activePill ? activePill.dataset.f : 'ALL';
+      const cur = $("currency").value;
+      const rate = 1 / STATE.fx[cur];
+      
+      let html = "", sumHT = 0;
+      rows.forEach(r => {
+         // --- FIXED LOGIC: Only sum if row matches filter ---
+         if (filter === 'ALL' || r.cat === filter) {
+           sumHT += r.total; 
+           
+           const val = r.total * rate;
+           html += `<tr>
+             <td class="fw-bold"><span class="badge bg-light text-dark border me-2">${r.cat}</span>${r.desc}</td>
+             <td>${r.qty}</td>
+             <td class="text-end font-monospace">${fmt(val, cur)}</td>
+             <td class="text-end font-monospace text-muted">${fmt(val*0.1925, cur)}</td>
+             <td class="text-end fw-bold">${fmt(val*1.1925, cur)}</td>
+           </tr>`;
+         }
+      });
+
+      if(tbody) tbody.innerHTML = html || `<tr><td colspan="5" class="text-center text-muted py-4">No charges found for this filter.</td></tr>`;
+
+      const totalHT = sumHT * rate;
+      setText("tHT", fmt(totalHT, cur));
+      setText("tVAT", fmt(totalHT * 0.1925, cur));
+      setText("tTTC", fmt(totalHT * 1.1925, cur));
+    }
+
+    function toggleFilter(el) {
+       document.querySelectorAll('.filter-pill.active').forEach(e=>e.classList.remove('active'));
+       el.classList.add('active');
+       updateCalc();
+    }
+
+    // --- EVENTS ---
+    document.addEventListener('DOMContentLoaded', () => {
+       const input = $("fileRefInput");
+       if(input) {
+           input.addEventListener('input', () => {
+             if(IS_MANUAL_MODE) { return; }
+             const q = input.value.trim();
+             if (q.length < 2) return;
+             clearTimeout(searchTimer);
+             searchTimer = setTimeout(() => searchActiveFiles(q), 300);
+           });
+           input.addEventListener('change', () => {
+              if(!IS_MANUAL_MODE && input.value.length > 3) loadActiveFile(input.value);
+           });
+       }
+       
+       ["ata","gateOut","emptyReturn","containers","freeTime","currency"].forEach(id => {
+          if($(id)) {
+             $(id).addEventListener("input", updateCalc);
+             $(id).addEventListener("change", updateCalc);
+          }
+       });
+    });
+
+    // --- DB CONNECT (Legacy) ---
+    async function apiGet(url){ try{return (await fetch(url)).json();}catch(e){return {ok:false};} }
+    async function searchActiveFiles(q){
+      const data = await apiGet(`extra-charges-simulator.php?ajax=search_files&q=${encodeURIComponent(q)}`);
+      const dl = $("fileOptions"); if(dl) dl.innerHTML = '';
+      if(data.ok && data.items && dl) {
+         data.items.forEach(item => {
+            const opt = document.createElement('option');
+            opt.value = item.ref; opt.label = item.label; dl.appendChild(opt);
+         });
+      }
+    }
+    async function loadActiveFile(ref){
+      const out = await apiGet(`extra-charges-simulator.php?ajax=file_details&ref=${encodeURIComponent(ref)}`);
+      if (!out.ok) { return; }
+      
+      const d = out.data || {};
+      setVal("bl", d.sea_bl); setVal("consignee", d.consignee);
+      setVal("ata", d.ata_date); setVal("grossWeight", d.gross_weight);
+      setVal("weightUnit", d.weight_unit); setVal("containers", d.containers);
+      
+      const ids = ['bl','consignee','ata','grossWeight','weightUnit'];
+      if(d.containers) ids.push('containers');
+      ids.forEach(id => { const el=$(id); if(el) el.setAttribute('readonly', true); });
+      
+      ["gateOut", "emptyReturn", "freeTime"].forEach(id => { const el = $(id); if(el) el.removeAttribute('readonly'); });
+      updateCalc();
+    }
+    
+    // --- ADMIN MODAL & SUMMARY (Full) ---
+    let adminModal, summaryModal;
+    function openAdminModal() {
+       setVal("fxUSD", STATE.fx.USD); setVal("fxEUR", STATE.fx.EUR); setVal("yardTrigger", STATE.yardTrigger);
+       setVal("dem20_1", STATE.demurrage[20][0]); setVal("dem20_2", STATE.demurrage[20][1]);
+       setVal("dem40_1", STATE.demurrage[40][0]); setVal("dem40_2", STATE.demurrage[40][1]);
+       setVal("dem20RF_1", STATE.demurrage['20RF'][0]); setVal("dem20RF_2", STATE.demurrage['20RF'][1]);
+       setVal("dem40RF_1", STATE.demurrage['40RF'][0]); setVal("dem40RF_2", STATE.demurrage['40RF'][1]);
+       setVal("dem20HC_1", STATE.demurrage['20HC'][0]); setVal("dem20HC_2", STATE.demurrage['20HC'][1]);
+       setVal("dem40HC_1", STATE.demurrage['40HC'][0]); setVal("dem40HC_2", STATE.demurrage['40HC'][1]);
+       setVal("dem20FR_1", STATE.demurrage['20FR'][0]); setVal("dem20FR_2", STATE.demurrage['20FR'][1]);
+       setVal("dem40FR_1", STATE.demurrage['40FR'][0]); setVal("dem40FR_2", STATE.demurrage['40FR'][1]);
+       setVal("st20_12", STATE.storage[20][0]); setVal("st20_21", STATE.storage[20][1]);
+       setVal("st20_41", STATE.storage[20][2]); setVal("st20_71", STATE.storage[20][3]);
+       setVal("st40_12", STATE.storage[40][0]); setVal("st40_21", STATE.storage[40][1]);
+       setVal("st40_41", STATE.storage[40][2]); setVal("st40_71", STATE.storage[40][3]);
+       setVal("yard20", STATE.yard[20]); setVal("yard40", STATE.yard[40]);
+       setVal("plug20", STATE.plug[20]); setVal("plug40", STATE.plug[40]);
+       setVal("detDC20", STATE.detention.dry[20]); setVal("detDC40", STATE.detention.dry[40]);
+       setVal("detRF20", STATE.detention.rf[20]); setVal("detRF40", STATE.detention.rf[40]);
+       adminModal = new bootstrap.Modal($('adminModal'));
+       adminModal.show();
+    }
+    function saveAdminSettings() {
+       STATE.fx.USD = +$("fxUSD").value; STATE.fx.EUR = +$("fxEUR").value; STATE.yardTrigger = +$("yardTrigger").value;
+       alert("Saved locally!"); adminModal.hide(); updateCalc();
+    }
+    function openSummaryModal() {
+       const ul = $("summaryList");
+       const cur = $("currency").value;
+       const rate = 1 / STATE.fx[cur];
+       ul.innerHTML = "";
+       setText("sumATA", $("ata").value || "-"); setText("sumGate", $("gateOut").value || "-");
+       setText("sumCur", cur); setText("sumRate", STATE.fx[cur].toFixed(2));
+       let gTot = 0;
+       ['Demurrage','Storage','Yard Occupancy','Plugging','Detention'].forEach(c => {
+          const val = (GLOBAL_SUMS[c]||0) * rate;
+          gTot += val;
+          const li = document.createElement("li");
+          li.className = "list-group-item d-flex justify-content-between px-0";
+          li.innerHTML = `<span>${c}</span><span class="fw-bold font-monospace">${fmt(val, cur)}</span>`;
+          ul.appendChild(li);
+       });
+       $("summaryTotal").innerHTML = fmt(gTot, cur);
+       summaryModal = new bootstrap.Modal($('summaryModal'));
+       summaryModal.show();
+    }
+    function copySummaryToClipboard() {
+       const cur = $("currency").value;
+       const rate = 1 / STATE.fx[cur];
+       let txt = "";
+       ['Demurrage','Storage','Yard Occupancy','Plugging','Detention'].forEach(c => {
+          txt += `${c}\t${((GLOBAL_SUMS[c]||0) * rate).toFixed(0)}\n`;
+       });
+       navigator.clipboard.writeText(txt);
+       alert("Copied!");
+    }
+  </script>
+</body>
+</html>

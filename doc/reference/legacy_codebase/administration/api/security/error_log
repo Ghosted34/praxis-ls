@@ -1,0 +1,105 @@
+[03-Feb-2026 21:32:14 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'smartqaq_smartls.audit_log' doesn't exist in /home/smartqaq/public_html/administration/api/security/audit_list.php:52
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(52): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 52
+[03-Feb-2026 21:32:16 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'smartqaq_smartls.audit_log' doesn't exist in /home/smartqaq/public_html/administration/api/security/audit_list.php:52
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(52): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 52
+[03-Feb-2026 21:34:17 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'smartqaq_smartls.audit_log' doesn't exist in /home/smartqaq/public_html/administration/api/security/audit_list.php:52
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(52): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 52
+[03-Feb-2026 21:34:48 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'smartqaq_smartls.audit_log' doesn't exist in /home/smartqaq/public_html/administration/api/security/audit_list.php:52
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(52): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 52
+[03-Feb-2026 21:34:51 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Table 'smartqaq_smartls.audit_log' doesn't exist in /home/smartqaq/public_html/administration/api/security/audit_list.php:52
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(52): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 52
+[17-Mar-2026 13:39:03 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[27-Mar-2026 15:47:13 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[30-Mar-2026 13:57:22 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[30-Mar-2026 13:57:24 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:31:18 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:31:20 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:33:57 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:34:28 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:05 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:06 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:08 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:17 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:36 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:36:42 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:37:54 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62
+[31-Mar-2026 16:38:08 UTC] PHP Fatal error:  Uncaught TypeError: preg_match(): Argument #2 ($subject) must be of type string, null given in /home/smartqaq/public_html/administration/api/security/audit_list.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/security/audit_list.php(62): preg_match('/^(127\\.0\\.0\\.1...', NULL)
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/security/audit_list.php on line 62

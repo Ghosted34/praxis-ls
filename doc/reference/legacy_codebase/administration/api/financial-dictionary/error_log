@@ -1,0 +1,30 @@
+[15-Jan-2026 12:08:02 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31
+[15-Jan-2026 12:08:07 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31
+[15-Jan-2026 12:08:19 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31
+[15-Jan-2026 12:08:43 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31
+[15-Jan-2026 12:10:36 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31
+[15-Jan-2026 12:10:39 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'item_code' in 'field list' in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php:31
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/financial-dictionary/search.php(31): mysqli->prepare('\r\n  SELECT item...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/financial-dictionary/search.php on line 31

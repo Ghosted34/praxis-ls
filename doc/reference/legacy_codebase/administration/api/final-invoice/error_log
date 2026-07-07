@@ -1,0 +1,64 @@
+[30-Jan-2026 05:59:28 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'ofm.vessel_name' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:46
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(46): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 46
+[30-Jan-2026 06:02:18 UTC] PHP Fatal error:  strict_types declaration must be the very first statement in the script in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 13
+[30-Jan-2026 06:11:10 UTC] PHP Warning:  session_start(): Session cannot be started after headers have already been sent in /home/smartqaq/public_html/administration/includes/init.php on line 5
+[30-Jan-2026 06:13:23 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'ofm.bl_awb_number' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:35
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(35): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 35
+[30-Jan-2026 06:14:26 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'ofm.bl_awb_number' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:35
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(35): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 35
+[30-Jan-2026 06:14:29 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'ofm.bl_awb_number' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:35
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(35): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 35
+[30-Jan-2026 07:57:03 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'cm.client_email' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(62): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 62
+[30-Jan-2026 07:57:09 UTC] PHP Fatal error:  Uncaught mysqli_sql_exception: Unknown column 'cm.client_email' in 'field list' in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:62
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/printfi.php(62): mysqli->prepare('\r\n    SELECT \r\n...')
+#1 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 62
+[31-Jan-2026 04:23:57 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:24:04 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:24:12 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:27:02 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:27:05 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:29:07 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:36:08 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:37:50 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 196
+[31-Jan-2026 04:38:07 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 196
+[31-Jan-2026 04:38:13 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 196
+[31-Jan-2026 04:38:51 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 197
+[31-Jan-2026 04:44:44 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 200
+[31-Jan-2026 04:44:47 UTC] PHP Parse error:  syntax error, unexpected token ":", expecting "-" or identifier or variable or number in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 200
+[13-Feb-2026 22:21:06 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php:523
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(523): mysqli_stmt->bind_param('sssssssddddddds...', 'SLAS-FI-0002', 'SL5089398SM', 'SLAS-MA-000004', '33144-C', '2026-02-13', '2026-03-15', 'XAF', 1.0, 800000.0, 115500.0, 915500.0, 70.0, 274650.0, 'Bank: AFRILAND ...', 'Transport has n...', 2)
+#1 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(79): saveInvoice(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php on line 523
+[13-Feb-2026 22:21:10 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php:523
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(523): mysqli_stmt->bind_param('sssssssddddddds...', 'SLAS-FI-0002', 'SL5089398SM', 'SLAS-MA-000004', '33144-C', '2026-02-13', '2026-03-15', 'XAF', 1.0, 800000.0, 115500.0, 915500.0, 70.0, 274650.0, 'Bank: AFRILAND ...', 'Transport has n...', 2)
+#1 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(79): saveInvoice(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php on line 523
+[13-Feb-2026 22:22:13 UTC] PHP Fatal error:  Uncaught ArgumentCountError: The number of elements in the type definition string must match the number of bind variables in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php:523
+Stack trace:
+#0 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(523): mysqli_stmt->bind_param('sssssssddddddds...', 'SLAS-FI-0002', 'SL5089398SM', 'SLAS-MA-000004', '33144-C', '2026-02-13', '2026-03-15', 'USD', 1.0, 800000.0, 115500.0, 915500.0, 70.0, 274650.0, 'Bank: AFRILAND ...', 'Transport has n...', 2)
+#1 /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php(79): saveInvoice(Object(mysqli))
+#2 {main}
+  thrown in /home/smartqaq/public_html/administration/api/final-invoice/final-invoice.php on line 523
+[13-Feb-2026 22:46:13 UTC] PHP Fatal error:  Cannot redeclare safeNum() (previously declared in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php:120) in /home/smartqaq/public_html/administration/api/final-invoice/printfi.php on line 206

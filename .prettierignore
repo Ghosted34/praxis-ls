@@ -7,3 +7,7 @@ media/
 uploads/
 *.min.js
 package-lock.json
+
+# Praxis backend sources are hand-formatted; skip to avoid a sync/truncation race
+src/
+scripts/

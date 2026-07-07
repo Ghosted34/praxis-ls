@@ -1,6 +1,5 @@
 /**
- * Zod validators for the platform (company dashboard) API. Reject bad input at
- * the edge; controllers/services trust what passes.
+ * Zod validators for the platform (company dashboard) API.
  */
 "use strict";
 

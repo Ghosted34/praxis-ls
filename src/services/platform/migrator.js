@@ -1,11 +1,8 @@
 /**
  * Migration file applier — reusable core shared by the CLI scripts and the
  * platform API. Plain `pg` (no ORM); DDL runs as multi-statement simple queries.
- *
- * Idempotent: a per-database ledger `public.schema_migration(scope, filename)`
- * records what has run, so migrate/provision can be re-run and EXISTING tenants
- * can be UPGRADED (only new files apply). Scope distinguishes 'platform' | 'db'
- * (extensions) | 'live' | 'sandbox'. See doc/DB_ARCHITECTURE.md §8.
+ * Idempotent via a per-database ledger public.schema_migration(scope, filename),
+ * so migrate/provision re-run safely and existing tenants can be upgraded.
  */
 "use strict";
 
@@ -26,18 +23,16 @@ const sorted = (dir, filter = () => true) =>
 
 const files = {
   platform: () => sorted(path.join(MIGRATIONS, "platform")),
-  tenantBootstrap: () => [
-    path.join(MIGRATIONS, "tenant", "0001_extensions.sql"),
-  ],
+  tenantBootstrap: () => [path.join(MIGRATIONS, "tenant", "0001_extensions.sql")],
   tenantSchema: () =>
     sorted(path.join(MIGRATIONS, "tenant"), (f) => !f.startsWith("0001_")),
-  tenantSeeds: () =>
-    sorted(path.join(MIGRATIONS, "seeds"), (f) => /^90/.test(f)),
+  tenantSeeds: () => sorted(path.join(MIGRATIONS, "seeds"), (f) => /^90/.test(f)),
   platformSeeds: () =>
     sorted(path.join(MIGRATIONS, "seeds"), (f) => /^91/.test(f)),
 };
 
-function client(database, { superuser = false } = {}) {
+function client(database, opts = {}) {
+  const superuser = opts.superuser === true;
   return new Client({
     host: config.TENANT_DB_HOST_DEFAULT,
     port: config.TENANT_DB_PORT_DEFAULT,
@@ -59,7 +54,7 @@ async function ensureDatabase(dbName) {
       [dbName],
     );
     if (rows.length === 0) {
-      await admin.query(`CREATE DATABASE "${dbName}"`); // identifier validated by caller
+      await admin.query(`CREATE DATABASE "${dbName}"`);
       logger.info({ dbName }, "created database");
       return true;
     }
@@ -71,12 +66,13 @@ async function ensureDatabase(dbName) {
 
 async function ensureLedger(cli) {
   await cli.query(
-    `CREATE TABLE IF NOT EXISTS public.schema_migration (
-       scope text NOT NULL, filename text NOT NULL,
-       applied_at timestamptz NOT NULL DEFAULT now(),
-       PRIMARY KEY (scope, filename))`,
+    "CREATE TABLE IF NOT EXISTS public.schema_migration (" +
+      "scope text NOT NULL, filename text NOT NULL, " +
+      "applied_at timestamptz NOT NULL DEFAULT now(), " +
+      "PRIMARY KEY (scope, filename))",
   );
 }
+
 async function appliedSet(cli, scope) {
   const { rows } = await cli.query(
     "SELECT filename FROM public.schema_migration WHERE scope=$1",
@@ -85,8 +81,9 @@ async function appliedSet(cli, scope) {
   return new Set(rows.map((r) => r.filename));
 }
 
-/** Apply files that haven't run for this scope; record each. Optional search_path. */
-async function applyTracked(cli, fileList, { searchPath, scope }) {
+async function applyTracked(cli, fileList, opts) {
+  const searchPath = opts.searchPath;
+  const scope = opts.scope;
   await ensureLedger(cli);
   const done = await appliedSet(cli, scope);
   let applied = 0;
@@ -112,8 +109,8 @@ async function applyTracked(cli, fileList, { searchPath, scope }) {
   return applied;
 }
 
-/** Untracked apply (used by sandbox rebuild, which resets its scope first). */
-async function applyFiles(cli, fileList, { searchPath } = {}) {
+async function applyFiles(cli, fileList, opts = {}) {
+  const searchPath = opts.searchPath;
   for (const f of fileList) {
     const sql = fs.readFileSync(f, "utf8");
     const prefixed = searchPath
@@ -123,7 +120,8 @@ async function applyFiles(cli, fileList, { searchPath } = {}) {
   }
 }
 
-const slugOk = (s) => typeof s === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(s);
+const slugOk = (s) =>
+  typeof s === "string" && /^[a-z][a-z0-9_]{1,40}$/.test(s);
 const tenantDbName = (slug) => `tenant_${slug}`;
 
 module.exports = {

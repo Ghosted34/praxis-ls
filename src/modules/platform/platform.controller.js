@@ -10,7 +10,6 @@ const { asyncHandler } = require("../../utils/errors");
 const actor = (req) =>
   req.platformUser ? req.platformUser.platform_user_id : null;
 
-// Catalogue
 const listModules = asyncHandler(async (_req, res) =>
   res.json({ data: await tenants.listModules() }),
 );
@@ -21,7 +20,6 @@ const listPlans = asyncHandler(async (_req, res) =>
   res.json({ data: await tenants.listPlans() }),
 );
 
-// Tenants
 const list = asyncHandler(async (_req, res) =>
   res.json({ data: await tenants.list() }),
 );
@@ -68,7 +66,6 @@ const migrate = asyncHandler(async (req, res) =>
   res.json({ data: await provisioning.migrateTenant(req.params.slug) }),
 );
 
-// Feature toggles
 const features = asyncHandler(async (req, res) =>
   res.json({ data: await tenants.resolvedFeatures(req.params.slug) }),
 );

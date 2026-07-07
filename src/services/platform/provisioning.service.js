@@ -1,14 +1,6 @@
 /**
  * Provisioning service — the reusable engine behind both the CLI scripts and the
- * company dashboard. No argv, no process.exit: callers get return values / throws.
- *
- *   migratePlatform()                       create+migrate platform DB, seed catalogue
- *   provisionTenant({slug,name,plan,...})   create tenant DB, migrate live+sandbox,
- *                                           seed, register, project features
- *   migrateTenant(slug)                     upgrade an EXISTING tenant (new files only)
- *   migrateAllTenants()                     upgrade every registered tenant
- *   wipeSandbox({slug})                     rebuild a tenant's sandbox schema
- *   projectFeatures(slug)                   recompute feature_state from plan+overrides
+ * company dashboard. No argv, no process.exit: callers get return values/throws.
  */
 "use strict";
 
@@ -16,7 +8,6 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
 
-// ── platform ────────────────────────────────────────────────────────────────
 async function migratePlatform() {
   await m.ensureDatabase(config.DB_NAME);
   const cli = m.client(config.DB_NAME, { superuser: true });
@@ -35,8 +26,8 @@ async function migratePlatform() {
   }
 }
 
-// ── tenant DB migration (live + sandbox) ─────────────────────────────────────
-async function migrateTenantDb(dbName, { seeds = true } = {}) {
+async function migrateTenantDb(dbName, opts = {}) {
+  const seeds = opts.seeds !== false;
   const cli = m.client(dbName, { superuser: true });
   await cli.connect();
   try {
@@ -47,11 +38,12 @@ async function migrateTenantDb(dbName, { seeds = true } = {}) {
         searchPath: `${schema},public`,
         scope: schema,
       });
-      if (seeds)
+      if (seeds) {
         applied += await m.applyTracked(cli, m.files.tenantSeeds(), {
           searchPath: `${schema},public`,
           scope: `${schema}-seed`,
         });
+      }
     }
     return applied;
   } finally {
@@ -59,19 +51,15 @@ async function migrateTenantDb(dbName, { seeds = true } = {}) {
   }
 }
 
-// ── provision a new tenant ───────────────────────────────────────────────────
-async function provisionTenant({
-  slug,
-  name,
-  plan = "full",
-  subdomain,
-  actorId = null,
-}) {
-  if (!m.slugOk(slug))
-    throw new Error("invalid slug (lowercase [a-z0-9_], starts with a letter)");
+async function provisionTenant(input) {
+  const slug = input.slug;
+  const name = input.name;
+  const plan = input.plan || "full";
+  const actorId = input.actorId || null;
+  if (!m.slugOk(slug)) throw new Error("invalid slug ([a-z0-9_], starts a-z)");
   if (!name) throw new Error("name is required");
   const dbName = m.tenantDbName(slug);
-  const host = subdomain || `${slug}.${config.APP_BASE_DOMAIN}`;
+  const host = input.subdomain || `${slug}.${config.APP_BASE_DOMAIN}`;
 
   logger.info({ slug, dbName, host, plan }, "provisioning tenant");
   await m.ensureDatabase(dbName);
@@ -89,17 +77,17 @@ async function provisionTenant({
     const planId = planRow.rows[0].plan_id;
 
     const t = await pf.query(
-      `INSERT INTO platform.tenant (slug, legal_name, display_name, plan_id, status)
-       VALUES ($1,$2,$2,$3,'PROVISIONING')
-       ON CONFLICT (slug) DO UPDATE SET legal_name=EXCLUDED.legal_name, plan_id=EXCLUDED.plan_id
-       RETURNING tenant_id`,
+      "INSERT INTO platform.tenant (slug, legal_name, display_name, plan_id, status) " +
+        "VALUES ($1,$2,$2,$3,'PROVISIONING') " +
+        "ON CONFLICT (slug) DO UPDATE SET legal_name=EXCLUDED.legal_name, plan_id=EXCLUDED.plan_id " +
+        "RETURNING tenant_id",
       [slug, name, planId],
     );
     tenantId = t.rows[0].tenant_id;
 
     await pf.query(
-      `INSERT INTO platform.tenant_database (tenant_id, db_host, db_port, db_name, app_role, secret_ref)
-       VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (db_host, db_port, db_name) DO NOTHING`,
+      "INSERT INTO platform.tenant_database (tenant_id, db_host, db_port, db_name, app_role, secret_ref) " +
+        "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (db_host, db_port, db_name) DO NOTHING",
       [
         tenantId,
         config.TENANT_DB_HOST_DEFAULT,
@@ -110,8 +98,8 @@ async function provisionTenant({
       ],
     );
     await pf.query(
-      `INSERT INTO platform.subdomain (tenant_id, host, is_primary) VALUES ($1,$2,true)
-       ON CONFLICT (host) DO NOTHING`,
+      "INSERT INTO platform.subdomain (tenant_id, host, is_primary) VALUES ($1,$2,true) " +
+        "ON CONFLICT (host) DO NOTHING",
       [tenantId, host],
     );
     await pf.query(
@@ -131,23 +119,19 @@ async function provisionTenant({
   return { slug, dbName, host, tenantId };
 }
 
-// ── project resolved feature state into the tenant DB (both schemas) ─────────
 async function projectFeatures(slug) {
   const pf = m.client(config.DB_NAME);
   await pf.connect();
   let features;
   try {
     const { rows } = await pf.query(
-      `SELECT fc.feature_key,
-              CASE WHEN ov.state IS NOT NULL THEN ov.state
-                   WHEN pf.included THEN fc.default_state ELSE 'off' END AS state,
-              CASE WHEN ov.state IS NOT NULL THEN 'override'
-                   WHEN pf.included THEN 'plan' ELSE 'default' END AS source
-         FROM platform.tenant t
-         JOIN platform.feature_catalogue fc ON true
-         LEFT JOIN platform.plan_feature pf ON pf.feature_key=fc.feature_key AND pf.plan_id=t.plan_id
-         LEFT JOIN platform.tenant_feature_override ov ON ov.feature_key=fc.feature_key AND ov.tenant_id=t.tenant_id
-        WHERE t.slug=$1`,
+      "SELECT fc.feature_key, " +
+        "CASE WHEN ov.state IS NOT NULL THEN ov.state WHEN pf.included THEN fc.default_state ELSE 'off' END AS state, " +
+        "CASE WHEN ov.state IS NOT NULL THEN 'override' WHEN pf.included THEN 'plan' ELSE 'default' END AS source " +
+        "FROM platform.tenant t JOIN platform.feature_catalogue fc ON true " +
+        "LEFT JOIN platform.plan_feature pf ON pf.feature_key=fc.feature_key AND pf.plan_id=t.plan_id " +
+        "LEFT JOIN platform.tenant_feature_override ov ON ov.feature_key=fc.feature_key AND ov.tenant_id=t.tenant_id " +
+        "WHERE t.slug=$1",
       [slug],
     );
     features = rows;
@@ -160,8 +144,8 @@ async function projectFeatures(slug) {
     for (const schema of ["live", "sandbox"]) {
       for (const f of features) {
         await cli.query(
-          `INSERT INTO ${schema}.feature_state (feature_key, state, source) VALUES ($1,$2,$3)
-           ON CONFLICT (feature_key) DO UPDATE SET state=EXCLUDED.state, source=EXCLUDED.source, projected_at=now()`,
+          `INSERT INTO ${schema}.feature_state (feature_key, state, source) VALUES ($1,$2,$3) ` +
+            "ON CONFLICT (feature_key) DO UPDATE SET state=EXCLUDED.state, source=EXCLUDED.source, projected_at=now()",
           [f.feature_key, f.state, f.source],
         );
       }
@@ -172,12 +156,12 @@ async function projectFeatures(slug) {
   return { projected: features.length };
 }
 
-// ── upgrade existing tenants ─────────────────────────────────────────────────
 async function migrateTenant(slug) {
   const applied = await migrateTenantDb(m.tenantDbName(slug));
-  await projectFeatures(slug); // pick up any new features
+  await projectFeatures(slug);
   return { slug, applied };
 }
+
 async function migrateAllTenants() {
   const slugs = await listTenantSlugs();
   const results = [];
@@ -185,8 +169,8 @@ async function migrateAllTenants() {
   return results;
 }
 
-// ── sandbox rebuild ──────────────────────────────────────────────────────────
-async function wipeSandbox({ slug }) {
+async function wipeSandbox(input) {
+  const slug = input.slug;
   const cli = m.client(m.tenantDbName(slug), { superuser: true });
   await cli.connect();
   try {
@@ -210,7 +194,6 @@ async function wipeSandbox({ slug }) {
   return { slug };
 }
 
-// ── helpers ──────────────────────────────────────────────────────────────────
 async function listTenantSlugs() {
   const pf = m.client(config.DB_NAME);
   await pf.connect();
@@ -223,10 +206,10 @@ async function listTenantSlugs() {
     await pf.end();
   }
 }
+
 async function audit(pf, actorId, tenantId, action, entityRef, payload) {
   await pf.query(
-    `INSERT INTO platform.platform_audit (actor_id, tenant_id, action, entity_ref, payload)
-     VALUES ($1,$2,$3,$4,$5)`,
+    "INSERT INTO platform.platform_audit (actor_id, tenant_id, action, entity_ref, payload) VALUES ($1,$2,$3,$4,$5)",
     [actorId, tenantId, action, entityRef, payload || {}],
   );
 }

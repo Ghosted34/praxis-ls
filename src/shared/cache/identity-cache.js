@@ -22,6 +22,7 @@ const GRANTS_TTL_S = 30;
 const authKey = (userId) => `identity:auth:${userId}`;
 const grantsKey = (roleIds, moduleKey) =>
   `identity:grants:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
+const scopeKey = (userId) => `identity:scope:${userId}`;
 
 /** Redis is best-effort for this cache — never let a Redis outage break auth. */
 function safeRedis() {
@@ -101,10 +102,40 @@ async function getGrants(client, { role_ids, module }) {
   return rows;
 }
 
+/**
+ * Resolve the scope_ids (entity/branch access, `scope`/`user_scope`) a user
+ * is confined to — the piece rbac.js's requirePermission() previously left
+ * unconsulted entirely ("every grant is currently treated as full-module
+ * ('all') access"). An empty result means the user has no scope
+ * assignments at all, which — to not silently lock out every existing
+ * tenant that never bothered assigning scopes — is treated by the caller
+ * as unrestricted ('all'), same as today's behavior. Only users who *do*
+ * have scope rows get actually confined to them. See doc/WORK_DONE.md.
+ */
+async function getUserScopeIds(client, userId) {
+  const redis = safeRedis();
+  const key = scopeKey(userId);
+
+  if (redis) {
+    const cached = await redis.get(key).catch(() => null);
+    if (cached) return JSON.parse(cached);
+  }
+
+  const { rows } = await client.query(`SELECT scope_id FROM user_scope WHERE user_id = $1`, [
+    userId,
+  ]);
+  const ids = rows.map((r) => r.scope_id);
+
+  if (redis) {
+    await redis.set(key, JSON.stringify(ids), "EX", GRANTS_TTL_S).catch(() => {});
+  }
+  return ids;
+}
+
 /** Call after a user is deactivated, role-reassigned, or session-revoked. */
 async function invalidateUser(userId) {
   const redis = safeRedis();
-  if (redis) await redis.del(authKey(userId)).catch(() => {});
+  if (redis) await redis.del(authKey(userId), scopeKey(userId)).catch(() => {});
 }
 
 /**
@@ -120,4 +151,4 @@ async function invalidateGrants() {
   if (keys.length) await redis.del(...keys).catch(() => {});
 }
 
-module.exports = { getAuthUser, getGrants, invalidateUser, invalidateGrants };
+module.exports = { getAuthUser, getGrants, getUserScopeIds, invalidateUser, invalidateGrants };

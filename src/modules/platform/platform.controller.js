@@ -5,10 +5,19 @@
 
 const tenants = require("../../services/platform/tenants.service");
 const provisioning = require("../../services/platform/provisioning.service");
+const platformAuthService = require("../../services/platform/auth.service");
 const { asyncHandler } = require("../../utils/errors");
 
 const actor = (req) =>
   req.platformUser ? req.platformUser.platform_user_id : null;
+
+const login = asyncHandler(async (req, res) => {
+  const result = await platformAuthService.login({
+    email: req.body.email,
+    password: req.body.password,
+  });
+  res.json({ data: result });
+});
 
 const listModules = asyncHandler(async (_req, res) =>
   res.json({ data: await tenants.listModules() }),
@@ -90,6 +99,7 @@ const clearFeature = asyncHandler(async (req, res) =>
 );
 
 module.exports = {
+  login,
   listModules,
   listFeatures,
   listPlans,

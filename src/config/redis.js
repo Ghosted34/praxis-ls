@@ -20,12 +20,16 @@ let client = null;
 let publisher = null;
 let subscriber = null;
 
+/**
+ * This previously read config.REDIS_HOST/PORT/PASSWORD/DB, none of which
+ * exist in src/config/env.js's Zod schema (only REDIS_URL does) — flagged
+ * as dead config drift in doc/RBAC_SECURITY_KICKOFF.md and left alone at
+ * the time. Now fixed for real: ioredis takes a connection string directly,
+ * and REDIS_URL already carries host/port/password/db (redis://[:pass@]
+ * host:port[/db]) — no need to hand-parse it into separate fields.
+ */
 function buildOptions() {
   return {
-    host: config.REDIS_HOST,
-    port: config.REDIS_PORT,
-    password: config.REDIS_PASSWORD || undefined,
-    db: config.REDIS_DB,
     maxRetriesPerRequest: null, // BullMQ requires null
     enableReadyCheck: true,
     reconnectOnError(err) {
@@ -36,9 +40,9 @@ function buildOptions() {
 }
 
 async function initRedis() {
-  client = new IORedis(buildOptions());
-  publisher = new IORedis(buildOptions());
-  subscriber = new IORedis(buildOptions());
+  client = new IORedis(config.REDIS_URL, buildOptions());
+  publisher = new IORedis(config.REDIS_URL, buildOptions());
+  subscriber = new IORedis(config.REDIS_URL, buildOptions());
 
   for (const [name, c] of [
     ["main", client],

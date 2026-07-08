@@ -12,6 +12,10 @@ const slug = z
 const onoff = z.enum(["on", "off"]);
 
 const schemas = {
+  login: z.object({
+    email: z.string().trim().email(),
+    password: z.string().min(1),
+  }),
   provision: z.object({
     slug,
     name: z.string().min(2),

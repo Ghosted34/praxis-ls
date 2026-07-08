@@ -11,12 +11,17 @@ const { emitEvent, audit } = require("../events/emit");
 const { asyncHandler, AppError } = require("../../utils/errors");
 const express = require("express");
 
-/** cfg: { table, pk, activeColumn?, searchColumn?, orderBy? } */
+/** cfg: { table, pk, activeColumn?, searchColumn?, orderBy?, scopeColumn? }
+ *  scopeColumn is the record-level-scope opt-in (see doc/WORK_DONE.md /
+ *  middleware/rbac.js): if set, list() filters by it whenever the caller
+ *  passes a non-null scopeIds array (req.scope_ids from requirePermission).
+ *  Not set (the default, and every existing module today) → no behavior
+ *  change at all. */
 function makeRepo(cfg) {
   const orderBy = cfg.orderBy || "created_at DESC";
   return {
     cfg,
-    async list(client, q = {}) {
+    async list(client, q = {}, scopeIds = null) {
       const { limit, offset } = page(q);
       const params = [limit, offset];
       const wh = [];
@@ -24,6 +29,10 @@ function makeRepo(cfg) {
       if (cfg.searchColumn && q.q) {
         params.push(`%${q.q}%`);
         wh.push(`${cfg.searchColumn} ILIKE $${params.length}`);
+      }
+      if (cfg.scopeColumn && scopeIds) {
+        params.push(scopeIds);
+        wh.push(`${cfg.scopeColumn} = ANY($${params.length}::uuid[])`);
       }
       const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
       const { rows } = await client.query(
@@ -45,7 +54,15 @@ function makeService(opts) {
   const { repo, moduleKey, entity, events } = opts;
   const ref = (row) => `${entity}:${row[repo.cfg.pk]}`;
   return {
-    list: (client, q) => repo.list(client, q),
+    // Read by shared/crud/entity-registry.js — lets soft-delete restore
+    // find the real table for an entity_ref prefix without guessing.
+    __entityMeta: {
+      entity,
+      table: repo.cfg.table,
+      pk: repo.cfg.pk,
+      activeColumn: repo.cfg.activeColumn || null,
+    },
+    list: (client, q, scopeIds) => repo.list(client, q, scopeIds),
     get: (client, id) => repo.findById(client, id),
     async create(client, { data, actor }) {
       const payload = opts.beforeCreate ? opts.beforeCreate(data) : data;
@@ -80,7 +97,9 @@ function makeService(opts) {
 function makeController(service, label = "Record") {
   const actor = (req) => req.user || { user_id: null };
   return {
-    list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+    list: asyncHandler(async (req, res) =>
+      res.json({ data: await req.tenantDb((c) => service.list(c, req.query, req.scope_ids ?? null)) }),
+    ),
     get: asyncHandler(async (req, res) => {
       const row = await req.tenantDb((c) => service.get(c, req.params.id));
       if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);

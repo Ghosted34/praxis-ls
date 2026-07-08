@@ -70,6 +70,20 @@ const Schema = z.object({
   JWT_REFRESH_TTL: z.string().default("30d"),
   SESSION_INACTIVITY_MIN: int(30),
 
+  // AES-256-GCM key for credentials-at-rest (services/encryption.service.js:
+  // vendor API keys, social tokens, bank creds, TOTP secrets). Must be 32
+  // bytes hex-encoded (64 hex chars). This var didn't exist in the Zod
+  // schema at all before — encryption.service.js read config.ENCRYPTION_KEY
+  // unconditionally, which was `undefined`; Buffer.from(undefined, "hex")
+  // would throw at first use. The default below is a fixed dev-only value
+  // (NOT random per boot, so encrypted values stay decryptable across
+  // restarts in dev) — MUST be overridden with a real random key in
+  // production, same as the JWT secrets above.
+  ENCRYPTION_KEY: z
+    .string()
+    .regex(/^[0-9a-f]{64}$/i, "must be 64 hex chars (32 bytes)")
+    .default("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"),
+
   // AI providers (DeepSeek primary, Gemini fallback, Groq voice) — see §0400.
   AI_ENABLED_DEFAULT: bool(false),
   DEEPSEEK_API_KEY: z.string().default(""),

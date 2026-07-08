@@ -14,6 +14,11 @@ const {
 } = require("../../middleware/platform-auth");
 
 const router = express.Router();
+
+// Public — this is how a platform token is obtained in the first place.
+// (Previously nothing here at all — see doc/WORK_DONE.md.)
+router.post("/auth/login", validate("login"), c.login);
+
 router.use(platformAuth, requirePlatformRole("PLATFORM_ROOT_ADMIN"));
 
 router.get("/catalogue/modules", c.listModules);

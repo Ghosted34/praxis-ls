@@ -23,11 +23,17 @@
  * names (existing callers — ai/insights, ai/governance — pass 'view' etc.)
  * but maps them onto the real columns below.
  *
+ * Record-level scope: `user_scope`/`scope` (entity/branch) are now
+ * consulted here (see doc/WORK_DONE.md) — req.scope_ids is set to the
+ * caller's assigned scope_ids, or null if they have none (null =
+ * unrestricted, same as today's pre-existing behavior, so tenants that
+ * never bothered assigning scopes aren't suddenly locked out). Modules opt
+ * into actually filtering by declaring `scopeColumn` in their makeRepo()
+ * config (shared/crud/resource.js) — this wires the mechanism end-to-end
+ * but doesn't retrofit which column means "scope" on each of the 70
+ * existing module tables; that's a per-module call outside this pass.
+ *
  * NOT YET HANDLED (flagged, not silently dropped):
- *   - record-level scope ('own'/'team'/'all') — the `permission` table has
- *     no such column; `user_scope`/`scope` exist for entity/branch scoping
- *     but aren't wired into this check yet. Every grant is currently
- *     treated as full-module ('all') access. See doc/RBAC_SECURITY_KICKOFF.md.
  *   - 'export' and 'publish' have no dedicated DB column yet — mapped to
  *     can_read / can_update respectively as a placeholder; revisit if the
  *     product needs to grant them independently of read/update.
@@ -69,6 +75,7 @@ function requirePermission(moduleKey, action) {
     // CEO bypass (PRD §3 — CEO sees everything by design)
     if (req.user.is_ceo) {
       req.permission_scope = "all";
+      req.scope_ids = null;
       return next();
     }
 
@@ -77,10 +84,13 @@ function requirePermission(moduleKey, action) {
     }
 
     // Cached (30 s TTL; permission/role writes invalidate every grants entry)
-    // — saves a DB round-trip on every permission-gated request.
-    const grants = await req.tenantDb((client) =>
-      identityCache.getGrants(client, { role_ids: req.user.role_ids, module: moduleKey }),
-    );
+    // — saves a DB round-trip on every permission-gated request. One
+    // tenantDb call resolves both the grant check and the caller's scope
+    // assignment together.
+    const { grants, scopeIds } = await req.tenantDb(async (client) => ({
+      grants: await identityCache.getGrants(client, { role_ids: req.user.role_ids, module: moduleKey }),
+      scopeIds: await identityCache.getUserScopeIds(client, req.user.user_id),
+    }));
 
     const allowed = grants.some((g) => g[column] === true);
     if (!allowed) {
@@ -91,8 +101,12 @@ function requirePermission(moduleKey, action) {
       );
     }
 
-    // Record-level scope isn't modelled in `permission` yet — see note above.
-    req.permission_scope = "all";
+    // null = unrestricted (no scope rows assigned — today's behavior,
+    // unchanged); a non-empty array confines the request to those scopes.
+    // Repos that opt in (cfg.scopeColumn) filter by this; repos that don't
+    // ignore it entirely, same as before this change.
+    req.scope_ids = scopeIds.length ? scopeIds : null;
+    req.permission_scope = req.scope_ids ? "scoped" : "all";
     return next();
   };
 }

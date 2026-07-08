@@ -10,6 +10,7 @@ const helmet = require("helmet");
 const cors = require("cors");
 const { config } = require("./config/env");
 const { logger } = require("./config/logger");
+const { initRedis } = require("./config/redis");
 const routes = require("./routes");
 const { AppError } = require("./utils/errors");
 
@@ -51,6 +52,12 @@ function buildApp() {
 
 function start() {
   const app = buildApp();
+  // Best-effort — identity-cache/session-store already tolerate a missing
+  // Redis client (see shared/cache/identity-cache.js's safeRedis()), so a
+  // Redis outage at boot degrades caching/session-kill rather than crashing
+  // the API. initRedis() was never called anywhere before this; getClient()
+  // would throw "redis not initialised" on every lookup until now.
+  initRedis().catch((err) => logger.warn({ err: err.message }, "redis unavailable at boot — continuing without it"));
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );

@@ -46,6 +46,15 @@ async function authMiddleware(req, _res, next) {
     throw new AppError("INVALID_TOKEN", "Invalid access token", 401);
   }
 
+  // Was missing entirely: refresh tokens (typ:"refresh") and, now, 2FA
+  // pending tokens (typ:"2fa_pending") are signed with this same secret —
+  // without this check either could be replayed here as a real access
+  // token. platform-auth.js already had the equivalent check; this side
+  // didn't. See doc/WORK_DONE.md.
+  if (payload.typ && payload.typ !== "access") {
+    throw new AppError("INVALID_TOKEN", "Not an access token", 401);
+  }
+
   if (!req.tenantDb) {
     throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before authMiddleware", 500);
   }

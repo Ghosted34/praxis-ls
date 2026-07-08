@@ -95,6 +95,13 @@ scripts/tenant/create-admin.js               NEW — bootstraps the first login 
 client/README.md                             NEW — frontend kickoff outline (not started yet)
 ```
 
+> Update (2026-07-08): `src/modules/security/auth/` above was merged into
+> `src/modules/security/app_user/` — auth's login/refresh/logout operate on
+> the same `app_user` table/entity, so it's one module now instead of two.
+> External URLs are unchanged (`/api/tenant/auth/*`, `/api/tenant/users/*`
+> still both work — see `doc/WORK_DONE.md`). Left the table above as-written
+> since it's the historical record of what this kickoff added.
+
 Every new module follows CONVENTIONS.md's 6-file layout exactly
 (`.repo/.service/.controller/.routes/.validator/.events`) so
 `module-loader.js` auto-mounts it — no wiring elsewhere. `capability` /

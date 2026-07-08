@@ -11,9 +11,25 @@ Backend is **Node 20 (CommonJS) + Express + PostgreSQL 16 (pgvector) + Redis**. 
 ## 1. Install & configure
 ```bash
 npm install
-cp .env.example .env      # then edit — see src/config/env.js for every var + default
+cp .env.example .env      # then edit — see below, .env.example is missing several vars
 ```
-Key vars: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` (the **platform** DB the app boots against), `TENANT_DB_SUPERUSER[_PASSWORD]` (used by provisioning to `CREATE DATABASE`), `REDIS_URL`, `JWT_*`, AI keys (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY` for embeddings), `EMBEDDINGS_DIM` (must match `ai_chunk.embedding vector(N)` = 1536).
+Key vars: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` (the **platform** DB the app boots against), `TENANT_DB_SUPERUSER[_PASSWORD]` (used by provisioning to `CREATE DATABASE`), `REDIS_URL`, `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`, AI keys (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY` for embeddings), `EMBEDDINGS_DIM` (must match `ai_chunk.embedding vector(N)` = 1536).
+
+> **`.env.example` is stale** (inherited from a prior project — it has `JWT_ACCESS_SECRET`/`REFRESH_SECRET`
+> missing entirely, no `DB_HOST/PORT/NAME/USER/PASSWORD` block). `src/config/env.js` is the actual source of
+> truth for every var + default — when in doubt, read that file, not `.env.example`. Minimum to boot locally:
+> ```
+> DB_HOST=localhost
+> DB_PORT=5432
+> DB_NAME=praxis_platform
+> DB_USER=praxis-admin
+> DB_PASSWORD=changeme          # matches docker-compose.yml's postgres service
+> REDIS_URL=redis://localhost:6379
+> JWT_ACCESS_SECRET=dev-access-secret-change-me
+> JWT_REFRESH_SECRET=dev-refresh-secret-change-me
+> TENANT_DB_SUPERUSER=praxis-admin
+> TENANT_DB_SUPERUSER_PASSWORD=changeme
+> ```
 
 > Rotate every AI/FX key shared during discovery before first use.
 
@@ -36,6 +52,15 @@ This single command:
 5. projects the plan's resolved feature flags into `feature_state`.
 
 No hand-editing of any tenant database is ever required — everything is driven from here / the company console.
+
+**Provisioning creates no users.** Bootstrap someone who can log in before anything else:
+```bash
+npm run tenant:create-admin -- --slug=smartls --email=you@example.com --name="You" --password=secret123
+# --env=sandbox to also (or only) seed the sandbox schema; both can coexist for testing
+```
+Defaults to the `CEO` role (bypasses RBAC checks by design) since no `permission` grants are seeded for any
+other role yet — see `doc/WORK_TO_BE_DONE.md` Phase 0. Use the new `permission` module once logged in to grant
+scoped access to everyone else instead of making every user CEO.
 
 ## 4. Run
 ```bash

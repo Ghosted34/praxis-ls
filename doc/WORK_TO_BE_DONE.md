@@ -15,22 +15,40 @@ Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organi
 
 ## Phase 0 — Foundations
 
-- [ ] Monorepo scaffold (pnpm/Turborepo): `apps/api`, `apps/web`, `apps/workers`, `packages/shared`
-- [ ] Docker Compose for local dev; Dockerfiles for `api`, `web`, `worker-jobs`, `worker-ai`, `worker-pdf`, reverse proxy (Caddy/Nginx, auto TLS)
-- [ ] CI/CD: lint, type-check, unit/integration tests on every merge; staged promotion (local → staging → prod)
-- [ ] Auth: Argon2id password hashing, JWT access+refresh, 2FA (TOTP), 30-min inactivity auto-logout, Redis session store with remote kill
-- [ ] RBAC policy engine: Role × Capability (Issuer/Validator/Approver) × Scope × per-module CRUD × field-level visibility, as configuration data
-- [ ] Seed default role × module-group access matrix and the Issuer/Validator/Approver-by-document-type table from `doc/SuperAdmin_UserJourney_RBAC.docx` (Tenant Super Admin can tune per tenant); implement `Line Manager` as a capability layered on any role, not a standalone role
-- [ ] Multi-tenancy: **one Postgres database per tenant** (not schema-per-tenant in a shared cluster) + shared `platform` database; per-tenant connection registry; subdomain resolution middleware; tenant-context guard on all queries
-- [ ] Tenant provisioning tooling: script/CLI to create a new tenant database, run the full migration set against it, and seed branding + COA — this replaces a one-line schema-create, so build it as first-class tooling, not a manual step
-- [ ] Platform console (Praxis-only): create/suspend tenants, assign subdomain + database, seed branding + COA, set capacity, toggle tenant Live
-- [ ] White-label theming: Settings → Appearance, light/dark logos, colour tokens as CSS vars, per-tenant PWA manifest
-- [ ] Test/Live sandbox: Live + Sandbox environment inside each tenant's own database, top-bar toggle, TEST MODE banner, sandboxed side-effects, configurable wipe cron (default 14 days)
-- [ ] Oso RBAC integration: model roles/capabilities/scopes as Oso policy data; guard/interceptor layer that calls `oso.authorize()` per endpoint + field resolver
-- [ ] Immutable ledger service (append-only, filterable by user/action/date/IP/module)
-- [ ] Universal Event Engine skeleton: event registration API, standardised `entity.action` naming
-- [ ] Watch-the-Watcher: permission/role/God-Mode change → high-priority immutable event + CEO/Management notification; block Super Admin self-granting Issuer/Validator/Approver in Live
-- [ ] Two-tier deletion model: everyday **soft-delete** (any authorised user; restore requires a second admin's co-approval) distinct from **God Mode hard purge** (CEO + PIN only, refuses ledger-connected records, full removed payload logged to the immutable ledger)
+> Status below was verified against the actual code/migrations on 2026-07-07
+> (not assumed from this doc or the README — several lines here were stale).
+> See `doc/RBAC_SECURITY_KICKOFF.md` for the full audit trail behind the
+> Auth/RBAC lines. Anyone picking up an unchecked item: re-verify before
+> starting, this list rots fast in a repo this size.
+
+- [x] Monorepo scaffold — done, plain npm workspace (`src/`, `migrations/`, `scripts/`), not the pnpm/Turborepo `apps/*` layout this line describes. Works; just not literally as specced. `client/` does not exist yet (see Phase 2+ / frontend note at the bottom).
+- [x] Docker Compose for local dev (`docker-compose.yml`: postgres/pgvector, redis, api, worker) + a root `Dockerfile`. No separate `worker-ai`/`worker-pdf`/reverse-proxy containers — one `worker` service covers all queues for now.
+- [ ] CI/CD — not started. `.github/workflows/deploy.yaml` exists but is an empty placeholder (1 line) — correcting an earlier pass of this doc that said the folder didn't exist at all; it does, it's just empty.
+- [ ] Auth — **partially done as of this kickoff**:
+  - [x] Argon2id password hashing (verified in `auth.service.js`, `godmode.service.js`)
+  - [x] JWT access+refresh (`src/modules/security/auth/` — login/refresh are real)
+  - [ ] 2FA (TOTP) — `app_user.totp_secret_enc`/`is_2fa_enabled` columns exist; login throws `501` on a 2FA user. Needs a pending-2FA-token design decision before building (see TODO in `auth.service.js`).
+  - [ ] 30-min inactivity auto-logout — `SESSION_INACTIVITY_MIN` is configured but not enforced anywhere.
+  - [ ] Redis session store with remote kill — sessions are written to Postgres (`user_session`) on login/logout; no Redis-backed active-session store, no dedicated "kill this session remotely" endpoint (only generic CRUD via the `session` module).
+- [ ] RBAC policy engine — **schema was already there; API layer was not, now is**:
+  - [x] `role`/`capability`/`scope`/`permission`/`field_visibility` tables + `user_role`/`user_capability`/`user_scope` (pre-existing, `migrations/tenant/0110_rbac.sql`)
+  - [x] Admin CRUD + auth/RBAC gating for all five, now via `src/modules/security/{iam_role,capability,scope,permission,field_visibility}` (the last four added this kickoff — `iam_role` itself still isn't gated, see below)
+  - [ ] `iam_role`/`session`/`audit_ledger`/`setting` still use the ungated `makeRouter()` — no `authMiddleware`/`requirePermission` on them yet, unlike the four new modules
+  - [ ] Record-level scope (`own`/`team`/`all`) enforcement — `scope`/`user_scope` tables exist but nothing reads them yet; every grant is currently treated as full-module access
+- [ ] Seed default role × module-group access matrix from `doc/SuperAdmin_UserJourney_RBAC.docx` — **not done**. Zero `permission` rows are seeded for any of the 11 default roles (confirmed by reading every seed file). A freshly provisioned tenant has no one who can do anything except a manually-bootstrapped `CEO` user (bypasses RBAC by design — see `scripts/tenant/create-admin.js`). This is the next real blocker: without it, RBAC has an API but no actual grants to manage for non-CEO roles.
+- [ ] `Line Manager` as a capability layered on any role — `is_line_manager` column + `LINE_MANAGER` capability code exist in schema; no service logic actually applies it yet.
+- [x] Multi-tenancy — one Postgres DB per tenant, `platform` registry DB, per-tenant connection pool (`registry.service.js`), subdomain resolution (`host-tenent-resolver.js`), tenant-context guard (`tenant-context.js`). Verified working end-to-end via the login smoke test in `RBAC_SECURITY_KICKOFF.md`.
+- [x] Tenant provisioning tooling — `npm run db:provision` / `provisioning.service.js`: creates the DB, migrates live+sandbox, seeds COA/tax/RBAC/events, registers + projects features. Gap: seeds no users (see `scripts/tenant/create-admin.js` above).
+- [ ] Platform console — backend API is done (`/api/platform/*` in `tenants.service.js`: list/create/suspend/resume/go-live/capacity/sandbox/feature-toggle, all audited). **No UI** — there is no `client/` at all yet, Praxis-only or tenant-facing.
+- [ ] White-label theming — `setting` table (`section/key/value jsonb`) and `corporate_entity` (logo refs, doc prefix) exist; not verified whether anything actually generates CSS vars or a per-tenant PWA manifest from them. Needs a look before marking done either way.
+- [ ] Test/Live sandbox — backend mechanics are done (separate `live`/`sandbox` schemas, `X-Praxis-Env` header switch in `tenant-context.js`, `npm run db:sandbox:wipe`). Top-bar toggle + TEST MODE banner are frontend — don't exist (no `client/`).
+- [x] ~~Oso RBAC integration~~ — **superseded by explicit decision**: no Oso anywhere in `src/`; RBAC is our own role×capability×scope×permission×field_visibility model instead (see `RBAC_SECURITY_KICKOFF.md`). Leaving this line struck-through rather than deleted so nobody re-adds Oso thinking it was never decided.
+- [x] Immutable ledger service — `immutable_ledger` table is genuinely append-only (`trg_ledger_ro` blocks UPDATE/DELETE at the DB level), `audit()` helper writes to it, `audit_ledger` module reads it. Minor wrinkle: `audit_ledger.routes.js` still exposes a generic DELETE (soft-delete) endpoint via `makeRouter()`'s default — harmless (writes to a separate `soft_delete` table, doesn't touch the ledger row) but semantically odd for an "immutable" resource; worth a `softDeletable: false` fix.
+- [ ] Universal Event Engine — schema exists (`event_type`, `workflow`, `workflow_step`, `event_log`, `approval_task` — `migrations/tenant/0120_events_workflow.sql`) and the emit side works (`emitEvent`, used by every module service). No event-registration API and no workflow-designer endpoints (no `workflow` module anywhere in `src/modules`) — modules currently don't "auto-appear" in any config UI because there's no UI or registration endpoint yet, just the seeded event-type rows.
+- [ ] Watch-the-Watcher — the three high-priority events (`permission.changed`, `role.changed`, `field_visibility.changed`) are seeded and now actually fire (`permission`/`field_visibility` services emit them as of this kickoff). Nothing consumes them to notify CEO/Management yet, and the Live-mode self-grant block isn't implemented (flagged as TODO in `permission.service.js`).
+- [ ] Two-tier deletion model — soft-delete write path is done and DB-enforced (`soft_delete` table, `CHECK (restored_by <> deleted_by)` for maker-checker); God Mode hard purge is done (`godmode.service.js`: PIN-gated, refuses ledger-connected records). **Restore is not implemented anywhere** — `soft_delete` rows can be written but nothing reads them back to actually restore a record.
+
+**Frontend note:** several boxes above are unchecked purely because `client/` doesn't exist yet (platform console UI, sandbox toggle/banner, white-label rendering). See `client/README.md` for the kickoff outline — backend Auth/RBAC needs to be further along (seeded grants, at minimum) before that's worth starting for real.
 
 ## Phase 1 — Accounting spine
 

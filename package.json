@@ -25,6 +25,7 @@
     "setup": "npm install && npm run db:migrate:platform",
     "db:migrate:tenants": "node scripts/db/migrate-tenants.js",
     "platform:create-admin": "node scripts/platform/create-admin.js",
+    "tenant:create-admin": "node scripts/tenant/create-admin.js",
     "ai:reindex": "node scripts/ai/reindex.js",
     "ai:reindex:all": "node scripts/ai/reindex.js --all"
   },

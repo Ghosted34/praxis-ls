@@ -55,7 +55,9 @@ async function createSession(client, { userId, deviceLabel, ip, userAgent, envir
 
 async function getActiveSession(client, sessionId) {
   const { rows } = await client.query(
-    `SELECT session_id, user_id, killed_at FROM user_session WHERE session_id = $1`,
+    `SELECT session_id, user_id, killed_at, last_seen_at,
+            EXTRACT(EPOCH FROM (now() - last_seen_at)) AS idle_seconds
+       FROM user_session WHERE session_id = $1`,
     [sessionId],
   );
   return rows[0] || null;

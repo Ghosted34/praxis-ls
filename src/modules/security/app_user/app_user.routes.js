@@ -8,12 +8,25 @@
 "use strict";
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
-const { makeRouter } = require("../../../shared/crud/resource");
+const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./app_user.controller");
 const validator = require("./app_user.validator");
 
-// Generic CRUD (list/get/create/update/soft-delete) — unchanged, still ungated.
-const usersRouter = makeRouter({ controller, validator });
+// Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
+// one deliberately-ungated security module, see doc/WORK_TO_BE_DONE.md Phase 0).
+// User administration is IAM & user access → MOD-67, same grant the rest of the
+// IAM screen group (iam_role/capability/scope/permission/field_visibility) uses.
+// Built explicitly (not makeRouter) so each verb carries its own action check,
+// mirroring capability.routes.js. Bootstrap still works: the first admin is
+// created by scripts/tenant/create-admin.js (direct DB write), not this API.
+const MODULE = "MOD-67";
+const usersRouter = express.Router();
+usersRouter.use(authMiddleware);
+usersRouter.get("/", requirePermission(MODULE, "view"), controller.list);
+usersRouter.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
+usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+usersRouter.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
 
 // Auth actions — login/refresh/2fa-verify are public (this is how a token
 // is obtained in the first place, and the 2FA challenge token replaces the

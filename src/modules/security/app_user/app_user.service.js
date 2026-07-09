@@ -246,6 +246,30 @@ async function refresh(client, { refreshToken }) {
     throw new AppError("SESSION_REVOKED", "Session no longer active", 401);
   }
 
+  // 30-min inactivity auto-logout (SESSION_INACTIVITY_MIN, PRD §5.7). This is
+  // the enforcement point that was missing: the value was configured but never
+  // checked anywhere. Inactivity is measured from last_seen_at, which is
+  // bumped on every refresh below — so a client that stops refreshing (idle)
+  // past the window gets its session killed and must re-authenticate.
+  // Tradeoff (same one already documented for remote session-kill): an access
+  // token already issued stays valid until its own short (15 min) expiry; this
+  // blocks the *refresh* that would extend the session, it doesn't retroactively
+  // revoke a live access token.
+  const idleSeconds = Number(session.idle_seconds);
+  if (Number.isFinite(idleSeconds) && idleSeconds > config.SESSION_INACTIVITY_MIN * 60) {
+    await repo.killSession(client, payload.sid, payload.sub);
+    await sessionStore.removeSession(payload.sid, payload.sub);
+    await identityCache.invalidateUser(payload.sub);
+    await emitEvent(client, {
+      eventTypeKey: events.LOGGED_OUT,
+      moduleKey: events.MODULE,
+      entityRef: `app_user:${payload.sub}`,
+      actorUserId: payload.sub,
+      payload: { reason: "inactivity_timeout", idle_seconds: Math.round(idleSeconds) },
+    });
+    throw new AppError("SESSION_EXPIRED", "Session expired due to inactivity", 401);
+  }
+
   await repo.touchSession(client, payload.sid);
   const accessToken = signAccessToken({ userId: payload.sub, jti: uuid() });
 

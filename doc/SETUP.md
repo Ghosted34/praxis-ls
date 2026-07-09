@@ -1,81 +1,110 @@
-# Praxis LS — Local Setup
+# Praxis LS — Setup
 
 Backend is **Node 20 (CommonJS) + Express + PostgreSQL 16 (pgvector) + Redis**. Tenancy is **one Postgres database per tenant** plus a shared **platform** database (see `doc/DB_ARCHITECTURE.md`).
 
-## Prerequisites
-- Node 20 (`.nvmrc` → `nvm use`)
-- PostgreSQL 16 with the `pgcrypto`, `citext`, and `vector` (pgvector) extensions available
-- Redis 6+
-- (PDF worker) Chromium — installed by the Docker image; locally set `PUPPETEER_EXECUTABLE_PATH`
+There are **two ways to run it**, and they share a single `.env`:
 
-## 1. Install & configure
+| | **Local** (`npm run dev`) | **Docker** (`docker compose up`) |
+|---|---|---|
+| You install | Node 20, Postgres 16 + pgvector, Redis | just Docker Desktop |
+| Postgres/Redis hosts | `localhost` | compose service names `postgres` / `redis` |
+| `.env` you use | the file as-is (local values) | the **same** file — compose overrides the host vars |
+| `NODE_ENV` | `development` | `production` (set by compose) |
+
+**The one rule that trips people up:** keep `.env` set to the **local** values (`REDIS_URL=redis://localhost:6379`, `DB_HOST=localhost`, `NODE_ENV=development`). `docker-compose.yml` overrides `DB_HOST`, `REDIS_URL`, `PORT` and `NODE_ENV` in its `environment:` block, so the same `.env` works in both. If you hard-code the Docker hostname (`redis://redis:6379`) into `.env`, a local `npm run dev` dies with `getaddrinfo ENOTFOUND redis` (see Troubleshooting).
+
+> `src/config/env.js` is the authoritative schema (Zod) for every var + default — when in doubt read that, not `.env.example`. Rotate every AI/FX key shared during discovery before first use.
+
+---
+
+## Option A — Local (WSL / native)
+
+### Prerequisites
+- Node 20 (`.nvmrc` → `nvm use`)
+- PostgreSQL 16 with the `pgcrypto`, `citext`, and `vector` (pgvector) extensions
+- Redis 6+ (on WSL: `sudo service redis-server start`)
+- (PDF) a local Chromium/Chrome — set `PUPPETEER_EXECUTABLE_PATH` to its binary
+
+### 1. Install & configure
 ```bash
 npm install
-cp .env.example .env      # then edit — see below, .env.example is missing several vars
+cp .env.example .env      # already tuned for local; edit DB_PASSWORD etc. to match your Postgres
 ```
-Key vars: `DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD` (the **platform** DB the app boots against), `TENANT_DB_SUPERUSER[_PASSWORD]` (used by provisioning to `CREATE DATABASE`), `REDIS_URL`, `JWT_ACCESS_SECRET`/`JWT_REFRESH_SECRET`, `ENCRYPTION_KEY` (2026-07-08, see below), AI keys (`DEEPSEEK_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `OPENAI_API_KEY` for embeddings), `EMBEDDINGS_DIM` (must match `ai_chunk.embedding vector(N)` = 1536).
+Minimum vars are all in `.env.example` with local defaults: `DB_HOST=localhost`, `DB_NAME=praxis_platform`, `DB_USER`/`DB_PASSWORD`, `REDIS_URL=redis://localhost:6379`, the JWT secrets, `ENCRYPTION_KEY` (fixed dev default is fine locally; `openssl rand -hex 32` for anything beyond a laptop — it encrypts 2FA secrets at rest), and `TENANT_DB_SUPERUSER[_PASSWORD]` (provisioning uses it to `CREATE DATABASE`).
 
-> **`.env.example` is stale** (inherited from a prior project — it has `JWT_ACCESS_SECRET`/`REFRESH_SECRET`
-> missing entirely, no `DB_HOST/PORT/NAME/USER/PASSWORD` block). `src/config/env.js` is the actual source of
-> truth for every var + default — when in doubt, read that file, not `.env.example`. Minimum to boot locally:
-> ```
-> DB_HOST=localhost
-> DB_PORT=5432
-> DB_NAME=praxis_platform
-> DB_USER=praxis-admin
-> DB_PASSWORD=changeme          # matches docker-compose.yml's postgres service
-> REDIS_URL=redis://localhost:6379
-> JWT_ACCESS_SECRET=dev-access-secret-change-me
-> JWT_REFRESH_SECRET=dev-refresh-secret-change-me
-> ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-> TENANT_DB_SUPERUSER=praxis-admin
-> TENANT_DB_SUPERUSER_PASSWORD=changeme
-> ```
-> `ENCRYPTION_KEY` (added 2026-07-08) has that same fixed dev default baked into `env.js` if you omit it — fine
-> for local dev, but it's what encrypts 2FA TOTP secrets at rest, so **generate a real random 64-hex-char key
-> for anything beyond a laptop** (`openssl rand -hex 32`). `config/redis.js` also had a bug fixed the same day:
-> it used to read `REDIS_HOST/PORT/PASSWORD/DB`, none of which exist in this schema — a non-default `REDIS_URL`
-> (custom password, non-default DB) used to be silently ignored. Not anymore; `REDIS_URL` is the only Redis var
-> that does anything, and it's no longer optional in practice — sessions and the identity cache both depend on
-> Redis actually being reachable now (see the upgrade section below).
-
-> Rotate every AI/FX key shared during discovery before first use.
-
-## 2. Create & migrate the platform database
+### 2. Create & migrate the platform database
 ```bash
 npm run db:migrate:platform
 ```
-Creates the platform DB if missing, applies `migrations/platform/*`, and seeds the module/feature/plan catalogue (all 70 modules).
+Creates the platform DB if missing, applies `migrations/platform/*`, seeds the module/feature/plan catalogue (all 70 modules).
 
-## 3. Provision a tenant (the onboarding tool)
+### 3. Provision a tenant
 ```bash
 npm run db:provision -- --slug=smartls --name="Smart Logistics" --plan=full
 # optional: --subdomain=smartls.praxisls.com   (defaults to <slug>.<APP_BASE_DOMAIN>)
 ```
-This single command:
-1. creates the tenant's own database `tenant_smartls`,
-2. runs the full tenant migration set into **both** `live` and `sandbox` schemas,
-3. seeds OHADA chart of accounts, Cameroon tax codes, RBAC, events, currencies,
-4. registers the tenant + DB connection + subdomain in the platform DB,
-5. projects the plan's resolved feature flags into `feature_state`.
+One command: creates `tenant_smartls`, migrates **both** `live` + `sandbox` schemas, seeds OHADA COA / Cameroon tax / RBAC / events / currencies, registers the tenant + subdomain in the platform DB, and projects the plan's feature flags. No hand-editing of any tenant DB is ever required.
 
-No hand-editing of any tenant database is ever required — everything is driven from here / the company console.
-
-**Provisioning creates no users.** Bootstrap someone who can log in before anything else:
+**Provisioning creates no users.** Bootstrap a login first:
 ```bash
 npm run tenant:create-admin -- --slug=smartls --email=you@example.com --name="You" --password=secret123
-# --env=sandbox to also (or only) seed the sandbox schema; both can coexist for testing
+# --env=sandbox to also (or only) seed the sandbox schema
 ```
-Defaults to the `CEO` role (bypasses RBAC checks by design) since no `permission` grants are seeded for any
-other role yet — see `doc/WORK_TO_BE_DONE.md` Phase 0. Use the new `permission` module once logged in to grant
-scoped access to everyone else instead of making every user CEO.
+Defaults to the `CEO` role (bypasses RBAC by design). Default role×module `permission` grants are now seeded (see `doc/WORK_DONE.md`), so you can also create non-CEO users and they get scoped access — test with one to confirm the seed (CEO bypasses RBAC, so CEO-only testing won't catch a bad grant).
 
-## 4. Run
+### 4. Run
 ```bash
-npm run dev            # API (nodemon)
+npm run dev            # API (nodemon) — http://localhost:8080
 npm run dev:worker     # background worker (BullMQ)
-# or: docker compose up
 ```
+
+---
+
+## Option B — Docker
+
+Needs only Docker Desktop. Compose brings up Postgres (pgvector), Redis, the API, and the worker.
+
+### 1. Configure
+```bash
+cp .env.example .env
+```
+Leave the host vars at their **local** values — compose overrides `DB_HOST=postgres`, `REDIS_URL=redis://redis:6379`, `PORT=8080`, `NODE_ENV=production` for the containers. Set `DB_PASSWORD` (compose passes it to the Postgres container too) and rotate the AI/FX keys.
+
+### 2. Bring it up
+```bash
+docker compose up -d --build      # postgres + redis + api + worker
+docker compose logs -f api        # watch it boot
+```
+The API is published on **http://localhost:3000** (host `3000` → container `8080`). Postgres is on `5432`, Redis on `6379`.
+
+### 3. Migrate + provision (run inside the api container)
+The image starts the API but does not auto-migrate. Run the same scripts once:
+```bash
+docker compose exec api npm run db:migrate:platform
+docker compose exec api npm run db:provision -- --slug=smartls --name="Smart Logistics" --plan=full
+docker compose exec api npm run tenant:create-admin -- --slug=smartls --email=you@example.com --name="You" --password=secret123
+```
+
+### 4. Everyday
+```bash
+docker compose up -d          # start
+docker compose down           # stop (add -v to also drop the pg/redis volumes)
+docker compose build api      # rebuild after code changes
+```
+
+---
+
+## Troubleshooting
+
+**`redis error … getaddrinfo ENOTFOUND redis` on a local run.** Your `.env` is pointing Redis at the Docker service name `redis` instead of `localhost`. Causes and fixes:
+- `.env` has `REDIS_URL=redis://redis:6379` (a Docker value). Change it to `redis://localhost:6379`.
+- `.env` has **two** `REDIS_URL` lines — dotenv keeps the **last** one. Delete the duplicate so the localhost value wins.
+- Then confirm Redis is actually up: on WSL, `sudo service redis-server start` and `redis-cli ping` → `PONG`.
+- Sanity-check what the app will use: `grep REDIS_URL .env` should show exactly one line, `redis://localhost:6379`.
+
+**Logs say `"env":"production"` on a local run.** `NODE_ENV=production` is set in `.env`. Local dev should be `development` (Docker sets production itself). It's cosmetic but also flips some framework behaviour.
+
+**`ENOTFOUND postgres` locally.** Same cause for the DB: `DB_HOST=postgres` is a Docker value — set `DB_HOST=localhost` for local runs.
 
 ## Upgrading an existing checkout (2026-07-08 changes)
 
@@ -134,6 +163,39 @@ GET|POST|PATCH|DELETE /settings          CHANGED — same
 `login`/`refresh`/`logout` are unchanged in shape (still `/auth/login`, `/auth/refresh`, `/auth/logout`) —
 `login` now additionally returns `{pending_2fa: true, pending_token, expires_in}` instead of real tokens when
 the user has 2FA enabled, instead of the old `501`.
+
+## Upgrading an existing checkout (2026-07-09 changes)
+
+A second Phase 0 batch landed 2026-07-09 (see `doc/WORK_DONE.md`). All code, no new migrations, so a `git pull`
++ `npm install` picks it up — **but** re-check your `.env` against the Local/Docker split at the top of this
+file (the redis duplicate-line bug was fixed here). New/changed endpoints:
+```
+GET|POST|PATCH|DELETE /users             CHANGED — app_user CRUD is now gated (authMiddleware +
+                                          requirePermission MOD-67). Was the last open security route.
+                                          Bootstrap still uses tenant:create-admin (direct DB), unaffected.
+GET    /event-types                       NEW — registered event types (Universal Event Engine)
+POST   /event-types                       NEW — register/upsert an event type {key,module_key,name,…}
+GET    /workflows                         NEW — list validate/approve workflows
+POST   /workflows                         NEW — {event_type_key,name} (event must be is_approvable)
+GET    /workflows/:id                     NEW — workflow + its ordered steps
+PATCH  /workflows/:id                     NEW — {name?,is_active?}
+GET|POST /workflows/:id/steps             NEW — list / add a VALIDATE|APPROVE step
+DELETE /workflows/:id/steps/:stepId       NEW — remove a step
+GET    /approvals                         NEW — runtime approval_task queue (?status=PENDING)
+GET|POST|PATCH|DELETE /notifications      CHANGED — module now loads (require paths were broken) + requires auth
+```
+Behavioural changes with no new endpoint:
+- **30-min inactivity auto-logout** is now enforced. `POST /auth/refresh` returns `401 SESSION_EXPIRED` and
+  kills the session once it's been idle longer than `SESSION_INACTIVITY_MIN` (default 30). As with remote kill,
+  an already-issued access token stays valid until its own ≤15-min expiry; this blocks the refresh that would
+  extend the session.
+- **Watch-the-Watcher** now fires: any security-critical event (`permission.changed`, `role.changed`,
+  `field_visibility.changed`) writes a HIGH-priority in-app `notification` to every active CEO/MANAGEMENT user,
+  atomically with the change. (`role.changed` previously wasn't even emitted — `iam_role` emitted `iam_role.*`;
+  fixed.)
+- **Capability gate** (`requireCapability('APPROVER' | 'VALIDATOR' | 'ISSUER' | 'LINE_MANAGER')`) is available
+  for routes; the authority overlay (`user_capability` + `role.is_line_manager`) now resolves. No Phase 0 route
+  uses it yet — it's wired for the Phase 2/3 approval flows.
 
 ## Scheduled jobs
 - **Sandbox wipe** (kickoff §6, default every 14 days): `npm run db:sandbox:wipe` — drops+rebuilds each tenant's `sandbox` schema and re-seeds; never touches `live`. Wire to cron: `0 3 */14 * *`.

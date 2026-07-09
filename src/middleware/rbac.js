@@ -111,4 +111,52 @@ function requirePermission(moduleKey, action) {
   };
 }
 
-module.exports = { requirePermission };
+/**
+ * Capability (authority-overlay) gate — the segregation-of-duties layer that
+ * sits on top of requirePermission's role×module grant. Use it to demand a
+ * specific authority code (ISSUER / VALIDATOR / APPROVER / LINE_MANAGER) on a
+ * route, independent of the module CRUD grant:
+ *
+ *   router.post('/costings/:id/approve',
+ *     authMiddleware,
+ *     requirePermission('MOD-46', 'approve'),
+ *     requireCapability('APPROVER'),
+ *     controller.approve);
+ *
+ * `requireCapability('LINE_MANAGER')` also passes for users whose *role* is
+ * flagged is_line_manager (resolved in identity-cache.getUserCapabilities),
+ * which is what "Line Manager as a capability layered on any role" means.
+ * CEO bypasses, same as requirePermission. Also attaches req.capabilities /
+ * req.is_line_manager for downstream handlers that want to branch on them.
+ */
+function requireCapability(code) {
+  if (!code || typeof code !== "string") {
+    throw new Error("requireCapability: capability code required");
+  }
+  return async function capabilityCheck(req, _res, next) {
+    if (!req.user) {
+      throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+    }
+    if (req.user.is_ceo) {
+      req.capabilities = ["ISSUER", "VALIDATOR", "APPROVER", "LINE_MANAGER"];
+      req.is_line_manager = true;
+      return next();
+    }
+    if (!req.tenantDb) {
+      throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before requireCapability", 500);
+    }
+    const { capabilities, is_line_manager } = await req.tenantDb((client) =>
+      identityCache.getUserCapabilities(client, req.user.user_id),
+    );
+    req.capabilities = capabilities;
+    req.is_line_manager = is_line_manager;
+
+    const ok = code === "LINE_MANAGER" ? is_line_manager : capabilities.includes(code);
+    if (!ok) {
+      throw new AppError("CAPABILITY_REQUIRED", `Requires the ${code} authority`, 403);
+    }
+    return next();
+  };
+}
+
+module.exports = { requirePermission, requireCapability };

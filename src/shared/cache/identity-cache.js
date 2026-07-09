@@ -23,6 +23,7 @@ const authKey = (userId) => `identity:auth:${userId}`;
 const grantsKey = (roleIds, moduleKey) =>
   `identity:grants:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
 const scopeKey = (userId) => `identity:scope:${userId}`;
+const capsKey = (userId) => `identity:caps:${userId}`;
 
 /** Redis is best-effort for this cache — never let a Redis outage break auth. */
 function safeRedis() {
@@ -132,10 +133,66 @@ async function getUserScopeIds(client, userId) {
   return ids;
 }
 
+/**
+ * Resolve the authority overlay a user carries (DB_ARCHITECTURE §4.2 — the
+ * segregation-of-duties layer that sits *on top of* the role×module grant
+ * matrix): the capability codes from `user_capability` (ISSUER / VALIDATOR /
+ * APPROVER / LINE_MANAGER) plus whether any of their roles is flagged
+ * `is_line_manager`. Returns `{ capabilities: string[], is_line_manager: bool }`.
+ *
+ * This is the mechanism the "Line Manager as a capability layered on any role"
+ * backlog item needed — the columns (`role.is_line_manager`, the LINE_MANAGER
+ * capability code, `user_capability`) existed but nothing resolved them.
+ * `middleware/rbac.js`'s requireCapability() consumes this. Which concrete
+ * actions a line manager / approver may take is per-module and mostly lands
+ * with Phase 2/3 (leave approvals, appraisals, disbursal routing) — this makes
+ * the overlay *readable and enforceable*; those modules opt in via
+ * requireCapability('APPROVER') etc.
+ */
+async function getUserCapabilities(client, userId) {
+  if (!userId) return { capabilities: [], is_line_manager: false };
+  const redis = safeRedis();
+  const key = capsKey(userId);
+
+  if (redis) {
+    const cached = await redis.get(key).catch(() => null);
+    if (cached) return JSON.parse(cached);
+  }
+
+  const { rows } = await client.query(
+    `SELECT
+        COALESCE(
+          array_agg(DISTINCT c.code) FILTER (WHERE c.code IS NOT NULL),
+          '{}'
+        ) AS capabilities,
+        bool_or(r.is_line_manager) AS role_line_manager
+       FROM app_user u
+       LEFT JOIN user_capability uc ON uc.user_id = u.user_id
+       LEFT JOIN capability c       ON c.capability_id = uc.capability_id
+       LEFT JOIN user_role ur       ON ur.user_id = u.user_id
+       LEFT JOIN role r             ON r.role_id = ur.role_id
+      WHERE u.user_id = $1
+      GROUP BY u.user_id`,
+    [userId],
+  );
+  const row = rows[0] || { capabilities: [], role_line_manager: false };
+  const capabilities = row.capabilities || [];
+  // A user is a line manager if a role flags it OR they hold LINE_MANAGER directly.
+  const result = {
+    capabilities,
+    is_line_manager: row.role_line_manager === true || capabilities.includes("LINE_MANAGER"),
+  };
+
+  if (redis) {
+    await redis.set(key, JSON.stringify(result), "EX", GRANTS_TTL_S).catch(() => {});
+  }
+  return result;
+}
+
 /** Call after a user is deactivated, role-reassigned, or session-revoked. */
 async function invalidateUser(userId) {
   const redis = safeRedis();
-  if (redis) await redis.del(authKey(userId), scopeKey(userId)).catch(() => {});
+  if (redis) await redis.del(authKey(userId), scopeKey(userId), capsKey(userId)).catch(() => {});
 }
 
 /**
@@ -151,4 +208,11 @@ async function invalidateGrants() {
   if (keys.length) await redis.del(...keys).catch(() => {});
 }
 
-module.exports = { getAuthUser, getGrants, getUserScopeIds, invalidateUser, invalidateGrants };
+module.exports = {
+  getAuthUser,
+  getGrants,
+  getUserScopeIds,
+  getUserCapabilities,
+  invalidateUser,
+  invalidateGrants,
+};

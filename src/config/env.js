@@ -59,7 +59,7 @@ const Schema = z.object({
   TENANT_DB_PORT_DEFAULT: int(urlParts.port || 5432),
   TENANT_DB_SUPERUSER: z.string().default("postgres"),
   TENANT_DB_SUPERUSER_PASSWORD: z.string().default(""),
-  TENANT_DB_APP_ROLE: z.string().default("praxis_app"),
+  TENANT_DB_APP_ROLE: z.string().default(""),
   TENANT_POOL_MAX: int(8),
 
   REDIS_URL: z.string().default("redis://localhost:6379"),
@@ -113,6 +113,9 @@ const Schema = z.object({
 
   STORAGE_DRIVER: z.enum(["local", "s3"]).default("local"),
   STORAGE_LOCAL_PATH: z.string().default("./data/vault"),
+  // Optional CDN/host prefix for stored files' public URLs. Empty = serve them
+  // from this app at /media/<key> (see server.js). storage.service.js reads this.
+  CDN_BASE_URL: z.string().default(""),
   S3_ENDPOINT: z.string().default(""),
   S3_BUCKET: z.string().default(""),
   S3_ACCESS_KEY: z.string().default(""),

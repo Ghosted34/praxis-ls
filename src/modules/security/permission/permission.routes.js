@@ -17,6 +17,9 @@ router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.post("/", requirePermission(MODULE, "approve"), validator.create, controller.create);
+// Grant-matrix upsert by (role_id, module_key). Before /:id so "grant" isn't
+// swallowed as an :id param (different verb anyway, but explicit is safer).
+router.put("/grant", requirePermission(MODULE, "approve"), controller.upsertGrant);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.patch("/:id", requirePermission(MODULE, "approve"), validator.update, controller.update);
 router.delete("/:id", requirePermission(MODULE, "approve"), controller.archive);

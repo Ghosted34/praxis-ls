@@ -24,7 +24,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - pixie_redisdata:/data
+      - praxis_redisdata:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -40,12 +40,17 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     env_file: .env
+    # These override the LOCAL values in .env so the same .env works for both
+    # `npm run dev` (localhost) and `docker compose up` (service DNS names).
+    # The code reads REDIS_URL (not REDIS_HOST — that var is dead/ignored).
     environment:
+      NODE_ENV: production
       DB_HOST: postgres
-      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
+      PORT: "8080"
       ENABLE_WORKERS: "false"
     ports:
-      - "3000:3000"
+      - "3000:8080"   # host:container — app listens on 8080 inside the container
     volumes:
       - ./media:/app/media
       - ./uploads:/app/uploads
@@ -61,8 +66,9 @@ services:
       redis: { condition: service_healthy }
     env_file: .env
     environment:
+      NODE_ENV: production
       DB_HOST: postgres
-      REDIS_HOST: redis
+      REDIS_URL: redis://redis:6379
     volumes:
       - ./media:/app/media
       - ./uploads:/app/uploads

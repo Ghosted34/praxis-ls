@@ -9,16 +9,22 @@ const { logger } = require("../../config/logger");
 const m = require("./migrator");
 
 async function migratePlatform() {
+  logger.info("[praxis-db] migrating platform database...");
   await m.ensureDatabase(config.DB_NAME);
+  logger.info("[praxis-db] platform database ensured");
   const cli = m.client(config.DB_NAME, { superuser: true });
+  logger.info("[praxis-db] connecting to platform database...");
   await cli.connect();
+  logger.info("[praxis-db] connected to platform database");
   try {
     const a = await m.applyTracked(cli, m.files.platform(), {
       scope: "platform",
     });
+    logger.info("[praxis-db] platform migrations applied");
     const s = await m.applyTracked(cli, m.files.platformSeeds(), {
       scope: "platform-seed",
     });
+    logger.info("[praxis-db] platform seeds applied");
     logger.info({ applied: a + s }, "platform migrated");
     return { applied: a + s };
   } finally {

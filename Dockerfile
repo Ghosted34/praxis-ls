@@ -37,4 +37,4 @@ COPY . .
 ENV NODE_ENV=production
 ENV ENABLE_WORKERS=true
 ENTRYPOINT ["/sbin/tini", "--"]
-CMD ["node", "src/jobs/worker.js"]
+CMD ["node", "src/jobs/workers.js"]

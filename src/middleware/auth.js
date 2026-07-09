@@ -1,15 +1,25 @@
 /**
  * Authentication middleware.
  *
- * Expects `Authorization: Bearer <jwt>` on protected routes.
- * Verifies, loads user, attaches req.user. 401 on failure.
+ * Expects `Authorization: Bearer <jwt>` on protected routes. Must run AFTER
+ * `tenantContext` (needs `req.tenantDb` — `app_user`/`role` are tenant
+ * tables, not platform tables). Verifies, loads user, attaches req.user.
+ * 401 on failure.
  *
  * The verified user is then a starting point for:
  *   - req.user.user_id            uuid
  *   - req.user.email
  *   - req.user.role_ids           []
- *   - req.user.is_ceo             boolean
- *   - req.user.available_businesses ['valid-brand-key'] | subset
+ *   - req.user.is_ceo             boolean  (role.code = 'CEO' — bypasses RBAC)
+ *
+ * Fixed vs. the original: this previously read `config.JWT_SECRET` (not a
+ * defined env var — only JWT_ACCESS_SECRET/JWT_REFRESH_SECRET exist, see
+ * src/config/env.js) and called `identityCache.getAuthUser(payload.sub)`
+ * with no tenant client, and identity-cache.js didn't exist at all. Also
+ * dropped `available_businesses`/`default_business_key` — leftover fields
+ * from a prior multi-brand storefront project; Praxis scopes users by
+ * `corporate_entity`/`scope`, not "business". See
+ * doc/RBAC_SECURITY_KICKOFF.md.
  */
 
 "use strict";
@@ -28,7 +38,7 @@ async function authMiddleware(req, _res, next) {
   const token = header.slice("Bearer ".length).trim();
   let payload;
   try {
-    payload = jwt.verify(token, config.JWT_SECRET);
+    payload = jwt.verify(token, config.JWT_ACCESS_SECRET);
   } catch (err) {
     if (err.name === "TokenExpiredError") {
       throw new AppError("TOKEN_EXPIRED", "Access token expired", 401);
@@ -36,10 +46,23 @@ async function authMiddleware(req, _res, next) {
     throw new AppError("INVALID_TOKEN", "Invalid access token", 401);
   }
 
+  // Was missing entirely: refresh tokens (typ:"refresh") and, now, 2FA
+  // pending tokens (typ:"2fa_pending") are signed with this same secret —
+  // without this check either could be replayed here as a real access
+  // token. platform-auth.js already had the equivalent check; this side
+  // didn't. See doc/WORK_DONE.md.
+  if (payload.typ && payload.typ !== "access") {
+    throw new AppError("INVALID_TOKEN", "Not an access token", 401);
+  }
+
+  if (!req.tenantDb) {
+    throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before authMiddleware", 500);
+  }
+
   // Cached auth projection (30 s TTL + event invalidation on deactivate/
   // role change/session revoke) — saves a DB round-trip on every request.
-  const user = await identityCache.getAuthUser(payload.sub);
-  if (!user || user.status !== "active") {
+  const user = await req.tenantDb((client) => identityCache.getAuthUser(client, payload.sub));
+  if (!user || user.status !== "ACTIVE") {
     throw new AppError("USER_INACTIVE", "User not found or inactive", 401);
   }
 
@@ -49,11 +72,6 @@ async function authMiddleware(req, _res, next) {
     display_name: user.display_name,
     role_ids: user.role_ids || [],
     is_ceo: user.is_ceo === true,
-    available_businesses: user.available_businesses || [],
-    // The brand-context middleware documents a fallback to the user's home
-    // brand; the column was loaded here but never attached, so that fallback
-    // could never fire. Attach it so the documented resolution order works.
-    default_business_key: user.default_business_key || null,
     jwt_iat: payload.iat,
     jwt_jti: payload.jti,
   };

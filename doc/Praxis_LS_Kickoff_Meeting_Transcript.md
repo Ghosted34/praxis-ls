@@ -226,7 +226,6 @@ The full running list of decisions, actions, and open questions is consolidated 
 - **JWT + refresh tokens.**
 - **30-minute inactivity auto-logout.**
 - **Active session monitor** with **remote kill** (for admins / anyone) — server-side session state stored in **Redis**, so a session can be killed instantly.
-- **Oso (OZ)** for the **central RBAC policy** *(said as "the oz"/"oso")*.
 
 > **📌 Context** — RBAC gets its own full module later (§11.14): roles, capabilities, scope, and — critically — a **dynamic validation/approval workflow designer** built on a Universal Event System.
 
@@ -781,7 +780,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 | D4 | Stack: React 18 + Vite + TS (PWA) · Node.js + TS · separate workers (AI, PDF) · Redis + BullMQ · Socket.IO · Zod · Docker · Puppeteer/Chromium PDFs · Nodemailer. | §5, §10 |
 | D5 | **One PostgreSQL database per tenant** (tenant owns/can access their own data). | §5 |
 | D6 | **Test/Live toggle**; Live + Sandbox **inside each tenant's Postgres**; sandbox purged by cron every **14 days**; no shared staging server. | §6 |
-| D7 | RBAC enforced **server + client**; JWT + refresh; 30-min auto-logout; Redis session state with remote kill; **Oso** central policy; 2FA encouraged. | §7 |
+| D7 | RBAC enforced **server + client**; JWT + refresh; 30-min auto-logout; Redis session state with remote kill; 2FA encouraged. | §7 |
 | D8 | AI: **DeepSeek primary, Gemini fallback**; Whisper (self-host) or Grok for voice; **two-part EMV toggle** (front UI + back action); per-tenant spend dashboard. | §8 |
 | D9 | Per-tenant SMTP + role mailboxes via DNS; fallback sender **nmail.praxisls.com**; all docs emailed from the system. | §9 |
 | D10 | **Daily encrypted backups** (all tenant DBs + platform schema) → Google Drive/OneDrive → S3 later. | §10 |

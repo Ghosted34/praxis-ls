@@ -1,6 +1,7 @@
 -- ============================================================================
 -- SEED (PLATFORM DB) — feature catalogue + plans + plan_feature mapping.
 -- Runs after 9100 (module_catalogue). Split from 9100 to stay small.
+-- Idempotent: safe to re-run (upserts on conflict).
 -- ============================================================================
 
 INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_state, depends_on) VALUES
@@ -35,19 +36,34 @@ INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_s
  ('reporting','MOD-63','Reporting & insights','on','{}'),
  ('portal.client','MOD-29','Client portal','off','{operations}'),
  ('portal.investor','MOD-56','Investor / board terminal','off','{accounting.core}'),
- ('portal.audit','MOD-69','Audit terminal','off','{}');
+ ('portal.audit','MOD-69','Audit terminal','off','{}')
+ON CONFLICT (feature_key) DO UPDATE SET
+  module_key    = EXCLUDED.module_key,
+  name          = EXCLUDED.name,
+  default_state = EXCLUDED.default_state,
+  depends_on    = EXCLUDED.depends_on;
 
 INSERT INTO platform.plan (plan_id, code, name, price_setup_xaf, price_yearly_xaf) VALUES
  ('22222222-2222-2222-2222-222222222221','starter','Starter (accounting + ops)',0,0),
  ('22222222-2222-2222-2222-222222222222','full','Full suite',3000000,500000),
- ('22222222-2222-2222-2222-222222222223','enterprise','Enterprise (own DB access)',3000000,500000);
+ ('22222222-2222-2222-2222-222222222223','enterprise','Enterprise (own DB access)',3000000,500000)
+ON CONFLICT (plan_id) DO UPDATE SET
+  code             = EXCLUDED.code,
+  name             = EXCLUDED.name,
+  price_setup_xaf  = EXCLUDED.price_setup_xaf,
+  price_yearly_xaf = EXCLUDED.price_yearly_xaf;
 
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
-SELECT '22222222-2222-2222-2222-222222222222', feature_key, true FROM platform.feature_catalogue;
+SELECT '22222222-2222-2222-2222-222222222222', feature_key, true FROM platform.feature_catalogue
+ON CONFLICT (plan_id, feature_key) DO UPDATE SET included = EXCLUDED.included;
+
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
-SELECT '22222222-2222-2222-2222-222222222223', feature_key, true FROM platform.feature_catalogue;
+SELECT '22222222-2222-2222-2222-222222222223', feature_key, true FROM platform.feature_catalogue
+ON CONFLICT (plan_id, feature_key) DO UPDATE SET included = EXCLUDED.included;
+
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
 SELECT '22222222-2222-2222-2222-222222222221', feature_key, true FROM platform.feature_catalogue
  WHERE feature_key IN ('accounting.core','accounting.statements','accounting.tax','finance.fx',
                        'operations','costing','commercial.simulators','commercial.quotation',
-                       'procurement','hr.payroll','comms','signatures','reporting');
+                       'procurement','hr.payroll','comms','signatures','reporting')
+ON CONFLICT (plan_id, feature_key) DO UPDATE SET included = EXCLUDED.included;

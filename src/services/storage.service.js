@@ -26,7 +26,7 @@ function publicUrl(key) {
 
 async function put(buffer, { key, contentType }) {
   const finalKey = key || crypto.randomBytes(16).toString("hex");
-  const filePath = path.join(config.STORAGE_LOCAL_ROOT, finalKey);
+  const filePath = path.join(config.STORAGE_LOCAL_PATH, finalKey);
   await fs.mkdir(path.dirname(filePath), { recursive: true });
   await fs.writeFile(filePath, buffer);
   return {
@@ -38,11 +38,11 @@ async function put(buffer, { key, contentType }) {
 }
 
 async function get(key) {
-  return fs.readFile(path.join(config.STORAGE_LOCAL_ROOT, key));
+  return fs.readFile(path.join(config.STORAGE_LOCAL_PATH, key));
 }
 
 async function del(key) {
-  await fs.unlink(path.join(config.STORAGE_LOCAL_ROOT, key));
+  await fs.unlink(path.join(config.STORAGE_LOCAL_PATH, key));
 }
 
 module.exports = { put, get, delete: del, publicUrl };

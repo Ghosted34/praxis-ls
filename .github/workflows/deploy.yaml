@@ -1,0 +1,24 @@
+# Deployment workflow — PLACEHOLDER (intentionally manual-only).
+#
+# CI (parse/lint/test/image-build) lives in ci.yaml and runs automatically.
+# Deployment is NOT wired yet: the hosting target, registry, and secrets are
+# undecided (doc/WORK_TO_BE_DONE.md Phase 5 — "CI/CD" and "Go-live"). This file
+# exists so the workflow slot is real and valid rather than an empty file that
+# GitHub reports as an invalid workflow.
+#
+# To activate: add build-and-push (to your registry) + a deploy step keyed off
+# the environment's secrets, and switch the trigger below from workflow_dispatch
+# to `push: { tags: ['v*'] }` or whatever release cadence is chosen.
+name: Deploy (placeholder)
+
+on:
+  workflow_dispatch: {}
+
+jobs:
+  noop:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Not configured yet
+        run: |
+          echo "Deployment is not configured yet — see doc/WORK_TO_BE_DONE.md Phase 5."
+          echo "CI (lint/test/build) runs in ci.yaml."

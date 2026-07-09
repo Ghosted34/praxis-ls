@@ -1,0 +1,405 @@
+{
+  "info": {
+    "name": "Praxis LS — Phase 0 (Foundations)",
+    "_postman_id": "praxis-ls-phase0-0001",
+    "description": "Phase 0 acceptance suite: platform login + tenant management, tenant auth (login/refresh/logout/2FA), IAM/RBAC admin (users, roles, capabilities, scopes, permissions, field-visibility), sessions + remote kill, audit ledger + soft-delete restore, settings, the Universal Event Engine (event-types/workflows/steps/approvals), and notifications (Watch-the-Watcher).\n\nHOW TENANTS RESOLVE: the API picks the tenant from the HTTP Host header. `localhost` is the PLATFORM host, so tenant requests set `Host: {{tenantHost}}` (default smartls.praxisls.com). Two ways to make that work locally:\n  1. In Postman, custom Host headers are sent as-is — nothing to configure.\n  2. Or add `127.0.0.1 smartls.praxisls.com` to your hosts file and set baseUrl to http://smartls.praxisls.com:8080.\n\nRUN ORDER: 1) Platform login  2) (if needed) Platform provision+go-live  3) Tenant login (captures tokens)  4) everything else. Login requests stash tokens into collection variables automatically.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "tenantHost", "value": "smartls.praxisls.com" },
+    { "key": "slug", "value": "smartls" },
+    { "key": "platformEmail", "value": "root@praxisls.com" },
+    { "key": "platformPassword", "value": "changeme" },
+    { "key": "tenantEmail", "value": "you@example.com" },
+    { "key": "tenantPassword", "value": "secret123" },
+    { "key": "platformToken", "value": "" },
+    { "key": "accessToken", "value": "" },
+    { "key": "refreshToken", "value": "" },
+    { "key": "pendingToken", "value": "" },
+    { "key": "totpCode", "value": "" },
+    { "key": "userId", "value": "" },
+    { "key": "roleId", "value": "" },
+    { "key": "sessionId", "value": "" },
+    { "key": "softDeleteId", "value": "" },
+    { "key": "eventTypeKey", "value": "invoice.issued" },
+    { "key": "workflowId", "value": "" },
+    { "key": "stepId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "0 · Smoke",
+      "item": [
+        {
+          "name": "GET /api/tenant/whoami",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "pm.test('200 OK', () => pm.response.code === 200);",
+              "pm.test('reports a tenant', () => { const j = pm.response.json(); pm.expect(JSON.stringify(j)).to.include('slug'); });"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/whoami", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "whoami"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "1 · Platform (Praxis-only)",
+      "item": [
+        {
+          "name": "POST /api/platform/auth/login",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "const j = pm.response.json();",
+              "const tok = j.access_token || (j.data && j.data.access_token) || j.token;",
+              "if (tok) pm.collectionVariables.set('platformToken', tok);",
+              "pm.test('got a platform token', () => pm.expect(tok, 'access token').to.be.a('string'));"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{platformEmail}}\",\n  \"password\": \"{{platformPassword}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/platform/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "platform", "auth", "login"] }
+          }
+        },
+        {
+          "name": "GET /api/platform/tenants",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{platformToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/platform/tenants", "host": ["{{baseUrl}}"], "path": ["api", "platform", "tenants"] }
+          }
+        },
+        {
+          "name": "GET /api/platform/tenants/:slug",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{platformToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/platform/tenants/{{slug}}", "host": ["{{baseUrl}}"], "path": ["api", "platform", "tenants", "{{slug}}"] }
+          }
+        },
+        {
+          "name": "GET /api/platform/catalogue/modules",
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Authorization", "value": "Bearer {{platformToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/platform/catalogue/modules", "host": ["{{baseUrl}}"], "path": ["api", "platform", "catalogue", "modules"] }
+          }
+        },
+        {
+          "name": "POST /api/platform/tenants (provision — only if none exists)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{platformToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"slug\": \"{{slug}}\",\n  \"name\": \"Smart Logistics\",\n  \"plan\": \"full\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/platform/tenants", "host": ["{{baseUrl}}"], "path": ["api", "platform", "tenants"] }
+          }
+        },
+        {
+          "name": "POST /api/platform/tenants/:slug/go-live",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Authorization", "value": "Bearer {{platformToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/platform/tenants/{{slug}}/go-live", "host": ["{{baseUrl}}"], "path": ["api", "platform", "tenants", "{{slug}}", "go-live"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2 · Tenant Auth",
+      "item": [
+        {
+          "name": "POST /auth/login  (captures tokens)",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "const j = pm.response.json();",
+              "const d = j.data || j;",
+              "if (d.pending_2fa) {",
+              "  pm.collectionVariables.set('pendingToken', d.pending_token);",
+              "  pm.test('2FA challenge issued', () => pm.expect(d.pending_token).to.be.a('string'));",
+              "} else {",
+              "  if (d.access_token) pm.collectionVariables.set('accessToken', d.access_token);",
+              "  if (d.refresh_token) pm.collectionVariables.set('refreshToken', d.refresh_token);",
+              "  if (d.user && d.user.user_id) pm.collectionVariables.set('userId', d.user.user_id);",
+              "  pm.test('got access token', () => pm.expect(d.access_token).to.be.a('string'));",
+              "}"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"{{tenantEmail}}\",\n  \"password\": \"{{tenantPassword}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/login", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "login"] }
+          }
+        },
+        {
+          "name": "POST /auth/2fa/verify  (only if login returned pending_2fa)",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "const j = pm.response.json();",
+              "const d = j.data || j;",
+              "if (d.access_token) pm.collectionVariables.set('accessToken', d.access_token);",
+              "if (d.refresh_token) pm.collectionVariables.set('refreshToken', d.refresh_token);"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"pending_token\": \"{{pendingToken}}\",\n  \"code\": \"{{totpCode}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/2fa/verify", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "2fa", "verify"] }
+          }
+        },
+        {
+          "name": "POST /auth/refresh  (captures new access token)",
+          "event": [
+            { "listen": "test", "script": { "exec": [
+              "pm.test('200 or 401(SESSION_EXPIRED after idle)', () => [200,401].includes(pm.response.code));",
+              "if (pm.response.code === 200) { const j = pm.response.json(); const d = j.data || j; if (d.access_token) pm.collectionVariables.set('accessToken', d.access_token); }"
+            ], "type": "text/javascript" } }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"refresh_token\": \"{{refreshToken}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/refresh", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "refresh"] }
+          }
+        },
+        {
+          "name": "POST /auth/2fa/setup",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/2fa/setup", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "2fa", "setup"] }
+          }
+        },
+        {
+          "name": "POST /auth/2fa/enable",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{totpCode}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/2fa/enable", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "2fa", "enable"] }
+          }
+        },
+        {
+          "name": "POST /auth/2fa/disable",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"code\": \"{{totpCode}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/2fa/disable", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "2fa", "disable"] }
+          }
+        },
+        {
+          "name": "POST /auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/auth/logout", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "auth", "logout"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "3 · IAM / RBAC admin",
+      "item": [
+        {
+          "name": "GET /users  (now gated — 200 as CEO, 403 without grant)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('gated (200 with grant / 401 / 403)', () => [200,401,403].includes(pm.response.code));",
+            "if (pm.response.code === 200) { const j = pm.response.json(); const rows = j.data || j; if (Array.isArray(rows) && rows[0] && rows[0].user_id) pm.collectionVariables.set('userId', rows[0].user_id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/users", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "users"] }
+          }
+        },
+        {
+          "name": "GET /users  (no token → expect 401)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "pm.test('401 without a token (proves it is gated)', () => pm.response.code === 401);"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/users", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "users"] }
+          }
+        },
+        {
+          "name": "GET /roles",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "if (pm.response.code === 200) { const j = pm.response.json(); const rows = j.data || j; if (Array.isArray(rows) && rows[0] && rows[0].role_id) pm.collectionVariables.set('roleId', rows[0].role_id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "GET",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/roles", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "roles"] }
+          }
+        },
+        {
+          "name": "GET /capabilities",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/capabilities", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "capabilities"] } }
+        },
+        {
+          "name": "GET /scopes",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/scopes", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "scopes"] } }
+        },
+        {
+          "name": "GET /permissions  (the grant matrix — verify the seed)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/permissions", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "permissions"] } }
+        },
+        {
+          "name": "POST /permissions  (grant a role a module — fires Watch-the-Watcher)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"role_id\": \"{{roleId}}\",\n  \"module_key\": \"MOD-51\",\n  \"can_read\": true,\n  \"can_create\": false,\n  \"can_update\": false,\n  \"can_delete\": false,\n  \"can_approve\": false\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/permissions", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "permissions"] }
+          }
+        },
+        {
+          "name": "GET /field-visibility",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/field-visibility", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "field-visibility"] } }
+        },
+        {
+          "name": "GET /catalogue/modules  (the MOD-xx list for the matrix)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/catalogue/modules", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "catalogue", "modules"] } }
+        },
+        {
+          "name": "PUT /permissions/grant  (grant-matrix upsert — fires Watch-the-Watcher)",
+          "request": {
+            "method": "PUT",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"role_id\": \"{{roleId}}\",\n  \"module_key\": \"MOD-51\",\n  \"can_read\": true,\n  \"can_create\": true,\n  \"can_update\": true,\n  \"can_delete\": false,\n  \"can_approve\": false\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/permissions/grant", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "permissions", "grant"] }
+          }
+        }
+      ]
+    },
+    {
+      "name": "4 · Sessions + remote kill",
+      "item": [
+        {
+          "name": "GET /sessions/mine  (self-scoped, no grant needed)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "if (pm.response.code === 200) { const j = pm.response.json(); const rows = j.data || j; if (Array.isArray(rows) && rows[0] && rows[0].session_id) pm.collectionVariables.set('sessionId', rows[0].session_id); }"
+          ], "type": "text/javascript" } } ],
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/sessions/mine", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "sessions", "mine"] } }
+        },
+        {
+          "name": "GET /sessions  (all — needs MOD-68 grant or CEO)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/sessions", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "sessions"] } }
+        },
+        {
+          "name": "POST /sessions/:id/kill",
+          "request": { "method": "POST", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/sessions/{{sessionId}}/kill", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "sessions", "{{sessionId}}", "kill"] } }
+        }
+      ]
+    },
+    {
+      "name": "5 · Audit ledger + soft-delete restore",
+      "item": [
+        {
+          "name": "GET /audit  (immutable ledger)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/audit", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "audit"] } }
+        },
+        {
+          "name": "GET /audit/soft-deletes",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "if (pm.response.code === 200) { const j = pm.response.json(); const rows = j.data || j; if (Array.isArray(rows) && rows[0]) pm.collectionVariables.set('softDeleteId', rows[0].soft_delete_id || rows[0].id); }"
+          ], "type": "text/javascript" } } ],
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "audit", "soft-deletes"] } }
+        },
+        {
+          "name": "POST /audit/soft-deletes/:id/request-restore",
+          "request": { "method": "POST", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes/{{softDeleteId}}/request-restore", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "audit", "soft-deletes", "{{softDeleteId}}", "request-restore"] } }
+        },
+        {
+          "name": "POST /audit/soft-deletes/:id/restore  (must be a DIFFERENT admin than deleter)",
+          "request": { "method": "POST", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes/{{softDeleteId}}/restore", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "audit", "soft-deletes", "{{softDeleteId}}", "restore"] } }
+        }
+      ]
+    },
+    {
+      "name": "6 · Settings",
+      "item": [
+        {
+          "name": "GET /settings",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/settings", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "settings"] } }
+        }
+      ]
+    },
+    {
+      "name": "7 · Event Engine (workflow module)",
+      "item": [
+        {
+          "name": "GET /event-types",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/event-types", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "event-types"] } }
+        },
+        {
+          "name": "POST /event-types  (register/upsert)",
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"key\": \"demo.custom.event\",\n  \"module_key\": \"MOD-51\",\n  \"name\": \"Demo custom event\",\n  \"is_approvable\": true\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/event-types", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "event-types"] }
+          }
+        },
+        {
+          "name": "POST /workflows  (bind to an approvable event)",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "if (pm.response.code === 201) { const j = pm.response.json(); const w = j.data || j; if (w.workflow_id) pm.collectionVariables.set('workflowId', w.workflow_id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"event_type_key\": \"{{eventTypeKey}}\",\n  \"name\": \"Invoice approval chain\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/workflows", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "workflows"] }
+          }
+        },
+        {
+          "name": "GET /workflows",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/workflows", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "workflows"] } }
+        },
+        {
+          "name": "GET /workflows/:id  (with steps)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "workflows", "{{workflowId}}"] } }
+        },
+        {
+          "name": "POST /workflows/:id/steps",
+          "event": [ { "listen": "test", "script": { "exec": [
+            "if (pm.response.code === 201) { const j = pm.response.json(); const s = j.data || j; if (s.workflow_step_id) pm.collectionVariables.set('stepId', s.workflow_step_id); }"
+          ], "type": "text/javascript" } } ],
+          "request": {
+            "method": "POST",
+            "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" }, { "key": "Content-Type", "value": "application/json" } ],
+            "body": { "mode": "raw", "raw": "{\n  \"step_seq\": 1,\n  \"step_kind\": \"APPROVE\",\n  \"role_id\": \"{{roleId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}/steps", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "workflows", "{{workflowId}}", "steps"] }
+          }
+        },
+        {
+          "name": "DELETE /workflows/:id/steps/:stepId",
+          "request": { "method": "DELETE", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}/steps/{{stepId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "workflows", "{{workflowId}}", "steps", "{{stepId}}"] } }
+        },
+        {
+          "name": "GET /approvals  (runtime queue)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/approvals?status=PENDING", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "approvals"], "query": [ { "key": "status", "value": "PENDING" } ] } }
+        }
+      ]
+    },
+    {
+      "name": "8 · Notifications (Watch-the-Watcher)",
+      "item": [
+        {
+          "name": "GET /notifications  (after a permission/role change, expect a HIGH row for CEO/MGT)",
+          "request": { "method": "GET", "header": [ { "key": "Host", "value": "{{tenantHost}}" }, { "key": "Authorization", "value": "Bearer {{accessToken}}" } ], "url": { "raw": "{{baseUrl}}/api/tenant/notifications", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "notifications"] } }
+        }
+      ]
+    }
+  ]
+}

@@ -52,6 +52,7 @@ media/posters/*
 !media/processed/.gitkeep
 !media/posters/.gitkeep
 media/
+data/
 
 # Database dumps
 *.dump

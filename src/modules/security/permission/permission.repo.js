@@ -6,7 +6,9 @@ const base = makeRepo({
   pk: "permission_id",
   activeColumn: null,
   searchColumn: null,
-  orderBy: "created_at DESC",
+  // The permission table has no created_at/updated_at — order by its real
+  // columns (was "created_at DESC", which 500'd GET /permissions).
+  orderBy: "role_id, module_key",
 });
 
 /**

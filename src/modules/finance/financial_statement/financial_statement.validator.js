@@ -2,6 +2,7 @@
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
 const query = z.object({
+  account: z.string().optional(),
   entity_id: z.string().uuid().optional(),
   period_id: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),

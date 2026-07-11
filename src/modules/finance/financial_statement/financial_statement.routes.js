@@ -12,5 +12,7 @@ router.use(authMiddleware);
 router.get("/trial-balance", requirePermission(MODULE, "view"), validator.query, controller.trialBalance);
 router.get("/income-statement", requirePermission(MODULE, "view"), validator.query, controller.compteDeResultat);
 router.get("/balance-sheet", requirePermission(MODULE, "view"), validator.query, controller.bilan);
+router.get("/grand-livre", requirePermission(MODULE, "view"), validator.query, controller.grandLivre);
+router.get("/cash-flow", requirePermission(MODULE, "view"), validator.query, controller.cashFlow);
 
 module.exports = { basePath: "/statements", feature: "accounting.statements", router };

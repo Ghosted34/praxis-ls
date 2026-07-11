@@ -64,4 +64,34 @@ function balanceSheet(rows, result) {
   return { active, passif, result: round2(num(result)), balanced: active === passif };
 }
 
-module.exports = { classOf, trialBalanceTotals, incomeStatement, balanceSheet, bal };
+
+/** Grand livre with a running debit-positive balance per row. */
+function runningBalance(rows, opening = 0) {
+  let bal = round2(Number(opening) || 0);
+  return rows.map((r) => {
+    bal = round2(bal + num(r.debit) - num(r.credit));
+    return { ...r, balance: bal };
+  });
+}
+
+/** Cash-flow summary (TAFIRE foundation): closing = opening + inflows - outflows. */
+function cashFlowSummary({ opening_cash, inflows, outflows }) {
+  const net = round2(num(inflows) - num(outflows));
+  return {
+    opening_cash: round2(num(opening_cash)),
+    inflows: round2(num(inflows)),
+    outflows: round2(num(outflows)),
+    net_change: net,
+    closing_cash: round2(num(opening_cash) + net),
+  };
+}
+
+
+/** OHADA TAFIRE: opening cash + operating/investing/financing = closing cash. */
+function tafire({ opening_cash, operating, investing, financing }) {
+  const op = round2(num(operating)), inv = round2(num(investing)), fin = round2(num(financing));
+  const net = round2(op + inv + fin);
+  return { opening_cash: round2(num(opening_cash)), operating: op, investing: inv, financing: fin, net_change: net, closing_cash: round2(num(opening_cash) + net) };
+}
+
+module.exports = { classOf, trialBalanceTotals, incomeStatement, balanceSheet, bal, runningBalance, cashFlowSummary, tafire };

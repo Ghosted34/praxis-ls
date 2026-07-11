@@ -1,5 +1,18 @@
+/** Client master (MOD-03). Gated. */
 "use strict";
-const { makeRouter } = require("../../../shared/crud/resource");
+const express = require("express");
+const { authMiddleware } = require("../../../middleware/auth");
+const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./client_master.controller");
 const validator = require("./client_master.validator");
-module.exports = { basePath: "/clients", feature: null, router: makeRouter({ controller, validator }) };
+
+const MODULE = "MOD-03";
+const router = express.Router();
+router.use(authMiddleware);
+router.get("/", requirePermission(MODULE, "view"), controller.list);
+router.get("/:id", requirePermission(MODULE, "view"), controller.get);
+router.get("/:id/credit", requirePermission(MODULE, "view"), controller.creditCheck);
+router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+
+module.exports = { basePath: "/clients", feature: null, router };

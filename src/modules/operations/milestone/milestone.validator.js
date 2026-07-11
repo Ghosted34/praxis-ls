@@ -1,2 +1,10 @@
 "use strict";
-module.exports = require("../../../shared/http/validate").passthrough;
+const { z } = require("zod");
+const { AppError } = require("../../../utils/errors");
+const stage = z.object({ stage_seq: z.number().optional(), code: z.string().min(1), label_fr: z.string().min(1), label_en: z.string().optional(), default_offset_days: z.number().int().optional() });
+const publishTemplate = z.object({ service_type_id: z.string().uuid(), stages: z.array(stage).min(1) });
+const instantiate = z.object({ dossier_id: z.string().uuid(), service_type_id: z.string().uuid(), base_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() });
+const advance = z.object({ to: z.enum(["IN_PROGRESS", "DONE", "BLOCKED", "PENDING"]), evidence_vault_id: z.string().uuid().optional() });
+const schemas = { publishTemplate, instantiate, advance };
+const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
+module.exports = { publishTemplate: mw("publishTemplate"), instantiate: mw("instantiate"), advance: mw("advance"), schemas };

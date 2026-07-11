@@ -6,6 +6,7 @@
  */
 "use strict";
 
+const crypto = require("crypto");
 const llm = require("./llm.service");
 const { retrieve, toContextBlock } = require("./retrieval.service");
 const { redact } = require("./redact");
@@ -70,10 +71,11 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
     { role: "user", content: redact(message) },
   ];
 
-  const res = await llm.chat({ messages, tools: tools.map(toOpenAiTool) });
+  const res = await llm.chat({ client, messages, tools: tools.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId, res, feature });
 
   const actions = [];
+  const batchId = res.toolCalls.length ? crypto.randomUUID() : null;
   for (const call of res.toolCalls) {
     const def = tools.find((t) => t.action_key === call.function.name);
     if (!def) continue;
@@ -86,9 +88,9 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
     const errs = validatePayload(def.payload_schema, payload);
     const status = errs.length ? "VALIDATION_FAILED" : "AWAITING_CONFIRM";
     const run = await client.query(
-      `INSERT INTO ai_action_run (conversation_id, user_id, action_key, proposed_payload, status, validation_error)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING action_run_id`,
-      [conversationId || null, user.user_id, def.action_key, payload, status, errs.join("; ") || null],
+      `INSERT INTO ai_action_run (conversation_id, user_id, action_key, proposed_payload, status, validation_error, batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING action_run_id`,
+      [conversationId || null, user.user_id, def.action_key, payload, status, errs.join("; ") || null, batchId],
     );
     actions.push({
       action_run_id: run.rows[0].action_run_id,
@@ -99,7 +101,8 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
     });
   }
 
-  return { answer: res.text, actions, provider: res.provider };
+  const batchable = actions.filter((x) => x.requires_confirmation && (!x.validation_errors || x.validation_errors.length === 0));
+  return { answer: res.text, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider };
 }
 
 /**
@@ -136,6 +139,36 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   return { ok: true, result };
 }
 
+/**
+ * Confirm and execute every AWAITING_CONFIRM action in a batch, in creation
+ * order, re-checking the governance gate once. Halts on the first failure
+ * (remaining actions stay AWAITING_CONFIRM). Per-module services still own their
+ * own transactions — cross-module atomicity is a later design (§8) — so this is
+ * "grouped + halt-on-failure", not a single distributed transaction.
+ */
+async function confirmBatch({ client, user, batchId, registry }) {
+  const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: "assistant" });
+  if (!gate.allowed) throw new Error(`AI action blocked: ${gate.reason}`);
+
+  const { rows } = await client.query(
+    "SELECT action_run_id FROM ai_action_run WHERE batch_id=$1 AND user_id=$2 AND status='AWAITING_CONFIRM' ORDER BY created_at",
+    [batchId, user.user_id],
+  );
+  const results = [];
+  for (const r of rows) {
+    let res;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry });
+    } catch (err) {
+      results.push({ action_run_id: r.action_run_id, ok: false, error: err.message });
+      return { batch_id: batchId, halted: true, executed: results.filter((x) => x.ok).length, results };
+    }
+    results.push({ action_run_id: r.action_run_id, ok: true, result: res.result });
+  }
+  return { batch_id: batchId, halted: false, executed: results.length, results };
+}
+
 async function recordUsage(client, { user, conversationId, res, feature }) {
   try {
     const u = res.usage || {};
@@ -152,4 +185,4 @@ async function recordUsage(client, { user, conversationId, res, feature }) {
   }
 }
 
-module.exports = { ask, confirmAction, loadTools };
+module.exports = { ask, confirmAction, confirmBatch, loadTools };

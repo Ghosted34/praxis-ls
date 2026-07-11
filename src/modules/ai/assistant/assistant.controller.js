@@ -20,4 +20,10 @@ const confirm = asyncHandler(async (req, res) => {
   );
   res.json({ data: out });
 });
-module.exports = { ask, confirm };
+const confirmBatch = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.confirmBatch(client, { user: user(req), batchId: req.params.batchId }),
+  );
+  res.json({ data: out });
+});
+module.exports = { ask, confirm, confirmBatch };

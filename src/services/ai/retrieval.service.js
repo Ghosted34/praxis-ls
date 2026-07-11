@@ -20,7 +20,7 @@ const toVec = (arr) => `[${arr.join(",")}]`;
 async function retrieve(opts) {
   const k = opts.k || 6;
   const allowed = opts.allowed || ["normal"];
-  const qvec = toVec(await embeddings.embedOne(opts.query));
+  const qvec = toVec(await embeddings.embedOne(opts.tenantClient, opts.query));
 
   const hits = [];
 

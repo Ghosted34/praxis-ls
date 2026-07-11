@@ -49,19 +49,24 @@ Result: the loader now discovers and mounts **87/87** modules with zero skips;
 
 ## 3. Phase 4 build plan (dependency-ordered)
 
-1. **Action registrar sync** — a boot/CLI step (`scripts/ai/sync-actions.js`)
-   that walks the 32 `*.ai.js` manifests → upserts `ai_action_catalogue`
-   (`payload_schema` from Zod, `is_write`, `required_permission`,
-   `requires_confirmation`) and builds the executor map. (`action-registry.js`
-   exists; wire the sync + a test.)
-2. **Assistant pipeline hardening** — confirm the orchestrator's
-   propose→Zod-validate→RBAC→confirm→execute→log loop end to end; add the
-   `ai_action_run.batch_id` migration for multi-write plans; gate every entry on
-   `governance.canUseFeature` + `recordUsage`.
-3. **worker-ai** (`src/workers/ai/`) — voice-to-text (Groq/Whisper) and
-   document-vision (Gemini) jobs feeding the same propose→confirm pipeline;
-   event-driven re-embed handler for grounding freshness.
-4. **MOD-63 Reporting & Insights** — rebuild `insights` real against Praxis LS
+1. ✅ **Action registrar sync** — `src/services/ai/action-registrar.js` walks all
+   33 manifests → 134 catalogue actions (63 writes / 71 reads), Zod→JSON-schema,
+   `required_permission`, `requires_confirmation`; `ai_enabled` gated by the vetted
+   executor registry (no drift). CLI `scripts/ai/sync-actions.js` (--tenant/--all/
+   --dry). Assistant uses the auto-derived executor map.
+2. ✅ **Assistant pipeline gated** — orchestrator `ask()`/`confirmAction` check
+   `governance.canUseFeature` (feature on + grant + budget not hard-capped) and
+   record usage against the budget period via `governance.recordUsage`.
+3. ✅ **Multi-write plans** — `0420_ai_batch.sql` adds `ai_action_run.batch_id`;
+   a turn's proposed writes share a batch; `confirmBatch` executes them in order,
+   halting on first failure (`POST /ai/batches/:batchId/confirm`).
+4. ✅ **worker-ai** — `ai-transcribe` (Groq/Whisper voice→text) and `ai-vision`
+   (Gemini doc→fields) handlers feed the same propose→confirm turn, governance-
+   gated on `voice`/`doc_vision`; queues registered in the worker runtime.
+   Provider calls are swappable services; they throw a clear "not configured"
+   until keys are set (parity with PDF needing Chromium). Event-driven re-embed
+   handler still to wire.
+5. **MOD-63 Reporting & Insights** — rebuild `insights` real against Praxis LS
    tables (dossier P&L, receivables ageing, procurement spend, cash position),
    with chat-on-dashboards.
 5. **MOD-27 Pricing Variance Index** — the Sales-facing R/Y/G view over

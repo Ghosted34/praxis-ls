@@ -28,5 +28,6 @@ router.get("/usage", requirePermission(MODULE, "view"), controller.usage);
 
 router.get("/vendors", requirePermission(MODULE, "view"), controller.listVendors);
 router.put("/vendors/:vendor", requirePermission(MODULE, "edit"), validator.setVendor, controller.setVendor);
+router.post("/vendors/:vendor/test", requirePermission(MODULE, "edit"), controller.testVendor);
 
 module.exports = { basePath: "/ai/governance", feature: "ai.assistant.backend", router };

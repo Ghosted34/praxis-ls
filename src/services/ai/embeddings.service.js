@@ -1,33 +1,37 @@
 /**
- * Embeddings — OpenAI-compatible endpoint (also serves DeepSeek/other). Returns
- * Float32-friendly number[] of length EMBEDDINGS_DIM. Batches inputs. The vector
- * is written to *_chunk.embedding (pgvector) via pgvector's toSql in the repo.
+ * Embeddings — OpenAI-compatible endpoint. Vendor creds/endpoint/model come from
+ * the DB (governance.getVendorConfig(client, "embeddings")), NOT .env
+ * (doc/BUILD_CONVENTIONS.md §7). The pgvector dimension is a schema constant so
+ * it stays in config. With no embeddings vendor (or no tenant client, e.g. a
+ * global reindex) we return empty vectors and the chunk embedding stays NULL —
+ * retrieval simply finds no vector hits.
  */
 "use strict";
 
-const { groups, config } = require("../../config/env");
+const axios = require("axios");
+const { config } = require("../../config/env");
+const governance = require("../../modules/ai/governance/governance.service");
+const { logger } = require("../../config/logger");
 
-let client = null;
-function openai() {
-  if (!client) {
-    // Lazy require so the app boots without the dep during non-AI ops.
-    const OpenAI = require("openai");
-    const e = groups.ai.embeddings;
-    client = new OpenAI({ apiKey: e.openaiKey, baseURL: e.openaiBaseUrl });
-  }
-  return client;
-}
-
-/** Embed an array of strings → array of number[] (length EMBEDDINGS_DIM). */
-async function embedBatch(texts) {
+async function embedBatch(client, texts) {
   if (!texts || texts.length === 0) return [];
-  const res = await openai().embeddings.create({
-    model: config.EMBEDDINGS_MODEL,
-    input: texts,
-  });
-  return res.data.map((d) => d.embedding);
+  if (!client) return [];
+  const vendor = await governance.getVendorConfig(client, "embeddings");
+  if (!vendor || !vendor.api_key || !vendor.endpoint_url) return [];
+  try {
+    const base = String(vendor.endpoint_url).replace(/\/$/, "");
+    const { data } = await axios.post(
+      `${base}/embeddings`,
+      { model: vendor.model || config.EMBEDDINGS_MODEL, input: texts },
+      { headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" }, timeout: 60000 },
+    );
+    return (data.data || []).map((d) => d.embedding);
+  } catch (err) {
+    logger.warn({ err: err.message }, "embeddings call failed -> skipping vectors");
+    return [];
+  }
 }
 
-const embedOne = async (text) => (await embedBatch([text]))[0];
+const embedOne = async (client, text) => (await embedBatch(client, [text]))[0];
 
 module.exports = { embedBatch, embedOne, dim: config.EMBEDDINGS_DIM };

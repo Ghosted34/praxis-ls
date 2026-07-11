@@ -126,3 +126,36 @@ hard-coded literal. Surface each as a Settings screen entry in the screen regist
   `approval_task`s from the tenant's `workflow_step`s → advance on clear).
 - **Régie `policy_window_days`** (and similar constants already shipped) should
   move from a code default to a tenant setting.
+
+## §7 Secrets & vendor keys — .env is for boot only
+
+Hard rule: **the only values in `.env` are those required to *start* the
+process** — database connection, JWT secret, Redis URL, port, node env. Nothing
+else.
+
+Every **operational / vendor credential** — AI provider API keys (DeepSeek,
+Gemini, Groq, OpenAI-embeddings), SMTP, the FX-rate API key, and any future
+third-party key — is **stored in the database**, encrypted, and managed through
+the security/settings surface:
+
+- **AI vendor keys** live in `ai_vendor_credential` (AES-256-GCM encrypted) and
+  are read at call time via `governance.getVendorConfig(client, vendor)`. Read
+  APIs never return the ciphertext.
+- **Other operational keys** (SMTP, FX, webhooks) live in `setting`
+  (section/key/value) and are read via `shared/config/settings`
+  (`getSetting`/`getSection`).
+
+Consequences for code:
+- A service that talks to an external vendor takes the **tenant client** and
+  resolves its key from the DB. It must NOT read `config.*_API_KEY` /
+  `groups.ai.*` / `config.SMTP_*`.
+- When no key is configured, the service degrades gracefully (a clear
+  "not configured" error or a stub) — it never falls back to an env key.
+- Keys are entered **and connection-tested from the frontend**: every vendor
+  surface exposes a "test connection" action (e.g. `POST
+  /ai/governance/vendors/:vendor/test`) that does a minimal live call and returns
+  `{ ok, error }` without persisting anything new.
+
+`.env` vendor variables, if present, are treated as **absent** by the runtime —
+they exist only as an optional local-dev convenience and are never read by
+services.

@@ -14,9 +14,9 @@ const { logger } = require("../../config/logger");
 
 const toVec = (arr) => `[${arr.join(",")}]`;
 
-async function embedChunks(chunks) {
+async function embedChunks(client, chunks) {
   if (chunks.length === 0) return [];
-  const vecs = await embeddings.embedBatch(chunks.map((c) => c.content));
+  const vecs = await embeddings.embedBatch(client, chunks.map((c) => c.content));
   return chunks.map((c, i) => ({ ...c, vec: toVec(vecs[i]) }));
 }
 
@@ -49,7 +49,7 @@ async function ingestGlobal(items) {
       [row.ai_source_id, it.kind, it.ref, it.title || it.ref],
     );
     const docId = doc.rows[0].ai_document_id;
-    const chunks = await embedChunks(chunkText(it.content));
+    const chunks = await embedChunks(null, chunkText(it.content));
     for (const c of chunks) {
       await pf.query(
         `INSERT INTO platform.ai_chunk (ai_document_id, chunk_no, content, content_hash, embedding, token_count)
@@ -79,7 +79,7 @@ async function ingestTenantCards(client, cards) {
       [card.ref.split(":")[0], card.ref, card.title || card.ref, card.confidentiality || "normal"],
     );
     const docId = doc.rows[0].ai_document_id;
-    const chunks = await embedChunks(chunkText(card.text));
+    const chunks = await embedChunks(client, chunkText(card.text));
     for (const c of chunks) {
       await client.query(
         `INSERT INTO ai_chunk (ai_document_id, chunk_no, content, embedding, token_count)

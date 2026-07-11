@@ -17,4 +17,7 @@ const ask = (client, { user, message, conversationId, allowed }) =>
 const confirm = (client, { user, actionRunId }) =>
   orchestrator.confirmAction({ client, user, actionRunId, registry });
 
-module.exports = { ask, confirm };
+const confirmBatch = (client, { user, batchId }) =>
+  orchestrator.confirmBatch({ client, user, batchId, registry });
+
+module.exports = { ask, confirm, confirmBatch };

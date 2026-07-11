@@ -1,32 +1,39 @@
 /**
- * Email service — per-tenant SMTP send (nodemailer, lazily required). Sending
- * runs from the `email` worker job with retry/backoff. SPF/DKIM/DMARC are a DNS
- * concern per sending domain (tracked); this is the transport + logging surface.
+ * Email service — per-tenant SMTP send (nodemailer, lazily required). SMTP creds
+ * come from tenant settings (section "email"), NOT .env (BUILD_CONVENTIONS §7):
+ *   email.smtp_host, email.smtp_port, email.smtp_user, email.smtp_pass,
+ *   email.from (or email.from_domain). Sending runs from the `email` worker with
+ *   retry/backoff. `send` needs the tenant client to resolve those settings.
  */
 "use strict";
 
-const { config } = require("../config/env");
+const { getSection } = require("../shared/config/settings");
 
-function transport() {
-  /// eslint-disable-next-line global-require
+function transportFrom(cfg) {
+  // eslint-disable-next-line global-require
   const nodemailer = require("nodemailer");
+  const port = Number(cfg.smtp_port) || 587;
   return nodemailer.createTransport({
-    host: config.SMTP_HOST,
-    port: config.SMTP_PORT,
-    secure: Number(config.SMTP_PORT) === 465,
-    auth: config.SMTP_USER ? { user: config.SMTP_USER, pass: config.SMTP_PASS } : undefined,
+    host: cfg.smtp_host,
+    port,
+    secure: port === 465,
+    auth: cfg.smtp_user ? { user: cfg.smtp_user, pass: cfg.smtp_pass } : undefined,
   });
 }
 
-function defaultFrom() {
-  return "no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com");
-}
+const fromOf = (cfg) => cfg.from || ("no-reply@" + (cfg.from_domain || "praxisls.com"));
 
-/** Send one message. `tx` is injectable for tests. */
-async function send({ to, subject, html, text, from }, tx = null) {
+/**
+ * Send one message using the tenant's configured SMTP. `client` is the tenant
+ * connection; `tx` is an injectable transport for tests.
+ */
+async function send(client, { to, subject, html, text, from }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
-  const mailer = tx || transport();
-  return mailer.sendMail({ from: from || defaultFrom(), to, subject, html, text });
+  let cfg = {};
+  if (client) cfg = await getSection(client, "email");
+  if (!tx && !cfg.smtp_host) throw new Error("email: no SMTP configured (set section 'email' in Settings)");
+  const mailer = tx || transportFrom(cfg);
+  return mailer.sendMail({ from: from || fromOf(cfg), to, subject, html, text });
 }
 
-module.exports = { send, transport, defaultFrom };
+module.exports = { send };

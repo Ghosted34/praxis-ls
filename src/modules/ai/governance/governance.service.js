@@ -14,6 +14,7 @@ const repo = require("./governance.repo");
 const events = require("./governance.events");
 const { estimateCostXaf, capState, canUse } = require("./governance.rules");
 const encryption = require("../../../services/encryption.service");
+const axios = require("axios");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -123,8 +124,24 @@ async function getVendorConfig(client, vendor) {
   return { vendor: full.vendor, endpoint_url: full.endpoint_url, model: full.current_model || full.default_model, api_key: full.api_key_enc ? encryption.decrypt(full.api_key_enc) : null, is_active: full.is_active };
 }
 
+/** Test a stored vendor key with a minimal live auth call (GET /models). No writes. */
+async function testVendor(client, vendor) {
+  const cfg = await getVendorConfig(client, vendor);
+  if (!cfg || !cfg.api_key) return { ok: false, error: "no API key configured for " + vendor };
+  if (!cfg.endpoint_url) return { ok: false, error: "no endpoint_url configured for " + vendor };
+  try {
+    const base = String(cfg.endpoint_url).replace(/\/$/, "");
+    const res = await axios.get(base + "/models", { headers: { Authorization: "Bearer " + cfg.api_key }, timeout: 15000 });
+    const count = res.data && Array.isArray(res.data.data) ? res.data.data.length : null;
+    return { ok: true, vendor, models: count };
+  } catch (err) {
+    const r = err.response;
+    return { ok: false, vendor, status: r && r.status, error: (r && r.data && (r.data.error && r.data.error.message || r.data.message)) || err.message };
+  }
+}
+
 module.exports = {
-  listFeatures, setFeature,
+  listFeatures, setFeature, testVendor,
   grantAccess, revokeAccess, listGrants,
   budgetStatus, setBudget, canUseFeature, recordUsage, listUsage,
   listVendors, getVendor, setVendor, getVendorConfig,

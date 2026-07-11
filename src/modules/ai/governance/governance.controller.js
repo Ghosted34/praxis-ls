@@ -14,4 +14,5 @@ module.exports = {
   usage: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listUsage(c, req.query)) })),
   listVendors: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listVendors(c)) })),
   setVendor: asyncHandler(async (req, res) => { const b = req.body; res.json({ data: await req.tenantDb((c) => service.setVendor(c, { vendor: req.params.vendor, apiKey: b.api_key, patch: b, actor: actor(req) })) }); }),
+  testVendor: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.testVendor(c, req.params.vendor)) })),
 };

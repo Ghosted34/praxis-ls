@@ -31,4 +31,13 @@ async function kill(client, sessionId, killedBy) {
   return rows[0] || null;
 }
 
-module.exports = { ...crud, listForUser, kill };
+
+/** Kill all live sessions for a user (revoke-all). Returns the killed session ids. */
+async function killAllForUser(client, userId, killedBy) {
+  const { rows } = await client.query(
+    "UPDATE session SET killed_at = now(), killed_by = $2 WHERE user_id = $1 AND killed_at IS NULL RETURNING session_id",
+    [userId, killedBy || null],
+  );
+  return rows.map((r) => r.session_id);
+}
+module.exports = { ...crud, listForUser, kill, killAllForUser };

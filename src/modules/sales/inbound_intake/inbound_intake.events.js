@@ -1,2 +1,2 @@
 "use strict";
-module.exports = { MODULE: "MOD-25", CREATED: "inbound_intake.created", UPDATED: "inbound_intake.updated", ARCHIVED: "inbound_intake.archived" };
+module.exports = { MODULE: "MOD-25", ENQUIRY_CREATED: "contact_enquiry.created", ENQUIRY_TRIAGED: "contact_enquiry.triaged", PARTNERSHIP_CREATED: "partnership_request.created", PARTNERSHIP_REVIEWED: "partnership_request.reviewed" };

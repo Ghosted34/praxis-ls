@@ -6,6 +6,8 @@
  */
 "use strict";
 
+const { config } = require("../../config/env");
+
 const { logger } = require("../../config/logger");
 
 /**
@@ -14,8 +16,8 @@ const { logger } = require("../../config/logger");
  * ({ api_key, endpoint_url, model }) resolved from governance (DB).
  */
 async function transcribe({ audio, mimeType = "audio/mpeg", vendor = null }) {
-  const apiKey = vendor && vendor.api_key;
-  const baseURL = vendor && vendor.endpoint_url;
+  const apiKey = (vendor && vendor.api_key) || config.GROQ_API_KEY;
+  const baseURL = (vendor && vendor.endpoint_url) || config.WHISPER_BASE_URL;
   if (!apiKey) throw new Error("voice transcription provider not configured (Groq/Whisper key missing)");
   if (!Buffer.isBuffer(audio) || audio.length === 0) throw new Error("transcribe needs a non-empty audio Buffer");
 

@@ -64,4 +64,17 @@ async function kill(client, { id, actor }) {
   return { killed: true, session_id: id };
 }
 
-module.exports = { ...crud, mine, kill };
+
+/** Revoke ALL of the caller's own sessions (log out everywhere). */
+async function killAllMine(client, actor) {
+  const ids = await repo.killAllForUser(client, actor.user_id, actor.user_id);
+  for (const id of ids) {
+    // eslint-disable-next-line no-await-in-loop
+    await sessionStore.removeSession(id, actor.user_id);
+  }
+  await identityCache.invalidateUser(actor.user_id);
+  await audit(client, { actorUserId: actor.user_id, action: events.KILLED, moduleKey: events.MODULE, entityRef: "app_user:" + actor.user_id, after: { revoked: ids.length } });
+  return { killed: ids.length };
+}
+
+module.exports = { ...crud, mine, kill, killAllMine };

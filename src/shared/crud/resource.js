@@ -10,6 +10,8 @@ const { insertOne, updateOne, getById, page } = require("../db/query-helpers");
 const { emitEvent, audit } = require("../events/emit");
 const { asyncHandler, AppError } = require("../../utils/errors");
 const express = require("express");
+const { authMiddleware } = require("../../middleware/auth");
+const { requirePermission } = require("../../middleware/rbac");
 
 /** cfg: { table, pk, activeColumn?, searchColumn?, orderBy?, scopeColumn? }
  *  scopeColumn is the record-level-scope opt-in (see doc/WORK_DONE.md /
@@ -120,14 +122,23 @@ function makeController(service, label = "Record") {
   };
 }
 
-/** validator: { create, update } express middlewares (optional). */
-function makeRouter({ controller, validator = {}, softDeletable = true }) {
+/**
+ * Generic CRUD router. GATED BY DEFAULT: authMiddleware runs first (no anonymous
+ * access), and when `module` (a MOD-xx key) is given each verb also carries the
+ * matching requirePermission (view/create/edit/delete). Pass `gated: false` only
+ * for a router that applies its own auth upstream. This closes the class of hole
+ * where a bare makeRouter() exposed a fully-open surface.
+ *   validator: { create, update } express middlewares (optional).
+ */
+function makeRouter({ controller, validator = {}, softDeletable = true, module = null, gated = true }) {
   const r = express.Router();
-  r.get("/", controller.list);
-  r.post("/", ...(validator.create ? [validator.create] : []), controller.create);
-  r.get("/:id", controller.get);
-  r.patch("/:id", ...(validator.update ? [validator.update] : []), controller.update);
-  if (softDeletable) r.delete("/:id", controller.archive);
+  if (gated) r.use(authMiddleware);
+  const perm = (action) => (module ? [requirePermission(module, action)] : []);
+  r.get("/", ...perm("view"), controller.list);
+  r.post("/", ...perm("create"), ...(validator.create ? [validator.create] : []), controller.create);
+  r.get("/:id", ...perm("view"), controller.get);
+  r.patch("/:id", ...perm("edit"), ...(validator.update ? [validator.update] : []), controller.update);
+  if (softDeletable) r.delete("/:id", ...perm("delete"), controller.archive);
   return r;
 }
 

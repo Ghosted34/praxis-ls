@@ -149,13 +149,28 @@ Consequences for code:
 - A service that talks to an external vendor takes the **tenant client** and
   resolves its key from the DB. It must NOT read `config.*_API_KEY` /
   `groups.ai.*` / `config.SMTP_*`.
-- When no key is configured, the service degrades gracefully (a clear
-  "not configured" error or a stub) — it never falls back to an env key.
+- Resolution order is **DB-first, then `.env` as a fallback**. A service reads
+  the DB vendor config; if unset, it may fall back to the matching `.env` value;
+  if neither is present it degrades gracefully (clear "not configured" error or
+  a stub). `.env` is a convenience/last-resort, never the primary source.
 - Keys are entered **and connection-tested from the frontend**: every vendor
   surface exposes a "test connection" action (e.g. `POST
   /ai/governance/vendors/:vendor/test`) that does a minimal live call and returns
   `{ ok, error }` without persisting anything new.
 
-`.env` vendor variables, if present, are treated as **absent** by the runtime —
-they exist only as an optional local-dev convenience and are never read by
-services.
+### Per-purpose email senders (no generic sender)
+
+There is **no single generic mail sender**. Each sending **purpose** — `BILLING`,
+`DOCUMENTS`, `NOTIFICATIONS`, `SUPPORT` — has its own **verified identity** in the
+`email_identity` table: From address + name + domain, its own SMTP host, and
+SPF/DKIM/DMARC verification flags (plus an `is_fallback` identity on
+`nmail.praxisls.com`).
+
+A module declares its `purpose` when sending; the identity supplies the From and
+transport host. `email.send(client, { to, subject, html, from, replyTo, purpose,
+moduleKey })` resolves, DB-first with env fallback:
+- **From + host** ← `email_identity(purpose)` → `setting "email".default` → env
+- **auth creds** ← `setting "email".default` (`smtp_user/pass`) → `SMTP_*` env
+
+Explicit `from`/`replyTo` always win. When nothing resolves, the send refuses
+rather than leaking through a generic mailbox.

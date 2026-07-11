@@ -4,6 +4,7 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./hr_contract.repo");
 const events = require("./hr_contract.events");
+const employeeService = require("../../master/employees/employees.service");
 
 // Contract lifecycle: DRAFT → ISSUED → SIGNED → ENDED. A signed or ended
 // contract is terminal for forward flow (ENDED only reachable from SIGNED).
@@ -18,6 +19,13 @@ const base = makeService({ repo, moduleKey: events.MODULE, entity: "hr_contract"
 
 module.exports = {
   ...base,
+
+  // A contract is always issued to an active employee.
+  async create(client, { data, actor = {} }) {
+    if (data.employee_id) await employeeService.assertActive(client, data.employee_id);
+    return base.create(client, { data, actor });
+  },
+
   async setStatus(client, { id, status, actor }) {
     const before = await repo.findById(client, id);
     if (!before) return null;

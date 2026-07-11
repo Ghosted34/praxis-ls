@@ -1,2 +1,8 @@
 "use strict";
-module.exports = { MODULE: "MOD-38", CREATED: "cycle_count.created", UPDATED: "cycle_count.updated", ARCHIVED: "cycle_count.archived" };
+module.exports = {
+  MODULE: "MOD-38",
+  CREATED: "cycle_count.created",
+  UPDATED: "cycle_count.updated",
+  ARCHIVED: "cycle_count.archived",
+  DISCREPANCY_FOUND: "cycle_count.discrepancy_found",
+};

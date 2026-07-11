@@ -10,12 +10,13 @@ const axios = require("axios");
 const registry = require("../../services/tenant/registry.service");
 const currencyRepo = require("../../modules/master/currency/currency.repo");
 const { getSetting } = require("../../shared/config/settings");
+const { config } = require("../../config/env");
 
 module.exports = async function fxSync(job) {
   const { tenantMeta, env = "live", base = "XAF", quotes = ["USD", "EUR"] } = job.data || {};
   if (!tenantMeta) throw new Error("fx-sync job needs tenantMeta");
   return registry.withTenantConnection(tenantMeta, env, async (c) => {
-    const key = await getSetting(c, "fx", "exchangerate_api_key", null);
+    const key = (await getSetting(c, "fx", "exchangerate_api_key", null)) || config.EXCHANGERATE_API_KEY || null;
     if (!key) return { skipped: true, reason: "no fx.exchangerate_api_key configured" };
     const url = "https://v6.exchangerate-api.com/v6/" + key + "/latest/" + base;
     const { data } = await axios.get(url, { timeout: 15000 });

@@ -1,18 +1,15 @@
+/** Notifications — the caller's own inbox (self-scoped; no MOD grant needed to
+ *  read your own). System-generated only; no create/delete via API. */
 "use strict";
 const express = require("express");
 const { authMiddleware } = require("../../middleware/auth");
-const { makeRouter } = require("../../shared/crud/resource");
 const controller = require("./notification.controller");
-const validator = require("./notification.validator");
 
-// Require authentication for all notification routes. NOTE (follow-up, not this
-// pass): the generic list() is not yet self-scoped — it returns every tenant
-// notification, not just req.user's. Watch-the-Watcher writes rows targeted at
-// CEO/MANAGEMENT (user_id set), so read access should be filtered to
-// req.user.user_id before this is exposed to non-admin roles. Tracked in
-// doc/WORK_TO_BE_DONE.md.
 const router = express.Router();
 router.use(authMiddleware);
-router.use(makeRouter({ controller, validator }));
+router.get("/", controller.mine);
+router.get("/unread-count", controller.unreadCount);
+router.post("/read-all", controller.markAllRead);
+router.post("/:id/read", controller.markRead);
 
 module.exports = { basePath: "/notifications", feature: null, router };

@@ -1,5 +1,16 @@
 "use strict";
-const { makeRouter } = require("../../../shared/crud/resource");
+const express = require("express");
+const { authMiddleware } = require("../../../middleware/auth");
+const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./lead.controller");
 const validator = require("./lead.validator");
-module.exports = { basePath: "/leads", feature: "sales.crm", router: makeRouter({ controller, validator }) };
+const MODULE = "MOD-20";
+const router = express.Router();
+router.use(authMiddleware);
+router.get("/", requirePermission(MODULE, "view"), controller.list);
+router.get("/:id", requirePermission(MODULE, "view"), controller.get);
+router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+router.post("/:id/transition", requirePermission(MODULE, "edit"), validator.transition, controller.transition);
+router.post("/:id/convert", requirePermission(MODULE, "edit"), validator.convert, controller.convert);
+module.exports = { basePath: "/leads", feature: null, router };

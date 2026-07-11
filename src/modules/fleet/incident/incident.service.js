@@ -4,6 +4,7 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./incident.repo");
 const events = require("./incident.events");
+const employeeService = require("../../master/employees/employees.service");
 
 // Fleet incident lifecycle. Insurance claims (fleet_claim) hang off a closed or
 // under-review incident; claim handling is a separate concern (deferred).
@@ -17,6 +18,15 @@ const base = makeService({ repo, moduleKey: events.MODULE, entity: "incident", e
 
 module.exports = {
   ...base,
+
+  // Logging an incident against a driver validates that the driver is a real,
+  // active employee (fleet ↔ HR join). Vehicle is optional (an incident may be
+  // reported before the vehicle is identified).
+  async create(client, { data, actor = {} }) {
+    if (data.driver_employee_id) await employeeService.assertActive(client, data.driver_employee_id);
+    return base.create(client, { data, actor });
+  },
+
   async setStatus(client, { id, status, actor }) {
     const before = await repo.findById(client, id);
     if (!before) return null;

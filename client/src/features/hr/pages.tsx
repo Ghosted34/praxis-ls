@@ -1,5 +1,35 @@
-/** HR (Phase 3) screens — read skeletons over the MOD-11..19 HR endpoints. */
+/** HR (Phase 3) screens — read skeletons over the MOD-02 + MOD-11..19 HR endpoints. */
 import { ResourceList } from "@/components/resource-list";
+
+export const EmployeesPage = () => (
+  <ResourceList
+    title="Employees"
+    description="Human capital master: staff, CNPS, salary, bank details — the record HR, payroll and fleet build on (MOD-02)."
+    endpoint="/employees"
+    columns={[
+      { key: "full_name", label: "Name" },
+      { key: "entity_name", label: "Entity" },
+      { key: "department", label: "Department" },
+      { key: "job_title", label: "Job title" },
+      { key: "employment_type", label: "Type" },
+      { key: "is_active", label: "Active" },
+    ]}
+  />
+);
+
+export const PayrollPage = () => (
+  <ResourceList
+    title="Payroll"
+    description="Monthly payroll runs — compute CNPS/IRPP/CAC/CFC/FNE, approve, post to the ledger (MOD-17)."
+    endpoint="/payroll"
+    columns={[
+      { key: "period_code", label: "Period" },
+      { key: "status", label: "Status" },
+      { key: "entity_id", label: "Entity" },
+      { key: "created_at", label: "Created" },
+    ]}
+  />
+);
 
 export const VacanciesPage = () => (
   <ResourceList

@@ -159,4 +159,18 @@ function requireCapability(code) {
   };
 }
 
-module.exports = { requirePermission, requireCapability };
+
+/**
+ * CEO-only guard for destructive/privileged surfaces (e.g. God Mode purge).
+ * Unlike requirePermission (which any granted role passes), this admits ONLY the
+ * CEO. Must run after authMiddleware (needs req.user.is_ceo).
+ */
+function requireCeo() {
+  return function ceoCheck(req, _res, next) {
+    if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+    if (!req.user.is_ceo) throw new AppError("PERMISSION_DENIED", "This action is restricted to the CEO", 403);
+    return next();
+  };
+}
+
+module.exports = { requirePermission, requireCapability, requireCeo };

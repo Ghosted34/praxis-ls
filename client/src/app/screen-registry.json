@@ -347,6 +347,24 @@
       ]
     },
     {
+      "id": "hr_employees",
+      "title": "Employees",
+      "route": "/hr/employees",
+      "area": "hr",
+      "module_key": "MOD-02",
+      "purpose": "Human capital master — staff records HR, payroll and fleet build on.",
+      "actions": [
+        "list_employees",
+        "get_employee",
+        "employee_roster",
+        "employee_drivers",
+        "employee_references",
+        "create_employee",
+        "update_employee",
+        "set_employee_active"
+      ]
+    },
+    {
       "id": "hr_vacancies",
       "title": "Vacancies",
       "route": "/hr/vacancies",
@@ -467,6 +485,37 @@
         "get_talent",
         "create_talent",
         "update_talent"
+      ]
+    },
+    {
+      "id": "hr_payroll",
+      "title": "Payroll",
+      "route": "/hr/payroll",
+      "area": "hr",
+      "module_key": "MOD-17",
+      "purpose": "Monthly payroll runs: compute CNPS/IRPP/CAC/CFC/FNE, approve, post to the ledger.",
+      "actions": [
+        "list_payroll_runs",
+        "get_payroll_run",
+        "create_payroll_run",
+        "compute_payroll",
+        "set_payroll_status"
+      ]
+    },
+    {
+      "id": "finance_assets",
+      "title": "Assets",
+      "route": "/finance/assets",
+      "area": "finance",
+      "module_key": "MOD-54",
+      "purpose": "Fixed-asset register with depreciation schedule, period posting and disposal.",
+      "actions": [
+        "list_assets",
+        "get_asset",
+        "create_asset",
+        "update_asset",
+        "depreciate_asset",
+        "dispose_asset"
       ]
     }
   ]

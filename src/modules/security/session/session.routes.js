@@ -20,6 +20,7 @@ router.get("/", requirePermission(MODULE, "view"), controller.list);
 // sessions — see session.service.js) — registered before "/:id" so "mine"
 // isn't swallowed as an :id param.
 router.get("/mine", controller.mine);
+router.post("/mine/revoke-all", controller.killAllMine);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);

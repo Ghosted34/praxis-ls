@@ -63,9 +63,12 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 - MOD-60 Purchase Orders (procurement) ✅  — items, lock, numbering
 - MOD-61 Goods Received + Supplier Invoice (procurement) ✅  — 3-way match → GL
 - MOD-62 Purchase Requests (procurement) ✅  — requisition lifecycle
-- Sales cycle feeding operations (deferred to P4): MOD-20 Leads, MOD-21 Meetings,
-  MOD-22 Marketing Campaigns, MOD-23 Proposal Generator, MOD-24 Sales Pipeline,
-  MOD-25 Inbound Intake, MOD-26 Project Portfolio (sales) ⬜  — scaffolds; not P1/P2 blocking
+- Sales cycle feeding operations ✅ (built): MOD-20 Leads (→ convert to client),
+  MOD-21 Meetings (notes/minutes + transcript link), MOD-22 Marketing Campaigns
+  (+ newsletter), MOD-23 Proposal Generator (lines/narrative → accept→quotation),
+  MOD-24 Sales Pipeline (Kanban board, win→dossier), MOD-25 Inbound Intake
+  (enquiry/partnership → triage→lead), MOD-26 Project Portfolio / success stories
+  (sign-off→publish). All gated + .ai.js.
 
 ## Phase 3 — People & assets
 - MOD-02 Employees (master) ⬜  ↔ P2
@@ -95,14 +98,17 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 
 ## Phase 4 — Intelligence & reach  (kickoff: see PHASE4_KICKOFF.md)
 - AI service layer (ai): orchestrator/retrieval/ingest/llm/embeddings/redact ✅ scaffolded; `assistant` ✅ thin surface; `governance` ✅ **rebuilt real** (EMV toggle, grants, spend caps, encrypted vendor keys, canUseFeature guard). Foreign `insights` removed — MOD-63 to rebuild real. All 32 modules ship `.ai.js` manifests.
-- MOD-63 Reporting & Insights (vault) ⬜ (foreign scaffold removed; rebuild against Praxis tables)
-- MOD-27 Pricing Variance Index — Sales R/Y/G view (commercial) 🧩  ↔ P2 (pricing_variance table exists; index compute pending)
-- MOD-65 Compliance Checker (vault) ⬜
+- MOD-63 Reporting & Insights (vault) ✅ — report registry (income statement, receivables ageing, cash position, dossier margin, procurement spend, TAFIRE, dossier 360) delegating to owning services; saved reports + dashboard tiles; .ai.js reads power chat-on-dashboards
+- MOD-27 Pricing Variance Index — Sales R/Y/G view (commercial) ✅  ↔ P2 — margin% quote vs actual cost, R/Y/G from tenant thresholds; Sales view strips raw cost (finance boundary), compute gated on MOD-56
+- MOD-65 Compliance Checker (vault) ✅ — rule scans (missing proof, unmatched procurement, aged régie, débours-tax) → compliance_flag (INFO/WARN/RED), idempotent re-run, .ai.js reads
 - MOD-66 Document Verification / QR — public scan (vault) ✅  ↔ P1
 - MOD-70 Settings — full config hub (security) 🟡  ↔ P0/P2
-- Portals (new): Client Portal (↔ MOD-29), Investor/Board terminal (↔ MOD-56),
-  Audit Terminal / data room (↔ MOD-64) ⬜
-- Smart Comms Portal (smartcomm): WebSocket messaging, groups, certified export ⬜
+- Portals (new): `portal` module ✅ — portal_access grant/revoke (time-boxed
+  auditor), + scoped Client (dossiers/invoices/ageing), Investor (income+cash),
+  Auditor (data room) views delegating to owning services; feature-gated
+  portal.client/investor/audit. External magic-link auth = follow-up.
+- Smart Comms Portal (smartcomm) ✅ — groups + messages + SHA-256 certified
+  export captured to vault (verifiable via MOD-66); real-time WS = runtime layer.
 - Support & Feedback dashboard ⬜
 
 ## Phase 5 — Hardening & migration (cross-cutting; touches all modules)

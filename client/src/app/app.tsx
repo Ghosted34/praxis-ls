@@ -32,6 +32,8 @@ import {
   CycleCountsPage,
 } from "@/features/wms/pages";
 import {
+  EmployeesPage,
+  PayrollPage,
   VacanciesPage,
   ContractsPage,
   AppraisalsPage,
@@ -41,6 +43,7 @@ import {
   TrainingsPage,
   TalentPoolPage,
 } from "@/features/hr/pages";
+import { AssetsPage } from "@/features/finance/pages";
 import { BootGate } from "@/app/boot-gate";
 
 export function App() {
@@ -77,6 +80,9 @@ export function App() {
         <Route path="wms/outbound" element={<OutboundPage />} />
         <Route path="wms/equipment" element={<EquipmentPage />} />
         <Route path="wms/cycle-counts" element={<CycleCountsPage />} />
+        <Route path="hr/employees" element={<EmployeesPage />} />
+        <Route path="hr/payroll" element={<PayrollPage />} />
+        <Route path="finance/assets" element={<AssetsPage />} />
         <Route path="hr/vacancies" element={<VacanciesPage />} />
         <Route path="hr/contracts" element={<ContractsPage />} />
         <Route path="hr/appraisals" element={<AppraisalsPage />} />

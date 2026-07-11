@@ -51,4 +51,5 @@ module.exports = {
   updateWorkflow: check(updateWorkflow),
   addStep: check(addStep),
   actApproval: check(actApproval),
+  schemas: { registerEventType, createWorkflow, updateWorkflow, addStep, actApproval },
 };

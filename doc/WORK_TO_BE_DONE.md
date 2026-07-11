@@ -91,11 +91,11 @@ Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organi
 
 ## Phase 3 — People & assets
 
-- [ ] HR: contracts, KPI appraisals, attendance, leave/allowances, SOPs/onboarding, trainings, succession, employee self-service portal
-- [ ] Payroll: CNPS + IRPP/CAC/CFC/RAV auto-compute, payslip generation, auto-posted payroll journal, SoD via run states
-- [ ] Fleet: vehicle/asset registry, compliance & renewal alerts (insurance, visite technique), maintenance/work orders, dispatch, fuel tracking, driver management, incident/claim tracking
-- [ ] Warehouse (WMS): inbound/GRN + QA hold + putaway, space/location management, inventory control, outbound (pick/pack/dispatch), equipment handling, cycle counting with certified audit report
-- [ ] Asset management: acquisition → depreciation (auto-posting) → disposal
+- [x] HR (ledger-independent): vacancies+applicants (MOD-11), contracts (MOD-12), KPI appraisals (MOD-13), attendance (MOD-14), leave/allowances (MOD-15), SOPs (MOD-16), trainings+roster (MOD-18), talent pool (MOD-19) — *remaining:* onboarding checklists, succession, employee self-service portal
+- [ ] Payroll: CNPS + IRPP/CAC/CFC/RAV auto-compute, payslip generation, auto-posted payroll journal, SoD via run states — **deferred: needs Phase 1 ledger posting**
+- [x] Fleet: vehicle registry (MOD-39), compliance & renewal alerts (MOD-40), maintenance/work orders (MOD-41), dispatch (MOD-42), fuel tracking (MOD-43), driver management (MOD-44), incident/claim tracking (MOD-45) — *fuel/work-order GL posting deferred to Phase 1*
+- [x] Warehouse (WMS): inbound/GRN + QA hold + putaway (MOD-33), location management (MOD-34), inventory control + stock-movement journal (MOD-35), outbound pick/pack/dispatch (MOD-36), equipment handling (MOD-37), cycle counting (MOD-38)
+- [ ] Asset management: acquisition → depreciation (auto-posting) → disposal — **deferred: needs Phase 1 ledger posting**
 
 ## Phase 4 — Intelligence & reach
 

@@ -6,25 +6,158 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "tenantHost", "value": "smartls.praxisls.com" },
-    { "key": "slug", "value": "smartls" },
-    { "key": "platformEmail", "value": "root@praxisls.com" },
-    { "key": "platformPassword", "value": "root123" },
-    { "key": "tenantEmail", "value": "you@example.com" },
-    { "key": "tenantPassword", "value": "secret123" },
-    { "key": "platformToken", "value": "" },
-    { "key": "accessToken", "value": "" },
-    { "key": "refreshToken", "value": "" },
-    { "key": "pendingToken", "value": "" },
-    { "key": "totpCode", "value": "" },
-    { "key": "userId", "value": "" },
-    { "key": "roleId", "value": "" },
-    { "key": "sessionId", "value": "" },
-    { "key": "softDeleteId", "value": "" },
-    { "key": "eventTypeKey", "value": "invoice.issued" },
-    { "key": "workflowId", "value": "" },
-    { "key": "stepId", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "tenantHost",
+      "value": "smartls.praxisls.com"
+    },
+    {
+      "key": "slug",
+      "value": "smartls"
+    },
+    {
+      "key": "platformEmail",
+      "value": "root@praxisls.com"
+    },
+    {
+      "key": "platformPassword",
+      "value": "root123"
+    },
+    {
+      "key": "tenantEmail",
+      "value": "you@example.com"
+    },
+    {
+      "key": "tenantPassword",
+      "value": "secret123"
+    },
+    {
+      "key": "platformToken",
+      "value": ""
+    },
+    {
+      "key": "accessToken",
+      "value": ""
+    },
+    {
+      "key": "refreshToken",
+      "value": ""
+    },
+    {
+      "key": "pendingToken",
+      "value": ""
+    },
+    {
+      "key": "totpCode",
+      "value": ""
+    },
+    {
+      "key": "userId",
+      "value": ""
+    },
+    {
+      "key": "roleId",
+      "value": ""
+    },
+    {
+      "key": "sessionId",
+      "value": ""
+    },
+    {
+      "key": "softDeleteId",
+      "value": ""
+    },
+    {
+      "key": "eventTypeKey",
+      "value": "invoice.issued"
+    },
+    {
+      "key": "workflowId",
+      "value": ""
+    },
+    {
+      "key": "stepId",
+      "value": ""
+    },
+    {
+      "key": "vehicleId",
+      "value": ""
+    },
+    {
+      "key": "workOrderId",
+      "value": ""
+    },
+    {
+      "key": "dispatchId",
+      "value": ""
+    },
+    {
+      "key": "incidentId",
+      "value": ""
+    },
+    {
+      "key": "employeeId",
+      "value": ""
+    },
+    {
+      "key": "locationId",
+      "value": ""
+    },
+    {
+      "key": "inventoryItemId",
+      "value": ""
+    },
+    {
+      "key": "grnId",
+      "value": ""
+    },
+    {
+      "key": "outboundId",
+      "value": ""
+    },
+    {
+      "key": "outboundLineId",
+      "value": ""
+    },
+    {
+      "key": "equipmentId",
+      "value": ""
+    },
+    {
+      "key": "clientId",
+      "value": ""
+    },
+    {
+      "key": "vacancyId",
+      "value": ""
+    },
+    {
+      "key": "applicantId",
+      "value": ""
+    },
+    {
+      "key": "contractId",
+      "value": ""
+    },
+    {
+      "key": "attendanceId",
+      "value": ""
+    },
+    {
+      "key": "leaveId",
+      "value": ""
+    },
+    {
+      "key": "trainingId",
+      "value": ""
+    },
+    {
+      "key": "attendeeId",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -46,11 +179,22 @@
           ],
           "request": {
             "method": "GET",
-            "header": [{ "key": "Host", "value": "{{tenantHost}}" }],
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/whoami",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "whoami"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "whoami"
+              ]
             }
           }
         }
@@ -77,15 +221,27 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"{{platformEmail}}\",\n  \"password\": \"{{platformPassword}}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/platform/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "auth",
+                "login"
+              ]
             }
           }
         },
@@ -94,12 +250,21 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{platformToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platformToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/platform/tenants",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "tenants"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "tenants"
+              ]
             }
           }
         },
@@ -108,12 +273,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{platformToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platformToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/platform/tenants/{{slug}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "tenants", "{{slug}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "tenants",
+                "{{slug}}"
+              ]
             }
           }
         },
@@ -122,12 +297,22 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{platformToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platformToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/platform/catalogue/modules",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "catalogue", "modules"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "catalogue",
+                "modules"
+              ]
             }
           }
         },
@@ -136,8 +321,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{platformToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platformToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -145,8 +336,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/platform/tenants",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "tenants"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "tenants"
+              ]
             }
           }
         },
@@ -155,12 +352,23 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{platformToken}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{platformToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/platform/tenants/{{slug}}/go-live",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "platform", "tenants", "{{slug}}", "go-live"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "platform",
+                "tenants",
+                "{{slug}}",
+                "go-live"
+              ]
             }
           }
         }
@@ -195,8 +403,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -204,8 +418,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/login",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "login"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "login"
+              ]
             }
           }
         },
@@ -228,8 +449,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -237,8 +464,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/2fa/verify",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "2fa", "verify"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "2fa",
+                "verify"
+              ]
             }
           }
         },
@@ -259,8 +494,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -268,8 +509,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/refresh",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "refresh"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "refresh"
+              ]
             }
           }
         },
@@ -278,13 +526,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/2fa/setup",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "2fa", "setup"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "2fa",
+                "setup"
+              ]
             }
           }
         },
@@ -293,9 +555,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -303,8 +574,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/2fa/enable",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "2fa", "enable"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "2fa",
+                "enable"
+              ]
             }
           }
         },
@@ -313,9 +592,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -323,8 +611,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/2fa/disable",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "2fa", "disable"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "2fa",
+                "disable"
+              ]
             }
           }
         },
@@ -333,13 +629,26 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/auth/logout",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "auth", "logout"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "auth",
+                "logout"
+              ]
             }
           }
         }
@@ -365,13 +674,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/users",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "users"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "users"
+              ]
             }
           }
         },
@@ -390,11 +711,22 @@
           ],
           "request": {
             "method": "GET",
-            "header": [{ "key": "Host", "value": "{{tenantHost}}" }],
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              }
+            ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/users",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "users"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "users"
+              ]
             }
           }
         },
@@ -414,13 +746,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/roles",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "roles"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "roles"
+              ]
             }
           }
         },
@@ -429,13 +773,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/capabilities",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "capabilities"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "capabilities"
+              ]
             }
           }
         },
@@ -444,13 +800,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/scopes",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "scopes"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "scopes"
+              ]
             }
           }
         },
@@ -459,13 +827,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/permissions",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "permissions"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "permissions"
+              ]
             }
           }
         },
@@ -474,9 +854,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -484,8 +873,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/permissions",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "permissions"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "permissions"
+              ]
             }
           }
         },
@@ -494,13 +889,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/field-visibility",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "field-visibility"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "field-visibility"
+              ]
             }
           }
         },
@@ -509,13 +916,26 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/catalogue/modules",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "catalogue", "modules"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "catalogue",
+                "modules"
+              ]
             }
           }
         },
@@ -524,9 +944,18 @@
           "request": {
             "method": "PUT",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -534,8 +963,15 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/permissions/grant",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "permissions", "grant"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "permissions",
+                "grant"
+              ]
             }
           }
         }
@@ -560,13 +996,26 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/sessions/mine",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "sessions", "mine"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "sessions",
+                "mine"
+              ]
             }
           }
         },
@@ -575,13 +1024,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/sessions",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "sessions"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "sessions"
+              ]
             }
           }
         },
@@ -590,13 +1051,27 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/sessions/{{sessionId}}/kill",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "sessions", "{{sessionId}}", "kill"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "sessions",
+                "{{sessionId}}",
+                "kill"
+              ]
             }
           }
         }
@@ -610,13 +1085,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/audit",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "audit"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "audit"
+              ]
             }
           }
         },
@@ -636,13 +1123,26 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "audit", "soft-deletes"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "audit",
+                "soft-deletes"
+              ]
             }
           }
         },
@@ -651,12 +1151,20 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes/{{softDeleteId}}/request-restore",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "tenant",
@@ -673,12 +1181,20 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/audit/soft-deletes/{{softDeleteId}}/restore",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "tenant",
@@ -700,13 +1216,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/settings",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "settings"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "settings"
+              ]
             }
           }
         }
@@ -720,13 +1248,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/event-types",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "event-types"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "event-types"
+              ]
             }
           }
         },
@@ -735,9 +1275,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -745,8 +1294,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/event-types",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "event-types"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "event-types"
+              ]
             }
           }
         },
@@ -766,9 +1321,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -776,8 +1340,14 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/workflows",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "workflows"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "workflows"
+              ]
             }
           }
         },
@@ -786,13 +1356,25 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/workflows",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "workflows"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "workflows"
+              ]
             }
           }
         },
@@ -801,13 +1383,26 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "workflows", "{{workflowId}}"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "workflows",
+                "{{workflowId}}"
+              ]
             }
           }
         },
@@ -827,9 +1422,18 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" },
-              { "key": "Content-Type", "value": "application/json" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
             ],
             "body": {
               "mode": "raw",
@@ -837,8 +1441,16 @@
             },
             "url": {
               "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}/steps",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "workflows", "{{workflowId}}", "steps"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "workflows",
+                "{{workflowId}}",
+                "steps"
+              ]
             }
           }
         },
@@ -847,12 +1459,20 @@
           "request": {
             "method": "DELETE",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/workflows/{{workflowId}}/steps/{{stepId}}",
-              "host": ["{{baseUrl}}"],
+              "host": [
+                "{{baseUrl}}"
+              ],
               "path": [
                 "api",
                 "tenant",
@@ -869,14 +1489,31 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/approvals?status=PENDING",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "approvals"],
-              "query": [{ "key": "status", "value": "PENDING" }]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "approvals"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "PENDING"
+                }
+              ]
             }
           }
         }
@@ -890,13 +1527,2395 @@
           "request": {
             "method": "GET",
             "header": [
-              { "key": "Host", "value": "{{tenantHost}}" },
-              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
             ],
             "url": {
               "raw": "{{baseUrl}}/api/tenant/notifications",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "tenant", "notifications"]
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "notifications"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9 · Fleet (Phase 3)",
+      "item": [
+        {
+          "name": "GET /vehicles",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vehicles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vehicles"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /vehicles",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vehicles",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vehicles"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"registration\": \"CE-123-AB\",\n  \"category\": \"truck\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.vehicle_id) pm.collectionVariables.set('vehicleId', d.vehicle_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vehicle-compliance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vehicle-compliance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vehicle-compliance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /vehicle-compliance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vehicle-compliance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vehicle-compliance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicle_id\": \"{{vehicleId}}\",\n  \"kind\": \"insurance\",\n  \"expires_on\": \"2026-12-31\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /work-orders",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/work-orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "work-orders"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /work-orders",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/work-orders",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "work-orders"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"kind\": \"PREVENTIVE\",\n  \"vehicle_id\": \"{{vehicleId}}\",\n  \"description\": \"50k service\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.work_order_id) pm.collectionVariables.set('workOrderId', d.work_order_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /work-orders/:id/status → IN_PROGRESS",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/work-orders/{{workOrderId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "work-orders",
+                "{{workOrderId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_PROGRESS\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /dispatch",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/dispatch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "dispatch"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /dispatch",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/dispatch",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "dispatch"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicle_id\": \"{{vehicleId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.fleet_dispatch_id) pm.collectionVariables.set('dispatchId', d.fleet_dispatch_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /dispatch/:id/status → OUT",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/dispatch/{{dispatchId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "dispatch",
+                "{{dispatchId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OUT\",\n  \"odometer\": 1000\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /fuel",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/fuel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "fuel"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /fuel",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/fuel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "fuel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicle_id\": \"{{vehicleId}}\",\n  \"odometer\": 1200,\n  \"litres\": 50,\n  \"cost\": 45000\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /drivers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "drivers"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /drivers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/drivers",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "drivers"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\",\n  \"license_class\": \"CE\",\n  \"expires_on\": \"2027-01-01\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /incidents",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "incidents"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /incidents",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/incidents",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "incidents"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"vehicle_id\": \"{{vehicleId}}\",\n  \"severity\": \"MINOR\",\n  \"description\": \"Bumper scratch\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.fleet_incident_id) pm.collectionVariables.set('incidentId', d.fleet_incident_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /incidents/:id/status → UNDER_REVIEW",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/incidents/{{incidentId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "incidents",
+                "{{incidentId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"UNDER_REVIEW\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "10 · WMS (Phase 3)",
+      "item": [
+        {
+          "name": "GET /locations",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "locations"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /locations",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/locations",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "locations"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"zone\": \"A\",\n  \"aisle\": \"01\",\n  \"rack\": \"R1\",\n  \"bin\": \"B1\",\n  \"capacity_units\": 500\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.location_id) pm.collectionVariables.set('locationId', d.location_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /inventory",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inventory",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inventory"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /inventory",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inventory",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inventory"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"description\": \"Client pallet\",\n  \"sku\": \"SKU-1\",\n  \"qty_on_hand\": 100,\n  \"location_id\": \"{{locationId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.inventory_item_id) pm.collectionVariables.set('inventoryItemId', d.inventory_item_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /inventory/:id/state → QA_HOLD",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inventory/{{inventoryItemId}}/state",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inventory",
+                "{{inventoryItemId}}",
+                "state"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"state\": \"QA_HOLD\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /inventory/:id/move (PICK -10)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inventory/{{inventoryItemId}}/move",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inventory",
+                "{{inventoryItemId}}",
+                "move"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"movement_kind\": \"PICK\",\n  \"qty\": -10\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /inventory/:id/movements",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inventory/{{inventoryItemId}}/movements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inventory",
+                "{{inventoryItemId}}",
+                "movements"
+              ]
+            }
+          }
+        },
+        {
+          "name": "GET /inbound",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inbound",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inbound"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /inbound",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inbound",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inbound"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qa_status\": \"HOLD\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.grn_inbound_id) pm.collectionVariables.set('grnId', d.grn_inbound_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /inbound/:id/qa → PASSED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/inbound/{{grnId}}/qa",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "inbound",
+                "{{grnId}}",
+                "qa"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"qa_status\": \"PASSED\",\n  \"putaway_location\": \"{{locationId}}\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /outbound",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /outbound",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"client_id\": \"{{clientId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.outbound_order_id) pm.collectionVariables.set('outboundId', d.outbound_order_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /outbound/:id/lines",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound/{{outboundId}}/lines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound",
+                "{{outboundId}}",
+                "lines"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"inventory_item_id\": \"{{inventoryItemId}}\",\n  \"qty\": 5\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.outbound_line_id) pm.collectionVariables.set('outboundLineId', d.outbound_line_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /outbound/:id/lines",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound/{{outboundId}}/lines",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound",
+                "{{outboundId}}",
+                "lines"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /outbound/:id/lines/:lineId → picked",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound/{{outboundId}}/lines/{{outboundLineId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound",
+                "{{outboundId}}",
+                "lines",
+                "{{outboundLineId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"picked\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /outbound/:id/status → PICKING",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/outbound/{{outboundId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "outbound",
+                "{{outboundId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"PICKING\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /equipment",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "equipment"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /equipment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/equipment",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "equipment"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"label\": \"Forklift-1\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j = pm.response.json();",
+                  "const d = j.data || j;",
+                  "if (d && d.wms_equipment_id) pm.collectionVariables.set('equipmentId', d.wms_equipment_id);",
+                  "pm.test('2xx', () => pm.response.code < 300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /equipment/:id/status → IN_USE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/equipment/{{equipmentId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "equipment",
+                "{{equipmentId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"IN_USE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /cycle-counts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/cycle-counts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "cycle-counts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /cycle-counts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/cycle-counts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "cycle-counts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"location_id\": \"{{locationId}}\",\n  \"discrepancy\": {\n    \"note\": \"none\"\n  }\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "11 · HR (Phase 3)",
+      "item": [
+        {
+          "name": "GET /vacancies",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /vacancies",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Logistics Officer\",\n  \"department\": \"Ops\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.vacancy_id)pm.collectionVariables.set('vacancyId',d.vacancy_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /vacancies/:id/status → OPEN",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies/{{vacancyId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies",
+                "{{vacancyId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"OPEN\"\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /vacancies/:id/applicants",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies/{{vacancyId}}/applicants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies",
+                "{{vacancyId}}",
+                "applicants"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"Jane Doe\",\n  \"email\": \"jane@example.com\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.applicant_id)pm.collectionVariables.set('applicantId',d.applicant_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /vacancies/:id/applicants",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies/{{vacancyId}}/applicants",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies",
+                "{{vacancyId}}",
+                "applicants"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /vacancies/:id/applicants/:applicantId → SHORTLISTED",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/vacancies/{{vacancyId}}/applicants/{{applicantId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "vacancies",
+                "{{vacancyId}}",
+                "applicants",
+                "{{applicantId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"SHORTLISTED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /contracts",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "contracts"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /contracts",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/contracts",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "contracts"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\",\n  \"kind\": \"EMPLOYMENT\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.hr_contract_id)pm.collectionVariables.set('contractId',d.hr_contract_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /contracts/:id/status → ISSUED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/contracts/{{contractId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "contracts",
+                "{{contractId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"ISSUED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /appraisals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/appraisals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "appraisals"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /appraisals",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/appraisals",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "appraisals"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\",\n  \"period_code\": \"2026-Q2\",\n  \"rating\": 4.5\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /attendance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "attendance"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /attendance",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/attendance",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "attendance"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.attendance_id)pm.collectionVariables.set('attendanceId',d.attendance_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /attendance/:id/clock-out",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/attendance/{{attendanceId}}/clock-out",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "attendance",
+                "{{attendanceId}}",
+                "clock-out"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{}"
+            }
+          }
+        },
+        {
+          "name": "GET /leave",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/leave",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "leave"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /leave",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/leave",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "leave"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\",\n  \"kind\": \"leave\",\n  \"starts_on\": \"2026-08-01\",\n  \"ends_on\": \"2026-08-05\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.leave_request_id)pm.collectionVariables.set('leaveId',d.leave_request_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /leave/:id/decision → APPROVED",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/leave/{{leaveId}}/decision",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "leave",
+                "{{leaveId}}",
+                "decision"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"APPROVED\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /sops",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/sops",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "sops"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /sops",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/sops",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "sops"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Warehouse Safety SOP\",\n  \"category\": \"HSE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /trainings",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /trainings",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Forklift Safety\",\n  \"scheduled_on\": \"2026-08-10\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.training_id)pm.collectionVariables.set('trainingId',d.training_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /trainings/:id/attendees",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings/{{trainingId}}/attendees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings",
+                "{{trainingId}}",
+                "attendees"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"employee_id\": \"{{employeeId}}\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const j=pm.response.json();const d=j.data||j;",
+                  "if(d&&d.training_attendance_id)pm.collectionVariables.set('attendeeId',d.training_attendance_id);",
+                  "pm.test('2xx',()=>pm.response.code<300);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /trainings/:id/attendees",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings/{{trainingId}}/attendees",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings",
+                "{{trainingId}}",
+                "attendees"
+              ]
+            }
+          }
+        },
+        {
+          "name": "PATCH /trainings/:id/attendees/:attendeeId → attended",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings/{{trainingId}}/attendees/{{attendeeId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings",
+                "{{trainingId}}",
+                "attendees",
+                "{{attendeeId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"attended\": true\n}"
+            }
+          }
+        },
+        {
+          "name": "POST /trainings/:id/status → DONE",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/trainings/{{trainingId}}/status",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "trainings",
+                "{{trainingId}}",
+                "status"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"DONE\"\n}"
+            }
+          }
+        },
+        {
+          "name": "GET /talent-pool",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/talent-pool",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "talent-pool"
+              ]
+            }
+          }
+        },
+        {
+          "name": "POST /talent-pool",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Host",
+                "value": "{{tenantHost}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{accessToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/tenant/talent-pool",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "tenant",
+                "talent-pool"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"full_name\": \"John Smith\",\n  \"skills\": \"Customs, transit\"\n}"
             }
           }
         }

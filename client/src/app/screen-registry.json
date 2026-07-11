@@ -151,6 +151,323 @@
         "get_numbering_scheme",
         "set_numbering_scheme"
       ]
+    },
+    {
+      "id": "fleet_vehicles",
+      "title": "Vehicles",
+      "route": "/fleet/vehicles",
+      "area": "fleet",
+      "module_key": "MOD-39",
+      "purpose": "Fleet registry: trucks, low-beds, company cars.",
+      "actions": [
+        "list_vehicles",
+        "get_vehicle",
+        "create_vehicle",
+        "update_vehicle"
+      ]
+    },
+    {
+      "id": "fleet_compliance",
+      "title": "Vehicle compliance",
+      "route": "/fleet/compliance",
+      "area": "fleet",
+      "module_key": "MOD-40",
+      "purpose": "Insurance & visite-technique expiry with renewal alerts.",
+      "actions": [
+        "list_compliance",
+        "get_compliance",
+        "create_compliance",
+        "update_compliance"
+      ]
+    },
+    {
+      "id": "fleet_work_orders",
+      "title": "Work orders",
+      "route": "/fleet/work-orders",
+      "area": "fleet",
+      "module_key": "MOD-41",
+      "purpose": "Preventive & corrective maintenance work orders.",
+      "actions": [
+        "list_work_orders",
+        "get_work_order",
+        "create_work_order",
+        "update_work_order",
+        "set_work_order_status"
+      ]
+    },
+    {
+      "id": "fleet_dispatch",
+      "title": "Dispatch",
+      "route": "/fleet/dispatch",
+      "area": "fleet",
+      "module_key": "MOD-42",
+      "purpose": "Vehicle assignments with check-in/out and odometer.",
+      "actions": [
+        "list_dispatch",
+        "get_dispatch",
+        "create_dispatch",
+        "update_dispatch",
+        "set_dispatch_status"
+      ]
+    },
+    {
+      "id": "fleet_fuel",
+      "title": "Fuel log",
+      "route": "/fleet/fuel",
+      "area": "fleet",
+      "module_key": "MOD-43",
+      "purpose": "Fuel purchases per vehicle.",
+      "actions": [
+        "list_fuel",
+        "get_fuel",
+        "create_fuel",
+        "update_fuel"
+      ]
+    },
+    {
+      "id": "fleet_drivers",
+      "title": "Driver licences",
+      "route": "/fleet/drivers",
+      "area": "fleet",
+      "module_key": "MOD-44",
+      "purpose": "Driver licences, class and expiry.",
+      "actions": [
+        "list_drivers",
+        "get_driver",
+        "create_driver",
+        "update_driver"
+      ]
+    },
+    {
+      "id": "fleet_incidents",
+      "title": "Incidents",
+      "route": "/fleet/incidents",
+      "area": "fleet",
+      "module_key": "MOD-45",
+      "purpose": "Fleet incidents and insurance claims.",
+      "actions": [
+        "list_incidents",
+        "get_incident",
+        "create_incident",
+        "update_incident",
+        "set_incident_status"
+      ]
+    },
+    {
+      "id": "wms_locations",
+      "title": "Locations",
+      "route": "/wms/locations",
+      "area": "wms",
+      "module_key": "MOD-34",
+      "purpose": "Warehouse slotting: zone/aisle/rack/bin/yard.",
+      "actions": [
+        "list_locations",
+        "get_location",
+        "create_location",
+        "update_location"
+      ]
+    },
+    {
+      "id": "wms_inventory",
+      "title": "Inventory",
+      "route": "/wms/inventory",
+      "area": "wms",
+      "module_key": "MOD-35",
+      "purpose": "Stock on hand, state machine and movement journal.",
+      "actions": [
+        "list_inventory",
+        "get_inventory",
+        "list_movements",
+        "create_inventory",
+        "update_inventory",
+        "set_inventory_state",
+        "move_inventory"
+      ]
+    },
+    {
+      "id": "wms_inbound",
+      "title": "Inbound / GRN",
+      "route": "/wms/inbound",
+      "area": "wms",
+      "module_key": "MOD-33",
+      "purpose": "Goods received notes and QA gate.",
+      "actions": [
+        "list_inbound",
+        "get_inbound",
+        "create_inbound",
+        "update_inbound",
+        "set_inbound_qa"
+      ]
+    },
+    {
+      "id": "wms_outbound",
+      "title": "Outbound",
+      "route": "/wms/outbound",
+      "area": "wms",
+      "module_key": "MOD-36",
+      "purpose": "Pick / pack / dispatch orders and lines.",
+      "actions": [
+        "list_outbound",
+        "get_outbound",
+        "list_outbound_lines",
+        "create_outbound",
+        "update_outbound",
+        "set_outbound_status",
+        "add_outbound_line",
+        "set_outbound_line_flags"
+      ]
+    },
+    {
+      "id": "wms_equipment",
+      "title": "Equipment",
+      "route": "/wms/equipment",
+      "area": "wms",
+      "module_key": "MOD-37",
+      "purpose": "Handling equipment: forklifts, reach-stackers.",
+      "actions": [
+        "list_equipment",
+        "get_equipment",
+        "create_equipment",
+        "update_equipment",
+        "set_equipment_status"
+      ]
+    },
+    {
+      "id": "wms_cycle_counts",
+      "title": "Cycle counts",
+      "route": "/wms/cycle-counts",
+      "area": "wms",
+      "module_key": "MOD-38",
+      "purpose": "Physical counts and discrepancies.",
+      "actions": [
+        "list_cycle_counts",
+        "get_cycle_count",
+        "create_cycle_count",
+        "update_cycle_count"
+      ]
+    },
+    {
+      "id": "hr_vacancies",
+      "title": "Vacancies",
+      "route": "/hr/vacancies",
+      "area": "hr",
+      "module_key": "MOD-11",
+      "purpose": "Recruitment vacancies and applicant pipeline.",
+      "actions": [
+        "list_vacancies",
+        "get_vacancy",
+        "list_applicants",
+        "create_vacancy",
+        "update_vacancy",
+        "set_vacancy_status",
+        "add_applicant",
+        "set_applicant_status"
+      ]
+    },
+    {
+      "id": "hr_contracts",
+      "title": "Contracts",
+      "route": "/hr/contracts",
+      "area": "hr",
+      "module_key": "MOD-12",
+      "purpose": "HR contracts: offer, employment, confirmation, termination.",
+      "actions": [
+        "list_contracts",
+        "get_contract",
+        "create_contract",
+        "update_contract",
+        "set_contract_status"
+      ]
+    },
+    {
+      "id": "hr_appraisals",
+      "title": "Appraisals",
+      "route": "/hr/appraisals",
+      "area": "hr",
+      "module_key": "MOD-13",
+      "purpose": "Performance appraisals against KPI targets.",
+      "actions": [
+        "list_appraisals",
+        "get_appraisal",
+        "create_appraisal",
+        "update_appraisal"
+      ]
+    },
+    {
+      "id": "hr_attendance",
+      "title": "Attendance",
+      "route": "/hr/attendance",
+      "area": "hr",
+      "module_key": "MOD-14",
+      "purpose": "Clock-in/out logs with optional GPS.",
+      "actions": [
+        "list_attendance",
+        "get_attendance",
+        "create_attendance",
+        "update_attendance",
+        "clock_out_attendance"
+      ]
+    },
+    {
+      "id": "hr_leave",
+      "title": "Leave & allowances",
+      "route": "/hr/leave",
+      "area": "hr",
+      "module_key": "MOD-15",
+      "purpose": "Leave, salary-advance and mission requests.",
+      "actions": [
+        "list_leave",
+        "get_leave",
+        "create_leave",
+        "update_leave",
+        "decide_leave"
+      ]
+    },
+    {
+      "id": "hr_sops",
+      "title": "SOPs",
+      "route": "/hr/sops",
+      "area": "hr",
+      "module_key": "MOD-16",
+      "purpose": "Standard operating procedure documents with versioning.",
+      "actions": [
+        "list_sops",
+        "get_sop",
+        "create_sop",
+        "update_sop"
+      ]
+    },
+    {
+      "id": "hr_trainings",
+      "title": "Trainings",
+      "route": "/hr/trainings",
+      "area": "hr",
+      "module_key": "MOD-18",
+      "purpose": "Training sessions and attendance roster.",
+      "actions": [
+        "list_trainings",
+        "get_training",
+        "list_attendees",
+        "create_training",
+        "update_training",
+        "set_training_status",
+        "add_training_attendee",
+        "update_training_attendee"
+      ]
+    },
+    {
+      "id": "hr_talent_pool",
+      "title": "Talent pool",
+      "route": "/hr/talent-pool",
+      "area": "hr",
+      "module_key": "MOD-19",
+      "purpose": "Candidate talent pool.",
+      "actions": [
+        "list_talent",
+        "get_talent",
+        "create_talent",
+        "update_talent"
+      ]
     }
   ]
 }

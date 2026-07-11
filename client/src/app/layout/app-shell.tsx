@@ -30,6 +30,42 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    heading: "Fleet",
+    items: [
+      { to: "/fleet/vehicles", label: "Vehicles" },
+      { to: "/fleet/compliance", label: "Compliance" },
+      { to: "/fleet/work-orders", label: "Work orders" },
+      { to: "/fleet/dispatch", label: "Dispatch" },
+      { to: "/fleet/fuel", label: "Fuel log" },
+      { to: "/fleet/drivers", label: "Drivers" },
+      { to: "/fleet/incidents", label: "Incidents" },
+    ],
+  },
+  {
+    heading: "Warehouse",
+    items: [
+      { to: "/wms/locations", label: "Locations" },
+      { to: "/wms/inventory", label: "Inventory" },
+      { to: "/wms/inbound", label: "Inbound / GRN" },
+      { to: "/wms/outbound", label: "Outbound" },
+      { to: "/wms/equipment", label: "Equipment" },
+      { to: "/wms/cycle-counts", label: "Cycle counts" },
+    ],
+  },
+  {
+    heading: "People & HR",
+    items: [
+      { to: "/hr/vacancies", label: "Vacancies" },
+      { to: "/hr/contracts", label: "Contracts" },
+      { to: "/hr/appraisals", label: "Appraisals" },
+      { to: "/hr/attendance", label: "Attendance" },
+      { to: "/hr/leave", label: "Leave & allowances" },
+      { to: "/hr/sops", label: "SOPs" },
+      { to: "/hr/trainings", label: "Trainings" },
+      { to: "/hr/talent-pool", label: "Talent pool" },
+    ],
+  },
+  {
     heading: "Governance",
     items: [
       { to: "/audit", label: "Audit ledger" },

@@ -1,2 +1,8 @@
 "use strict";
-module.exports = { MODULE: "MOD-33", CREATED: "inbound.created", UPDATED: "inbound.updated", ARCHIVED: "inbound.archived" };
+module.exports = {
+  MODULE: "MOD-33",
+  CREATED: "inbound.created",
+  UPDATED: "inbound.updated",
+  ARCHIVED: "inbound.archived",
+  QA_CHANGED: "inbound.qa_changed",
+};

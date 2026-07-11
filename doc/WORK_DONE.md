@@ -8,6 +8,58 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-11 — Phase 3: Fleet, WMS & HR modules (BE + FE + Postman)
+
+**Phase:** 3 — People & assets (ledger-independent scope). Built after reverting
+the earlier Phase-2 work so the colleague owns Phase 1 & 2.
+
+**Verify caveat:** the build sandbox mount is stale for freshly-written files, so
+in-sandbox `node --check` reports false truncation errors — disproven by reading
+the real files through the file API. The definitive gate is `npm run lint`
+(backend, PowerShell) which the user ran at **0 errors**; for the client the
+equivalent is `npm run build --prefix client` (tsc).
+
+### Backend — 21 tenant modules brought from stub → full convention
+Each module now ships the 7-file layout (repo/service/controller/routes/validator/
+events/**ai.js**), RBAC-gated routers (`requirePermission`), real Zod validators,
+and keeps **all SQL in repos** (services do logic + `emitEvent`/`audit` only).
+
+- **Fleet (7):** vehicle (MOD-39), vehicle_compliance (40), work_order (41,
+  lifecycle OPEN→IN_PROGRESS→DONE/CANCELLED), fleet_dispatch (42, ASSIGNED→OUT→
+  RETURNED + odometer/check-in-out), fuel_log (43), driver (44), incident (45,
+  OPEN→UNDER_REVIEW→CLOSED).
+- **WMS (6):** warehouse_location (34), inbound/GRN (33, QA gate HOLD→PASSED/
+  REJECTED), inventory (35, state machine + append-only `stock_movement` journal
+  via `/:id/move`), outbound (36, order status + `outbound_line` pick/pack),
+  equipment (37, status), cycle_count (38).
+- **HR ledger-independent (8):** vacancy (11, status + `job_applicant` pipeline),
+  hr_contract (12, DRAFT→ISSUED→SIGNED→ENDED), appraisal (13), attendance (14,
+  clock-out action), leave_allowance (15, REQUESTED→APPROVED/REJECTED decision),
+  sop_onboarding (16, SOP docs), training (18, status + `training_attendance`
+  roster), talent_pool (19).
+
+Status transitions live in the service layer with validated transition maps,
+dedicated events (`*.status_changed` etc.) + audit. Multi-table modules
+(inventory, outbound, training, vacancy) add custom repo methods over the shared
+`query-helpers` — still repo-only SQL.
+
+**Deferred (need Phase 1 ledger posting):** payroll, asset depreciation, and the
+GL legs of fuel_log/work_order (`entry_id`) and leave salary-advance (→4211).
+
+### Frontend (`client/`)
+Added `features/fleet/pages.tsx` (7), `features/wms/pages.tsx` (6),
+`features/hr/pages.tsx` (8) on the existing `ResourceList` pattern; wired 26
+routes in `app/app.tsx`; added **Fleet**, **Warehouse** and **People & HR** nav
+groups in `app/layout/app-shell.tsx`. Registered all 27 Phase-3 screens (with
+their `ai.js` action keys) in `app/screen-registry.json` — the AI/nav map now
+has 37 screens. Page components follow the repo pattern and can be superseded by
+the Lovable rebuild without touching routes/registry.
+
+### Postman
+`postman/praxis-ls.phase0.postman_collection.json` gained "9 · Fleet" (17 reqs)
+and "10 · WMS" (21 reqs) folders under `/api/tenant/*`, chaining created IDs
+through the lifecycle actions via test-script variable capture.
+
 ## 2026-07-09 (2) — Frontend build: client scaffold, white-label, theming, grant-matrix
 
 **Phase:** 0 → sets up the frontend and closes the white-label item; last

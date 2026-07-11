@@ -11,8 +11,8 @@ const crypto = require("crypto");
 const { audit } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
 const storage = require("../../services/storage.service");
+const repo = require("./branding.repo");
 
-const SECTION = "appearance";
 const LOGO_EXT = {
   "image/png": "png",
   "image/jpeg": "jpg",
@@ -25,10 +25,7 @@ const MAX_LOGO_BYTES = 512 * 1024;
 const KEYS = { primary: "primary_color", primaryForeground: "primary_foreground", logoUrl: "logo_url", name: "display_name" };
 
 async function getBranding(client) {
-  const { rows } = await client.query(
-    `SELECT key, value FROM setting WHERE section = $1`,
-    [SECTION],
-  );
+  const rows = await repo.getAppearance(client);
   const map = {};
   for (const r of rows) map[r.key] = r.value; // jsonb → already parsed (string/obj)
 
@@ -40,24 +37,12 @@ async function getBranding(client) {
   };
 }
 
-async function upsertOne(client, key, value, actorId) {
-  await client.query(
-    `INSERT INTO setting (section, key, value, updated_by)
-     VALUES ($1, $2, $3::jsonb, $4)
-     ON CONFLICT (section, key) DO UPDATE
-        SET value = EXCLUDED.value,
-            updated_by = EXCLUDED.updated_by,
-            updated_at = now(),
-            version = setting.version + 1`,
-    [SECTION, key, JSON.stringify(value), actorId || null],
-  );
-}
-
 async function setBranding(client, { primary, primaryForeground, logoUrl, name, actorId }) {
   const changes = { primary, primaryForeground, logoUrl, name };
   for (const [field, val] of Object.entries(changes)) {
     if (val === undefined) continue; // only touch provided fields
-    await upsertOne(client, KEYS[field], val, actorId);
+    // eslint-disable-next-line no-await-in-loop
+    await repo.upsertAppearance(client, KEYS[field], val, actorId);
   }
   await audit(client, {
     actorUserId: actorId,

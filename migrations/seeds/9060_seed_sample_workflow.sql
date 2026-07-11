@@ -15,6 +15,6 @@ WITH w AS (
   RETURNING workflow_id
 )
 INSERT INTO workflow_step (workflow_id, step_seq, step_kind, role_id, capability_code, min_amount_xaf, max_amount_xaf)
-SELECT w.workflow_id, 1, 'VALIDATE', (SELECT role_id FROM role WHERE code = 'FINANCE'), 'VALIDATOR', NULL, NULL FROM w
+SELECT w.workflow_id, 1, 'VALIDATE', (SELECT role_id FROM role WHERE code = 'FINANCE'), 'VALIDATOR', NULL::numeric, NULL::numeric FROM w
 UNION ALL
-SELECT w.workflow_id, 2, 'APPROVE',  (SELECT role_id FROM role WHERE code = 'CEO'),     'APPROVER',  NULL, NULL FROM w;
+SELECT w.workflow_id, 2, 'APPROVE',  (SELECT role_id FROM role WHERE code = 'CEO'),     'APPROVER',  NULL::numeric, NULL::numeric FROM w;

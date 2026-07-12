@@ -16,4 +16,8 @@ const kill = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
-module.exports = { ...crud, mine, kill };
+const killAllMine = asyncHandler(async (req, res) => {
+  res.json({ data: await req.tenantDb((client) => service.killAllMine(client, req.user)) });
+});
+
+module.exports = { ...crud, mine, kill, killAllMine };

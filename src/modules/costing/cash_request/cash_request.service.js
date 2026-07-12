@@ -13,6 +13,8 @@ const { assertTransition, sumField } = require("./cash_request.rules");
 const regie = require("../regie/regie.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
+const executor = require("../../../services/workflow/executor");
+const onApproved = require("../../../services/workflow/on-approved");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -21,7 +23,7 @@ const ref = (id) => "cash_request:" + id;
 async function replaceLines(client, id, lines) {
   await repo.deleteLines(client, id);
   for (const ln of lines) {
-    // eslint-disable-next-line no-await-in-loop
+    /// eslint-disable-next-line no-await-in-loop
     await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_debours: ln.is_debours === true });
   }
 }
@@ -62,7 +64,12 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
     }
     if (to === "APPROVED") fields.approver_id = actor.user_id || null;
     const updated = await repo.update(client, id, fields);
-    if (to === "SUBMITTED") await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "DRAFT" });
+    if (to === "SUBMITTED") {
+      await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "DRAFT" });
+      // Open the tenant's configurable approval chain (bound to disbursal.requested).
+      // No workflow bound → autoApproved; the manual APPROVED path is unchanged.
+      await executor.start(client, { eventTypeKey: "disbursal.requested", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
+    }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });
     await client.query("COMMIT");
@@ -114,4 +121,8 @@ async function get(client, id) {
   return cr;
 }
 const list = (client, q) => repo.list(client, q);
+
+// A cleared approval chain advances the request SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
+onApproved.register("cash_request", (client, { id, actor }) => transition(client, { id, to: "APPROVED", actor: actor || {} }));
+
 module.exports = { createDraft, updateDraft, transition, disburse, justify, get, list };

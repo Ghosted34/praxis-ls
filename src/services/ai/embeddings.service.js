@@ -1,10 +1,10 @@
 /**
- * Embeddings — OpenAI-compatible endpoint. Vendor creds/endpoint/model come from
- * the DB (governance.getVendorConfig(client, "embeddings")), NOT .env
- * (doc/BUILD_CONVENTIONS.md §7). The pgvector dimension is a schema constant so
- * it stays in config. With no embeddings vendor (or no tenant client, e.g. a
- * global reindex) we return empty vectors and the chunk embedding stays NULL —
- * retrieval simply finds no vector hits.
+ * Embeddings — OpenAI-compatible endpoint. DB-first: creds/endpoint/model from
+ * governance.getVendorConfig(client, "embeddings"); falls back to .env
+ * (OPENAI_API_KEY/OPENAI_BASE_URL/EMBEDDINGS_MODEL) per BUILD_CONVENTIONS §7. The
+ * pgvector dimension is a schema constant. With no vendor configured at all we
+ * return empty vectors and the chunk embedding stays NULL — retrieval finds no
+ * vector hits.
  */
 "use strict";
 
@@ -13,11 +13,21 @@ const { config } = require("../../config/env");
 const governance = require("../../modules/ai/governance/governance.service");
 const { logger } = require("../../config/logger");
 
+async function resolveVendor(client) {
+  if (client) {
+    const db = await governance.getVendorConfig(client, "embeddings");
+    if (db && db.api_key && db.endpoint_url) return db;
+  }
+  if (config.OPENAI_API_KEY && config.OPENAI_BASE_URL) {
+    return { api_key: config.OPENAI_API_KEY, endpoint_url: config.OPENAI_BASE_URL, model: config.EMBEDDINGS_MODEL };
+  }
+  return null;
+}
+
 async function embedBatch(client, texts) {
   if (!texts || texts.length === 0) return [];
-  if (!client) return [];
-  const vendor = await governance.getVendorConfig(client, "embeddings");
-  if (!vendor || !vendor.api_key || !vendor.endpoint_url) return [];
+  const vendor = await resolveVendor(client);
+  if (!vendor) return [];
   try {
     const base = String(vendor.endpoint_url).replace(/\/$/, "");
     const { data } = await axios.post(

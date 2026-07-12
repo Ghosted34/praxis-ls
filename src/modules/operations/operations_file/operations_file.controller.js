@@ -1,5 +1,6 @@
 "use strict";
 const service = require("./operations_file.service");
+const { maskForUser } = require("../../../shared/rbac/field-mask");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
@@ -8,5 +9,6 @@ module.exports = {
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
   transition: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.transition(c, { id: req.params.id, to: req.body.to, actor: actor(req) })) })),
-  overview: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.overview(c, req.params.id)) })),
+  // 360° modal is role-gated on money (PRD §7.3/§11.3): Sales/Ops never see margin.
+  overview: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb(async (c) => maskForUser(c, req.user, await service.overview(c, req.params.id))) })),
 };

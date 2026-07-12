@@ -9,6 +9,8 @@ const repo = require("./costing.repo");
 const events = require("./costing.events");
 const { computeCosting } = require("./costing.rules");
 const numbering = require("../../../services/documents/numbering.service");
+const executor = require("../../../services/workflow/executor");
+const onApproved = require("../../../services/workflow/on-approved");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -62,6 +64,13 @@ async function setStatus(client, { id, to, actor = {} }) {
   const status = flow[to];
   if (!status) throw new AppError("BAD_ACTION", "unknown transition", 422);
   const row = await repo.update(client, id, { status });
+  // On submit-for-approval, open the tenant's configurable approval chain (if any
+  // workflow is bound to costing.submitted). No workflow bound → autoApproved,
+  // the manual APPROVE path below is unchanged (BUILD_CONVENTIONS §2).
+  if (status === "SUBMITTED_FOR_APPROVAL") {
+    const totals = computeCosting(await repo.listLines(client, id), before.margin_percent);
+    await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals && totals.service_base ? totals.service_base : null });
+  }
   if (status === "APPROVED_LOCKED") await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });
   return row;
@@ -76,5 +85,8 @@ async function get(client, id) {
   return costing;
 }
 const list = (client, q) => repo.list(client, q);
+
+// A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
+onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {} }));
 
 module.exports = { createDraft, updateDraft, setStatus, get, list };

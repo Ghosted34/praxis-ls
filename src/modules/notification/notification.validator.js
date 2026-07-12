@@ -1,2 +1,3 @@
 "use strict";
-module.exports = require("../../shared/http/validate").passthrough;
+// No request bodies to validate — reads + id-path mark-read only.
+module.exports = {};

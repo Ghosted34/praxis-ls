@@ -1,9 +1,4 @@
-/**
- * Was bare makeRouter() with no auth/RBAC gating — a pre-existing gap noted
- * in doc/RBAC_SECURITY_KICKOFF.md and doc/WORK_TO_BE_DONE.md. Gated here
- * following capability.routes.js's pattern; setting sits under its own
- * MOD-70 (Settings) catalogue entry.
- */
+/** Settings hub (MOD-70) — tenant self-config. Gated; writes need MOD-70 edit. */
 "use strict";
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
@@ -14,11 +9,11 @@ const validator = require("./setting.validator");
 const MODULE = "MOD-70";
 const router = express.Router();
 router.use(authMiddleware);
-
-router.get("/", requirePermission(MODULE, "view"), controller.list);
-router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
-router.get("/:id", requirePermission(MODULE, "view"), controller.get);
-router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
-router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
+router.get("/", requirePermission(MODULE, "view"), controller.all);
+router.get("/sections", requirePermission(MODULE, "view"), controller.sections);
+router.get("/:section", requirePermission(MODULE, "view"), controller.section);
+router.get("/:section/:key", requirePermission(MODULE, "view"), controller.get);
+router.put("/:section/:key", requirePermission(MODULE, "edit"), validator.put, controller.put);
+router.delete("/:section/:key", requirePermission(MODULE, "delete"), controller.remove);
 
 module.exports = { basePath: "/settings", feature: null, router };

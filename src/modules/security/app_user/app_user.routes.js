@@ -26,7 +26,8 @@ usersRouter.get("/", requirePermission(MODULE, "view"), controller.list);
 usersRouter.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
-usersRouter.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
+usersRouter.post("/:id/password", requirePermission(MODULE, "edit"), validator.password, controller.setPassword);
+usersRouter.post("/:id/status", requirePermission(MODULE, "edit"), validator.status, controller.setStatus);
 
 // Auth actions — login/refresh/2fa-verify are public (this is how a token
 // is obtained in the first place, and the 2FA challenge token replaces the

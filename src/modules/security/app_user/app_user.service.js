@@ -37,11 +37,8 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const identityCache = require("../../../shared/cache/identity-cache");
 const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
-const { makeService } = require("../../../shared/crud/resource");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
-
-const crud = makeService({ repo, moduleKey: events.MODULE, entity: "app_user", events });
 
 const TWOFA_PENDING_TTL = "5m";
 
@@ -304,8 +301,82 @@ async function logout(client, { actor, sessionId }) {
   return { logged_out: true };
 }
 
+
+// ── User administration (Argon2id password, roles, lifecycle) ──
+const ARGON = { type: argon2.argon2id };
+
+async function listUsers(client, q = {}) {
+  const rows = await repo.listUsersSafe(client, { limit: q.limit, offset: q.offset, status: q.status });
+  return rows;
+}
+async function getUser(client, id) {
+  const u = await repo.getUserSafe(client, id);
+  if (!u) throw new AppError("NOT_FOUND", "User not found", 404);
+  u.role_ids = await repo.roleIds(client, id);
+  return u;
+}
+async function createUser(client, { data, actor = {} }) {
+  if (!data.password || String(data.password).length < 8) throw new AppError("WEAK_PASSWORD", "password must be at least 8 characters", 422);
+  await client.query("BEGIN");
+  try {
+    const password_hash = await argon2.hash(String(data.password), ARGON);
+    const user = await repo.insertUser(client, {
+      username: data.username || null, email: String(data.email).toLowerCase(), full_name: data.full_name,
+      password_hash, status: data.status || "ACTIVE", employee_id: data.employee_id || null,
+    });
+    if (Array.isArray(data.role_ids)) await repo.setRoles(client, user.user_id, data.role_ids);
+    await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, after: user });
+    await client.query("COMMIT");
+    return getUser(client, user.user_id);
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+async function updateUser(client, { id, patch = {}, actor = {} }) {
+  const before = await repo.getUserSafe(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "User not found", 404);
+  await client.query("BEGIN");
+  try {
+    const fields = {};
+    for (const k of ["username", "full_name", "employee_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    if (patch.email !== undefined) fields.email = String(patch.email).toLowerCase();
+    if (Object.keys(fields).length) await repo.updateUserFields(client, id, fields);
+    if (Array.isArray(patch.role_ids)) await repo.setRoles(client, id, patch.role_ids);
+    await identityCache.invalidateUser(id);
+    await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: fields });
+    await client.query("COMMIT");
+    return getUser(client, id);
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+/** Admin/self password reset — Argon2id re-hash + drop cached identity. */
+async function setPassword(client, { id, newPassword, actor = {} }) {
+  if (!newPassword || String(newPassword).length < 8) throw new AppError("WEAK_PASSWORD", "password must be at least 8 characters", 422);
+  const hash = await argon2.hash(String(newPassword), ARGON);
+  const row = await repo.setPasswordHash(client, id, hash);
+  if (!row) throw new AppError("NOT_FOUND", "User not found", 404);
+  await identityCache.invalidateUser(id);
+  await audit(client, { actorUserId: actor.user_id || null, action: "app_user.password_set", moduleKey: events.MODULE, entityRef: "app_user:" + id });
+  return { updated: true };
+}
+/** Lifecycle: ACTIVE / SUSPENDED / LOCKED. Cannot suspend/lock the last active CEO. */
+async function setStatus(client, { id, status, actor = {} }) {
+  if (!["ACTIVE", "SUSPENDED", "LOCKED"].includes(status)) throw new AppError("BAD_STATUS", "status must be ACTIVE/SUSPENDED/LOCKED", 422);
+  const before = await repo.getUserSafe(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "User not found", 404);
+  if (status !== "ACTIVE" && before.status === "ACTIVE") {
+    const codes = await repo.roleCodes(client, id);
+    if (codes.includes("CEO") && (await repo.countActiveCeos(client)) <= 1) {
+      throw new AppError("LAST_CEO", "Cannot suspend/lock the last active CEO", 409);
+    }
+  }
+  const row = await repo.setStatus(client, id, status);
+  await identityCache.invalidateUser(id);
+  await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, actorUserId: actor.user_id || null });
+  await audit(client, { actorUserId: actor.user_id || null, action: "app_user.status." + status.toLowerCase(), moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: row });
+  return row;
+}
+
 module.exports = {
-  ...crud,
+  listUsers, getUser, createUser, updateUser, setPassword, setStatus,
   login,
   verifyTotp,
   setupTotp,

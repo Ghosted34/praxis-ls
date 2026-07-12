@@ -11,4 +11,10 @@ module.exports = {
   bilan: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.bilan(c, filters(req))) })),
   grandLivre: asyncHandler(async (req, res) => { const q = req.validatedQuery || {}; return res.json({ data: await req.tenantDb((c) => service.grandLivre(c, { accountCode: q.account, entityId: q.entity_id, from: q.from, to: q.to })) }); }),
   cashFlow: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.cashFlow(c, filters(req))) })),
+  notes: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.notes(c, filters(req))) })),
+  listPeriods: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listPeriods(c, filters(req))) })),
+  closePeriod: asyncHandler(async (req, res) => {
+    const b = req.validatedBody || {};
+    return res.json({ data: await req.tenantDb((c) => service.closePeriod(c, { periodId: b.period_id, to: b.to || "CLOSED", actor: req.user || {} })) });
+  }),
 };

@@ -18,7 +18,7 @@ describe("cashFlowSummary (TAFIRE foundation)", () => {
   });
 });
 
-const { tafire } = require("../../src/modules/finance/financial_statement/financial_statement.rules");
+const { tafire, notesAnnexes, canClosePeriod } = require("../../src/modules/finance/financial_statement/financial_statement.rules");
 
 describe("TAFIRE OHADA sectioning", () => {
   test("opening + operating/investing/financing = closing", () => {
@@ -33,5 +33,37 @@ describe("TAFIRE OHADA sectioning", () => {
     const t = tafire({ opening_cash: 0 });
     expect(t.closing_cash).toBe(0);
     expect(t.net_change).toBe(0);
+  });
+});
+
+describe("Notes annexes (KB §12)", () => {
+  const rows = [
+    { account_code: "601", debit: 300000, credit: 0 },
+    { account_code: "7061", debit: 0, credit: 2000000 },
+    { account_code: "521", debit: 1700000, credit: 0 },
+  ];
+  test("breaks the trial balance down by SYSCOHADA class and ties to the result", () => {
+    const n = notesAnnexes(rows);
+    expect(n.class_balances[6]).toBe(300000);
+    expect(n.class_balances[7]).toBe(-2000000);
+    expect(n.result).toBe(1700000); // produits 2,000,000 − charges 300,000
+  });
+});
+
+describe("Guided close gate (KB §12 intangibility)", () => {
+  test("blocks close when the period does not balance", () => {
+    const g = canClosePeriod([{ account_code: "601", debit: 300000, credit: 0 }], "CLOSED");
+    expect(g.ok).toBe(false);
+    expect(g.reason).toMatch(/not balanced/);
+  });
+  test("allows close when Dr = Cr", () => {
+    const g = canClosePeriod([
+      { account_code: "601", debit: 300000, credit: 0 },
+      { account_code: "521", debit: 0, credit: 300000 },
+    ], "CLOSED");
+    expect(g.ok).toBe(true);
+  });
+  test("rejects an invalid target status", () => {
+    expect(canClosePeriod([], "OPEN").ok).toBe(false);
   });
 });

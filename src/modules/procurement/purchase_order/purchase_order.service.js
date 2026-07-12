@@ -11,6 +11,8 @@ const events = require("./purchase_order.events");
 const { assertTransition, computeTotal } = require("./purchase_order.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
+const executor = require("../../../services/workflow/executor");
+const onApproved = require("../../../services/workflow/on-approved");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -64,7 +66,12 @@ async function transition(client, { poId, to, entityId = null, date = null, acto
     }
     if (to === "APPROVED_LOCKED") fields.approver_id = actor.user_id || null;
     const updated = await repo.update(client, poId, fields);
-    if (to === "ISSUED_LOCKED") await documents.capture(client, { entityRef: ref(poId), docType: "PURCHASE_ORDER", status: "VERIFIED" });
+    if (to === "ISSUED_LOCKED") {
+      await documents.capture(client, { entityRef: ref(poId), docType: "PURCHASE_ORDER", status: "VERIFIED" });
+      // Open the tenant's configurable approval chain on issue (bound to po.issued).
+      // No workflow bound → autoApproved; the manual APPROVED_LOCKED path is unchanged.
+      await executor.start(client, { eventTypeKey: "po.issued", entityRef: ref(poId), amountXaf: updated.total_ttc === null || updated.total_ttc === undefined ? null : Number(updated.total_ttc) });
+    }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(poId), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(poId), after: updated });
     await client.query("COMMIT");
@@ -79,5 +86,8 @@ async function get(client, id) {
   return po;
 }
 const list = (client, q) => repo.listPO(client, q);
+
+// A cleared approval chain approves+locks the issued PO (BUILD_CONVENTIONS §2/§5).
+onApproved.register("purchase_order", (client, { id, actor }) => transition(client, { poId: id, to: "APPROVED_LOCKED", actor: actor || {} }));
 
 module.exports = { createDraft, updateDraft, transition, get, list };

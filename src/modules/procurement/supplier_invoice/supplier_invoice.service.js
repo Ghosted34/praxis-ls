@@ -13,6 +13,8 @@ const grnService = require("../goods_received/goods_received.service");
 const journalEntry = require("../../finance/journal_entry/journal_entry.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
+const executor = require("../../../services/workflow/executor");
+const onApproved = require("../../../services/workflow/on-approved");
 const { getRule } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
@@ -59,6 +61,10 @@ async function match(client, { supplierInvoiceId, actor = {} }) {
       await repo.update(client, supplierInvoiceId, { status: "MATCHED" });
       const grns = si.po_id ? await grnService.list(client, { po_id: si.po_id }) : [];
       for (const g of grns) { /* eslint-disable-next-line no-await-in-loop */ await grnService.markMatched(client, g.grn_id, true); }
+      // Open the tenant's configurable approval chain on a clean match (bound to
+      // supplier_invoice.matched). No workflow bound → autoApproved; posting stays
+      // an explicit step as today (BUILD_CONVENTIONS §2).
+      await executor.start(client, { eventTypeKey: "supplier_invoice.matched", entityRef: ref(supplierInvoiceId), amountXaf: result.invoice_total === null || result.invoice_total === undefined ? null : Number(result.invoice_total) });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.MATCHED, moduleKey: events.MODULE, entityRef: ref(supplierInvoiceId), after: result });
     await client.query("COMMIT");
@@ -98,5 +104,9 @@ async function get(client, id) {
   return si;
 }
 const list = (client, q) => repo.listSI(client, q);
+
+// A cleared approval chain posts the matched supplier invoice (BUILD_CONVENTIONS §2/§5).
+onApproved.register("supplier_invoice", (client, { id, actor }) =>
+  post(client, { supplierInvoiceId: id, entryDate: new Date().toISOString().slice(0, 10), sourceDocRef: "approval:" + id, actor: actor || {} }));
 
 module.exports = { createDraft, match, post, get, list };

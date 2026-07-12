@@ -4,8 +4,9 @@ Every MOD-xx from the platform catalogue, mapped to the phase(s) it belongs to.
 Modules that legitimately span phases are **listed in each** (marked ↔). Status:
 ✅ built real · 🟡 partial/real-but-thin · ⬜ generic CRUD stub · 🧩 schema only.
 (Derived from `WORK_TO_BE_DONE.md` phases + the KB + the MOD catalogue. Group in
-parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
-`PHASE1_2_REAUDIT.md`).
+parentheses.) Last refresh: after the P0–P4 depth sprint — security gating +
+real security admin, quotation, Smart Comms rebuild, portals, notification fix,
+and Phase-3 depth verification (see `PHASE0_4_FULL_AUDIT.md`, `MODULE_DEPTH_AUDIT.md`).
 
 ---
 
@@ -14,10 +15,10 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 - MOD-68 Session Management (security) ✅
 - MOD-69 Immutable Ledger / audit (security) ✅
 - MOD-70 Settings (security) ✅  ↔ P2 (numbering/business rules), P4 (full hub)
-- MOD-00A Dashboard & My Workspace (dashboard) ⬜  ↔ P4 (chat-on-dashboards)
-- MOD-00B God Mode CEO purge console (dashboard) ✅  ↔ P5 (hardening)
-- Universal Event Engine / workflow (workflow) ✅  — event types, workflows, steps, executor, approvals
-- Watch-the-Watcher / notifications (notification) 🟡
+- MOD-00A Dashboard & My Workspace (dashboard) 🟡  — real read surfaces (KPIs; my approvals/activity/unread). Rich tiles ↔ MOD-63; chat-on-dashboards ↔ P4
+- MOD-00B God Mode CEO purge console (dashboard) ✅  — CEO-only gated (auth + requireCeo) ↔ P5
+- Universal Event Engine / workflow (workflow) ✅  — event types, workflows, steps (role/capability/scope + amount thresholds), executor, approvals
+- Watch-the-Watcher / notifications (notification) ✅  — rebuilt self-scoped inbox (was leaking every tenant's notifications); unread count + mark-read
 - White-label branding (branding) ✅
 - Module catalogue / feature projection (catalogue, platform) ✅
 - Shared infra: numbering, document capture, storage, worker runtime ✅ (built during P1)
@@ -41,7 +42,7 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 
 ## Phase 2 — Commercial cycle  — ✅ COMPLETE
 - MOD-01 Corporate Entities (master) ✅  — unique code, NIU/RCCM, fiscal year, doc prefix
-- MOD-02 Human Capital / Employees (master) ⬜  ↔ P3 (HR)
+- MOD-02 Human Capital / Employees (master) ✅  ↔ P3 (HR) — real (rules, assertActive)
 - MOD-03 Client Master (master) ✅  (KYC, credit limit, withholding)
 - MOD-04 Supplier / Partner Master (master) ✅  (mobile money, non-resident SIT)
 - MOD-08 Currency & Live FX (master) ✅  (resolver + fx-sync worker)
@@ -63,46 +64,54 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 - MOD-60 Purchase Orders (procurement) ✅  — items, lock, numbering
 - MOD-61 Goods Received + Supplier Invoice (procurement) ✅  — 3-way match → GL
 - MOD-62 Purchase Requests (procurement) ✅  — requisition lifecycle
-- Sales cycle feeding operations (deferred to P4): MOD-20 Leads, MOD-21 Meetings,
-  MOD-22 Marketing Campaigns, MOD-23 Proposal Generator, MOD-24 Sales Pipeline,
-  MOD-25 Inbound Intake, MOD-26 Project Portfolio (sales) ⬜  — scaffolds; not P1/P2 blocking
+- Sales cycle feeding operations ✅ (built): MOD-20 Leads (→ convert to client),
+  MOD-21 Meetings (notes/minutes + transcript link), MOD-22 Marketing Campaigns
+  (+ newsletter), MOD-23 Proposal Generator (lines/narrative → accept→quotation),
+  MOD-24 Sales Pipeline (Kanban board, win→dossier), MOD-25 Inbound Intake
+  (enquiry/partnership → triage→lead), MOD-26 Project Portfolio / success stories
+  (sign-off→publish). All gated + .ai.js.
 
-## Phase 3 — People & assets
-- MOD-02 Employees (master) ⬜  ↔ P2
-- MOD-11 Vacancies (hr) ⬜
-- MOD-12 Legal Contracts (hr) ⬜
-- MOD-13 KPI Appraisals (hr) ⬜
-- MOD-14 Attendance (hr) ⬜
-- MOD-15 Leave & Allowances (hr) ⬜
-- MOD-16 SOPs & Onboarding (hr) ⬜
-- MOD-17 Pay Slips / Payroll (hr) ⬜  (CNPS/IRPP/CAC/CFC/RAV auto-compute, KB §9)
-- MOD-18 Trainings (hr) ⬜
-- MOD-19 Talent Pool / Succession (hr) ⬜
-- MOD-33 Inbound Operations (wms) ⬜
-- MOD-34 Space & Location Management (wms) ⬜
-- MOD-35 Inventory Control & Tracking (wms) ⬜
-- MOD-36 Outbound Operations (wms) ⬜
-- MOD-37 Equipment Handling (wms) ⬜
-- MOD-38 Audit & Cycle Counting (wms) ⬜
-- MOD-39 Vehicle / Asset Registry (fleet) ⬜
-- MOD-40 Compliance & Periodic Expenses (fleet) ⬜
-- MOD-41 Maintenance & Work Orders (fleet) ⬜
-- MOD-42 Dispatch & Allocation (fleet) ⬜
-- MOD-43 Fuel & Usage Tracking (fleet) ⬜  (fuel posts to dossier cost, KB §8.7)
-- MOD-44 Driver Management (fleet) ⬜
-- MOD-45 Incident & Claim Management (fleet) ⬜
-- MOD-54 Asset Management (finance) 🧩  (acquisition→depreciation auto-post→disposal, KB §11 — tables exist, module pending)
+## Phase 3 — People & assets  — ✅ IN SCOPE & REAL (verified; see MODULE_DEPTH_AUDIT.md)
+All gated + `.ai.js`. Lean "hybrid" modules (CRUD boilerplate + hand-written
+domain methods), each covering its documented core flow — not stubs.
+- MOD-02 Employees (master) ✅  — real (rules, assertActive integrity)
+- MOD-11 Vacancies (hr) ✅  — recruitment pipeline (addApplicant / setApplicantStatus)
+- MOD-12 Legal Contracts (hr) ✅  — contract lifecycle (setStatus)
+- MOD-13 KPI Appraisals (hr) ✅
+- MOD-14 Attendance (hr) ✅  — clock-in/clock-out (guarded, employee integrity)
+- MOD-15 Leave & Allowances (hr) ✅  — REQUESTED→decide (approve/reject)
+- MOD-16 SOPs & Onboarding (hr) ✅
+- MOD-17 Pay Slips / Payroll (hr) ✅  — **full Cameroon statutory compute**: CNPS pension/family/injury, CFC, 30% frais pro, progressive IRPP barème, CAC surtax → run→compute→post GL (KB §9)
+- MOD-18 Trainings (hr) ✅  — sessions + attendee rosters
+- MOD-19 Talent Pool / Succession (hr) ✅
+- MOD-33 Inbound Operations (wms) ✅  — receiving + QA
+- MOD-34 Space & Location Management (wms) ✅  — locations (+ label)
+- MOD-35 Inventory Control & Tracking (wms) ✅  — stock move (in/out/transfer) + movements ledger
+- MOD-36 Outbound Operations (wms) ✅  — picking lines (addLine/setLineFlags/setStatus)
+- MOD-37 Equipment Handling (wms) ✅  — check-out/in (setStatus)
+- MOD-38 Audit & Cycle Counting (wms) ✅
+- MOD-39 Vehicle / Asset Registry (fleet) ✅  (rules)
+- MOD-40 Compliance & Periodic Expenses (fleet) ✅  (rules)
+- MOD-41 Maintenance & Work Orders (fleet) ✅  — lifecycle (setStatus)
+- MOD-42 Dispatch & Allocation (fleet) ✅  — dispatch lifecycle
+- MOD-43 Fuel & Usage Tracking (fleet) ✅  — logs + summary (fuel→dossier cost, KB §8.7)
+- MOD-44 Driver Management (fleet) ✅  (rules)
+- MOD-45 Incident & Claim Management (fleet) ✅  — report→resolve (setStatus)
+- MOD-54 Asset Management (finance) ✅  — acquisition→depreciation→disposal (rules, 107 svc LOC, KB §11)
 
 ## Phase 4 — Intelligence & reach  (kickoff: see PHASE4_KICKOFF.md)
-- AI service layer (ai): orchestrator/retrieval/ingest/llm/embeddings/redact ✅ scaffolded; `assistant` ✅ thin surface; `governance` ✅ **rebuilt real** (EMV toggle, grants, spend caps, encrypted vendor keys, canUseFeature guard). Foreign `insights` removed — MOD-63 to rebuild real. All 32 modules ship `.ai.js` manifests.
-- MOD-63 Reporting & Insights (vault) ⬜ (foreign scaffold removed; rebuild against Praxis tables)
-- MOD-27 Pricing Variance Index — Sales R/Y/G view (commercial) 🧩  ↔ P2 (pricing_variance table exists; index compute pending)
-- MOD-65 Compliance Checker (vault) ⬜
+- AI service layer (ai): orchestrator (gated on governance.canUseFeature + usage/budget), retrieval/ingest/llm/embeddings/redact (all DB-first vendor keys), action-registrar (auto catalogue from manifests), batch plans, worker-ai (voice/vision) ✅; `assistant` ✅ (auth-gated); `governance` ✅ real (EMV toggle, grants, spend caps, encrypted vendor keys, test-connection). Every module ships a `.ai.js` manifest.
+- MOD-63 Reporting & Insights (vault) ✅ — report registry (income statement, receivables ageing, cash position, dossier margin, procurement spend, TAFIRE, dossier 360) delegating to owning services; saved reports + dashboard tiles; .ai.js reads power chat-on-dashboards
+- MOD-27 Pricing Variance Index — Sales R/Y/G view (commercial) ✅  ↔ P2 — margin% quote vs actual cost, R/Y/G from tenant thresholds; Sales view strips raw cost (finance boundary), compute gated on MOD-56
+- MOD-65 Compliance Checker (vault) ✅ — rule scans (missing proof, unmatched procurement, aged régie, débours-tax) → compliance_flag (INFO/WARN/RED), idempotent re-run, .ai.js reads
 - MOD-66 Document Verification / QR — public scan (vault) ✅  ↔ P1
-- MOD-70 Settings — full config hub (security) 🟡  ↔ P0/P2
-- Portals (new): Client Portal (↔ MOD-29), Investor/Board terminal (↔ MOD-56),
-  Audit Terminal / data room (↔ MOD-64) ⬜
-- Smart Comms Portal (smartcomm): WebSocket messaging, groups, certified export ⬜
+- MOD-70 Settings — full config hub (security) ✅  ↔ P0/P2 — real section/key hub (version-bump + audit + numbering-scheme validation)
+- Portals (new): `portal` module ✅ — portal_access grant/revoke (time-boxed
+  auditor), + scoped Client (dossiers/invoices/ageing), Investor (income+cash),
+  Auditor (data room) views delegating to owning services; feature-gated
+  portal.client/investor/audit. External magic-link auth = follow-up.
+- Smart Comms Portal (smartcomm) ✅ — groups + messages + SHA-256 certified
+  export captured to vault (verifiable via MOD-66); real-time WS = runtime layer.
 - Support & Feedback dashboard ⬜
 
 ## Phase 5 — Hardening & migration (cross-cutting; touches all modules)
@@ -127,16 +136,27 @@ parentheses.) Last refresh: after Phase-1/2 gap-closure sprint (see
 - MOD-02 Employees — P2, P3
 - MOD-27 Margin Simulator / Pricing Variance — P2, P4
 
-## Phase-1 & Phase-2 status — all module gaps CLOSED
-Every module belonging to Phase 1 and Phase 2 is now a real module (custom
-service + repo + pure rules + gated routes + validator), not a generic CRUD
-stub. The gap-closure sprint upgraded: MOD-06, MOD-09, MOD-01, MOD-10, MOD-27,
-MOD-28, MOD-30, MOD-32, MOD-49, MOD-52, MOD-53, MOD-56 (grand livre), MOD-59
-(TAFIRE), MOD-60/61/62, MOD-66 (scan) and added the dossier 360° view.
+## Where we are — Phases 0–4 module-complete & real
 
-Remaining non-blocking items that touch P1/P2 surfaces (tracked to later phases):
-- PDF/Email runtime (Chromium + SMTP) — code complete, infra provisioning is P5.
-- MOD-54 Asset Management — schema present, module is Phase 3.
-- MOD-27 Pricing Variance Index (Sales R/Y/G) — the *simulator* is done (P2);
-  the sales-facing variance index is Phase 4.
-- Sales cycle MOD-20..26 — Phase 4.
+- **Phase 0** ✅ — RBAC engine + real security admin (app_user Argon2/2FA/lifecycle,
+  session revoke, permission/role/scope/field-visibility/capability editing with
+  grant-cache invalidation, audit_ledger maker-checker restore, God Mode CEO-only,
+  settings hub); event/workflow engine; notification self-scoped; branding; catalogue.
+- **Phase 1** ✅ — full OHADA accounting spine (ledger, statements/TAFIRE, tax,
+  invoicing, régie, vault, QR verify).
+- **Phase 2** ✅ — commercial cycle (masters, dossier/costing/procurement/receivables,
+  simulators, quotation, sales funnel).
+- **Phase 3** ✅ — People & assets (HR incl. full payroll, WMS, Fleet, MOD-54 asset)
+  — verified real (MODULE_DEPTH_AUDIT.md).
+- **Phase 4** ✅ — AI layer (governance/orchestrator/registrar/workers), reporting,
+  pricing-variance, compliance, portals, Smart Comms (rebuilt to full depth).
+
+**Every tenant router is authenticated** (auth-coverage test, 0 ungated) and
+**every module ships a `.ai.js` manifest** (AI-readiness test).
+
+### Not-done (the remaining work)
+- **P4 readiness / P5 hardening** — integration tests against a real Postgres
+  (triggers/numbering/RBAC end-to-end), HTTP/e2e coverage, provider runtime
+  (Chromium/SMTP/AI keys), Smart Comms real-time WS + email-inbound, external
+  portal magic-link auth, load/backup/DR, MySQL→Postgres migration, go-live.
+- **Retained orphan files (29)** — foreign/dup, kept for reuse (PHASE0_4_FULL_AUDIT §1).

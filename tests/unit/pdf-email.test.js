@@ -1,13 +1,11 @@
 "use strict";
 /** PDF (hash/QR/template/render-store) + email send — Chromium/SMTP isolated. */
 jest.mock("../../src/services/storage.service", () => ({
-  put: jest
-    .fn()
-    .mockResolvedValue({
-      key: "vault/tenant/inv1.pdf",
-      public_url: "/media/vault/tenant/inv1.pdf",
-      size: 10,
-    }),
+  put: jest.fn().mockResolvedValue({
+    key: "vault/tenant/inv1.pdf",
+    public_url: "/media/vault/tenant/inv1.pdf",
+    size: 10,
+  }),
 }));
 jest.mock("../../src/services/documents/document.service", () => ({
   capture: jest.fn().mockResolvedValue({ doc_id: "d1" }),
@@ -78,10 +76,12 @@ describe("renderAndStore", () => {
 });
 
 describe("email send", () => {
+  // Signature is send(client, payload, tx) — per-purpose identity (BUILD_CONVENTIONS §7).
+  // A null client resolves the env/default sender (no DB lookup).
   it("sends via an injected transport with a default from", async () => {
     const tx = { sendMail: jest.fn().mockResolvedValue({ messageId: "m1" }) };
     const r = await email.send(
-      undefined,
+      null,
       { to: "a@b.com", subject: "Hi", html: "<p>x</p>" },
       tx,
     );
@@ -95,7 +95,7 @@ describe("email send", () => {
   });
   it("rejects without a recipient", async () => {
     await expect(
-      email.send({ subject: "x" }, { sendMail: jest.fn() }),
+      email.send(null, { subject: "x" }, { sendMail: jest.fn() }),
     ).rejects.toThrow(/to/);
   });
 });

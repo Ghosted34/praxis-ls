@@ -4,11 +4,21 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./attendance.repo");
 const events = require("./attendance.events");
+const employeeService = require("../../master/employees/employees.service");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "attendance", events });
 
 module.exports = {
   ...base,
+
+  // Clock-in row is bound to an active employee; default clock_in_at to now.
+  async create(client, { data, actor = {} }) {
+    if (data.employee_id) await employeeService.assertActive(client, data.employee_id);
+    const payload = { ...data };
+    if (!payload.clock_in_at) payload.clock_in_at = new Date();
+    return base.create(client, { data: payload, actor });
+  },
+
   // Convenience: stamp clock-out on an open attendance row.
   async clockOut(client, { id, actor }) {
     const before = await repo.findById(client, id);

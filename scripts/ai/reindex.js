@@ -47,7 +47,8 @@ async function reindexTenant(slug) {
       ...(await buildEntityCards(cli)),
     ];
     const r = await ingest.ingestTenantCards(cli, cards);
-    console.log(`[praxis-ai] tenant ${slug}: ${r.cards} cards indexed`);
+    if (r.skipped) console.log(`[praxis-ai] tenant ${slug}: skipped (${r.skipped})`);
+    else console.log(`[praxis-ai] tenant ${slug}: ${r.cards} cards indexed`);
   } finally {
     await cli.end();
   }

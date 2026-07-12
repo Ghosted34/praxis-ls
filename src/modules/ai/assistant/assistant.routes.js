@@ -1,9 +1,13 @@
+/** AI assistant surface (/api/tenant/ai). Auth + ai.assistant.backend feature;
+ *  governance.canUseFeature is re-checked inside the orchestrator. */
 "use strict";
 const express = require("express");
+const { authMiddleware } = require("../../../middleware/auth");
 const c = require("./assistant.controller");
 const { validate } = require("./assistant.validator");
 
 const router = express.Router();
+router.use(authMiddleware);
 router.post("/ask", validate("ask"), c.ask);
 router.post("/actions/:id/confirm", c.confirm);
 router.post("/batches/:batchId/confirm", c.confirmBatch);

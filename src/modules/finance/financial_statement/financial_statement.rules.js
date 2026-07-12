@@ -94,4 +94,44 @@ function tafire({ opening_cash, operating, investing, financing }) {
   return { opening_cash: round2(num(opening_cash)), operating: op, investing: inv, financing: fin, net_change: net, closing_cash: round2(num(opening_cash) + net) };
 }
 
-module.exports = { classOf, trialBalanceTotals, incomeStatement, balanceSheet, bal, runningBalance, cashFlowSummary, tafire };
+/**
+ * Notes annexes (KB §12) — the statutory notes that accompany the Bilan and the
+ * Compte de résultat. First cut: a per-SYSCOHADA-class breakdown of the trial
+ * balance (net debit-positive balance per class) plus the headline aggregates the
+ * notes reference, so the disclosure ties back to the GL. Detailed schedules
+ * (fixed-asset movement, provisions) deepen as those subledgers land.
+ */
+function notesAnnexes(rows) {
+  const classes = {};
+  for (let cls = 1; cls <= 9; cls += 1) classes[cls] = 0;
+  for (const r of rows) {
+    const c = classOf(r.account_code);
+    if (classes[c] === undefined) continue;
+    classes[c] += bal(r);
+  }
+  for (const c of Object.keys(classes)) classes[c] = round2(classes[c]);
+  const cr = incomeStatement(rows);
+  const bs = balanceSheet(rows, cr.result);
+  return {
+    class_balances: classes,
+    result: cr.result,
+    total_active: bs.active,
+    total_passif: bs.passif,
+    balanced: bs.balanced,
+  };
+}
+
+/**
+ * Guided monthly-close gate (KB §12 intangibility). A period may only be frozen/
+ * closed when its validated GL balances (Σ Dr = Σ Cr). Pure so the service can
+ * check before it writes the status transition. Returns the reason when blocked.
+ */
+function canClosePeriod(rows, targetStatus) {
+  const t = trialBalanceTotals(rows);
+  const valid = ["FROZEN", "CLOSED"].includes(targetStatus);
+  if (!valid) return { ok: false, reason: `invalid target status '${targetStatus}'` };
+  if (!t.balanced) return { ok: false, reason: `trial balance not balanced (Dr ${t.debit} <> Cr ${t.credit})`, totals: t };
+  return { ok: true, totals: t };
+}
+
+module.exports = { classOf, trialBalanceTotals, incomeStatement, balanceSheet, bal, runningBalance, cashFlowSummary, tafire, notesAnnexes, canClosePeriod };

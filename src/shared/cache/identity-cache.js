@@ -189,6 +189,33 @@ async function getUserCapabilities(client, userId) {
   return result;
 }
 
+/**
+ * Field-level confidentiality (PRD §7.3): the field_keys the user may NOT see,
+ * resolved from `field_visibility` across all their roles (visibility='masked').
+ * The response serializer (shared/rbac/field-mask) nulls the mapped properties.
+ * Cached under the grants namespace so any field_visibility write (which calls
+ * invalidateGrants) flushes it immediately (Watch-the-Watcher).
+ */
+async function getMaskedFieldKeys(client, userId) {
+  if (!userId) return [];
+  const redis = safeRedis();
+  const key = `identity:grants:fields:${userId}`;
+  if (redis) {
+    const cached = await redis.get(key).catch(() => null);
+    if (cached) return JSON.parse(cached);
+  }
+  const { rows } = await client.query(
+    `SELECT DISTINCT fv.field_key
+       FROM field_visibility fv
+       JOIN user_role ur ON ur.role_id = fv.role_id
+      WHERE ur.user_id = $1 AND fv.visibility = 'masked'`,
+    [userId],
+  );
+  const keys = rows.map((r) => r.field_key);
+  if (redis) await redis.set(key, JSON.stringify(keys), "EX", GRANTS_TTL_S).catch(() => {});
+  return keys;
+}
+
 /** Call after a user is deactivated, role-reassigned, or session-revoked. */
 async function invalidateUser(userId) {
   const redis = safeRedis();
@@ -213,6 +240,7 @@ module.exports = {
   getGrants,
   getUserScopeIds,
   getUserCapabilities,
+  getMaskedFieldKeys,
   invalidateUser,
   invalidateGrants,
 };

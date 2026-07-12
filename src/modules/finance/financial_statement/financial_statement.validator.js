@@ -14,4 +14,16 @@ const mw = (req, _res, next) => {
   req.validatedQuery = p.data;
   return next();
 };
-module.exports = { query: mw, schemas: { query } };
+
+const closePeriod = z.object({
+  period_id: z.string().uuid(),
+  to: z.enum(["FROZEN", "CLOSED"]).optional(),
+});
+const closeMw = (req, _res, next) => {
+  const p = closePeriod.safeParse(req.body || {});
+  if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
+  req.validatedBody = p.data;
+  return next();
+};
+
+module.exports = { query: mw, closePeriod: closeMw, schemas: { query, closePeriod } };

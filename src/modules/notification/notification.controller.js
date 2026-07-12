@@ -1,3 +1,10 @@
 "use strict";
-const { makeController } = require("../../shared/crud/resource");
-module.exports = makeController(require("./notification.service"), "Notification");
+const service = require("./notification.service");
+const { asyncHandler } = require("../../utils/errors");
+const actor = (req) => req.user || { user_id: null };
+module.exports = {
+  mine: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.mine(c, actor(req), req.query)) })),
+  unreadCount: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.unreadCount(c, actor(req))) })),
+  markRead: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.markRead(c, { id: req.params.id, actor: actor(req) })) })),
+  markAllRead: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.markAllRead(c, actor(req))) })),
+};

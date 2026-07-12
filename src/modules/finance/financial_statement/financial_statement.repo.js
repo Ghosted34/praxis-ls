@@ -97,4 +97,45 @@ async function cashFlowSections(client, { entityId = null, from = null, to = nul
   return { operating: Number(r.operating || 0), investing: Number(r.investing || 0), financing: Number(r.financing || 0) };
 }
 
-module.exports = { trialBalance, accountMovements, cashFlow, cashFlowSections };
+/** Accounting periods for an entity (or all), newest first. */
+async function listPeriods(client, { entityId = null } = {}) {
+  const params = [];
+  let wh = "";
+  if (entityId) { params.push(entityId); wh = "WHERE entity_id = $1"; }
+  const { rows } = await client.query(
+    "SELECT period_id, entity_id, code, starts_on::text AS starts_on, ends_on::text AS ends_on, status, created_at " +
+      "FROM accounting_period " + wh + " ORDER BY starts_on DESC",
+    params,
+  );
+  return rows;
+}
+
+const getPeriod = async (client, periodId) => {
+  const { rows } = await client.query("SELECT * FROM accounting_period WHERE period_id = $1", [periodId]);
+  return rows[0] || null;
+};
+
+/** Trial balance restricted to one period's validated entries (close gate). */
+async function trialBalanceForPeriod(client, periodId) {
+  const { rows } = await client.query(
+    "SELECT jl.account_code, SUM(jl.debit) AS debit, SUM(jl.credit) AS credit " +
+      "FROM journal_line jl JOIN journal_entry je ON je.entry_id = jl.entry_id " +
+      "WHERE je.period_id = $1 AND je.status = 'validated' " +
+      "GROUP BY jl.account_code ORDER BY jl.account_code",
+    [periodId],
+  );
+  return rows.map((r) => ({ account_code: r.account_code, debit: Number(r.debit), credit: Number(r.credit) }));
+}
+
+async function setPeriodStatus(client, periodId, status) {
+  const { rows } = await client.query(
+    "UPDATE accounting_period SET status = $2 WHERE period_id = $1 RETURNING *",
+    [periodId, status],
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  trialBalance, accountMovements, cashFlow, cashFlowSections,
+  listPeriods, getPeriod, trialBalanceForPeriod, setPeriodStatus,
+};

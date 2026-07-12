@@ -1,2 +1,3 @@
 "use strict";
-module.exports = { MODULE: "MOD-22", CREATED: "marketing_campaign.created", UPDATED: "marketing_campaign.updated", ARCHIVED: "marketing_campaign.archived" };
+module.exports = { MODULE: "MOD-22", CREATED: "campaign.created", SUBSCRIBED: "newsletter.subscribed", UNSUBSCRIBED: "newsletter.unsubscribed",
+  transition: (status) => "campaign." + String(status).toLowerCase() };

@@ -6,6 +6,8 @@
  */
 "use strict";
 
+const { config } = require("../../config/env");
+
 const { logger } = require("../../config/logger");
 
 /**
@@ -13,13 +15,13 @@ const { logger } = require("../../config/logger");
  * `image` is a Buffer; `fields` is best-effort parsed JSON of the model's answer.
  */
 async function extract({ image, mimeType = "image/jpeg", prompt, vendor = null }) {
-  const apiKey = vendor && vendor.api_key;
+  const apiKey = (vendor && vendor.api_key) || config.GEMINI_API_KEY;
   if (!apiKey) throw new Error("document-vision provider not configured (Gemini key missing)");
   if (!Buffer.isBuffer(image) || image.length === 0) throw new Error("extract needs a non-empty image Buffer");
 
   const { GoogleGenerativeAI } = require("@google/generative-ai");
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({ model: (vendor && vendor.model) || "gemini-1.5-pro" });
+  const model = genAI.getGenerativeModel({ model: (vendor && vendor.model) || config.GEMINI_MODEL || "gemini-1.5-pro" });
   const instruction =
     (prompt || "Extract the key fields from this logistics document") +
     ". Respond ONLY with a compact JSON object of field:value pairs.";

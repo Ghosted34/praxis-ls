@@ -5,6 +5,7 @@ const query = z.object({
   entity_id: z.string().uuid().optional(),
   from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  period_code: z.string().regex(/^\d{4}(-\d{2})?$/).optional(),
 });
 const mw = (req, _res, next) => {
   const p = query.safeParse(req.query);

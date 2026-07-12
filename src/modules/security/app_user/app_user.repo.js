@@ -105,8 +105,72 @@ async function setTotpEnabled(client, userId, enabled) {
   );
 }
 
+
+// ── User administration (safe reads exclude secrets; role assignment) ──
+const SAFE_COLS = "user_id, username, email, full_name, is_2fa_enabled, employee_id, status, failed_logins, last_login_at, created_at, updated_at";
+
+async function insertUser(client, data) {
+  const keys = Object.keys(data);
+  const cols = keys.join(", ");
+  const ph = keys.map((_, i) => "$" + (i + 1)).join(", ");
+  const { rows } = await client.query(
+    "INSERT INTO app_user (" + cols + ") VALUES (" + ph + ") RETURNING " + SAFE_COLS,
+    keys.map((k) => data[k]),
+  );
+  return rows[0];
+}
+async function getUserSafe(client, id) {
+  const { rows } = await client.query("SELECT " + SAFE_COLS + " FROM app_user WHERE user_id = $1", [id]);
+  return rows[0] || null;
+}
+async function listUsersSafe(client, { limit = 50, offset = 0, status = null }) {
+  const params = [limit, offset]; const wh = [];
+  if (status) { params.push(status); wh.push("status = $" + params.length); }
+  const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
+  const { rows } = await client.query("SELECT " + SAFE_COLS + " FROM app_user " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
+  return rows;
+}
+async function updateUserFields(client, id, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return getUserSafe(client, id);
+  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
+  const { rows } = await client.query("UPDATE app_user SET " + set + ", updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, ...keys.map((k) => fields[k])]);
+  return rows[0] || null;
+}
+async function setPasswordHash(client, id, hash) {
+  const { rows } = await client.query("UPDATE app_user SET password_hash = $2, updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, hash]);
+  return rows[0] || null;
+}
+async function setStatus(client, id, status) {
+  const { rows } = await client.query("UPDATE app_user SET status = $2, updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, status]);
+  return rows[0] || null;
+}
+async function setRoles(client, id, roleIds) {
+  await client.query("DELETE FROM user_role WHERE user_id = $1", [id]);
+  for (const rid of roleIds || []) {
+    /// eslint-disable-next-line no-await-in-loop
+    await client.query("INSERT INTO user_role (user_id, role_id) VALUES ($1,$2) ON CONFLICT DO NOTHING", [id, rid]);
+  }
+}
+async function roleCodes(client, id) {
+  const { rows } = await client.query("SELECT r.code FROM user_role ur JOIN role r ON r.role_id = ur.role_id WHERE ur.user_id = $1", [id]);
+  return rows.map((r) => r.code);
+}
+async function roleIds(client, id) {
+  const { rows } = await client.query("SELECT role_id FROM user_role WHERE user_id = $1", [id]);
+  return rows.map((r) => r.role_id);
+}
+/** Count ACTIVE users holding the CEO role (for the last-CEO guard). */
+async function countActiveCeos(client) {
+  const { rows } = await client.query(
+    "SELECT COUNT(DISTINCT u.user_id)::int AS n FROM app_user u JOIN user_role ur ON ur.user_id = u.user_id JOIN role r ON r.role_id = ur.role_id WHERE r.code = 'CEO' AND u.status = 'ACTIVE'",
+  );
+  return rows[0].n;
+}
+
 module.exports = {
   ...crud,
+  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   findByEmail,
   recordLoginSuccess,
   recordLoginFailure,

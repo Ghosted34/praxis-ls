@@ -8,6 +8,141 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-12 — Phase 1 finance FE (round 2): wire the actions that already had a BE
+
+**Context.** Follow-on to the write-forms round below. Gap audit found three actions
+whose **backend already exists** but had no UI; wired those. (Two other gaps — tax
+declaration *filing* and credit-note *creation* — are left because they have **no BE
+endpoint** either, so they're not just-wire-a-button; noted in the backlog.)
+
+**Wired (`client/src/features/finance/pages.tsx` + `client/src/lib/finance-api.ts`).**
+- **Journal reverse** (`POST /journal-entries/:id/reverse`, MOD-55 approve):
+  `JournalsPage` converted from a generic `ResourceList` to a real table; validated
+  entries (and not themselves reversals — `corrects_entry_id` shown as a "reversal"
+  chip) get a per-row **Reverse** button → modal (reversal date + reason) that posts
+  the linked contra entry. BE rejects reversing a draft (`NOT_REVERSIBLE`), surfaced.
+- **Invoice draft edit** (`PATCH /final-invoices/:id`, MOD-51 edit): **Edit** action on
+  DRAFT rows opens a modal that loads `GET /final-invoices/:id` (returns `.lines`),
+  prefills client + lines (amount from `line_ht`, `is_debours`, dictionary item), and
+  saves the patch. Sits next to the existing Submit action.
+- **Guided monthly close** (`GET /statements/periods` + `POST /statements/periods/close`,
+  MOD-59 edit): new **"Periods / close"** tab in `StatementsPage`. Lists periods with a
+  status pill (OPEN/FROZEN/CLOSED); OPEN → Freeze/Close, FROZEN → Close, CLOSED → locked.
+  A confirm modal calls the endpoint with `to: 'FROZEN'|'CLOSED'`; the BE's
+  `CLOSE_BLOCKED` (unbalanced TB) / `ALREADY_CLOSED` errors surface inline.
+
+**Plumbing.** `finance-api.ts` gained `getInvoice`/`updateInvoiceDraft`/
+`reverseJournalEntry`/`listPeriods`/`closePeriod` (+ `InvoiceDetail`/`Period` types).
+`ReportTabs` refactored to allow a **custom-render tab** (`render?: () => ReactNode`,
+`path` now optional) so the Periods panel lives beside the report tabs without faking a
+report fetch; the fetch effect early-returns for custom tabs.
+
+**Also fixed (same day).** The Statements period filter was sending `period_code`, which
+the statement endpoints ignore — they key on `period_id` (tax reports use `period_code`).
+`ReportTabs` now takes a `periodMode` prop: Statements renders a **`period_id` dropdown**
+loaded from `/statements/periods` and filtered by the selected entity; Tax keeps the
+`period_code` text input. `Params`/`toQuery` carry both and send whichever is set, so the
+Statements filter now actually binds.
+
+**Verify status — blocked by the sandbox mount, not by the code.** In-sandbox `tsc`
+could not validate this round: the network mount served **stale/truncated** copies of
+the just-written files (e.g. `finance-api.ts` frozen at 3422 bytes / cut mid-type on
+line 104; `pages.tsx` cut mid-statement on line 933), producing phantom
+`TS1005 ')' expected` / `TS1110 Type expected`. Confirmed artifacts by reading the real
+files through the file API — both lines are complete and valid on Windows. The prior
+round typechecked clean once NUL-padding was stripped; **run `npm run build --prefix
+client` on Windows as the authoritative gate for this round.**
+
+## 2026-07-12 — Phase 1 finance FE: write forms on the read-only surfaces
+
+**Context.** Handoff's next depth layer: the Phase 1 finance screens were read-only
+lists + computed reports. Added the write/action forms that post to the ledger,
+keeping the existing client plumbing (`tenant()` api-client, refresh-on-401, design
+tokens). All new UI typechecks clean (`tsc --noEmit` = 0 once the sandbox NUL-padding
+artifact is stripped — see the sandbox gotcha; validate on Windows with
+`npm run build --prefix client`).
+
+**New shared UI + plumbing.**
+- `client/src/components/ui/modal.tsx` — portal-based `Modal` (backdrop + Escape +
+  body-scroll-lock), a `Field` label/hint/error wrapper, and a native `Select`
+  styled to match `Input`. First reusable dialog in the client.
+- `client/src/lib/finance-api.ts` — typed write wrappers (`postJournalEntry`,
+  `payAdvance`, `createInvoiceDraft`, `submitInvoice`) + option loaders
+  (`loadEntities`/`loadClients`/`loadDictionaryItems`/`loadPostableAccounts`) feeding
+  the form dropdowns from real master-data endpoints (`/entities`, `/clients`,
+  `/financial-dictionary`, `/chart-of-accounts` filtered to `is_postable`). `today()`
+  helper for date defaults.
+- `client/src/components/resource-list.tsx` — added an optional `action(reload)`
+  header-toolbar render prop + internal reload nonce, so a list can host a "New…"
+  button and re-fetch after a successful write. Backwards-compatible.
+
+**Forms wired (`client/src/features/finance/pages.tsx`).**
+- **Post journal entry** (`POST /journal-entries`, MOD-55): multi-line editor with
+  per-line account (postable-only) + debit/credit (mutually exclusive inputs), live
+  balance indicator (blocks submit until Dr=Cr and >0), entity/journal-code (datalist
+  VT/AC/BQ/PAIE/OD)/date/**mandatory source_doc_ref**, and a "Validate immediately
+  (locks entry)" checkbox vs save-as-draft.
+- **Record customer advance** (`POST /proformas/pay`, MOD-50): entity/client/amount/
+  treasury-account/date/source-ref → posts to 4191, not revenue.
+- **Final invoice lifecycle** (MOD-51): rebuilt `InvoicesPage` as a custom table
+  (was a generic `ResourceList`) with a **New draft** modal (`POST /final-invoices`,
+  optional dictionary-item lines with `is_debours`) and a per-row **Submit** action
+  (`POST /final-invoices/:id/submit`, `entry_date` + `source_doc_ref`) shown only on
+  DRAFT rows. Columns matched to the real `invoice` table (`doc_number`, `type`,
+  `status`, `total_ttc`, `created_at`; PK `invoice_id`).
+- **Statement + Tax period filters** (listed gap): `ReportTabs` now has an
+  apply-on-demand filter bar (entity dropdown, `period_code` YYYY/YYYY-MM, `from`/`to`
+  dates) that appends the query string the `financial_statement`/`tax_declaration`
+  validators already accept (`entity_id`/`from`/`to`/`period_code`). Draft-vs-applied
+  split so typing doesn't refetch on every keystroke.
+
+**Also fixed while here.** `client/src/components/splash-screen.tsx` imported
+`* as React` but never referenced it — a real `noUnusedLocals` error that would have
+failed `tsc`/`npm run build`; removed the dead import (react-jsx needs no React
+import).
+
+**Verify caveat (sandbox gotcha, again).** In-sandbox `tsc` on freshly-written files
+reports phantom `TS1127 Invalid character` errors — the network-mount pads the cached
+copy with trailing NUL bytes past EOF. Confirmed benign: copying `src` to a local
+tmpfs and `tr -d '\000'` before `tsc --noEmit` → **0 errors**. The Windows files are
+correct; the authoritative gate is still `npm run build --prefix client`.
+
+## 2026-07-12 — Doc reconciliation after colleague merge + FE pivot to Lovable look
+
+**Context.** Pulled the colleague's merged work (`889f77d`): the codebase now spans
+Phases 0–4. Reconciled `WORK_TO_BE_DONE.md` against the actual modules by presence +
+`*.service.js` depth and the passing unit suites (not a line-by-line invariant
+re-audit — noted as such inline).
+
+**What the audit found landed (previously all-unchecked in the backlog):**
+- **Phase 1 (accounting spine) — substantially done:** COA + financial dictionary +
+  determination/posting-rules, journal engine + invariants (`journal_entry.rules.js`
+  + ledger triggers), reversal-not-edit, régie aging, tax jurisdiction (versioned
+  tax_code), statements (Bilan/CR/TAFIRE), tax center, PDF worker + vault + QR,
+  per-tenant SMTP. Backed by `journal-*`, `final-invoice-lifecycle`, `invoicing`,
+  `statements`, `tax-center`, `determination`, `numbering` suites.
+- **Phase 2 (commercial cycle) — substantially done:** master data
+  (entity/employee/client/supplier), currency+FX, dossier + service types, milestone
+  engine (versioned templates), transit/delivery, costing + cost-tracking + régie
+  disbursal, margin/extra-charge simulators, proforma (4191), final invoice, smart
+  receivables, procurement (PR→PO→GRN + supplier invoice). Only the Ops-File 360°
+  **modal** is left to the FE.
+- **Phase 4 — partial:** AI service layer (DB-first vendor resolution + env fallback,
+  transcribe/vision jobs, batch actions), Zod action gate + confirmation flow, AI
+  governance, pricing variance index. Portals/smart-comms/reporting are backend
+  scaffolds; settings hub is partial.
+
+Ticked those boxes in the backlog with a dated audit banner per phase. No code changed
+in this pass — documentation only.
+
+**FE decision (this session).** Halting BE; the frontend gets reskinned to the Lovable
+**Control Tower** mock (`doc/reference/reference-mock-lovable`) while keeping the
+current `client/`'s working plumbing (auth, api-client with refresh-on-401, branding,
+theme, screen-registry). The mock's UI is a static HTML/CSS/JS dashboard (3 views:
+home/ops/finance) + a shadcn/ui component set; we adopt its **look**, not its
+TanStack-Start stack. Next: port the design tokens + shadcn components into `client/`,
+reskin the shell, then wire Phase 0 + Phase 1 screens to the live endpoints.
+
 ## 2026-07-11 — Phase 3: Fleet, WMS & HR modules (BE + FE + Postman)
 
 **Phase:** 3 — People & assets (ledger-independent scope). Built after reverting

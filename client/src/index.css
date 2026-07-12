@@ -3,64 +3,102 @@
 @tailwind utilities;
 
 /*
- * Design tokens ported from the Lovable mock (doc/reference/reference-mock-lovable
- * /src/styles.css). oklch throughout. The tenant white-label loader
- * (src/lib/theme.ts) overrides --primary / --primary-foreground / --ring at
- * runtime from the tenant's `setting` colors; everything else stays neutral.
+ * Praxis LS design system — the Lovable "Control Tower" look ported onto the
+ * app's real functionality (doc/reference/reference-mock-lovable). Neutral
+ * semantic tokens (Tailwind utilities resolve to these via tailwind.config.ts)
+ * are retuned to the cool corporate off-white palette; brand tokens carry the
+ * SmartLS orange (#F5821F) + smart-blue (#1C9BD7). The tenant white-label loader
+ * (src/lib/theme.ts) still overrides --primary / --primary-foreground / --ring
+ * at runtime, so tenants recolour the accent while the surfaces stay Lovable.
  */
 :root {
-  --radius: 0.625rem;
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.129 0.042 264.695);
-  --card: oklch(1 0 0);
-  --card-foreground: oklch(0.129 0.042 264.695);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.129 0.042 264.695);
-  --primary: oklch(0.208 0.042 265.755);
-  --primary-foreground: oklch(0.984 0.003 247.858);
-  --secondary: oklch(0.968 0.007 247.896);
-  --secondary-foreground: oklch(0.208 0.042 265.755);
-  --muted: oklch(0.968 0.007 247.896);
-  --muted-foreground: oklch(0.554 0.046 257.417);
-  --accent: oklch(0.968 0.007 247.896);
-  --accent-foreground: oklch(0.208 0.042 265.755);
-  --destructive: oklch(0.577 0.245 27.325);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(0.929 0.013 255.508);
-  --input: oklch(0.929 0.013 255.508);
-  --ring: oklch(0.704 0.04 256.788);
-  --sidebar: oklch(0.984 0.003 247.858);
-  --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-accent: oklch(0.968 0.007 247.896);
-  --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
+  --radius: 0.9rem;
+
+  /* Neutral surfaces (Lovable light) */
+  --background: rgb(243 246 251);
+  --foreground: rgb(16 30 52);
+  --card: rgb(255 255 255);
+  --card-foreground: rgb(16 30 52);
+  --popover: rgb(255 255 255);
+  --popover-foreground: rgb(16 30 52);
+  --secondary: rgb(247 250 253);
+  --secondary-foreground: rgb(16 30 52);
+  --muted: rgb(247 250 253);
+  --muted-foreground: rgb(78 98 128);
+  --accent: rgb(239 244 250);
+  --accent-foreground: rgb(16 30 52);
+  --border: rgb(16 30 52 / 0.09);
+  --input: rgb(16 30 52 / 0.12);
+
+  /* Accent = brand orange (tenant loader may override) */
+  --primary: rgb(245 130 31);
+  --primary-foreground: rgb(255 255 255);
+  --ring: rgb(245 130 31);
+  --destructive: rgb(210 68 58);
+  --destructive-foreground: rgb(255 255 255);
+
+  /* Sidebar / rail */
+  --sidebar: rgb(247 250 253);
+  --sidebar-foreground: rgb(16 30 52);
+  --sidebar-border: rgb(16 30 52 / 0.09);
+  --sidebar-accent: rgb(239 244 250);
+  --sidebar-accent-foreground: rgb(16 30 52);
+
+  /* Brand + status (Lovable) */
+  --brand-orange: 245 130 31;
+  --brand-orange-ink: 190 86 14;
+  --brand-orange-deep: 208 100 16;
+  --brand-blue: 24 132 196;
+  --brand-blue-bright: 28 155 215;
+  --brand-blue-deep: 12 74 122;
+  --ok: 40 148 94;
+  --warn: 176 128 24;
+  --bad: 210 68 58;
+  --ink: 16 30 52;
+  --ink-3: 132 150 176;
+
+  --font-display: "Playfair Display", Georgia, serif;
+  --font-body: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --shadow-s: 0 1px 2px rgb(16 30 52 / 0.05), 0 2px 8px rgb(16 30 52 / 0.05);
+  --shadow-m: 0 4px 12px rgb(16 30 52 / 0.06), 0 14px 34px rgb(16 30 52 / 0.09);
+  --shadow-l: 0 18px 48px rgb(16 30 52 / 0.16);
+  --mesh: 0.5;
 }
 
 .dark {
-  --background: oklch(0.129 0.042 264.695);
-  --foreground: oklch(0.984 0.003 247.858);
-  --card: oklch(0.208 0.042 265.755);
-  --card-foreground: oklch(0.984 0.003 247.858);
-  --popover: oklch(0.208 0.042 265.755);
-  --popover-foreground: oklch(0.984 0.003 247.858);
-  --primary: oklch(0.929 0.013 255.508);
-  --primary-foreground: oklch(0.208 0.042 265.755);
-  --secondary: oklch(0.279 0.041 260.031);
-  --secondary-foreground: oklch(0.984 0.003 247.858);
-  --muted: oklch(0.279 0.041 260.031);
-  --muted-foreground: oklch(0.704 0.04 256.788);
-  --accent: oklch(0.279 0.041 260.031);
-  --accent-foreground: oklch(0.984 0.003 247.858);
-  --destructive: oklch(0.704 0.191 22.216);
-  --destructive-foreground: oklch(0.984 0.003 247.858);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.551 0.027 264.364);
-  --sidebar: oklch(0.208 0.042 265.755);
-  --sidebar-foreground: oklch(0.984 0.003 247.858);
-  --sidebar-border: oklch(1 0 0 / 10%);
-  --sidebar-accent: oklch(0.279 0.041 260.031);
-  --sidebar-accent-foreground: oklch(0.984 0.003 247.858);
+  --background: rgb(7 19 36);
+  --foreground: rgb(226 236 248);
+  --card: rgb(13 29 51);
+  --card-foreground: rgb(226 236 248);
+  --popover: rgb(13 29 51);
+  --popover-foreground: rgb(226 236 248);
+  --secondary: rgb(17 36 62);
+  --secondary-foreground: rgb(226 236 248);
+  --muted: rgb(17 36 62);
+  --muted-foreground: rgb(150 170 197);
+  --accent: rgb(22 44 74);
+  --accent-foreground: rgb(226 236 248);
+  --border: rgb(226 236 248 / 0.1);
+  --input: rgb(226 236 248 / 0.15);
+  --primary: rgb(245 130 31);
+  --primary-foreground: rgb(255 255 255);
+  --ring: rgb(245 130 31);
+  --destructive: rgb(232 104 96);
+  --destructive-foreground: rgb(255 255 255);
+  --sidebar: rgb(13 29 51);
+  --sidebar-foreground: rgb(226 236 248);
+  --sidebar-border: rgb(226 236 248 / 0.1);
+  --sidebar-accent: rgb(22 44 74);
+  --sidebar-accent-foreground: rgb(226 236 248);
+  --brand-orange-ink: 250 158 78;
+  --brand-blue: 52 170 226;
+  --brand-blue-bright: 74 186 236;
+  --ink: 226 236 248;
+  --ink-3: 100 123 152;
+  --ok: 74 176 120;
+  --warn: 224 180 66;
+  --bad: 232 104 96;
+  --mesh: 0.7;
 }
 
 @layer base {
@@ -75,15 +113,141 @@
   body {
     background-color: var(--background);
     color: var(--foreground);
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-family: var(--font-body);
+    font-size: 14px;
+    line-height: 1.55;
     -webkit-font-smoothing: antialiased;
+  }
+  /* Signature mesh: warm orange top-right + cool blue bottom-left glow */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: -20%;
+    z-index: -1;
+    pointer-events: none;
+    opacity: var(--mesh);
+    background:
+      radial-gradient(38% 40% at 82% -6%, color-mix(in srgb, rgb(var(--brand-orange)) 22%, transparent), transparent 70%),
+      radial-gradient(42% 44% at 6% 108%, color-mix(in srgb, rgb(var(--brand-blue-bright)) 26%, transparent), transparent 72%);
+    filter: blur(30px);
   }
 }
 
-/* Login gradient backdrop — subtle, tenant-primary-tinted. */
+@layer components {
+  .font-display,
+  .serif {
+    font-family: var(--font-display);
+    font-weight: 400;
+  }
+  .num {
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.015em;
+  }
+  .micro {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.19em;
+    color: rgb(var(--ink-3));
+    font-weight: 700;
+  }
+
+  /* Lovable card — soft white surface, hairline border, layered shadow */
+  .lux-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-s);
+  }
+
+  /* Status pills */
+  .status {
+    padding: 3px 9px;
+    border-radius: 999px;
+    font-size: 10.5px;
+    font-weight: 700;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .status::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .st-blue { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
+  .st-orange { color: rgb(var(--brand-orange-ink)); background: rgb(var(--brand-orange) / 0.14); }
+  .st-ok { color: rgb(var(--ok)); background: rgb(var(--ok) / 0.14); }
+  .st-warn { color: rgb(var(--warn)); background: rgb(var(--warn) / 0.15); }
+  .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad) / 0.13); }
+  .st-mute { color: rgb(var(--ink) / 0.7); background: rgb(var(--ink) / 0.06); }
+
+  /* Glassmorphic top command bar */
+  .lux-topbar {
+    background: color-mix(in srgb, var(--card) 82%, transparent);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    border-bottom: 1px solid var(--border);
+  }
+  /* Brand mark — blue gradient tile with serif glyph */
+  .lux-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    color: #eafcff;
+    font-family: var(--font-display);
+    font-size: 20px;
+    background: linear-gradient(140deg, rgb(var(--brand-blue-bright)), rgb(var(--brand-blue-deep)));
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.25), 0 4px 12px rgb(var(--brand-blue-deep) / 0.4);
+    border: 1px solid rgb(var(--brand-orange) / 0.4);
+  }
+  /* Top nav link with orange active underline */
+  .lux-navlink {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 14px;
+    border-radius: 10px;
+    font-size: 13.5px;
+    font-weight: 500;
+    color: var(--muted-foreground);
+    transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    position: relative;
+  }
+  .lux-navlink:hover {
+    color: var(--foreground);
+    background: rgb(var(--ink) / 0.04);
+  }
+  .lux-navlink.active {
+    color: var(--foreground);
+    font-weight: 600;
+  }
+  .lux-navlink.active::after {
+    content: "";
+    position: absolute;
+    left: 14px;
+    right: 14px;
+    bottom: -1px;
+    height: 2.5px;
+    border-radius: 3px;
+    background: rgb(var(--brand-orange));
+  }
+  /* Primary action — orange gradient */
+  .lux-btn-primary {
+    background: linear-gradient(135deg, rgb(var(--brand-orange)), rgb(var(--brand-orange-deep)));
+    color: #fff;
+    box-shadow: 0 8px 20px rgb(var(--brand-orange) / 0.35);
+  }
+}
+
+/* Login gradient backdrop — Lovable mesh, tenant-primary tinted. */
 .login-backdrop {
   background:
-    radial-gradient(1200px 600px at 15% -10%, color-mix(in oklch, var(--primary) 14%, transparent), transparent),
-    radial-gradient(900px 500px at 110% 110%, color-mix(in oklch, var(--primary) 10%, transparent), transparent),
+    radial-gradient(38% 42% at 82% -8%, rgb(var(--brand-orange) / 0.22), transparent 70%),
+    radial-gradient(44% 46% at 6% 110%, rgb(var(--brand-blue-bright) / 0.26), transparent 72%),
     var(--background);
 }

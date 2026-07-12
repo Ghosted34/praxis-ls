@@ -1,7 +1,6 @@
 /**
- * Protected app shell: white-label sidebar + top bar + <Outlet/>. Mobile-correct
- * (sidebar becomes a slide-over). Skeletal by intent — the nav is the real
- * scaffold the feature screens hang off.
+ * Protected app shell — Lovable "Control Tower" look on the app's real nav.
+ * Glass top command bar + white-label rail (slide-over on mobile) + <Outlet/>.
  */
 import * as React from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
@@ -16,7 +15,20 @@ type NavItem = { to: string; label: string };
 type NavGroup = { heading: string; items: NavItem[] };
 
 const NAV: NavGroup[] = [
-  { heading: "Overview", items: [{ to: "/", label: "Dashboard" }] },
+  { heading: "Overview", items: [{ to: "/", label: "Control Tower" }] },
+  {
+    heading: "Finance",
+    items: [
+      { to: "/finance/chart-of-accounts", label: "Chart of accounts" },
+      { to: "/finance/journals", label: "Journals" },
+      { to: "/finance/proformas", label: "Proforma & advances" },
+      { to: "/finance/invoices", label: "Invoices" },
+      { to: "/finance/receivables", label: "Receivables" },
+      { to: "/finance/statements", label: "Statements" },
+      { to: "/finance/tax", label: "Tax center" },
+      { to: "/finance/assets", label: "Assets" },
+    ],
+  },
   {
     heading: "Security & Access",
     items: [
@@ -55,6 +67,8 @@ const NAV: NavGroup[] = [
   {
     heading: "People & HR",
     items: [
+      { to: "/hr/employees", label: "Employees" },
+      { to: "/hr/payroll", label: "Payroll" },
       { to: "/hr/vacancies", label: "Vacancies" },
       { to: "/hr/contracts", label: "Contracts" },
       { to: "/hr/appraisals", label: "Appraisals" },
@@ -80,10 +94,10 @@ const NAV: NavGroup[] = [
 
 function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   return (
-    <nav className="flex flex-col gap-6 p-4">
+    <nav className="flex flex-col gap-5 p-3">
       {NAV.map((g) => (
         <div key={g.heading}>
-          <p className="px-3 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">{g.heading}</p>
+          <p className="micro px-3 pb-2">{g.heading}</p>
           <div className="flex flex-col gap-0.5">
             {g.items.map((it) => (
               <NavLink
@@ -91,12 +105,15 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
                 to={it.to}
                 end={it.to === "/"}
                 onClick={onNavigate}
+                style={({ isActive }) =>
+                  isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined
+                }
                 className={({ isActive }) =>
                   cn(
-                    "rounded-md px-3 py-2 text-sm transition-colors",
+                    "rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
                     isActive
-                      ? "bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                      : "text-sidebar-foreground hover:bg-sidebar-accent/60",
+                      ? "bg-accent font-semibold text-foreground"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                   )
                 }
               >
@@ -107,6 +124,22 @@ function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
         </div>
       ))}
     </nav>
+  );
+}
+
+function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
+  return (
+    <div className="flex items-center gap-3">
+      {logoUrl ? (
+        <img src={logoUrl} alt="" className="h-9 w-auto" />
+      ) : (
+        <span className="lux-mark">{name.charAt(0)}</span>
+      )}
+      <div className="leading-tight">
+        <div className="font-display text-[17px] tracking-tight">{name}</div>
+        <div className="micro mt-0.5">Control Tower</div>
+      </div>
+    </div>
   );
 }
 
@@ -123,58 +156,67 @@ export function AppShell() {
     navigate("/login", { replace: true });
   }
 
+  // Test/Live switch — persists X-Praxis-Env then reloads so every screen
+  // re-fetches under the new environment (separate live/sandbox schemas).
+  function toggleEnv() {
+    const next = env === "sandbox" ? "live" : "sandbox";
+    tokenStore.setEnv(next);
+    window.location.reload();
+  }
+
   return (
-    <div className="flex h-full">
-      {/* Desktop sidebar */}
-      <aside className="hidden w-64 shrink-0 border-r bg-sidebar md:block">
-        <div className="flex h-16 items-center gap-2 border-b px-5 font-semibold">
-          {branding.logoUrl ? (
-            <img src={branding.logoUrl} alt="" className="h-7 w-auto" />
-          ) : (
-            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary text-sm text-primary-foreground">
-              {brandName.charAt(0)}
-            </span>
-          )}
-          <span className="truncate">{brandName}</span>
-        </div>
-        <NavLinks />
-      </aside>
+    <div className="flex h-full flex-col">
+      {/* Top command bar */}
+      <header className="lux-topbar flex h-[66px] flex-none items-center gap-4 px-4 md:px-6">
+        <button className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Menu">
+          ☰
+        </button>
+        <Brand name={brandName} logoUrl={branding.logoUrl} />
 
-      {/* Mobile slide-over */}
-      {mobileOpen && (
-        <div className="fixed inset-0 z-40 md:hidden">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
-          <aside className="absolute left-0 top-0 h-full w-72 border-r bg-sidebar">
-            <div className="flex h-16 items-center justify-between border-b px-5 font-semibold">
-              <span className="truncate">{brandName}</span>
-              <button onClick={() => setMobileOpen(false)} aria-label="Close">✕</button>
-            </div>
-            <NavLinks onNavigate={() => setMobileOpen(false)} />
-          </aside>
+        {/* Search affordance (Lovable) */}
+        <div className="ml-4 hidden items-center gap-2 rounded-xl border bg-accent/40 px-3 py-2 text-muted-foreground lg:flex">
+          <span className="text-xs">Search dossiers, invoices, people…</span>
+          <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
         </div>
-      )}
 
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-16 items-center justify-between gap-3 border-b px-4">
-          <div className="flex items-center gap-3">
-            <button className="md:hidden" onClick={() => setMobileOpen(true)} aria-label="Menu">☰</button>
-            <span
-              className={cn(
-                "rounded-full px-2.5 py-1 text-xs font-medium",
-                env === "sandbox" ? "bg-destructive text-destructive-foreground" : "bg-muted text-muted-foreground",
-              )}
-            >
-              {env === "sandbox" ? "TEST MODE" : "LIVE"}
-            </span>
+        <div className="ml-auto flex items-center gap-3">
+          <button
+            onClick={toggleEnv}
+            title={env === "sandbox" ? "Switch to LIVE" : "Switch to TEST MODE"}
+            className={cn("status", env === "sandbox" ? "st-warn" : "st-ok")}
+          >
+            {env === "sandbox" ? "TEST MODE" : "LIVE"}
+          </button>
+          <span className="hidden text-sm text-muted-foreground sm:inline">{user?.email}</span>
+          <ThemeToggle />
+          <Button variant="outline" size="sm" onClick={onLogout}>
+            Sign out
+          </Button>
+        </div>
+      </header>
+
+      <div className="flex min-h-0 flex-1">
+        {/* Desktop rail */}
+        <aside className="hidden w-64 shrink-0 overflow-y-auto border-r bg-sidebar md:block">
+          <NavLinks />
+        </aside>
+
+        {/* Mobile slide-over */}
+        {mobileOpen && (
+          <div className="fixed inset-0 z-40 md:hidden">
+            <div className="absolute inset-0 bg-black/40" onClick={() => setMobileOpen(false)} />
+            <aside className="absolute left-0 top-0 h-full w-72 overflow-y-auto border-r bg-sidebar">
+              <div className="flex h-[66px] items-center justify-between border-b px-4">
+                <Brand name={brandName} logoUrl={branding.logoUrl} />
+                <button onClick={() => setMobileOpen(false)} aria-label="Close">
+                  ✕
+                </button>
+              </div>
+              <NavLinks onNavigate={() => setMobileOpen(false)} />
+            </aside>
           </div>
-          <div className="flex items-center gap-3">
-            <span className="hidden text-sm text-muted-foreground sm:inline">{user?.email}</span>
-            <ThemeToggle />
-            <Button variant="outline" size="sm" onClick={onLogout}>
-              Sign out
-            </Button>
-          </div>
-        </header>
+        )}
+
         <main className="min-h-0 flex-1 overflow-auto p-6">
           <Outlet />
         </main>

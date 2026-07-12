@@ -88,15 +88,13 @@ export function LoginPage() {
           {branding.logoUrl ? (
             <img src={branding.logoUrl} alt={brandName} className="h-12 w-auto" />
           ) : (
-            <div
-              className="flex items-center justify-center rounded-2xl bg-primary text-xl font-semibold text-primary-foreground"
-              style={{ height: 52, width: 52, boxShadow: "0 0 0 6px var(--accent), 0 0 32px -6px var(--primary)" }}
-            >
+            <div className="lux-mark" style={{ height: 52, width: 52, fontSize: 26, borderRadius: 16 }}>
               {brandName.charAt(0)}
             </div>
           )}
-          <h1 className="mt-4 text-xl font-semibold tracking-tight">{brandName}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
+          <h1 className="font-display mt-4 text-2xl tracking-tight">{brandName}</h1>
+          <p className="micro mt-1">Control Tower</p>
+          <p className="mt-3 text-sm text-muted-foreground">
             {stage === "credentials" ? "Sign in to your workspace" : "Two-factor authentication"}
           </p>
         </div>

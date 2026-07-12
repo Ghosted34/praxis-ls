@@ -24,14 +24,19 @@ export function ResourceList({
   description,
   endpoint,
   columns,
+  action,
 }: {
   title: string;
   description?: string;
   endpoint: string;
   columns?: Column[];
+  /** Optional header toolbar (e.g. a "New" button). `reload` re-fetches the list. */
+  action?: (reload: () => void) => React.ReactNode;
 }) {
   const [rows, setRows] = React.useState<Record<string, unknown>[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+  const reload = React.useCallback(() => setNonce((n) => n + 1), []);
 
   React.useEffect(() => {
     let live = true;
@@ -50,16 +55,19 @@ export function ResourceList({
     return () => {
       live = false;
     };
-  }, [endpoint]);
+  }, [endpoint, nonce]);
 
   const cols: Column[] =
     columns || (rows && rows[0] ? Object.keys(rows[0]).slice(0, 6).map((k) => ({ key: k, label: k })) : []);
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      <header className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
+          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+        </div>
+        {action && <div className="shrink-0">{action(reload)}</div>}
       </header>
 
       {error ? (

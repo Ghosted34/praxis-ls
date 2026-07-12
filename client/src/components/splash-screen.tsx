@@ -10,7 +10,6 @@
  * the real tenant identity when it arrives. Intentionally dark regardless of app
  * theme (it fades into the app).
  */
-import * as React from "react";
 
 export function SplashScreen({
   name,

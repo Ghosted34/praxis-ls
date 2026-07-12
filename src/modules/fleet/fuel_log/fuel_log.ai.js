@@ -27,7 +27,7 @@ module.exports = {
       key: "update_fuel",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-43", action: "update" },
+      permission: { module: "MOD-43", action: "edit" },
       confirm: true,
       describe: "Update a fuel log entry.",
     },

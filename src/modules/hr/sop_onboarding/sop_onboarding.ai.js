@@ -27,7 +27,7 @@ module.exports = {
       key: "update_sop",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-16", action: "update" },
+      permission: { module: "MOD-16", action: "edit" },
       confirm: true,
       describe: "Update an SOP document (version bump, activation).",
     },

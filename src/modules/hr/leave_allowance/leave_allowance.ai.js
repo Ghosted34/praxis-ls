@@ -27,7 +27,7 @@ module.exports = {
       key: "update_leave",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-15", action: "update" },
+      permission: { module: "MOD-15", action: "edit" },
       confirm: true,
       describe: "Update a request before it is decided.",
     },

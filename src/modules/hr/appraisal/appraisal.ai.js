@@ -27,7 +27,7 @@ module.exports = {
       key: "update_appraisal",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-13", action: "update" },
+      permission: { module: "MOD-13", action: "edit" },
       confirm: true,
       describe: "Update an appraisal (actual value, rating, comments).",
     },

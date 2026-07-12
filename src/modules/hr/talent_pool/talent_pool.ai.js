@@ -27,7 +27,7 @@ module.exports = {
       key: "update_talent",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-19", action: "update" },
+      permission: { module: "MOD-19", action: "edit" },
       confirm: true,
       describe: "Update a talent-pool entry (skills, notes).",
     },

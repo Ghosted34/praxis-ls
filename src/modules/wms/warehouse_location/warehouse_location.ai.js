@@ -27,7 +27,7 @@ module.exports = {
       key: "update_location",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-34", action: "update" },
+      permission: { module: "MOD-34", action: "edit" },
       confirm: true,
       describe: "Update a location (slotting, capacity).",
     },

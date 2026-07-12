@@ -27,7 +27,7 @@ module.exports = {
       key: "update_compliance",
       service: service.update,
       schema: validator.schemas.update,
-      permission: { module: "MOD-40", action: "update" },
+      permission: { module: "MOD-40", action: "edit" },
       confirm: true,
       describe: "Update a compliance record (kind, expiry, attached document).",
     },

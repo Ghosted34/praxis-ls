@@ -517,6 +517,69 @@
         "depreciate_asset",
         "dispose_asset"
       ]
+    },
+    {
+      "id": "fin_journals",
+      "title": "Journals",
+      "route": "/finance/journals",
+      "area": "finance",
+      "module_key": "MOD-05",
+      "purpose": "General ledger journal entries (balanced-or-rejected, reversal-not-edit).",
+      "actions": []
+    },
+    {
+      "id": "fin_invoices",
+      "title": "Invoices",
+      "route": "/finance/invoices",
+      "area": "finance",
+      "module_key": "MOD-51",
+      "purpose": "Final invoices — revenue recognition, clears advance + débours.",
+      "actions": []
+    },
+    {
+      "id": "fin_receivables",
+      "title": "Receivables",
+      "route": "/finance/receivables",
+      "area": "finance",
+      "module_key": "MOD-56",
+      "purpose": "Smart receivables ledger — open items, ageing, reminders.",
+      "actions": []
+    },
+    {
+      "id": "fin_statements",
+      "title": "Statements",
+      "route": "/finance/statements",
+      "area": "finance",
+      "module_key": "MOD-59",
+      "purpose": "SYSCOHADA statements: trial balance, Bilan, Compte de résultat, TAFIRE.",
+      "actions": []
+    },
+    {
+      "id": "fin_tax",
+      "title": "Tax center",
+      "route": "/finance/tax",
+      "area": "finance",
+      "module_key": "MOD-07",
+      "purpose": "TVA return, IS/minimum tax, withholding declarations.",
+      "actions": []
+    },
+    {
+      "id": "fin_chart",
+      "title": "Chart of accounts",
+      "route": "/finance/chart-of-accounts",
+      "area": "finance",
+      "module_key": "MOD-58",
+      "purpose": "SYSCOHADA/OHADA chart of accounts — hierarchical, is_postable / requires_analytic.",
+      "actions": []
+    },
+    {
+      "id": "fin_proformas",
+      "title": "Proforma & advances",
+      "route": "/finance/proformas",
+      "area": "finance",
+      "module_key": "MOD-52",
+      "purpose": "Proforma and advance-payment invoices — advance posts to 4191, not revenue.",
+      "actions": []
     }
   ]
 }

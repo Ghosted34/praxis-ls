@@ -43,7 +43,16 @@ import {
   TrainingsPage,
   TalentPoolPage,
 } from "@/features/hr/pages";
-import { AssetsPage } from "@/features/finance/pages";
+import {
+  AssetsPage,
+  JournalsPage,
+  InvoicesPage,
+  ProformasPage,
+  ReceivablesPage,
+  ChartOfAccountsPage,
+  StatementsPage,
+  TaxCenterPage,
+} from "@/features/finance/pages";
 import { BootGate } from "@/app/boot-gate";
 
 export function App() {
@@ -82,6 +91,13 @@ export function App() {
         <Route path="wms/cycle-counts" element={<CycleCountsPage />} />
         <Route path="hr/employees" element={<EmployeesPage />} />
         <Route path="hr/payroll" element={<PayrollPage />} />
+        <Route path="finance/chart-of-accounts" element={<ChartOfAccountsPage />} />
+        <Route path="finance/journals" element={<JournalsPage />} />
+        <Route path="finance/proformas" element={<ProformasPage />} />
+        <Route path="finance/invoices" element={<InvoicesPage />} />
+        <Route path="finance/receivables" element={<ReceivablesPage />} />
+        <Route path="finance/statements" element={<StatementsPage />} />
+        <Route path="finance/tax" element={<TaxCenterPage />} />
         <Route path="finance/assets" element={<AssetsPage />} />
         <Route path="hr/vacancies" element={<VacanciesPage />} />
         <Route path="hr/contracts" element={<ContractsPage />} />

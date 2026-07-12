@@ -109,6 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     tokenStore.clear();
     persistUser(null);
+    // Clear all persisted client state on logout (until told otherwise): tokens,
+    // cached user, theme + env preferences — nothing survives a sign-out.
+    try {
+      localStorage.clear();
+    } catch {
+      /* ignore storage errors */
+    }
     setUser(null);
     setStatus("anon");
   };

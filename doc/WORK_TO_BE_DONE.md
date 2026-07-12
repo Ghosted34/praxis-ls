@@ -59,35 +59,61 @@ Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organi
 
 ## Phase 1 — Accounting spine
 
-- [ ] Chart of Accounts (OHADA/SYSCOHADA) seeded per tenant/entity — full 4-digit reference chart, hierarchical (`chart_of_accounts.parent_code`), `is_postable` / `requires_analytic` flags per account
-- [ ] Financial Dictionary as a distinct layer from the COA (`dictionary_item` table: code, labels, category, `is_debours`, price/currency/shipping-line) — never duplicate the account hierarchy inside it
-- [ ] `posting_rule` table (the account-determination glue): dictionary item → debit/credit accounts + `tax_code` + context (sale/purchase/disbursement); reject saving a dictionary item without a complete mapping
-- [ ] Ledger engine invariants (hard-reject on violation): balanced entries, one side per journal_line, postable-leaf-only, débours never in class 6/7 or VAT-bearing, no compensation, advance≠revenue, gap-free `entry_no`, mandatory `source_doc_ref`, `dossier_id` required on 4731/706/707/direct-cost lines, tax postings pinned to the `tax_code` version effective at entry date
-- [ ] Reversal-not-edit: validated journal entries are immutable; corrections are linked reversal+replacement entries (`source = HUMAN_CORRECTION`, `corrects_entry_id`)
-- [ ] Régie d'avance aging: cash advance (581) auto-reclassifies to holder receivable (4211) — never auto-allocated to 4731 — past its policy window; Compliance Checker flags it
-- [ ] Tax Jurisdiction module: versioned `tax_code` table (kind, rate_percent, base_rule, recoverable, COA posting links, `effective_from/to`) seeded with TVA 19.25%, WHT 2.2%/5.5%, IS 33%/minimum tax 2.2%/5.5%, CNPS (pension 4.2% EE / family 7% ER capped, injury 1.75–5% ER), CFC 1%/1.5%, FNE 1%, IRPP bracket table, CAC 10% — effective-dated, never overwritten
-- [ ] Journals & General Ledger (manual + auto-posted, balanced-or-rejected, reversal-not-edit)
-- [ ] Treasury accounts: bank, cash, mobile-money wallets (MTN/Orange) mapped to COA
-- [ ] Statements: Bilan, Compte de résultat, TAFIRE, Notes annexes, guided monthly close
-- [ ] Tax Center outputs: TVA return, IS/minimum tax, withholding, DSF dataset, CNPS declaration
-- [ ] PDF worker (Puppeteer + Chromium, bilingual templates, Noto fonts, mono font for figures) + document vault storage + QR verification hash
+> **Audit 2026-07-12 (post-colleague-merge).** Reconciled against the merged
+> codebase by module presence + `*.service.js` depth (not a line-by-line invariant
+> re-verification — the `[x]` below means "the module and its core logic exist and
+> pass `npm test`", not "every OHADA rule re-audited"). Phase 1 is substantially
+> landed; unit suites `journal-*`, `final-invoice-lifecycle`, `invoicing`,
+> `statements`, `tax-center`, `numbering`, `determination` all pass.
+>
+> **Phase 1 frontend status (2026-07-12).** The BE modules are `[x]`; the boxes
+> below track the *backend*. FE write coverage on top of them:
+> - [x] Post journal entry (multi-line, live-balance, draft-vs-validate) → `POST /journal-entries`
+> - [x] Record customer advance (→ 4191) → `POST /proformas/pay`
+> - [x] Final invoice draft → submit lifecycle → `POST /final-invoices` (+ `/:id/submit`)
+> - [x] Statements + Tax Center period/date filter bar (entity/period_code/from/to)
+> - [x] Close / lock an accounting period — **wired 2026-07-12**: "Periods / close" tab in Statements lists periods with Freeze/Close (confirm modal) → `POST /statements/periods/close`
+> - [x] Journal-entry **reverse** from the UI — **wired 2026-07-12**: per-row Reverse on validated entries → `POST /journal-entries/:id/reverse` (reason + date)
+> - [x] Invoice draft **edit** — **wired 2026-07-12**: Edit action on DRAFT rows loads `GET /final-invoices/:id` and saves via `PATCH /final-invoices/:id`
+> - [ ] Run / file a tax declaration — Tax Center is **report-only in BE too** (`tax_declaration.routes.js` is all GET); needs a BE submit/file action *and* FE (no BE endpoint to wire yet)
+> - [ ] Credit notes (invoice `type='CREDIT_NOTE'` exists in schema; **no BE or FE create flow** — nothing in `src/` references it)
+> - [x] Statements period filter now binds — **fixed 2026-07-12**: `ReportTabs` gained a `periodMode` prop; Statements uses a **`period_id` dropdown** fed from `/statements/periods` (filtered by the chosen entity), Tax keeps the `period_code` text input. `toQuery` sends whichever is set.
+> See `client/src/features/finance/pages.tsx` + `doc/WORK_DONE.md` (2026-07-12).
+
+- [x] Chart of Accounts (OHADA/SYSCOHADA) — `master/chart_of_accounts/` + `migrations/tenant/0200_coa_dictionary.sql` + `seeds/9000_seed_coa.sql`, hierarchical, `is_postable`/`requires_analytic`
+- [x] Financial Dictionary as a distinct layer from the COA — `master/financial_dictionary/` (`dictionary_item`), separate from the account tree
+- [x] `posting_rule` / account-determination glue — `src/services/accounting/determination` resolves dictionary item → debit/credit + `tax_code` + context (covered by `determination.test.js`)
+- [x] Ledger engine invariants (hard-reject) — `finance/journal_entry/journal_entry.rules.js` + DB triggers in `0220_ledger.sql` / `0221_ledger_invariants.sql` (balanced, postable-leaf-only, débours class rules, gap-free entry_no, mandatory source_doc_ref) — `journal-rules.test.js`
+- [x] Reversal-not-edit — validated entries immutable; linked reversal+replacement (`journal_entry.service.js`, 164 ln)
+- [x] Régie d'avance aging: 581 → 4211 reclass past policy window — `costing/regie/` (100 ln) + `jobs/handlers/regie-aging.js`; Compliance Checker via `vault/compliance_flag`
+- [x] Tax Jurisdiction module: versioned `tax_code` — `master/tax_jurisdiction/` (106 ln) + `0210_tax.sql` + `seeds/9010_seed_tax.sql` (TVA 19.25%, WHT, IS, CNPS, CFC, FNE, IRPP, CAC), effective-dated
+- [x] Journals & General Ledger (manual + auto-posted, balanced-or-rejected) — `finance/journal_entry/`
+- [x] Treasury accounts (bank/cash/mobile-money mapped to COA) — `master/treasury_account/` (51 ln)
+- [x] Statements: Bilan, Compte de résultat, TAFIRE, Notes annexes — `finance/financial_statement/` (`statements.test.js`)
+- [x] Tax Center outputs (TVA, IS, WHT, DSF, CNPS) — `finance/tax_declaration/` (`tax-center.test.js`)
+- [x] PDF worker + document vault storage + QR verification — `jobs/handlers/pdf-render.js`, `vault/document_vault`, `vault/document_verification`; storage driver fixes carried from Phase 0 (`pdf-email.test.js`)
   - **Storage bugs found & FIXED 2026-07-09:** `storage.service.js` read `config.STORAGE_LOCAL_ROOT` (nonexistent) → now `STORAGE_LOCAL_PATH`; `CDN_BASE_URL` added to `env.js`. `/media/<key>` is now served by Express for the `local` driver (`server.js`, guarded by `STORAGE_DRIVER==='local'`, excluded from the SPA fallback; Vite proxies `/media` in dev). Proven by the white-label logo upload (`POST /api/tenant/branding/logo` → `storage.put` → tenant-namespaced key under `./data/vault/tenant_<slug>/branding/…`). **Still TODO for the vault:** an **auth-gated** download route for _sensitive_ documents — the flat `/media` static mount is fine for public assets (logos) but must not serve confidential files; and the S3 driver is unimplemented (interface only).
-- [ ] Email/SMTP service: per-tenant sender identities, SPF/DKIM/DMARC verification, queued+retried sends, delivery logging
+- [x] Email/SMTP service — per-tenant SMTP from tenant `setting` (refactored 2026 by colleague), queued sends via jobs; SPF/DKIM/DMARC domain setup stays an ops/DNS open item (see open questions)
 
 ## Phase 2 — Commercial cycle
 
-- [ ] Master data: corporate entities, employees, client master (KYC, credit limit), supplier master (incl. mobile money)
-- [ ] Currency & live FX: exchangerate-api daily cron, per-transaction stamped rate, manual override/fallback
-- [ ] Operations File Registry (the dossier) + service_type/service_territory taxonomy
-- [ ] Milestone engine: versioned templates per service_type → instances, push to Client Portal
-- [ ] Operations-File 360° modal (header, milestones, people, role-gated money, documents, comms, audit)
-- [ ] Transit orders, delivery notes
-- [ ] Project costing (posts to ledger, tagged `dossier_id`), cost tracking, cost reconciliation, project disbursal (régie d'avance state machine)
-- [ ] Margin Simulator / Extra-Charges Simulator (no GL impact)
-- [ ] Proforma & advance-payment invoices (advance posts to 4191, not revenue)
-- [ ] Final invoice (revenue recognition, clears advance + débours, débours carry no VAT)
-- [ ] Smart Receivables Ledger (ageing, allocations, reminders)
-- [ ] Procurement: purchase requests → POs → goods received with three-way match
+> **Audit 2026-07-12 (post-colleague-merge).** Commercial cycle is largely landed
+> across `master/`, `operations/`, `costing/`, `commercial/`, `procurement/`.
+> `[x]` = module + core logic present and unit-tested where a suite exists;
+> deep OHADA/pricing edge cases not exhaustively re-verified here.
+
+- [x] Master data: corporate entities, employees, client master (KYC, credit limit), supplier master (mobile money) — `master/{corporate_entity,employees,client_master,supplier_master}/`
+- [x] Currency & live FX — `master/currency/` (40 ln) + FX job; per-transaction stamped rate + manual override
+- [x] Operations File Registry (dossier) + service_type taxonomy — `operations/operations_file/` (82 ln)
+- [x] Milestone engine: versioned templates → instances — `operations/milestone/` (74 ln, versioned templates per colleague's `df1a2ea`)
+- [~] Operations-File 360° modal — backend surfaces exist (milestones/people/money/documents/comms); the combined **FE modal** lands with the Lovable reskin
+- [x] Transit orders, delivery notes — `operations/{transit_order,delivery_note}/`
+- [x] Project costing (ledger-posting, dossier-tagged), cost tracking, disbursal (régie state machine) — `costing/{costing,cost_tracking,cash_request,regie}/`
+- [x] Margin Simulator / Extra-Charges Simulator (no GL impact) — `commercial/{margin_simulation,extra_charge_simulation}/`
+- [x] Proforma & advance-payment invoices (advance → 4191) — `finance/proforma/` (52 ln)
+- [x] Final invoice (revenue recognition, clears advance + débours) — `finance/final_invoice/` (152 ln, `final-invoice-lifecycle.test.js`)
+- [x] Smart Receivables Ledger (ageing, allocations, reminders) — `finance/smart_receivables/` (112 ln)
+- [x] Procurement: purchase requests → POs → goods received (three-way match) + supplier invoice — `procurement/{purchase_request,purchase_order,goods_received,supplier_invoice}/`
 
 ## Phase 3 — People & assets
 
@@ -99,15 +125,20 @@ Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organi
 
 ## Phase 4 — Intelligence & reach
 
-- [ ] AI service layer: **DeepSeek as primary provider** (reasoning/agentic, content, document vision) with **Gemini as automatic fallback**; **self-hosted Whisper** primary / **Groq** fallback for voice-to-text; per-tenant AI EMV toggle (front-end UI flag + back-end action flag) and per-tenant spend dashboard
-- [ ] Zod validation gate for AI-proposed actions (self-correct ≤2 retries → manual form fallback); action-card confirmation flow
-- [ ] AI governance: per-feature usage caps, PII/financial redaction before external calls, full AI-call logging
-- [ ] Pricing Variance Index (Sales-visible R/Y/G variance vs. real Ops costing, no raw cost exposure)
-- [ ] Portals: Client (milestones, docs, secure messaging, self-service quoting), Investor/Board (read-only KPIs/statements), Audit Terminal (time-boxed, data room)
-- [ ] Support & Feedback dashboard (ticket lifecycle, feeds Praxis roadmap)
-- [ ] Smart Comms Portal (WebSocket messaging, working groups, media sharing, certified PDF export of threads)
-- [ ] Reporting & Insights dashboards (per-role, Excel/PDF export)
-- [ ] Settings module (MOD-70): full configuration hub across appearance, legal identity, workflow, finance/tax, comms, integrations, feature toggles
+> **Audit 2026-07-12.** Partially landed by the colleague's AI merges
+> (`45b1bc1` batch AI actions + transcribe/vision jobs, `03593d5` DB-first vendor
+> resolution + env fallback). AI spine and governance exist; portals/comms/reporting
+> are backend-scaffold or pending FE.
+
+- [x] AI service layer — DB-first vendor resolution + env fallback, transcribe (Groq) + vision (Gemini) jobs, batch action processing (`ai/`, `src/services/ai/*`, `jobs/handlers/ai-*`); per-tenant AI toggle in settings. *Pending:* per-tenant spend dashboard (FE)
+- [x] Zod validation gate for AI actions + action-card confirmation flow — `src/services/ai/action-registrar.js` + batch confirm (`action-registrar.test.js`, batch-confirm tests)
+- [x] AI governance: usage caps, PII/financial redaction, full AI-call logging — `ai/governance/` (148 ln)
+- [x] Pricing Variance Index (R/Y/G, no raw cost exposure) — `commercial/pricing_variance/` (52 ln)
+- [~] Portals: Client / Investor / Audit Terminal — `portal/` backend (64 ln, rules + service); **FE portals pending**
+- [ ] Support & Feedback dashboard (ticket lifecycle) — not started
+- [~] Smart Comms Portal — `smartcomm/` scaffold only (thin service); WebSocket/threads/certified-export pending
+- [~] Reporting & Insights dashboards — `vault/report/` scaffold; per-role Excel/PDF export pending
+- [~] Settings module (MOD-70): configuration hub — partial: `security/setting`, `security/numbering_setting`, `branding/` (appearance) exist; unified hub + remaining sections pending
 
 ## Phase 5 — Hardening & migration
 

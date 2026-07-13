@@ -168,9 +168,60 @@ async function countActiveCeos(client) {
   return rows[0].n;
 }
 
+// ── Device-bound quick PIN login (user_device) ──
+async function insertDevice(client, { userId, label, pinHash }) {
+  const { rows } = await client.query(
+    "INSERT INTO user_device (user_id, label, pin_hash) VALUES ($1,$2,$3) RETURNING device_id, label, status, created_at",
+    [userId, label || null, pinHash]);
+  return rows[0];
+}
+async function getActiveDeviceForUser(client, deviceId, userId) {
+  const { rows } = await client.query(
+    "SELECT * FROM user_device WHERE device_id = $1 AND user_id = $2 AND status = 'ACTIVE'", [deviceId, userId]);
+  return rows[0] || null;
+}
+async function listDevices(client, userId) {
+  const { rows } = await client.query(
+    "SELECT device_id, label, status, failed_pin, last_used_at, created_at FROM user_device WHERE user_id = $1 ORDER BY created_at DESC", [userId]);
+  return rows;
+}
+async function recordDevicePinFailure(client, deviceId) {
+  const { rows } = await client.query(
+    "UPDATE user_device SET failed_pin = failed_pin + 1 WHERE device_id = $1 RETURNING failed_pin", [deviceId]);
+  return rows[0] || { failed_pin: 0 };
+}
+async function resetDevicePin(client, deviceId) {
+  await client.query("UPDATE user_device SET failed_pin = 0, last_used_at = now() WHERE device_id = $1", [deviceId]);
+}
+async function revokeDevice(client, deviceId, userId) {
+  const { rows } = await client.query(
+    "UPDATE user_device SET status = 'REVOKED' WHERE device_id = $1 AND user_id = $2 RETURNING device_id", [deviceId, userId]);
+  return rows[0] || null;
+}
+
+// ── Per-user email signature (2.1) ──
+async function getSignature(client, userId) {
+  const { rows } = await client.query("SELECT user_id, html, updated_at FROM email_signature WHERE user_id = $1", [userId]);
+  return rows[0] || { user_id: userId, html: "", updated_at: null };
+}
+async function upsertSignature(client, userId, html) {
+  const { rows } = await client.query(
+    "INSERT INTO email_signature (user_id, html) VALUES ($1,$2) " +
+      "ON CONFLICT (user_id) DO UPDATE SET html = EXCLUDED.html, updated_at = now() RETURNING user_id, html, updated_at",
+    [userId, html || ""]);
+  return rows[0];
+}
+/** CEO role_id, for the last-owner guard on role changes (4.3). */
+async function ceoRoleId(client) {
+  const { rows } = await client.query("SELECT role_id FROM role WHERE code = 'CEO' LIMIT 1");
+  return rows[0] ? rows[0].role_id : null;
+}
+
 module.exports = {
   ...crud,
   insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
+  getSignature, upsertSignature, ceoRoleId,
+  insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,
   recordLoginSuccess,
   recordLoginFailure,

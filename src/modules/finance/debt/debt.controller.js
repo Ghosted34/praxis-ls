@@ -20,4 +20,6 @@ module.exports = {
     const data = await req.tenantDb((c) => service.repay(c, { id: req.params.id, entityId: b.entity_id, entryDate: b.entry_date, principalPart: b.principal_part, interestPart: b.interest_part, treasuryCoa: b.treasury_coa, interestCoa: b.interest_coa, sourceDocRef: b.source_doc_ref, actor: actor(req), ip: req.ip }));
     res.json({ data });
   }),
+  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.updateEngagement(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+  remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.removeEngagement(c, { id: req.params.id, actor: actor(req) })) })),
 };

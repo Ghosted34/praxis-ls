@@ -340,7 +340,20 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
     for (const k of ["username", "full_name", "employee_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
     if (patch.email !== undefined) fields.email = String(patch.email).toLowerCase();
     if (Object.keys(fields).length) await repo.updateUserFields(client, id, fields);
-    if (Array.isArray(patch.role_ids)) await repo.setRoles(client, id, patch.role_ids);
+    if (Array.isArray(patch.role_ids)) {
+      // Last-owner guard (4.3): don't let a role change strip the CEO role from
+      // the last active CEO — that would strand the tenant with no owner. Mirrors
+      // the existing last-CEO guard on setStatus.
+      const currentCodes = await repo.roleCodes(client, id);
+      if (currentCodes.includes("CEO")) {
+        const ceoId = await repo.ceoRoleId(client);
+        const keepsCeo = ceoId && patch.role_ids.map(String).includes(String(ceoId));
+        if (!keepsCeo && (await repo.countActiveCeos(client)) <= 1) {
+          throw new AppError("LAST_CEO", "Cannot remove the CEO role from the last active CEO", 409);
+        }
+      }
+      await repo.setRoles(client, id, patch.role_ids);
+    }
     await identityCache.invalidateUser(id);
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: fields });
     await client.query("COMMIT");
@@ -375,8 +388,67 @@ async function setStatus(client, { id, status, actor = {} }) {
   return row;
 }
 
+// ── Per-user email signature (2.1) ──
+async function getSignature(client, userId) {
+  const u = await repo.getUserSafe(client, userId);
+  if (!u) throw new AppError("NOT_FOUND", "User not found", 404);
+  return repo.getSignature(client, userId);
+}
+async function setSignature(client, { id, html, actor = {} }) {
+  const u = await repo.getUserSafe(client, id);
+  if (!u) throw new AppError("NOT_FOUND", "User not found", 404);
+  const row = await repo.upsertSignature(client, id, html || "");
+  await audit(client, { actorUserId: actor.user_id || null, action: "app_user.email_signature.set", moduleKey: events.MODULE, entityRef: "app_user:" + id, after: row });
+  return row;
+}
+
+// ── Device-bound quick PIN login ──
+// Fast unlock on a trusted device: a fully-authenticated user registers a PIN
+// bound to a device; PIN login on that device issues real tokens. A new device
+// or repeated PIN failures fall back to full password login (PIN + password
+// fallback model). Registering requires a valid access token, so the device is
+// already trusted — PIN login therefore skips the 2FA challenge.
+const PIN_MAX_FAILS = 5;
+
+async function registerPinDevice(client, { userId, pin, label = null }) {
+  const user = await repo.getUserSafe(client, userId);
+  if (!user) throw new AppError("NOT_FOUND", "User not found", 404);
+  const pinHash = await argon2.hash(String(pin), ARGON);
+  const row = await repo.insertDevice(client, { userId, label, pinHash });
+  await audit(client, { actorUserId: userId, action: "app_user.pin_device.registered", moduleKey: events.MODULE, entityRef: "user_device:" + row.device_id });
+  return { device_id: row.device_id, label: row.label, status: row.status, created_at: row.created_at };
+}
+
+async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment }) {
+  const passwordFallback = new AppError("PIN_LOGIN_UNAVAILABLE", "Please sign in with your password", 401);
+  const user = await repo.findByEmail(client, String(email || "").toLowerCase());
+  if (!user || user.status !== "ACTIVE") throw passwordFallback;
+  const device = await repo.getActiveDeviceForUser(client, deviceId, user.user_id);
+  if (!device) throw passwordFallback; // unknown/revoked device → full login
+  const ok = await argon2.verify(device.pin_hash, String(pin || "")).catch(() => false);
+  if (!ok) {
+    const { failed_pin } = await repo.recordDevicePinFailure(client, deviceId);
+    const lockedOut = failed_pin >= PIN_MAX_FAILS;
+    if (lockedOut) await repo.revokeDevice(client, deviceId, user.user_id);
+    await emitEvent(client, { eventTypeKey: events.LOGIN_FAILED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, payload: { method: "pin", reason: lockedOut ? "pin_lockout" : "bad_pin" } });
+    throw new AppError(lockedOut ? "PIN_LOCKED" : "INVALID_PIN", lockedOut ? "Too many attempts — sign in with your password" : "Invalid PIN", 401);
+  }
+  await repo.resetDevicePin(client, deviceId);
+  return issueSessionTokens(client, user, { ip, userAgent, environment });
+}
+
+const listPinDevices = (client, userId) => repo.listDevices(client, userId);
+async function revokePinDevice(client, { userId, deviceId }) {
+  const row = await repo.revokeDevice(client, deviceId, userId);
+  if (!row) throw new AppError("NOT_FOUND", "Device not found", 404);
+  await audit(client, { actorUserId: userId, action: "app_user.pin_device.revoked", moduleKey: events.MODULE, entityRef: "user_device:" + deviceId });
+  return { revoked: true };
+}
+
 module.exports = {
   listUsers, getUser, createUser, updateUser, setPassword, setStatus,
+  getSignature, setSignature,
+  registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
   login,
   verifyTotp,
   setupTotp,

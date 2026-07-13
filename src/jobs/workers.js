@@ -27,6 +27,7 @@ const PROCESSORS = [
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
   { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
+  { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];

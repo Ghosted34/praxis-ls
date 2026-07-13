@@ -2,7 +2,7 @@
  * Redis client.
  *
  * Used for:
- *   - Identity cache — per-request user / brand-config / permission-grant
+ *   - Identity cache — per-request user / tenant-config / permission-grant
  *     lookups with event-driven invalidation (shared/cache/identity-cache.js)
  *   - Sessions (refresh tokens, password-reset tokens, revocation)
  *   - Pub/Sub coordination across Socket.io workers (redis adapter)

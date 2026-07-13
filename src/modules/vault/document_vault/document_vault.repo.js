@@ -44,4 +44,12 @@ async function list(client, q = {}) {
   return rows;
 }
 
-module.exports = { getByRef, insert, updateSync, get, list };
+/** Soft-delete: the vault is compliance evidence, so we archive rather than
+ *  hard-delete (keeps content_hash + storage_path for later audit). */
+async function archive(client, id) {
+  const { rows } = await client.query(
+    "UPDATE document_vault SET status = 'ARCHIVED', updated_at = now() WHERE doc_id = $1 RETURNING *", [id]);
+  return rows[0] || null;
+}
+
+module.exports = { getByRef, insert, updateSync, get, list, archive };

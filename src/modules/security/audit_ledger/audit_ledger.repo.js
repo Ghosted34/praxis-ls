@@ -75,6 +75,70 @@ async function reinsertFromPayload(client, table, payload) {
   await client.query(`INSERT INTO ${table} (${cols}) VALUES (${params}) ON CONFLICT DO NOTHING`, keys.map((k) => payload[k]));
 }
 
+// ── Access reviews (4.1) ──
+async function createReview(client, { name, createdBy }) {
+  const { rows } = await client.query(
+    "INSERT INTO access_review (name, created_by) VALUES ($1,$2) RETURNING *", [name, createdBy || null]);
+  return rows[0];
+}
+/** Snapshot every ACTIVE user's roles into entries for a fresh review. */
+async function snapshotEntries(client, reviewId) {
+  await client.query(
+    "INSERT INTO access_review_entry (review_id, user_id, roles_snapshot) " +
+      "SELECT $1, u.user_id, " +
+      "COALESCE(jsonb_agg(jsonb_build_object('role_id', r.role_id, 'code', r.code)) FILTER (WHERE r.role_id IS NOT NULL), '[]'::jsonb) " +
+      "FROM app_user u " +
+      "LEFT JOIN user_role ur ON ur.user_id = u.user_id " +
+      "LEFT JOIN role r ON r.role_id = ur.role_id " +
+      "WHERE u.status = 'ACTIVE' GROUP BY u.user_id",
+    [reviewId]);
+}
+async function listReviews(client, q = {}) {
+  const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(q.offset, 10) || 0, 0);
+  const { rows } = await client.query("SELECT * FROM access_review ORDER BY created_at DESC LIMIT $1 OFFSET $2", [limit, offset]);
+  return rows;
+}
+async function getReview(client, id) {
+  const { rows } = await client.query("SELECT * FROM access_review WHERE review_id = $1", [id]);
+  return rows[0] || null;
+}
+async function listEntries(client, reviewId) {
+  const { rows } = await client.query("SELECT * FROM access_review_entry WHERE review_id = $1 ORDER BY entry_id", [reviewId]);
+  return rows;
+}
+async function decideEntry(client, { reviewId, entryId, decision, note, decidedBy }) {
+  const { rows } = await client.query(
+    "UPDATE access_review_entry SET decision = $3, note = $4, decided_by = $5, decided_at = now() " +
+      "WHERE entry_id = $2 AND review_id = $1 RETURNING *",
+    [reviewId, entryId, decision, note || null, decidedBy || null]);
+  return rows[0] || null;
+}
+async function completeReview(client, { id, completedBy }) {
+  const { rows } = await client.query(
+    "UPDATE access_review SET completed_at = now(), completed_by = $2 WHERE review_id = $1 AND completed_at IS NULL RETURNING *",
+    [id, completedBy || null]);
+  return rows[0] || null;
+}
+
+// ── Security-events read (4.2) — security-critical rows out of event_log ──
+async function listSecurityEvents(client, q = {}) {
+  const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
+  const offset = Math.max(parseInt(q.offset, 10) || 0, 0);
+  const params = [limit, offset]; const wh = ["et.is_security_critical = true"];
+  if (q.module) { params.push(q.module); wh.push("el.module_key = $" + params.length); }
+  if (q.event_type) { params.push(q.event_type); wh.push("el.event_type_key = $" + params.length); }
+  if (q.actor) { params.push(q.actor); wh.push("el.actor_user_id = $" + params.length); }
+  if (q.from) { params.push(q.from); wh.push("el.created_at >= $" + params.length); }
+  if (q.to) { params.push(q.to); wh.push("el.created_at <= $" + params.length); }
+  const { rows } = await client.query(
+    "SELECT el.event_id, el.event_type_key, el.module_key, el.entity_ref, el.actor_user_id, el.priority, el.payload, el.created_at " +
+      "FROM event_log el JOIN event_type et ON et.key = el.event_type_key WHERE " + wh.join(" AND ") +
+      " ORDER BY el.created_at DESC LIMIT $1 OFFSET $2",
+    params);
+  return rows;
+}
+
 module.exports = {
   ...crud,
   listSoftDeletes,
@@ -84,4 +148,6 @@ module.exports = {
   rowExists,
   reactivate,
   reinsertFromPayload,
+  createReview, snapshotEntries, listReviews, getReview, listEntries, decideEntry, completeReview,
+  listSecurityEvents,
 };

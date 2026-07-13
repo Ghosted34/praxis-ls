@@ -16,4 +16,9 @@ async function markRead(client, { id, actor }) {
   return { read: true, notification_id: id };
 }
 const markAllRead = async (client, actor) => ({ marked: await repo.markAllRead(client, actor.user_id) });
-module.exports = { mine, unreadCount, markRead, markAllRead };
+
+// ── Preferences (1.2) — self-service; a user only ever reads/writes their own. ──
+const getPreferences = (client, actor) => repo.getPreferences(client, actor.user_id);
+const setPreferences = (client, { actor, prefs }) => repo.putPreferences(client, actor.user_id, prefs);
+
+module.exports = { mine, unreadCount, markRead, markAllRead, getPreferences, setPreferences };

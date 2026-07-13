@@ -89,4 +89,43 @@ async function restore(client, { id, actor }) {
   return restored;
 }
 
-module.exports = { ...crud, listSoftDeletes, requestRestore, restore };
+// ── Access reviews (4.1) ──
+const REVIEW_DECISIONS = ["approved", "revoked", "flagged"];
+
+async function createReview(client, { name, actor }) {
+  const review = await repo.createReview(client, { name, createdBy: actor.user_id });
+  await repo.snapshotEntries(client, review.review_id);
+  await audit(client, { actorUserId: actor.user_id, action: "access_review.created", moduleKey: events.MODULE, entityRef: "access_review:" + review.review_id, after: review });
+  return review;
+}
+const listReviews = (client, q) => repo.listReviews(client, q);
+async function getReview(client, id) {
+  const review = await repo.getReview(client, id);
+  if (!review) throw new AppError("NOT_FOUND", "Access review not found", 404);
+  const entries = await repo.listEntries(client, id);
+  return { ...review, entries };
+}
+async function decideEntry(client, { reviewId, entryId, decision, note, actor }) {
+  if (!REVIEW_DECISIONS.includes(decision)) {
+    throw new AppError("BAD_DECISION", "decision must be " + REVIEW_DECISIONS.join("|"), 422);
+  }
+  const row = await repo.decideEntry(client, { reviewId, entryId, decision, note, decidedBy: actor.user_id });
+  if (!row) throw new AppError("NOT_FOUND", "Review entry not found", 404);
+  await audit(client, { actorUserId: actor.user_id, action: "access_review.entry.decided", moduleKey: events.MODULE, entityRef: "access_review_entry:" + entryId, after: row });
+  return row;
+}
+async function completeReview(client, { id, actor }) {
+  const row = await repo.completeReview(client, { id, completedBy: actor.user_id });
+  if (!row) throw new AppError("NOT_FOUND", "Access review not found or already completed", 404);
+  await audit(client, { actorUserId: actor.user_id, action: "access_review.completed", moduleKey: events.MODULE, entityRef: "access_review:" + id, after: row });
+  return row;
+}
+
+// ── Security-events read (4.2) ──
+const listSecurityEvents = (client, q) => repo.listSecurityEvents(client, q);
+
+module.exports = {
+  ...crud, listSoftDeletes, requestRestore, restore,
+  createReview, listReviews, getReview, decideEntry, completeReview,
+  listSecurityEvents,
+};

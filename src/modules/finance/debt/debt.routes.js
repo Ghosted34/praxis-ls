@@ -12,6 +12,8 @@ router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
+router.delete("/:id", requirePermission(MODULE, "delete"), controller.remove);
 router.post("/:id/drawdown", requirePermission(MODULE, "approve"), validator.drawdown, controller.drawdown);
 router.post("/:id/repay", requirePermission(MODULE, "approve"), validator.repay, controller.repay);
 

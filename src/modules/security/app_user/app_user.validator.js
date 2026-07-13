@@ -47,9 +47,13 @@ const schemas = {
   status: z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
 };
 
+const signature = zValidate(z.object({ html: z.string().max(20000) }));
+const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
+const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/) }));
+
 module.exports = {
   ...passthrough,
-  login, refresh, verifyTotp, totpCode,
+  login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),
   password: zValidate(schemas.password),

@@ -537,6 +537,15 @@
       "actions": []
     },
     {
+      "id": "fin_financing",
+      "title": "Financing & debt",
+      "route": "/finance/financing",
+      "area": "finance",
+      "module_key": "MOD-53",
+      "purpose": "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance.",
+      "actions": []
+    },
+    {
       "id": "fin_receivables",
       "title": "Receivables",
       "route": "/finance/receivables",

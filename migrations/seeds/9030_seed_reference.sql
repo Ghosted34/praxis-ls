@@ -10,7 +10,8 @@ INSERT INTO currency (code, name, symbol, is_base, decimals) VALUES
  ('USD','US Dollar','$',false,2),
  ('EUR','Euro','€',false,2),
  ('NGN','Nigerian Naira','₦',false,2),
- ('CNY','Chinese Yuan','¥',false,2);
+ ('CNY','Chinese Yuan','¥',false,2)
+ON CONFLICT DO NOTHING;
 
 -- Default sales pipeline stages (tenant-tunable) -----------------------------
 INSERT INTO pipeline_stage (code, name, sort_order, is_won, is_lost) VALUES
@@ -19,7 +20,8 @@ INSERT INTO pipeline_stage (code, name, sort_order, is_won, is_lost) VALUES
  ('PROPOSAL','Proposal sent',2,false,false),
  ('NEGOTIATION','Negotiation',3,false,false),
  ('WON','Won',4,true,false),
- ('LOST','Lost',5,false,true);
+ ('LOST','Lost',5,false,true)
+ON CONFLICT DO NOTHING;
 
 -- Event types for the newly added modules (workflow/notification config) ------
 INSERT INTO event_type (key, module_key, name, is_security_critical, is_approvable) VALUES
@@ -48,4 +50,5 @@ INSERT INTO event_type (key, module_key, name, is_security_critical, is_approvab
  ('incident.reported','MOD-45','Fleet incident reported',false,false),
  ('email.bounced','MOD-70','Email bounced',false,false),
  ('document.signed','MOD-64','Document signed',false,false),
- ('reminder.fired','MOD-65','Reminder fired',false,false);
+ ('reminder.fired','MOD-65','Reminder fired',false,false)
+ON CONFLICT DO NOTHING;

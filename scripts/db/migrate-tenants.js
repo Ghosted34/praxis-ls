@@ -22,9 +22,9 @@ const a = Object.fromEntries(
     ? [await svc.migrateTenant(a.slug)]
     : await svc.migrateAllTenants();
   for (const r of results) {
-    console.log(`[praxis-db] ${r.slug}: applied ${r.applied} new file(s)`);
+    console.warn(`[praxis-db] ${r.slug}: applied ${r.applied} new file(s)`);
   }
-  console.log(
+  console.warn(
     `[praxis-db] tenant upgrade complete for ${results.length} tenant(s)`,
   );
 })()

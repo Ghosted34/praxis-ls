@@ -9,6 +9,6 @@ const a = Object.fromEntries(process.argv.slice(2).map((s) => {
 }));
 (async () => {
   const slugs = a.slug ? [a.slug] : await svc.listTenantSlugs();
-  for (const slug of slugs) { await svc.wipeSandbox({ slug }); console.log(`[praxis-db] sandbox rebuilt: ${slug}`); }
-  console.log(`[praxis-db] sandbox wipe complete for ${slugs.length} tenant(s) ✓`);
+  for (const slug of slugs) { await svc.wipeSandbox({ slug }); console.warn(`[praxis-db] sandbox rebuilt: ${slug}`); }
+  console.warn(`[praxis-db] sandbox wipe complete for ${slugs.length} tenant(s) ✓`);
 })().then(() => process.exit(0)).catch((e) => { console.error("[praxis-db] sandbox wipe FAILED:", e.message); process.exit(1); });

@@ -22,11 +22,31 @@ async function hostTenantResolver(req, res, next) {
     .toLowerCase()
     .split(":")[0];
 
+  // Dev-only convenience: resolve a tenant on localhost without editing the
+  // hosts file. Active only when NODE_ENV=development. A per-request
+  // `X-Praxis-Tenant: <slug>` header wins over the `DEV_TENANT_SLUG` env var.
+  // The slug is expanded to its registered subdomain and resolved through the
+  // normal registry path (same status gates apply below). Never runs in
+  // production, so it cannot be used to bypass real host isolation.
+  if (config.NODE_ENV === "development") {
+    const devSlug = String(req.headers["x-praxis-tenant"] || config.DEV_TENANT_SLUG || "")
+      .toLowerCase()
+      .trim();
+    if (devSlug) {
+      const devHost = `${devSlug}.${config.APP_BASE_DOMAIN}`;
+      return resolveTenant(req, res, next, devHost);
+    }
+  }
+
   if (PLATFORM_HOSTS.has(host)) {
     req.isPlatform = true;
     return next();
   }
 
+  return resolveTenant(req, res, next, host);
+}
+
+async function resolveTenant(req, res, next, host) {
   try {
     const meta = await registry.resolveByHost(host);
     if (!meta) {

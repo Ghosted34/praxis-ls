@@ -22,6 +22,7 @@
     "db:provision": "node scripts/db/provision-tenant.js",
     "db:sandbox:wipe": "node scripts/db/sandbox-wipe.js",
     "db:reset:local": "node scripts/db/migrate-platform.js && node scripts/db/provision-tenant.js --slug=smartls --name=\"Smart Logistics\"",
+    "setup:local": "node scripts/local-setup.js",
     "setup": "npm install && npm run db:migrate:platform",
     "db:migrate:tenants": "node scripts/db/migrate-tenants.js",
     "platform:create-admin": "node scripts/platform/create-admin.js",

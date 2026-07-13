@@ -33,6 +33,10 @@ const Schema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: int(8080),
   APP_BASE_DOMAIN: z.string().default("praxisls.com"),
+  // Dev-only convenience: when NODE_ENV=development, resolve a tenant on
+  // localhost without a hosts-file entry. A request may still override per-call
+  // with the `X-Praxis-Tenant: <slug>` header (see host-tenent-resolver.js).
+  DEV_TENANT_SLUG: z.string().default(""),
   LOG_LEVEL: z.string().default("info"),
   APP_NAME: z.string().default("praxis-ls-api"),
   CORS_ORIGINS: z.string().default(""),
@@ -108,7 +112,7 @@ const Schema = z.object({
 
 const parsed = Schema.safeParse(process.env);
 if (!parsed.success) {
-  // eslint-disable-next-line no-console
+  /// eslint-disable-next-line no-console
   console.error("Invalid environment configuration:", parsed.error.flatten().fieldErrors);
   throw new Error("Environment validation failed — see errors above.");
 }
@@ -131,7 +135,7 @@ if (parsed.data.NODE_ENV === "production") {
   }
   if (!parsed.data.DB_PASSWORD) offenders.push("DB_PASSWORD_empty");
   if (offenders.length) {
-    // eslint-disable-next-line no-console
+    /// eslint-disable-next-line no-console
     console.error("Refusing to boot in production with insecure/default secrets:", offenders.join(", "));
     throw new Error("Insecure production configuration — set real values for: " + offenders.join(", "));
   }

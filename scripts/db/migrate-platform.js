@@ -5,5 +5,5 @@
 "use strict";
 const { migratePlatform } = require("../../src/services/platform/provisioning.service");
 migratePlatform()
-  .then((r) => { console.log(`[praxis-db] platform migrated (${r.applied} files) ✓`); process.exit(0); })
+  .then((r) => { console.warn(`[praxis-db] platform migrated (${r.applied} files) ✓`); process.exit(0); })
   .catch((e) => { console.error("[praxis-db] platform migration FAILED:", e.message); process.exit(1); });

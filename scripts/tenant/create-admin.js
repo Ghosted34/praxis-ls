@@ -86,7 +86,7 @@ async function main() {
   );
 
   await tenant.end();
-  console.log(`[praxis] tenant '${a.slug}' (${env}): ${a.email} ready with role ${role}`);
+  console.warn(`[praxis] tenant '${a.slug}' (${env}): ${a.email} ready with role ${role}`);
 }
 
 main()

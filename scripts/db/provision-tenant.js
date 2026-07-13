@@ -22,7 +22,7 @@ provisionTenant({
   subdomain: a.subdomain,
 })
   .then((r) => {
-    console.log(`[praxis-db] tenant '${r.slug}' provisioned -> ${r.dbName} @ ${r.host}`);
+    console.warn(`[praxis-db] tenant '${r.slug}' provisioned -> ${r.dbName} @ ${r.host}`);
     process.exit(0);
   })
   .catch((e) => {

@@ -17,4 +17,11 @@ module.exports = {
     const b = req.body;
     res.json({ data: await req.tenantDb((c) => service.setTile(c, { tileKey: b.tile_key, position: b.position, isVisible: b.is_visible, config: b.config, actor: actor(req) })) });
   }),
+
+  // Scheduled reports (1.3)
+  listScheduled: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listSchedules(c, req.query)) })),
+  createSchedule: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.createSchedule(c, { input: req.body, actor: actor(req) })) })),
+  updateSchedule: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.updateSchedule(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+  deleteSchedule: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.deleteSchedule(c, { id: req.params.id, actor: actor(req) })) })),
+  runDue: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.runDue(c, { tenantMeta: req.tenant, env: req.env, actor: actor(req) })) })),
 };

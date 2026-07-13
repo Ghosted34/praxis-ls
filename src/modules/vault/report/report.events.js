@@ -6,4 +6,9 @@ module.exports = {
   REPORT_SAVED: "report.saved",
   REPORT_DELETED: "report.deleted",
   TILE_SET: "dashboard.tile.set",
+  // Scheduled reports (1.3). Audited to immutable_ledger only (free-text action);
+  // not emitted to event_log to avoid depending on unseeded event_type keys.
+  SCHEDULE_SET: "report.schedule.set",
+  SCHEDULE_DELETED: "report.schedule.deleted",
+  SCHEDULE_RAN: "report.schedule.ran",
 };

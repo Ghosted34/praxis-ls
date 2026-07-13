@@ -14,4 +14,14 @@ module.exports = {
     res.setHeader("Content-Disposition", "inline; filename=\"" + (doc.doc_type || "document") + "-" + doc.doc_id + ".pdf\"");
     res.send(buffer);
   }),
+  create: asyncHandler(async (req, res) => {
+    const b = req.body;
+    const data = await req.tenantDb((c) => service.createDocument(c, {
+      entityRef: b.entity_ref, docType: b.doc_type, dataUrl: b.data_url,
+      fileContext: b.file_context, folderRef: b.folder_ref, dossierId: b.dossier_id,
+      slug: req.tenant.slug, actor: req.user || { user_id: null },
+    }));
+    res.status(201).json({ data });
+  }),
+  archive: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.archiveDocument(c, { id: req.params.id, actor: req.user || { user_id: null } })) })),
 };

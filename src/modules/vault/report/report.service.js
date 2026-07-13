@@ -14,6 +14,7 @@ const statements = require("../../finance/financial_statement/financial_statemen
 const receivables = require("../../finance/smart_receivables/smart_receivables.service");
 const dossier = require("../../operations/operations_file/operations_file.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { enqueue } = require("../../../jobs/queue-producer");
 const { AppError } = require("../../../utils/errors");
 
 // report_key -> { describe, run(client, params) }
@@ -70,4 +71,85 @@ async function setTile(client, { tileKey, position, isVisible, config, actor = {
   return row;
 }
 
-module.exports = { catalogue, run, saveReport, listSaved, deleteSaved, runSaved, listTiles, setTile };
+// ── Scheduled reports (1.3) ──
+
+// cadence → the next fire time from `from`. on_event is not time-driven (null).
+function nextRunAt(cadence, from = new Date()) {
+  const d = new Date(from);
+  switch (cadence) {
+    case "daily": d.setUTCDate(d.getUTCDate() + 1); return d;
+    case "weekly": d.setUTCDate(d.getUTCDate() + 7); return d;
+    case "monthly": d.setUTCMonth(d.getUTCMonth() + 1); return d;
+    case "quarterly": d.setUTCMonth(d.getUTCMonth() + 3); return d;
+    default: return null; // on_event / unknown
+  }
+}
+
+async function createSchedule(client, { input, actor = {} }) {
+  if (!REPORTS[input.report_key]) throw new AppError("UNKNOWN_REPORT", "No report '" + input.report_key + "'. See /reports/catalogue.", 422);
+  const first = input.cadence === "on_event" ? null : nextRunAt(input.cadence, new Date());
+  const row = await repo.insertScheduled(client, {
+    name: input.name, report_key: input.report_key, params: input.params || {},
+    cadence: input.cadence, recipients: input.recipients || [], formats: input.formats || ["pdf"],
+    active: input.active !== false, next_run_at: first, created_by: actor.user_id || null });
+  await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_SET, moduleKey: events.MODULE, entityRef: "scheduled_report:" + row.scheduled_report_id, after: row });
+  return row;
+}
+const listSchedules = (client, q) => repo.listScheduled(client, { limit: q.limit, offset: q.offset });
+async function updateSchedule(client, { id, patch, actor = {} }) {
+  if (patch.report_key && !REPORTS[patch.report_key]) throw new AppError("UNKNOWN_REPORT", "No report '" + patch.report_key + "'", 422);
+  const before = await repo.getScheduled(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Scheduled report not found", 404);
+  // A cadence change re-bases the next fire time from now (on_event clears it).
+  if (patch.cadence !== undefined) patch.next_run_at = patch.cadence === "on_event" ? null : nextRunAt(patch.cadence, new Date());
+  const row = await repo.updateScheduled(client, id, patch);
+  await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_SET, moduleKey: events.MODULE, entityRef: "scheduled_report:" + id, before, after: row });
+  return row;
+}
+async function deleteSchedule(client, { id, actor = {} }) {
+  const ok = await repo.deleteScheduled(client, id);
+  if (!ok) throw new AppError("NOT_FOUND", "Scheduled report not found", 404);
+  await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_DELETED, moduleKey: events.MODULE, entityRef: "scheduled_report:" + id });
+  return { deleted: true };
+}
+
+/**
+ * Generate + deliver every due scheduled report, then advance each next_run_at.
+ * Triggered per-tenant by the worker (jobs/handlers/scheduled-report.js) or
+ * directly via POST /reports/scheduled/run-due. `tenantMeta`+`env` are needed to
+ * enqueue the per-tenant email deliveries (the email sender identity is
+ * per-tenant/per-purpose). A single report's failure is isolated — it still
+ * advances so one bad run can't wedge the schedule.
+ */
+async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = {}) {
+  const due = await repo.listDueScheduled(client);
+  const results = [];
+  for (const sr of due) {
+    let ok = true;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      const out = await run(client, { reportKey: sr.report_key, params: sr.params || {} });
+      const html = "<h1>" + sr.name + "</h1><pre>" + JSON.stringify(out.data, null, 2) + "</pre>";
+      if (tenantMeta && Array.isArray(sr.recipients)) {
+        for (const to of sr.recipients) {
+          // eslint-disable-next-line no-await-in-loop
+          await enqueue("email", "scheduled-report", { tenantMeta, env, to, subject: sr.name, html, purpose: "reports", moduleKey: events.MODULE });
+        }
+      }
+    } catch (err) {
+      ok = false;
+    }
+    const next = sr.cadence === "on_event" ? null : nextRunAt(sr.cadence, new Date());
+    // eslint-disable-next-line no-await-in-loop
+    await repo.markScheduledRan(client, sr.scheduled_report_id, next);
+    // eslint-disable-next-line no-await-in-loop
+    await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_RAN, moduleKey: events.MODULE, entityRef: "scheduled_report:" + sr.scheduled_report_id, after: { ok, next_run_at: next } });
+    results.push({ scheduled_report_id: sr.scheduled_report_id, ok, next_run_at: next });
+  }
+  return { ran: results.length, results };
+}
+
+module.exports = {
+  catalogue, run, saveReport, listSaved, deleteSaved, runSaved, listTiles, setTile,
+  createSchedule, listSchedules, updateSchedule, deleteSchedule, runDue,
+};

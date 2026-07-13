@@ -87,7 +87,56 @@ async function upsertTile(client, { userId, tileKey, position = 0, isVisible = t
   return rows[0];
 }
 
+// ── Scheduled reports (1.3) — tenant-defined recurring runs ──
+async function insertScheduled(client, d) {
+  const { rows } = await client.query(
+    "INSERT INTO scheduled_report (name, report_key, params, cadence, recipients, formats, active, next_run_at, created_by) " +
+      "VALUES ($1,$2,$3::jsonb,$4,$5::text[],$6::text[],$7,$8,$9) RETURNING *",
+    [d.name, d.report_key, JSON.stringify(d.params || {}), d.cadence,
+      d.recipients || [], d.formats || ["pdf"], d.active !== false, d.next_run_at || null, d.created_by || null]);
+  return rows[0];
+}
+const getScheduled = (client, id) => getById(client, "scheduled_report", "scheduled_report_id", id);
+async function listScheduled(client, { limit, offset }) {
+  const { limit: l, offset: o } = page({ limit, offset });
+  const { rows } = await client.query("SELECT * FROM scheduled_report ORDER BY created_at DESC LIMIT $1 OFFSET $2", [l, o]);
+  return rows;
+}
+async function updateScheduled(client, id, f) {
+  const params = [id]; const sets = [];
+  const push = (col, val, cast = "") => { params.push(val); sets.push(col + " = $" + params.length + cast); };
+  if (f.name !== undefined) push("name", f.name);
+  if (f.report_key !== undefined) push("report_key", f.report_key);
+  if (f.params !== undefined) push("params", JSON.stringify(f.params), "::jsonb");
+  if (f.cadence !== undefined) push("cadence", f.cadence);
+  if (f.recipients !== undefined) push("recipients", f.recipients, "::text[]");
+  if (f.formats !== undefined) push("formats", f.formats, "::text[]");
+  if (f.active !== undefined) push("active", f.active);
+  if (f.next_run_at !== undefined) push("next_run_at", f.next_run_at);
+  if (!sets.length) return getScheduled(client, id);
+  const { rows } = await client.query(
+    "UPDATE scheduled_report SET " + sets.join(", ") + ", updated_at = now() WHERE scheduled_report_id = $1 RETURNING *", params);
+  return rows[0] || null;
+}
+async function deleteScheduled(client, id) {
+  const { rowCount } = await client.query("DELETE FROM scheduled_report WHERE scheduled_report_id = $1", [id]);
+  return rowCount > 0;
+}
+async function listDueScheduled(client) {
+  const { rows } = await client.query(
+    "SELECT * FROM scheduled_report WHERE active AND next_run_at IS NOT NULL AND next_run_at <= now() ORDER BY next_run_at");
+  return rows;
+}
+async function markScheduledRan(client, id, nextRunAt) {
+  const { rows } = await client.query(
+    "UPDATE scheduled_report SET last_run_at = now(), next_run_at = $2, updated_at = now() WHERE scheduled_report_id = $1 RETURNING *",
+    [id, nextRunAt]);
+  return rows[0] || null;
+}
+
 module.exports = {
   cashPosition, procurementSpend, dossierMarginPortfolio,
   insertSaved, getSaved, deleteSaved, listSaved, listTiles, upsertTile,
+  insertScheduled, getScheduled, listScheduled, updateScheduled, deleteScheduled,
+  listDueScheduled, markScheduledRan,
 };

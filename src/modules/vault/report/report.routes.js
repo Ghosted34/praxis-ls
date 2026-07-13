@@ -18,4 +18,12 @@ router.delete("/saved/:id", requirePermission(MODULE, "delete"), controller.dele
 router.get("/tiles", requirePermission(MODULE, "view"), controller.tiles);
 router.put("/tiles", requirePermission(MODULE, "edit"), validator.setTile, controller.setTile);
 
+// Scheduled reports (1.3). run-due is registered before the :id routes so the
+// literal path can't be captured as an :id.
+router.post("/scheduled/run-due", requirePermission(MODULE, "create"), controller.runDue);
+router.get("/scheduled", requirePermission(MODULE, "view"), controller.listScheduled);
+router.post("/scheduled", requirePermission(MODULE, "create"), validator.schedule, controller.createSchedule);
+router.patch("/scheduled/:id", requirePermission(MODULE, "edit"), validator.scheduleUpdate, controller.updateSchedule);
+router.delete("/scheduled/:id", requirePermission(MODULE, "delete"), controller.deleteSchedule);
+
 module.exports = { basePath: "/reports", feature: "reporting", router };

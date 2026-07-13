@@ -5,15 +5,13 @@
  * document_vault repo.
  */
 "use strict";
-const vaultRepo = require("../document_vault/document_vault.repo");
+const repo = require("./document_verification.repo");
 const { AppError } = require("../../../utils/errors");
 
 async function verify(client, { docId = null, entityRef = null, hash }) {
   if (!hash) throw new AppError("NO_HASH", "hash is required", 422);
-  let doc = null;
-  if (docId) doc = await vaultRepo.get(client, docId);
-  else if (entityRef) doc = await vaultRepo.getByRef(client, entityRef);
-  else throw new AppError("NO_TARGET", "doc_id or entity_ref is required", 422);
+  if (!docId && !entityRef) throw new AppError("NO_TARGET", "doc_id or entity_ref is required", 422);
+  const doc = await repo.getDoc(client, { docId, entityRef });
   if (!doc) throw new AppError("NOT_FOUND", "Document not found", 404);
   const stored = doc.content_hash || "";
   const match = Boolean(stored) && (stored === hash || stored.startsWith(hash));

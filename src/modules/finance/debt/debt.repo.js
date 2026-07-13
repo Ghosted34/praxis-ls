@@ -31,4 +31,8 @@ async function list(client, q = {}) {
   const { rows } = await client.query("SELECT * FROM debt_engagement " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
-module.exports = { insertEngagement, getEngagement, insertRepayment, update, listRepayments, repaidTotals, list };
+async function remove(client, id) {
+  const { rowCount } = await client.query("DELETE FROM debt_engagement WHERE debt_engagement_id = $1", [id]);
+  return rowCount > 0;
+}
+module.exports = { insertEngagement, getEngagement, insertRepayment, update, remove, listRepayments, repaidTotals, list };

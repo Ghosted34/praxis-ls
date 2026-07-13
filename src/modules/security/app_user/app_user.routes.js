@@ -28,6 +28,9 @@ usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 usersRouter.post("/:id/password", requirePermission(MODULE, "edit"), validator.password, controller.setPassword);
 usersRouter.post("/:id/status", requirePermission(MODULE, "edit"), validator.status, controller.setStatus);
+// Per-user email signature (2.1)
+usersRouter.get("/:id/email-signature", requirePermission(MODULE, "view"), controller.getSignature);
+usersRouter.put("/:id/email-signature", requirePermission(MODULE, "edit"), validator.signature, controller.setSignature);
 
 // Auth actions — login/refresh/2fa-verify are public (this is how a token
 // is obtained in the first place, and the 2FA challenge token replaces the
@@ -41,6 +44,14 @@ authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);
 authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);
 authRouter.post("/2fa/enable", authMiddleware, validator.totpCode, controller.enableTotp);
 authRouter.post("/2fa/disable", authMiddleware, validator.totpCode, controller.disableTotp);
+
+// Device-bound quick PIN login. /pin/login is public (it's a way to obtain a
+// token); register/list/revoke require a valid access token (the device is
+// trusted precisely because the user was fully signed in when registering it).
+authRouter.post("/pin/login", validator.pinLogin, controller.pinLogin);
+authRouter.post("/pin/register", authMiddleware, validator.pinRegister, controller.pinRegister);
+authRouter.get("/pin/devices", authMiddleware, controller.pinDevices);
+authRouter.delete("/pin/devices/:deviceId", authMiddleware, controller.pinRevoke);
 
 const router = express.Router();
 router.use("/users", usersRouter);

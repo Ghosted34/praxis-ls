@@ -52,6 +52,12 @@ async function emitEvent(client, e) {
   // Watch-the-Watcher fan-out — only for security-critical events. A HIGH in-app
   // notification to every active CEO/MANAGEMENT user (the "watchers"), in the
   // caller's transaction so it's atomic with the change that triggered it.
+  //
+  // NOTE (1.2): this fan-out intentionally IGNORES notification_preference —
+  // security-critical alerts to the watchers cannot be silenced. Any FUTURE
+  // non-security notification path must instead consult
+  // notification.repo.isChannelEnabled(client, userId, channel, category)
+  // before inserting, so per-user opt-outs are honored (settings-are-enforced).
   if (isCritical) {
     const body = e.entityRef
       ? `${key} on ${e.entityRef}${e.actorUserId ? ` by ${e.actorUserId}` : ""}`

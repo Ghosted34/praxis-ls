@@ -69,6 +69,41 @@ async function repay(client, { id, entityId, entryDate, principalPart = 0, inter
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
+/** Edit non-GL metadata (lender/interest/dates/dossier) while ACTIVE. Principal
+ *  and COA are immutable once the loan exists — they drive the posted entries. */
+async function updateEngagement(client, { id, patch = {}, actor = {} }) {
+  const eng = await repo.getEngagement(client, id);
+  if (!eng) throw new AppError("NOT_FOUND", "Debt engagement not found", 404);
+  if (eng.status !== "ACTIVE") throw new AppError("NOT_ACTIVE", "Only an ACTIVE engagement can be edited", 422);
+  await client.query("BEGIN");
+  try {
+    const fields = {};
+    for (const k of ["lender_name", "interest_rate", "due_on", "started_on", "dossier_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    const row = Object.keys(fields).length ? await repo.update(client, id, fields) : eng;
+    await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before: eng, after: row });
+    await client.query("COMMIT");
+    return row;
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/** Delete an engagement created in error — only before any repayment is recorded
+ *  (a loan with activity must be settled/reversed, not deleted). */
+async function removeEngagement(client, { id, actor = {} }) {
+  const eng = await repo.getEngagement(client, id);
+  if (!eng) throw new AppError("NOT_FOUND", "Debt engagement not found", 404);
+  const totals = await repo.repaidTotals(client, id);
+  if (totals.principal > 0 || totals.interest > 0) {
+    throw new AppError("HAS_ACTIVITY", "Cannot delete an engagement with recorded repayments — settle it instead", 409);
+  }
+  await client.query("BEGIN");
+  try {
+    await repo.remove(client, id);
+    await audit(client, { actorUserId: actor.user_id || null, action: events.ARCHIVED, moduleKey: events.MODULE, entityRef: ref(id), before: eng });
+    await client.query("COMMIT");
+    return { deleted: true };
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
 async function get(client, id) {
   const eng = await repo.getEngagement(client, id);
   if (!eng) return null;
@@ -78,4 +113,4 @@ async function get(client, id) {
   return eng;
 }
 const list = (client, q) => repo.list(client, q);
-module.exports = { createEngagement, drawdown, repay, get, list };
+module.exports = { createEngagement, drawdown, repay, updateEngagement, removeEngagement, get, list };

@@ -8,31 +8,82 @@ export type BrandPill = {
   iconUrl?: string | null;
 };
 
+/** A colour-token bag (key → CSS colour string). Edited in the Appearance token editor. */
+export type ThemeTokens = Record<string, string>;
+
+/** Font role selections for the platform. */
+export type Typography = {
+  display?: string | null;
+  body?: string | null;
+  mono?: string | null;
+  customFontUrl?: string | null;
+};
+
+/** Per-business brand (Layer B) — gradient + accent + logo, used on chips/documents. */
+export type BusinessBrand = {
+  id: string;
+  name: string;
+  accent?: string | null;
+  gradientStart?: string | null;
+  gradientEnd?: string | null;
+  logoUrl?: string | null;
+  website?: string | null;
+};
+
+/** Login-screen content (the DB-driven signed-out door). */
+export type HouseQuote = { text: string; attribution?: string | null };
+export type Pillar = { icon?: string | null; title: string; body?: string | null };
+export type RegionalWelcome = { region: string; title?: string | null; body?: string | null };
+
+export type LoginContent = {
+  splashSubline?: string | null;
+  /** Call-to-action button label on the hero. */
+  buttonLabel?: string | null;
+  /** Backdrop mode: brand mesh vs a full-bleed image. */
+  background?: "mesh" | "image" | null;
+  showSplash?: boolean | null;
+  showWebsiteLinks?: boolean | null;
+  showQuickPin?: boolean | null;
+  quotes?: HouseQuote[] | null;
+  pillars?: Pillar[] | null;
+  regionals?: RegionalWelcome[] | null;
+};
+
 export type Branding = {
+  // --- Persisted by the backend today (branding.service.js) ---
   name: string | null;
   primary: string | null;
   primaryForeground: string | null;
   logoUrl: string | null;
 
+  // --- Extended white-label fields (pixie spec). Sent on save; the backend
+  //     stores the four above now and will persist the rest once the
+  //     `appearance` settings schema is extended (see doc/FE_IA_HANDOFF.md). ---
+  companyName?: string | null;
+  tagline?: string | null;
+  logoDarkUrl?: string | null;
+  logoLightUrl?: string | null;
+  faviconUrl?: string | null;
+  themePreset?: string | null;
+  tokensDark?: ThemeTokens | null;
+  tokensLight?: ThemeTokens | null;
+  panelAlpha?: number | null;
+  borderAlpha?: number | null;
+  meshOpacity?: number | null;
+  typography?: Typography | null;
+  businesses?: BusinessBrand[] | null;
+  login?: LoginContent | null;
+
   /**
-   * Landing/hero content — all optional and white-label. Edited on the
-   * Appearance screen, served by the public /branding endpoint so the marketing
-   * entry point brands per tenant. Absent fields fall back to generic copy
-   * derived from `name` (see landing-page.tsx), so an un-configured tenant still
-   * gets a clean hero.
+   * Landing/hero content — all optional and white-label. Absent fields fall back
+   * to generic copy derived from `name` (see landing-page.tsx).
    */
   hero?: {
-    /** Small eyebrow line above the headline. */
     eyebrow?: string | null;
-    /** Big serif headline. */
     headline?: string | null;
-    /** One-line supporting sentence under the headline. */
     subheadline?: string | null;
-    /** Longer italic paragraph. */
     body?: string | null;
-    /** Full-bleed background image URL (/media or hosted). */
     imageUrl?: string | null;
-    /** Partner/sub-brand chips. */
     pills?: BrandPill[] | null;
   } | null;
 };

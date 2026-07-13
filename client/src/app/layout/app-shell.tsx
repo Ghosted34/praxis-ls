@@ -1,12 +1,13 @@
 /**
  * Protected app shell — Lovable "Control Tower" look on the app's real nav.
  *
- * Navigation now lives in the top command bar (per the Lovable mock): the
- * primary areas — Control Tower, Finance, Warehouse, Fleet — sit inline. Areas
- * with child screens open a dropdown of those screens; Control Tower is a direct
- * link. A "More" button opens the full menu (every group) as a collapsible
- * overlay sidebar that closes on outside-click or Escape. On mobile the inline
- * areas collapse and the hamburger opens that same sidebar.
+ * Navigation lives in the top command bar: the primary areas — Control Tower,
+ * Finance, Warehouse, Fleet — sit inline. Areas with child screens open a
+ * dropdown on hover (with a short grace delay) or on click/tap (kept as a
+ * fallback for touch + keyboard); Control Tower is a direct link. A "More"
+ * button opens the full menu as a collapsible overlay sidebar (outside-click or
+ * Escape to close). On mobile the inline areas collapse and the hamburger opens
+ * that same sidebar.
  */
 import * as React from "react";
 import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
@@ -15,13 +16,78 @@ import { useBranding } from "@/app/branding/branding-context";
 import { tokenStore } from "@/lib/token-store";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { CommandPalette } from "@/components/command-palette";
 import { cn } from "@/lib/cn";
 
 type NavItem = { to: string; label: string };
 type NavGroup = { heading: string; items: NavItem[]; prefix?: string };
 
+// Menu mirrors the target IA map (doc/FE_IA_HANDOFF.md). Screens without a page
+// yet route to a shared "Coming soon" placeholder — tab-children are kept as flat
+// items for now (they'll fold into tabbed parents when those screens are built).
 const NAV: NavGroup[] = [
-  { heading: "Overview", prefix: "/", items: [{ to: "/", label: "Control Tower" }] },
+  {
+    heading: "Overview",
+    prefix: "/",
+    items: [
+      { to: "/", label: "Control Tower" },
+      { to: "/workspace", label: "My workspace" },
+      { to: "/godmode", label: "God mode" },
+    ],
+  },
+  {
+    heading: "Commercial",
+    prefix: "/commercial",
+    items: [
+      { to: "/commercial/quotations", label: "Quotations" },
+      { to: "/commercial/margin-simulation", label: "Margin simulation" },
+      { to: "/commercial/extra-charge-simulation", label: "Extra-charge simulation" },
+      { to: "/commercial/pricing-variance", label: "Pricing variance" },
+    ],
+  },
+  {
+    heading: "Sales & CRM",
+    prefix: "/sales",
+    items: [
+      { to: "/sales/leads", label: "Leads" },
+      { to: "/sales/inbound-intake", label: "Inbound intake" },
+      { to: "/sales/opportunities", label: "Opportunities" },
+      { to: "/sales/proposals", label: "Proposals" },
+      { to: "/sales/meetings", label: "Meetings" },
+      { to: "/sales/campaigns", label: "Marketing campaigns" },
+      { to: "/sales/success-stories", label: "Success stories" },
+    ],
+  },
+  {
+    heading: "Operations",
+    prefix: "/operations",
+    items: [
+      { to: "/operations/files", label: "Operations files" },
+      { to: "/operations/milestones", label: "Milestones" },
+      { to: "/operations/transit-orders", label: "Transit orders" },
+      { to: "/operations/delivery-notes", label: "Delivery notes" },
+    ],
+  },
+  {
+    heading: "Procurement",
+    prefix: "/procurement",
+    items: [
+      { to: "/procurement/purchase-requests", label: "Purchase requests" },
+      { to: "/procurement/purchase-orders", label: "Purchase orders" },
+      { to: "/procurement/goods-received", label: "Goods received (GRN)" },
+      { to: "/procurement/supplier-invoices", label: "Supplier invoices" },
+    ],
+  },
+  {
+    heading: "Costing",
+    prefix: "/costing",
+    items: [
+      { to: "/costing/costing", label: "Costing" },
+      { to: "/costing/cost-tracking", label: "Cost tracking" },
+      { to: "/costing/cash-requests", label: "Cash requests" },
+      { to: "/costing/regie", label: "Régie" },
+    ],
+  },
   {
     heading: "Finance",
     prefix: "/finance",
@@ -34,19 +100,19 @@ const NAV: NavGroup[] = [
       { to: "/finance/statements", label: "Statements" },
       { to: "/finance/tax", label: "Tax center" },
       { to: "/finance/assets", label: "Assets" },
+      { to: "/finance/debt", label: "Debt" },
     ],
   },
   {
-    heading: "Security & Access",
-    prefix: "/security",
+    heading: "Warehouse",
+    prefix: "/wms",
     items: [
-      { to: "/security/users", label: "Users" },
-      { to: "/security/roles", label: "Roles" },
-      { to: "/security/permissions", label: "Permission matrix" },
-      { to: "/security/capabilities", label: "Capabilities" },
-      { to: "/security/scopes", label: "Scopes" },
-      { to: "/security/field-visibility", label: "Field visibility" },
-      { to: "/security/sessions", label: "My sessions" },
+      { to: "/wms/locations", label: "Locations" },
+      { to: "/wms/inventory", label: "Inventory" },
+      { to: "/wms/inbound", label: "Inbound / GRN" },
+      { to: "/wms/outbound", label: "Outbound" },
+      { to: "/wms/equipment", label: "Equipment" },
+      { to: "/wms/cycle-counts", label: "Cycle counts" },
     ],
   },
   {
@@ -60,18 +126,6 @@ const NAV: NavGroup[] = [
       { to: "/fleet/fuel", label: "Fuel log" },
       { to: "/fleet/drivers", label: "Drivers" },
       { to: "/fleet/incidents", label: "Incidents" },
-    ],
-  },
-  {
-    heading: "Warehouse",
-    prefix: "/wms",
-    items: [
-      { to: "/wms/locations", label: "Locations" },
-      { to: "/wms/inventory", label: "Inventory" },
-      { to: "/wms/inbound", label: "Inbound / GRN" },
-      { to: "/wms/outbound", label: "Outbound" },
-      { to: "/wms/equipment", label: "Equipment" },
-      { to: "/wms/cycle-counts", label: "Cycle counts" },
     ],
   },
   {
@@ -91,14 +145,65 @@ const NAV: NavGroup[] = [
     ],
   },
   {
+    heading: "Master data",
+    prefix: "/master",
+    items: [
+      { to: "/master/clients", label: "Clients" },
+      { to: "/master/suppliers", label: "Suppliers" },
+      { to: "/master/corporate-entities", label: "Corporate entities" },
+      { to: "/master/treasury-accounts", label: "Treasury accounts" },
+      { to: "/master/currencies", label: "Currencies" },
+      { to: "/master/expense-rates", label: "Expense rates" },
+      { to: "/master/financial-dictionary", label: "Financial dictionary" },
+      { to: "/master/tax-jurisdictions", label: "Tax jurisdictions" },
+    ],
+  },
+  {
+    heading: "Vault",
+    prefix: "/vault",
+    items: [
+      { to: "/vault/documents", label: "Document vault" },
+      { to: "/vault/signatures", label: "Signatures" },
+      { to: "/vault/verification", label: "Verification" },
+      { to: "/vault/compliance-flags", label: "Compliance flags" },
+      { to: "/vault/reports", label: "Reports" },
+    ],
+  },
+  {
+    heading: "Comms",
+    prefix: "/comms",
+    items: [{ to: "/comms", label: "Smart Comms" }],
+  },
+  {
+    heading: "Security & Access",
+    prefix: "/security",
+    items: [
+      { to: "/security/users", label: "Users" },
+      { to: "/security/roles", label: "Roles" },
+      { to: "/security/permissions", label: "Permission matrix" },
+      { to: "/security/capabilities", label: "Capabilities" },
+      { to: "/security/scopes", label: "Scopes" },
+      { to: "/security/field-visibility", label: "Field visibility" },
+      { to: "/security/sessions", label: "My sessions" },
+    ],
+  },
+  {
     heading: "Governance",
     items: [
       { to: "/audit", label: "Audit ledger" },
       { to: "/notifications", label: "Notifications" },
       { to: "/workflows", label: "Workflows" },
       { to: "/approvals", label: "Approvals" },
-      { to: "/appearance", label: "Appearance" },
+    ],
+  },
+  {
+    heading: "Settings & Admin",
+    items: [
       { to: "/settings", label: "Settings" },
+      { to: "/appearance", label: "Appearance" },
+      { to: "/settings/numbering", label: "Numbering schemes" },
+      { to: "/settings/catalogue", label: "Catalogue" },
+      { to: "/portal/access", label: "Portal access" },
     ],
   },
 ];
@@ -162,27 +267,38 @@ const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Fleet: FleetIcon,
 };
 
-/** A top-bar area: a direct link (single item) or a dropdown of its screens. */
+/** A top-bar area: a direct link (single item) or a hover/click dropdown. */
 function NavArea({
   group,
   active,
   open,
   onToggle,
   onNavigate,
+  onHoverOpen,
+  onHoverClose,
 }: {
   group: NavGroup;
   active: boolean;
   open: boolean;
   onToggle: () => void;
   onNavigate: () => void;
+  onHoverOpen: () => void;
+  onHoverClose: () => void;
 }) {
   const Icon = AREA_ICON[group.heading] || MoreIcon;
   const label = group.heading === "Overview" ? "Control Tower" : group.heading;
 
-  // Single-item area (Overview) → direct link, no dropdown.
+  // Single-item area (Overview) → direct link, no dropdown. Hovering it should
+  // still dismiss any open sibling dropdown.
   if (group.items.length === 1) {
     return (
-      <NavLink to={group.items[0].to} end className={cn("lux-navlink", active && "active")} onClick={onNavigate}>
+      <NavLink
+        to={group.items[0].to}
+        end
+        className={cn("lux-navlink", active && "active")}
+        onClick={onNavigate}
+        onMouseEnter={onHoverClose}
+      >
         <Icon />
         <span>{label}</span>
       </NavLink>
@@ -190,7 +306,7 @@ function NavArea({
   }
 
   return (
-    <div className="relative" data-navarea>
+    <div className="relative" data-navarea onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
       <button
         className={cn("lux-navlink", (active || open) && "active")}
         aria-haspopup="menu"
@@ -204,6 +320,7 @@ function NavArea({
       {open && (
         <div
           role="menu"
+          style={{ background: "var(--popover)" }}
           className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-56 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
         >
           {group.items.map((it) => (
@@ -287,18 +404,47 @@ export function AppShell() {
   const navigate = useNavigate();
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
+  const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [openArea, setOpenArea] = React.useState<string | null>(null);
   const env = tokenStore.getEnv();
 
-  // Close dropdowns on outside-click and Escape; close everything on navigation.
+  // Hover open/close with a grace delay so moving from the button into the
+  // menu (across the small gap) doesn't snap it shut.
+  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  const openAreaNow = React.useCallback((h: string) => {
+    if (closeTimer.current) {
+      clearTimeout(closeTimer.current);
+      closeTimer.current = null;
+    }
+    setOpenArea(h);
+  }, []);
+  const closeAreaDeferred = React.useCallback(() => {
+    if (closeTimer.current) clearTimeout(closeTimer.current);
+    closeTimer.current = setTimeout(() => setOpenArea(null), 180);
+  }, []);
+  React.useEffect(
+    () => () => {
+      if (closeTimer.current) clearTimeout(closeTimer.current);
+    },
+    [],
+  );
+
+  // Close dropdowns on outside-click and Escape; ⌘K / Ctrl-K toggles the
+  // command palette; close everything on navigation.
   React.useEffect(() => {
     function onDown(e: MouseEvent) {
       if (!(e.target as HTMLElement).closest("[data-navarea]")) setOpenArea(null);
     }
     function onKey(e: KeyboardEvent) {
+      if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setPaletteOpen((o) => !o);
+        return;
+      }
       if (e.key === "Escape") {
         setOpenArea(null);
         setSidebarOpen(false);
+        setPaletteOpen(false);
       }
     }
     document.addEventListener("mousedown", onDown);
@@ -312,6 +458,7 @@ export function AppShell() {
   React.useEffect(() => {
     setOpenArea(null);
     setSidebarOpen(false);
+    setPaletteOpen(false);
   }, [location.pathname]);
 
   function isAreaActive(g: NavGroup): boolean {
@@ -337,7 +484,7 @@ export function AppShell() {
   return (
     <div className="flex h-full flex-col">
       {/* Top command bar */}
-      <header className="lux-topbar flex h-[66px] flex-none items-center gap-3 px-4 md:px-6">
+      <header className="lux-topbar relative z-40 flex h-[66px] flex-none items-center gap-3 px-4 md:px-6">
         <button
           className="md:hidden"
           onClick={() => setSidebarOpen(true)}
@@ -357,6 +504,8 @@ export function AppShell() {
               open={openArea === g.heading}
               onToggle={() => setOpenArea((cur) => (cur === g.heading ? null : g.heading))}
               onNavigate={() => setOpenArea(null)}
+              onHoverOpen={() => openAreaNow(g.heading)}
+              onHoverClose={closeAreaDeferred}
             />
           ))}
           <button className="lux-navlink" aria-haspopup="dialog" onClick={() => setSidebarOpen(true)}>
@@ -367,11 +516,11 @@ export function AppShell() {
 
         <div className="ml-auto flex items-center gap-3">
           <button
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => setPaletteOpen(true)}
             className="hidden items-center gap-2 rounded-xl border bg-accent/40 px-3 py-2 text-muted-foreground lg:flex"
-            title="Browse all screens"
+            title="Search screens (⌘K)"
           >
-            <span className="text-xs">Search dossiers, invoices, people…</span>
+            <span className="text-xs">Search screens…</span>
             <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
           </button>
           <button
@@ -408,6 +557,8 @@ export function AppShell() {
       <main className="min-h-0 flex-1 overflow-auto p-6">
         <Outlet />
       </main>
+
+      <CommandPalette open={paletteOpen} groups={NAV} onClose={() => setPaletteOpen(false)} />
     </div>
   );
 }

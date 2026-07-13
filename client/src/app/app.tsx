@@ -12,8 +12,10 @@ import {
   SessionsPage,
 } from "@/features/security/pages";
 import { PermissionMatrixPage } from "@/features/security/permission-matrix-page";
-import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage, SettingsPage } from "@/features/governance/pages";
+import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
 import { AppearancePage } from "@/features/settings/appearance-page";
+import { SettingsHub } from "@/features/settings/settings-hub";
+import { LoginEditor } from "@/features/settings/login-editor";
 import {
   VehiclesPage,
   VehicleCompliancePage,
@@ -53,6 +55,7 @@ import {
   StatementsPage,
   TaxCenterPage,
 } from "@/features/finance/pages";
+import { ComingSoon } from "@/features/placeholder/coming-soon";
 import { BootGate } from "@/app/boot-gate";
 
 export function App() {
@@ -112,7 +115,77 @@ export function App() {
         <Route path="workflows" element={<WorkflowsPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="appearance" element={<AppearancePage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="settings" element={<SettingsHub />} />
+
+        {/* --- IA-map screens not yet built → shared placeholder (see doc/FE_IA_HANDOFF.md) --- */}
+        {/* Overview */}
+        <Route path="workspace" element={<ComingSoon />} />
+        <Route path="godmode" element={<ComingSoon />} />
+        {/* Commercial */}
+        <Route path="commercial/quotations" element={<ComingSoon />} />
+        <Route path="commercial/margin-simulation" element={<ComingSoon />} />
+        <Route path="commercial/extra-charge-simulation" element={<ComingSoon />} />
+        <Route path="commercial/pricing-variance" element={<ComingSoon />} />
+        {/* Sales / CRM */}
+        <Route path="sales/leads" element={<ComingSoon />} />
+        <Route path="sales/inbound-intake" element={<ComingSoon />} />
+        <Route path="sales/opportunities" element={<ComingSoon />} />
+        <Route path="sales/proposals" element={<ComingSoon />} />
+        <Route path="sales/meetings" element={<ComingSoon />} />
+        <Route path="sales/campaigns" element={<ComingSoon />} />
+        <Route path="sales/success-stories" element={<ComingSoon />} />
+        {/* Operations */}
+        <Route path="operations/files" element={<ComingSoon />} />
+        <Route path="operations/milestones" element={<ComingSoon />} />
+        <Route path="operations/transit-orders" element={<ComingSoon />} />
+        <Route path="operations/delivery-notes" element={<ComingSoon />} />
+        {/* Procurement */}
+        <Route path="procurement/purchase-requests" element={<ComingSoon />} />
+        <Route path="procurement/purchase-orders" element={<ComingSoon />} />
+        <Route path="procurement/goods-received" element={<ComingSoon />} />
+        <Route path="procurement/supplier-invoices" element={<ComingSoon />} />
+        {/* Costing */}
+        <Route path="costing/costing" element={<ComingSoon />} />
+        <Route path="costing/cost-tracking" element={<ComingSoon />} />
+        <Route path="costing/cash-requests" element={<ComingSoon />} />
+        <Route path="costing/regie" element={<ComingSoon />} />
+        {/* Finance (new) */}
+        <Route path="finance/debt" element={<ComingSoon />} />
+        {/* Master data */}
+        <Route path="master/clients" element={<ComingSoon />} />
+        <Route path="master/suppliers" element={<ComingSoon />} />
+        <Route path="master/corporate-entities" element={<ComingSoon />} />
+        <Route path="master/treasury-accounts" element={<ComingSoon />} />
+        <Route path="master/currencies" element={<ComingSoon />} />
+        <Route path="master/expense-rates" element={<ComingSoon />} />
+        <Route path="master/financial-dictionary" element={<ComingSoon />} />
+        <Route path="master/tax-jurisdictions" element={<ComingSoon />} />
+        {/* Vault */}
+        <Route path="vault/documents" element={<ComingSoon />} />
+        <Route path="vault/signatures" element={<ComingSoon />} />
+        <Route path="vault/verification" element={<ComingSoon />} />
+        <Route path="vault/compliance-flags" element={<ComingSoon />} />
+        <Route path="vault/reports" element={<ComingSoon />} />
+        {/* Comms */}
+        <Route path="comms" element={<ComingSoon />} />
+        {/* Settings & Admin (new) */}
+        <Route path="settings/numbering" element={<ComingSoon />} />
+        <Route path="settings/catalogue" element={<ComingSoon />} />
+        <Route path="portal/access" element={<ComingSoon />} />
+        {/* Settings hub cards without a dedicated editor yet */}
+        <Route path="settings/business-setup" element={<ComingSoon />} />
+        <Route path="settings/businesses" element={<ComingSoon />} />
+        <Route path="settings/login" element={<LoginEditor />} />
+        <Route path="settings/business-policies" element={<ComingSoon />} />
+        <Route path="settings/payment-gateways" element={<ComingSoon />} />
+        <Route path="settings/custom-fields" element={<ComingSoon />} />
+        <Route path="settings/pipeline-stages" element={<ComingSoon />} />
+        <Route path="settings/scheduled-reports" element={<ComingSoon />} />
+        <Route path="settings/factory-languages" element={<ComingSoon />} />
+        <Route path="settings/document-templates" element={<ComingSoon />} />
+        <Route path="settings/email-signatures" element={<ComingSoon />} />
+        <Route path="settings/api-keys" element={<ComingSoon />} />
+        <Route path="settings/help-center" element={<ComingSoon />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

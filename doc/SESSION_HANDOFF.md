@@ -124,6 +124,28 @@ Check the new `/login` landing + the top-bar nav / More sidebar first.
 - Platform console UI and per-tenant PWA manifest still not built (Phase 0 items).
 - **Cleanup:** a stray empty `client/src/_wtest.txt` was left from a sandbox write-test
   (the sandbox couldn't delete it); safe to `rm` on Windows.
+- **LIVE/TEST toggle logs the user out — architectural, not a UI bug (diagnosed 2026-07-13).**
+  `X-Praxis-Env` is a *database-schema switch*: `middleware/tenant-context.js` binds every DB
+  call in the request to the live or sandbox schema (`registry.service.js` → `SET search_path`).
+  Crucially the **auth path is bound to that same schema**: `middleware/auth.js` loads the user
+  via `req.tenantDb(getAuthUser)` and `app_user.service.refresh()` validates the session via
+  `repo.getActiveSession(client, sid)` on `user_session` — both in the env-selected schema.
+  Accounts are created in **live** by default (`scripts/tenant/create-admin.js --env=live`), so
+  the sandbox schema has **no user and no session**. Flipping to Test therefore makes the very
+  next request `401` (`USER_INACTIVE`), the client auto-refresh also runs under sandbox and
+  `401`s (`SESSION_REVOKED`), and the user is bounced to `/login`. The `window.location.reload()`
+  in `toggleEnv()` (app-shell) isn't the cause — it just triggers it immediately.
+  **Fix (design decision, not yet done):** make identity env-independent — pin `getAuthUser`,
+  `getActiveSession`, and login's session-write to the **live/identity schema** regardless of
+  `req.env`, so only *business* data is sandboxed (matches the Lovable "same you, sandbox data"
+  intent). ~3 focused backend spots. Alternative (seed users/sessions into sandbox) is messier
+  and not recommended. FE polish (soft toggle without reload; segmented Live|Test control +
+  the yellow TEST-MODE warning banner from the Lovable mock) is secondary and only *works* once
+  identity is shared.
+- **Search bar opens the More sidebar (stopgap, not a bug):** the ⌘K search affordance in
+  `app-shell.tsx` is a `<button>` wired to `setSidebarOpen(true)` because there's no command
+  palette yet. Looks like a search input, behaves like a menu button — replace with a real
+  command palette / search, or a plain field, when prioritised.
 
 ## Conventions
 

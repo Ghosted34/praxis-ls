@@ -1,434 +1,417 @@
 /**
- * Appearance (white-label) settings. Set the tenant's brand colour, logo,
- * display name, and the pre-auth landing hero (eyebrow, headline, subheadline,
- * body, background image, and brand chips). Save writes to the `setting` table
- * (MOD-70) via PUT /branding and applies live through the branding context — so
- * every tenant screen (and the landing page) re-tints/re-copies the instant you
- * save.
+ * Appearance (white-label) — pixie "App Appearance" spec, two layers:
+ *   A) Platform: product identity, logos + favicon, theme presets, the full
+ *      light/dark token bag + alpha/mesh sliders, typography, live preview.
+ *   B) Per-business: accent + gradient + logo + website for each business line.
+ *
+ * Persistence: the backend (branding.service.js) stores name / primary /
+ * logoUrl today; the rest are sent on Save and marked "pending backend" until
+ * the appearance schema is extended (see doc/FE_IA_HANDOFF.md §3). Save applies
+ * live via the branding context for the fields the app already consumes.
  */
 import * as React from "react";
 import { useBranding } from "@/app/branding/branding-context";
-import { saveBranding, uploadImage, type Branding, type BrandPill } from "@/lib/branding";
+import {
+  saveBranding,
+  type Branding,
+  type ThemeTokens,
+  type BusinessBrand,
+} from "@/lib/branding";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { cn } from "@/lib/cn";
+import {
+  SettingsCard,
+  Field,
+  Segmented,
+  ColorRow,
+  ImageField,
+} from "@/components/settings/controls";
 
-const PRESETS = ["#0f766e", "#1d4ed8", "#b91c1c", "#7c3aed", "#c2410c", "#0891b2"];
+const PRESETS = [
+  { key: "maroon-noir", label: "Maroon Noir", accent: "#8E2434", hint: "Dark · deep red" },
+  { key: "porcelain-white", label: "Porcelain White", accent: "#8E2434", hint: "White · deep red" },
+  { key: "onyx-rally", label: "Onyx Rally", accent: "#E4572E", hint: "Neutral black · rally" },
+];
 
-const TEXTAREA_CLASS =
-  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background";
+const TOKEN_KEYS = [
+  "--bg", "--panel", "--panel-2", "--text", "--text-muted", "--text-faint",
+  "--border-c", "--accent", "--accent-deep", "--sage", "--info", "--success", "--warn", "--danger", "--rose",
+];
+
+const DARK_DEFAULTS: ThemeTokens = {
+  "--bg": "#0f0a0c", "--panel": "#1a1113", "--panel-2": "#241619", "--text": "#f4eef0",
+  "--text-muted": "#b9a4a9", "--text-faint": "#7c5f66", "--border-c": "#3a2a2e", "--accent": "#e4572e",
+  "--accent-deep": "#b8431f", "--sage": "#7fa38b", "--info": "#6aa9d6", "--success": "#4ab078",
+  "--warn": "#e0b442", "--danger": "#e86860", "--rose": "#d98a97",
+};
+const LIGHT_DEFAULTS: ThemeTokens = {
+  "--bg": "#f7f4f5", "--panel": "#ffffff", "--panel-2": "#f1eaec", "--text": "#201014",
+  "--text-muted": "#6b5257", "--text-faint": "#9a868b", "--border-c": "#e6dadd", "--accent": "#8e2434",
+  "--accent-deep": "#6d1a27", "--sage": "#5f7f6b", "--info": "#2f74a4", "--success": "#2a8f5a",
+  "--warn": "#b08018", "--danger": "#c2554e", "--rose": "#b06b78",
+};
+
+const DISPLAY_FONTS = ["Playfair Display", "Cormorant Garamond", "Georgia"];
+const BODY_FONTS = ["Montserrat", "Manrope", "Inter", "system-ui"];
+const MONO_FONTS = ["IBM Plex Mono", "JetBrains Mono", "ui-monospace"];
+
+const SELECT_CLASS =
+  "flex h-9 w-full rounded-md border border-input bg-transparent px-3 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+function Select({ value, onChange, options }: { value: string; onChange: (v: string) => void; options: string[] }) {
+  return (
+    <select value={value} onChange={(e) => onChange(e.target.value)} className={SELECT_CLASS}>
+      {options.map((o) => (
+        <option key={o} value={o}>{o}</option>
+      ))}
+    </select>
+  );
+}
 
 export function AppearancePage() {
   const { branding, setBranding } = useBranding();
-  const [primary, setPrimary] = React.useState(branding.primary || "#0f766e");
-  const [logoUrl, setLogoUrl] = React.useState(branding.logoUrl || "");
+
+  // Layer A — identity + persisted brand
   const [name, setName] = React.useState(branding.name || "");
+  const [companyName, setCompanyName] = React.useState(branding.companyName || "");
+  const [tagline, setTagline] = React.useState(branding.tagline || "");
+  const [primary, setPrimary] = React.useState(branding.primary || "#8E2434");
+  const [logoUrl, setLogoUrl] = React.useState(branding.logoUrl || "");
+  const [logoDarkUrl, setLogoDarkUrl] = React.useState(branding.logoDarkUrl || "");
+  const [faviconUrl, setFaviconUrl] = React.useState(branding.faviconUrl || "");
+  const [themePreset, setThemePreset] = React.useState(branding.themePreset || "");
+
+  // Tokens
+  const [tokenMode, setTokenMode] = React.useState<"dark" | "light">("dark");
+  const [tokensDark, setTokensDark] = React.useState<ThemeTokens>({ ...DARK_DEFAULTS, ...(branding.tokensDark || {}) });
+  const [tokensLight, setTokensLight] = React.useState<ThemeTokens>({ ...LIGHT_DEFAULTS, ...(branding.tokensLight || {}) });
+  const [panelAlpha, setPanelAlpha] = React.useState(branding.panelAlpha ?? 0.57);
+  const [borderAlpha, setBorderAlpha] = React.useState(branding.borderAlpha ?? 0.4);
+  const [meshOpacity, setMeshOpacity] = React.useState(branding.meshOpacity ?? 0.5);
+
+  // Typography
+  const [display, setDisplay] = React.useState(branding.typography?.display || "Playfair Display");
+  const [body, setBody] = React.useState(branding.typography?.body || "Montserrat");
+  const [mono, setMono] = React.useState(branding.typography?.mono || "IBM Plex Mono");
+  const [customFontUrl, setCustomFontUrl] = React.useState(branding.typography?.customFontUrl || "");
+
+  // Layer B — businesses
+  const [businesses, setBusinesses] = React.useState<BusinessBrand[]>(
+    branding.businesses && branding.businesses.length
+      ? branding.businesses
+      : [{ id: "biz-1", name: name || "Business 1", accent: "#6F822D", gradientStart: "#35D384", gradientEnd: "#A27676" }],
+  );
+  const [activeBiz, setActiveBiz] = React.useState(0);
+
   const [busy, setBusy] = React.useState(false);
-  const [uploading, setUploading] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
 
-  // Landing/hero content.
-  const [eyebrow, setEyebrow] = React.useState(branding.hero?.eyebrow || "");
-  const [headline, setHeadline] = React.useState(branding.hero?.headline || "");
-  const [subheadline, setSubheadline] = React.useState(branding.hero?.subheadline || "");
-  const [heroBody, setHeroBody] = React.useState(branding.hero?.body || "");
-  const [heroImageUrl, setHeroImageUrl] = React.useState(branding.hero?.imageUrl || "");
-  const [pills, setPills] = React.useState<BrandPill[]>(branding.hero?.pills || []);
-  const [heroUploading, setHeroUploading] = React.useState(false);
+  const tokens = tokenMode === "dark" ? tokensDark : tokensLight;
+  const setToken = (k: string, v: string) =>
+    (tokenMode === "dark" ? setTokensDark : setTokensLight)((prev) => ({ ...prev, [k]: v }));
 
-  async function onSave(e?: React.FormEvent) {
-    e?.preventDefault();
+  function applyPreset(p: (typeof PRESETS)[number]) {
+    setThemePreset(p.key);
+    setPrimary(p.accent);
+  }
+
+  function updateBiz(patch: Partial<BusinessBrand>) {
+    setBusinesses((prev) => prev.map((b, i) => (i === activeBiz ? { ...b, ...patch } : b)));
+  }
+
+  async function onSave() {
     setBusy(true);
     setMsg(null);
     const patch: Partial<Branding> = {
+      name: name || null,
+      companyName: companyName || null,
+      tagline: tagline || null,
       primary,
       logoUrl: logoUrl || null,
-      name: name || null,
-      hero: {
-        eyebrow: eyebrow || null,
-        headline: headline || null,
-        subheadline: subheadline || null,
-        body: heroBody || null,
-        imageUrl: heroImageUrl || null,
-        pills: pills.filter((p) => p.label.trim()),
-      },
+      logoDarkUrl: logoDarkUrl || null,
+      faviconUrl: faviconUrl || null,
+      themePreset: themePreset || null,
+      tokensDark,
+      tokensLight,
+      panelAlpha,
+      borderAlpha,
+      meshOpacity,
+      typography: { display, body, mono, customFontUrl: customFontUrl || null },
+      businesses,
     };
     try {
       const saved = await saveBranding(patch);
-      setBranding(saved); // re-tints the whole app immediately
-      setMsg({ kind: "ok", text: "Saved. Your branding is live across the app." });
+      setBranding(saved);
+      setMsg({ kind: "ok", text: "Saved. Name, accent & logo are live now; the rest persists once the backend adds the fields." });
     } catch (err) {
-      const text =
-        err instanceof ApiError && err.status === 403
-          ? "You need the Settings (MOD-70) edit permission to change branding."
-          : err instanceof ApiError
-            ? err.message
-            : "Couldn't save. Try again.";
-      setMsg({ kind: "err", text });
+      setMsg({
+        kind: "err",
+        text:
+          err instanceof ApiError && err.status === 403
+            ? "You need the Settings (MOD-70) edit permission to change branding."
+            : err instanceof ApiError
+              ? err.message
+              : "Couldn't save. Try again.",
+      });
     } finally {
       setBusy(false);
     }
   }
 
-  async function readAsDataUrl(file: File): Promise<string> {
-    return new Promise<string>((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = () => resolve(String(r.result));
-      r.onerror = () => reject(new Error("Could not read the file"));
-      r.readAsDataURL(file);
-    });
-  }
-
-  async function onFile(file?: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setMsg({ kind: "err", text: "That's not an image file." });
-      return;
-    }
-    if (file.size > 512_000) {
-      setMsg({ kind: "err", text: "Logo must be 512 KB or smaller, or paste a hosted URL instead." });
-      return;
-    }
-    setUploading(true);
-    setMsg(null);
-    try {
-      const dataUrl = await readAsDataUrl(file);
-      const { logoUrl: url } = await uploadImage(dataUrl);
-      setLogoUrl(url);
-      setMsg({ kind: "ok", text: "Logo uploaded — click Save to apply it." });
-    } catch (err) {
-      const text =
-        err instanceof ApiError && err.status === 403
-          ? "You need the Settings (MOD-70) edit permission to upload."
-          : err instanceof ApiError
-            ? err.message
-            : "Upload failed. Try a smaller image or paste a URL.";
-      setMsg({ kind: "err", text });
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function onHeroFile(file?: File | null) {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setMsg({ kind: "err", text: "That's not an image file." });
-      return;
-    }
-    if (file.size > 2_000_000) {
-      setMsg({ kind: "err", text: "Hero image must be 2 MB or smaller, or paste a hosted URL instead." });
-      return;
-    }
-    setHeroUploading(true);
-    setMsg(null);
-    try {
-      const dataUrl = await readAsDataUrl(file);
-      const { logoUrl: url } = await uploadImage(dataUrl);
-      setHeroImageUrl(url);
-      setMsg({ kind: "ok", text: "Hero image uploaded — click Save to apply it." });
-    } catch (err) {
-      const text =
-        err instanceof ApiError && err.status === 403
-          ? "You need the Settings (MOD-70) edit permission to upload."
-          : err instanceof ApiError
-            ? err.message
-            : "Upload failed. Try a smaller image or paste a URL.";
-      setMsg({ kind: "err", text });
-    } finally {
-      setHeroUploading(false);
-    }
-  }
-
-  function updatePill(i: number, patch: Partial<BrandPill>) {
-    setPills((prev) => prev.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
-  }
+  const biz = businesses[activeBiz];
 
   return (
-    <section className="mx-auto max-w-3xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Appearance</h1>
-        <p className="mt-1 text-sm text-muted-foreground">White-label your workspace. Changes apply instantly.</p>
-      </header>
+    <section className="mx-auto max-w-4xl animate-fade-in pb-24">
+      <div className="mb-1 flex items-center gap-2">
+        <span className="micro">Layer A</span>
+      </div>
+      <h1 className="font-display text-2xl tracking-tight">App Appearance — the platform</h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        The white-label switch. Logos, fonts, the full token bag — light &amp; dark — applied across the ERP.
+      </p>
 
-      <div className="grid gap-6 md:grid-cols-[1fr_260px]">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Brand</CardTitle>
-            <CardDescription>Colour, logo, and the name shown on the login screen.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={onSave} className="flex flex-col gap-5">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="primary">Primary colour</Label>
-                <div className="flex items-center gap-3">
-                  <input
-                    id="primary"
-                    type="color"
-                    value={primary}
-                    onChange={(e) => setPrimary(e.target.value)}
-                    className="h-10 w-12 cursor-pointer rounded-md border bg-transparent p-1"
-                  />
-                  <Input value={primary} onChange={(e) => setPrimary(e.target.value)} className="max-w-[140px]" />
-                  <div className="flex gap-1.5">
-                    {PRESETS.map((c) => (
-                      <button
-                        key={c}
-                        type="button"
-                        aria-label={c}
-                        onClick={() => setPrimary(c)}
-                        className="h-6 w-6 rounded-full border"
-                        style={{ background: c }}
-                      />
-                    ))}
-                  </div>
-                </div>
+      <div className="mt-6 flex flex-col gap-5">
+        {/* Product identity */}
+        <SettingsCard title="Product identity" desc="Names shown across the app and the login screen.">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Product name">
+              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="The Pixie Hub" />
+            </Field>
+            <Field label="Company name" soon>
+              <Input value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Pixie Girl Global" />
+            </Field>
+            <Field label="Tagline" soon>
+              <Input value={tagline} onChange={(e) => setTagline(e.target.value)} placeholder="Powering the perfect pixie" />
+            </Field>
+          </div>
+        </SettingsCard>
+
+        {/* Logos */}
+        <SettingsCard title="Logos & favicon" desc="Transparent PNG/WEBP recommended. The favicon also seeds app icons.">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <ImageField label="Logo (light background)" value={logoUrl} onChange={setLogoUrl} hint="Persisted now." />
+            <ImageField label="Logo (dark background)" value={logoDarkUrl} onChange={setLogoDarkUrl} soon />
+            <ImageField label="Favicon" value={faviconUrl} onChange={setFaviconUrl} soon shape="square" />
+          </div>
+        </SettingsCard>
+
+        {/* Theme presets + accent */}
+        <SettingsCard title="Theme" desc="Pick a preset, then fine-tune. The brand accent applies live across the app.">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {PRESETS.map((p) => (
+              <button
+                key={p.key}
+                type="button"
+                onClick={() => applyPreset(p)}
+                className={cn(
+                  "flex items-center gap-3 rounded-lg border p-3 text-left transition-colors",
+                  themePreset === p.key ? "border-primary bg-accent/50" : "hover:bg-accent/40",
+                )}
+              >
+                <span className="h-6 w-6 flex-none rounded-full border" style={{ background: p.accent }} />
+                <span>
+                  <span className="block text-sm font-semibold">{p.label}</span>
+                  <span className="block text-[11px] text-muted-foreground">{p.hint}</span>
+                </span>
+              </button>
+            ))}
+          </div>
+          <div className="mt-4">
+            <Field label="Brand accent (applied live)">
+              <div className="flex items-center gap-3">
+                <input
+                  type="color"
+                  value={/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(primary) ? primary : "#8E2434"}
+                  onChange={(e) => setPrimary(e.target.value)}
+                  className="h-9 w-11 cursor-pointer rounded border bg-transparent p-1"
+                />
+                <Input value={primary} onChange={(e) => setPrimary(e.target.value)} className="max-w-[150px]" />
               </div>
+            </Field>
+          </div>
+        </SettingsCard>
 
-              <div className="flex flex-col gap-1.5">
-                <Label htmlFor="name">Display name</Label>
-                <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Smart Logistics" />
-              </div>
+        {/* Token editor */}
+        <SettingsCard title="Tokens" desc="The full colour bag per mode, plus surface alpha & mesh." soon>
+          <div className="mb-4">
+            <Segmented
+              value={tokenMode}
+              onChange={setTokenMode}
+              options={[
+                { value: "dark", label: "Dark" },
+                { value: "light", label: "Light" },
+              ]}
+            />
+          </div>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {TOKEN_KEYS.map((k) => (
+              <ColorRow key={k} token={k} value={tokens[k] || "#000000"} onChange={(v) => setToken(k, v)} />
+            ))}
+          </div>
+          <div className="mt-5 grid gap-4 sm:grid-cols-3">
+            <SliderRow label="panel-alpha" value={panelAlpha} onChange={setPanelAlpha} />
+            <SliderRow label="border-alpha" value={borderAlpha} onChange={setBorderAlpha} />
+            <SliderRow label="mesh-opacity" value={meshOpacity} onChange={setMeshOpacity} />
+          </div>
+        </SettingsCard>
 
-              <div className="flex flex-col gap-1.5">
-                <Label>Logo</Label>
-                <label
-                  onDragOver={(e) => e.preventDefault()}
-                  onDrop={(e) => {
-                    e.preventDefault();
-                    onFile(e.dataTransfer.files?.[0]);
-                  }}
-                  className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground hover:bg-accent/40"
-                >
-                  {logoUrl ? (
-                    <img src={logoUrl} alt="" className="h-8 w-auto rounded" />
-                  ) : (
-                    <span className="flex h-8 w-8 items-center justify-center rounded bg-muted">🖼</span>
-                  )}
-                  <span>
-                    {uploading ? "Uploading…" : logoUrl ? "Replace logo" : "Drop an image or click to upload"} · PNG/SVG,
-                    ≤512 KB
-                  </span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => onFile(e.target.files?.[0])}
-                  />
-                </label>
-                <div className="flex items-center gap-2">
-                  <Input
-                    value={logoUrl.startsWith("data:") ? "" : logoUrl}
-                    onChange={(e) => setLogoUrl(e.target.value)}
-                    placeholder="…or paste a hosted URL"
-                  />
-                  {logoUrl && (
-                    <Button type="button" variant="ghost" size="sm" onClick={() => setLogoUrl("")}>
-                      Clear
-                    </Button>
-                  )}
-                </div>
-              </div>
-
-              {msg && (
-                <p
-                  className={
-                    msg.kind === "ok"
-                      ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
-                      : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-                  }
-                >
-                  {msg.text}
-                </p>
-              )}
-
-              <div>
-                <Button type="submit" loading={busy}>
-                  {busy ? "Saving…" : "Save branding"}
-                </Button>
-              </div>
-            </form>
-          </CardContent>
-        </Card>
+        {/* Typography */}
+        <SettingsCard title="Typography" desc="Font roles across the platform." soon>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Field label="Display (headings)">
+              <Select value={display} onChange={setDisplay} options={DISPLAY_FONTS} />
+            </Field>
+            <Field label="Body (UI & long-form)">
+              <Select value={body} onChange={setBody} options={BODY_FONTS} />
+            </Field>
+            <Field label="Mono (numerics & SKUs)">
+              <Select value={mono} onChange={setMono} options={MONO_FONTS} />
+            </Field>
+          </div>
+          <div className="mt-4">
+            <Field label="Custom font CSS URL (optional)">
+              <Input
+                value={customFontUrl}
+                onChange={(e) => setCustomFontUrl(e.target.value)}
+                placeholder="https://fonts.googleapis.com/css2?family=…"
+              />
+            </Field>
+          </div>
+        </SettingsCard>
 
         {/* Live preview */}
-        <Card className="h-fit">
-          <CardHeader>
-            <CardTitle className="text-base">Preview</CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col items-center gap-3 text-center">
+        <SettingsCard title="Preview" desc="Reflects the live fields (name, accent, logo).">
+          <div className="flex items-center gap-4 rounded-lg border p-4">
             {logoUrl ? (
-              <img src={logoUrl} alt="" className="h-12 w-auto" />
+              <img src={logoUrl} alt="" className="h-10 w-auto" />
             ) : (
-              <div
-                className="flex h-12 w-12 items-center justify-center rounded-2xl text-lg font-semibold text-white"
+              <span
+                className="flex h-10 w-10 items-center justify-center rounded-xl font-display text-lg text-white"
                 style={{ background: primary }}
               >
                 {(name || "P").charAt(0)}
-              </div>
+              </span>
             )}
-            <div className="text-sm font-medium">{name || "Praxis LS"}</div>
+            <div className="flex-1">
+              <div className="font-display text-lg">{name || "Praxis LS"}</div>
+              {tagline && <div className="text-xs text-muted-foreground">{tagline}</div>}
+            </div>
+            <button className="rounded-md px-4 py-2 text-sm font-semibold text-white" style={{ background: primary }}>
+              Primary action
+            </button>
+          </div>
+        </SettingsCard>
+
+        {/* Layer B — per business */}
+        <div className="pt-2">
+          <span className="micro">Layer B</span>
+          <h2 className="font-display text-xl tracking-tight">Brand Appearance — each business</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Per-business gradient + accent. Used by the shell chip and every document — invoices, POs, delivery notes,
+            receipts, contracts.
+          </p>
+        </div>
+
+        <SettingsCard title="Businesses" soon>
+          <div className="mb-4 flex flex-wrap items-center gap-2">
+            {businesses.map((b, i) => (
+              <button
+                key={b.id}
+                type="button"
+                onClick={() => setActiveBiz(i)}
+                className={cn(
+                  "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+                  i === activeBiz ? "border-primary bg-accent/50" : "hover:bg-accent/40",
+                )}
+              >
+                {b.name || `Business ${i + 1}`}
+              </button>
+            ))}
             <button
               type="button"
-              className="w-full rounded-md px-4 py-2 text-sm font-medium text-white"
-              style={{ background: primary }}
+              onClick={() => {
+                setBusinesses((prev) => [
+                  ...prev,
+                  { id: `biz-${prev.length + 1}`, name: `Business ${prev.length + 1}`, accent: "#6F822D", gradientStart: "#35D384", gradientEnd: "#A27676" },
+                ]);
+                setActiveBiz(businesses.length);
+              }}
+              className="rounded-full border border-dashed px-3 py-1 text-xs text-muted-foreground hover:bg-accent/40"
             >
-              Sign in
+              + Add business
             </button>
-          </CardContent>
-        </Card>
+          </div>
+
+          {biz && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Business name">
+                <Input value={biz.name} onChange={(e) => updateBiz({ name: e.target.value })} />
+              </Field>
+              <Field label="Website">
+                <Input value={biz.website || ""} onChange={(e) => updateBiz({ website: e.target.value })} placeholder="https://pixiegirlglobal.com" />
+              </Field>
+              <div className="sm:col-span-2 grid gap-2 sm:grid-cols-3">
+                <ColorRow token="accent" value={biz.accent || "#6F822D"} onChange={(v) => updateBiz({ accent: v })} />
+                <ColorRow token="grad-start" value={biz.gradientStart || "#35D384"} onChange={(v) => updateBiz({ gradientStart: v })} />
+                <ColorRow token="grad-end" value={biz.gradientEnd || "#A27676"} onChange={(v) => updateBiz({ gradientEnd: v })} />
+              </div>
+              <div
+                className="sm:col-span-2 flex items-center justify-center rounded-lg py-6 text-sm font-semibold text-white"
+                style={{ background: `linear-gradient(135deg, ${biz.gradientStart || "#35D384"}, ${biz.gradientEnd || "#A27676"})` }}
+              >
+                {biz.name || "Business"} brand chip
+              </div>
+              <ImageField label="Business logo" value={biz.logoUrl || ""} onChange={(v) => updateBiz({ logoUrl: v })} soon />
+            </div>
+          )}
+        </SettingsCard>
+
+        {msg && (
+          <p
+            className={
+              msg.kind === "ok"
+                ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+                : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            }
+          >
+            {msg.text}
+          </p>
+        )}
       </div>
 
-      {/* Landing page (pre-auth hero) */}
-      <Card className="mt-6">
-        <CardHeader>
-          <CardTitle className="text-base">Landing page</CardTitle>
-          <CardDescription>
-            The cinematic hero shown before sign-in. Every field is optional — anything left blank falls back to clean
-            defaults derived from your brand name.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex flex-col gap-5">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="eyebrow">Eyebrow</Label>
-              <Input
-                id="eyebrow"
-                value={eyebrow}
-                onChange={(e) => setEyebrow(e.target.value)}
-                placeholder="Welcome from Africa, The Operational Heartbeat"
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="headline">Headline</Label>
-              <textarea
-                id="headline"
-                value={headline}
-                onChange={(e) => setHeadline(e.target.value)}
-                rows={2}
-                placeholder="The Home of the Perfect Pixie; where beauty becomes an operation."
-                className={TEXTAREA_CLASS}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="subheadline">Subheadline</Label>
-              <textarea
-                id="subheadline"
-                value={subheadline}
-                onChange={(e) => setSubheadline(e.target.value)}
-                rows={2}
-                placeholder="Behind the scenes of the world's first premium pixie factory…"
-                className={TEXTAREA_CLASS}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="heroBody">Body paragraph</Label>
-              <textarea
-                id="heroBody"
-                value={heroBody}
-                onChange={(e) => setHeroBody(e.target.value)}
-                rows={3}
-                placeholder="From our Lagos fulfillment center to doorsteps worldwide…"
-                className={TEXTAREA_CLASS}
-              />
-            </div>
-
-            <div className="flex flex-col gap-1.5">
-              <Label>Background image</Label>
-              <label
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  onHeroFile(e.dataTransfer.files?.[0]);
-                }}
-                className="flex cursor-pointer items-center gap-3 rounded-lg border border-dashed p-3 text-sm text-muted-foreground hover:bg-accent/40"
-              >
-                {heroImageUrl ? (
-                  <img src={heroImageUrl} alt="" className="h-12 w-20 rounded object-cover" />
-                ) : (
-                  <span className="flex h-12 w-20 items-center justify-center rounded bg-muted">🖼</span>
-                )}
-                <span>
-                  {heroUploading ? "Uploading…" : heroImageUrl ? "Replace image" : "Drop an image or click to upload"} ·
-                  JPG/PNG, ≤2 MB
-                </span>
-                <input
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => onHeroFile(e.target.files?.[0])}
-                />
-              </label>
-              <div className="flex items-center gap-2">
-                <Input
-                  value={heroImageUrl.startsWith("data:") ? "" : heroImageUrl}
-                  onChange={(e) => setHeroImageUrl(e.target.value)}
-                  placeholder="…or paste a hosted image URL"
-                />
-                {heroImageUrl && (
-                  <Button type="button" variant="ghost" size="sm" onClick={() => setHeroImageUrl("")}>
-                    Clear
-                  </Button>
-                )}
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label>Brand chips</Label>
-              <p className="-mt-1 text-xs text-muted-foreground">
-                Small partner/sub-brand pills shown on the hero (e.g. the lines you operate).
-              </p>
-              <div className="flex flex-col gap-2">
-                {pills.map((p, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <Input
-                      value={p.label}
-                      onChange={(e) => updatePill(i, { label: e.target.value })}
-                      placeholder="Faitlyn Hair"
-                      className="max-w-[220px]"
-                    />
-                    <Input
-                      value={p.iconUrl || ""}
-                      onChange={(e) => updatePill(i, { iconUrl: e.target.value || null })}
-                      placeholder="Icon URL (optional)"
-                    />
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setPills((prev) => prev.filter((_, idx) => idx !== i))}
-                    >
-                      Remove
-                    </Button>
-                  </div>
-                ))}
-                {pills.length < 6 && (
-                  <div>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => setPills((prev) => [...prev, { label: "", iconUrl: null }])}
-                    >
-                      + Add chip
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <Button type="button" loading={busy} onClick={() => onSave()}>
-                {busy ? "Saving…" : "Save landing page"}
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Sticky save bar */}
+      <div className="fixed inset-x-0 bottom-0 z-30 border-t bg-card/90 p-3 backdrop-blur">
+        <div className="mx-auto flex max-w-4xl items-center justify-end gap-3">
+          <Button loading={busy} onClick={onSave}>
+            {busy ? "Saving…" : "Save changes"}
+          </Button>
+        </div>
+      </div>
     </section>
   );
 }
+
+function SliderRow({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <span className="flex items-center justify-between">
+        <Label>{label}</Label>
+        <code className="text-[11px] text-muted-foreground">{value.toFixed(2)}</code>
+      </span>
+      <input
+        type="range"
+        min={0}
+        max={1}
+        step={0.01}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-full accent-[rgb(var(--brand-orange))]"
+      />
+    </div>
+  );
+}
+
+export default AppearancePage;

@@ -12,6 +12,7 @@ import {
   SessionsPage,
 } from "@/features/security/pages";
 import { PermissionMatrixPage } from "@/features/security/permission-matrix-page";
+import { MySecurityPage } from "@/features/security/my-security";
 import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
 import { AppearancePage } from "@/features/settings/appearance-page";
 import { SettingsHub } from "@/features/settings/settings-hub";
@@ -79,6 +80,7 @@ export function App() {
         <Route path="security/scopes" element={<ScopesPage />} />
         <Route path="security/field-visibility" element={<FieldVisibilityPage />} />
         <Route path="security/sessions" element={<SessionsPage />} />
+        <Route path="security/my-security" element={<MySecurityPage />} />
         <Route path="fleet/vehicles" element={<VehiclesPage />} />
         <Route path="fleet/compliance" element={<VehicleCompliancePage />} />
         <Route path="fleet/work-orders" element={<WorkOrdersPage />} />
@@ -174,7 +176,6 @@ export function App() {
         <Route path="portal/access" element={<ComingSoon />} />
         {/* Settings hub cards without a dedicated editor yet */}
         <Route path="settings/business-setup" element={<ComingSoon />} />
-        <Route path="settings/businesses" element={<ComingSoon />} />
         <Route path="settings/login" element={<LoginEditor />} />
         <Route path="settings/business-policies" element={<ComingSoon />} />
         <Route path="settings/payment-gateways" element={<ComingSoon />} />

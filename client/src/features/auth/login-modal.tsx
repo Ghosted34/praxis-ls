@@ -33,7 +33,7 @@ type Tab = "password" | "pin";
 type Stage = "credentials" | "twofa";
 
 export function LoginModal({ onClose }: { onClose: () => void }) {
-  const { login, verify2fa } = useAuth();
+  const { login, verify2fa, pinLogin } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as { from?: string } | null)?.from || "/";
@@ -45,6 +45,7 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   const [showPw, setShowPw] = React.useState(false);
   const [keep, setKeep] = React.useState(true);
   const [code, setCode] = React.useState("");
+  const [pin, setPin] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const emailRef = React.useRef<HTMLInputElement>(null);
@@ -67,6 +68,11 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
       if (err.code === "USER_INACTIVE") return "This account is suspended. Contact your administrator.";
       if (err.code === "INVALID_2FA_CODE") return "That code isn't right. Check your authenticator and retry.";
       if (err.code === "ERROR") return "Can't reach the server. Check your connection.";
+      if (err.code === "NO_PIN_DEVICE")
+        return "No Quick PIN is set up on this device. Sign in with your password, then enable it in My security.";
+      if (err.code === "INVALID_PIN") return "That PIN isn't right. Try again.";
+      if (err.code === "PIN_LOCKED" || err.code === "PIN_LOGIN_UNAVAILABLE")
+        return "Too many attempts — sign in with your password.";
       return err.message;
     }
     return "Something went wrong. Please try again.";
@@ -96,6 +102,21 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     } catch (err) {
       setError(friendly(err));
       setCode("");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function onPin(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      await pinLogin(email.trim(), pin);
+      navigate(from, { replace: true });
+    } catch (err) {
+      setError(friendly(err));
+      setPin("");
     } finally {
       setBusy(false);
     }
@@ -202,14 +223,54 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
           </form>
         )}
 
-        {/* --- Quick PIN tab (UI stub — no backend yet) --- */}
+        {/* --- Quick PIN tab --- */}
         {stage === "credentials" && tab === "pin" && (
-          <div className="mt-5 flex flex-col gap-4">
-            <p className="login-note">Sign in with your password once on this device to enable Quick PIN.</p>
-            <button type="button" className="login-submit" onClick={() => setTab("password")}>
-              <KeyIcon width={16} height={16} /> Use password
+          <form onSubmit={onPin} className="mt-5 flex flex-col gap-4" noValidate>
+            <div className="flex flex-col gap-1.5">
+              <label className="login-label" htmlFor="lm-pin-email">
+                Email
+              </label>
+              <div className="login-field">
+                <MailIcon width={17} height={17} />
+                <input
+                  id="lm-pin-email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <label className="login-label" htmlFor="lm-pin">
+                Quick PIN
+              </label>
+              <div className="login-field">
+                <HashIcon width={17} height={17} />
+                <input
+                  id="lm-pin"
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  required
+                  value={pin}
+                  onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 8))}
+                  placeholder="••••"
+                />
+              </div>
+            </div>
+
+            {error && <p className="login-error">{error}</p>}
+
+            <button type="submit" className="login-submit" disabled={busy || pin.length < 4}>
+              {busy ? "Signing in…" : "Sign in with PIN"}
+              {!busy && <ArrowRightIcon width={16} height={16} />}
             </button>
-          </div>
+            <p className="login-note">PIN works only on a device where you enabled it. New device? Use your password.</p>
+          </form>
         )}
 
         {/* --- 2FA stage (retained) --- */}

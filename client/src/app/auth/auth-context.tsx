@@ -10,8 +10,9 @@
  * a code and calls verify2fa().
  */
 import * as React from "react";
-import { tenant } from "@/lib/api-client";
+import { tenant, ApiError } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
+import { pinStore } from "@/lib/pin-store";
 
 export type User = { user_id: string; email: string; display_name?: string };
 
@@ -23,6 +24,8 @@ type AuthState = {
   pendingToken: string | null;
   login: (email: string, password: string, keepSignedIn?: boolean) => Promise<LoginResult>;
   verify2fa: (code: string) => Promise<void>;
+  pinLogin: (email: string, pin: string) => Promise<void>;
+  registerPin: (pin: string, label?: string | null) => Promise<{ device_id: string }>;
   logout: () => Promise<void>;
 };
 
@@ -104,6 +107,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     acceptTokens(r);
   };
 
+  const pinLogin: AuthState["pinLogin"] = async (email, pin) => {
+    const dev = pinStore.get(email);
+    if (!dev) throw new ApiError("NO_PIN_DEVICE", "No Quick PIN is set up on this device for that email.", 400);
+    tokenStore.setPersist(true);
+    const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/pin/login", {
+      method: "POST",
+      auth: false,
+      body: { email: email.trim(), device_id: dev.device_id, pin },
+    });
+    acceptTokens(r);
+  };
+
+  const registerPin: AuthState["registerPin"] = async (pin, label = null) => {
+    const r = await tenant<{ device_id: string; label?: string | null }>("/auth/pin/register", {
+      method: "POST",
+      body: { pin, label },
+    });
+    if (user) pinStore.set(user.email, { device_id: r.device_id, label: r.label ?? label });
+    return { device_id: r.device_id };
+  };
+
   const logout: AuthState["logout"] = async () => {
     try {
       await tenant("/auth/logout", { method: "POST" });
@@ -115,7 +139,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Clear all persisted client state on logout (until told otherwise): tokens,
     // cached user, theme + env preferences — nothing survives a sign-out.
     try {
+      const pinSnap = pinStore.snapshot(); // trusted PIN devices survive sign-out
       localStorage.clear();
+      pinStore.restore(pinSnap);
     } catch {
       /* ignore storage errors */
     }
@@ -124,7 +150,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <AuthCtx.Provider value={{ user, status, pendingToken, login, verify2fa, logout }}>{children}</AuthCtx.Provider>
+    <AuthCtx.Provider value={{ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout }}>
+      {children}
+    </AuthCtx.Provider>
   );
 }
 

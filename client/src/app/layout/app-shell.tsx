@@ -10,7 +10,7 @@
  * that same sidebar.
  */
 import * as React from "react";
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { tokenStore } from "@/lib/token-store";
@@ -185,6 +185,7 @@ const NAV: NavGroup[] = [
       { to: "/security/scopes", label: "Scopes" },
       { to: "/security/field-visibility", label: "Field visibility" },
       { to: "/security/sessions", label: "My sessions" },
+      { to: "/security/my-security", label: "My security" },
     ],
   },
   {
@@ -258,6 +259,17 @@ const MoreIcon = (p: IP) => (
 const ChevronIcon = (p: IP) => (
   <svg {...sic(p)} width={14} height={14}>
     <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+const FilesIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 4h6l2 3h8v13H4z" />
+  </svg>
+);
+const SearchIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4-4" />
   </svg>
 );
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
@@ -394,6 +406,36 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
         <div className="micro mt-0.5">Control Tower</div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Mobile bottom nav (Lovable pattern) — shown only below the md breakpoint,
+ * where the inline top-bar areas collapse. Four thumb targets: Control Tower,
+ * Operations files, Finance, and Search (opens the ⌘K palette). The full 15-group
+ * menu stays reachable via the top-bar hamburger, exactly as in the mock. Active
+ * state is by route prefix so any screen inside an area lights its tab.
+ */
+const BOTTOM_NAV: { to: string; label: string; Icon: (p: IP) => React.JSX.Element; active: (p: string) => boolean }[] = [
+  { to: "/", label: "Tower", Icon: TowerIcon, active: (p) => p === "/" },
+  { to: "/operations/files", label: "Files", Icon: FilesIcon, active: (p) => p.startsWith("/operations") },
+  { to: "/finance/journals", label: "Finance", Icon: FinanceIcon, active: (p) => p.startsWith("/finance") },
+];
+
+function BottomNav({ pathname, onSearch }: { pathname: string; onSearch: () => void }) {
+  return (
+    <nav className="lux-botnav flex md:hidden" aria-label="Primary">
+      {BOTTOM_NAV.map(({ to, label, Icon, active }) => (
+        <Link key={to} to={to} className={cn("lux-botnav-btn", active(pathname) && "active")}>
+          <Icon width={20} height={20} />
+          <span>{label}</span>
+        </Link>
+      ))}
+      <button type="button" className="lux-botnav-btn" onClick={onSearch}>
+        <SearchIcon width={20} height={20} />
+        <span>Search</span>
+      </button>
+    </nav>
   );
 }
 
@@ -554,9 +596,11 @@ export function AppShell() {
         </div>
       )}
 
-      <main className="min-h-0 flex-1 overflow-auto p-6">
+      <main className="min-h-0 flex-1 overflow-auto p-6 pb-24 md:pb-6">
         <Outlet />
       </main>
+
+      <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
 
       <CommandPalette open={paletteOpen} groups={NAV} onClose={() => setPaletteOpen(false)} />
     </div>

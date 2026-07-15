@@ -1,82 +1,44 @@
 import { tenant } from "./api-client";
 
-/** A partner/brand chip shown on the landing hero (e.g. sub-brands the tenant runs). */
+/** A partner/brand chip shown on the legacy landing hero. */
 export type BrandPill = {
-  /** Short label, rendered small-caps (e.g. "Faitlyn Hair"). */
   label: string;
-  /** Optional icon/avatar URL shown inside the pill. */
   iconUrl?: string | null;
 };
 
-/** A colour-token bag (key → CSS colour string). Edited in the Appearance token editor. */
-export type ThemeTokens = Record<string, string>;
-
-/** Font role selections for the platform. */
-export type Typography = {
-  display?: string | null;
-  body?: string | null;
-  mono?: string | null;
-  customFontUrl?: string | null;
-};
-
-/** Per-business brand (Layer B) — gradient + accent + logo, used on chips/documents. */
-export type BusinessBrand = {
-  id: string;
-  name: string;
-  accent?: string | null;
-  gradientStart?: string | null;
-  gradientEnd?: string | null;
-  logoUrl?: string | null;
-  website?: string | null;
-};
-
-/** Login-screen content (the DB-driven signed-out door). */
-export type HouseQuote = { text: string; attribution?: string | null };
-export type Pillar = { icon?: string | null; title: string; body?: string | null };
-export type RegionalWelcome = { region: string; title?: string | null; body?: string | null };
-
-export type LoginContent = {
-  splashSubline?: string | null;
-  /** Call-to-action button label on the hero. */
-  buttonLabel?: string | null;
-  /** Backdrop mode: brand mesh vs a full-bleed image. */
-  background?: "mesh" | "image" | null;
-  showSplash?: boolean | null;
-  showWebsiteLinks?: boolean | null;
-  showQuickPin?: boolean | null;
-  quotes?: HouseQuote[] | null;
-  pillars?: Pillar[] | null;
-  regionals?: RegionalWelcome[] | null;
-};
-
+/**
+ * Tenant appearance — matches the backend `GET/PUT /branding` contract
+ * (branding.service.js). The four core fields are always present (branding
+ * context paints a default before the fetch); the rest of the token set is
+ * optional so the default literal and pre-fetch state stay valid.
+ */
 export type Branding = {
-  // --- Persisted by the backend today (branding.service.js) ---
   name: string | null;
   primary: string | null;
   primaryForeground: string | null;
   logoUrl: string | null;
 
-  // --- Extended white-label fields (pixie spec). Sent on save; the backend
-  //     stores the four above now and will persist the rest once the
-  //     `appearance` settings schema is extended (see doc/FE_IA_HANDOFF.md). ---
-  companyName?: string | null;
-  tagline?: string | null;
-  logoDarkUrl?: string | null;
-  logoLightUrl?: string | null;
+  // Extended appearance token set (all persisted by PUT /branding).
+  secondary?: string | null;
+  accent?: string | null;
+  accentDeep?: string | null;
+  accentGlow?: string | null;
+  info?: string | null;
+  success?: string | null;
+  warn?: string | null;
+  danger?: string | null;
+  logoAltUrl?: string | null;
   faviconUrl?: string | null;
-  themePreset?: string | null;
-  tokensDark?: ThemeTokens | null;
-  tokensLight?: ThemeTokens | null;
-  panelAlpha?: number | null;
-  borderAlpha?: number | null;
-  meshOpacity?: number | null;
-  typography?: Typography | null;
-  businesses?: BusinessBrand[] | null;
-  login?: LoginContent | null;
+  fontDisplay?: string | null;
+  fontBody?: string | null;
+  fontMono?: string | null;
+  radius?: string | null;
+  theme?: "dark" | "light" | null;
 
   /**
-   * Landing/hero content — all optional and white-label. Absent fields fall back
-   * to generic copy derived from `name` (see landing-page.tsx).
+   * Legacy landing hero — still read by landing-page.tsx as a fallback. Not
+   * persisted by the current backend; live login content is in LoginConfig
+   * (GET/PUT /branding/login). Kept optional for backward compatibility.
    */
   hero?: {
     eyebrow?: string | null;
@@ -88,17 +50,39 @@ export type Branding = {
   } | null;
 };
 
-/** Public — resolved by Host, no auth. Used to brand the login pre-auth. */
+/** Login-screen config — backend `GET/PUT /branding/login` (branding.service.js). */
+export type LoginConfig = {
+  backgroundUrl: string | null;
+  headline: string | null;
+  subtext: string | null;
+  layout: "centered" | "split" | null;
+  showLogo: boolean | null;
+  accentOverride: string | null;
+};
+
+// ── Appearance ──
+/** Public — resolved by Host, no auth. Brands the login pre-auth. */
 export const fetchBranding = () => tenant<Branding>("/branding", { auth: false });
 
 /** Gated (MOD-70 edit). Upserts only the provided fields; returns the merged result. */
 export const saveBranding = (patch: Partial<Branding>) =>
   tenant<Branding>("/branding", { method: "PUT", body: patch });
 
-/** Gated (MOD-70 edit). Uploads a base64 image data URL to file storage; returns
- *  its public /media URL. Persist it with saveBranding() (logo or hero image). */
+/** Gated (MOD-70 edit). Uploads a base64 image data URL; returns its /media URL. */
 export const uploadImage = (dataUrl: string) =>
   tenant<{ logoUrl: string }>("/branding/logo", { method: "POST", body: { dataUrl } });
 
 /** @deprecated alias kept for existing callers — use uploadImage. */
 export const uploadLogo = uploadImage;
+
+// ── Login screen ──
+/** Public — the login page reads this pre-auth. */
+export const fetchLogin = () => tenant<LoginConfig>("/branding/login", { auth: false });
+
+/** Gated (MOD-70 edit). */
+export const saveLogin = (patch: Partial<LoginConfig>) =>
+  tenant<LoginConfig>("/branding/login", { method: "PUT", body: patch });
+
+/** Gated (MOD-70 edit). Uploads a base64 login background; returns its /media URL. */
+export const uploadLoginBackground = (dataUrl: string) =>
+  tenant<{ backgroundUrl: string }>("/branding/login/background", { method: "POST", body: { dataUrl } });

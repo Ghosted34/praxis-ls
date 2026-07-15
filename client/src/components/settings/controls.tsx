@@ -183,6 +183,7 @@ export function ImageField({
   maxBytes = 512_000,
   hint,
   shape = "logo",
+  upload,
 }: {
   label: string;
   value: string;
@@ -191,6 +192,8 @@ export function ImageField({
   maxBytes?: number;
   hint?: string;
   shape?: "logo" | "square" | "wide";
+  /** Custom uploader returning the stored URL; defaults to the branding logo upload. */
+  upload?: (dataUrl: string) => Promise<string>;
 }) {
   const [uploading, setUploading] = React.useState(false);
   const [err, setErr] = React.useState<string | null>(null);
@@ -215,7 +218,7 @@ export function ImageField({
     setUploading(true);
     try {
       const dataUrl = await readAsDataUrl(file);
-      const { logoUrl: url } = await uploadImage(dataUrl);
+      const url = upload ? await upload(dataUrl) : (await uploadImage(dataUrl)).logoUrl;
       onChange(url);
     } catch (e) {
       setErr(

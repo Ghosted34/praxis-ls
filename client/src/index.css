@@ -242,6 +242,40 @@
     color: #fff;
     box-shadow: 0 8px 20px rgb(var(--brand-orange) / 0.35);
   }
+  /* Mobile bottom nav (Lovable). Display is driven by `flex md:hidden`
+     utilities on the element; this class only styles it. */
+  .lux-botnav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 30;
+    align-items: center;
+    justify-content: space-around;
+    padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
+    background: color-mix(in srgb, var(--card) 92%, transparent);
+    backdrop-filter: blur(18px) saturate(150%);
+    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    border-top: 1px solid var(--border);
+  }
+  .lux-botnav-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--muted-foreground);
+    transition: color 0.15s ease;
+  }
+  .lux-botnav-btn.active {
+    color: var(--primary);
+  }
+  .lux-botnav-btn.active svg {
+    color: var(--primary);
+  }
 }
 
 /* Login gradient backdrop — Lovable mesh, tenant-primary tinted. */
@@ -335,6 +369,19 @@
   max-width: 62rem;
   padding: 0 clamp(1.25rem, 6vw, 5rem) 4rem;
 }
+/* Login layout (from /settings/login). Default/"split" keeps the content
+   left-aligned against the hero image; "centered" pulls it to the middle. */
+.landing[data-layout="centered"] .landing-content {
+  max-width: none;
+  align-items: center;
+  text-align: center;
+}
+.landing[data-layout="centered"] .landing-eyebrow { align-self: center; }
+.landing[data-layout="centered"] .landing-headline,
+.landing[data-layout="centered"] .landing-sub,
+.landing[data-layout="centered"] .landing-body { margin-inline: auto; }
+.landing[data-layout="centered"] .landing-pills { justify-content: center; }
+
 .landing-content > * { animation: landing-rise 0.7s cubic-bezier(0.16, 1, 0.3, 1) both; }
 .landing-content > :nth-child(2) { animation-delay: 0.06s; }
 .landing-content > :nth-child(3) { animation-delay: 0.12s; }

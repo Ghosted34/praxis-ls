@@ -96,26 +96,34 @@ function makeService(opts) {
   };
 }
 
-function makeController(service, label = "Record") {
+/**
+ * opts: { identity?: boolean } — when identity:true the CRUD runs against the
+ * env-independent LIVE/identity schema (req.identityDb) instead of the
+ * env-selected business schema (req.tenantDb). Used by the RBAC/identity modules
+ * (roles, permissions, capabilities, scopes, field-visibility, sessions) so
+ * they behave identically under LIVE and TEST. See middleware/tenant-context.js.
+ */
+function makeController(service, label = "Record", opts = {}) {
   const actor = (req) => req.user || { user_id: null };
+  const db = (req) => (opts.identity && req.identityDb ? req.identityDb : req.tenantDb);
   return {
     list: asyncHandler(async (req, res) =>
-      res.json({ data: await req.tenantDb((c) => service.list(c, req.query, req.scope_ids ?? null)) }),
+      res.json({ data: await db(req)((c) => service.list(c, req.query, req.scope_ids ?? null)) }),
     ),
     get: asyncHandler(async (req, res) => {
-      const row = await req.tenantDb((c) => service.get(c, req.params.id));
+      const row = await db(req)((c) => service.get(c, req.params.id));
       if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);
       res.json({ data: row });
     }),
     create: asyncHandler(async (req, res) =>
-      res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
+      res.status(201).json({ data: await db(req)((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
     update: asyncHandler(async (req, res) => {
-      const row = await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) }));
+      const row = await db(req)((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) }));
       if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);
       res.json({ data: row });
     }),
     archive: asyncHandler(async (req, res) => {
-      const row = await req.tenantDb((c) => service.archive(c, { id: req.params.id, actor: actor(req) }));
+      const row = await db(req)((c) => service.archive(c, { id: req.params.id, actor: actor(req) }));
       if (!row) throw new AppError("NOT_FOUND", `${label} not found`, 404);
       res.json({ data: row });
     }),

@@ -15,6 +15,7 @@ import { useBranding } from "@/app/branding/branding-context";
 import { LoginModal } from "@/features/auth/login-modal";
 import { BrandGlyph, ArrowRightIcon, SunIcon, MoonIcon, MonitorIcon } from "@/components/ui/icons";
 import { getMode, setMode, type ThemeMode } from "@/lib/theme-mode";
+import { fetchLogin, type LoginConfig } from "@/lib/branding";
 
 const NEXT: Record<ThemeMode, ThemeMode> = { light: "dark", dark: "system", system: "light" };
 const ICON = { light: SunIcon, dark: MoonIcon, system: MonitorIcon };
@@ -43,40 +44,68 @@ export function LandingPage() {
   const { branding } = useBranding();
   const [open, setOpen] = React.useState(false);
 
+  // Login-screen config (GET /branding/login) — authored on /settings/login.
+  // It's the live source for hero copy/background; the legacy branding.hero
+  // block is only a fallback for fields LoginConfig doesn't carry (eyebrow,
+  // body, pills). null while loading / if the tenant hasn't configured one.
+  const [login, setLogin] = React.useState<LoginConfig | null>(null);
+  React.useEffect(() => {
+    let alive = true;
+    fetchLogin()
+      .then((cfg) => alive && setLogin(cfg))
+      .catch(() => {
+        /* no login config / offline — fall back to hero + generic copy */
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   // Already signed in? Skip the marketing page.
   if (status === "authed") return <Navigate to="/" replace />;
 
   const brandName = branding.name || "Praxis LS";
   const hero = branding.hero || {};
 
+  // Precedence: saved login config → legacy hero → generic copy.
   const eyebrow = hero.eyebrow || "Welcome to your operational command center";
   const kicker = brandName.toUpperCase();
-  const headline = hero.headline || `Everything ${brandName} runs, in one workspace.`;
+  const headline =
+    login?.headline || hero.headline || `Everything ${brandName} runs, in one workspace.`;
   const subheadline =
-    hero.subheadline || "Sign in to manage operations end to end — from the floor to global dispatch.";
+    login?.subtext || hero.subheadline || "Sign in to manage operations end to end — from the floor to global dispatch.";
   const body = hero.body || null;
   const pills = hero.pills || [];
+  const backgroundUrl = login?.backgroundUrl || hero.imageUrl || null;
+  const showLogo = login?.showLogo ?? true;
+  const layout = login?.layout || "split";
 
   return (
-    <div className="landing">
+    <div
+      className="landing"
+      data-layout={layout}
+      style={login?.accentOverride ? ({ "--primary": login.accentOverride } as React.CSSProperties) : undefined}
+    >
       <div
         className="landing-bg"
-        style={hero.imageUrl ? { backgroundImage: `url(${hero.imageUrl})` } : undefined}
+        style={backgroundUrl ? { backgroundImage: `url(${backgroundUrl})` } : undefined}
       />
       <div className="landing-veil" />
 
       <header className="landing-top">
         <div className="landing-brand">
-          {branding.logoUrl ? (
-            <img src={branding.logoUrl} alt={brandName} style={{ height: 30, width: "auto" }} />
-          ) : (
-            <>
-              <BrandGlyph className="landing-brand-glyph" />
-              <span>
-                {brandName.split(" ")[0]} <span className="accent">{brandName.split(" ").slice(1).join(" ") || ""}</span>
-              </span>
-            </>
-          )}
+          {showLogo &&
+            (branding.logoUrl ? (
+              <img src={branding.logoUrl} alt={brandName} style={{ height: 30, width: "auto" }} />
+            ) : (
+              <>
+                <BrandGlyph className="landing-brand-glyph" />
+                <span>
+                  {brandName.split(" ")[0]}{" "}
+                  <span className="accent">{brandName.split(" ").slice(1).join(" ") || ""}</span>
+                </span>
+              </>
+            ))}
         </div>
         <ThemeCycle />
       </header>

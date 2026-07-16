@@ -130,6 +130,107 @@ export const listPeriods = (entityId?: string) =>
 export const closePeriod = (body: { period_id: string; to: "FROZEN" | "CLOSED" }) =>
   tenant("/statements/periods/close", { method: "POST", body });
 
+/* ── tax declarations / filing workflow (MOD-07) ── */
+export const TAX_KINDS = ["TVA", "IS", "MIN_TAX", "WHT", "DSF", "CNPS", "DIPE", "PATENTE"] as const;
+export type TaxKind = (typeof TAX_KINDS)[number];
+
+export type TaxDeclaration = {
+  declaration_id: string;
+  entity_id?: string | null;
+  kind: TaxKind | string;
+  period_code: string;
+  status: "DRAFT" | "COMPUTED" | "APPROVED" | "FILED" | string;
+  amount?: number | string | null;
+  due_on?: string | null;
+  filed_ref?: string | null;
+  filed_at?: string | null;
+  created_at?: string | null;
+  [k: string]: unknown;
+};
+
+export const listDeclarations = (entityId?: string) =>
+  tenant<TaxDeclaration[]>(`/tax/declarations${entityId ? `?entity_id=${entityId}` : ""}`);
+
+export const getDeclaration = (id: string) => tenant<TaxDeclaration>(`/tax/declarations/${id}`);
+
+export type FileDeclarationInput = {
+  entity_id?: string;
+  kind: TaxKind;
+  period_code: string;
+  from?: string;
+  to?: string;
+  due_on?: string;
+};
+
+export const fileDeclaration = (body: FileDeclarationInput) =>
+  tenant<TaxDeclaration>("/tax/declarations", { method: "POST", body });
+
+export const approveDeclaration = (id: string) =>
+  tenant<TaxDeclaration>(`/tax/declarations/${id}/approve`, { method: "POST", body: {} });
+
+export const submitDeclaration = (id: string, body: { filed_ref?: string }) =>
+  tenant<TaxDeclaration>(`/tax/declarations/${id}/submit`, { method: "POST", body });
+
+/* ── credit notes (MOD-51) ── */
+export type CreditNoteLineInput = {
+  label: string;
+  amount: number;
+  dictionary_item_id?: string;
+  is_debours?: boolean;
+};
+
+export type CreditNote = {
+  credit_note_id: string;
+  entity_id: string;
+  client_id?: string | null;
+  reverses_invoice_id?: string | null;
+  status: string;
+  doc_number?: string | null;
+  total_ttc?: number | string | null;
+  created_at?: string | null;
+  [k: string]: unknown;
+};
+
+export type CreditNoteDetail = CreditNote & {
+  dossier_id?: string | null;
+  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; amount?: number | string; line_ht?: number | string; is_debours?: boolean }>;
+};
+
+/** FINAL invoices only — a credit note reverses a finalised invoice. */
+export async function loadFinalInvoices(): Promise<Option[]> {
+  const rows = await tenant<Record<string, unknown>[]>("/final-invoices");
+  return (rows || [])
+    .filter((r) => String(r.status ?? r.state ?? "").toUpperCase() === "FINAL")
+    .map((r) => ({
+      id: String(r.invoice_id ?? r.final_invoice_id ?? r.id),
+      label: String(r.doc_number ?? r.ref ?? r.invoice_id ?? ""),
+      extra: r.total_ttc != null ? String(r.total_ttc) : undefined,
+    }));
+}
+
+export const listCreditNotes = () => tenant<CreditNote[]>("/credit-notes");
+
+export const getCreditNote = (id: string) => tenant<CreditNoteDetail>(`/credit-notes/${id}`);
+
+export type CreateCreditNoteInput = {
+  entity_id: string;
+  client_id?: string;
+  dossier_id?: string;
+  reverses_invoice_id?: string;
+  lines?: CreditNoteLineInput[];
+};
+
+export const createCreditNote = (body: CreateCreditNoteInput) =>
+  tenant<CreditNote>("/credit-notes", { method: "POST", body });
+
+export const updateCreditNote = (
+  id: string,
+  body: { client_id?: string; dossier_id?: string; reverses_invoice_id?: string; lines?: CreditNoteLineInput[] },
+) => tenant<CreditNote>(`/credit-notes/${id}`, { method: "PATCH", body });
+
+export const postCreditNote = (id: string, body: { entry_date?: string; source_doc_ref?: string }) =>
+  tenant<CreditNote>(`/credit-notes/${id}/post`, { method: "POST", body });
+
 /** Today as YYYY-MM-DD in local time — the default for date fields. */
 export const today = () => {
   const d = new Date();

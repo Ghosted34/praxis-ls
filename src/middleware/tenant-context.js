@@ -20,6 +20,13 @@ function tenantContext(req, res, next) {
 
   req.env = env;
   req.tenantDb = (fn) => registry.withTenantConnection(req.tenant, env, fn);
+  // Identity is env-independent ("same you, sandbox data"): auth, sessions,
+  // devices, 2FA, users and the RBAC grant matrix always resolve against the
+  // LIVE/identity schema regardless of X-Praxis-Env, so flipping to Test only
+  // sandboxes *business* data — it never logs the user out. Only business
+  // reads/writes go through req.tenantDb(env). See doc/SESSION_HANDOFF.md
+  // (LIVE/TEST toggle) + doc/DB_ARCHITECTURE.md.
+  req.identityDb = (fn) => registry.withTenantConnection(req.tenant, "live", fn);
 
   const ctx = {
     tenant: req.tenant.slug,

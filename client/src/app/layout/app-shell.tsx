@@ -10,7 +10,7 @@
  * that same sidebar.
  */
 import * as React from "react";
-import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { tokenStore } from "@/lib/token-store";
@@ -96,6 +96,7 @@ const NAV: NavGroup[] = [
       { to: "/finance/journals", label: "Journals" },
       { to: "/finance/proformas", label: "Proforma & advances" },
       { to: "/finance/invoices", label: "Invoices" },
+      { to: "/finance/credit-notes", label: "Credit notes" },
       { to: "/finance/receivables", label: "Receivables" },
       { to: "/finance/statements", label: "Statements" },
       { to: "/finance/tax", label: "Tax center" },
@@ -185,6 +186,7 @@ const NAV: NavGroup[] = [
       { to: "/security/scopes", label: "Scopes" },
       { to: "/security/field-visibility", label: "Field visibility" },
       { to: "/security/sessions", label: "My sessions" },
+      { to: "/security/my-security", label: "My security" },
     ],
   },
   {
@@ -258,6 +260,17 @@ const MoreIcon = (p: IP) => (
 const ChevronIcon = (p: IP) => (
   <svg {...sic(p)} width={14} height={14}>
     <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+const FilesIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 4h6l2 3h8v13H4z" />
+  </svg>
+);
+const SearchIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="M21 21l-4-4" />
   </svg>
 );
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
@@ -396,6 +409,36 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
   );
 }
 
+/**
+ * Mobile bottom nav (Lovable pattern) — shown only below the md breakpoint,
+ * where the inline top-bar areas collapse. Four thumb targets: Control Tower,
+ * Operations files, Finance, and Search (opens the ⌘K palette). The full 15-group
+ * menu stays reachable via the top-bar hamburger, exactly as in the mock. Active
+ * state is by route prefix so any screen inside an area lights its tab.
+ */
+const BOTTOM_NAV: { to: string; label: string; Icon: (p: IP) => React.JSX.Element; active: (p: string) => boolean }[] = [
+  { to: "/", label: "Tower", Icon: TowerIcon, active: (p) => p === "/" },
+  { to: "/operations/files", label: "Files", Icon: FilesIcon, active: (p) => p.startsWith("/operations") },
+  { to: "/finance/journals", label: "Finance", Icon: FinanceIcon, active: (p) => p.startsWith("/finance") },
+];
+
+function BottomNav({ pathname, onSearch }: { pathname: string; onSearch: () => void }) {
+  return (
+    <nav className="lux-botnav flex md:hidden" aria-label="Primary">
+      {BOTTOM_NAV.map(({ to, label, Icon, active }) => (
+        <Link key={to} to={to} className={cn("lux-botnav-btn", active(pathname) && "active")}>
+          <Icon width={20} height={20} />
+          <span>{label}</span>
+        </Link>
+      ))}
+      <button type="button" className="lux-botnav-btn" onClick={onSearch}>
+        <SearchIcon width={20} height={20} />
+        <span>Search</span>
+      </button>
+    </nav>
+  );
+}
+
 export function AppShell() {
   const { user, logout } = useAuth();
   const { branding } = useBranding();
@@ -405,7 +448,7 @@ export function AppShell() {
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [openArea, setOpenArea] = React.useState<string | null>(null);
-  const env = tokenStore.getEnv();
+  const [env, setEnvState] = React.useState<string>(tokenStore.getEnv());
 
   // Hover open/close with a grace delay so moving from the button into the
   // menu (across the small gap) doesn't snap it shut.
@@ -470,12 +513,16 @@ export function AppShell() {
     navigate("/login", { replace: true });
   }
 
-  // Test/Live switch — persists X-Praxis-Env then reloads so every screen
-  // re-fetches under the new environment (separate live/sandbox schemas).
-  function toggleEnv() {
-    const next = env === "sandbox" ? "live" : "sandbox";
+  // Test/Live switch — SOFT (no reload). Identity is now env-independent
+  // (server pins auth/sessions to the live schema), so flipping X-Praxis-Env no
+  // longer logs the user out — only *business* data is sandboxed. Persist the
+  // header, update state; the `key={env}` on <main> remounts the routed screen
+  // so every useEffect re-fetches under the new environment. Access token, auth
+  // and scroll of the shell are preserved.
+  function switchEnv(next: string) {
+    if (next === env) return;
     tokenStore.setEnv(next);
-    window.location.reload();
+    setEnvState(next);
   }
 
   const topbarGroups = TOPBAR.map((h) => NAV.find((g) => g.heading === h)!).filter(Boolean);
@@ -524,13 +571,32 @@ export function AppShell() {
             <span className="text-xs">Search screens…</span>
             <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
           </button>
-          <button
-            onClick={toggleEnv}
-            title={env === "sandbox" ? "Switch to LIVE" : "Switch to TEST MODE"}
-            className={cn("status", env === "sandbox" ? "st-warn" : "st-ok")}
-          >
-            {env === "sandbox" ? "TEST MODE" : "LIVE"}
-          </button>
+          <div className="inline-flex items-center rounded-xl border p-0.5 text-xs font-semibold" role="group" aria-label="Data environment">
+            <button
+              onClick={() => switchEnv("live")}
+              aria-pressed={env !== "sandbox"}
+              className={cn(
+                "rounded-lg px-2.5 py-1.5 transition-colors",
+                env !== "sandbox"
+                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              LIVE
+            </button>
+            <button
+              onClick={() => switchEnv("sandbox")}
+              aria-pressed={env === "sandbox"}
+              className={cn(
+                "rounded-lg px-2.5 py-1.5 transition-colors",
+                env === "sandbox"
+                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              TEST
+            </button>
+          </div>
           <span className="hidden text-sm text-muted-foreground sm:inline">{user?.email}</span>
           <ThemeToggle />
           <Button variant="outline" size="sm" onClick={onLogout}>
@@ -557,9 +623,24 @@ export function AppShell() {
 
       {/* The single custom scroll container: vertical scrolls, horizontal is
           clipped (pages that need it wrap their own overflow-x-auto region). */}
-      <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6">
+      {/* Sandbox warning banner (Lovable mock) — only in TEST mode. */}
+      {env === "sandbox" && (
+        <div className="flex flex-none items-center justify-center gap-2 border-b border-amber-500/30 bg-amber-500/15 px-4 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
+          <span aria-hidden>⚠</span>
+          <span>TEST MODE — you're viewing sandbox data. Changes here don't affect live.</span>
+          <button onClick={() => switchEnv("live")} className="ml-1 underline underline-offset-2 hover:no-underline">
+            Switch to live
+          </button>
+        </div>
+      )}
+
+      {/* key={env} remounts the routed screen on an env switch so every screen
+          re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
+      <main key={env} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6 pb-24 md:pb-6">
         <Outlet />
       </main>
+
+      <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
 
       <CommandPalette open={paletteOpen} groups={NAV} onClose={() => setPaletteOpen(false)} />
     </div>

@@ -23,6 +23,17 @@ function paint(b: Branding) {
   applyBrand({
     primary: b.primary || DEFAULT_PRIMARY,
     primaryForeground: b.primaryForeground || "#ffffff",
+    secondary: b.secondary,
+    accent: b.accent,
+    accentDeep: b.accentDeep,
+    info: b.info,
+    success: b.success,
+    warn: b.warn,
+    danger: b.danger,
+    fontDisplay: b.fontDisplay,
+    fontBody: b.fontBody,
+    fontMono: b.fontMono,
+    radius: b.radius,
   });
 }
 

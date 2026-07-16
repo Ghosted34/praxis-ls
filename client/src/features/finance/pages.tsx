@@ -25,10 +25,25 @@ import {
   listPeriods,
   closePeriod,
   today,
+  TAX_KINDS,
+  listDeclarations,
+  fileDeclaration,
+  approveDeclaration,
+  submitDeclaration,
+  loadFinalInvoices,
+  listCreditNotes,
+  getCreditNote,
+  createCreditNote,
+  updateCreditNote,
+  postCreditNote,
   type Option,
   type JournalLineInput,
   type InvoiceLineInput,
   type Period,
+  type TaxKind,
+  type TaxDeclaration,
+  type CreditNote,
+  type CreditNoteLineInput,
 } from "@/lib/finance-api";
 
 /* ── shared helpers ─────────────────────────────────────────────── */
@@ -1412,6 +1427,274 @@ export const StatementsPage = () => (
   />
 );
 
+/* ── tax filing workflow: persist a computed return, approve, submit ── */
+function DeclStatusPill({ status }: { status: string }) {
+  const s = status.toUpperCase();
+  const tone =
+    s === "FILED"
+      ? "bg-primary/10 text-primary"
+      : s === "APPROVED"
+        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+        : s === "COMPUTED"
+          ? "bg-amber-500/15 text-amber-600 dark:text-amber-400"
+          : "bg-muted text-muted-foreground";
+  return <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", tone)}>{s || "DRAFT"}</span>;
+}
+
+function FileDeclarationForm({ open, onClose, onFiled }: { open: boolean; onClose: () => void; onFiled: () => void }) {
+  const { opts: entities } = useOptions(loadEntities, open);
+  const [entityId, setEntityId] = React.useState("");
+  const [kind, setKind] = React.useState<TaxKind>("TVA");
+  const [periodCode, setPeriodCode] = React.useState("");
+  const [from, setFrom] = React.useState("");
+  const [to, setTo] = React.useState("");
+  const [dueOn, setDueOn] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setEntityId("");
+    setKind("TVA");
+    setPeriodCode("");
+    setFrom("");
+    setTo("");
+    setDueOn("");
+    setError(null);
+  }, [open]);
+
+  const validPeriod = /^\d{4}(-\d{2})?$/.test(periodCode);
+  const canSubmit = validPeriod && !busy;
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await fileDeclaration({
+        entity_id: entityId || undefined,
+        kind,
+        period_code: periodCode,
+        from: from || undefined,
+        to: to || undefined,
+        due_on: dueOn || undefined,
+      });
+      onFiled();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="File a return" description="Persists the GL-computed return as a declaration (DRAFT/COMPUTED), then approve and submit." size="lg">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Entity" hint="Leave blank for all entities">
+            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+              <option value="">All entities</option>
+              {entities.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {optionLabel(o)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Return type" required>
+            <Select value={kind} onChange={(e) => setKind(e.target.value as TaxKind)}>
+              {TAX_KINDS.map((k) => (
+                <option key={k} value={k}>
+                  {k}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Period code" hint="YYYY or YYYY-MM" required error={periodCode && !validPeriod ? "Use YYYY or YYYY-MM" : undefined}>
+            <Input value={periodCode} onChange={(e) => setPeriodCode(e.target.value)} placeholder="2026-06" />
+          </Field>
+          <Field label="Due on">
+            <Input type="date" value={dueOn} onChange={(e) => setDueOn(e.target.value)} />
+          </Field>
+          <Field label="From">
+            <Input type="date" value={from} onChange={(e) => setFrom(e.target.value)} />
+          </Field>
+          <Field label="To">
+            <Input type="date" value={to} onChange={(e) => setTo(e.target.value)} />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
+            File return
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function SubmitDeclarationForm({ declaration, onClose, onSubmitted }: { declaration: TaxDeclaration | null; onClose: () => void; onSubmitted: () => void }) {
+  const [filedRef, setFiledRef] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!declaration) return;
+    setFiledRef(String(declaration.filed_ref ?? ""));
+    setError(null);
+  }, [declaration]);
+
+  async function submit() {
+    if (!declaration) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await submitDeclaration(String(declaration.declaration_id), { filed_ref: filedRef || undefined });
+      onSubmitted();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={!!declaration} onClose={onClose} title="Submit declaration" description="Marks the return FILED with the tax authority's acknowledgement reference.">
+      <div className="space-y-4">
+        <Field label="Filed reference" hint="Receipt / acknowledgement number from the tax portal">
+          <Input value={filedRef} onChange={(e) => setFiledRef(e.target.value)} placeholder="DGI-2026-…" />
+        </Field>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={busy}>
+            Mark filed
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function DeclarationsPanel() {
+  const [rows, setRows] = React.useState<TaxDeclaration[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+  const [fileOpen, setFileOpen] = React.useState(false);
+  const [submitTarget, setSubmitTarget] = React.useState<TaxDeclaration | null>(null);
+  const [approvingId, setApprovingId] = React.useState<string | null>(null);
+  const [rowError, setRowError] = React.useState<string | null>(null);
+  const reload = () => setNonce((n) => n + 1);
+
+  React.useEffect(() => {
+    let live = true;
+    setRows(null);
+    setError(null);
+    listDeclarations()
+      .then((d) => live && setRows(Array.isArray(d) ? d : []))
+      .catch((e) => {
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view declarations.");
+        else setError(e instanceof ApiError ? e.message : "Failed to load declarations.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [nonce]);
+
+  async function approve(id: string) {
+    setApprovingId(id);
+    setRowError(null);
+    try {
+      await approveDeclaration(id);
+      reload();
+    } catch (e) {
+      setRowError(errMessage(e));
+    } finally {
+      setApprovingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <div className="mb-4 flex justify-end">
+        <Button onClick={() => setFileOpen(true)}>File a return</Button>
+      </div>
+
+      {rowError && (
+        <div className="mb-3">
+          <ErrorState message={rowError} />
+        </div>
+      )}
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : rows === null ? (
+        <LoadingRow label="Loading declarations…" />
+      ) : rows.length === 0 ? (
+        <EmptyState title="No declarations yet" hint="File a computed return to start the filing workflow." />
+      ) : (
+        <Table>
+          <THead>
+            <TR>
+              <TH>Type</TH>
+              <TH>Period</TH>
+              <TH>Amount</TH>
+              <TH>Due</TH>
+              <TH>Status</TH>
+              <TH>Actions</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((r) => {
+              const s = String(r.status ?? "").toUpperCase();
+              const id = String(r.declaration_id);
+              return (
+                <TR key={id}>
+                  <TD className="text-sm font-medium">{String(r.kind ?? "—")}</TD>
+                  <TD className="text-sm">{String(r.period_code ?? "—")}</TD>
+                  <TD className="num text-sm">{fmt(r.amount)}</TD>
+                  <TD className="text-sm">{r.due_on ?? "—"}</TD>
+                  <TD>
+                    <DeclStatusPill status={s} />
+                  </TD>
+                  <TD>
+                    <div className="flex gap-2">
+                      {(s === "COMPUTED" || s === "DRAFT") && (
+                        <Button size="sm" variant="outline" loading={approvingId === id} onClick={() => approve(id)}>
+                          Approve
+                        </Button>
+                      )}
+                      {s === "APPROVED" && (
+                        <Button size="sm" onClick={() => setSubmitTarget(r)}>
+                          Submit
+                        </Button>
+                      )}
+                      {s === "FILED" && (
+                        <span className="text-xs text-muted-foreground">{r.filed_ref ? `filed · ${r.filed_ref}` : "filed"}</span>
+                      )}
+                    </div>
+                  </TD>
+                </TR>
+              );
+            })}
+          </TBody>
+        </Table>
+      )}
+
+      <FileDeclarationForm open={fileOpen} onClose={() => setFileOpen(false)} onFiled={reload} />
+      <SubmitDeclarationForm declaration={submitTarget} onClose={() => setSubmitTarget(null)} onSubmitted={reload} />
+    </div>
+  );
+}
+
 export const TaxCenterPage = () => (
   <ReportTabs
     title="Tax center"
@@ -1419,6 +1702,402 @@ export const TaxCenterPage = () => (
     tabs={[
       { key: "vat", label: "TVA return", path: "/tax/vat-return" },
       { key: "is", label: "Corporate tax", path: "/tax/corporate-tax" },
+      { key: "declarations", label: "Declarations / filing", render: () => <DeclarationsPanel /> },
     ]}
   />
 );
+
+/* ── credit notes (MOD-51): create → edit → post ─────────────────── */
+function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
+  return lines
+    .filter((l) => l.label.trim() && Number(l.amount) >= 0 && l.amount !== "")
+    .map((l) => ({
+      label: l.label.trim(),
+      amount: Number(l.amount),
+      dictionary_item_id: l.dictionary_item_id || undefined,
+      is_debours: l.is_debours || undefined,
+    }));
+}
+
+function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLines: React.Dispatch<React.SetStateAction<InvLine[]>>; items: Option[] }) {
+  const setLine = (i: number, patch: Partial<InvLine>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-sm font-medium">Lines</span>
+        <Button type="button" size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, blankInvLine()])}>
+          + Add line
+        </Button>
+      </div>
+      {lines.map((l, i) => (
+        <div key={i} className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-center gap-2">
+          <Input placeholder="Label (required)" value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} />
+          <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+            <option value="">Dictionary item…</option>
+            {items.map((o) => (
+              <option key={o.id} value={o.id}>
+                {optionLabel(o)}
+              </option>
+            ))}
+          </Select>
+          <Input type="number" min="0" step="0.01" className="num text-right" placeholder="Amount" value={l.amount} onChange={(e) => setLine(i, { amount: e.target.value })} />
+          <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+            <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} />
+            débours
+          </label>
+          <Button type="button" size="icon" variant="ghost" disabled={lines.length <= 1} onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))} aria-label="Remove line">
+            ✕
+          </Button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const { opts: entities } = useOptions(loadEntities, open);
+  const { opts: clients } = useOptions(loadClients, open);
+  const { opts: items } = useOptions(loadDictionaryItems, open);
+  const { opts: invoices } = useOptions(loadFinalInvoices, open);
+
+  const [entityId, setEntityId] = React.useState("");
+  const [clientId, setClientId] = React.useState("");
+  const [reversesInvoiceId, setReversesInvoiceId] = React.useState("");
+  const [lines, setLines] = React.useState<InvLine[]>([blankInvLine()]);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setEntityId("");
+    setClientId("");
+    setReversesInvoiceId("");
+    setLines([blankInvLine()]);
+    setError(null);
+  }, [open]);
+
+  const canSubmit = !!entityId && !busy;
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      const payloadLines = cnPayloadLines(lines);
+      await createCreditNote({
+        entity_id: entityId,
+        client_id: clientId || undefined,
+        reverses_invoice_id: reversesInvoiceId || undefined,
+        lines: payloadLines.length ? payloadLines : undefined,
+      });
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="New credit note" description="Reverses a finalised invoice; create a draft, then post to the ledger." size="xl">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Entity" required>
+            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
+              <option value="">Select entity…</option>
+              {entities.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {optionLabel(o)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Client">
+            <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+              <option value="">Select client…</option>
+              {clients.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {optionLabel(o)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Reverses invoice" hint="Finalised invoice this note credits" className="sm:col-span-2">
+            <Select value={reversesInvoiceId} onChange={(e) => setReversesInvoiceId(e.target.value)}>
+              <option value="">None</option>
+              {invoices.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {optionLabel(o)}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+
+        <CreditNoteLines lines={lines} setLines={setLines} items={items} />
+
+        {error && <ErrorState message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
+            Create draft
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: string | null; onClose: () => void; onSaved: () => void }) {
+  const open = !!creditNoteId;
+  const { opts: clients } = useOptions(loadClients, open);
+  const { opts: items } = useOptions(loadDictionaryItems, open);
+  const { opts: invoices } = useOptions(loadFinalInvoices, open);
+
+  const [clientId, setClientId] = React.useState("");
+  const [reversesInvoiceId, setReversesInvoiceId] = React.useState("");
+  const [lines, setLines] = React.useState<InvLine[]>([blankInvLine()]);
+  const [loading, setLoading] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!creditNoteId) return;
+    let live = true;
+    setLoading(true);
+    setError(null);
+    getCreditNote(creditNoteId)
+      .then((cn) => {
+        if (!live) return;
+        setClientId(cn.client_id ? String(cn.client_id) : "");
+        setReversesInvoiceId(cn.reverses_invoice_id ? String(cn.reverses_invoice_id) : "");
+        const ls = (cn.lines || []).map((l) => ({
+          dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
+          amount: l.amount != null ? String(l.amount) : l.line_ht != null ? String(l.line_ht) : "",
+          is_debours: !!l.is_debours,
+          label: l.label ? String(l.label) : "",
+        }));
+        setLines(ls.length ? ls : [blankInvLine()]);
+      })
+      .catch((e) => live && setError(errMessage(e)))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [creditNoteId]);
+
+  async function submit() {
+    if (!creditNoteId) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await updateCreditNote(creditNoteId, {
+        client_id: clientId || undefined,
+        reverses_invoice_id: reversesInvoiceId || undefined,
+        lines: cnPayloadLines(lines),
+      });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Edit credit note" description="Update the client, reversed invoice and lines. Only drafts can be edited." size="xl">
+      {loading ? (
+        <LoadingRow label="Loading credit note…" />
+      ) : (
+        <div className="space-y-4">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Client">
+              <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
+                <option value="">No client</option>
+                {clients.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {optionLabel(o)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Reverses invoice">
+              <Select value={reversesInvoiceId} onChange={(e) => setReversesInvoiceId(e.target.value)}>
+                <option value="">None</option>
+                {invoices.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {optionLabel(o)}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+
+          <CreditNoteLines lines={lines} setLines={setLines} items={items} />
+
+          {error && <ErrorState message={error} />}
+
+          <div className="flex justify-end gap-2 pt-2">
+            <Button variant="outline" onClick={onClose} disabled={busy}>
+              Cancel
+            </Button>
+            <Button onClick={submit} loading={busy} disabled={busy}>
+              Save changes
+            </Button>
+          </div>
+        </div>
+      )}
+    </Modal>
+  );
+}
+
+function CreditNotePostForm({ creditNote, onClose, onPosted }: { creditNote: CreditNote | null; onClose: () => void; onPosted: () => void }) {
+  const [entryDate, setEntryDate] = React.useState(today());
+  const [sourceRef, setSourceRef] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!creditNote) return;
+    setEntryDate(today());
+    setSourceRef(String(creditNote.doc_number ?? ""));
+    setError(null);
+  }, [creditNote]);
+
+  async function submit() {
+    if (!creditNote) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await postCreditNote(String(creditNote.credit_note_id), {
+        entry_date: entryDate || undefined,
+        source_doc_ref: sourceRef || undefined,
+      });
+      onPosted();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={!!creditNote} onClose={onClose} title="Post credit note" description="Posts the linked contra entry to the ledger and reverses the invoice.">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Posting date">
+            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+          </Field>
+          <Field label="Source document ref">
+            <Input value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} placeholder="CN-2026-0001" />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={busy}>
+            Post credit note
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+export function CreditNotesPage() {
+  const [rows, setRows] = React.useState<CreditNote[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [editId, setEditId] = React.useState<string | null>(null);
+  const [postTarget, setPostTarget] = React.useState<CreditNote | null>(null);
+  const reload = () => setNonce((n) => n + 1);
+
+  React.useEffect(() => {
+    let live = true;
+    setRows(null);
+    setError(null);
+    listCreditNotes()
+      .then((d) => live && setRows(Array.isArray(d) ? d : []))
+      .catch((e) => {
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view this.");
+        else setError(e instanceof ApiError ? e.message : "Failed to load.");
+      });
+    return () => {
+      live = false;
+    };
+  }, [nonce]);
+
+  const isDraft = (r: CreditNote) => {
+    const s = String(r.status ?? "").toUpperCase();
+    return s === "" || s === "DRAFT";
+  };
+
+  return (
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <header className="mb-5 flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold tracking-tight">Credit notes</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Reverse a finalised invoice — draft, then post the contra entry (MOD-51).</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>New credit note</Button>
+      </header>
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : rows === null ? (
+        <LoadingRow />
+      ) : rows.length === 0 ? (
+        <EmptyState title="No credit notes yet" hint="Create one to reverse a finalised invoice." />
+      ) : (
+        <Table>
+          <THead>
+            <TR>
+              <TH>Number</TH>
+              <TH>Status</TH>
+              <TH>Total TTC</TH>
+              <TH>Created</TH>
+              <TH>Actions</TH>
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((r) => (
+              <TR key={String(r.credit_note_id)}>
+                <TD className="text-sm">{fmtCell(r.doc_number ?? "— (draft)")}</TD>
+                <TD className="text-sm">{fmtCell(r.status)}</TD>
+                <TD className="num text-sm">{fmtCell(r.total_ttc)}</TD>
+                <TD className="text-sm">{fmtCell(r.created_at)}</TD>
+                <TD>
+                  {isDraft(r) ? (
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => setEditId(String(r.credit_note_id))}>
+                        Edit
+                      </Button>
+                      <Button size="sm" variant="outline" onClick={() => setPostTarget(r)}>
+                        Post
+                      </Button>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TD>
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      )}
+
+      <CreditNoteCreateForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} />
+      <CreditNoteEditForm creditNoteId={editId} onClose={() => setEditId(null)} onSaved={reload} />
+      <CreditNotePostForm creditNote={postTarget} onClose={() => setPostTarget(null)} onPosted={reload} />
+    </section>
+  );
+}

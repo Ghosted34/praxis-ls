@@ -153,6 +153,71 @@
       ]
     },
     {
+      "id": "settings_bank_accounts",
+      "title": "Bank accounts",
+      "route": "/master/treasury-accounts",
+      "area": "settings",
+      "module_key": "MOD-09",
+      "purpose": "Company bank, cash and mobile-money accounts mapped to CoA codes.",
+      "actions": [
+        "list_treasury_accounts",
+        "create_treasury_account",
+        "set_treasury_account_active"
+      ]
+    },
+    {
+      "id": "settings_payment_gateways",
+      "title": "Payment gateways",
+      "route": "/settings/payment-gateways",
+      "area": "settings",
+      "module_key": "MOD-09",
+      "purpose": "Per-tenant payment gateway providers and encrypted credentials.",
+      "actions": [
+        "list_payment_gateways",
+        "upsert_payment_gateway",
+        "set_gateway_active",
+        "delete_payment_gateway"
+      ]
+    },
+    {
+      "id": "settings_scheduled_reports",
+      "title": "Scheduled reports",
+      "route": "/settings/scheduled-reports",
+      "area": "settings",
+      "module_key": "MOD-63",
+      "purpose": "Automated report delivery on a cadence to email recipients.",
+      "actions": [
+        "list_scheduled_reports",
+        "create_scheduled_report",
+        "update_scheduled_report",
+        "delete_scheduled_report"
+      ]
+    },
+    {
+      "id": "settings_api_keys",
+      "title": "API keys & secrets",
+      "route": "/settings/api-keys",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Encrypted, write-only third-party AI provider keys.",
+      "actions": [
+        "list_ai_vendors",
+        "set_ai_vendor",
+        "test_ai_vendor"
+      ]
+    },
+    {
+      "id": "settings_pipeline_stages",
+      "title": "Pipeline stages",
+      "route": "/settings/pipeline-stages",
+      "area": "settings",
+      "module_key": "MOD-24",
+      "purpose": "CRM opportunity pipeline stages (read-only).",
+      "actions": [
+        "list_pipeline_stages"
+      ]
+    },
+    {
       "id": "fleet_vehicles",
       "title": "Vehicles",
       "route": "/fleet/vehicles",
@@ -534,6 +599,15 @@
       "area": "finance",
       "module_key": "MOD-51",
       "purpose": "Final invoices — revenue recognition, clears advance + débours.",
+      "actions": []
+    },
+    {
+      "id": "fin_credit_notes",
+      "title": "Credit notes",
+      "route": "/finance/credit-notes",
+      "area": "finance",
+      "module_key": "MOD-51",
+      "purpose": "Reverse a finalised invoice — draft then post the contra entry.",
       "actions": []
     },
     {

@@ -55,10 +55,26 @@ function maskData(data, maskedKeys = []) {
 async function maskForUser(client, user, data) {
   const userId = user && (user.user_id || user.id);
   if (!userId || user.is_ceo) return data;
-  // eslint-disable-next-line global-require
   const identity = require("../cache/identity-cache");
   const keys = await identity.getMaskedFieldKeys(client, userId);
   return maskData(data, keys);
 }
 
-module.exports = { FIELD_MAP, maskedPropsFor, applyMask, maskData, maskForUser };
+/**
+ * Same as maskForUser but resolves the masked field_keys from the env-INDEPENDENT
+ * identity schema. Use this when the response `data` was read on the env-scoped
+ * business client (req.tenantDb): `field_visibility` lives in the live/identity
+ * schema, so masking must be resolved there — otherwise a LIVE→TEST toggle would
+ * read an empty sandbox `field_visibility` and silently stop masking. `identityDb`
+ * is `req.identityDb` (the always-live connection runner). getMaskedFieldKeys is
+ * Redis-cached (30 s), so this is typically a cache hit, not a DB round-trip.
+ */
+async function maskForUserVia(identityDb, user, data) {
+  const userId = user && (user.user_id || user.id);
+  if (!userId || user.is_ceo) return data;
+  const identity = require("../cache/identity-cache");
+  const keys = await identityDb((client) => identity.getMaskedFieldKeys(client, userId));
+  return maskData(data, keys);
+}
+
+module.exports = { FIELD_MAP, maskedPropsFor, applyMask, maskData, maskForUser, maskForUserVia };

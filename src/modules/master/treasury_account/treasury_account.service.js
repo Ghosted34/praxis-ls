@@ -58,7 +58,7 @@ const listGateways = (client) => repo.listGateways(client);
 async function getGateway(client, provider) {
   const row = await repo.getGatewayRaw(client, provider);
   if (!row) throw new AppError("NOT_FOUND", "Payment gateway not found", 404);
-  return { provider: row.provider, active: row.active, role: row.role, has_credentials: row.credentials_enc != null, updated_at: row.updated_at };
+  return { provider: row.provider, active: row.active, role: row.role, has_credentials: row.credentials_enc !== null, updated_at: row.updated_at };
 }
 async function upsertGateway(client, { provider, active, role, credentials, actor = {} }) {
   const existing = await repo.getGatewayRaw(client, provider);

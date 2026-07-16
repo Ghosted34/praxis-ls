@@ -4,6 +4,12 @@ _Prepared 2026-07-13. Maps `src/modules/*` onto the frontend navigation, and lis
 gaps to close. Excludes `ai/` (its own surface) and `branding` + `catalogue` (these two are
 tabs under **Settings**, per decision)._
 
+> **Update 2026-07-15 (session 4):** every un-built screen now renders a finished **skeleton**
+> (`client/src/features/scaffold/`), and the live **build-map + AI-integration map** (screens/
+> pages/tabs/columns/actions + where the AI model is called) moved to **`doc/FE_IA_BUILD_MAP.md`**.
+> Recommended next screens with verified BE endpoints are in `doc/SESSION_HANDOFF.md`. This file
+> remains the module→IA reference.
+
 **How to read this.** Each top-level module with sub-folders is a **menu group**; its
 sub-folders are **sub-menus**. Every sub-menu is classified as a **Standalone** screen (its
 own nav slot / route) or a **Tab** (rendered inside a parent screen). Tabs list their parent.

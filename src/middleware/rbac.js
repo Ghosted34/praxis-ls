@@ -79,15 +79,16 @@ function requirePermission(moduleKey, action) {
       return next();
     }
 
-    if (!req.tenantDb) {
+    if (!req.identityDb) {
       throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before requirePermission", 500);
     }
 
     // Cached (30 s TTL; permission/role writes invalidate every grants entry)
     // — saves a DB round-trip on every permission-gated request. One
-    // tenantDb call resolves both the grant check and the caller's scope
-    // assignment together.
-    const { grants, scopeIds } = await req.tenantDb(async (client) => ({
+    // identityDb call resolves both the grant check and the caller's scope
+    // assignment together. RBAC grants are identity data (env-independent), so
+    // they resolve against the live schema — same grants under LIVE and TEST.
+    const { grants, scopeIds } = await req.identityDb(async (client) => ({
       grants: await identityCache.getGrants(client, { role_ids: req.user.role_ids, module: moduleKey }),
       scopeIds: await identityCache.getUserScopeIds(client, req.user.user_id),
     }));
@@ -142,10 +143,10 @@ function requireCapability(code) {
       req.is_line_manager = true;
       return next();
     }
-    if (!req.tenantDb) {
+    if (!req.identityDb) {
       throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before requireCapability", 500);
     }
-    const { capabilities, is_line_manager } = await req.tenantDb((client) =>
+    const { capabilities, is_line_manager } = await req.identityDb((client) =>
       identityCache.getUserCapabilities(client, req.user.user_id),
     );
     req.capabilities = capabilities;

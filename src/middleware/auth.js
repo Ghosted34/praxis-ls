@@ -55,13 +55,15 @@ async function authMiddleware(req, _res, next) {
     throw new AppError("INVALID_TOKEN", "Not an access token", 401);
   }
 
-  if (!req.tenantDb) {
+  if (!req.identityDb) {
     throw new AppError("NO_TENANT_CONTEXT", "tenantContext must run before authMiddleware", 500);
   }
 
   // Cached auth projection (30 s TTL + event invalidation on deactivate/
   // role change/session revoke) — saves a DB round-trip on every request.
-  const user = await req.tenantDb((client) => identityCache.getAuthUser(client, payload.sub));
+  // Resolved against the env-independent identity schema (req.identityDb) so a
+  // LIVE→TEST toggle never bounces the user (accounts live in the live schema).
+  const user = await req.identityDb((client) => identityCache.getAuthUser(client, payload.sub));
   if (!user || user.status !== "ACTIVE") {
     throw new AppError("USER_INACTIVE", "User not found or inactive", 401);
   }

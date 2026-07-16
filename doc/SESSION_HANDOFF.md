@@ -3,7 +3,18 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-15 (session 3) — a big session, all Windows-verified. Shipped: (1)
+_Last updated: 2026-07-15 (session 4) — **not yet Windows-verified; run `npm run build --prefix
+client` + `npm run lint` + `npm test`.** Shipped: (a) **Settings tiles** (bank accounts, payment
+gateways, scheduled reports, API keys/AI vendors, pipeline stages [read-only], document numbering)
+in `client/src/features/settings/config-pages.tsx`, routed + registered; (b) **per-tenant PWA** —
+dynamic `/manifest.webmanifest` + `/icons/app-icon-*.png` from branding via sharp
+(`src/routes/pwa.js`, mounted in `server.js`; `vite.config.ts` → `manifest:false` + dev proxies;
+`index.html` link); (c) **screen scaffolds** — all 47 un-built screens now render a finished
+skeleton (header/tabs/planned-columns/AI-actions/BE-status) via
+`client/src/features/scaffold/{screen-scaffold.tsx,screen-specs.ts}` (`<Planned/>` replaced
+`ComingSoon` in `app.tsx`); (d) new **`doc/FE_IA_BUILD_MAP.md`** — work-to-be-done map + AI-
+integration map. See session log "session 4" + "Recommended next screens" below. Session 3 (below)
+— a big session, all Windows-verified. Shipped: (1)
 **test-isolation fix** (`tests/jest.setup.js`); (2) **Finance write forms** — Tax Center filing +
 Credit Notes; (3) **identity pinned to the live schema** (`req.identityDb`) so the LIVE/TEST toggle
 no longer logs you out, + field-mask coherence; (4) **LIVE/TEST toggle polish** (soft switch,
@@ -272,6 +283,74 @@ Closed the two residual identity-coherence items from part 2.
    `app-shell.tsx` (both verified complete on disk via the file tool). **Windows
    `npm run build --prefix client` is the authoritative check for this session's FE.**
 
+## Session log — 2026-07-15 (session 4: Settings tiles + per-tenant PWA + screen scaffolds)
+
+**Not yet Windows-verified** (sandbox mount corruption recurred on the heavily-edited `app.tsx`
+— in-sandbox `tsc` reports a bogus `(208,x) TS1127 Invalid character`; the real file is clean at
+207 lines via the file tool). **Authoritative check: `npm run build --prefix client` + `npm run
+lint` + `npm test` on Windows.** Backend `node --check` + `eslint` are clean on the new server
+files.
+
+1. **Settings tiles built** — new `client/src/features/settings/config-pages.tsx` (same primitives
+   as `master-data-pages.tsx`): **Bank accounts** (`/treasury-accounts`, entity picker from
+   `/entities`), **Payment gateways** (`/payment-gateways`, credentials write-only),
+   **Scheduled reports** (`/reports/scheduled` + `/reports/catalogue`), **API keys & secrets**
+   (`/ai/governance/vendors` + `/:vendor/test`), **Pipeline stages** (`/opportunities/stages`,
+   read-only — no stage CRUD in BE), **Document numbering** (`/numbering-schemes/:moduleKey` +
+   `/catalogue/modules`). Routed in `app.tsx` (replaced the `ComingSoon` slots), `screen-registry.json`
+   entries added. Settings-hub cards already pointed here.
+2. **Per-tenant PWA** — `src/routes/pwa.js` serves **`GET /manifest.webmanifest`** (name/short_name/
+   theme_color from branding, Host-resolved) and **`/icons/app-icon-{192,512}.png`** + a maskable
+   variant (tenant logo via sharp `fit:contain`, else a brand-coloured monogram; never throws;
+   in-process + `Cache-Control` cache). Mounted in `server.js` **before** the SPA catch-all.
+   `vite.config.ts` → `VitePWA({ manifest:false, registerType:'autoUpdate', workbox:{…} })` + dev
+   proxies for `/manifest.webmanifest` and `/icons`; `index.html` adds the manifest link +
+   apple-touch-icon. Subdomain-per-tenant = one origin per tenant, so manifest/SW/install are
+   naturally per-tenant. `sharp@0.33.5` + `vite-plugin-pwa@0.20.5` were already in the deps.
+   **Verify with Lighthouse + a real install on two tenant subdomains.**
+3. **Screen scaffolds (all 47 un-built screens)** — `client/src/features/scaffold/screen-scaffold.tsx`
+   (the `ScreenScaffold` + `<Planned/>` wrapper) renders a finished skeleton: area/title, a
+   **BE-status badge** (ready/partial/readonly/none), primary action buttons, **tabs**, the planned
+   **table columns** with an "awaiting backend integration" state, and an **AI-actions** panel.
+   The catalogue is `client/src/features/scaffold/screen-specs.ts` (47 typed specs; also the source
+   for the doc). `app.tsx` now points every un-built route at `<Planned/>` (was `ComingSoon`).
+   `features/placeholder/coming-soon.tsx` is now **unused** (safe to delete; only referenced in
+   comments).
+4. **New doc `doc/FE_IA_BUILD_MAP.md`** — the work-to-be-done map (screens/pages/tabs/columns/
+   actions grouped by area, for design/Pixie inspiration) **plus the AI-integration map** (every
+   screen/tab where the AI model can be invoked; `assist` = genuine LLM step). Central assistant:
+   `POST /api/tenant/ai/ask` (+ `/actions/:id/confirm`), feature `ai.assistant.backend`; every
+   module registers `reads`+`writes` tools via `<module>.ai.js`.
+5. **Correction to a prior note:** `finance/debt` is **not** partial — it's full CRUD at basePath
+   **`/financing`** (GET/POST/PATCH/DELETE + `/:id/drawdown` + `/:id/repay`, MOD-53). Marked
+   **ready** in the specs + build map.
+
+## Recommended next screens (BE endpoints verified — hand to Pixie for design inspo)
+
+All **ready** (endpoints confirmed by reading each `*.routes.js`); build by wiring, following
+`config-pages.tsx` / `master-data-pages.tsx`. Route = FE path; BE = API basePath under
+`/api/tenant`. ⭐ = strong Pixie-inspo candidate (distinctive layout).
+
+| Screen | FE route | BE endpoints (module) | Notes |
+|---|---|---|---|
+| **Clients** | `/master/clients` | `GET/POST /clients`, `PATCH /clients/:id`, `GET /clients/:id/credit` (MOD-03) | Master registry; referenced everywhere. Easy first win. |
+| **Suppliers** | `/master/suppliers` | `GET/POST /suppliers`, `PATCH /suppliers/:id` (MOD-04) | Twin of Clients. |
+| **Corporate entities** | `/master/corporate-entities` | `GET/POST /entities`, `PATCH /entities/:id`, `POST /entities/:id/active` (MOD-01) | Unlocks Business setup; already consumed by Bank accounts. |
+| ⭐ **Operations files (dossiers)** | `/operations/files` | `GET/POST /operations`, `PATCH /operations/:id`, `POST /operations/:id/transition`, `GET /operations/:id/360` (MOD-29) + milestones `/milestones/dossier/:id`,`/instantiate`,`/:id/advance` (MOD-31) + `/transit-orders` (MOD-30) + `/delivery-notes` (MOD-32) | The operational hub — a tabbed dossier workspace (360 view, milestones timeline, transit orders, delivery notes). Best single build. |
+| ⭐ **Opportunities (pipeline)** | `/sales/opportunities` | `GET /opportunities/board\|stages`, `GET/POST /opportunities`, `PATCH /opportunities/:id`, `POST /opportunities/:id/move\|win\|lose` (MOD-24) | **Kanban board** with drag-to-move + weighted-value forecast. High-visual Pixie candidate. |
+| **Leads + inbound intake** | `/sales/leads` | leads `GET/POST /leads`,`PATCH /leads/:id`,`POST /leads/:id/transition\|convert` (MOD-20); intake `/inbound/enquiries\|partnerships` + `/enquiries/:id/triage` (MOD-25) | Funnel top; AI **triage** assist. |
+| ⭐ **Supplier invoices (AP + 3-way match)** | `/procurement/supplier-invoices` | `GET/POST /supplier-invoices`, `POST /supplier-invoices/:id/match`, `POST /supplier-invoices/:id/post` (MOD-61) | Invoices tab + a **three-way-match** panel (PR↔PO↔GRN↔invoice); AI-assist match. |
+| **Cash requests + Régie** | `/costing/cash-requests`, `/costing/regie` | cash `/cash-requests` (+`/:id/transition\|disburse\|justify`, MOD-49); régie `/regie` (+`/issue`,`/age-due`) | Disbursement + advance lifecycle. |
+| **Financing & debt** | `/finance/debt` | `GET/POST /financing`, `PATCH/DELETE /financing/:id`, `POST /financing/:id/drawdown\|repay` (MOD-53) | Full CRUD (corrected). Loan register + drawdown/repay. |
+| ⭐ **Reports** | `/vault/reports` | `GET /reports/catalogue`, `GET /reports/run/:key`, `GET/POST /reports/saved`, `GET/PUT /reports/tiles` (MOD-63) | Report runner + saved reports + dashboard-tile picker. Feeds the Control Tower. |
+| **Compliance flags** | `/vault/compliance-flags` | `GET /compliance/catalogue`, `GET /compliance`, `POST /compliance/run`, `POST /compliance/:id/resolve` (MOD-65) | Rules catalogue + flag queue + resolve. |
+| ⭐ **Portal access** | `/portal/access` | `GET/POST /portals/access`, `POST /portals/access/:id/revoke`, `GET /portals/client\|investor\|auditor` (portal) | Grant manager + external client/investor/auditor read views. |
+
+**My pick order if I keep going:** (1) Clients + Suppliers + Corporate entities (fast, unblock
+everything), (2) ⭐ Operations files (the hub), (3) ⭐ Opportunities board, (4) ⭐ Supplier invoices
+(3-way match), (5) ⭐ Reports, (6) ⭐ Portal access. The ⭐ four are the ones worth pulling Pixie
+layouts for; the master-data trio reuse the existing table+modal pattern as-is.
+
 ## Open questions — ANSWERED by BE dev (2026-07-15)
 
 1. **Shared identity across LIVE/TEST? — RESOLVED: YES + IMPLEMENTED (2026-07-15).** Identity is
@@ -326,21 +405,25 @@ Closed the two residual identity-coherence items from part 2.
 
 **Pick up here (priority order):**
 
-1. **Build more Settings tiles — endpoints verified, no BE blocker.** Follow the pattern in
-   `client/src/features/settings/master-data-pages.tsx`. Ready now: bank accounts
-   `/treasury-accounts`, payment gateways `/payment-gateways`, scheduled reports
-   `/reports/scheduled`, pipeline stages `/opportunities/stages`, numbering `/numbering-schemes`,
-   email signatures app_user `/:id/signature`, catalogue `/catalogue`, AI vendor keys
-   `/ai/governance/vendors`. (Full map in Open question #3.)
-2. **Per-tenant PWA** (Phase 0) — dynamic `GET /manifest.webmanifest` (tenant-resolved from Host,
-   built from branding: name / theme_color=primary / icons from logoUrl via sharp) +
-   `vite-plugin-pwa` (`manifest:false`, `registerType:'autoUpdate'`). Subdomain-per-tenant means
-   each tenant is its own origin, so manifest/SW/install are naturally per-tenant. Verify with
-   Lighthouse + a real install on two tenant subdomains.
-3. **QuickPIN** — BE dev is adding the `user_device` migration (live schema); smoke-test
+0. **FIRST: Windows-verify session 4.** Run `npm run build --prefix client`, `npm run lint`,
+   `npm test`; fix anything, then commit. (Sandbox couldn't typecheck `app.tsx` — mount corruption.)
+1. **Wire the "ready" screens — replace scaffolds with real pages.** Every un-built screen now
+   renders a `<Planned/>` skeleton from `client/src/features/scaffold/screen-specs.ts`; convert
+   them to live pages following `config-pages.tsx` / `master-data-pages.tsx`. **Priorities + exact
+   BE endpoints are in "Recommended next screens" above** — start with the master-data trio
+   (Clients/Suppliers/Corporate entities), then the ⭐ hubs (Operations files, Opportunities board,
+   Supplier invoices 3-way match, Reports, Portal access). Full screen/tab/AI map: `doc/FE_IA_BUILD_MAP.md`.
+2. **Settings tiles — DONE (session 4).** Bank accounts, payment gateways, scheduled reports, API
+   keys, pipeline stages (read-only), numbering all built in `config-pages.tsx`. Remaining tiles
+   have **no BE** (custom fields, document templates, business policies, factory languages, help
+   center) or need a BE tweak (email signatures self-service route). See build map §3.
+3. **Per-tenant PWA — DONE (session 4)** (`src/routes/pwa.js` + `vite.config.ts` + `index.html`).
+   Left to do: Lighthouse audit + real install on two tenant subdomains; optionally feed
+   `background_color` from branding and pre-generate maskable icons.
+4. **QuickPIN** — BE dev is adding the `user_device` migration (live schema); smoke-test
    register/login once it lands (FE + controllers already wired).
-4. **Later:** Control Tower dashboard on live data (still the static Lovable iframe mock); platform
-   console UI.
+5. **Later:** Control Tower dashboard on live data (still the static Lovable iframe mock; feed tiles
+   from `/reports/tiles` once Reports is built); platform/godmode console UI.
 
 **Notify the BE dev — only these Settings tiles have NO endpoint:** custom fields, document
 templates (only milestone/smartcomm templates exist), business policies (maybe the `/settings`

@@ -18,6 +18,7 @@ const { config } = require("./config/env");
 const { logger } = require("./config/logger");
 const { initRedis } = require("./config/redis");
 const routes = require("./routes");
+const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
@@ -64,6 +65,11 @@ function buildApp() {
   app.use(express.urlencoded({ extended: true }));
 
   app.use("/api", routes);
+
+  // Per-tenant PWA: dynamic /manifest.webmanifest + /icons/app-icon-*.png, both
+  // Host-resolved from branding. Mounted before the SPA catch-all so these exact
+  // paths aren't swallowed by index.html fallback. See src/routes/pwa.js.
+  app.use(pwaRouter);
 
   // Local storage driver serves stored files at /media/<key>. Flat static mount
   // — fine for public assets (tenant logos); sensitive documents need an

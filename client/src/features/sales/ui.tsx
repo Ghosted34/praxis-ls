@@ -150,3 +150,183 @@ export function MetricTile({ label, value, accent }: { label: string; value: str
     </div>
   );
 }
+
+/**
+ * SearchSelect — debounced typeahead over a BE list endpoint. It sends `?q=<term>`
+ * (server-side ILIKE where the module supports it) AND narrows the returned rows
+ * client-side, so it also works against endpoints that ignore `q` (small lists).
+ *
+ *  - Selecting a row calls onSelect(row).
+ *  - allowFreeText: the typed string can be committed as-is via onFreeText (for
+ *    free-text columns like a lead's company_name).
+ *  - onCreate: when a search yields no rows, an "Add …" action appears so the
+ *    user can create the missing record inline (wire it to the create modal).
+ *
+ * Styled on the app --primary tokens to match the rest of features/sales/ui.tsx.
+ */
+export function SearchSelect({
+  path,
+  value,
+  placeholder,
+  disabled,
+  getLabel,
+  getKey,
+  onSelect,
+  allowFreeText,
+  onFreeText,
+  onCreate,
+  createLabel,
+  queryParam = "q",
+  limit = 20,
+}: {
+  path: string;
+  value?: string | null;
+  placeholder?: string;
+  disabled?: boolean;
+  getLabel: (row: Row) => string;
+  getKey: (row: Row) => string;
+  onSelect: (row: Row) => void;
+  allowFreeText?: boolean;
+  onFreeText?: (text: string) => void;
+  onCreate?: (term: string) => void;
+  createLabel?: (term: string) => string;
+  queryParam?: string;
+  limit?: number;
+}) {
+  const [term, setTerm] = React.useState("");
+  const [open, setOpen] = React.useState(false);
+  const [rows, setRows] = React.useState<Row[] | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const boxRef = React.useRef<HTMLDivElement>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    let live = true;
+    setLoading(true);
+    const h = setTimeout(() => {
+      const sep = path.includes("?") ? "&" : "?";
+      const qs = `${sep}${queryParam}=${encodeURIComponent(term)}&limit=${limit}`;
+      tenant<Row[]>(`${path}${qs}`)
+        .then((d) => {
+          if (!live) return;
+          const list = Array.isArray(d) ? d : [];
+          const t = term.trim().toLowerCase();
+          // Client-side narrowing safety net for endpoints that ignore ?q=.
+          setRows(t ? list.filter((r) => getLabel(r).toLowerCase().includes(t)) : list);
+        })
+        .catch(() => live && setRows([]))
+        .finally(() => live && setLoading(false));
+    }, 250);
+    return () => {
+      live = false;
+      clearTimeout(h);
+    };
+  }, [term, open, path, queryParam, limit, getLabel]);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const onDoc = (e: MouseEvent) => {
+      if (boxRef.current && !boxRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [open]);
+
+  function pick(row: Row) {
+    onSelect(row);
+    setOpen(false);
+    setTerm("");
+  }
+  function commitFreeText() {
+    const t = term.trim();
+    if (allowFreeText && onFreeText && t) {
+      onFreeText(t);
+      setOpen(false);
+      setTerm("");
+    }
+  }
+
+  const showCreate = !!onCreate && !!term.trim() && rows !== null && rows.length === 0 && !loading;
+
+  return (
+    <div ref={boxRef} className="relative">
+      {!open ? (
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={() => {
+            setOpen(true);
+            setRows(null);
+          }}
+          className="flex w-full items-center justify-between rounded-lg border bg-background px-3 py-2 text-left text-sm disabled:opacity-50"
+        >
+          <span className={value ? "text-foreground" : "text-muted-foreground"}>{value || placeholder || "Search…"}</span>
+          <span className="text-muted-foreground">▾</span>
+        </button>
+      ) : (
+        <input
+          autoFocus
+          value={term}
+          placeholder={placeholder || "Type to search…"}
+          onChange={(e) => setTerm(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              commitFreeText();
+            }
+            if (e.key === "Escape") setOpen(false);
+          }}
+          className="w-full rounded-lg border bg-background px-3 py-2 text-sm"
+        />
+      )}
+      {open && (
+        <div className="absolute z-50 mt-1 max-h-64 w-full overflow-auto rounded-lg border bg-popover p-1 shadow-lg">
+          {loading && <p className="px-3 py-2 text-sm text-muted-foreground">Searching…</p>}
+          {!loading &&
+            rows &&
+            rows.map((r) => (
+              <button
+                key={getKey(r)}
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  pick(r);
+                }}
+                className="block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-muted"
+              >
+                {getLabel(r)}
+              </button>
+            ))}
+          {!loading && rows && rows.length === 0 && !showCreate && !allowFreeText && (
+            <p className="px-3 py-2 text-sm text-muted-foreground">No matches.</p>
+          )}
+          {allowFreeText && term.trim() && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                commitFreeText();
+              }}
+              className="block w-full rounded-md px-3 py-2 text-left text-sm text-foreground hover:bg-muted"
+            >
+              Use “{term.trim()}”
+            </button>
+          )}
+          {showCreate && (
+            <button
+              type="button"
+              onMouseDown={(e) => {
+                e.preventDefault();
+                onCreate!(term.trim());
+                setOpen(false);
+              }}
+              className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-primary hover:bg-primary/10"
+            >
+              ＋ {createLabel ? createLabel(term.trim()) : `Add “${term.trim()}”`}
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}

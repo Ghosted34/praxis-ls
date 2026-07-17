@@ -40,8 +40,14 @@ async function tryRefresh(): Promise<boolean> {
       .then(async (r) => {
         if (!r.ok) return false;
         const j = await r.json();
-        if (j.access_token) {
-          tokenStore.setAccess(j.access_token);
+        // Unwrap { data: ... } if the endpoint wraps its payload.
+        const d = j && typeof j === "object" && "data" in j ? j.data : j;
+        if (d && d.access_token) {
+          tokenStore.setAccess(d.access_token);
+          // Refresh-token rotation: if the BE rotates and returns a new refresh
+          // token, persist it (into whichever store the keep-signed-in choice
+          // selected). Today the BE returns access only, so this is a no-op.
+          if (d.refresh_token) tokenStore.setRefresh(d.refresh_token);
           return true;
         }
         return false;

@@ -70,9 +70,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setStatus("anon");
       return;
     }
-    tenant<{ access_token: string }>("/auth/refresh", { method: "POST", auth: false, body: { refresh_token } })
+    tenant<{ access_token: string; refresh_token?: string }>("/auth/refresh", { method: "POST", auth: false, body: { refresh_token } })
       .then((r) => {
         tokenStore.setAccess(r.access_token);
+        // Support refresh-token rotation if the BE returns a new one on refresh.
+        if (r.refresh_token) tokenStore.setRefresh(r.refresh_token);
         setUser(readUser());
         setStatus("authed");
       })

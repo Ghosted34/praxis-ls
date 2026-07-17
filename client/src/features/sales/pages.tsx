@@ -1,8 +1,8 @@
 /**
  * Sales & CRM — funnel screens wired to live endpoints.
- *   - LeadsPage         → MOD-20 /leads  (+ folded-in Inbound intake, MOD-25 /inbound)
- *   - MeetingsPage      → MOD-21 /meetings (+ /:id notes)
- *   - OpportunitiesPage → MOD-24 /opportunities (Kanban board + list; move/win/lose)
+ *   - LeadsPage         → /leads  (+ folded-in Inbound intake, /inbound)
+ *   - MeetingsPage      → /meetings (+ /:id notes)
+ *   - OpportunitiesPage → /opportunities (Kanban board + list; move/win/lose)
  *
  * Design: the Pixie "Hub" CRM reference (dark command-centre) — tabbed header,
  * a filter-chip row and avatar list-rows for the funnel — re-expressed through
@@ -23,9 +23,9 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Segmented, Chips, Avatar, MetricTile } from "./ui";
+import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Segmented, Chips, Avatar, MetricTile, SearchSelect } from "./ui";
 
-/* ═══════════════════════════════════ LEADS (MOD-20) ═══════════════════════════════════ */
+/* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
 const LEADS_AI: AiAction[] = [
   { label: "Triage inbound enquiry", kind: "assist", describe: "Triage an enquiry into a qualified lead (optionally converting it)." },
@@ -91,11 +91,20 @@ function LeadForm({ open, editing, onClose, onSaved }: { open: boolean; editing:
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit lead" : "Capture lead"} description="Top of the sales funnel — qualify, then convert into a client (MOD-20)." size="lg">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit lead" : "Capture lead"} description="Top of the sales funnel — qualify, then convert into a client." size="lg">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Company" required className="sm:col-span-2">
-            <Input value={company} onChange={(e) => setCompany(e.target.value)} placeholder="Acme Logistics SARL" />
+          <Field label="Company" required className="sm:col-span-2" hint="Search existing clients, or type a new company">
+            <SearchSelect
+              path="/clients"
+              value={company || null}
+              placeholder="Search clients or type a new company…"
+              getLabel={(r) => String(r.name ?? "")}
+              getKey={(r) => String(r.client_id ?? r.name)}
+              onSelect={(r) => setCompany(String(r.name ?? ""))}
+              allowFreeText
+              onFreeText={(t) => setCompany(t)}
+            />
           </Field>
           <Field label="Contact name">
             <Input value={contact} onChange={(e) => setContact(e.target.value)} placeholder="Jane Doe" />
@@ -170,7 +179,7 @@ function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onClose: ()
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Convert to client" description="Promote this qualified lead into the client master and link it back (MOD-20 → MOD-03).">
+    <Modal open={open} onClose={onClose} title="Convert to client" description="Promote this qualified lead into the client master and link it back(→).">
       <div className="space-y-4">
         <div className="grid gap-4">
           <Field label="Legal name" required>
@@ -317,7 +326,7 @@ function LeadsTab() {
   );
 }
 
-/* ═══════════════════════════════ INBOUND INTAKE (MOD-25) ═══════════════════════════════ */
+/* ═══════════════════════════════ INBOUND INTAKE ═══════════════════════════════ */
 
 function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null; onClose: () => void; onDone: () => void }) {
   const open = !!enquiry;
@@ -349,7 +358,7 @@ function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null; onClos
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Triage enquiry" description="Route this website/email enquiry into the funnel (MOD-25).">
+    <Modal open={open} onClose={onClose} title="Triage enquiry" description="Route this website/email enquiry into the funnel.">
       <div className="space-y-4">
         {enquiry && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -410,7 +419,7 @@ function ReviewModal({ partnership, onClose, onDone }: { partnership: Row | null
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Review partnership request" description="Decide on an inbound partnership proposal (MOD-25).">
+    <Modal open={open} onClose={onClose} title="Review partnership request" description="Decide on an inbound partnership proposal.">
       <div className="space-y-4">
         {partnership && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -537,7 +546,7 @@ export function LeadsPage() {
     <section className="mx-auto max-w-5xl animate-fade-in">
       <header className="mb-5">
         <h1 className="font-display text-2xl tracking-tight">Leads & intake</h1>
-        <p className="mt-1 text-sm text-muted-foreground">The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them (MOD-20 · MOD-25).</p>
+        <p className="mt-1 text-sm text-muted-foreground">The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them(·).</p>
       </header>
 
       <div className="mb-5">
@@ -558,7 +567,7 @@ export function LeadsPage() {
   );
 }
 
-/* ═══════════════════════════════════ MEETINGS (MOD-21) ═══════════════════════════════════ */
+/* ═══════════════════════════════════ MEETINGS ═══════════════════════════════════ */
 
 const MEETINGS_AI: AiAction[] = [
   { label: "Summarise minutes", kind: "assist", describe: "Summarise a meeting's notes/transcript into concise minutes and action items." },
@@ -603,7 +612,7 @@ function MeetingForm({ open, leads, clients, onClose, onSaved }: { open: boolean
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Schedule meeting" description="Log a meeting against a lead or client — the CRM activity trail (MOD-21)." size="lg">
+    <Modal open={open} onClose={onClose} title="Schedule meeting" description="Log a meeting against a lead or client — the CRM activity trail." size="lg">
       <div className="space-y-4">
         <Field label="Subject" required>
           <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Kickoff call — freight contract" />
@@ -702,7 +711,7 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
   const notes = (data?.notes as Row[] | undefined) || [];
 
   return (
-    <Modal open={open} onClose={onClose} title={meeting ? cell(meeting.subject) : "Meeting"} description="Notes and minutes for this meeting (MOD-21)." size="lg">
+    <Modal open={open} onClose={onClose} title={meeting ? cell(meeting.subject) : "Meeting"} description="Notes and minutes for this meeting." size="lg">
       <div className="space-y-4">
         {error && <ErrorState message={error} />}
         {data === null && !error ? (
@@ -776,7 +785,7 @@ export function MeetingsPage() {
       <header className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Meetings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Scheduling and minutes against a lead or client — the CRM activity log (MOD-21).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Scheduling and minutes against a lead or client — the CRM activity log.</p>
         </div>
         <Button onClick={() => setFormOpen(true)}>Schedule meeting</Button>
       </header>
@@ -820,7 +829,7 @@ export function MeetingsPage() {
   );
 }
 
-/* ═══════════════════════════════ OPPORTUNITIES (MOD-24) ═══════════════════════════════ */
+/* ═══════════════════════════════ OPPORTUNITIES ═══════════════════════════════ */
 
 const OPP_AI: AiAction[] = [
   { label: "Pipeline health", kind: "read", describe: "Summarise the open pipeline — stage counts, weighted value and stalled deals." },
@@ -886,7 +895,7 @@ function OpportunityForm({ open, editing, stages, leads, clients, onClose, onSav
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit opportunity" : "New opportunity"} description="A deal in the sales pipeline — value × probability drives the weighted forecast (MOD-24)." size="lg">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit opportunity" : "New opportunity"} description="A deal in the sales pipeline — value × probability drives the weighted forecast." size="lg">
       <div className="space-y-4">
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Acme — Q3 freight contract" />
@@ -1006,7 +1015,7 @@ function WinModal({ opp, entities, onClose, onDone }: { opp: Row | null; entitie
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Mark opportunity won" description="Settle this deal — optionally open the delivery dossier and link it (MOD-24 → MOD-29).">
+    <Modal open={open} onClose={onClose} title="Mark opportunity won" description="Settle this deal — optionally open the delivery dossier and link it(→).">
       <div className="space-y-4">
         {opp && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
@@ -1116,7 +1125,7 @@ export function OpportunitiesPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Opportunities</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The sales pipeline — drag deals across stages; value × probability is the weighted forecast (MOD-24).</p>
+          <p className="mt-1 text-sm text-muted-foreground">The sales pipeline — drag deals across stages; value × probability is the weighted forecast.</p>
         </div>
         <div className="flex items-center gap-3">
           <Segmented
@@ -1301,7 +1310,7 @@ export function OpportunitiesPage() {
   );
 }
 
-/* ═══════════════════════════════════ PROPOSALS (MOD-23) ═══════════════════════════════════ */
+/* ═══════════════════════════════════ PROPOSALS ═══════════════════════════════════ */
 
 const PROPOSAL_AI: AiAction[] = [
   { label: "Draft proposal", kind: "assist", describe: "Draft a proposal — narrative sections + line items — from an opportunity or brief (human-reviewed before send)." },
@@ -1394,7 +1403,7 @@ function ProposalForm({ open, editing, leads, clients, opportunities, onClose, o
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit proposal" : "New proposal"} description="Narrative sections + priced line items — drafted, reviewed, then sent (MOD-23)." size="xl">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit proposal" : "New proposal"} description="Narrative sections + priced line items — drafted, reviewed, then sent." size="xl">
       <div className="space-y-4">
         <Field label="Title" required>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Freight & customs — Acme 2026" />
@@ -1567,7 +1576,7 @@ function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit }: { pr
   const doAccept = () => run(() => tenant(`/proposals/${id}/accept`, { method: "POST", body: { create_quotation: createQuotation, entity_id: createQuotation ? entityId : undefined } }));
 
   return (
-    <Modal open={open} onClose={onClose} title={proposal ? cell(proposal.title) : "Proposal"} description="Review the proposal, then move it through its lifecycle (MOD-23)." size="xl">
+    <Modal open={open} onClose={onClose} title={proposal ? cell(proposal.title) : "Proposal"} description="Review the proposal, then move it through its lifecycle." size="xl">
       <div className="space-y-4">
         {error && <ErrorState message={error} />}
         {data === null && !error ? (
@@ -1740,7 +1749,7 @@ export function ProposalsPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Proposals</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Formal proposals with narrative + line items — drafted, reviewed, sent, then accepted (MOD-23).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Formal proposals with narrative + line items — drafted, reviewed, sent, then accepted.</p>
         </div>
         <Button
           onClick={() => {
@@ -1810,7 +1819,7 @@ export function ProposalsPage() {
   );
 }
 
-/* ═══════════════════════════════ MARKETING CAMPAIGNS (MOD-22) ═══════════════════════════════ */
+/* ═══════════════════════════════ MARKETING CAMPAIGNS ═══════════════════════════════ */
 
 const CAMPAIGN_AI: AiAction[] = [
   { label: "Draft campaign copy", kind: "assist", describe: "Draft subject lines / body copy for a channel (human-reviewed before send)." },
@@ -1857,7 +1866,7 @@ function CampaignForm({ open, onClose, onSaved }: { open: boolean; onClose: () =
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="New campaign" description="An outbound campaign — activate, pause or end it as it runs (MOD-22)." size="lg">
+    <Modal open={open} onClose={onClose} title="New campaign" description="An outbound campaign — activate, pause or end it as it runs." size="lg">
       <div className="space-y-4">
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 freight promo" />
@@ -1923,7 +1932,7 @@ function SubscriberForm({ open, onClose, onSaved }: { open: boolean; onClose: ()
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Add subscriber" description="Add someone to the newsletter audience (MOD-22).">
+    <Modal open={open} onClose={onClose} title="Add subscriber" description="Add someone to the newsletter audience.">
       <div className="space-y-4">
         <Field label="Email" required>
           <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="jane@acme.cm" />
@@ -1950,14 +1959,96 @@ function SubscriberForm({ open, onClose, onSaved }: { open: boolean; onClose: ()
   );
 }
 
+/* Campaign email templates persist in the generic tenant settings store under the
+ * `campaign_template` section (one key per template; value carries the template's
+ * own sender identity). This needs Settings (MOD-70) permission today — see the BE
+ * handoff note for the proposed dedicated marketing-template + send endpoints. */
+const CAMPAIGN_TPL_SECTION = "/settings/campaign_template";
+const tplSlug = (s: string) =>
+  s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 60) || `tpl-${Date.now()}`;
+
+function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; editing: { key: string; value: Row } | null; onClose: () => void; onSaved: () => void }) {
+  const [name, setName] = React.useState("");
+  const [subject, setSubject] = React.useState("");
+  const [fromName, setFromName] = React.useState("");
+  const [fromAddress, setFromAddress] = React.useState("");
+  const [body, setBody] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    const v = (editing?.value || {}) as Row;
+    setName(v.name ? String(v.name) : "");
+    setSubject(v.subject ? String(v.subject) : "");
+    setFromName(v.from_name ? String(v.from_name) : "");
+    setFromAddress(v.from_address ? String(v.from_address) : "");
+    setBody(v.body_html ? String(v.body_html) : "");
+    setError(null);
+  }, [open, editing]);
+
+  const canSubmit = !!name.trim() && !!fromAddress.trim() && !busy;
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    const key = editing?.key || tplSlug(name);
+    const value = { name: name.trim(), subject: subject.trim(), from_name: fromName.trim(), from_address: fromAddress.trim(), body_html: body };
+    try {
+      await tenant(`${CAMPAIGN_TPL_SECTION}/${encodeURIComponent(key)}`, { method: "PUT", body: { value } });
+      onSaved();
+      onClose();
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title={editing ? "Edit template" : "New email template"} description="A reusable campaign email with its own sender identity." size="lg">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Template name" required className="sm:col-span-2">
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Monthly newsletter" />
+          </Field>
+          <Field label="Subject" className="sm:col-span-2">
+            <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="What's new this month" />
+          </Field>
+          <Field label="Sender name" hint="Shown as the From name">
+            <Input value={fromName} onChange={(e) => setFromName(e.target.value)} placeholder="Praxis LS" />
+          </Field>
+          <Field label="Sender address" required hint="This template's own From address">
+            <Input type="email" value={fromAddress} onChange={(e) => setFromAddress(e.target.value)} placeholder="news@tenant.cm" />
+          </Field>
+          <Field label="Body" className="sm:col-span-2" hint="HTML or plain text">
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="<p>Hello…</p>" className="w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+          </Field>
+        </div>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>
+            Cancel
+          </Button>
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
+            {editing ? "Save template" : "Create template"}
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 export function CampaignsPage() {
-  const [tab, setTab] = React.useState<"campaigns" | "subscribers">("campaigns");
+  const [tab, setTab] = React.useState<"campaigns" | "subscribers" | "templates">("campaigns");
   const [nonce, setNonce] = React.useState(0);
   const reload = () => setNonce((n) => n + 1);
   const { rows: campaigns, error } = useList("/campaigns", nonce);
   const { rows: subscribers } = useList("/campaigns/subscribers", nonce);
+  const { rows: templates } = useList(CAMPAIGN_TPL_SECTION, nonce);
   const [formOpen, setFormOpen] = React.useState(false);
   const [subOpen, setSubOpen] = React.useState(false);
+  const [tplEditing, setTplEditing] = React.useState<{ key: string; value: Row } | null>(null);
+  const [tplOpen, setTplOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
 
@@ -1975,6 +2066,11 @@ export function CampaignsPage() {
   }
   const transition = (id: string, to: string) => act(id, () => tenant(`/campaigns/${id}/transition`, { method: "POST", body: { to } }));
   const unsubscribe = (email: string) => act(email, () => tenant("/campaigns/subscribers/unsubscribe", { method: "POST", body: { email } }));
+  const deleteTemplate = (key: string) => act(key, () => tenant(`${CAMPAIGN_TPL_SECTION}/${encodeURIComponent(key)}`, { method: "DELETE" }));
+  const openTemplate = (t: { key: string; value: Row } | null) => {
+    setTplEditing(t);
+    setTplOpen(true);
+  };
 
   const counts = React.useMemo(() => {
     const cs = campaigns || [];
@@ -1990,7 +2086,7 @@ export function CampaignsPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Marketing campaigns</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Outbound campaigns and the newsletter audience — launch, pause, measure (MOD-22).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Outbound campaigns and the newsletter audience — launch, pause, measure.</p>
         </div>
         <div className="flex items-center gap-3">
           <Segmented
@@ -1999,9 +2095,16 @@ export function CampaignsPage() {
             options={[
               { value: "campaigns", label: "Campaigns" },
               { value: "subscribers", label: "Subscribers" },
+              { value: "templates", label: "Templates" },
             ]}
           />
-          {tab === "campaigns" ? <Button onClick={() => setFormOpen(true)}>New campaign</Button> : <Button onClick={() => setSubOpen(true)}>Add subscriber</Button>}
+          {tab === "campaigns" ? (
+            <Button onClick={() => setFormOpen(true)}>New campaign</Button>
+          ) : tab === "subscribers" ? (
+            <Button onClick={() => setSubOpen(true)}>Add subscriber</Button>
+          ) : (
+            <Button onClick={() => openTemplate(null)}>New template</Button>
+          )}
         </div>
       </header>
 
@@ -2055,10 +2158,11 @@ export function CampaignsPage() {
             })}
           </div>
         )
-      ) : subscribers === null ? (
-        <LoadingRow label="Loading subscribers…" />
-      ) : subscribers.length === 0 ? (
-        <EmptyState title="No subscribers yet" hint="Add subscribers, or they arrive via the public newsletter form." />
+      ) : tab === "subscribers" ? (
+        subscribers === null ? (
+          <LoadingRow label="Loading subscribers…" />
+        ) : subscribers.length === 0 ? (
+          <EmptyState title="No subscribers yet" hint="Add subscribers, or they arrive via the public newsletter form." />
       ) : (
         <div className="space-y-2">
           {subscribers.map((s) => {
@@ -2077,6 +2181,36 @@ export function CampaignsPage() {
                 </Button>
               </div>
             );
+            })}
+          </div>
+        )
+      ) : templates === null ? (
+        <LoadingRow label="Loading templates…" />
+      ) : (templates || []).length === 0 ? (
+        <EmptyState title="No email templates yet" hint="Create a reusable campaign email — each carries its own sender name and address." />
+      ) : (
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          {(templates || []).map((t) => {
+            const key = String(t.key);
+            const v = (t.value || {}) as Row;
+            return (
+              <div key={key} className="lux-card flex flex-col p-4">
+                <p className="text-sm font-semibold text-foreground">{cell(v.name) === "—" ? key : cell(v.name)}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">{cell(v.subject)}</p>
+                <p className="mt-1 truncate text-xs text-muted-foreground">
+                  From: {cell(v.from_name) === "—" ? "" : `${cell(v.from_name)} · `}
+                  {cell(v.from_address)}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Button size="sm" variant="outline" onClick={() => openTemplate({ key, value: v })}>
+                    Edit
+                  </Button>
+                  <Button size="sm" variant="ghost" loading={rowBusy === key} onClick={() => deleteTemplate(key)}>
+                    Delete
+                  </Button>
+                </div>
+              </div>
+            );
           })}
         </div>
       )}
@@ -2085,11 +2219,12 @@ export function CampaignsPage() {
 
       <CampaignForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={reload} />
       <SubscriberForm open={subOpen} onClose={() => setSubOpen(false)} onSaved={reload} />
+      <TemplateForm open={tplOpen} editing={tplEditing} onClose={() => setTplOpen(false)} onSaved={reload} />
     </section>
   );
 }
 
-/* ═══════════════════════════════ SUCCESS STORIES (MOD-26) ═══════════════════════════════ */
+/* ═══════════════════════════════ SUCCESS STORIES ═══════════════════════════════ */
 
 const STORY_AI: AiAction[] = [
   { label: "Draft success story", kind: "assist", describe: "Draft a case study from a delivered dossier — title, summary and body." },
@@ -2143,7 +2278,7 @@ function StoryForm({ open, editing, onClose, onSaved }: { open: boolean; editing
   }
 
   return (
-    <Modal open={open} onClose={onClose} title={editing ? "Edit success story" : "New success story"} description="A portfolio case study — draft, sign off, then publish (MOD-26)." size="lg">
+    <Modal open={open} onClose={onClose} title={editing ? "Edit success story" : "New success story"} description="A portfolio case study — draft, sign off, then publish." size="lg">
       <div className="space-y-4">
         <Field label="Title" required>
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Cutting Acme's customs clearance time by 40%" />
@@ -2213,7 +2348,7 @@ export function SuccessStoriesPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Success stories</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Portfolio case studies — draft, sign off, then publish (MOD-26).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Portfolio case studies — draft, sign off, then publish.</p>
         </div>
         <Button
           onClick={() => {

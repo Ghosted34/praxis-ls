@@ -23,6 +23,7 @@ async function list(client, q = {}) {
   if (q.client_id) { params.push(q.client_id); wh.push("client_id = $" + params.length); }
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   if (q.service_type_id) { params.push(q.service_type_id); wh.push("service_type_id = $" + params.length); }
+  if (q.q) { params.push("%" + q.q + "%"); wh.push("ref ILIKE $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query("SELECT * FROM dossier " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;

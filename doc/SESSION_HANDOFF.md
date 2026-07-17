@@ -3,7 +3,34 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-17 (session 6). **Session 6 = this stream's whole FE lane built + verified.**
+_Last updated: 2026-07-17 (session 7). **Session 7 = cross-cutting FE feature pass** — all in-sandbox
+`tsc`-clean (Windows validators still authoritative, and the Control Tower iframe + new forms need a
+visual check via `npm run dev`). Shipped this session: (i) **access/refresh token rotation** — FE now
+captures a rotated `refresh_token` from `/auth/refresh` on boot + 401-retry (`lib/api-client.ts`,
+`app/auth/auth-context.tsx`); no-op until the BE rotates. (ii) **Removed every `MOD-` label/comment
+from the FE** (21 files) — kept the functional `module: "MOD-XX"` RBAC keys in `scaffold/screen-specs.ts`
+and all BE `MODULE=` keys. (iii) **Search everywhere** — added `?q=` ILIKE to the registry repos that
+lacked it (`corporate_entity`, `lead`, `opportunity`, `operations_file` [dossier `ref`], `final_invoice`
+[`doc_number`], `financial_dictionary` [code/labels], `app_user` [name/email]; clients/suppliers already
+had it), plus a shared **`SearchSelect`** in `features/sales/ui.tsx` (debounced, client-side narrowing
+fallback, free-text commit, inline **"Add …"** on empty). Wired the lead-capture **Company** field and
+the quotation **Client** picker; the other reference pickers are the same drop-in and remain to convert.
+(iv) **Quotations** — line items now from the **financial dictionary** + a per-line **tax-code picker**
+(sales VAT codes aggregated across jurisdictions via `listSalesTaxCodes` in `lib/masterdata-api.ts`), so
+`total_ttc` can differ from `total_ht`. (v) **Reports** — new **Dashboard tiles** tab (`/reports/tiles`)
+in `features/vault/pages.tsx`. (vi) **Marketing campaigns** — new **Templates** tab (create/edit/delete
+email templates, each with its own **sender name + address**) persisted to the generic settings store
+`/settings/campaign_template`; MOD-22 has no template/sender BE, so see the new
+`doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md`. (vii) **Control Tower** — reverted to the **Lovable mock**
+(restored `features/dashboard-mock/*` from `doc/reference/reference-mock-lovable`) rendered in an
+`<iframe srcDoc>`, now **fed live** `/dashboard/control-tower` + `/dashboard/kpis` (live shipments list,
+active count, hero line, Praxis briefing) with light/dark synced to the app (`features/dashboard.tsx`).
+(viii) **Settings-tiles finding** — the generic `/settings/:section/:key` store already backs
+`document_template`, `custom_field`, `email_signature` and `_policy`/`_tiers` values (and allows arbitrary
+sections), so those previously-"no BE" tiles are now buildable. Also fixed a **pre-existing** build break
+from the repo pull (unused `React` import in `components/ui/skeleton.tsx`). BE `q` edits touch
+`operations_file`/`final_invoice`/`app_user` — heads-up for the FS colleague. Detail: session-7 log below.
+Prior: **Session 6 = this stream's whole FE lane built + verified.**
 Shipped, all wired to live BE and **Windows-verified (`npm run lint` + `npm run build --prefix
 client` pass, user-confirmed) + in-sandbox `tsc` clean**: the **Sales & CRM funnel** (Leads & intake
 [MOD-20 + folded MOD-25], Meetings [21], Opportunities Kanban [24], Proposals [23], Campaigns [22],
@@ -125,6 +152,92 @@ Design reference: `doc/reference/reference-mock-lovable`.
   sign-out (until told otherwise).
 - **Postman** `postman/praxis-ls.phase0.postman_collection.json` — Phase 0 + Finance +
   Fleet/WMS/HR folders.
+
+## Session log — 2026-07-17 (session 7: cross-cutting FE feature pass)
+
+A directed batch across the FE (and a few BE list repos). **All in-sandbox `tsc --noEmit -p client`
+clean; BE edits `node --check` clean. Windows `npm run lint` + `npm run build --prefix client` +
+`npm test` remain authoritative, and the Control Tower iframe + every new form need a visual pass
+(`npm run dev`).**
+
+1. **Access/refresh token rotation (FE).** The BE `/auth/refresh` returns only a new `access_token`
+   today (no rotation). Made the FE forward-compatible: it now stores a rotated `refresh_token` if the
+   refresh response ever includes one — on both the boot path (`app/auth/auth-context.tsx`) and the
+   401-retry path (`lib/api-client.ts`, incl. `{data:…}` unwrap). No-op until the BE rotates.
+
+2. **QuickPIN.** Confirmed the FE is fully wired to the live `/auth/pin/*` routes (`auth-context`
+   `pinLogin`/`registerPin`, `lib/pin-store.ts`, login-modal Quick PIN tab). BE `user_device` is in;
+   only a live register→login smoke test remains.
+
+3. **Removed all `MOD-` from the FE** (21 files). Guarded cleanup: parenthetical mentions `(MOD-xx)` and
+   standalone tokens stripped, but the functional quoted keys `module: "MOD-XX"` in
+   `scaffold/screen-specs.ts` were preserved (they gate RBAC), and BE `MODULE="MOD-XX"` keys were left
+   untouched. NB a first, too-aggressive script pass corrupted code (removed empty `()` on non-MOD
+   lines) — `tsc` caught it; reverted via `git show HEAD:<f> > <f>` (the mount blocks `unlink`, so
+   `git checkout` fails) and redid it safely.
+
+4. **Search everywhere (BE `q` + shared FE component).** Added `?q=` ILIKE to the registry repos that
+   lacked it: `master/corporate_entity` (code/legal_name), `sales/lead` (company_name/contact_name),
+   `sales/opportunity` (name), `operations/operations_file` (dossier `ref`), `finance/final_invoice`
+   (`doc_number`), `master/financial_dictionary` (code/label_fr/label_en), `security/app_user`
+   (full_name/email; threaded through `listUsersSafe`). `client_master` + `supplier_master` already had
+   it. New shared **`SearchSelect`** in `features/sales/ui.tsx` — debounced `?q=`, client-side narrowing
+   as a safety net for endpoints that ignore `q`, optional free-text commit, and an inline **"Add …"**
+   action on an empty result. Wired: lead-capture **Company** (`features/sales/pages.tsx`, searches
+   `/clients`, free-text prospect allowed) and quotation **Client** (`features/commercial/pages.tsx`,
+   id+label). **Remaining pickers to convert (same pattern):** meeting lead/client, opportunity client,
+   proposal entity+client, quotation entity, credit-note entity/client/reversed-invoice, bank-account
+   entity, pricing-variance dossier+quotation, portal client-scope, and assignee (user) selects.
+
+5. **Quotations — dictionary line items + tax-code picker** (`features/commercial/pages.tsx`
+   `QuotationForm`). Each line's description is a `SearchSelect` over `/financial-dictionary` (selecting
+   an item fills label + default price + `is_debours` and sets `dictionary_item_id`); free text still
+   allowed. Added a per-line **tax-code `<Select>`** (disabled on débours) sourced from
+   `listSalesTaxCodes()` (new in `lib/masterdata-api.ts` — aggregates VAT codes across
+   `/tax-jurisdictions/:id/codes` since there's no flat endpoint). Lines now submit `dictionary_item_id`
+   + `tax_code_id` (both already accepted by the BE quotation validator), so `total_ttc != total_ht`.
+
+6. **Reports — Dashboard tiles tab** (`features/vault/pages.tsx` `ReportsPage`). New "Dashboard tiles"
+   segment reads `GET /reports/tiles`, lists the catalogue with **Add tile / Show-Hide / position**
+   controls, upserting via `PUT /reports/tiles` (`{tile_key,position,is_visible,config}`; tile_key ==
+   report_key). Feeds the Control Tower tile store.
+
+7. **Marketing campaigns — Templates tab** (`features/sales/pages.tsx` `CampaignsPage` + `TemplateForm`).
+   Create/edit/delete reusable email templates, **each carrying its own sender name + address**, plus
+   subject + body. `marketing_campaign` (MOD-22) has **no** template/sender endpoints, so these persist
+   in the generic settings store: `GET/PUT/DELETE /settings/campaign_template/:key` with
+   `{ value: {name,subject,from_name,from_address,body_html} }` (arbitrary sections are allowed). **Caveat:
+   `/settings` is gated MOD-70**, so a pure marketing role can't manage them yet — full rationale + the
+   proposed dedicated `/campaigns/templates` + `/campaigns/senders` + send endpoints are in
+   **`doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md`** (new this session).
+
+8. **Control Tower — Lovable look restored, on live data** (`features/dashboard.tsx`, rewritten). Session 6
+   had replaced the mock with plain React tiles; per the user we reverted to the **Lovable mock**. Restored
+   `client/src/features/dashboard-mock/{body.html,style.css,script.js}.txt` from
+   `doc/reference/reference-mock-lovable/src/lib/dashboard`, and render them in an `<iframe srcDoc>` with:
+   the mock's own chrome hidden (`.testban/.topbar/.botnav/.drawer`), an injected script that rewrites the
+   **live-shipments list**, the "N active" pill, the hero subline and the Praxis briefing from
+   `/dashboard/control-tower` + `/dashboard/kpis` (mapping `live_shipments` → the mock's dossier row shape),
+   and **theme sync** (parent `.dark` class → iframe `data-theme`). Decorative KPI cards (revenue/SLA/fleet)
+   keep the mock's sample values — no BE source for them yet. **Must be eyeballed in `npm run dev`.**
+
+9. **Settings-tiles recheck.** The generic `/settings/:section/:key` store (`security/setting`,
+   `setting.rules.js`) already validates sections `document_template` (name/status/body_html/css_vars),
+   `custom_field` (array of field defs), `email_signature` (tenant brand template) and `integration_secret`,
+   and allows arbitrary sections + `_policy`/`_tiers` list values. So the previously-"no BE" tiles (custom
+   fields, document templates, policies, email signatures) are **now buildable** on this store — a good next
+   batch (mind the MOD-70 gate).
+
+10. **Pre-existing build break fixed.** The repo pull left an unused `import * as React` in
+    `components/ui/skeleton.tsx` (fails `noUnusedLocals`); removed it so the client typechecks clean.
+
+**New/edited this session.** FE: `lib/api-client.ts`, `app/auth/auth-context.tsx`, `features/sales/ui.tsx`
+(SearchSelect), `features/sales/pages.tsx` (lead company + Campaigns Templates tab), `features/commercial/pages.tsx`
+(quotation dictionary/tax/client), `features/vault/pages.tsx` (Reports tiles), `features/dashboard.tsx`
+(rewrite) + restored `features/dashboard-mock/*`, `lib/masterdata-api.ts` (`listSalesTaxCodes`),
+`components/ui/skeleton.tsx`, + the 21 MOD-cleanup files. BE: `q` in `corporate_entity`/`lead`/`opportunity`/
+`operations_file`/`final_invoice`/`financial_dictionary` repos + `app_user` repo/service. New doc:
+`doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md`.
 
 ## Session log — 2026-07-17 (session 6: Sales/CRM funnel — Leads + Meetings)
 
@@ -627,9 +740,17 @@ machine. Pull latest, then start at step 0.
 
 **Pick up here (priority order):**
 
-0. **Session 5 verified + committed (user, session 6).** BE `ai_enabled` is in. Session 6's FE
-   passes in-sandbox `tsc` clean; run `npm run build --prefix client` + `npm run lint` on Windows
-   to confirm session 6 and commit. Session-6 files listed in the session-6 log above.
+0. **Session 7 needs Windows validation + a visual pass.** Session 7's FE is in-sandbox `tsc`-clean and
+   the BE `q` edits are `node --check`-clean, but run `npm run lint` + `npm run build --prefix client` +
+   `npm test` on Windows and **open `npm run dev`** to eyeball the rebuilt **Control Tower iframe** and the
+   new forms (lead **Company** search, quotation **dictionary + tax-code** pickers, Reports **Dashboard
+   tiles** tab, Campaigns **Templates** tab). Files in the session-7 log above. Session 6 (prior) was also
+   `tsc`-clean — confirm both and commit.
+0b. **Next in this lane (session 7 leftovers):** (a) convert the remaining reference pickers to
+   `SearchSelect` (meeting, opportunity, proposal, quotation entity, credit-note, bank-account,
+   pricing-variance, portal, assignee — list in the session-7 log §4); (b) build the now-available Settings
+   tiles on the generic `/settings` store (document templates, custom fields, email signatures, policies —
+   session-7 log §9); (c) hand `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` to the BE dev.
 1. **Sales/CRM funnel — DONE (session 6).** Model: **marketing → leads + opportunities → sales**;
    build order in the session-6 log + `doc/FE_IA_BUILD_MAP.md` (Sales & CRM). All six shipped in
    `client/src/features/sales/pages.tsx`: Leads & intake (MOD-20 + folded MOD-25), Meetings (MOD-21),
@@ -643,22 +764,29 @@ machine. Pull latest, then start at step 0.
    `features/portal/pages.tsx`. **This stream's entire lane is now built.** Follow-ons (not lane work):
    Control Tower live tiles (`/reports/tiles`), a tax-code picker for Quotations, the Reports
    dashboard-tile picker, platform/godmode console. All BE modules confirmed merged (session 6).
-2. **Settings tiles — DONE (session 4).** Bank accounts, payment gateways, scheduled reports, API
-   keys, pipeline stages (read-only), numbering all built in `config-pages.tsx`. Remaining tiles
-   have **no BE** (custom fields, document templates, business policies, factory languages, help
-   center) or need a BE tweak (email signatures self-service route). See build map §3.
+2. **Settings tiles — DONE (session 4) + finding updated (session 7).** Bank accounts, payment gateways,
+   scheduled reports, API keys, pipeline stages (read-only), numbering all built in `config-pages.tsx`.
+   **Correction (session 7):** the remaining tiles are NOT all BE-less — the generic `/settings/:section/:key`
+   store already validates `document_template`, `custom_field`, `email_signature` and `_policy`/`_tiers`
+   values (arbitrary sections allowed), so **document templates, custom fields, email signatures and policies
+   are buildable now** (mind the MOD-70 gate). Only genuinely BE-less: factory languages, help center.
 3. **Per-tenant PWA — DONE (session 4)** (`src/routes/pwa.js` + `vite.config.ts` + `index.html`).
    Left to do: Lighthouse audit + real install on two tenant subdomains; optionally feed
    `background_color` from branding and pre-generate maskable icons.
 4. **QuickPIN** — BE dev is adding the `user_device` migration (live schema); smoke-test
    register/login once it lands (FE + controllers already wired).
-5. **Later:** Control Tower dashboard on live data — **DONE (session 6):** `features/dashboard.tsx`
-   now reads `/dashboard/kpis` + `/dashboard/control-tower` (MOD-00A). Remaining: platform/godmode
-   console UI; delete the now-unused `features/dashboard-mock/*`.
+5. **Control Tower — reverted to the Lovable mock, on live data (session 7).** `features/dashboard.tsx`
+   renders the restored `features/dashboard-mock/*` in an `<iframe srcDoc>` and injects live
+   `/dashboard/control-tower` + `/dashboard/kpis` (see session-7 log §8). **`dashboard-mock/*` is USED
+   again — do NOT delete it.** Remaining: platform/godmode console UI; the decorative KPI cards
+   (revenue/SLA/fleet) still show mock values (no BE source).
 
-**Notify the BE dev — only these Settings tiles have NO endpoint:** custom fields, document
-templates (only milestone/smartcomm templates exist), business policies (maybe the `/settings`
-key-value store — confirm). Everything else is available.
+**Notify the BE dev:** (a) `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` — proposed `/campaigns/templates` +
+`/campaigns/senders` + send endpoints (MOD-22) so campaign templates move off the MOD-70 `/settings`
+store. (b) The session-7 `?q=` search filters were added to `operations_file`/`final_invoice`/`app_user`
+(your modules) plus the master/sales repos — confirm they survive `npm run lint`/`npm test`.
+**Settings tiles with genuinely NO endpoint:** only factory languages + help center (everything else,
+incl. document templates / custom fields / policies, is on the generic `/settings` store).
 
 Run these on Windows and report/fix results (authoritative validators — the sandbox bash
 mount is unreliable for freshly-written files; see **Sandbox gotcha** below):
@@ -698,8 +826,10 @@ Check the new `/login` landing + the top-bar nav / More sidebar first.
   (file→approve→submit); new **Credit notes** screen at `/finance/credit-notes`
   (create→edit→post). Helpers in `lib/finance-api.ts`; forms in `features/finance/pages.tsx`;
   routed in `app.tsx` + nav (`app-shell.tsx`) + `screen-registry.json` (`fin_credit_notes`).
-- Control Tower dashboard is **LIVE (session 6)** — `features/dashboard.tsx` reads
-  `/dashboard/kpis` + `/dashboard/control-tower` (MOD-00A). The old `dashboard-mock/*` is unused.
+- Control Tower dashboard is **LIVE** — `features/dashboard.tsx` reads `/dashboard/kpis` +
+  `/dashboard/control-tower` (MOD-00A). **Session 7:** reverted from plain React tiles to the **Lovable
+  mock in an `<iframe srcDoc>`** with that live data injected; `features/dashboard-mock/*` is **restored
+  and in use** (no longer safe to delete).
 - Platform console UI and per-tenant PWA manifest still not built (Phase 0 items).
 - **Cleanup — DONE (session 2):** the stray `client/src/_wtest.txt` was removed.
 - **LIVE/TEST toggle logs the user out — architectural, not a UI bug (diagnosed 2026-07-13).**

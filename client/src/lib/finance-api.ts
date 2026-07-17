@@ -110,11 +110,11 @@ export const getInvoice = (id: string) => tenant<InvoiceDetail>(`/final-invoices
 export const updateInvoiceDraft = (id: string, body: { client_id?: string; dossier_id?: string; lines?: InvoiceLineInput[] }) =>
   tenant(`/final-invoices/${id}`, { method: "PATCH", body });
 
-/* ── journal reversal (MOD-55 approve) ── */
+/* ── journal reversal(approve) ── */
 export const reverseJournalEntry = (id: string, body: { reason?: string; entry_date?: string }) =>
   tenant(`/journal-entries/${id}/reverse`, { method: "POST", body });
 
-/* ── accounting periods / guided close (MOD-59) ── */
+/* ── accounting periods / guided close ── */
 export type Period = {
   period_id: string;
   entity_id?: string | null;
@@ -130,7 +130,7 @@ export const listPeriods = (entityId?: string) =>
 export const closePeriod = (body: { period_id: string; to: "FROZEN" | "CLOSED" }) =>
   tenant("/statements/periods/close", { method: "POST", body });
 
-/* ── tax declarations / filing workflow (MOD-07) ── */
+/* ── tax declarations / filing workflow ── */
 export const TAX_KINDS = ["TVA", "IS", "MIN_TAX", "WHT", "DSF", "CNPS", "DIPE", "PATENTE"] as const;
 export type TaxKind = (typeof TAX_KINDS)[number];
 
@@ -171,7 +171,7 @@ export const approveDeclaration = (id: string) =>
 export const submitDeclaration = (id: string, body: { filed_ref?: string }) =>
   tenant<TaxDeclaration>(`/tax/declarations/${id}/submit`, { method: "POST", body });
 
-/* ── credit notes (MOD-51) ── */
+/* ── credit notes ── */
 export type CreditNoteLineInput = {
   label: string;
   amount: number;

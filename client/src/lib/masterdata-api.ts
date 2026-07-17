@@ -5,7 +5,7 @@
  */
 import { tenant } from "./api-client";
 
-/* ── Clients (MOD-03, /clients) ──────────────────────────────────────────── */
+/* ── Clients(/clients) ──────────────────────────────────────────── */
 export type Client = {
   client_id: string;
   entity_id?: string | null;
@@ -36,7 +36,7 @@ export const createClient = (body: ClientInput) => tenant<Client>("/clients", { 
 export const updateClient = (id: string, body: Partial<ClientInput>) =>
   tenant<Client>(`/clients/${id}`, { method: "PATCH", body });
 
-/* ── Suppliers (MOD-04, /suppliers) ──────────────────────────────────────── */
+/* ── Suppliers(/suppliers) ──────────────────────────────────────── */
 export type Supplier = {
   supplier_id: string;
   entity_id?: string | null;
@@ -69,7 +69,7 @@ export const createSupplier = (body: SupplierInput) => tenant<Supplier>("/suppli
 export const updateSupplier = (id: string, body: Partial<SupplierInput>) =>
   tenant<Supplier>(`/suppliers/${id}`, { method: "PATCH", body });
 
-/* ── Corporate entities (MOD-01, /entities) ──────────────────────────────── */
+/* ── Corporate entities(/entities) ──────────────────────────────── */
 export type Entity = {
   entity_id: string;
   code: string;
@@ -99,7 +99,7 @@ export const updateEntity = (id: string, body: Partial<EntityInput>) =>
 export const setEntityActive = (id: string, active: boolean) =>
   tenant<Entity>(`/entities/${id}/active`, { method: "POST", body: { active } });
 
-/* ── Treasury accounts (MOD-09, /treasury-accounts) ──────────────────────── */
+/* ── Treasury accounts(/treasury-accounts) ──────────────────────── */
 export type Treasury = {
   treasury_account_id: string;
   entity_id?: string | null;
@@ -127,7 +127,7 @@ export const updateTreasury = (id: string, body: Partial<TreasuryInput>) =>
 export const setTreasuryActive = (id: string, active: boolean) =>
   tenant<Treasury>(`/treasury-accounts/${id}/active`, { method: "POST", body: { active } });
 
-/* ── Payment gateways (MOD-09, /payment-gateways) — credentials write-only ── */
+/* ── Payment gateways(/payment-gateways) — credentials write-only ── */
 export type Gateway = {
   provider: string;
   active: boolean;
@@ -145,7 +145,7 @@ export const setGatewayRole = (provider: string, role: string) =>
 export const deleteGateway = (provider: string) =>
   tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, { method: "DELETE" });
 
-/* ── Expense rates (MOD-10, /expense-rates) ──────────────────────────────── */
+/* ── Expense rates(/expense-rates) ──────────────────────────────── */
 export type ExpenseRate = {
   expense_rate_id: string;
   dictionary_item_id: string;
@@ -173,7 +173,7 @@ export const updateExpenseRate = (id: string, body: Partial<ExpenseRateInput>) =
 export const deleteExpenseRate = (id: string) =>
   tenant<{ deleted: boolean }>(`/expense-rates/${id}`, { method: "DELETE" });
 
-/* ── Financial dictionary (MOD-05, /financial-dictionary) ────────────────── */
+/* ── Financial dictionary(/financial-dictionary) ────────────────── */
 export type PostingRule = {
   applies_context: "sale" | "purchase" | "disbursement";
   debit_account?: string;
@@ -214,6 +214,34 @@ export const createDict = (body: DictInput) => tenant<DictItem>("/financial-dict
 export const updateDict = (id: string, body: Partial<DictInput>) =>
   tenant<DictItem>(`/financial-dictionary/${id}`, { method: "PATCH", body });
 
-/* ── Currencies (MOD-08, /currencies) — for selects ──────────────────────── */
+/* ── Currencies(/currencies) — for selects ──────────────────────── */
 export type Currency = { code: string; name?: string; symbol?: string | null; is_active?: boolean };
 export const listCurrencies = () => tenant<Currency[]>("/currencies");
+
+/* ── Tax codes(/tax-jurisdictions/:id/codes) — for line-item pickers ──
+ * There is no flat tax-code endpoint, so aggregate across jurisdictions and
+ * expose the sales-applicable VAT codes for quotation / invoice line pickers. */
+export type TaxCode = {
+  tax_code_id: string;
+  code: string;
+  kind: string;
+  rate_percent?: number | null;
+  applies_to?: string | null;
+};
+type Jurisdiction = { jurisdiction_id: string };
+export async function listSalesTaxCodes(): Promise<TaxCode[]> {
+  const jurs = await tenant<Jurisdiction[]>("/tax-jurisdictions").catch(() => []);
+  const perJur = await Promise.all(
+    (jurs || []).map((j) => tenant<TaxCode[]>(`/tax-jurisdictions/${j.jurisdiction_id}/codes`).catch(() => [])),
+  );
+  const flat = perJur.flat();
+  // VAT codes that apply to sales (or don't scope applies_to). Deduped by id.
+  const seen = new Set<string>();
+  return flat.filter((c) => {
+    if (c.kind !== "VAT") return false;
+    if (c.applies_to && c.applies_to !== "sales") return false;
+    if (seen.has(c.tax_code_id)) return false;
+    seen.add(c.tax_code_id);
+    return true;
+  });
+}

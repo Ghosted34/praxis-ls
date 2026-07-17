@@ -1,5 +1,5 @@
 /**
- * Portal access (MOD-67) — manage external read-access grants (Client / Investor
+ * Portal access — manage external read-access grants (Client / Investor
  * / Auditor) and preview the exact scope each grantee would see. The external
  * data views are feature-gated (portal.client / portal.investor / portal.audit);
  * previews degrade gracefully when a flag is off.
@@ -66,7 +66,7 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Grant portal access" description="Give an external party a scoped, read-only view (MOD-67)." size="lg">
+    <Modal open={open} onClose={onClose} title="Grant portal access" description="Give an external party a scoped, read-only view." size="lg">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Portal" required>
@@ -184,7 +184,7 @@ export function PortalAccessPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Portal access</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Grant and revoke external read-access — client, investor and auditor portals (MOD-67).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Grant and revoke external read-access — client, investor and auditor portals.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setPreview({ title: "Investor portal preview", path: "/portals/investor" })}>

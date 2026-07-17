@@ -6,7 +6,7 @@
  * (PUT /permissions/grant), which invalidates the grant cache and fires
  * Watch-the-Watcher. Optimistic UI with revert-on-error.
  *
- * Editing requires the MOD-67 'approve' grant (or CEO); others get a 403 on save.
+ * Editing requires the 'approve' grant (or CEO); others get a 403 on save.
  */
 import * as React from "react";
 import {

@@ -137,7 +137,7 @@ reference for Opportunities; the **Clients** tab (search + chips + avatar rows) 
 | Document signatures | `/vault/signatures` | partial | — | Document/Signer/Status/Signed · Request signature |
 | Document verification | `/vault/verification` | partial | — | Doc ID/Hash/Result · **Verify document** _(BE module incomplete)_ |
 | **Compliance flags** ✅ BUILT (session 6) | `/vault/compliance-flags` | ready | Flags · Rules | **Run checks** (`POST /run`) + severity chips + include-resolved toggle; flag rows with **Resolve** (`/:id/resolve`); Rules tab = the rule catalogue. |
-| **Reports** ⭐ ✅ BUILT (session 6) | `/vault/reports` | ready | Catalogue · Saved | ⚠️ **feature-gated `reporting`** ("enable it" empty state when off). Catalogue → Run modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved tab (run/delete). Scheduling lives in Settings → Scheduled reports; dashboard-tile picker deferred. |
+| **Reports** ⭐ ✅ BUILT (session 6) | `/vault/reports` | ready | Catalogue · Saved | ⚠️ **feature-gated `reporting`** ("enable it" empty state when off). Catalogue → Run modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved tab (run/delete). Scheduling lives in Settings → Scheduled reports; **dashboard-tile picker BUILT (session 7)** — "Dashboard tiles" tab over `/reports/tiles` (add/show-hide/order). |
 
 ### Communication
 

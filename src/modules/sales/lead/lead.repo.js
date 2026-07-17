@@ -14,6 +14,7 @@ async function list(client, q = {}) {
   const { limit, offset } = page(q); const params = [limit, offset]; const wh = [];
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   if (q.owner_user_id) { params.push(q.owner_user_id); wh.push("owner_user_id = $" + params.length); }
+  if (q.q) { params.push("%" + q.q + "%"); wh.push("(company_name ILIKE $" + params.length + " OR contact_name ILIKE $" + params.length + ")"); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query("SELECT * FROM lead " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;

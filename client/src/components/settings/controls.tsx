@@ -223,7 +223,7 @@ export function ImageField({
     } catch (e) {
       setErr(
         e instanceof ApiError && e.status === 403
-          ? "You need Settings (MOD-70) edit permission to upload."
+          ? "You need Settings edit permission to upload."
           : e instanceof ApiError
             ? e.message
             : "Upload failed. Try a smaller image or paste a URL.",

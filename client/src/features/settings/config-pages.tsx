@@ -1,10 +1,10 @@
 /** Settings configuration screens wired to verified live endpoints:
- *  - BankAccountsPage    → MOD-09 /treasury-accounts (+ /entities for the picker)
- *  - PaymentGatewaysPage → MOD-09 /payment-gateways (credentials write-only)
- *  - ScheduledReportsPage→ MOD-63 /reports/scheduled (+ /reports/catalogue)
- *  - ApiKeysPage         → MOD-70 /ai/governance/vendors (api_key write-only, test)
- *  - PipelineStagesPage  → MOD-24 /opportunities/stages (read-only — no stage CRUD yet)
- *  - NumberingPage       → MOD-70 /numbering-schemes/:moduleKey (+ /catalogue/modules)
+ *  - BankAccountsPage    → /treasury-accounts (+ /entities for the picker)
+ *  - PaymentGatewaysPage → /payment-gateways (credentials write-only)
+ *  - ScheduledReportsPage→ /reports/scheduled (+ /reports/catalogue)
+ *  - ApiKeysPage         → /ai/governance/vendors (api_key write-only, test)
+ *  - PipelineStagesPage  → /opportunities/stages (read-only — no stage CRUD yet)
+ *  - NumberingPage       → /numbering-schemes/:moduleKey (+ /catalogue/modules)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";

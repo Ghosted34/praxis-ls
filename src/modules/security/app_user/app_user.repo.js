@@ -123,9 +123,10 @@ async function getUserSafe(client, id) {
   const { rows } = await client.query("SELECT " + SAFE_COLS + " FROM app_user WHERE user_id = $1", [id]);
   return rows[0] || null;
 }
-async function listUsersSafe(client, { limit = 50, offset = 0, status = null }) {
+async function listUsersSafe(client, { limit = 50, offset = 0, status = null, q = null }) {
   const params = [limit, offset]; const wh = [];
   if (status) { params.push(status); wh.push("status = $" + params.length); }
+  if (q) { params.push("%" + q + "%"); wh.push("(full_name ILIKE $" + params.length + " OR email ILIKE $" + params.length + ")"); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query("SELECT " + SAFE_COLS + " FROM app_user " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;

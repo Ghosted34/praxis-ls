@@ -1,5 +1,4 @@
 /** Skeleton shimmer for loading states (nicer than a bare spinner on tables). */
-import * as React from "react";
 import { cn } from "@/lib/cn";
 
 export function Skeleton({ className }: { className?: string }) {

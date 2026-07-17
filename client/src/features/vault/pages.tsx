@@ -1,7 +1,7 @@
 /**
  * Vault hubs — wired to live endpoints.
- *   - ReportsPage         → MOD-63 /reports  (feature-gated `reporting`)
- *   - ComplianceFlagsPage → MOD-65 /compliance
+ *   - ReportsPage         → /reports  (feature-gated `reporting`)
+ *   - ComplianceFlagsPage → /compliance
  *
  * Shared primitives + Pixie-tinted design from features/sales/ui.tsx.
  * AI panels are gated globally (components/ai-actions.tsx).
@@ -56,7 +56,7 @@ function ResultBlock({ data }: { data: unknown }) {
   return <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre>;
 }
 
-/* ═══════════════════════════════════ REPORTS (MOD-63) ═══════════════════════════════════ */
+/* ═══════════════════════════════════ REPORTS ═══════════════════════════════════ */
 
 const REPORTS_AI: AiAction[] = [
   { label: "Run a report", kind: "read", describe: "Run any catalogue report and summarise the result in plain language." },
@@ -192,25 +192,29 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
 }
 
 export function ReportsPage() {
-  const [tab, setTab] = React.useState<"catalogue" | "saved">("catalogue");
+  const [tab, setTab] = React.useState<"catalogue" | "saved" | "tiles">("catalogue");
   const [nonce, setNonce] = React.useState(0);
   const reload = () => setNonce((n) => n + 1);
   const [catalogue, setCatalogue] = React.useState<Row[] | null>(null);
   const [saved, setSaved] = React.useState<Row[] | null>(null);
+  const [tiles, setTiles] = React.useState<Row[] | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState<Row | null>(null);
   const [savedResult, setSavedResult] = React.useState<{ title: string; path: string } | null>(null);
+  const [tileBusy, setTileBusy] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     let live = true;
     setError(null);
     setCatalogue(null);
     setSaved(null);
-    Promise.all([tenant<Row[]>("/reports/catalogue"), tenant<Row[]>("/reports/saved")])
-      .then(([c, s]) => {
+    setTiles(null);
+    Promise.all([tenant<Row[]>("/reports/catalogue"), tenant<Row[]>("/reports/saved"), tenant<Row[]>("/reports/tiles").catch(() => [])])
+      .then(([c, s, t]) => {
         if (!live) return;
         setCatalogue(Array.isArray(c) ? c : []);
         setSaved(Array.isArray(s) ? s : []);
+        setTiles(Array.isArray(t) ? t : []);
       })
       .catch((e) => live && setError(errMsg(e)));
     return () => {
@@ -227,12 +231,36 @@ export function ReportsPage() {
     }
   }
 
+  // Tile map keyed by tile_key (== report_key) for quick lookup of dashboard state.
+  const tileByKey = React.useMemo(() => new Map((tiles || []).map((t) => [String(t.tile_key), t])), [tiles]);
+
+  async function setTile(tileKey: string, patch: { position?: number; is_visible?: boolean }) {
+    setTileBusy(tileKey);
+    setError(null);
+    const existing = tileByKey.get(tileKey);
+    const body = {
+      tile_key: tileKey,
+      position: patch.position ?? (existing ? Number(existing.position) || 0 : (tiles || []).length),
+      is_visible: patch.is_visible ?? (existing ? existing.is_visible !== false : true),
+      config: existing?.config ?? {},
+    };
+    try {
+      await tenant("/reports/tiles", { method: "PUT", body });
+      const t = await tenant<Row[]>("/reports/tiles").catch(() => tiles || []);
+      setTiles(Array.isArray(t) ? t : []);
+    } catch (e) {
+      setError(errMsg(e));
+    } finally {
+      setTileBusy(null);
+    }
+  }
+
   return (
     <section className="mx-auto max-w-5xl animate-fade-in">
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Reports</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Run finance, receivables and cross-module reports; save the ones you use (MOD-63).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Run finance, receivables and cross-module reports; save the ones you use.</p>
         </div>
         <Segmented
           value={tab}
@@ -240,6 +268,7 @@ export function ReportsPage() {
           options={[
             { value: "catalogue", label: "Catalogue" },
             { value: "saved", label: "Saved" },
+            { value: "tiles", label: "Dashboard tiles" },
           ]}
         />
       </header>
@@ -252,6 +281,49 @@ export function ReportsPage() {
         )
       ) : catalogue === null ? (
         <LoadingRow label="Loading reports…" />
+      ) : tab === "tiles" ? (
+        <div className="space-y-2">
+          <p className="text-xs text-muted-foreground">Choose which reports appear as tiles on your Control Tower, toggle their visibility and order.</p>
+          {catalogue.map((r) => {
+            const key = String(r.report_key);
+            const t = tileByKey.get(key);
+            const on = !!t;
+            const visible = t ? t.is_visible !== false : false;
+            return (
+              <div key={key} className="lux-card flex flex-wrap items-center gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold text-foreground">{key}</p>
+                  <p className="truncate text-xs text-muted-foreground">{cell(r.describe)}</p>
+                </div>
+                {on && (
+                  <label className="flex items-center gap-1 text-xs text-muted-foreground">
+                    Pos
+                    <Input
+                      type="number"
+                      min="0"
+                      className="num h-8 w-16 text-right"
+                      defaultValue={String(Number(t?.position) || 0)}
+                      onBlur={(e) => setTile(key, { position: Number(e.target.value) || 0 })}
+                    />
+                  </label>
+                )}
+                {on && (
+                  <Button size="sm" variant="ghost" disabled={tileBusy === key} onClick={() => setTile(key, { is_visible: !visible })}>
+                    {visible ? "Hide" : "Show"}
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant={on ? "outline" : "default"}
+                  disabled={tileBusy === key}
+                  onClick={() => setTile(key, { is_visible: on ? false : true })}
+                >
+                  {on ? (visible ? "On dashboard" : "Hidden") : "Add tile"}
+                </Button>
+              </div>
+            );
+          })}
+        </div>
       ) : tab === "catalogue" ? (
         <div className="grid gap-3 sm:grid-cols-2">
           {catalogue.map((r) => (
@@ -298,7 +370,7 @@ export function ReportsPage() {
   );
 }
 
-/* ═══════════════════════════════ COMPLIANCE FLAGS (MOD-65) ═══════════════════════════════ */
+/* ═══════════════════════════════ COMPLIANCE FLAGS ═══════════════════════════════ */
 
 const COMPLIANCE_AI: AiAction[] = [
   { label: "Triage open flags", kind: "assist", describe: "Summarise open compliance flags by severity and suggest what to fix first." },
@@ -375,7 +447,7 @@ export function ComplianceFlagsPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Compliance flags</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Run the rule scans and clear the flags they raise (MOD-65).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Run the rule scans and clear the flags they raise.</p>
         </div>
         <div className="flex items-center gap-3">
           <Segmented

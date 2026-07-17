@@ -378,7 +378,7 @@ export function JournalsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Journals</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            General ledger journal entries — balanced-or-rejected, reversal-not-edit (MOD-05).
+            General ledger journal entries — balanced-or-rejected, reversal-not-edit.
           </p>
         </div>
         <Button onClick={() => setPostOpen(true)}>Post entry</Button>
@@ -548,7 +548,7 @@ export const ProformasPage = () => {
   return (
     <ResourceList
       title="Proforma & advances"
-      description="Proforma and advance-payment invoices — advance posts to 4191, not revenue (MOD-52)."
+      description="Proforma and advance-payment invoices — advance posts to 4191, not revenue."
       endpoint="/proformas/advances"
       action={(reload) => (
         <>
@@ -964,7 +964,7 @@ export function InvoicesPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Final invoices — revenue recognition, clears advance + débours (MOD-51).
+            Final invoices — revenue recognition, clears advance + débours.
           </p>
         </div>
         <Button onClick={() => setDraftOpen(true)}>New draft</Button>
@@ -1030,7 +1030,7 @@ export function InvoicesPage() {
 export const ReceivablesPage = () => (
   <ResourceList
     title="Receivables"
-    description="Smart receivables ledger — open items, ageing and reminders (MOD-56)."
+    description="Smart receivables ledger — open items, ageing and reminders."
     endpoint="/receivables"
   />
 );
@@ -1038,7 +1038,7 @@ export const ReceivablesPage = () => (
 export const ChartOfAccountsPage = () => (
   <ResourceList
     title="Chart of accounts"
-    description="SYSCOHADA/OHADA chart — hierarchical, is_postable / requires_analytic (MOD-58)."
+    description="SYSCOHADA/OHADA chart — hierarchical, is_postable / requires_analytic."
     endpoint="/chart-of-accounts"
   />
 );
@@ -1046,7 +1046,7 @@ export const ChartOfAccountsPage = () => (
 export const AssetsPage = () => (
   <ResourceList
     title="Assets"
-    description="Fixed-asset register with depreciation schedule, period posting and disposal (MOD-54)."
+    description="Fixed-asset register with depreciation schedule, period posting and disposal."
     endpoint="/assets"
     columns={[
       { key: "label", label: "Asset" },
@@ -1413,7 +1413,7 @@ function ReportTabs({
 export const StatementsPage = () => (
   <ReportTabs
     title="Statements"
-    description="SYSCOHADA financial statements, general ledger and the guided monthly close (MOD-59)."
+    description="SYSCOHADA financial statements, general ledger and the guided monthly close."
     periodMode="period_id"
     tabs={[
       { key: "tb", label: "Trial balance", path: "/statements/trial-balance" },
@@ -1698,7 +1698,7 @@ function DeclarationsPanel() {
 export const TaxCenterPage = () => (
   <ReportTabs
     title="Tax center"
-    description="OHADA/Cameroon tax outputs (MOD-07)."
+    description="OHADA/Cameroon tax outputs."
     tabs={[
       { key: "vat", label: "TVA return", path: "/tax/vat-return" },
       { key: "is", label: "Corporate tax", path: "/tax/corporate-tax" },
@@ -1707,7 +1707,7 @@ export const TaxCenterPage = () => (
   />
 );
 
-/* ── credit notes (MOD-51): create → edit → post ─────────────────── */
+/* ── credit notes: create → edit → post ─────────────────── */
 function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
   return lines
     .filter((l) => l.label.trim() && Number(l.amount) >= 0 && l.amount !== "")
@@ -2046,7 +2046,7 @@ export function CreditNotesPage() {
       <header className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Credit notes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Reverse a finalised invoice — draft, then post the contra entry (MOD-51).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Reverse a finalised invoice — draft, then post the contra entry.</p>
         </div>
         <Button onClick={() => setCreateOpen(true)}>New credit note</Button>
       </header>

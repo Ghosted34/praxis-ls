@@ -323,7 +323,7 @@ async function logout(client, { actor, sessionId }) {
 const ARGON = { type: argon2.argon2id };
 
 async function listUsers(client, q = {}) {
-  const rows = await repo.listUsersSafe(client, { limit: q.limit, offset: q.offset, status: q.status });
+  const rows = await repo.listUsersSafe(client, { limit: q.limit, offset: q.offset, status: q.status, q: q.q });
   return rows;
 }
 async function getUser(client, id) {

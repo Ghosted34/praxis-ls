@@ -65,6 +65,10 @@ import {
   TaxCenterPage,
 } from "@/features/finance/pages";
 import { Planned } from "@/features/scaffold/screen-scaffold";
+import { LeadsPage, MeetingsPage, OpportunitiesPage, ProposalsPage, CampaignsPage, SuccessStoriesPage } from "@/features/sales/pages";
+import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "@/features/commercial/pages";
+import { ReportsPage, ComplianceFlagsPage } from "@/features/vault/pages";
+import { PortalAccessPage } from "@/features/portal/pages";
 import { MasterDataPage } from "@/features/masterdata/master-data-page";
 import { OperationsHub } from "@/features/operations/hub";
 import { CostingHub } from "@/features/costing/hub";
@@ -137,18 +141,18 @@ export function App() {
         <Route path="workspace" element={<Planned />} />
         <Route path="godmode" element={<Planned />} />
         {/* Commercial */}
-        <Route path="commercial/quotations" element={<Planned />} />
-        <Route path="commercial/margin-simulation" element={<Planned />} />
-        <Route path="commercial/extra-charge-simulation" element={<Planned />} />
-        <Route path="commercial/pricing-variance" element={<Planned />} />
-        {/* Sales / CRM */}
-        <Route path="sales/leads" element={<Planned />} />
-        <Route path="sales/inbound-intake" element={<Planned />} />
-        <Route path="sales/opportunities" element={<Planned />} />
-        <Route path="sales/proposals" element={<Planned />} />
-        <Route path="sales/meetings" element={<Planned />} />
-        <Route path="sales/campaigns" element={<Planned />} />
-        <Route path="sales/success-stories" element={<Planned />} />
+        <Route path="commercial/quotations" element={<QuotationsPage />} />
+        <Route path="commercial/margin-simulation" element={<MarginSimulationsPage />} />
+        <Route path="commercial/extra-charge-simulation" element={<ExtraChargeSimulationsPage />} />
+        <Route path="commercial/pricing-variance" element={<PricingVariancePage />} />
+        {/* Sales / CRM — Leads folds in Inbound intake as a tab (intake route redirects) */}
+        <Route path="sales/leads" element={<LeadsPage />} />
+        <Route path="sales/inbound-intake" element={<Navigate to="/sales/leads?tab=intake" replace />} />
+        <Route path="sales/opportunities" element={<OpportunitiesPage />} />
+        <Route path="sales/proposals" element={<ProposalsPage />} />
+        <Route path="sales/meetings" element={<MeetingsPage />} />
+        <Route path="sales/campaigns" element={<CampaignsPage />} />
+        <Route path="sales/success-stories" element={<SuccessStoriesPage />} />
         {/* Operations — hub */}
         <Route path="operations" element={<OperationsHub />} />
         <Route path="operations/:section" element={<OperationsHub />} />
@@ -167,14 +171,14 @@ export function App() {
         <Route path="vault/documents" element={<Planned />} />
         <Route path="vault/signatures" element={<Planned />} />
         <Route path="vault/verification" element={<Planned />} />
-        <Route path="vault/compliance-flags" element={<Planned />} />
-        <Route path="vault/reports" element={<Planned />} />
+        <Route path="vault/compliance-flags" element={<ComplianceFlagsPage />} />
+        <Route path="vault/reports" element={<ReportsPage />} />
         {/* Comms */}
         <Route path="comms" element={<Planned />} />
         {/* Settings & Admin (new) */}
         <Route path="settings/numbering" element={<NumberingPage />} />
         <Route path="settings/catalogue" element={<Planned />} />
-        <Route path="portal/access" element={<Planned />} />
+        <Route path="portal/access" element={<PortalAccessPage />} />
         {/* Settings hub cards without a dedicated editor yet */}
         <Route path="settings/business-setup" element={<Planned />} />
         <Route path="settings/login" element={<LoginEditor />} />

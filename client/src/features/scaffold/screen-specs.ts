@@ -122,12 +122,16 @@ export const SPECS: ScreenSpec[] = [
     ],
   },
 
-  /* ───────────────────────────── Sales / CRM ───────────────────────────── */
+  /* ───────────────────────────── Sales / CRM ─────────────────────────────
+   * BUILT (session 6): sales/leads + sales/meetings are live pages in
+   * features/sales/pages.tsx (no longer <Planned/>). Inbound intake is folded
+   * into the Leads screen as a tab; /sales/inbound-intake redirects there.
+   * These specs are retained as the build-map source of record. */
   {
     path: "sales/leads",
     area: "Sales & CRM",
-    title: "Leads",
-    purpose: "Sales lead capture and qualification, plus inbound enquiry intake feeding the top of the funnel.",
+    title: "Leads & intake",
+    purpose: "BUILT. Sales lead capture and qualification, with inbound enquiry + partnership intake folded in as a tab — the top of the funnel.",
     module: "sales/lead",
     status: "ready",
     tabs: [

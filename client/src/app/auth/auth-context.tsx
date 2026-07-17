@@ -14,7 +14,15 @@ import { tenant, ApiError } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
 
-export type User = { user_id: string; email: string; display_name?: string };
+export type User = {
+  user_id: string;
+  email: string;
+  display_name?: string;
+  /** Per-tenant AI switch, resolved from the ai.assistant.backend feature flag
+   *  and returned by the auth endpoints. Absent ⇒ AI off (opt-in). Drives the
+   *  global AI gate — see components/ai-actions.tsx. */
+  ai_enabled?: boolean;
+};
 
 type LoginResult = { pending2fa: boolean };
 

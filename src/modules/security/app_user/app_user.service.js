@@ -39,8 +39,23 @@ const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
+const governance = require("../../ai/governance/governance.service");
 
 const TWOFA_PENDING_TTL = "5m";
+/** Feature flag that turns the whole AI surface on/off for a tenant. Drives the
+ *  FE global AI gate — see client/src/components/ai-actions.tsx. */
+const AI_FEATURE_KEY = "ai.assistant.backend";
+
+/** Resolve the tenant-level AI switch for the login payload. Never throws — if
+ *  the flag/table is missing or the read errors, AI is treated as OFF (opt-in),
+ *  so a governance hiccup can never block sign-in. */
+async function resolveAiEnabled(client) {
+  try {
+    return await governance.isFeatureEnabled(client, AI_FEATURE_KEY);
+  } catch {
+    return false;
+  }
+}
 
 function signAccessToken({ userId, jti }) {
   return jwt.sign({ sub: userId, jti, typ: "access" }, config.JWT_ACCESS_SECRET, {
@@ -93,12 +108,14 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment }) 
     ip,
   });
 
+  const aiEnabled = await resolveAiEnabled(client);
+
   return {
     access_token: accessToken,
     refresh_token: refreshToken,
     token_type: "Bearer",
     expires_in: config.JWT_ACCESS_TTL,
-    user: { user_id: user.user_id, email: user.email, display_name: user.full_name },
+    user: { user_id: user.user_id, email: user.email, display_name: user.full_name, ai_enabled: aiEnabled },
   };
 }
 

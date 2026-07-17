@@ -13,7 +13,8 @@ import * as React from "react";
 import { useLocation, Link } from "react-router-dom";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { SPECS_BY_PATH, type ScreenSpec, type BeStatus, type AiKind } from "./screen-specs";
+import { AiActions } from "@/components/ai-actions";
+import { SPECS_BY_PATH, type ScreenSpec, type BeStatus } from "./screen-specs";
 
 const BE_LABEL: Record<BeStatus, string> = {
   ready: "Backend ready — needs FE wiring",
@@ -27,21 +28,6 @@ const BE_CLASS: Record<BeStatus, string> = {
   readonly: "st-info",
   none: "st-bad",
 };
-
-const AI_LABEL: Record<AiKind, string> = { read: "read", write: "action", assist: "AI-assist" };
-const AI_CLASS: Record<AiKind, string> = {
-  read: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  write: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-  assist: "bg-primary/10 text-primary",
-};
-
-function SparkIcon() {
-  return (
-    <svg viewBox="0 0 24 24" width={14} height={14} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-      <path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8" />
-    </svg>
-  );
-}
 
 export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
   const [tab, setTab] = React.useState(0);
@@ -111,28 +97,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
         </Table>
       </div>
 
-      {spec.ai && spec.ai.length > 0 && (
-        <div className="mt-6">
-          <div className="mb-2 flex items-center gap-2">
-            <span className="text-primary">
-              <SparkIcon />
-            </span>
-            <h2 className="text-sm font-semibold text-foreground">AI actions on this screen</h2>
-            <span className="text-xs text-muted-foreground">— callable via the assistant (⌘K → Ask) with human confirm on writes</span>
-          </div>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {spec.ai.map((a) => (
-              <div key={a.label} className="lux-card flex items-start gap-3 p-3">
-                <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${AI_CLASS[a.kind]}`}>{AI_LABEL[a.kind]}</span>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-foreground">{a.label}</p>
-                  <p className="text-xs text-muted-foreground">{a.describe}</p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      <AiActions actions={spec.ai} />
 
       <p className="mt-6 text-sm">
         <Link to="/" className="text-primary underline-offset-4 hover:underline">

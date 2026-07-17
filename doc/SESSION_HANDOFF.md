@@ -3,8 +3,20 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-15 (session 4) — **not yet Windows-verified; run `npm run build --prefix
-client` + `npm run lint` + `npm test`.** Shipped: (a) **Settings tiles** (bank accounts, payment
+_Last updated: 2026-07-16 (session 5). **Session 5 = master-data trio + global AI gate + BE
+`ai_enabled`.** FE build (master-data + gate) **Windows-verified by the user this session**;
+the **BE `ai_enabled` change still needs `npm run lint` + `npm test`** (written after that
+verify). Shipped session 5: (i) **master-data trio** — Clients/Suppliers/Corporate entities
+wired to live BE in `client/src/features/master/pages.tsx`, routed in `app.tsx` (replaced the
+`<Planned/>` slots); (ii) **global AI gate** — `client/src/components/ai-actions.tsx`
+(`useAiEnabled`/`AiGate`/`AiActions`), `screen-scaffold.tsx` refactored onto it,
+`User.ai_enabled` added; (iii) **BE** — `governance.isFeatureEnabled` + `app_user
+issueSessionTokens` now return `ai_enabled` on login/2FA/pin (`doc/AI_GATE_BE_HANDOFF.md`).
+**Division of labour:** FS colleague owns **finance + operations**; this stream owns master
+data / sales-CRM / vault / portal / settings. **Next in this lane:** ⭐ Opportunities board,
+Reports, Portal access (pulling Pixie layouts), plus Leads/intake + Compliance flags on the
+existing pattern. See session log "session 5" below. **Session 4 (below)** — Windows-verified
+this session. Shipped: (a) **Settings tiles** (bank accounts, payment
 gateways, scheduled reports, API keys/AI vendors, pipeline stages [read-only], document numbering)
 in `client/src/features/settings/config-pages.tsx`, routed + registered; (b) **per-tenant PWA** —
 dynamic `/manifest.webmanifest` + `/icons/app-icon-*.png` from branding via sharp
@@ -100,6 +112,57 @@ Design reference: `doc/reference/reference-mock-lovable`.
   sign-out (until told otherwise).
 - **Postman** `postman/praxis-ls.phase0.postman_collection.json` — Phase 0 + Finance +
   Fleet/WMS/HR folders.
+
+## Session log — 2026-07-16 (session 5: master-data trio + global AI gate)
+
+Division of labour set with the FS colleague: **colleague owns finance + operations**;
+this session (and the run to Sunday) covers everything else — master data, sales/CRM,
+vault, portal, settings. QuickPIN migration has landed (colleague), so QuickPIN is live —
+smoke-test register/login when convenient.
+
+1. **Global AI gate (NEW).** All AI affordances now route through one gate:
+   `client/src/components/ai-actions.tsx` — `useAiEnabled()`, `<AiGate>`, and the shared
+   self-gating `<AiActions actions={…}/>` panel. AI is a per-tenant switch
+   (`ai.assistant.backend` feature flag, flipped from the developer dashboard); when off,
+   **no AI UI appears in any module**. The gate reads `user.ai_enabled` off the auth
+   session (`app/auth/auth-context.tsx` `User` extended) and **defaults OFF** until the BE
+   sends it (fail-safe — AI is opt-in). `screen-scaffold.tsx` was refactored to render its
+   AI panel via `<AiActions>` (so all 47 scaffolds gate automatically).
+   **BE side — DONE (2026-07-16, this session):** `ai_enabled` now ships on the login / 2FA /
+   pin-login `user` payload. New `governance.isFeatureEnabled(client, key)` (tenant-level flag,
+   ignores per-user grant/budget); `app_user issueSessionTokens()` resolves
+   `ai_enabled = isFeatureEnabled(client, "ai.assistant.backend")` via a fail-safe
+   `resolveAiEnabled()` (never throws → defaults false, can't block sign-in). Full notes in
+   `doc/AI_GATE_BE_HANDOFF.md`. Toggling in the dev dashboard takes effect on next login.
+2. **Master-data trio wired to live BE** — new `client/src/features/master/pages.tsx`
+   (same primitives as `settings/master-data-pages.tsx`):
+   - **Clients** `/master/clients` (MOD-03 `/clients`): list + create/edit (entity picker,
+     NIU/RCCM, payment terms, credit limit, withholding, active) + a **Credit** modal
+     (`GET /clients/:id/credit` → KYC/limit/used/available/within). Gated AI panel.
+   - **Suppliers** `/master/suppliers` (MOD-04 `/suppliers`): list + create/edit (category,
+     rating, payment method incl. conditional mobile-money fields, non-resident, active).
+     Gated AI panel.
+   - **Corporate entities** `/master/corporate-entities` (MOD-01 `/entities`): list +
+     create/edit (code immutable on edit, legal name, NIU/RCCM, ISO-2 country, doc prefix,
+     language, FY start month) + **Activate/Deactivate** (`POST /entities/:id/active`).
+   Routed in `app.tsx` (replaced the three `<Planned/>` slots); nav already listed all
+   three; `screen-registry.json` left as-is (not load-bearing for built pages — currencies/
+   tax-jurisdictions have no entries either).
+3. **Design fidelity:** the Lovable reference mock is dashboard-only (no per-entity Pixie
+   layouts exist), so per the agreed fallback these three reuse the existing table+modal
+   pattern. Pixie layouts to be pulled for the ⭐ hub screens next (Opportunities board,
+   Reports, Portal access).
+
+**Not yet Windows-verified** (batch workflow — sandbox mount unreliable for fresh files;
+did not run in-sandbox `tsc`). **Authoritative check: `npm run build --prefix client` +
+`npm run lint` + `npm test` on Windows.** New/edited FE files:
+`components/ai-actions.tsx` (new), `features/master/pages.tsx` (new),
+`app/auth/auth-context.tsx` (User type), `features/scaffold/screen-scaffold.tsx` (AI panel
+→ `<AiActions>`), `app/app.tsx` (imports + 3 routes). New doc: `doc/AI_GATE_BE_HANDOFF.md`.
+
+**Next in my lane (to Sunday):** ⭐ Opportunities Kanban (`/sales/opportunities`, MOD-24),
+⭐ Reports runner (`/vault/reports`, MOD-63), ⭐ Portal access (`/portal/access`),
+Leads + intake (MOD-20/25), Compliance flags (MOD-65). Pull Pixie layouts for the ⭐ ones.
 
 ## Session log — 2026-07-13 (FE)
 
@@ -400,19 +463,34 @@ layouts for; the master-data trio reuse the existing table+modal pattern as-is.
 
 ## First thing to do in a new session
 
-**Session 3 (2026-07-15) is fully Windows-verified** — `npm run lint`, `npm test`, and
-`npm run build --prefix client` all pass; commit the session-3 work if not already committed.
+**Sessions 3 + 4 are fully Windows-verified** — `npm run lint`, `npm test`, and
+`npm run build --prefix client` pass. **Session 5's FE (master-data trio + AI gate) was
+Windows-verified by the user; the session-5 BE change (`ai_enabled`) was written after that
+and is NOT yet verified.**
+
+**⚠️ PC SWITCH (2026-07-16):** this handoff was written just before the user moved to another
+machine. Pull latest, then start at step 0.
 
 **Pick up here (priority order):**
 
-0. **FIRST: Windows-verify session 4.** Run `npm run build --prefix client`, `npm run lint`,
-   `npm test`; fix anything, then commit. (Sandbox couldn't typecheck `app.tsx` — mount corruption.)
-1. **Wire the "ready" screens — replace scaffolds with real pages.** Every un-built screen now
-   renders a `<Planned/>` skeleton from `client/src/features/scaffold/screen-specs.ts`; convert
-   them to live pages following `config-pages.tsx` / `master-data-pages.tsx`. **Priorities + exact
-   BE endpoints are in "Recommended next screens" above** — start with the master-data trio
-   (Clients/Suppliers/Corporate entities), then the ⭐ hubs (Operations files, Opportunities board,
-   Supplier invoices 3-way match, Reports, Portal access). Full screen/tab/AI map: `doc/FE_IA_BUILD_MAP.md`.
+0. **FIRST: Windows-verify + commit session 5.** The FE build was verified mid-session, but the
+   **BE `ai_enabled` change came after** — run `npm run lint` + `npm test` (and
+   `npm run build --prefix client` to be safe); fix anything, then commit. Files: BE —
+   `src/modules/ai/governance/governance.service.js` (`isFeatureEnabled`),
+   `src/modules/security/app_user/app_user.service.js` (`resolveAiEnabled` + `issueSessionTokens`);
+   FE — `client/src/features/master/pages.tsx`, `client/src/components/ai-actions.tsx`,
+   `client/src/app/auth/auth-context.tsx`, `client/src/features/scaffold/screen-scaffold.tsx`,
+   `client/src/app/app.tsx`. (In-sandbox `node --check` false-failed on mount truncation — files
+   are correct on disk; Windows is authoritative.)
+1. **Wire the remaining "ready" screens — replace scaffolds with real pages.** Master-data trio
+   (Clients/Suppliers/Corporate entities) is **DONE (session 5)**. **This stream's lane next** (NOT
+   finance/ops — those are the FS colleague's): the ⭐ hubs **Opportunities board** (`/sales/
+   opportunities`, MOD-24), **Reports** (`/vault/reports`, MOD-63), **Portal access**
+   (`/portal/access`) — pull **Pixie** layouts (the pixiegirl site; user is sending the video/URL)
+   for these three — plus **Leads + inbound intake** (MOD-20/25) and **Compliance flags** (MOD-65)
+   on the existing `master/pages.tsx` / `config-pages.tsx` pattern. Full map: `doc/FE_IA_BUILD_MAP.md`.
+   New AI panels drop in via `<AiActions>` (auto-gated). Await the BE dev's confirmation of which
+   of MOD-24/63/20/25/65 + portal are merged (message sent this session).
 2. **Settings tiles — DONE (session 4).** Bank accounts, payment gateways, scheduled reports, API
    keys, pipeline stages (read-only), numbering all built in `config-pages.tsx`. Remaining tiles
    have **no BE** (custom fields, document templates, business policies, factory languages, help

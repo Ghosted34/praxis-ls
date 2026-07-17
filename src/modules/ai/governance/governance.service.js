@@ -82,6 +82,14 @@ async function canUseFeature(client, { userId, featureKey, onDate = null }) {
   return { ...verdict, feature_key: featureKey, budget_state: budget.state, spent_xaf: budget.spent_xaf };
 }
 
+/** Lightweight tenant-level switch: is a feature turned on for this tenant?
+ *  Ignores the per-user grant + budget (those are enforced at call time in the
+ *  orchestrator). Used by auth to tell the UI whether to show any AI at all. */
+async function isFeatureEnabled(client, featureKey) {
+  const flag = await repo.getFlag(client, featureKey);
+  return Boolean(flag && flag.is_enabled);
+}
+
 /** Append a usage row against the active budget period (cost accounting). */
 async function recordUsage(client, { userId = null, featureKey = null, conversationId = null, provider = null, model = null, callType = null, inputTokens = 0, outputTokens = 0, audioSeconds = 0, costXaf = null, costNative = 0, costNativeCurrency = null, latencyMs = null, wasSuccessful = true, errorCode = null, errorMessage = null, onDate = null }) {
   const date = onDate || today();
@@ -143,6 +151,6 @@ async function testVendor(client, vendor) {
 module.exports = {
   listFeatures, setFeature, testVendor,
   grantAccess, revokeAccess, listGrants,
-  budgetStatus, setBudget, canUseFeature, recordUsage, listUsage,
+  budgetStatus, setBudget, canUseFeature, isFeatureEnabled, recordUsage, listUsage,
   listVendors, getVendor, setVendor, getVendorConfig,
 };

@@ -14,19 +14,16 @@ export default defineConfig({
         VitePWA({
             registerType: "autoUpdate",
             includeAssets: ["favicon.ico"],
-            manifest: {
-                name: "Praxis LS",
-                short_name: "Praxis LS",
-                description: "Praxis LS — logistics & accounting platform",
-                theme_color: "#0b1220",
-                background_color: "#ffffff",
-                display: "standalone",
-                start_url: "/",
-                icons: [
-                    { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
-                    { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
-                    { src: "/icon-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
-                ],
+            // Per-tenant PWA: the manifest is served dynamically by the API from the
+            // tenant's branding (src/routes/pwa.js). Subdomain-per-tenant = one origin
+            // per tenant, so /manifest.webmanifest + /icons/* resolve by Host. The link
+            // tag is added manually in index.html since the plugin emits none here.
+            manifest: false,
+            workbox: {
+                // Cache the app shell for offline; never precache the dynamic manifest.
+                navigateFallback: "/index.html",
+                navigateFallbackDenylist: [/^\/api/, /^\/media/, /^\/manifest\.webmanifest$/, /^\/icons\//],
+                globPatterns: ["**/*.{js,css,html,svg,woff2}"],
             },
         }),
     ],
@@ -43,6 +40,17 @@ export default defineConfig({
             },
             // Stored files (tenant logos, later documents) served by the API at /media.
             "/media": {
+                target: API_TARGET,
+                changeOrigin: true,
+                headers: { Host: TENANT_HOST },
+            },
+            // Per-tenant PWA manifest + icons are served by the API, Host-resolved.
+            "/manifest.webmanifest": {
+                target: API_TARGET,
+                changeOrigin: true,
+                headers: { Host: TENANT_HOST },
+            },
+            "/icons": {
                 target: API_TARGET,
                 changeOrigin: true,
                 headers: { Host: TENANT_HOST },

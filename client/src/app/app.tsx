@@ -66,6 +66,7 @@ import {
   StatementsPage,
   TaxCenterPage,
 } from "@/features/finance/pages";
+import { ClientsPage, SuppliersPage, CorporateEntitiesPage } from "@/features/master/pages";
 import { Planned } from "@/features/scaffold/screen-scaffold";
 import { BootGate } from "@/app/boot-gate";
 
@@ -165,9 +166,9 @@ export function App() {
         {/* Finance (new) */}
         <Route path="finance/debt" element={<Planned />} />
         {/* Master data */}
-        <Route path="master/clients" element={<Planned />} />
-        <Route path="master/suppliers" element={<Planned />} />
-        <Route path="master/corporate-entities" element={<Planned />} />
+        <Route path="master/clients" element={<ClientsPage />} />
+        <Route path="master/suppliers" element={<SuppliersPage />} />
+        <Route path="master/corporate-entities" element={<CorporateEntitiesPage />} />
         <Route path="master/treasury-accounts" element={<BankAccountsPage />} />
         <Route path="master/currencies" element={<CurrenciesPage />} />
         <Route path="master/expense-rates" element={<Planned />} />

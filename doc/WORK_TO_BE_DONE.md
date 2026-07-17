@@ -2,6 +2,28 @@
 
 Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organised by delivery phase, per the accounting-first roadmap (no big-bang cutover). Update statuses as work lands; this file is the running backlog, not a historical record — the transcript/PRD stay unchanged as source of truth.
 
+## Frontend build status — 2026-07-17 (session 6)
+
+This stream's FE lane (master data / sales-CRM / vault / portal / dashboard) is **substantially
+complete**. Screens wired to live BE this session (all typecheck clean; lint + `npm run build
+--prefix client` pass on Windows). See `doc/WORK_DONE.md` (2026-07-17) + `doc/FE_IA_BUILD_MAP.md`.
+
+- [x] **Sales & CRM funnel** (`client/src/features/sales/pages.tsx`): Leads & intake (MOD-20 + folded
+  MOD-25), Meetings (MOD-21), Opportunities Kanban (MOD-24), Proposals (MOD-23), Marketing campaigns
+  (MOD-22), Success stories (MOD-26).
+- [x] **Commercial group** (`client/src/features/commercial/pages.tsx`): Quotations (MOD-27, gated
+  `commercial.quotation`), Margin sim (MOD-27), Extra-charge sim (MOD-28), Pricing variance (MOD-27).
+- [x] **Vault hubs** (`client/src/features/vault/pages.tsx`): Reports (MOD-63, gated `reporting`),
+  Compliance flags (MOD-65).
+- [x] **Portal access** (`client/src/features/portal/pages.tsx`, MOD-67).
+- [x] **Control Tower** live (`client/src/features/dashboard.tsx`, MOD-00A) — replaced the static mock.
+- [x] Shared FE primitives extracted to `client/src/features/sales/ui.tsx`.
+- [x] Master-data trio (Clients/Suppliers/Corporate entities) — session 5.
+
+**FE follow-ons still open:** tax-code picker for Quotations (so VAT flags from the FE); Reports
+dashboard-tile picker (`/reports/tiles`) feeding the Control Tower; platform/godmode console UI; vault
+Documents/Signatures/Verification (BE gaps). Not this stream: finance + operations screens (FS colleague).
+
 ## Immediate / pre-build (from kickoff)
 
 - [x] Victor: create the GitHub repo (PR-based workflow) and publish the initial README

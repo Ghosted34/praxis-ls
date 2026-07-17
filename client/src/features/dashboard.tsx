@@ -1,54 +1,148 @@
 /**
- * Control Tower home — the full Lovable mock (doc/reference/reference-mock-lovable).
- * The mock is a self-contained static HTML/CSS/JS dashboard whose CSS uses global
- * selectors (`*{margin:0}`, `body{overflow:hidden}`) that would clobber the app
- * shell, so we render it inside an isolated <iframe srcDoc> — pixel-perfect and
- * style-sandboxed, it cannot break anything outside the frame. Theme is synced
- * from the app's light/dark state at mount.
+ * Control Tower home — live data (MOD-00A). Replaces the earlier static Lovable
+ * iframe mock: real KPI tiles + live-shipments board fed by
+ *   GET /dashboard/kpis          → flat counts (each guarded server-side)
+ *   GET /dashboard/control-tower → operation-file counts, approvals, shipments
+ * Styled with the app's lux-card + --primary tokens so it re-tints per tenant.
  */
 import * as React from "react";
-import bodyHtml from "./dashboard-mock/body.html.txt?raw";
-import styleCss from "./dashboard-mock/style.css.txt?raw";
-import scriptJs from "./dashboard-mock/script.js.txt?raw";
+import { tenant } from "@/lib/api-client";
+import { Button } from "@/components/ui/button";
+import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { AiActions } from "@/components/ai-actions";
+import type { AiAction } from "@/features/scaffold/screen-specs";
+import { Row, errMsg, cell, when, Badge, MetricTile } from "@/features/sales/ui";
 
-const FONTS = `<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap">`;
+const DASH_AI: AiAction[] = [
+  { label: "Brief me", kind: "read", describe: "Summarise today's Control Tower — what needs attention across dossiers, approvals and compliance." },
+  { label: "Explain a number", kind: "assist", describe: "Explain a KPI movement (e.g. why unposted journals rose)." },
+];
 
-// The mock ships its own full top command bar (brand + nav + search + live/test +
-// avatar). We already render that chrome in the real app shell, so hide the mock's
-// duplicate to leave a single, coherent header — the iframe then shows only the
-// dashboard body (map, live shipments, KPIs). data-theme tracks the app's mode.
-const OVERRIDES = `.topbar{display:none!important}`;
+const num = (v: unknown) => (v === null || v === undefined ? "—" : Number(v).toLocaleString());
 
-function buildDoc(theme: "light" | "dark"): string {
-  return (
-    `<!doctype html><html data-theme="${theme}" data-mode="live"><head>` +
-    `<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">` +
-    FONTS +
-    `<style>${styleCss}\n${OVERRIDES}</style></head><body>${bodyHtml}<script>${scriptJs}</script></body></html>`
-  );
-}
-
-function currentTheme(): "light" | "dark" {
-  return typeof document !== "undefined" && document.documentElement.classList.contains("dark") ? "dark" : "light";
+function useDashboard(nonce: number) {
+  const [kpis, setKpis] = React.useState<Row | null>(null);
+  const [ct, setCt] = React.useState<Row | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
+  React.useEffect(() => {
+    let live = true;
+    setLoading(true);
+    setError(null);
+    Promise.all([tenant<Row>("/dashboard/kpis"), tenant<Row>("/dashboard/control-tower")])
+      .then(([k, c]) => {
+        if (!live) return;
+        setKpis(k || {});
+        setCt(c || {});
+      })
+      .catch((e) => live && setError(errMsg(e)))
+      .finally(() => live && setLoading(false));
+    return () => {
+      live = false;
+    };
+  }, [nonce]);
+  return { kpis, ct, error, loading };
 }
 
 export function DashboardPage() {
-  const [theme, setTheme] = React.useState<"light" | "dark">(currentTheme);
+  const [nonce, setNonce] = React.useState(0);
+  const { kpis, ct, error, loading } = useDashboard(nonce);
 
-  // Keep the iframe's theme in sync when the app's light/dark toggle flips the
-  // `dark` class on <html> (the mock reads data-theme, so we rebuild on change).
-  React.useEffect(() => {
-    const el = document.documentElement;
-    const obs = new MutationObserver(() => setTheme(currentTheme()));
-    obs.observe(el, { attributes: true, attributeFilter: ["class"] });
-    return () => obs.disconnect();
-  }, []);
-
-  const doc = React.useMemo(() => buildDoc(theme), [theme]);
+  const ops = (ct?.operation_files as Row | undefined) || {};
+  const shipments = (ct?.live_shipments as Row[] | undefined) || [];
 
   return (
-    <div className="-m-6 h-[calc(100vh-66px)]">
-      <iframe title="Control Tower" srcDoc={doc} className="h-full w-full border-0" />
-    </div>
+    <section className="mx-auto max-w-[1400px] animate-fade-in">
+      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1 className="font-display text-2xl tracking-tight">Control Tower</h1>
+          <p className="mt-1 text-sm text-muted-foreground">Your operation at a glance — live dossiers, approvals and finance signals.</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={() => setNonce((n) => n + 1)} disabled={loading}>
+          {loading ? "Refreshing…" : "Refresh"}
+        </Button>
+      </header>
+
+      {error ? (
+        <ErrorState message={error} />
+      ) : loading && kpis === null ? (
+        <LoadingRow label="Loading Control Tower…" />
+      ) : (
+        <div className="space-y-6">
+          {/* Hero — the actionable signals */}
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            <MetricTile label="Active operation files" value={num(ops.active)} accent />
+            <MetricTile label="Approvals awaiting" value={num(ct?.approvals_awaiting)} accent />
+            <MetricTile label="Open compliance flags" value={num(kpis?.open_compliance_flags)} />
+            <MetricTile label="Unposted journals" value={num(kpis?.unposted_journal_entries)} />
+          </div>
+
+          {/* Live shipments */}
+          <div className="lux-card p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="font-display text-lg tracking-tight">Live shipments</h2>
+              <span className="text-xs text-muted-foreground">Open &amp; in-progress dossiers</span>
+            </div>
+            {shipments.length === 0 ? (
+              <EmptyState title="No live shipments" hint="Open dossiers appear here with their route and ETA." />
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="px-2 py-2 text-left font-medium">Dossier</th>
+                      <th className="px-2 py-2 text-left font-medium">Status</th>
+                      <th className="px-2 py-2 text-left font-medium">Route</th>
+                      <th className="px-2 py-2 text-left font-medium">Vessel / flight</th>
+                      <th className="px-2 py-2 text-left font-medium">ETA</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {shipments.map((s, i) => (
+                      <tr key={String(s.ref ?? i)} className="border-b last:border-0">
+                        <td className="px-2 py-2 font-medium">{cell(s.ref)}</td>
+                        <td className="px-2 py-2">
+                          <Badge label={String(s.status || "—")} />
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">
+                          {cell(s.origin)} <span className="text-foreground">→</span> {cell(s.destination)}
+                        </td>
+                        <td className="px-2 py-2 text-muted-foreground">{cell(s.vessel_flight)}</td>
+                        <td className="px-2 py-2 text-muted-foreground">{when(s.eta)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* Operation-file breakdown + registry counts */}
+          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
+            <div className="lux-card p-4">
+              <h2 className="mb-3 font-display text-lg tracking-tight">Operation files</h2>
+              <div className="grid grid-cols-3 gap-3">
+                <MetricTile label="Active" value={num(ops.active)} accent />
+                <MetricTile label="Open" value={num(ops.open)} />
+                <MetricTile label="In progress" value={num(ops.in_progress)} />
+              </div>
+            </div>
+            <div className="lux-card p-4">
+              <h2 className="mb-3 font-display text-lg tracking-tight">Finance &amp; registries</h2>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                <MetricTile label="Open dossiers" value={num(kpis?.open_dossiers)} />
+                <MetricTile label="Proformas" value={num(kpis?.proformas)} />
+                <MetricTile label="Final invoices" value={num(kpis?.final_invoices)} />
+                <MetricTile label="Receipts" value={num(kpis?.receipts)} />
+                <MetricTile label="Clients" value={num(kpis?.clients)} />
+                <MetricTile label="Suppliers" value={num(kpis?.suppliers)} />
+              </div>
+            </div>
+          </div>
+
+          <AiActions actions={DASH_AI} />
+        </div>
+      )}
+    </section>
   );
 }

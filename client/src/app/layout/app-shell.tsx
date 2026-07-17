@@ -49,8 +49,8 @@ const NAV: NavGroup[] = [
     heading: "Sales & CRM",
     prefix: "/sales",
     items: [
-      { to: "/sales/leads", label: "Leads" },
-      { to: "/sales/inbound-intake", label: "Inbound intake" },
+      { to: "/sales/leads", label: "Leads & intake" },
+      { to: "/sales/leads?tab=intake", label: "Inbound intake" },
       { to: "/sales/opportunities", label: "Opportunities" },
       { to: "/sales/proposals", label: "Proposals" },
       { to: "/sales/meetings", label: "Meetings" },

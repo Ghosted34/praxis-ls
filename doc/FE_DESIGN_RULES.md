@@ -88,7 +88,9 @@ modal. They carry their own dark surface and are **not** for in-app screens — 
 routed in `client/src/app/app.tsx`, and listed in the `NAV` array in
 `client/src/app/layout/app-shell.tsx`. Register in `client/src/app/screen-registry.json` only
 once the page and its actions are real (see `doc/FE_IA_HANDOFF.md` §3 for why). Unbuilt screens
-route to the shared `ComingSoon` placeholder.
+route to the shared `<Planned/>` scaffold (`features/scaffold/screen-scaffold.tsx`, catalogue in
+`screen-specs.ts`) — it renders a finished skeleton from the spec. (The old `ComingSoon` placeholder
+was removed once every route pointed at `<Planned/>` or a real page — 2026-07-17.)
 
 **The default list screen is `<ResourceList>`** (`components/resource-list.tsx`) — this is the
 skeleton nearly every screen starts from. It fetches a tenant endpoint and renders a table with

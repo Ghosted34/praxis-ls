@@ -8,6 +8,96 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-17 — Session 6: whole Sales/CRM + Commercial + Vault/Portal FE lane + live Control Tower
+
+**Context.** Continuation of the FE reskin, this stream's lane (master data / sales-CRM / vault /
+portal / settings; the FS colleague owns finance + operations). Agreed a funnel model with the user
+— **marketing → leads + opportunities → sales** — and built the whole lane against the already-merged
+BE modules. Design pulled from the user's Pixie "Hub" CRM screen recording (`Recording 2026-07-17`):
+its *layout* (tabbed CRM, filter chips, avatar list-rows, segmented controls, metric strips) reused
+but driven by the app's `--primary` tokens, not the mock's crimson — so every screen re-tints per
+tenant. All wired to live endpoints; **in-sandbox `tsc --noEmit` clean throughout; `npm run lint` +
+`npm run build --prefix client` pass on Windows (user-confirmed).**
+
+**BE confirmation first.** Read `src/shared/http/module-loader.js` — modules auto-discover/mount from
+`src/modules/<group>/<mod>/<mod>.routes.js`, so verified all target modules are merged with full
+7-file structure + real routes before building. Gates to remember: Reports needs `reporting`;
+Quotations needs `commercial.quotation`; portal external views need `portal.client|investor|audit`.
+
+**Sales & CRM funnel — `client/src/features/sales/pages.tsx` (all six):**
+- **Leads & intake** (`/sales/leads`, MOD-20) — two-tab (Leads + Inbound intake). Leads = Pixie
+  Clients-tab layout (search + status chips + avatar rows) → capture/edit, advance
+  (`/transition` → CONTACTED/QUALIFIED/LOST), **Convert** (`/convert`, QUALIFIED→client_master).
+  Intake (nested segment) = Enquiries (**Triage** `/inbound/enquiries/:id/triage {to_lead,close}`) +
+  Partnership requests (**Review** `/:id/review {status}`). **Inbound intake folded in as a tab, not
+  a standalone screen** (user decision); `/sales/inbound-intake` now redirects to `?tab=intake`; nav
+  relabelled "Leads & intake" + a deep-link.
+- **Meetings** (`/sales/meetings`, MOD-21) — list + Schedule (subject + lead/client picker +
+  `scheduled_at`); row → detail modal (`GET /:id` notes) with Add note (`/:id/notes {body,is_minutes}`).
+- **Opportunities** (`/sales/opportunities`, MOD-24) — Board + List (segmented). Board = one column
+  per `/opportunities/stages`; cards = OPEN opps grouped client-side by stage; per-column value from
+  `/opportunities/board`; a forecast strip (open value / weighted Σ value×prob / open deals / win
+  rate). **Drag-to-move** → `/:id/move` (won/lost stage auto-settles server-side); per-card Win
+  (modal, opt. `create_dossier`+entity → `/:id/win`), Lose (`/:id/lose`), Edit. Note: BE `/board`
+  is aggregates-only, so the board composes `/stages` + `/` (list) rather than rendering `/board`.
+- **Proposals** (`/sales/proposals`, MOD-23) — list + chips; detail modal (narrative sections +
+  priced line table + total); create/edit draft with narrative + line editors (PATCH replaces
+  children, DRAFT-only); lifecycle via inline panels: Submit → Send (entity-numbered) → Reject /
+  Accept (`/:id/accept`, opt. spin a quotation).
+- **Marketing campaigns** (`/sales/campaigns`, MOD-22) — Pixie Sales-campaigns layout: metric strip
+  (Active/Draft/Ended/Subscribers) + campaign cards with lifecycle buttons (`/:id/transition`,
+  DRAFT→ACTIVE→PAUSED↔ACTIVE→ENDED); Subscribers tab (add `/subscribers`, unsubscribe).
+- **Success stories** (`/sales/success-stories`, MOD-26) — filter chips + case-study cards;
+  create/edit draft; Sign off (`/:id/sign-off`) → Publish (BE requires sign-off) → Unpublish.
+
+**Shared UI extracted — `client/src/features/sales/ui.tsx`.** `Row`, `errMsg`, `cell`, `when`,
+`fmtMoney`, `useList`, `Badge` (+ colour map), `Segmented`, `Chips`, `Avatar`, `MetricTile` — imported
+by every sales/commercial/vault/portal/dashboard screen (was inline in `sales/pages.tsx`).
+
+**Commercial group — `client/src/features/commercial/pages.tsx` (FS colleague verifying finance
+correctness):**
+- **Quotations** (`/commercial/quotations`, MOD-27) — **gated `commercial.quotation`** ("enable it"
+  empty state when off). List + chips; detail (line table + HT/TTC from BE); create/edit draft with
+  a line editor incl. a **débours** (untaxed pass-through) flag; lifecycle DRAFT→SENT (entity →
+  numbers doc; sends directly if the quote already has an entity)→ACCEPTED (inline convert→final-
+  invoice draft)/REJECTED/EXPIRED. **No tax-code picker yet** → FE doesn't VAT-flag lines, so
+  total_ttc==total_ht until a `tax_code_id` is set (follow-on).
+- **Margin simulation** (MOD-27) + **Extra-charge/demurrage simulation** (MOD-28) — saved-sim cards +
+  a modal with a line/tier editor, **Preview** (`/preview`, no persist) then **Save** (`POST /`).
+  Extra-charge tier editor overrides tenant settings `commercial.demurrage_tariff`.
+- **Pricing variance** (MOD-27) — Sales R/Y/G list (flag + quote only; raw cost never leaves the
+  finance boundary) + flag chips; Compute modal (dossier picker from `/operations`, quotation picker,
+  optional quoted-price/actual-cost) → `/compute`.
+
+**Vault hubs — `client/src/features/vault/pages.tsx`:**
+- **Reports** (`/vault/reports`, MOD-63) — **gated `reporting`**. Catalogue (10 producers) → Run
+  modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved
+  tab (run via `/saved/:id/run`, delete). Scheduling stays in Settings; tile picker deferred.
+- **Compliance flags** (`/vault/compliance-flags`, MOD-65) — Flags tab: **Run checks** (`/run`) +
+  severity chips + include-resolved toggle + Resolve (`/:id/resolve`); Rules tab = rule catalogue.
+
+**Portal — `client/src/features/portal/pages.tsx`:**
+- **Portal access** (`/portal/access`, MOD-67) — grant list + Grant (client/investor/auditor; CLIENT
+  needs a client scope) + Revoke (`/access/:id/revoke`); Preview buttons GET the external views
+  (`/portals/client|investor|auditor`), each gated `portal.*` → graceful "enable it" state.
+
+**Control Tower — now LIVE (`client/src/features/dashboard.tsx`).** Replaced the static Lovable
+`<iframe srcDoc>` mock with real React tiles: `GET /dashboard/kpis` (guarded flat counts) +
+`GET /dashboard/control-tower` (op-file counts, approvals awaiting, live-shipments list = open/
+in-progress dossiers with ref/status/route/vessel/ETA). MOD-00A, permission-gated, no feature flag.
+Hero strip + live-shipments table + op-file breakdown + registry counts + Refresh + gated AI panel.
+**Not** wired to `/reports/tiles` (that's a per-user tile-layout store) — the dashboard aggregate is
+the right source.
+
+**Cleanup.** Deleted the now-unused `client/src/features/dashboard-mock/{body.html,script.js,
+style.css}.txt` and `client/src/features/placeholder/coming-soon.tsx` (+ their folders); nothing
+imported them (verified). Routes wired in `client/src/app/app.tsx`; nav in `app-shell.tsx`.
+
+**Every AI affordance drops in via `<AiActions>` (globally gated, session 5) — no AI UI appears when
+the tenant flag is off.** Follow-ons (not built): tax-code picker for Quotations; Reports
+dashboard-tile picker; platform/godmode console UI. Docs: `FE_IA_BUILD_MAP.md` + `SESSION_HANDOFF.md`
+updated screen-by-screen.
+
 ## 2026-07-12 — Phase 1 finance FE (round 2): wire the actions that already had a BE
 
 **Context.** Follow-on to the write-forms round below. Gap audit found three actions

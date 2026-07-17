@@ -60,22 +60,31 @@ structure; "Actions" are the primary buttons.
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Quotations | `/commercial/quotations` | ready | Quotations · Lines & totals · Margin simulation · Extra-charge simulation | Ref/Client/Dossier/Status/Total · New quotation, Send, Accept |
-| Margin simulation | `/commercial/margin-simulation` | ready | — | Ref/Dossier/Revenue/Cost/Margin% · New simulation |
-| Extra-charge simulation | `/commercial/extra-charge-simulation` | ready | — | Ref/Type/Tiers/Estimate · New simulation |
-| Pricing variance | `/commercial/pricing-variance` | ready | — | Dossier/Quote/Actual/Variance/Flag · Compute variance |
+| **Quotations** ✅ BUILT (session 6) | `/commercial/quotations` | ready | — | ⚠️ **feature-gated `commercial.quotation`** (shows an "enable it" empty state when off). List + filter chips; detail modal (line table + HT/TTC totals); create/edit draft with line editor (label/qty/unit price/**débours**); lifecycle DRAFT→SENT (entity-numbered)→ACCEPTED (opt. convert→final-invoice draft)/REJECTED/EXPIRED. VAT computed server-side. |
+| **Margin simulation** ✅ BUILT (session 6) | `/commercial/margin-simulation` | ready | — | Saved-sim cards + New-simulation modal: line editor (unit cost/price/débours) → **Preview** (`/preview`, no persist) shows cost/price/margin/margin% → **Save** (`POST /`). |
+| **Extra-charge simulation** ✅ BUILT (session 6) | `/commercial/extra-charge-simulation` | ready | — | Saved-sim cards + modal: shipping line/variant, free/occupied days, **tariff-tier editor** → Preview (`/preview`) shows chargeable days + per-day breakdown + total → Save. Tariff comes from tenant settings or the entered tiers. |
+| **Pricing variance** ✅ BUILT (session 6) | `/commercial/pricing-variance` | ready | — | Sales R/Y/G list (flag + quote, **never raw cost**) + flag filter chips; **Compute** modal (dossier + quotation/quoted-price, optional actual cost) → `POST /compute`. |
 
 ### Sales & CRM
 
+Funnel model (agreed with the user): **marketing → leads + opportunities → sales**. Build order
+folds the whole funnel, not just the two ⭐ hubs — see `doc/SESSION_HANDOFF.md` (session 6).
+
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Leads | `/sales/leads` | ready | Leads · Inbound intake | Name/Company/Source/Status/Owner · Capture, Advance, Convert |
-| Inbound intake | `/sales/inbound-intake` | ready | Enquiries · Partnership requests | Contact/Subject/Channel/Status · Triage → lead |
-| Opportunities | `/sales/opportunities` | ready | Pipeline board · List | Stage/Value/Weighted; Name/Client/Stage/Probability · New, Move, Win, Lose |
-| Proposals | `/sales/proposals` | ready | — | Ref/Client/Status/Value · **Draft with AI**, Send, Accept |
-| Meetings | `/sales/meetings` | ready | — | Title/With/Date/Notes · Schedule, Add minutes |
-| Marketing campaigns | `/sales/campaigns` | ready | Campaigns · Subscribers | Name/Channel/Status/Audience · New campaign, Activate/Pause |
-| Success stories | `/sales/success-stories` | ready | — | Title/Client/Status/Published · **Draft with AI**, Publish |
+| **Leads & intake** ✅ BUILT (session 6) | `/sales/leads` | ready | Leads · Inbound intake (Enquiries · Partnership requests) | Company/Contact/Source/Status · Capture, Mark contacted, Qualify, Convert, Lost; Triage → lead; Review partnership |
+| ~~Inbound intake~~ **folded into Leads** | `/sales/inbound-intake` | ready | — | Route now **redirects** to `/sales/leads?tab=intake`. Kept as a nav deep-link. |
+| **Opportunities** ⭐ ✅ BUILT (session 6) | `/sales/opportunities` | ready | Board (Kanban) · List | Forecast strip (open value / weighted / open deals / win rate); drag-to-move cards across stages; New, Win (opt. open dossier), Lose, Edit; List view has a stage-move dropdown. Columns = `/opportunities/stages`, cards = OPEN opps grouped client-side, per-column value from `/opportunities/board`. Pixie **Pipeline** tab layout. |
+| **Proposals** ✅ BUILT (session 6) | `/sales/proposals` | ready | — | List + filter chips; detail modal with narrative sections + priced line table + total; lifecycle DRAFT→IN_REVIEW→SENT→ACCEPTED/REJECTED (Submit, Send [entity-numbered], Reject, Accept [opt. spin quotation]); create/edit draft with narrative + line editors. **Draft with AI** surfaced via the gated AI panel (assist). |
+| **Meetings** ✅ BUILT (session 6) | `/sales/meetings` | ready | — | Subject/With/Date · Schedule meeting; click a row → notes & minutes (Add note, Mark as minutes) |
+| **Marketing campaigns** ✅ BUILT (session 6) | `/sales/campaigns` | ready | Campaigns · Subscribers | Metric strip (Active/Draft/Ended/Subscribers) + campaign cards with lifecycle buttons (DRAFT→ACTIVE→PAUSED↔ACTIVE→ENDED via `/:id/transition`); Subscribers tab = add (`/subscribers`) + unsubscribe (`/subscribers/unsubscribe`). Pixie **Sales campaigns** layout. |
+| **Success stories** ✅ BUILT (session 6) | `/sales/success-stories` | ready | — | Filter chips (Draft/Signed off/Published) + case-study cards; create/edit draft; lifecycle **Sign off** (`/:id/sign-off`) → **Publish** (`/:id/publish`, requires sign-off) → **Unpublish**. **Draft with AI** via gated AI panel. |
+
+**Design source:** the Pixie "Hub" CRM recording (`Recording 2026-07-17`). Its CRM is one hub with
+`Today · Pipeline · Clients · Reports` tabs. We reuse its **layout** — segmented tabs, a filter-chip
+row and avatar list-rows — but drive it with the app's `--primary` tokens (`lux-card`, status pills),
+not the mock's crimson, so screens re-tint per tenant. The **Pipeline** (Kanban) tab is the design
+reference for Opportunities; the **Clients** tab (search + chips + avatar rows) is what Leads reuses.
 
 ### Operations
 
@@ -127,8 +136,8 @@ structure; "Actions" are the primary buttons.
 | Document vault | `/vault/documents` | readonly | Documents · Signatures | Name/Type/Entity/Uploaded/Hash · Upload _(BE gap)_ |
 | Document signatures | `/vault/signatures` | partial | — | Document/Signer/Status/Signed · Request signature |
 | Document verification | `/vault/verification` | partial | — | Doc ID/Hash/Result · **Verify document** _(BE module incomplete)_ |
-| Compliance flags | `/vault/compliance-flags` | ready | — | Entity/Flag/Severity/Status · Raise, Resolve |
-| Reports | `/vault/reports` | ready | Catalogue · Saved · Dashboard tiles | Report/Description/Run · Run report, Save |
+| **Compliance flags** ✅ BUILT (session 6) | `/vault/compliance-flags` | ready | Flags · Rules | **Run checks** (`POST /run`) + severity chips + include-resolved toggle; flag rows with **Resolve** (`/:id/resolve`); Rules tab = the rule catalogue. |
+| **Reports** ⭐ ✅ BUILT (session 6) | `/vault/reports` | ready | Catalogue · Saved | ⚠️ **feature-gated `reporting`** ("enable it" empty state when off). Catalogue → Run modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved tab (run/delete). Scheduling lives in Settings → Scheduled reports; dashboard-tile picker deferred. |
 
 ### Communication
 
@@ -148,7 +157,7 @@ structure; "Actions" are the primary buttons.
 | Document templates | `/settings/document-templates` | **none** | — | Template/Type/Entity · New template |
 | Email signatures | `/settings/email-signatures` | partial | — | User/Signature/Updated · Edit signature |
 | Help center | `/settings/help-center` | **none** | — | Guide/Category |
-| Portal access | `/portal/access` | ready | Grants · Client view · Investor terminal | Party/Type/Scope/Expires · Grant access, Revoke |
+| **Portal access** ⭐ ✅ BUILT (session 6) | `/portal/access` | ready | — | Active-grant list (portal/email/scope/expires) with **Grant** (client/investor/auditor; client needs a client scope) + **Revoke**; **Preview** the exact external scope (client/investor/auditor views, ⚠️ each gated `portal.*` → graceful "enable it" state). |
 
 ---
 

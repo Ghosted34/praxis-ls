@@ -36,13 +36,13 @@ export function PageHeader({
   eyebrow?: string;
 }) {
   return (
-    <header className="mb-6 flex items-start justify-between gap-4 border-b pb-4">
+    <header className="mb-4 flex items-start justify-between gap-4 border-b pb-3">
       <div className="flex items-start gap-3">
-        <span aria-hidden className="mt-1 h-8 w-1 rounded-full bg-gradient-to-b from-primary to-transparent" />
+      <span aria-hidden className="mt-0.5 h-8 w-1 rounded-full bg-gradient-to-b from-primary to-transparent" />
         <div>
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
-          <h1 className="font-display text-[26px] font-semibold leading-tight tracking-tight">{title}</h1>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+          <h1 className="font-display text-[22px] font-semibold leading-tight tracking-tight">{title}</h1>
+          {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
       {action && <div className="shrink-0">{action}</div>}

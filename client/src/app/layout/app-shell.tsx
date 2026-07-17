@@ -148,16 +148,7 @@ const NAV: NavGroup[] = [
   {
     heading: "Master data",
     prefix: "/master",
-    items: [
-      { to: "/master/clients", label: "Clients" },
-      { to: "/master/suppliers", label: "Suppliers" },
-      { to: "/master/corporate-entities", label: "Corporate entities" },
-      { to: "/master/treasury-accounts", label: "Treasury accounts" },
-      { to: "/master/currencies", label: "Currencies" },
-      { to: "/master/expense-rates", label: "Expense rates" },
-      { to: "/master/financial-dictionary", label: "Financial dictionary" },
-      { to: "/master/tax-jurisdictions", label: "Tax jurisdictions" },
-    ],
+    items: [{ to: "/master", label: "Master data" }],
   },
   {
     heading: "Vault",

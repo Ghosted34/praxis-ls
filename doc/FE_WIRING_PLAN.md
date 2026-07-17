@@ -182,3 +182,53 @@ DataTable — lands in `lib/` or `components/ui/` and every area imports it. Sam
    → finance → commercial/sales/vault → oversight).
 3. Keep `screen-specs.ts` / `screen-registry.json` current so the worklist always
    reflects reality.
+
+## Locked design conventions (Wave 1 → apply to every later wave)
+
+These are proven in Master Data and are now the standard. Every list/CRUD screen
+from Wave 2 on composes them — don't hand-roll or re-style.
+
+**Shared kit (import, don't rebuild):**
+- Data: `lib/use-resource.ts` (`useList` / `useResource`, 403 → permission message);
+  `lib/<area>-api.ts` typed helpers (one per area).
+- Layout: `components/data-list.tsx` — `PageHeader` (accent bar + optional eyebrow)
+  and `DataList` (custom `render` per column, row-click, skeleton/error/empty/table).
+- Summary: `components/ui/kpi-tile.tsx` — `KpiRow` + `KpiTile`.
+- Bits: `components/ui/pill.tsx` (`Pill`/`ActivePill`), `components/ui/skeleton.tsx`,
+  `lib/format.ts` (`money`/`num`/`dateFmt`), `components/ui/modal.tsx`
+  (`Modal`/`Field`/`Select`) for create/edit.
+
+**Compact top block (locked sizing — keep the table high on the page):**
+- `KpiTile`: `px-3.5 py-2.5`, value `.num font-display text-xl`, thin top accent bar
+  (`h-0.5 from-primary to-transparent`). `KpiRow`: `mb-4`, `gap-2.5`, 2/3/4 cols.
+- `PageHeader`: title `font-display text-[22px]`, `mb-4 border-b pb-3`, left accent
+  bar, tight description. No oversized hero headers.
+- Screens don't add outer padding (the shell owns `p-6`); container `max-w-6xl`.
+
+**Beautify on Praxis tokens (never Maroon Noir):** glass `.lux-card`, status via
+`Pill`, money in `.num`, accents resolve to `--primary` (so tenant re-tint works).
+Never inline a hex/font/radius. Light + dark must both work.
+
+**Group related screens into a tabbed hub** (the Master Data pattern) when a nav
+group is a set of registries/sub-screens:
+- One `<Area>Page` shell + deep-linkable routes `area` and `area/:section`; each tab
+  renders its existing page component unchanged.
+- Collapse the nav group to a single entry; keep the per-section routes so
+  bookmarks/registry/Praxis deep-links still work.
+- Tabs = segmented control: track `rounded-xl border bg-muted p-1`; active tab
+  `bg-primary text-primary-foreground font-semibold shadow-sm`; content wrapped in
+  `<div key={active.key} className="animate-fade-in">` for a smooth switch.
+- **RBAC is untouched** — each tab still calls its own module; per-module matrix +
+  org-workflow keep referencing the same `MOD-xx` keys.
+
+**In-screen Praxis** on screens whose `screen-specs.ts` declares `ai` actions: drop
+`<PraxisActions suggestions={…} context="…" onApplied={reload} />` into the header
+(`lib/ai-api.ts` + `components/praxis-actions.tsx`). Screens with no `ai` block get
+none (e.g. all master data).
+
+**Client-facing text:** never show internal `MOD-xx` codes in UI strings.
+
+**Environment caveat (operational):** this working tree currently corrupts files on
+save (NUL injection / truncation). Prefer small, verified writes; after any edit,
+confirm the file has no NULs and ends cleanly; **commit to git frequently** so
+there's always a clean fallback.

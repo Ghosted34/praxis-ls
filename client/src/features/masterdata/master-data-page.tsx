@@ -37,18 +37,18 @@ export function MasterDataPage() {
 
   return (
     <div className="animate-fade-in">
-      <div className="mx-auto mb-6 max-w-6xl">
+      <div className="mx-auto mb-4 max-w-6xl">
         <div className="micro mb-2">Master data</div>
-        <div className="flex flex-wrap gap-1 border-b">
+        <div className="inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
           {TABS.map((t) => (
             <button
               key={t.key}
               onClick={() => navigate(`/master/${t.key}`)}
               className={cn(
-                "relative -mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors",
+                "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors",
                 active.key === t.key
-                  ? "border-primary font-semibold text-foreground"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
+                  ? "bg-primary font-semibold text-primary-foreground shadow-sm"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
               )}
             >
               {t.label}
@@ -57,7 +57,10 @@ export function MasterDataPage() {
         </div>
       </div>
       {/* Each tab renders its own <section> (header + New action + KPIs + table). */}
-      <Active />
+      {/* Keyed wrapper: remounts on tab change so the fade replays each switch. */}
+      <div key={active.key} className="animate-fade-in">
+        <Active />
+      </div>
     </div>
   );
 }

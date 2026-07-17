@@ -551,7 +551,7 @@
   background: linear-gradient(180deg, color-mix(in srgb, var(--primary) 12%, #140a0d) 0%, #100708 100%);
   border: 1px solid color-mix(in srgb, var(--primary) 26%, rgb(255 255 255 / 0.08));
   box-shadow: 0 30px 80px rgb(0 0 0 / 0.6), inset 0 1px 0 rgb(255 255 255 / 0.05);
-  animation: landing-rise 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: landing-rise 0.9s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 .login-card-kicker {
   font-size: 0.62rem;

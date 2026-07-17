@@ -17,9 +17,7 @@ import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/fe
 import { AppearancePage } from "@/features/settings/appearance-page";
 import { SettingsHub } from "@/features/settings/settings-hub";
 import { LoginEditor } from "@/features/settings/login-editor";
-import { CurrenciesPage, TaxJurisdictionsPage } from "@/features/settings/master-data-pages";
 import {
-  BankAccountsPage,
   PaymentGatewaysPage,
   ScheduledReportsPage,
   ApiKeysPage,
@@ -67,13 +65,7 @@ import {
   TaxCenterPage,
 } from "@/features/finance/pages";
 import { Planned } from "@/features/scaffold/screen-scaffold";
-import {
-  ClientsPage,
-  SuppliersPage,
-  CorporateEntitiesPage,
-  ExpenseRatesPage,
-  FinancialDictionaryPage,
-} from "@/features/masterdata/pages";
+import { MasterDataPage } from "@/features/masterdata/master-data-page";
 import { BootGate } from "@/app/boot-gate";
 
 export function App() {
@@ -171,15 +163,9 @@ export function App() {
         <Route path="costing/regie" element={<Planned />} />
         {/* Finance (new) */}
         <Route path="finance/debt" element={<Planned />} />
-        {/* Master data */}
-        <Route path="master/clients" element={<ClientsPage />} />
-        <Route path="master/suppliers" element={<SuppliersPage />} />
-        <Route path="master/corporate-entities" element={<CorporateEntitiesPage />} />
-        <Route path="master/treasury-accounts" element={<BankAccountsPage />} />
-        <Route path="master/currencies" element={<CurrenciesPage />} />
-        <Route path="master/expense-rates" element={<ExpenseRatesPage />} />
-        <Route path="master/financial-dictionary" element={<FinancialDictionaryPage />} />
-        <Route path="master/tax-jurisdictions" element={<TaxJurisdictionsPage />} />
+        {/* Master data — one hub, deep-linkable tabs (per-section routes still resolve) */}
+        <Route path="master" element={<MasterDataPage />} />
+        <Route path="master/:section" element={<MasterDataPage />} />
         {/* Vault */}
         <Route path="vault/documents" element={<Planned />} />
         <Route path="vault/signatures" element={<Planned />} />

@@ -53,8 +53,8 @@ structure; "Actions" are the primary buttons.
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| **My Workspace** ✅ BUILT (session 8) | `/workspace` | ready | — | Greeting + metric tiles (awaiting approval / high-priority / notifications) + **Awaiting your approval** (`/approvals?status=PENDING`) + **Recent notifications** (`/notifications`) + quick links. Composes existing read endpoints (no dedicated tasks BE). |
-| Godmode Console | `/godmode` | none | — | Tenant/Plan/Status/Capacity · Provision tenant (superadmin only) |
+| **My Workspace** ✅ BUILT | `/workspace` | ready | — | `features/workspace/workspace-page.tsx` — KPI overview of approvals, notifications and activity. _(A parallel implementation from the other branch was removed at merge; this one is wired.)_ |
+| **Godmode Console** ✅ BUILT | `/godmode` | ready | — | `features/godmode/godmode-page.tsx` — superadmin tenant console. |
 
 ### Commercial
 
@@ -145,14 +145,14 @@ _All ✅ BUILT — folded into the **Master data hub** (`/master/:section`, `fea
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| **Smart Comms** ✅ BUILT (session 8) | `/comms` | ready | — | ⚠️ feature-gated `comms`. Two-pane: channel list (search + **New channel** with kind/topic/member picker, unread badges) \| thread + composer (Enter to send). Over `/smartcomm/channels` + `/messages`; marks read on open. |
+| **Smart Comms** ✅ BUILT | `/comms` + `/comms/:section` | ready | Team chat · Mail · External · Setup | ⚠️ feature-gated `comms`. **`CommsHub`** (`features/comms/hub.tsx` + `team-chat/mail/setup/external-channel`), backed by `lib/smartcomm-api.ts` + `lib/mail-api.ts`, the `src/modules/mail` BE, migrations `0450_comms_channel_flags` / `0451_email_inbound`, and per-tenant `channels` on the auth payload. _(A simpler `SmartCommsPage` from the other branch was superseded by this hub and removed at merge.)_ |
 
 ### Settings & Admin
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Module catalogue | `/settings/catalogue` | readonly | — | Module/Group/Code (feeds permission matrix) |
-| Business setup | `/settings/business-setup` | partial | Profile · Financial identity · Fiscal year · Policies | Field/Value · Edit |
+| **Module catalogue** ✅ BUILT (session 8) | `/settings/catalogue` | readonly | — | `features/settings/catalogue-page.tsx` — the MOD-xx reference over `GET /catalogue/modules` (gated **MOD-67 view**, no write surface by design). Group filter chips + search + counts, on the shared `DataList`/`PageHeader` scaffold; links across to the permission matrix. |
+| ~~Business setup~~ **RETIRED (2026-07-18)** | `/settings/business-setup` → redirects to `/master/corporate-entities` | — | — | Was a duplicate of the **Corporate entities** editor (MOD-01) — same profile / financial identity / fiscal-year fields, and its Policies tab is now covered by the Business policies tile. The genuinely-missing pieces were folded into that editor instead: **address**, **bank block** (bank/branch/account/IBAN/SWIFT → invoice payment block) and a **letterhead logo** upload (new `POST /entities/:id/logo`, MOD-01 edit; `logo_light_ref`/`logo_dark_ref` were previously unwritable — the validator dropped them). Settings-hub card repointed. |
 | **Business policies** ✅ BUILT (session 8) | `/settings/business-policies` | ready | — | Generic `/settings/policy` store — named policy docs (name/body_html); create/edit/delete. |
 | **Custom fields** ✅ BUILT (session 8) | `/settings/custom-fields` | ready | — | `/settings/custom_field` — per-entity-type field defs (key/label/type/required array editor). |
 | Factory languages | `/settings/factory-languages` | **none** | — | Key/Screen/FR/EN · Add translation |
@@ -257,6 +257,10 @@ pipeline stages (read-only), document numbering. **Per-tenant PWA:** dynamic man
 **Session 8 (2026-07-18):** Vault trio (documents / signatures / verification); Settings store tiles
 (document templates, custom fields, email signatures, business policies); Marketing campaign
 templates + senders + send (MOD-22); Control Tower live KPI cards (revenue / SLA / fleet); refresh
-rotation + reuse-detection; **Smart Comms** (`/comms`, channels + thread + composer); **My Workspace**
-(`/workspace`, personal approvals + notifications landing). Also corrected the Master data section
-(the whole hub — incl. Expense rates + Financial dictionary — was already built).
+rotation + reuse-detection. Also corrected the Master data section (the whole hub — incl. Expense rates +
+Financial dictionary — was already built).
+**Merged from the other stream (same day):** Smart Comms hub (team chat / mail / external / setup + the
+`src/modules/mail` BE), **AI Control** hub (`/ai-control`), **Godmode console** (`/godmode`), Finance hub
+(chart-of-accounts / debt / receivables), governance pages, `praxis-copilot`, `screen-ai`, `tabbed-hub`,
+and `lib/{ai-governance,mail,smartcomm,workflow}-api.ts`. Duplicate `/comms` + `/workspace`
+implementations from this stream were removed in favour of his at merge.

@@ -25,3 +25,19 @@ export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+
+/**
+ * Render any value as table/detail cell text. Empty → em dash.
+ *
+ * This existed twice after the 2026-07-18 merge — in components/data-list.tsx and
+ * features/sales/ui.tsx — and the copies had diverged on boolean casing
+ * ("Yes"/"No" vs "yes"/"no"), so the same value rendered differently depending on
+ * which scaffold a screen used. This is now the single implementation; both modules
+ * re-export it, so every existing import path keeps working.
+ */
+export function cell(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "—";
+  if (typeof v === "boolean") return v ? "Yes" : "No";
+  if (typeof v === "object") return JSON.stringify(v);
+  return String(v);
+}

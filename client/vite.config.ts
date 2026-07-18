@@ -32,6 +32,40 @@ export default defineConfig({
   resolve: {
     alias: { "@": path.resolve(__dirname, "src") },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        /**
+         * Split the bundle so no single chunk dominates (the build warned that
+         * chunks exceeded 500 kB once both streams' screens landed in one file).
+         * Vendors are separated from app code — they change rarely, so browsers
+         * keep them cached across deploys — and the heaviest feature areas get
+         * their own chunks. NOTE: routes are still imported eagerly in app.tsx,
+         * so this improves caching + parallel download, not first-load bytes;
+         * route-level React.lazy is the follow-up for that.
+         */
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            // React + router kept together deliberately: splitting them can
+            // surface module init-order issues for no real caching gain.
+            if (id.includes("react-router") || /[\\/]react(-dom)?[\\/]/.test(id)) return "vendor-react";
+            if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+            return "vendor";
+          }
+          // The Control Tower mock is ~1.4k lines of raw html/css/js strings.
+          if (id.includes("features/dashboard-mock")) return "dashboard-mock";
+          const m = /[\\/]src[\\/]features[\\/]([^\\/]+)[\\/]/.exec(id);
+          if (m) {
+            const area = m[1];
+            if (["finance", "sales", "commercial", "vault", "hr", "wms", "fleet", "operations", "procurement", "costing", "comms", "ai-control", "settings"].includes(area)) {
+              return `feature-${area}`;
+            }
+          }
+          return undefined;
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

@@ -8,17 +8,18 @@
  * Routes stay deep-linkable (`/master/<section>`), so bookmarks, screen-registry
  * and Praxis navigation ("take me to suppliers") keep working; only the nav menu
  * collapses to one "Master data" entry.
+ *
+ * Uses the shared `TabbedHub` shell (components/tabbed-hub.tsx) — this file used
+ * to hand-roll an identical tab bar; converged at the 2026-07-18 merge so every
+ * hub (operations / procurement / costing / ai-control / master data) shares one
+ * implementation and one active-tab style.
  */
-import * as React from "react";
-import { useParams, useNavigate } from "react-router-dom";
-import { cn } from "@/lib/cn";
+import { TabbedHub, type HubTab } from "@/components/tabbed-hub";
 import { ClientsPage, SuppliersPage, CorporateEntitiesPage, ExpenseRatesPage, FinancialDictionaryPage } from "./pages";
 import { CurrenciesPage, TaxJurisdictionsPage } from "@/features/settings/master-data-pages";
 import { BankAccountsPage } from "@/features/settings/config-pages";
 
-type Tab = { key: string; label: string; Component: React.ComponentType };
-
-const TABS: Tab[] = [
+const TABS: HubTab[] = [
   { key: "clients", label: "Clients", Component: ClientsPage },
   { key: "suppliers", label: "Suppliers", Component: SuppliersPage },
   { key: "corporate-entities", label: "Corporate entities", Component: CorporateEntitiesPage },
@@ -30,37 +31,7 @@ const TABS: Tab[] = [
 ];
 
 export function MasterDataPage() {
-  const { section } = useParams();
-  const navigate = useNavigate();
-  const active = TABS.find((t) => t.key === section) || TABS[0];
-  const Active = active.Component;
-
-  return (
-    <div className="animate-fade-in">
-      <div className="mx-auto mb-4 max-w-6xl">
-        <div className="micro mb-2">Master data</div>
-        <div className="inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
-          {TABS.map((t) => (
-            <button
-              key={t.key}
-              onClick={() => navigate(`/master/${t.key}`)}
-              className={cn(
-                "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors",
-                active.key === t.key
-                  ? "bg-primary font-semibold text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:bg-accent hover:text-foreground",
-              )}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      </div>
-      {/* Each tab renders its own <section> (header + New action + KPIs + table). */}
-      {/* Keyed wrapper: remounts on tab change so the fade replays each switch. */}
-      <div key={active.key} className="animate-fade-in">
-        <Active />
-      </div>
-    </div>
-  );
+  // inlineTabs: these tab pages own their own headers and don't call <HubTabs/>,
+  // so the shell renders the bar (preserves the previous look exactly).
+  return <TabbedHub eyebrow="Master data" basePath="/master" tabs={TABS} inlineTabs />;
 }

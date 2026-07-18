@@ -12,8 +12,12 @@ client` clean; `node --check` + `eslint` clean on all changed BE files.** DB int
 
 ## ⚠️ Migrations to apply (tenant DB)
 
-- `migrations/tenant/0450_campaign_templates.sql` — `campaign_sender` + `campaign_template`.
-- `migrations/tenant/0451_session_refresh_jti.sql` — `user_session.refresh_jti` (nullable; legacy sessions grandfathered).
+- `migrations/tenant/0452_campaign_templates.sql` — `campaign_sender` + `campaign_template`.
+- `migrations/tenant/0453_session_refresh_jti.sql` — `user_session.refresh_jti` (nullable; legacy sessions grandfathered).
+
+> **Renumbered post-merge (2026-07-18):** these were originally 0450/0451, which collided with the other
+> dev's `0450_comms_channel_flags.sql` / `0451_email_inbound.sql`. His keep 0450/0451; mine moved to
+> 0452/0453 via `git mv`. Confirmed no environment had applied either pair, so no reconciliation needed.
 
 ## What's in it
 

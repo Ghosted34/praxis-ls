@@ -153,6 +153,86 @@ Design reference: `doc/reference/reference-mock-lovable`.
 - **Postman** `postman/praxis-ls.phase0.postman_collection.json` — Phase 0 + Finance +
   Fleet/WMS/HR folders.
 
+## Post-merge reconciliation — 2026-07-18 (after PR #11 merged into main)
+
+The other dev merged main on his side; both streams landed large commits the same day. **Rule applied:
+his side takes precedence on BE and on any overlapping screen.** Merged tree verified **`tsc` clean**.
+
+**Collisions found + resolved:**
+1. **Migration number clash.** Both streams used 0450/0451. His keep `0450_comms_channel_flags.sql` +
+   `0451_email_inbound.sql`; mine renumbered via `git mv` → **`0452_campaign_templates.sql`** and
+   **`0453_session_refresh_jti.sql`**. Confirmed **no environment had applied either pair**, so no
+   reconciliation of applied-migration rows was needed. All doc references updated.
+2. **`/comms` registered twice.** His `CommsHub` (+ `/comms/:section`) won; my `SmartCommsPage` was
+   unreachable. **Deleted `features/comms/pages.tsx`** and its route/import — his suite is richer and
+   BE-backed (mail module, channel flags, `channels` on the auth payload).
+3. **`/godmode` registered twice.** His `GodModePage` then a stale `<Planned/>`; **removed the dead route.**
+4. **Two workspace pages.** Mine was wired, his was orphaned. Per the precedence rule, **kept his
+   `features/workspace/workspace-page.tsx`** (same `WorkspacePage` export → import swap) and **deleted
+   `features/workspace/pages.tsx`.**
+5. **`app_user.service.js` — no conflict.** His `resolveChannels` / `channels` payload and my rotation +
+   reuse-detection both survived and coexist.
+
+**Verified intact after merge:** all my BE (dashboard KPI aggregates, refresh rotation + reuse-detection,
+campaign templates/senders/send), the settings store tiles, the vault trio, the Control Tower KPI wiring,
+the campaign FE, the `SearchSelect` conversions (incl. `commercial/pages.tsx`, which he also edited), and
+both new unit tests.
+
+**`features/finance/pages.tsx` — co-existence, not a conflict (checked).** He edited imports, `JournalsPage`,
+`AdvancePaymentForm`, `ProformasPage`, `InvoiceDraftForm`, `InvoiceSubmitForm`, `InvoicesPage`,
+`ReceivablesPage`, `ChartOfAccountsPage` and `ReportTabs`; this stream's only changes are the
+`SearchSelect` conversions inside `CreditNoteCreateForm` / `CreditNoteEditForm` (~L1800+, entity / client /
+reversed-invoice, the last using the optional `filter` prop to stay scoped to FINAL invoices). **Disjoint
+hunks — nothing to revert or merge; the file is already best-of-both.** These four are 100% his with no
+trace from this stream: `master/pages.tsx`, `masterdata/pages.tsx`, `governance/pages.tsx`,
+`lib/finance-api.ts`.
+
+**Note for whoever commits:** a stale `.git/index.lock` was created by a blocked `git rm` and has been
+removed — if git complains about a lock again, delete `.git/index.lock`.
+
+### Post-merge continuation (same day) — idiom convergence + last screens
+
+**Idiom convergence.** The merge left three apparently-competing pairs; on inspection only one was a
+real duplicate:
+- **AI — no work needed.** His `ScreenAi` *imports* this stream's `AiActions`, and `PraxisCopilot`
+  imports `useAiEnabled` and returns null when off. His layer already composes on the global gate.
+- **Lists — both kept, they're different abstractions.** `ResourceList` self-fetches from an `endpoint`
+  prop (quick read-only screens); `DataList`/`PageHeader` is presentational with 4 states + custom cells
+  (page owns the data). **`DataList` is the default for new wired screens.** The real duplication was
+  `cell()` existing twice *and diverging* on boolean casing — now one implementation in **`lib/format.ts`**,
+  re-exported from both modules so no import path changed (his `"Yes"/"No"` casing won).
+- **Tabs — both kept.** `TabbedHub` is a route-driven hub shell (`/base/:section`); `Segmented` is
+  in-page state. The genuine duplicate was the Master data hub hand-rolling an identical tab bar → it now
+  uses `TabbedHub`. ⚠️ `TabbedHub` publishes its bar via **context**, expecting each tab page to render
+  `<HubTabs/>` (his costing/ai-control pages do). Master data's pages don't, so a naive swap would have
+  made those tabs vanish — hence the new optional **`inlineTabs`** prop (default off; his four hubs
+  untouched) which renders the bar in the shell.
+
+**Screens.** **Module catalogue** built (`/settings/catalogue`, `features/settings/catalogue-page.tsx`) —
+read-only MOD-xx reference on `GET /catalogue/modules`. **Business setup retired**: it duplicated the
+Corporate entities editor, so `/settings/business-setup` now redirects to `/master/corporate-entities`
+and the hub card was repointed.
+
+**Corporate entity gaps closed (BE + FE).** `address` and `bank_block` were writable on the API but had
+no UI anywhere; `logo_light_ref`/`logo_dark_ref` were columns the validator silently dropped. Added both
+logo fields to the create/update validator plus a new **`POST /entities/:id/logo`** (`{data_url, variant}`,
+512 KB cap, allowed image types, stores under `tenant_<slug>/entity/<id>/`, audited) — **gated MOD-01
+edit on purpose**, since reusing the MOD-70-gated `/branding/logo` would force settings-admin rights just
+to set an entity letterhead. FE: the Corporate entities editor now edits Address, a Bank details block
+(bank/branch/account/IBAN/SWIFT → invoice payment block) and the letterhead logo.
+
+**Control Tower.** The 4th KPI card (receivables overdue) is now live too — derived FE-side from the
+existing `receivables_ageing` report producer (sum of the past-due buckets), so **no new BE**. Hides when
+`reporting` is off rather than showing a stale mock. All four cards are real.
+
+**Bundle.** `vite.config.ts` gained `manualChunks` (vendor-react / vendor-charts / vendor / dashboard-mock
+/ `feature-*`) for the >500 kB warning. ⚠️ **Unverified in-sandbox** — `vite build` can't run here (the
+Windows-generated lockfile means the Linux rollup binary is missing). If the Windows build errors, just
+revert that file; nothing depends on it. Note it improves caching/parallel download but **not first-load
+bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
+
+**Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
 ## Session log — 2026-07-18 (session 8: FE follow-ons + all pending BE jobs)
 
 Two-part session. **Part A (FE follow-ons, all `tsc`-clean, recorded inline above):** converted the
@@ -181,12 +261,12 @@ clean; `npm test` + Windows lint/build authoritative — sandbox can't run DB te
 2. **Refresh-token rotation + reuse-detection (BE).** `app_user.service.refresh()` mints a fresh refresh
    token (new jti + sliding exp) bound to the SAME session, returns it as `refresh_token` (FE already
    captures it in `lib/api-client.ts`), and **stores its jti on the session** (`user_session.refresh_jti`,
-   migration `0451_session_refresh_jti.sql`). On refresh the presented token's jti must match the session's
+   migration `0453_session_refresh_jti.sql`). On refresh the presented token's jti must match the session's
    current one; a mismatch = a rotated-away/replayed token → the session is **revoked** (reuse-detection).
    Legacy sessions (NULL `refresh_jti`) are grandfathered until their next refresh stamps one. `issueSession
    Tokens` stamps the jti on login/2FA/pin.
 
-3. **Campaign templates + senders + send (BE+FE).** Migration `0450_campaign_templates.sql`
+3. **Campaign templates + senders + send (BE+FE).** Migration `0452_campaign_templates.sql`
    (`campaign_sender` + `campaign_template`). Extended `sales/marketing_campaign` (MOD-22) with
    `/campaigns/senders` (+ `/:id/verify`), `/campaigns/templates` CRUD, and **`POST /campaigns/:id/send`**
    (all **registered before `/:id`**). Send renders a template to every active subscriber and enqueues one
@@ -203,7 +283,7 @@ clean; `npm test` + Windows lint/build authoritative — sandbox can't run DB te
 hub), and `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md`.
 
 **Windows validation still required:** `npm run lint`, `npm test`, `npm run build --prefix client`, and
-**apply migrations 0450 + 0451** to each tenant DB. Then smoke-test the Control Tower cards, the campaign
+**apply migrations 0452 + 0453** to each tenant DB. Then smoke-test the Control Tower cards, the campaign
 templates/senders tab + a send, a refresh cycle (incl. that an old refresh token is rejected after one
 refresh), the vault trio, Smart Comms (needs the `comms` flag on), and My Workspace.
 

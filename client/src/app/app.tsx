@@ -25,6 +25,7 @@ import {
   NumberingPage,
 } from "@/features/settings/config-pages";
 import { DocumentTemplatesPage, CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
+import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
 import {
   VehiclesPage,
   VehicleCompliancePage,
@@ -60,8 +61,7 @@ import { LeadsPage, MeetingsPage, OpportunitiesPage, ProposalsPage, CampaignsPag
 import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "@/features/commercial/pages";
 import { ReportsPage, ComplianceFlagsPage, DocumentsPage, SignaturesPage, VerificationPage } from "@/features/vault/pages";
 import { PortalAccessPage } from "@/features/portal/pages";
-import { SmartCommsPage } from "@/features/comms/pages";
-import { WorkspacePage } from "@/features/workspace/pages";
+import { WorkspacePage } from "@/features/workspace/workspace-page";
 import { MasterDataPage } from "@/features/masterdata/master-data-page";
 import { OperationsHub } from "@/features/operations/hub";
 import { CostingHub } from "@/features/costing/hub";
@@ -133,7 +133,6 @@ export function App() {
         {/* AI Control — governance admin hub */}
         <Route path="ai-control" element={<AiControlHub />} />
         <Route path="ai-control/:section" element={<AiControlHub />} />
-        <Route path="godmode" element={<Planned />} />
         {/* Commercial */}
         <Route path="commercial/quotations" element={<QuotationsPage />} />
         <Route path="commercial/margin-simulation" element={<MarginSimulationsPage />} />
@@ -166,17 +165,19 @@ export function App() {
         <Route path="vault/verification" element={<VerificationPage />} />
         <Route path="vault/compliance-flags" element={<ComplianceFlagsPage />} />
         <Route path="vault/reports" element={<ReportsPage />} />
-        {/* Comms */}
         {/* Comms — Smart Comms hub */}
         <Route path="comms" element={<CommsHub />} />
         <Route path="comms/:section" element={<CommsHub />} />
-        <Route path="comms" element={<SmartCommsPage />} />
         {/* Settings & Admin (new) */}
         <Route path="settings/numbering" element={<NumberingPage />} />
-        <Route path="settings/catalogue" element={<Planned />} />
+        <Route path="settings/catalogue" element={<ModuleCataloguePage />} />
         <Route path="portal/access" element={<PortalAccessPage />} />
         {/* Settings hub cards without a dedicated editor yet */}
-        <Route path="settings/business-setup" element={<Planned />} />
+        {/* Business setup was a duplicate of the Corporate entities editor (MOD-01) —
+            same profile / financial identity / fiscal-year fields. Retired 2026-07-18;
+            the missing bits (address, bank block, letterhead logo) were folded into
+            that editor instead. Redirect keeps old links + the Settings hub card working. */}
+        <Route path="settings/business-setup" element={<Navigate to="/master/corporate-entities" replace />} />
         <Route path="settings/login" element={<LoginEditor />} />
         <Route path="settings/business-policies" element={<BusinessPoliciesPage />} />
         <Route path="settings/payment-gateways" element={<PaymentGatewaysPage />} />
@@ -187,6 +188,10 @@ export function App() {
         <Route path="settings/factory-languages" element={<Planned />} />
         <Route path="settings/document-templates" element={<DocumentTemplatesPage />} />
         <Route path="settings/email-signatures" element={<EmailSignaturesPage />} />
+        {/* No BE yet — scaffolded like factory-languages. The Settings hub still
+            links here (settings-hub.tsx), so without this route the card dead-ends
+            on the catch-all redirect. */}
+        <Route path="settings/help-center" element={<Planned />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

@@ -13,7 +13,7 @@ const SECTIONS: Section[] = [
   {
     heading: "Identity",
     cards: [
-      { to: "/settings/business-setup", label: "Business Setup", desc: "Profile, financial identity & operational policies", icon: "id" },
+      { to: "/master/corporate-entities", label: "Business Setup", desc: "Legal entities — profile, NIU/RCCM, fiscal year, bank block", icon: "id" },
       { to: "/appearance", label: "Appearance", desc: "White-label theme, fonts & per-brand colours", icon: "palette" },
       { to: "/settings/login", label: "Login Screen", desc: "Hero copy, quotes, regional welcomes & toggles", icon: "login" },
       { to: "/settings/business-policies", label: "Business Policies", desc: "Privacy, Refund, QMS, Terms & more", icon: "doc" },

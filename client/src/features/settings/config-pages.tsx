@@ -1,10 +1,10 @@
 /** Settings configuration screens wired to verified live endpoints:
- *  - BankAccountsPage    → MOD-09 /treasury-accounts (+ /entities for the picker)
- *  - PaymentGatewaysPage → MOD-09 /payment-gateways (credentials write-only)
- *  - ScheduledReportsPage→ MOD-63 /reports/scheduled (+ /reports/catalogue)
- *  - ApiKeysPage         → MOD-70 /ai/governance/vendors (api_key write-only, test)
- *  - PipelineStagesPage  → MOD-24 /opportunities/stages (read-only — no stage CRUD yet)
- *  - NumberingPage       → MOD-70 /numbering-schemes/:moduleKey (+ /catalogue/modules)
+ *  - BankAccountsPage    → /treasury-accounts (+ /entities for the picker)
+ *  - PaymentGatewaysPage → /payment-gateways (credentials write-only)
+ *  - ScheduledReportsPage→ /reports/scheduled (+ /reports/catalogue)
+ *  - ApiKeysPage         → /ai/governance/vendors (api_key write-only, test)
+ *  - PipelineStagesPage  → /opportunities/stages (read-only — no stage CRUD yet)
+ *  - NumberingPage       → /numbering-schemes/:moduleKey (+ /catalogue/modules)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
@@ -13,6 +13,7 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { SearchSelect } from "@/features/sales/ui";
 
 type Row = Record<string, unknown>;
 
@@ -127,20 +128,22 @@ function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean;
     }
   }
 
+  const entityText = (en: Row) => (en.code ? `${cell(en.code)} — ${cell(en.legal_name ?? en.name ?? en.entity_id)}` : cell(en.legal_name ?? en.name ?? en.entity_id));
+  const entityLabel = (() => { const en = entities.find((e) => String(e.entity_id) === entityId); return en ? entityText(en) : null; })();
+
   return (
     <Modal open={open} onClose={onClose} title="New bank account" description="A bank, cash or mobile-money account tied to a corporate entity and a chart-of-accounts code.">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Corporate entity" required className="sm:col-span-2">
-            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-              <option value="">Select…</option>
-              {entities.map((en) => (
-                <option key={String(en.entity_id)} value={String(en.entity_id)}>
-                  {en.code ? `${cell(en.code)} — ` : ""}
-                  {cell(en.legal_name ?? en.name ?? en.entity_id)}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              path="/entities"
+              value={entityLabel}
+              placeholder="Search entities…"
+              getLabel={entityText}
+              getKey={(en) => String(en.entity_id)}
+              onSelect={(en) => setEntityId(String(en.entity_id))}
+            />
           </Field>
           <Field label="Kind" required>
             <Select value={kind} onChange={(e) => setKind(e.target.value)}>

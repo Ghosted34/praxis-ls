@@ -360,7 +360,7 @@ export const SPECS: ScreenSpec[] = [
     columns: ["Dossier", "Budget", "Actual", "Variance", "Variance %"],
     actions: ["Record cost"],
     ai: [
-      { label: "Reconcile dossier", kind: "assist", describe: "Budget vs actual reconciliation for a dossier (MOD-48)." },
+      { label: "Reconcile dossier", kind: "assist", describe: "Budget vs actual reconciliation for a dossier." },
       { label: "Record cost", kind: "write", describe: "Record an actual dossier cost and post it to the ledger (débours→4731)." },
     ],
   },
@@ -547,7 +547,7 @@ export const SPECS: ScreenSpec[] = [
     path: "settings/catalogue",
     area: "Settings",
     title: "Module catalogue",
-    purpose: "The MOD-xx module registry that feeds the permission grant-matrix. Read-only reference.",
+    purpose: "The module registry that feeds the permission grant-matrix. Read-only reference.",
     module: "MOD-67",
     status: "readonly",
     columns: ["Module", "Group", "Code", "Sort"],

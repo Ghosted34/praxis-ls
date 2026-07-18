@@ -98,7 +98,9 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment }) 
 
   const jti = uuid();
   const accessToken = signAccessToken({ userId: user.user_id, jti });
-  const refreshToken = signRefreshToken({ userId: user.user_id, sessionId, jti: uuid() });
+  const refreshJti = uuid();
+  const refreshToken = signRefreshToken({ userId: user.user_id, sessionId, jti: refreshJti });
+  await repo.setRefreshJti(client, sessionId, refreshJti); // for rotation reuse-detection
 
   await identityCache.invalidateUser(user.user_id); // drop any stale cached (e.g. inactive) entry
   await emitEvent(client, {
@@ -252,6 +254,14 @@ async function disableTotp(client, userId, code) {
   return { is_2fa_enabled: false };
 }
 
+/** Pure reuse-detection predicate (exported for tests): true when the presented
+ *  refresh token's jti is NOT the session's current one — i.e. a rotated-away /
+ *  replayed token. Legacy sessions (no `refresh_jti` yet) return false, so they're
+ *  grandfathered until their next refresh stamps a jti. */
+function refreshTokenReused(session, payload) {
+  return !!(session && session.refresh_jti && payload && payload.jti && session.refresh_jti !== payload.jti);
+}
+
 async function refresh(client, { refreshToken }) {
   let payload;
   try {
@@ -266,6 +276,25 @@ async function refresh(client, { refreshToken }) {
   const session = await repo.getActiveSession(client, payload.sid);
   if (!session || session.killed_at || session.user_id !== payload.sub) {
     throw new AppError("SESSION_REVOKED", "Session no longer active", 401);
+  }
+
+  // Rotation reuse-detection: the presented refresh token must be the session's
+  // CURRENT one. A mismatch means a rotated-away (old / replayed) token was used
+  // after rotation — treat it as a compromise signal and revoke the whole
+  // session. Legacy sessions with a NULL refresh_jti (issued before rotation
+  // shipped) are grandfathered until their next refresh stamps one.
+  if (refreshTokenReused(session, payload)) {
+    await repo.killSession(client, payload.sid, payload.sub);
+    await sessionStore.removeSession(payload.sid, payload.sub);
+    await identityCache.invalidateUser(payload.sub);
+    await emitEvent(client, {
+      eventTypeKey: events.LOGGED_OUT,
+      moduleKey: events.MODULE,
+      entityRef: `app_user:${payload.sub}`,
+      actorUserId: payload.sub,
+      payload: { reason: "refresh_token_reuse" },
+    });
+    throw new AppError("SESSION_REVOKED", "Refresh token reuse detected; session revoked", 401);
   }
 
   // 30-min inactivity auto-logout (SESSION_INACTIVITY_MIN, PRD §5.7). This is
@@ -294,6 +323,15 @@ async function refresh(client, { refreshToken }) {
 
   await repo.touchSession(client, payload.sid);
   const accessToken = signAccessToken({ userId: payload.sub, jti: uuid() });
+  // Refresh-token rotation: mint a fresh refresh token (new jti + sliding exp)
+  // bound to the SAME session and return it. The client swaps its stored token
+  // for this one (already wired FE-side), so each refresh shortens the window in
+  // which any single refresh token is usable. Session identity/validity is still
+  // the source of truth (getActiveSession above) — this doesn't create a new
+  // session, it re-issues the credential for the existing one.
+  const newRefreshJti = uuid();
+  const rotatedRefreshToken = signRefreshToken({ userId: payload.sub, sessionId: payload.sid, jti: newRefreshJti });
+  await repo.setRefreshJti(client, payload.sid, newRefreshJti);
 
   await emitEvent(client, {
     eventTypeKey: events.TOKEN_REFRESHED,
@@ -302,7 +340,7 @@ async function refresh(client, { refreshToken }) {
     actorUserId: payload.sub,
   });
 
-  return { access_token: accessToken, token_type: "Bearer", expires_in: config.JWT_ACCESS_TTL };
+  return { access_token: accessToken, refresh_token: rotatedRefreshToken, token_type: "Bearer", expires_in: config.JWT_ACCESS_TTL };
 }
 
 async function logout(client, { actor, sessionId }) {
@@ -331,7 +369,7 @@ async function logout(client, { actor, sessionId }) {
 const ARGON = { type: argon2.argon2id };
 
 async function listUsers(client, q = {}) {
-  const rows = await repo.listUsersSafe(client, { limit: q.limit, offset: q.offset, status: q.status });
+  const rows = await repo.listUsersSafe(client, { limit: q.limit, offset: q.offset, status: q.status, q: q.q });
   return rows;
 }
 async function getUser(client, id) {
@@ -480,5 +518,6 @@ module.exports = {
   enableTotp,
   disableTotp,
   refresh,
+  refreshTokenReused,
   logout,
 };

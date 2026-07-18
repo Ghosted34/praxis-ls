@@ -1,4 +1,4 @@
-/** Fleet (Phase 3) screens — read skeletons over the MOD-33..45 fleet endpoints. */
+/** Fleet (Phase 3) screens — read skeletons over the fleet endpoints. */
 import { ResourceList } from "@/components/resource-list";
 
 export const VehiclesPage = () => (

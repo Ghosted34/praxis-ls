@@ -8,6 +8,62 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-18 — Session 8: FE follow-ons + every pending BE job (build BE then FE)
+
+**Context.** Cleared this stream's FE follow-on backlog, then built out **all pending BE jobs** end to
+end (BE first, then the FE wiring). Sandbox-validated as far as it can: **`node --check` + `eslint`
+clean on all BE files; `tsc --noEmit -p client` clean.** `npm run lint`/`test`/`build` + **applying the
+two new migrations** remain the authoritative Windows checks (sandbox can't run the DB tests).
+
+**Part A — FE follow-ons (all `tsc`-clean):**
+- **Reference pickers → `SearchSelect`** across sales/commercial/finance/settings/portal (meeting,
+  opportunity, proposal entity/client, quotation entity, pricing-variance, credit-note entity/client/
+  reversed-invoice, bank-account, portal client-scope, opportunity win-form). Added an optional
+  `filter` prop to `SearchSelect` (keeps the credit-note reversed-invoice picker scoped to FINAL).
+- **Settings store tiles** — new `features/settings/store-pages.tsx`: Document templates, Custom fields,
+  Email signatures, Business policies on the generic `/settings/:section/:key` store (MOD-70), routed.
+- **Vault trio built** — `DocumentsPage` (upload/download/archive over `/documents`, authed binary
+  download), `SignaturesPage` (per-`entity_ref` list + sign, feature-gated), `VerificationPage` (hash
+  lookup → tamper verdict) in `features/vault/pages.tsx`, routed (replaced `<Planned/>`).
+- **PWA** `manifest.background_color` now follows the tenant theme (`src/routes/pwa.js`).
+- **Smart Comms** — new `features/comms/pages.tsx` (`/comms`, feature `comms`): two-pane channel list
+  (search + New-channel modal with kind/topic/member picker, unread badges) | thread + composer, over
+  `/smartcomm`; marks read on open. Routed.
+- **My Workspace** — new `features/workspace/pages.tsx` (`/workspace`): greeting + metric tiles +
+  Awaiting-your-approval (`/approvals?status=PENDING`) + Recent notifications (`/notifications`) + quick
+  links. Composes existing read endpoints. Routed.
+- **Build-map correction** — the Master data hub (incl. Expense rates + Financial dictionary) was already
+  built; `FE_IA_BUILD_MAP.md` corrected (no rebuild).
+
+**Part B — pending BE jobs (BE + FE):**
+- **Dashboard KPI aggregates.** `dashboard.repo.js kpis()` gained guarded `revenue_final_ttc`
+  (Σ locked FINAL invoice TTC), `revenue_currency`, `fleet_active`/`fleet_total`, `sla_on_time_pct`
+  (dossier `ata ≤ eta`; NULL-preserving `num()` helper). `features/dashboard.tsx` feeds the Control
+  Tower's revenue/SLA/fleet cards from these and hides any null card (the 4th "overdue" card has no
+  aggregate → stays mock).
+- **Refresh-token rotation + reuse-detection.** `app_user.service.refresh()` mints a fresh refresh
+  token (sliding exp), returns it, and stores its jti on the session (`user_session.refresh_jti`,
+  migration `0451`). On refresh the jti must match the session's current one; a mismatch revokes the
+  session (replay/theft signal). Legacy NULL-jti sessions grandfathered. `issueSessionTokens` stamps
+  the jti on login/2FA/PIN.
+- **Campaign templates + senders + send (MOD-22).** Migration `0450` (`campaign_sender` +
+  `campaign_template`). Extended `sales/marketing_campaign` with `/campaigns/senders` (+ `/:id/verify`),
+  `/campaigns/templates` CRUD, and `POST /campaigns/:id/send` (fan-out: one durable "email" queue job
+  per active subscriber, template's sender as the `from` override), all registered before `/:id`. FE:
+  `TemplateForm` moved off the `/settings/campaign_template` stopgap to the new endpoints + a sender
+  picker with inline `SenderForm`; a **Send…** button on each campaign card opens `SendCampaignModal`.
+
+**Tests (new).** `tests/unit/auth-refresh-rotation.test.js` (reuse-detection predicate `refreshTokenReused`
+— extracted as a pure exported seam) and `tests/unit/campaign-send.test.js` (`sendCampaign` orchestration
+with repo/emit/queue mocked). `node --check`-clean and house-style; **jest couldn't boot in-sandbox
+(no Redis/Postgres) — run on CI/Windows.**
+
+**Postman.** Added folder **13 · Marketing / Campaigns** (subscribers → sender → verify → template →
+send → cleanup, capturing ids) and made **`POST /auth/refresh`** capture the rotated `refresh_token`
+(so a stale token now 401s — reuse-detection is testable in-collection).
+
+**Migrations to apply:** `0450_campaign_templates.sql`, `0451_session_refresh_jti.sql`.
+
 ## 2026-07-17 — Session 6: whole Sales/CRM + Commercial + Vault/Portal FE lane + live Control Tower
 
 **Context.** Continuation of the FE reskin, this stream's lane (master data / sales-CRM / vault /

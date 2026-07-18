@@ -1,5 +1,5 @@
 /**
- * Portal access (MOD-67) — manage external read-access grants (Client / Investor
+ * Portal access — manage external read-access grants (Client / Investor
  * / Auditor) and preview the exact scope each grantee would see. The external
  * data views are feature-gated (portal.client / portal.investor / portal.audit);
  * previews degrade gracefully when a flag is off.
@@ -14,7 +14,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, useList } from "@/features/sales/ui";
+import { Row, errMsg, cell, when, useList, SearchSelect } from "@/features/sales/ui";
 
 const PORTAL_AI: AiAction[] = [
   { label: "Review access", kind: "read", describe: "Summarise who currently has portal access and when grants expire." },
@@ -65,8 +65,10 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
     }
   }
 
+  const clientLabel = (() => { const c = (clients || []).find((x) => String(x.client_id) === clientId); return c ? cell(c.name ?? c.legal_name) : null; })();
+
   return (
-    <Modal open={open} onClose={onClose} title="Grant portal access" description="Give an external party a scoped, read-only view (MOD-67)." size="lg">
+    <Modal open={open} onClose={onClose} title="Grant portal access" description="Give an external party a scoped, read-only view." size="lg">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Portal" required>
@@ -83,14 +85,14 @@ function GrantModal({ open, clients, onClose, onSaved }: { open: boolean; client
           </Field>
           {portal === "CLIENT" && (
             <Field label="Client scope" hint="They only ever see this client" required>
-              <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                <option value="">— select —</option>
-                {(clients || []).map((c) => (
-                  <option key={String(c.client_id)} value={String(c.client_id)}>
-                    {cell(c.name ?? c.legal_name)}
-                  </option>
-                ))}
-              </Select>
+              <SearchSelect
+                path="/clients"
+                value={clientLabel}
+                placeholder="Search clients…"
+                getLabel={(c) => cell(c.name ?? c.legal_name)}
+                getKey={(c) => String(c.client_id)}
+                onSelect={(c) => setClientId(String(c.client_id))}
+              />
             </Field>
           )}
           <Field label="Expires at" hint="Optional — recommended for auditors">
@@ -184,7 +186,7 @@ export function PortalAccessPage() {
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight">Portal access</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Grant and revoke external read-access — client, investor and auditor portals (MOD-67).</p>
+          <p className="mt-1 text-sm text-muted-foreground">Grant and revoke external read-access — client, investor and auditor portals.</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" onClick={() => setPreview({ title: "Investor portal preview", path: "/portals/investor" })}>

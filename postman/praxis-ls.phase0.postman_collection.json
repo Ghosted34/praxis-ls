@@ -485,7 +485,7 @@
               "script": {
                 "exec": [
                   "pm.test('200 or 401(SESSION_EXPIRED after idle)', () => [200,401].includes(pm.response.code));",
-                  "if (pm.response.code === 200) { const j = pm.response.json(); const d = j.data || j; if (d.access_token) pm.collectionVariables.set('accessToken', d.access_token); }"
+                  "if (pm.response.code === 200) { const j = pm.response.json(); const d = j.data || j; if (d.access_token) pm.collectionVariables.set('accessToken', d.access_token); if (d.refresh_token) pm.collectionVariables.set('refreshToken', d.refresh_token); /* rotation: swap to the new refresh token so the previous one is now invalid (reuse → 401 SESSION_REVOKED) */ }"
                 ],
                 "type": "text/javascript"
               }
@@ -4393,6 +4393,192 @@
                 "assets"
               ]
             }
+          }
+        }
+      ]
+    },
+    {
+      "name": "13 · Marketing / Campaigns (MOD-22)",
+      "item": [
+        {
+          "name": "POST /campaigns/subscribers  (seed a recipient)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"email\": \"subscriber@example.cm\",\n  \"name\": \"Postman Subscriber\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/subscribers", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "subscribers"] }
+          }
+        },
+        {
+          "name": "POST /campaigns/senders  (captures senderId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 created', () => pm.response.code === 201);",
+                  "const d=(pm.response.json()||{}).data||{}; if(d.sender_id) pm.collectionVariables.set('senderId', d.sender_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"from_name\": \"Praxis LS\",\n  \"from_address\": \"news@example.cm\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/senders", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "senders"] }
+          }
+        },
+        {
+          "name": "GET /campaigns/senders",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/senders", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "senders"] }
+          }
+        },
+        {
+          "name": "POST /campaigns/senders/:id/verify",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/senders/{{senderId}}/verify", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "senders", "{{senderId}}", "verify"] }
+          }
+        },
+        {
+          "name": "POST /campaigns/templates  (captures templateId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 created', () => pm.response.code === 201);",
+                  "const d=(pm.response.json()||{}).data||{}; if(d.template_id) pm.collectionVariables.set('templateId', d.template_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Monthly newsletter\",\n  \"subject\": \"What's new this month\",\n  \"body_html\": \"<p>Hello from Praxis LS</p>\",\n  \"from_sender_id\": \"{{senderId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/templates", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "templates"] }
+          }
+        },
+        {
+          "name": "GET /campaigns/templates",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/templates", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "templates"] }
+          }
+        },
+        {
+          "name": "PATCH /campaigns/templates/:id",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"subject\": \"Updated subject line\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/templates/{{templateId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "templates", "{{templateId}}"] }
+          }
+        },
+        {
+          "name": "POST /campaigns  (captures campaignId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('201 created', () => pm.response.code === 201);",
+                  "const d=(pm.response.json()||{}).data||{}; if(d.campaign_id) pm.collectionVariables.set('campaignId', d.campaign_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"name\": \"Postman test campaign\",\n  \"channel\": \"email\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns"] }
+          }
+        },
+        {
+          "name": "POST /campaigns/:id/send  (queues one email per active subscriber)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('202 accepted', () => pm.response.code === 202);",
+                  "const d=(pm.response.json()||{}).data||{}; pm.test('queued count present', () => typeof d.queued === 'number');"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"template_id\": \"{{templateId}}\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/{{campaignId}}/send", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "{{campaignId}}", "send"] }
+          }
+        },
+        {
+          "name": "DELETE /campaigns/templates/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/templates/{{templateId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "templates", "{{templateId}}"] }
+          }
+        },
+        {
+          "name": "DELETE /campaigns/senders/:id",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/campaigns/senders/{{senderId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "campaigns", "senders", "{{senderId}}"] }
           }
         }
       ]

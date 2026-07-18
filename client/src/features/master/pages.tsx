@@ -1,7 +1,7 @@
 /** Master-data registries wired to live endpoints:
- *   - ClientsPage           → MOD-03 /clients (+ /clients/:id/credit)
- *   - SuppliersPage         → MOD-04 /suppliers
- *   - CorporateEntitiesPage → MOD-01 /entities (+ /:id/active)
+ *   - ClientsPage           → /clients (+ /clients/:id/credit)
+ *   - SuppliersPage         → /suppliers
+ *   - CorporateEntitiesPage → /entities (+ /:id/active)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx.
  *  AI panels are gated globally (components/ai-actions.tsx). */
 import * as React from "react";
@@ -75,7 +75,7 @@ function EntitySelect({ entities, value, onChange }: { entities: Row[] | null; v
   );
 }
 
-/* ──────────────────────────────── Clients (MOD-03) ──────────────────────────────── */
+/* ──────────────────────────────── Clients ──────────────────────────────── */
 
 const CLIENT_AI: AiAction[] = [
   { label: "Find duplicate clients", kind: "assist", describe: "Scan the client master for likely duplicates by name / NIU and suggest merges." },
@@ -319,7 +319,7 @@ export function ClientsPage() {
   );
 }
 
-/* ─────────────────────────────── Suppliers (MOD-04) ─────────────────────────────── */
+/* ─────────────────────────────── Suppliers ─────────────────────────────── */
 
 const SUPPLIER_AI: AiAction[] = [
   { label: "Find duplicate suppliers", kind: "assist", describe: "Scan the supplier master for likely duplicates by name / NIU." },
@@ -531,7 +531,7 @@ export function SuppliersPage() {
   );
 }
 
-/* ──────────────────────────── Corporate entities (MOD-01) ──────────────────────────── */
+/* ──────────────────────────── Corporate entities ──────────────────────────── */
 
 function EntityForm({ open, editing, onClose, onSaved }: { open: boolean; editing: Row | null; onClose: () => void; onSaved: () => void }) {
   const [code, setCode] = React.useState("");

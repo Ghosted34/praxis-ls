@@ -1,4 +1,4 @@
-/** WMS (Phase 3) screens — read skeletons over the MOD-33..38 warehouse endpoints. */
+/** WMS (Phase 3) screens — read skeletons over the warehouse endpoints. */
 import { ResourceList } from "@/components/resource-list";
 
 export const LocationsPage = () => (

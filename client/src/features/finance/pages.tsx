@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { SearchSelect } from "@/features/sales/ui";
 import {
   loadEntities,
   loadClients,
@@ -381,6 +382,7 @@ export function JournalsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Journals</h1>
           <p className="mt-1 text-sm text-muted-foreground">
+            General ledger journal entries — balanced-or-rejected, reversal-not-edit.
             General ledger journal entries — balanced-or-rejected, reversal-not-edit.
           </p>
         </div>
@@ -1758,7 +1760,7 @@ export const TaxCenterPage = () => (
   />
 );
 
-/* ── credit notes (MOD-51): create → edit → post ─────────────────── */
+/* ── credit notes: create → edit → post ─────────────────── */
 function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
   return lines
     .filter((l) => l.label.trim() && Number(l.amount) >= 0 && l.amount !== "")
@@ -1849,39 +1851,44 @@ function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boolean; onC
     }
   }
 
+  const entityLabel = (() => { const o = entities.find((x) => x.id === entityId); return o ? optionLabel(o) : null; })();
+  const clientLabel = (() => { const o = clients.find((x) => x.id === clientId); return o ? optionLabel(o) : null; })();
+  const invoiceLabel = (() => { const o = invoices.find((x) => x.id === reversesInvoiceId); return o ? optionLabel(o) : null; })();
+
   return (
     <Modal open={open} onClose={onClose} title="New credit note" description="Reverses a finalised invoice; create a draft, then post to the ledger." size="xl">
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Entity" required>
-            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-              <option value="">Select entity…</option>
-              {entities.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              path="/entities"
+              value={entityLabel}
+              placeholder="Search entities…"
+              getLabel={(r) => (r.code ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}` : String(r.legal_name ?? r.entity_id))}
+              getKey={(r) => String(r.entity_id)}
+              onSelect={(r) => setEntityId(String(r.entity_id))}
+            />
           </Field>
           <Field label="Client">
-            <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">Select client…</option>
-              {clients.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              path="/clients"
+              value={clientLabel}
+              placeholder="Search clients…"
+              getLabel={(r) => (r.ref ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}` : String(r.name ?? r.client_id))}
+              getKey={(r) => String(r.client_id)}
+              onSelect={(r) => setClientId(String(r.client_id))}
+            />
           </Field>
           <Field label="Reverses invoice" hint="Finalised invoice this note credits" className="sm:col-span-2">
-            <Select value={reversesInvoiceId} onChange={(e) => setReversesInvoiceId(e.target.value)}>
-              <option value="">None</option>
-              {invoices.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              path="/final-invoices"
+              value={invoiceLabel}
+              placeholder="Search finalised invoices…"
+              filter={(r) => String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"}
+              getLabel={(r) => String(r.doc_number ?? r.ref ?? r.invoice_id ?? r.final_invoice_id ?? "")}
+              getKey={(r) => String(r.invoice_id ?? r.final_invoice_id ?? r.id)}
+              onSelect={(r) => setReversesInvoiceId(String(r.invoice_id ?? r.final_invoice_id ?? r.id))}
+            />
           </Field>
         </div>
 
@@ -1959,6 +1966,9 @@ function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: 
     }
   }
 
+  const clientLabel = (() => { const o = clients.find((x) => x.id === clientId); return o ? optionLabel(o) : null; })();
+  const invoiceLabel = (() => { const o = invoices.find((x) => x.id === reversesInvoiceId); return o ? optionLabel(o) : null; })();
+
   return (
     <Modal open={open} onClose={onClose} title="Edit credit note" description="Update the client, reversed invoice and lines. Only drafts can be edited." size="xl">
       {loading ? (
@@ -1967,24 +1977,25 @@ function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: 
         <div className="space-y-4">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Client">
-              <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-                <option value="">No client</option>
-                {clients.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {optionLabel(o)}
-                  </option>
-                ))}
-              </Select>
+              <SearchSelect
+                path="/clients"
+                value={clientLabel}
+                placeholder="Search clients…"
+                getLabel={(r) => (r.ref ? `${String(r.ref)} — ${String(r.name ?? r.client_id)}` : String(r.name ?? r.client_id))}
+                getKey={(r) => String(r.client_id)}
+                onSelect={(r) => setClientId(String(r.client_id))}
+              />
             </Field>
             <Field label="Reverses invoice">
-              <Select value={reversesInvoiceId} onChange={(e) => setReversesInvoiceId(e.target.value)}>
-                <option value="">None</option>
-                {invoices.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {optionLabel(o)}
-                  </option>
-                ))}
-              </Select>
+              <SearchSelect
+                path="/final-invoices"
+                value={invoiceLabel}
+                placeholder="Search finalised invoices…"
+                filter={(r) => String(r.status ?? r.state ?? "").toUpperCase() === "FINAL"}
+                getLabel={(r) => String(r.doc_number ?? r.ref ?? r.invoice_id ?? r.final_invoice_id ?? "")}
+                getKey={(r) => String(r.invoice_id ?? r.final_invoice_id ?? r.id)}
+                onSelect={(r) => setReversesInvoiceId(String(r.invoice_id ?? r.final_invoice_id ?? r.id))}
+              />
             </Field>
           </div>
 

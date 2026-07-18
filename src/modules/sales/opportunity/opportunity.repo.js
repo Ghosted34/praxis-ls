@@ -20,6 +20,7 @@ async function list(client, q = {}) {
   if (q.status) { params.push(q.status); wh.push("o.status = $" + params.length); }
   if (q.pipeline_stage_id) { params.push(q.pipeline_stage_id); wh.push("o.pipeline_stage_id = $" + params.length); }
   if (q.owner_user_id) { params.push(q.owner_user_id); wh.push("o.owner_user_id = $" + params.length); }
+  if (q.q) { params.push("%" + q.q + "%"); wh.push("o.name ILIKE $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
     "SELECT o.*, s.name AS stage_name, s.code AS stage_code FROM opportunity o LEFT JOIN pipeline_stage s ON s.pipeline_stage_id = o.pipeline_stage_id " +

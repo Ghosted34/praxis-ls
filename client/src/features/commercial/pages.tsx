@@ -1,10 +1,10 @@
 /**
  * Commercial group — wired to live endpoints. (FS colleague to verify the
  * finance-side correctness of quotation totals / pricing-variance boundary.)
- *   - QuotationsPage            → MOD-27 /quotations  (feature-gated commercial.quotation)
- *   - MarginSimulationsPage     → MOD-27 /margin-simulations  (preview + persist)
- *   - ExtraChargeSimulationsPage→ MOD-28 /extra-charge-simulations  (demurrage)
- *   - PricingVariancePage       → MOD-27 /pricing-variance  (Sales R/Y/G view + compute)
+ *   - QuotationsPage            → /quotations  (feature-gated commercial.quotation)
+ *   - MarginSimulationsPage     → /margin-simulations  (preview + persist)
+ *   - ExtraChargeSimulationsPage→ /extra-charge-simulations  (demurrage)
+ *   - PricingVariancePage       → /pricing-variance  (Sales R/Y/G view + compute)
  *
  * Shared primitives + Pixie-tinted design come from features/sales/ui.tsx.
  * AI panels are gated globally (components/ai-actions.tsx).
@@ -17,9 +17,10 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile } from "@/features/sales/ui";
+import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile, SearchSelect } from "@/features/sales/ui";
+import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
-/* ═══════════════════════════════════ QUOTATIONS (MOD-27) ═══════════════════════════════════ */
+/* ═══════════════════════════════════ QUOTATIONS ═══════════════════════════════════ */
 
 const QUOTATION_AI: AiAction[] = [
   { label: "Draft quotation", kind: "assist", describe: "Draft a quotation's lines from an opportunity, dossier or costing (human-reviewed before send)." },
@@ -36,47 +37,57 @@ const QUOTE_FILTERS = [
   { value: "EXPIRED", label: "Expired" },
 ];
 
-type QLine = { label: string; qty: string; unit_price: string; is_debours: boolean };
+type QLine = { dictionary_item_id: string | null; label: string; qty: string; unit_price: string; is_debours: boolean; tax_code_id: string | null };
 const qLineTotal = (l: { qty?: unknown; unit_price?: unknown }) => (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
+const blankLine = (): QLine => ({ dictionary_item_id: null, label: "", qty: "1", unit_price: "0", is_debours: false, tax_code_id: null });
+const taxCodeLabel = (c: TaxCode) => `${c.code}${c.rate_percent != null ? ` · ${c.rate_percent}%` : ""}`;
 
-function EntityOptions({ entities }: { entities: Row[] | null }) {
-  return (
-    <>
-      <option value="">— select —</option>
-      {(entities || []).map((en) => (
-        <option key={String(en.entity_id)} value={String(en.entity_id)}>
-          {en.code ? `${cell(en.code)} · ${cell(en.legal_name)}` : cell(en.legal_name)}
-        </option>
-      ))}
-    </>
-  );
+function entityText(en: Row): string {
+  return en.code ? `${cell(en.code)} · ${cell(en.legal_name)}` : cell(en.legal_name);
+}
+function entityLabelOf(entities: Row[] | null, id: string): string | null {
+  const en = (entities || []).find((e) => String(e.entity_id) === id);
+  return en ? entityText(en) : null;
 }
 
 function QuotationForm({ open, editing, entities, clients, opportunities, onClose, onSaved }: { open: boolean; editing: Row | null; entities: Row[] | null; clients: Row[] | null; opportunities: Row[] | null; onClose: () => void; onSaved: () => void }) {
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
+  const [clientLabel, setClientLabel] = React.useState("");
   const [opportunityId, setOpportunityId] = React.useState("");
   const [currency, setCurrency] = React.useState("XAF");
   const [quoteModel, setQuoteModel] = React.useState("HT_ON_TOP");
   const [validUntil, setValidUntil] = React.useState("");
   const [marginPercent, setMarginPercent] = React.useState("");
   const [lines, setLines] = React.useState<QLine[]>([]);
+  const [taxCodes, setTaxCodes] = React.useState<TaxCode[]>([]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
     setEntityId(editing?.entity_id ? String(editing.entity_id) : "");
-    setClientId(editing?.client_id ? String(editing.client_id) : "");
+    const cid = editing?.client_id ? String(editing.client_id) : "";
+    setClientId(cid);
+    const cm = (clients || []).find((c) => String(c.client_id) === cid);
+    setClientLabel(cm ? String(cm.name ?? cm.legal_name ?? "") : "");
     setOpportunityId(editing?.opportunity_id ? String(editing.opportunity_id) : "");
     setCurrency(editing?.currency ? String(editing.currency) : "XAF");
     setQuoteModel(editing?.quote_model ? String(editing.quote_model) : "HT_ON_TOP");
     setValidUntil(editing?.valid_until ? String(editing.valid_until).slice(0, 10) : "");
     setMarginPercent(editing?.margin_percent != null ? String(editing.margin_percent) : "");
     const el = (editing?.lines as Row[] | undefined) || [];
-    setLines(el.length ? el.map((l) => ({ label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_debours: l.is_debours === true })) : [{ label: "", qty: "1", unit_price: "0", is_debours: false }]);
+    setLines(el.length ? el.map((l) => ({ dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null, label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_debours: l.is_debours === true, tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null })) : [blankLine()]);
     setError(null);
   }, [open, editing]);
+
+  // Load sales VAT codes once the modal opens (aggregated across jurisdictions).
+  React.useEffect(() => {
+    if (!open) return;
+    let live = true;
+    listSalesTaxCodes().then((cs) => live && setTaxCodes(cs)).catch(() => live && setTaxCodes([]));
+    return () => { live = false; };
+  }, [open]);
 
   const setLine = (i: number, patch: Partial<QLine>) => setLines((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
   const total = lines.reduce((a, l) => a + qLineTotal(l), 0);
@@ -84,7 +95,7 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
   async function submit() {
     setBusy(true);
     setError(null);
-    const cleanLines = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, is_debours: l.is_debours }));
+    const cleanLines = lines.filter((l) => l.label.trim()).map((l) => ({ dictionary_item_id: l.dictionary_item_id || null, label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, is_debours: l.is_debours, tax_code_id: l.is_debours ? null : l.tax_code_id || null }));
     const common: Record<string, unknown> = {
       client_id: clientId || null,
       opportunity_id: opportunityId || null,
@@ -115,20 +126,28 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
         <div className="grid gap-4 sm:grid-cols-2">
           {!editing && (
             <Field label="Entity" hint="Numbers the quote on send">
-              <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-                <EntityOptions entities={entities} />
-              </Select>
+              <SearchSelect
+                path="/entities"
+                value={entityLabelOf(entities, entityId)}
+                placeholder="Search entities…"
+                getLabel={entityText}
+                getKey={(en) => String(en.entity_id)}
+                onSelect={(en) => setEntityId(String(en.entity_id))}
+              />
             </Field>
           )}
           <Field label="Client">
-            <Select value={clientId} onChange={(e) => setClientId(e.target.value)}>
-              <option value="">— none —</option>
-              {(clients || []).map((c) => (
-                <option key={String(c.client_id)} value={String(c.client_id)}>
-                  {cell(c.name ?? c.legal_name)}
-                </option>
-              ))}
-            </Select>
+            <SearchSelect
+              path="/clients"
+              value={clientLabel || null}
+              placeholder="Search clients…"
+              getLabel={(r) => String(r.name ?? r.legal_name ?? "")}
+              getKey={(r) => String(r.client_id)}
+              onSelect={(r) => {
+                setClientId(String(r.client_id));
+                setClientLabel(String(r.name ?? r.legal_name ?? ""));
+              }}
+            />
           </Field>
           <Field label="Opportunity" hint="Optional pipeline link">
             <Select value={opportunityId} onChange={(e) => setOpportunityId(e.target.value)}>
@@ -160,27 +179,65 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Line items</p>
-            <Button size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { label: "", qty: "1", unit_price: "0", is_debours: false }])}>
+            <Button size="sm" variant="ghost" onClick={() => setLines((l) => [...l, blankLine()])}>
               + Line
             </Button>
           </div>
           {lines.map((l, i) => (
-            <div key={i} className="flex flex-wrap items-center gap-2">
-              <Input value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} placeholder="Service / description" className="min-w-[8rem] flex-1" />
-              <Input type="number" min="0" step="1" className="num w-16 text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="qty" />
-              <Input type="number" min="0" step="1" className="num w-28 text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="unit price" />
-              <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Pass-through disbursement — never taxed">
-                <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} />
-                débours
-              </label>
-              <span className="w-28 text-right text-sm text-muted-foreground">{fmtMoney(qLineTotal(l), currency)}</span>
-              <Button size="sm" variant="ghost" onClick={() => setLines((rs) => rs.filter((_, idx) => idx !== i))}>
-                ✕
-              </Button>
+            <div key={i} className="rounded-lg border border-border/60 p-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="min-w-[10rem] flex-1">
+                  <SearchSelect
+                    path="/financial-dictionary"
+                    value={l.label || null}
+                    placeholder="Pick from dictionary or type a description…"
+                    getLabel={(r) => `${cell(r.code)} — ${cell(r.label_fr ?? r.label_en)}`}
+                    getKey={(r) => String(r.dictionary_item_id)}
+                    onSelect={(r) =>
+                      setLine(i, {
+                        dictionary_item_id: String(r.dictionary_item_id),
+                        label: String(r.label_fr ?? r.label_en ?? r.code ?? ""),
+                        unit_price: r.default_price != null ? String(r.default_price) : l.unit_price,
+                        is_debours: r.is_debours === true,
+                      })
+                    }
+                    allowFreeText
+                    onFreeText={(t) => setLine(i, { label: t, dictionary_item_id: null })}
+                  />
+                </div>
+                <Input type="number" min="0" step="1" className="num w-16 text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="qty" />
+                <Input type="number" min="0" step="1" className="num w-28 text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="unit price" />
+                <span className="w-28 text-right text-sm text-muted-foreground">{fmtMoney(qLineTotal(l), currency)}</span>
+                <Button size="sm" variant="ghost" onClick={() => setLines((rs) => rs.filter((_, idx) => idx !== i))}>
+                  ✕
+                </Button>
+              </div>
+              <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
+                <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Pass-through disbursement — never taxed">
+                  <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked, tax_code_id: e.target.checked ? null : l.tax_code_id })} />
+                  débours
+                </label>
+                <div className="flex items-center gap-1">
+                  <span className="text-xs text-muted-foreground">Tax</span>
+                  <Select
+                    value={l.tax_code_id ?? ""}
+                    disabled={l.is_debours}
+                    onChange={(e) => setLine(i, { tax_code_id: e.target.value || null })}
+                    className="h-8 py-0 text-xs"
+                  >
+                    <option value="">{l.is_debours ? "— untaxed —" : "— no VAT —"}</option>
+                    {taxCodes.map((c) => (
+                      <option key={c.tax_code_id} value={c.tax_code_id}>
+                        {taxCodeLabel(c)}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              </div>
             </div>
           ))}
           <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {fmtMoney(total, currency)}</div>
-          <p className="text-right text-xs text-muted-foreground">VAT is applied server-side to taxed, non-débours lines; totals refresh on save.</p>
+          <p className="text-right text-xs text-muted-foreground">VAT is applied server-side from each line's tax code (débours lines are never taxed); totals refresh on save.</p>
         </div>
 
         {error && <ErrorState message={error} />}
@@ -284,9 +341,14 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
             {action === "send" && (
               <div className="rounded-lg border bg-muted/30 p-3">
                 <Field label="Entity" hint="Numbers the quotation on send" required>
-                  <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-                    <EntityOptions entities={entities} />
-                  </Select>
+                  <SearchSelect
+                    path="/entities"
+                    value={entityLabelOf(entities, entityId)}
+                    placeholder="Search entities…"
+                    getLabel={entityText}
+                    getKey={(en) => String(en.entity_id)}
+                    onSelect={(en) => setEntityId(String(en.entity_id))}
+                  />
                 </Field>
                 <div className="mt-2 flex justify-end gap-2">
                   <Button size="sm" variant="outline" onClick={() => setAction(null)} disabled={busy}>
@@ -439,7 +501,7 @@ export function QuotationsPage() {
   );
 }
 
-/* ═══════════════════════════════ MARGIN SIMULATION (MOD-27) ═══════════════════════════════ */
+/* ═══════════════════════════════ MARGIN SIMULATION ═══════════════════════════════ */
 
 const MARGIN_AI: AiAction[] = [
   { label: "Suggest pricing", kind: "assist", describe: "Suggest unit prices to hit a target margin on the service lines." },
@@ -493,7 +555,7 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Margin simulation" description="Rapid quote maths — margin on services only, débours pass-through. No GL." size="xl">
+    <Modal open={open} onClose={onClose} title="Margin simulation" description="Rapid quote maths — margin on services only, débours pass-through. No GL(KB §6.7)." size="xl">
       <div className="space-y-4">
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -599,7 +661,7 @@ export function MarginSimulationsPage() {
   );
 }
 
-/* ═══════════════════════════ EXTRA-CHARGE / DEMURRAGE SIMULATION (MOD-28) ═══════════════════════════ */
+/* ═══════════════════════════ EXTRA-CHARGE / DEMURRAGE SIMULATION ═══════════════════════════ */
 
 const EXTRA_AI: AiAction[] = [
   { label: "Explain the charge", kind: "assist", describe: "Explain a demurrage estimate — which days fall in which tier and why." },
@@ -802,7 +864,7 @@ export function ExtraChargeSimulationsPage() {
   );
 }
 
-/* ═══════════════════════════════ PRICING VARIANCE (MOD-27) ═══════════════════════════════ */
+/* ═══════════════════════════════ PRICING VARIANCE ═══════════════════════════════ */
 
 const PV_AI: AiAction[] = [
   { label: "Flag at-risk dossiers", kind: "assist", describe: "Summarise dossiers whose pricing variance is amber/red and why." },
@@ -862,28 +924,37 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
     }
   }
 
+  const dossierLabel = (() => {
+    const d = (dossiers || []).find((x) => String(x.dossier_id) === dossierId);
+    return d ? cell(d.reference ?? d.title ?? d.dossier_id) : null;
+  })();
+  const quotationLabel = (() => {
+    const q = (quotations || []).find((x) => String(x.quotation_id) === quotationId);
+    return q ? (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${fmtMoney(q.total_ht, q.currency)}`) : null;
+  })();
+
   return (
     <Modal open={open} onClose={onClose} title="Compute pricing variance" description="Quote vs actual cost → a R/Y/G flag. Actual cost stays finance-only.">
       <div className="space-y-4">
         <Field label="Dossier" required>
-          <Select value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
-            <option value="">— select —</option>
-            {(dossiers || []).map((d) => (
-              <option key={String(d.dossier_id)} value={String(d.dossier_id)}>
-                {cell(d.reference ?? d.title ?? d.dossier_id)}
-              </option>
-            ))}
-          </Select>
+          <SearchSelect
+            path="/operations"
+            value={dossierLabel}
+            placeholder="Search dossiers…"
+            getLabel={(d) => cell(d.reference ?? d.title ?? d.dossier_id)}
+            getKey={(d) => String(d.dossier_id)}
+            onSelect={(d) => setDossierId(String(d.dossier_id))}
+          />
         </Field>
         <Field label="Quotation" hint="Supplies the quoted price (or enter one below)">
-          <Select value={quotationId} onChange={(e) => setQuotationId(e.target.value)}>
-            <option value="">— none —</option>
-            {(quotations || []).map((q) => (
-              <option key={String(q.quotation_id)} value={String(q.quotation_id)}>
-                {q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${fmtMoney(q.total_ht, q.currency)}`}
-              </option>
-            ))}
-          </Select>
+          <SearchSelect
+            path="/quotations"
+            value={quotationLabel}
+            placeholder="Search quotations…"
+            getLabel={(q) => (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${fmtMoney(q.total_ht, q.currency)}`)}
+            getKey={(q) => String(q.quotation_id)}
+            onSelect={(q) => setQuotationId(String(q.quotation_id))}
+          />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Quoted price" hint="Override">

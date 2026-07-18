@@ -42,12 +42,16 @@ async function resolveBranding(req) {
   try {
     const b = await registry.withTenantConnection(req.tenant, "live", (c) => brandingService.getBranding(c));
     const name = b.name || slug;
+    // Splash-screen background follows the tenant's theme mode — matches the app's
+    // `--background` token (light rgb(243 246 251) / dark rgb(7 19 36)) so the PWA
+    // launch screen doesn't flash the wrong colour before the SPA paints.
+    const bg = b.theme === "dark" ? "#071324" : "#f3f6fb";
     return {
       slug,
       name,
       short: String(name).slice(0, 12),
       primary: b.primary || DEFAULTS.primary,
-      bg: DEFAULTS.bg,
+      bg,
       logoUrl: b.logoUrl || null,
     };
   } catch {

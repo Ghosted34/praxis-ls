@@ -34,6 +34,7 @@ async function listInvoices(client, q = {}) {
   const wh = ["type = 'FINAL'"];
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   if (q.client_id) { params.push(q.client_id); wh.push("client_id = $" + params.length); }
+  if (q.q) { params.push("%" + q.q + "%"); wh.push("doc_number ILIKE $" + params.length); }
   const { rows } = await client.query(
     "SELECT * FROM invoice WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2",
     params,

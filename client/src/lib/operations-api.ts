@@ -4,7 +4,7 @@
  */
 import { tenant } from "./api-client";
 
-/* ── Operation files / dossiers (MOD-29, /operations) ── */
+/* ── Operation files / dossiers(/operations) ── */
 export type Dossier = {
   dossier_id: string;
   ref: string;
@@ -50,7 +50,7 @@ export const updateDossier = (id: string, body: Partial<DossierInput>) => tenant
 export const transitionDossier = (id: string, to: "IN_PROGRESS" | "COMPLETED" | "CANCELLED") =>
   tenant<Dossier>(`/operations/${id}/transition`, { method: "POST", body: { to } });
 
-/* ── Transit orders (MOD-30, /transit-orders) ── */
+/* ── Transit orders(/transit-orders) ── */
 export type TransitOrder = {
   transit_order_id: string;
   ref?: string | null;
@@ -75,7 +75,7 @@ export const listTransitOrders = () => tenant<TransitOrder[]>("/transit-orders")
 export const createTransitOrder = (body: TransitOrderInput) => tenant<TransitOrder>("/transit-orders", { method: "POST", body });
 export const updateTransitOrder = (id: string, body: Partial<TransitOrderInput>) => tenant<TransitOrder>(`/transit-orders/${id}`, { method: "PATCH", body });
 
-/* ── Delivery notes (MOD-32, /delivery-notes) ── */
+/* ── Delivery notes(/delivery-notes) ── */
 export type DeliveryNote = {
   delivery_note_id: string;
   ref?: string | null;
@@ -98,7 +98,7 @@ export type DeliveryNoteInput = {
 export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");
 export const createDeliveryNote = (body: DeliveryNoteInput) => tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
 
-/* ── Milestones (MOD-31, /milestones) — templates + per-dossier instances ── */
+/* ── Milestones(/milestones) — templates + per-dossier instances ── */
 export type MilestoneTemplate = {
   milestone_template_id?: string;
   code?: string;

@@ -1,4 +1,4 @@
-/** HR (Phase 3) screens — read skeletons over the MOD-02 + MOD-11..19 HR endpoints. */
+/** HR (Phase 3) screens — read skeletons over the + HR endpoints. */
 import { ResourceList } from "@/components/resource-list";
 
 export const EmployeesPage = () => (

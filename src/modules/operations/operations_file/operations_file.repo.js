@@ -19,10 +19,11 @@ async function update(client, id, fields) {
 async function list(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset]; const wh = [];
-  if (q.entity_id) { params.push(q.entity_id); wh.push("d.entity_id = $" + params.length); }
-  if (q.client_id) { params.push(q.client_id); wh.push("d.client_id = $" + params.length); }
-  if (q.status) { params.push(q.status); wh.push("d.status = $" + params.length); }
-  if (q.service_type_id) { params.push(q.service_type_id); wh.push("d.service_type_id = $" + params.length); }
+  if (q.entity_id) { params.push(q.entity_id); wh.push("entity_id = $" + params.length); }
+  if (q.client_id) { params.push(q.client_id); wh.push("client_id = $" + params.length); }
+  if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
+  if (q.service_type_id) { params.push(q.service_type_id); wh.push("service_type_id = $" + params.length); }
+  if (q.q) { params.push("%" + q.q + "%"); wh.push("ref ILIKE $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const sql =
     "SELECT d.*, cm.name AS client_name, " +

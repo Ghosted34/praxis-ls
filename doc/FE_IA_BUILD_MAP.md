@@ -53,7 +53,7 @@ structure; "Actions" are the primary buttons.
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| My Workspace | `/workspace` | readonly | My tasks · My approvals · Recent | Item/Type/Due/Status; approvals queue |
+| **My Workspace** ✅ BUILT (session 8) | `/workspace` | ready | — | Greeting + metric tiles (awaiting approval / high-priority / notifications) + **Awaiting your approval** (`/approvals?status=PENDING`) + **Recent notifications** (`/notifications`) + quick links. Composes existing read endpoints (no dedicated tasks BE). |
 | Godmode Console | `/godmode` | none | — | Tenant/Plan/Status/Capacity · Provision tenant (superadmin only) |
 
 ### Commercial
@@ -123,27 +123,29 @@ reference for Opportunities; the **Clients** tab (search + chips + avatar rows) 
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Clients | `/master/clients` | ready | — | Code/Name/NIU/Segment/Status · New client |
-| Suppliers | `/master/suppliers` | ready | — | Code/Name/NIU/Category/Status · New supplier |
-| Corporate entities | `/master/corporate-entities` | ready | — | Code/Legal name/NIU/RCCM/Country · New entity, Activate |
-| Expense rates | `/master/expense-rates` | ready | — | Code/Category/Rate/Unit/Effective · New rate |
-| Financial dictionary | `/master/financial-dictionary` | ready | — | Term/Account/Mapping/Notes · New entry |
+_All ✅ BUILT — folded into the **Master data hub** (`/master/:section`, `features/masterdata/master-data-page.tsx`) with deep-linkable tabs. Clients, Suppliers, Corporate entities (session 5); Expense rates + Financial dictionary + Treasury + Currencies + Tax (wired in `features/masterdata/pages.tsx`)._
+
+| Clients | `/master/clients` | ✅ BUILT | — | Code/Name/NIU/Segment/Status · New client |
+| Suppliers | `/master/suppliers` | ✅ BUILT | — | Code/Name/NIU/Category/Status · New supplier |
+| Corporate entities | `/master/corporate-entities` | ✅ BUILT | — | Code/Legal name/NIU/RCCM/Country · New entity, Activate |
+| Expense rates | `/master/expense-rates` | ✅ BUILT | — | Item/Shipping line/Variant/Rate/Effective · New/edit/delete rate |
+| Financial dictionary | `/master/financial-dictionary` | ✅ BUILT | — | Code/Label/Account mapping · New/edit/delete entry |
 
 ### Vault
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Document vault | `/vault/documents` | readonly | Documents · Signatures | Name/Type/Entity/Uploaded/Hash · Upload _(BE gap)_ |
-| Document signatures | `/vault/signatures` | partial | — | Document/Signer/Status/Signed · Request signature |
-| Document verification | `/vault/verification` | partial | — | Doc ID/Hash/Result · **Verify document** _(BE module incomplete)_ |
+| **Document vault** ✅ BUILT (session 8) | `/vault/documents` | ready | — | Status filter + search; **Upload** (base64, ≤25 MB, doc_type/reference/context), authed binary **Download**, **Archive**. `/documents` full CRUD. |
+| **Document signatures** ✅ BUILT (session 8) | `/vault/signatures` | ready | — | ⚠️ feature-gated `signatures`. Look up by document reference → its signatures list + **Add signature** (signer/method/ref). List keyed by `entity_ref`. |
+| **Document verification** ✅ BUILT (session 8) | `/vault/verification` | ready | — | Reference \| Document-ID toggle + hash → **Verify** → green/red tamper verdict (doc type/version/stored hash). Lookup widget, no list. |
 | **Compliance flags** ✅ BUILT (session 6) | `/vault/compliance-flags` | ready | Flags · Rules | **Run checks** (`POST /run`) + severity chips + include-resolved toggle; flag rows with **Resolve** (`/:id/resolve`); Rules tab = the rule catalogue. |
-| **Reports** ⭐ ✅ BUILT (session 6) | `/vault/reports` | ready | Catalogue · Saved | ⚠️ **feature-gated `reporting`** ("enable it" empty state when off). Catalogue → Run modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved tab (run/delete). Scheduling lives in Settings → Scheduled reports; dashboard-tile picker deferred. |
+| **Reports** ⭐ ✅ BUILT (session 6) | `/vault/reports` | ready | Catalogue · Saved | ⚠️ **feature-gated `reporting`** ("enable it" empty state when off). Catalogue → Run modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved tab (run/delete). Scheduling lives in Settings → Scheduled reports; **dashboard-tile picker BUILT (session 7)** — "Dashboard tiles" tab over `/reports/tiles` (add/show-hide/order). |
 
 ### Communication
 
 | Screen | Route | BE | Tabs | Key columns / actions |
 |---|---|---|---|---|
-| Smart Comms | `/comms` | ready | Channels · Direct | Channel/Members/Unread/Activity · New channel, New message |
+| **Smart Comms** ✅ BUILT (session 8) | `/comms` | ready | — | ⚠️ feature-gated `comms`. Two-pane: channel list (search + **New channel** with kind/topic/member picker, unread badges) \| thread + composer (Enter to send). Over `/smartcomm/channels` + `/messages`; marks read on open. |
 
 ### Settings & Admin
 
@@ -151,11 +153,11 @@ reference for Opportunities; the **Clients** tab (search + chips + avatar rows) 
 |---|---|---|---|---|
 | Module catalogue | `/settings/catalogue` | readonly | — | Module/Group/Code (feeds permission matrix) |
 | Business setup | `/settings/business-setup` | partial | Profile · Financial identity · Fiscal year · Policies | Field/Value · Edit |
-| Business policies | `/settings/business-policies` | **none** | — | Policy/Version/Effective · New policy |
-| Custom fields | `/settings/custom-fields` | **none** | — | Entity/Field/Type/Required · New field |
+| **Business policies** ✅ BUILT (session 8) | `/settings/business-policies` | ready | — | Generic `/settings/policy` store — named policy docs (name/body_html); create/edit/delete. |
+| **Custom fields** ✅ BUILT (session 8) | `/settings/custom-fields` | ready | — | `/settings/custom_field` — per-entity-type field defs (key/label/type/required array editor). |
 | Factory languages | `/settings/factory-languages` | **none** | — | Key/Screen/FR/EN · Add translation |
-| Document templates | `/settings/document-templates` | **none** | — | Template/Type/Entity · New template |
-| Email signatures | `/settings/email-signatures` | partial | — | User/Signature/Updated · Edit signature |
+| **Document templates** ✅ BUILT (session 8) | `/settings/document-templates` | ready | — | `/settings/document_template` — per doc-type (name/status/body_html/optional css_vars). |
+| **Email signatures** ✅ BUILT (session 8) | `/settings/email-signatures` | ready | — | `/settings/email_signature` tenant brand template (single `template` key, HTML). |
 | Help center | `/settings/help-center` | **none** | — | Guide/Category |
 | **Portal access** ⭐ ✅ BUILT (session 6) | `/portal/access` | ready | — | Active-grant list (portal/email/scope/expires) with **Grant** (client/investor/auditor; client needs a client scope) + **Revoke**; **Preview** the exact external scope (client/investor/auditor views, ⚠️ each gated `portal.*` → graceful "enable it" state). |
 
@@ -222,16 +224,21 @@ listed above — the table highlights the write/assist points that matter for UX
 
 ## 3. Backend gaps surfaced by this pass (notify BE)
 
-- **No endpoint yet (`none`):** Business policies, Custom fields, Factory languages (translations),
-  Document/letterhead templates, Help center. These five need modules built (or, for Help center,
-  a static-content decision).
-- **Partial / read-only to finish:**
-  - `vault/document_vault` — read-only; needs upload/create/delete.
-  - `vault/document_verification` — module incomplete (missing repo + validator).
-  - `email-signatures` — exists per-user on `app_user` but is MOD-67 admin-gated with no
-    self-service `/me` route; add a self route for a clean Settings tile.
+- **No endpoint yet (`none`):** only **Factory languages** (translations) and **Help center**
+  (needs a static-content decision) remain without a backend. Business policies, Custom fields,
+  Document templates and Email signatures are now built on the generic `/settings/:section/:key`
+  store (session 8) — MOD-70-gated.
+- **Vault trio — RESOLVED (session 8):** `document_vault` (upload/download/archive),
+  `document_signature` (list-by-`entity_ref` + sign, feature `signatures`) and
+  `document_verification` (public `/scan` + gated `/verify`) are all wired; the earlier
+  "read-only / incomplete" notes are stale.
+- **Still partial / nice-to-have:**
+  - `email-signatures` — the tenant brand template is built on the settings store; the *per-user*
+    render still lives MOD-67-gated on `app_user` with no self-service `/me` route.
   - `sales/opportunity` **stages** — stage list is read-only; no stage CRUD (pipeline-stages tile
     shipped read-only).
+  - Marketing `campaign_template` / `campaign_sender` are now a real MOD-22 module (session 8); the
+    only remaining campaign gap is per-recipient **merge/personalisation** on send.
 
 Everything marked **ready** above is unblocked FE wiring — follow the pattern in
 `client/src/features/settings/master-data-pages.tsx` and `.../config-pages.tsx`.
@@ -247,3 +254,9 @@ advances, invoices, credit notes, receivables, statements, tax center (+ filing)
 **Fleet, WMS, HR:** full standalone screens. **Settings tiles (2026-07-15):** currencies & FX,
 tax jurisdictions, bank accounts, payment gateways, scheduled reports, API keys & secrets,
 pipeline stages (read-only), document numbering. **Per-tenant PWA:** dynamic manifest + icons.
+**Session 8 (2026-07-18):** Vault trio (documents / signatures / verification); Settings store tiles
+(document templates, custom fields, email signatures, business policies); Marketing campaign
+templates + senders + send (MOD-22); Control Tower live KPI cards (revenue / SLA / fleet); refresh
+rotation + reuse-detection; **Smart Comms** (`/comms`, channels + thread + composer); **My Workspace**
+(`/workspace`, personal approvals + notifications landing). Also corrected the Master data section
+(the whole hub — incl. Expense rates + Financial dictionary — was already built).

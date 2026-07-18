@@ -25,4 +25,36 @@ async function listSubscribers(client, q = {}) {
   const { limit, offset } = page(q);
   return (await client.query("SELECT * FROM newsletter_subscriber WHERE is_subscribed = true ORDER BY subscribed_at DESC LIMIT $1 OFFSET $2", [limit, offset])).rows;
 }
-module.exports = { insert, get, update, list, subscribe, unsubscribe, listSubscribers };
+// All active recipients (no pagination) — for a campaign send fan-out.
+const listActiveSubscriberEmails = (client) =>
+  client.query("SELECT email, name FROM newsletter_subscriber WHERE is_subscribed = true").then((r) => r.rows);
+
+// --- Sending identities (campaign_sender) + email templates (campaign_template), MOD-22 ---
+const listSenders = (client) => client.query("SELECT * FROM campaign_sender ORDER BY created_at DESC").then((r) => r.rows);
+const getSender = (client, id) => getById(client, "campaign_sender", "sender_id", id);
+const insertSender = (client, data) => insertOne(client, "campaign_sender", data);
+async function verifySender(client, id) {
+  return (await client.query("UPDATE campaign_sender SET verified_at = now() WHERE sender_id = $1 RETURNING *", [id])).rows[0] || null;
+}
+async function deleteSender(client, id) {
+  return (await client.query("DELETE FROM campaign_sender WHERE sender_id = $1 RETURNING *", [id])).rows[0] || null;
+}
+
+const listTemplates = (client) => client.query("SELECT * FROM campaign_template ORDER BY updated_at DESC").then((r) => r.rows);
+const getTemplate = (client, id) => getById(client, "campaign_template", "template_id", id);
+const insertTemplate = (client, data) => insertOne(client, "campaign_template", data);
+async function updateTemplate(client, id, fields) {
+  const keys = Object.keys(fields);
+  if (!keys.length) return getById(client, "campaign_template", "template_id", id);
+  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
+  return (await client.query("UPDATE campaign_template SET " + set + ", updated_at = now() WHERE template_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])])).rows[0] || null;
+}
+async function deleteTemplate(client, id) {
+  return (await client.query("DELETE FROM campaign_template WHERE template_id = $1 RETURNING *", [id])).rows[0] || null;
+}
+
+module.exports = {
+  insert, get, update, list, subscribe, unsubscribe, listSubscribers, listActiveSubscriberEmails,
+  listSenders, getSender, insertSender, verifySender, deleteSender,
+  listTemplates, getTemplate, insertTemplate, updateTemplate, deleteTemplate,
+};

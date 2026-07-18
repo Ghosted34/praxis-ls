@@ -1,6 +1,6 @@
 /** Master-data settings screens wired to live endpoints:
- *  - CurrenciesPage       → MOD-08 /currencies (+ /currencies/rates, POST rate)
- *  - TaxJurisdictionsPage → MOD-07 /tax-jurisdictions (+ /:id/codes)
+ *  - CurrenciesPage       → /currencies (+ /currencies/rates, POST rate)
+ *  - TaxJurisdictionsPage → /tax-jurisdictions (+ /:id/codes)
  *  Same primitives + patterns as features/finance/pages.tsx. */
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";

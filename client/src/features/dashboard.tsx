@@ -1,148 +1,217 @@
 /**
- * Control Tower home — live data (MOD-00A). Replaces the earlier static Lovable
- * iframe mock: real KPI tiles + live-shipments board fed by
- *   GET /dashboard/kpis          → flat counts (each guarded server-side)
- *   GET /dashboard/control-tower → operation-file counts, approvals, shipments
- * Styled with the app's lux-card + --primary tokens so it re-tints per tenant.
+ * Control Tower home — the Lovable "Control Tower" mock rendered in an isolated
+ * <iframe srcDoc>, now fed with LIVE backend data instead of the static sample:
+ *   GET /dashboard/control-tower → { operation_files, approvals_awaiting, live_shipments[] }
+ *   GET /dashboard/kpis          → flat guarded counts
+ *
+ * We keep the mock's exact look (its own CSS/markup from features/dashboard-mock/*),
+ * hide its duplicate app chrome (topbar / test banner / drawer — the app already
+ * provides those), and inject a small script that rewrites the live-shipments list,
+ * the "N active" pill, the hero subline and the Praxis briefing from real data. The
+ * iframe's data-theme tracks the app's light/dark class.
  */
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
-import { Button } from "@/components/ui/button";
-import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
-import { AiActions } from "@/components/ai-actions";
-import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, Badge, MetricTile } from "@/features/sales/ui";
+import { LoadingRow, ErrorState } from "@/components/ui/states";
+import { errMsg } from "@/features/sales/ui";
+import mockBody from "./dashboard-mock/body.html.txt?raw";
+import mockStyle from "./dashboard-mock/style.css.txt?raw";
+import mockScript from "./dashboard-mock/script.js.txt?raw";
 
-const DASH_AI: AiAction[] = [
-  { label: "Brief me", kind: "read", describe: "Summarise today's Control Tower — what needs attention across dossiers, approvals and compliance." },
-  { label: "Explain a number", kind: "assist", describe: "Explain a KPI movement (e.g. why unposted journals rose)." },
-];
+type Row = Record<string, unknown>;
 
-const num = (v: unknown) => (v === null || v === undefined ? "—" : Number(v).toLocaleString());
+const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
-function useDashboard(nonce: number) {
-  const [kpis, setKpis] = React.useState<Row | null>(null);
-  const [ct, setCt] = React.useState<Row | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  React.useEffect(() => {
-    let live = true;
-    setLoading(true);
-    setError(null);
-    Promise.all([tenant<Row>("/dashboard/kpis"), tenant<Row>("/dashboard/control-tower")])
-      .then(([k, c]) => {
-        if (!live) return;
-        setKpis(k || {});
-        setCt(c || {});
-      })
-      .catch((e) => live && setError(errMsg(e)))
-      .finally(() => live && setLoading(false));
-    return () => {
-      live = false;
-    };
-  }, [nonce]);
-  return { kpis, ct, error, loading };
+/** Derive the mock status-pill class from a free-text status. */
+function statusClass(status: string): string {
+  const s = status.toLowerCase();
+  if (/await|approv|pending/.test(s)) return "st-orange";
+  if (/transit|progress|port|clear|berth|road|moving/.test(s)) return "st-blue";
+  if (/deliver|complete|closed|paid|done|arrived|departed/.test(s)) return "st-ok";
+  if (/overdue|risk|hold|block|late/.test(s)) return "st-warn";
+  return "st-mute";
+}
+
+/** Map a live control-tower shipment to the shape the mock's liverow expects. */
+function toLiveShipment(s: Row) {
+  const route = str(s.route ?? s.lane ?? "");
+  const parts = route.split(/→|->|—|-|to/i).map((p) => p.trim()).filter(Boolean);
+  const vessel = str(s.vessel ?? s.vessel_flight ?? "");
+  const mode = /air|flight|mawb/i.test(vessel + " " + route)
+    ? "air"
+    : /road|truck|corridor|transit/i.test(str(s.service ?? s.mode ?? "") + " " + route)
+      ? "road"
+      : "sea";
+  const status = str(s.status ?? s.state ?? "Active");
+  const metaBits = [str(s.client ?? s.client_name ?? vessel), str(s.eta ?? s.eta_label ?? "")].filter(Boolean);
+  return {
+    ref: str(s.ref ?? s.dossier_ref ?? s.reference ?? "—"),
+    mode,
+    from: parts[0] ?? route,
+    to: parts[1] ?? "",
+    st: status,
+    stc: statusClass(status),
+    meta: metaBits.join(" · "),
+    prog: Number(s.progress ?? s.prog ?? 0) || 45,
+  };
+}
+
+type LiveData = {
+  shipments: ReturnType<typeof toLiveShipment>[];
+  activeCount: number;
+  heroSub: string;
+  briefing: string;
+  kpi: {
+    revenue: number | null;
+    revenueCur: string;
+    sla: number | null;
+    fleetActive: number | null;
+    fleetTotal: number | null;
+  };
+};
+
+/** Build the live-data injection script that runs after the mock's own script. */
+function liveInjectionScript(live: LiveData): string {
+  return `
+(function(){
+  var LIVE = ${JSON.stringify(live)};
+  function esc(s){ return String(s==null?"":s).replace(/[&<>]/g, function(c){ return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]; }); }
+  function fmtM(v){ var n = Number(v) || 0; return (n/1e6).toFixed(1); }
+  function icon(mode){
+    if(mode==='sea') return '<svg viewBox="0 0 24 24"><path d="M3 14l9-4 9 4-9 5z"/><path d="M12 10V4"/></svg>';
+    if(mode==='air') return '<svg viewBox="0 0 24 24"><path d="M2 12l20-7-7 20-3-8z"/></svg>';
+    return '<svg viewBox="0 0 24 24"><path d="M3 7h11l4 4v4h-2"/><circle cx="7" cy="16" r="2"/><circle cx="16" cy="16" r="2"/></svg>';
+  }
+  function liveRow(d){
+    return '<div class="liverow">'
+      + '<div class="ck '+d.mode+'">'+icon(d.mode)+'</div>'
+      + '<div class="lb">'
+      + '<div class="r1"><span class="ref">'+esc(d.ref)+'</span><span class="status '+d.stc+'" style="padding:2px 7px">'+esc(d.st)+'</span></div>'
+      + '<div class="rt"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'+esc(d.from)+(d.to?(' &rarr; '+esc(d.to)):'')+'</div>'
+      + '<div class="meta">'+esc(d.meta)+'</div>'
+      + '<div class="bar"><i style="width:'+(d.prog||40)+'%"></i></div>'
+      + '</div></div>';
+  }
+  try {
+    var list = document.getElementById('liveList');
+    if(list){
+      list.innerHTML = LIVE.shipments.length
+        ? LIVE.shipments.slice(0,7).map(liveRow).join('')
+        : '<div class="meta" style="padding:18px">No live shipments right now.</div>';
+    }
+    var pill = document.querySelector('.livepanel .lph .status');
+    if(pill) pill.textContent = LIVE.activeCount + ' active';
+    var hsub = document.querySelector('#v-home .hsub');
+    if(hsub && LIVE.heroSub) hsub.textContent = LIVE.heroSub;
+    var brief = document.querySelector('.praxis .pt p');
+    if(brief && LIVE.briefing) brief.innerHTML = LIVE.briefing;
+    // KPI strip: feed the three cards we have live data for (revenue / SLA /
+    // fleet). Order in the mock is [revenue, sla, overdue, fleet]; 'overdue'
+    // (index 2) has no aggregate yet so it stays as the mock sample.
+    var cards = document.querySelectorAll('.kpis .kpi');
+    function setKpi(i, kv, kd){ var c = cards[i]; if(!c) return; var a = c.querySelector('.kv'); if(a) a.innerHTML = kv; var b = c.querySelector('.kd'); if(b){ b.textContent = kd || ''; b.className = 'kd'; } }
+    function hideKpi(i){ var c = cards[i]; if(c) c.style.display = 'none'; }
+    var K = LIVE.kpi || {};
+    if(K.revenue == null) hideKpi(0); else setKpi(0, fmtM(K.revenue) + '<small> M ' + esc(K.revenueCur || 'XAF') + '</small>', 'Locked FINAL invoices');
+    if(K.sla == null) hideKpi(1); else setKpi(1, esc(K.sla) + '<small> %</small>', 'On-time delivery');
+    if(K.fleetTotal == null || Number(K.fleetTotal) === 0) hideKpi(3); else setKpi(3, esc(K.fleetActive || 0) + '<small> / ' + esc(K.fleetTotal) + ' vehicles</small>', 'Active now');
+  } catch(e){ /* keep the mock visible even if injection fails */ }
+
+  // Track the app's light/dark theme (parent uses a .dark class; mock uses data-theme).
+  function syncTheme(){
+    try {
+      var dark = window.parent.document.documentElement.classList.contains('dark');
+      document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    } catch(e){}
+  }
+  syncTheme();
+  try { new MutationObserver(syncTheme).observe(window.parent.document.documentElement, { attributes:true, attributeFilter:['class'] }); } catch(e){}
+})();
+`;
+}
+
+/** CSS that hides the mock's own app chrome so it sits inside the real app shell. */
+const HIDE_CHROME = `
+  .testban, header.topbar, .botnav, .drawer, .drawer-scrim { display: none !important; }
+  html, body { background: transparent; }
+  .app { min-height: auto; }
+  .scroll { padding-top: 8px; height: auto; overflow: visible; }
+`;
+
+function buildSrcDoc(live: LiveData | null): string {
+  const inject = live ? `<script>${liveInjectionScript(live)}</script>` : "";
+  return `<!doctype html><html data-theme="light"><head><meta charset="utf-8" />
+<style>${mockStyle}\n${HIDE_CHROME}</style></head>
+<body>${mockBody}
+<script>${mockScript}</script>
+${inject}
+</body></html>`;
 }
 
 export function DashboardPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const { kpis, ct, error, loading } = useDashboard(nonce);
+  const [live, setLive] = React.useState<LiveData | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(true);
 
-  const ops = (ct?.operation_files as Row | undefined) || {};
-  const shipments = (ct?.live_shipments as Row[] | undefined) || [];
+  React.useEffect(() => {
+    let alive = true;
+    setLoading(true);
+    setError(null);
+    Promise.all([
+      tenant<Row>("/dashboard/control-tower").catch(() => ({}) as Row),
+      tenant<Row>("/dashboard/kpis").catch(() => ({}) as Row),
+    ])
+      .then(([ct, kpis]) => {
+        if (!alive) return;
+        const rawShips = Array.isArray(ct.live_shipments) ? (ct.live_shipments as Row[]) : [];
+        const shipments = rawShips.map(toLiveShipment);
+        const of = (ct.operation_files as Row) || {};
+        const active = Number(of.active ?? of.open ?? shipments.length) || shipments.length;
+        const approvals = Number(ct.approvals_awaiting ?? kpis.approvals_awaiting ?? 0) || 0;
+        const flags = Number(kpis.open_compliance_flags ?? kpis.compliance_flags ?? 0) || 0;
+        const unposted = Number(kpis.unposted_journals ?? 0) || 0;
+        const heroSub =
+          `${active} operation file${active === 1 ? "" : "s"} in motion` +
+          (approvals ? ` — ${approvals} awaiting your approval.` : ".");
+        const briefing =
+          `<b>${active}</b> active operation file${active === 1 ? "" : "s"}` +
+          (approvals ? `, <b>${approvals}</b> awaiting approval` : "") +
+          (flags ? `, <b>${flags}</b> open compliance flag${flags === 1 ? "" : "s"}` : "") +
+          (unposted ? `, <b>${unposted}</b> unposted journal${unposted === 1 ? "" : "s"}` : "") +
+          ". Live from the Control Tower.";
+        setLive({
+          shipments,
+          activeCount: active,
+          heroSub,
+          briefing,
+          kpi: {
+            revenue: numOrNull(kpis.revenue_final_ttc),
+            revenueCur: str(kpis.revenue_currency || "XAF"),
+            sla: numOrNull(kpis.sla_on_time_pct),
+            fleetActive: numOrNull(kpis.fleet_active),
+            fleetTotal: numOrNull(kpis.fleet_total),
+          },
+        });
+      })
+      .catch((e) => alive && setError(errMsg(e)))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const srcDoc = React.useMemo(() => buildSrcDoc(live), [live]);
+
+  if (loading) return <LoadingRow label="Loading Control Tower…" />;
+  if (error) return <ErrorState message={error} />;
 
   return (
-    <section className="mx-auto max-w-[1400px] animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Control Tower</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Your operation at a glance — live dossiers, approvals and finance signals.</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={() => setNonce((n) => n + 1)} disabled={loading}>
-          {loading ? "Refreshing…" : "Refresh"}
-        </Button>
-      </header>
-
-      {error ? (
-        <ErrorState message={error} />
-      ) : loading && kpis === null ? (
-        <LoadingRow label="Loading Control Tower…" />
-      ) : (
-        <div className="space-y-6">
-          {/* Hero — the actionable signals */}
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <MetricTile label="Active operation files" value={num(ops.active)} accent />
-            <MetricTile label="Approvals awaiting" value={num(ct?.approvals_awaiting)} accent />
-            <MetricTile label="Open compliance flags" value={num(kpis?.open_compliance_flags)} />
-            <MetricTile label="Unposted journals" value={num(kpis?.unposted_journal_entries)} />
-          </div>
-
-          {/* Live shipments */}
-          <div className="lux-card p-4">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="font-display text-lg tracking-tight">Live shipments</h2>
-              <span className="text-xs text-muted-foreground">Open &amp; in-progress dossiers</span>
-            </div>
-            {shipments.length === 0 ? (
-              <EmptyState title="No live shipments" hint="Open dossiers appear here with their route and ETA." />
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b text-xs text-muted-foreground">
-                      <th className="px-2 py-2 text-left font-medium">Dossier</th>
-                      <th className="px-2 py-2 text-left font-medium">Status</th>
-                      <th className="px-2 py-2 text-left font-medium">Route</th>
-                      <th className="px-2 py-2 text-left font-medium">Vessel / flight</th>
-                      <th className="px-2 py-2 text-left font-medium">ETA</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {shipments.map((s, i) => (
-                      <tr key={String(s.ref ?? i)} className="border-b last:border-0">
-                        <td className="px-2 py-2 font-medium">{cell(s.ref)}</td>
-                        <td className="px-2 py-2">
-                          <Badge label={String(s.status || "—")} />
-                        </td>
-                        <td className="px-2 py-2 text-muted-foreground">
-                          {cell(s.origin)} <span className="text-foreground">→</span> {cell(s.destination)}
-                        </td>
-                        <td className="px-2 py-2 text-muted-foreground">{cell(s.vessel_flight)}</td>
-                        <td className="px-2 py-2 text-muted-foreground">{when(s.eta)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Operation-file breakdown + registry counts */}
-          <div className="grid gap-4 lg:grid-cols-[1fr_2fr]">
-            <div className="lux-card p-4">
-              <h2 className="mb-3 font-display text-lg tracking-tight">Operation files</h2>
-              <div className="grid grid-cols-3 gap-3">
-                <MetricTile label="Active" value={num(ops.active)} accent />
-                <MetricTile label="Open" value={num(ops.open)} />
-                <MetricTile label="In progress" value={num(ops.in_progress)} />
-              </div>
-            </div>
-            <div className="lux-card p-4">
-              <h2 className="mb-3 font-display text-lg tracking-tight">Finance &amp; registries</h2>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <MetricTile label="Open dossiers" value={num(kpis?.open_dossiers)} />
-                <MetricTile label="Proformas" value={num(kpis?.proformas)} />
-                <MetricTile label="Final invoices" value={num(kpis?.final_invoices)} />
-                <MetricTile label="Receipts" value={num(kpis?.receipts)} />
-                <MetricTile label="Clients" value={num(kpis?.clients)} />
-                <MetricTile label="Suppliers" value={num(kpis?.suppliers)} />
-              </div>
-            </div>
-          </div>
-
-          <AiActions actions={DASH_AI} />
-        </div>
-      )}
-    </section>
+    <iframe
+      title="Control Tower"
+      srcDoc={srcDoc}
+      className="h-[calc(100vh-7rem)] w-full border-0"
+      sandbox="allow-scripts allow-same-origin"
+    />
   );
 }

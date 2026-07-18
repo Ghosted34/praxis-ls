@@ -64,11 +64,11 @@ export type LoginConfig = {
 /** Public — resolved by Host, no auth. Brands the login pre-auth. */
 export const fetchBranding = () => tenant<Branding>("/branding", { auth: false });
 
-/** Gated (MOD-70 edit). Upserts only the provided fields; returns the merged result. */
+/** Gated(edit). Upserts only the provided fields; returns the merged result. */
 export const saveBranding = (patch: Partial<Branding>) =>
   tenant<Branding>("/branding", { method: "PUT", body: patch });
 
-/** Gated (MOD-70 edit). Uploads a base64 image data URL; returns its /media URL. */
+/** Gated(edit). Uploads a base64 image data URL; returns its /media URL. */
 export const uploadImage = (dataUrl: string) =>
   tenant<{ logoUrl: string }>("/branding/logo", { method: "POST", body: { dataUrl } });
 
@@ -79,10 +79,10 @@ export const uploadLogo = uploadImage;
 /** Public — the login page reads this pre-auth. */
 export const fetchLogin = () => tenant<LoginConfig>("/branding/login", { auth: false });
 
-/** Gated (MOD-70 edit). */
+/** Gated(edit). */
 export const saveLogin = (patch: Partial<LoginConfig>) =>
   tenant<LoginConfig>("/branding/login", { method: "PUT", body: patch });
 
-/** Gated (MOD-70 edit). Uploads a base64 login background; returns its /media URL. */
+/** Gated(edit). Uploads a base64 login background; returns its /media URL. */
 export const uploadLoginBackground = (dataUrl: string) =>
   tenant<{ backgroundUrl: string }>("/branding/login/background", { method: "POST", body: { dataUrl } });

@@ -24,6 +24,7 @@ import {
   PipelineStagesPage,
   NumberingPage,
 } from "@/features/settings/config-pages";
+import { DocumentTemplatesPage, CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
 import {
   VehiclesPage,
   VehicleCompliancePage,
@@ -57,14 +58,15 @@ import { FinanceHub } from "@/features/finance/hub";
 import { Planned } from "@/features/scaffold/screen-scaffold";
 import { LeadsPage, MeetingsPage, OpportunitiesPage, ProposalsPage, CampaignsPage, SuccessStoriesPage } from "@/features/sales/pages";
 import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "@/features/commercial/pages";
-import { ReportsPage, ComplianceFlagsPage } from "@/features/vault/pages";
+import { ReportsPage, ComplianceFlagsPage, DocumentsPage, SignaturesPage, VerificationPage } from "@/features/vault/pages";
 import { PortalAccessPage } from "@/features/portal/pages";
+import { SmartCommsPage } from "@/features/comms/pages";
+import { WorkspacePage } from "@/features/workspace/pages";
 import { MasterDataPage } from "@/features/masterdata/master-data-page";
 import { OperationsHub } from "@/features/operations/hub";
 import { CostingHub } from "@/features/costing/hub";
 import { ProcurementHub } from "@/features/procurement/hub";
 import { AiControlHub } from "@/features/ai-control/hub";
-import { WorkspacePage } from "@/features/workspace/workspace-page";
 import { GodModePage } from "@/features/godmode/godmode-page";
 import { CommsHub } from "@/features/comms/hub";
 import { BootGate } from "@/app/boot-gate";
@@ -131,6 +133,7 @@ export function App() {
         {/* AI Control — governance admin hub */}
         <Route path="ai-control" element={<AiControlHub />} />
         <Route path="ai-control/:section" element={<AiControlHub />} />
+        <Route path="godmode" element={<Planned />} />
         {/* Commercial */}
         <Route path="commercial/quotations" element={<QuotationsPage />} />
         <Route path="commercial/margin-simulation" element={<MarginSimulationsPage />} />
@@ -158,15 +161,16 @@ export function App() {
         <Route path="master" element={<MasterDataPage />} />
         <Route path="master/:section" element={<MasterDataPage />} />
         {/* Vault */}
-        <Route path="vault/documents" element={<Planned />} />
-        <Route path="vault/signatures" element={<Planned />} />
-        <Route path="vault/verification" element={<Planned />} />
+        <Route path="vault/documents" element={<DocumentsPage />} />
+        <Route path="vault/signatures" element={<SignaturesPage />} />
+        <Route path="vault/verification" element={<VerificationPage />} />
         <Route path="vault/compliance-flags" element={<ComplianceFlagsPage />} />
         <Route path="vault/reports" element={<ReportsPage />} />
         {/* Comms */}
         {/* Comms — Smart Comms hub */}
         <Route path="comms" element={<CommsHub />} />
         <Route path="comms/:section" element={<CommsHub />} />
+        <Route path="comms" element={<SmartCommsPage />} />
         {/* Settings & Admin (new) */}
         <Route path="settings/numbering" element={<NumberingPage />} />
         <Route path="settings/catalogue" element={<Planned />} />
@@ -174,16 +178,15 @@ export function App() {
         {/* Settings hub cards without a dedicated editor yet */}
         <Route path="settings/business-setup" element={<Planned />} />
         <Route path="settings/login" element={<LoginEditor />} />
-        <Route path="settings/business-policies" element={<Planned />} />
+        <Route path="settings/business-policies" element={<BusinessPoliciesPage />} />
         <Route path="settings/payment-gateways" element={<PaymentGatewaysPage />} />
-        <Route path="settings/custom-fields" element={<Planned />} />
+        <Route path="settings/custom-fields" element={<CustomFieldsPage />} />
         <Route path="settings/pipeline-stages" element={<PipelineStagesPage />} />
         <Route path="settings/scheduled-reports" element={<ScheduledReportsPage />} />
-        <Route path="settings/factory-languages" element={<Planned />} />
-        <Route path="settings/document-templates" element={<Planned />} />
-        <Route path="settings/email-signatures" element={<Planned />} />
         <Route path="settings/api-keys" element={<ApiKeysPage />} />
-        <Route path="settings/help-center" element={<Planned />} />
+        <Route path="settings/factory-languages" element={<Planned />} />
+        <Route path="settings/document-templates" element={<DocumentTemplatesPage />} />
+        <Route path="settings/email-signatures" element={<EmailSignaturesPage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />

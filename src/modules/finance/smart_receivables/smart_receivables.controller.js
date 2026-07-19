@@ -24,5 +24,6 @@ module.exports = {
     res.json({ data });
   }),
   ageing: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.ageing(c, { clientId: req.query.client_id, asOf: req.query.as_of })) })),
+  overdue: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.overdue(c, { clientId: req.query.client_id, asOf: req.query.as_of })) })),
   reminders: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.reminders(c, { asOf: req.query.as_of })) })),
 };

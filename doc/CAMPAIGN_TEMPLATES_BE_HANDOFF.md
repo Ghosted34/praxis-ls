@@ -1,84 +1,71 @@
-# Campaign email templates + per-template sender — BE handoff
+# Campaign email templates + per-template sender — SHIPPED (record)
 
-_Written 2026-07-17 (FE stream). Companion to `doc/SESSION_HANDOFF.md`._
+> **Status: DONE. No action required from the BE dev.**
+> This started life as a handoff proposing new endpoints. Those endpoints were built in
+> session 8 (2026-07-18) and are live. The file is kept under its original name because
+> several docs link to it; treat it as a **record of what shipped**, not a request.
+> Everything below the divider is the original proposal, retained only for context.
 
-## ✅ IMPLEMENTED (2026-07-18) — templates + senders
+_Originally written 2026-07-17 (FE stream). Companion to `doc/SESSION_HANDOFF.md`._
 
-The dedicated module below was **built** and the FE moved off `/settings`:
+## What exists today
 
-- Migration `migrations/tenant/0452_campaign_templates.sql` adds `campaign_sender`
-  (`sender_id, from_name, from_address citext, domain, verified_at, created_at`) and
-  `campaign_template` (`template_id, name, subject, body_html, from_sender_id → campaign_sender, timestamps`).
-- Endpoints added to the existing `sales/marketing_campaign` module (MOD-22, basePath `/campaigns`),
-  registered **before** `/:id`: `GET/POST /campaigns/senders`, `POST /campaigns/senders/:id/verify`,
-  `DELETE /campaigns/senders/:id`; `GET/POST /campaigns/templates`, `GET/PATCH/DELETE /campaigns/templates/:id`.
-  Reuses MOD-22 RBAC (view/create/edit/delete) — a marketing role manages these without settings-admin.
-- FE (`features/sales/pages.tsx`): `TemplateForm` now POST/PATCHes `/campaigns/templates` with a **sender
-  picker** (Select over `/campaigns/senders`) + inline **New sender** modal (`SenderForm`); the old
-  `/settings/campaign_template` calls are gone. `campaign_sender.verified_at` is a manual admin stamp
-  (no SPF/DKIM yet).
-- **Send fan-out — DONE (2026-07-18).** `POST /campaigns/:id/send` (body `{ template_id }`, MOD-22 edit)
-  renders the template to every active `newsletter_subscriber` and enqueues one durable **"email" queue**
-  job per recipient (delivered by `jobs/handlers/email-send.js` → `email.service.send`); the template's
-  sender identity is passed as the `from` override (`"Name" <addr>`), transport still resolves per-tenant.
-  Blocks a send on `status = ENDED`. FE: a **Send…** button on each campaign card opens `SendCampaignModal`
-  (template picker) → shows "Queued to N subscribers". No per-recipient merge/personalisation yet (straight
-  `body_html`). `npm test` + Windows lint/build authoritative; **apply migrations 0452 + 0453**
-  (renumbered from 0450/0451 after the merge — those numbers were taken by the comms/mail migrations).
+**Migration** — `migrations/tenant/0452_campaign_templates.sql` (renumbered from 0450 at the
+PR #11 merge; 0450/0451 belong to the comms/mail stream).
+
+- `campaign_sender` — `sender_id, from_name, from_address citext, domain, verified_at, created_at`
+- `campaign_template` — `template_id, name, subject, body_html, from_sender_id → campaign_sender, timestamps`
+
+**Endpoints** — on the existing `sales/marketing_campaign` module (MOD-22, basePath `/campaigns`),
+all registered **before** `/:id` so the literal segments aren't captured as a campaign id:
+
+| Verb | Path |
+|---|---|
+| GET / POST | `/campaigns/senders` |
+| POST | `/campaigns/senders/:id/verify` |
+| DELETE | `/campaigns/senders/:id` |
+| GET / POST | `/campaigns/templates` |
+| GET / PATCH / DELETE | `/campaigns/templates/:id` |
+| POST | `/campaigns/:id/send` |
+
+RBAC reuses MOD-22 (view/create/edit/delete), so a marketing role manages templates and senders
+**without** settings-admin rights — which was the whole point of moving off `/settings`.
+
+**Send fan-out** — `POST /campaigns/:id/send` (body `{ template_id }`, MOD-22 edit) renders the
+template to every active `newsletter_subscriber` and enqueues one durable **email** queue job per
+recipient (`jobs/handlers/email-send.js` → `email.service.send`). The template's sender identity is
+passed as the `from` override (`"Name" <addr>`); transport still resolves per-tenant. A send is
+blocked when `status = ENDED`.
+
+**Frontend** — `features/sales/pages.tsx`: `TemplateForm` POST/PATCHes `/campaigns/templates` with a
+sender picker over `/campaigns/senders` plus an inline **New sender** modal (`SenderForm`). Each
+campaign card has a **Send…** button opening `SendCampaignModal` (template picker → "Queued to N
+subscribers"). The old `/settings/campaign_template` calls are gone.
+
+## Known gaps (still open, tracked in `doc/SESSION_HANDOFF.md`)
+
+1. **No per-recipient merge.** `sendCampaign` sends `body_html` verbatim — no `{{name}}`-style
+   substitution. Documented inline at `marketing_campaign.service.js:98`. This is the one item here
+   with real user-facing value left.
+2. **Sender verification is a manual stamp.** `campaign_sender.verified_at` is set by an admin via
+   `POST /campaigns/senders/:id/verify`. There is no SPF/DKIM or domain-ownership check behind it,
+   so a "verified" sender means "someone said so", not "the domain authorised us".
+3. **No scheduling.** Send is immediate-enqueue only; there's no `/schedule` equivalent.
 
 ---
-_Original proposal (for reference):_
 
-## What the FE now does (interim, working)
+_Original proposal (2026-07-17), superseded — retained for context only:_
 
-Marketing campaigns gained a **Templates** tab (`client/src/features/sales/pages.tsx`,
-`CampaignsPage` + `TemplateForm`). Because the `marketing_campaign` module (MOD-22) has
-**no** template or sender endpoints, the FE persists templates in the **generic tenant
-settings store** instead:
+At the time, `marketing_campaign` (MOD-22) had **no** template or sender endpoints, so the FE
+persisted templates in the generic tenant settings store: `GET /settings/campaign_template`,
+`PUT /settings/campaign_template/:key` with `{ value: {...} }`, `DELETE /settings/campaign_template/:key`,
+where `value` was `{ name, subject, from_name, from_address, body_html }` and `key` a slug derived
+from the name. That worked because the settings store accepts arbitrary sections.
 
-- **List** — `GET /settings/campaign_template` → `[{ key, value, version, updated_at }]`
-- **Create / edit** — `PUT /settings/campaign_template/:key` with body `{ value: {...} }`
-- **Delete** — `DELETE /settings/campaign_template/:key`
+The three caveats that motivated the dedicated module — and how they landed:
 
-Each template's `value` object is:
-
-```json
-{
-  "name": "Monthly newsletter",
-  "subject": "What's new this month",
-  "from_name": "Praxis LS",
-  "from_address": "news@tenant.cm",
-  "body_html": "<p>…</p>"
-}
-```
-
-`key` is a slug derived from the name on first save (kept stable on edit). This works
-today because the settings store allows arbitrary sections (forward-compat) and only
-requires the value to be a JSON object.
-
-## Caveats to be aware of
-
-1. **Permission coupling.** `/settings/*` is gated by **MOD-70** (settings admin). A pure
-   marketing user without MOD-70 view/edit can't manage campaign templates yet. A dedicated
-   module would let this sit under **MOD-22** with the sales/marketing role.
-2. **No send integration.** These templates are *stored* only. Nothing sends a campaign
-   through a template or validates/verifies the per-template sender address. `smartcomm` /
-   `notification` don't expose template or sender-identity endpoints today.
-3. **Sender identity isn't verified.** `from_address` is free text — there's no SPF/DKIM or
-   domain-ownership check, and no allow-list of verified sending addresses.
-
-## Proposed dedicated BE (so the FE can move off `/settings`)
-
-Under `sales/marketing_campaign` (MOD-22), 7-file module convention:
-
-- `GET/POST /campaigns/templates`, `GET/PATCH/DELETE /campaigns/templates/:id`
-  — `{ name, subject, body_html, from_sender_id, ... }`
-- `GET/POST /campaigns/senders`, `POST /campaigns/senders/:id/verify`
-  — configured sending identities `{ from_name, from_address, verified_at, domain }`; a
-  template references a sender, rather than embedding a raw address.
-- `POST /campaigns/:id/send` (or `/schedule`) — render a template for the campaign's
-  subscribers via the chosen sender, through `smartcomm`/`notification`.
-
-When these land, swap the three `/settings/campaign_template` calls in `TemplateForm` /
-`CampaignsPage` for the new endpoints and add a sender picker to the template form (replacing
-the inline `from_name` / `from_address` fields).
+| Caveat then | Now |
+|---|---|
+| `/settings/*` is MOD-70-gated, so a pure marketing role couldn't manage templates | **Resolved** — endpoints sit under MOD-22 |
+| Templates were stored only; nothing sent through them | **Resolved** — `POST /campaigns/:id/send` |
+| `from_address` was free text with no verification | **Partly** — there's a sender registry and a verify stamp, but no SPF/DKIM (gap 2 above) |

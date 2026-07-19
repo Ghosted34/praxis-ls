@@ -8,6 +8,100 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-19 — Session 9: Security CRUD + Security/Vault hubs, Control Tower drill-downs, Governance, reconciliation, merge fields
+
+**Context.** The FS colleague reported that "modules under fleet, security, warehouse, vault, vehicle and
+hr aren't built — collapse them into one screen as tabs like the finance screen", and split the work:
+this stream takes **security + vault**, he takes **fleet / warehouse / vehicle / hr**.
+
+**Audit first, and it changed the job.** His read was right for four areas and for security, **wrong for
+vault**: all five vault pages shipped in session 8. Security was the opposite — `features/security/
+pages.tsx` was 104 lines of read-only `ResourceList` stubs, as its own file header admitted ("skeletal
+(read-only lists) by intent"). So vault needed only a hub; security needed building from scratch. The
+root cause of the confusion was `FE_IA_BUILD_MAP.md` §4 conflating *a screen exists at that route* with
+*the screen works* — corrected in that file this session.
+
+**Security — full CRUD** (104 → 872 lines). Users (create/edit, role assignment as toggle chips, status
+through the separate audited `POST /users/:id/status`, password through `/users/:id/password`; the edit
+modal re-fetches `GET /users/:id` because the list endpoint's `SAFE_COLS` omits `role_ids`), Roles (code
+locked on edit, delete disabled for `is_system`), Capabilities (code constrained to the DB CHECK's four
+values), Scopes (entity picker, parent select excluding self), Field visibility (**gated `approve`, not
+`edit`** — the router says so), Sessions (mine + all, per-row revoke, revoke-all). Dropped the dead
+`PermissionsPage` export — `app.tsx` always used `permission-matrix-page.tsx`.
+
+**Two hubs.** `features/security/hub.tsx` + `features/vault/hub.tsx`, FinanceHub-shaped: overview landing,
+tab bar, section map at `/<area>/:section`. **Deliberately not the shared `TabbedHub`** — it publishes its
+tab bar via context and expects each page to render `<HubTabs/>`; none of these eleven pages do, so
+adopting it meant editing all of them or double-rendering headers via `inlineTabs`. Routes collapsed 13 →
+4, and **every old path still resolves as a hub section**, so nav, bookmarks, ⌘K and `screen-registry.json`
+are untouched.
+
+**Governance — the two stubs built.** Audit ledger became four segments, because `/audit` exposes four
+genuinely different things the single-list stub had flattened: Ledger (`immutable_ledger`, row → before/
+after JSON diff — the whole point of the table, previously unreachable), Security events, Access reviews
+(create → decide each entry approved/revoked/flagged → complete, with Complete disabled until every entry
+is decided), Restore queue (request-restore + restore, maker-checker rule stated up front since the DB
+enforces `restored_by <> deleted_by` and a same-person attempt would otherwise read as a random failure).
+Notifications = inbox + a preferences matrix; the table stores **explicit opt-outs only** (absence of a row
+= enabled) so the grid defaults on, and `category` is free text server-side so the six categories are a UI
+convention with any already-stored category merged in. **No Governance hub** — those four screens sit at
+unrelated top-level paths, so hubbing would move every URL for cosmetics.
+
+**Control Tower drill-downs — now real.** Clicking a KPI card opened the mock's hardcoded `kpiData`
+(Bolloré, Sonara, truck LT-4471) even though the card *values* had been live since session 8. All four now
+build from endpoints the user already reads — revenue → `/final-invoices` grouped by client, SLA →
+`/operations` scored `ata ≤ eta`, overdue → the new endpoint below, fleet → `/vehicles` — with **no new
+drill-down BE**. Each fetch catches independently, so a gated module yields that card's empty state rather
+than breaking the tower. The mock's `openKpi` is **replaced outright** (its script is top-level with no
+IIFE, so its functions are window properties and the inline `onclick=` handlers pick up the override);
+that also removes its simulated ~18% random load failure, which was reasonable in a demo and wrong for real
+data. The CTA now leaves the iframe entirely: it posts `{type:'praxis-kpi-nav', id}` and the **parent owns
+the id→route map**, so the iframe can't navigate to an arbitrary path. Drill `meta` strings carry
+deliberate `<b>` markup and are injected as HTML, so interpolated DB values are escaped — the iframe runs
+`allow-same-origin`, which is not a boundary worth trusting. **Bug fixed en route:** `rgb(var(--info))` was
+invalid — `--info` is a raw hex that `lib/theme.ts` sets with the comment "no consumer yet", not an
+`"R G B"` triplet, and isn't defined in `index.css` at all; switched to `--ink-3`.
+
+**BE — past-due reconciliation.** New `GET /receivables/overdue` (MOD-52, gated `accounting.core`),
+registered before `/:id`. **No new SQL:** it reuses the same `repo.openInvoices` rows `ageing` already
+reads, so `overdue.total === d1_30 + d31_60 + d61_90 + d90_plus` for the same `as_of` **by construction**.
+Verified on fixtures — total 1100 = ageing past-due 1100, with the not-yet-due invoice (250) correctly left
+in `current`. The Control Tower card and its drill-down now read this one payload; previously the card came
+from the ageing report (net of receipts) and the list from raw invoices (not net), so they could disagree
+on screen. Amounts are `outstanding`, so a partly-paid invoice shows what's actually owed, and the card no
+longer depends on the `reporting` feature flag.
+
+**BE — campaign per-recipient merge.** `sendCampaign` renders subject and body per subscriber:
+`{{name}}`, `{{email}}`, `{{campaign}}`, `{{year}}`. Three deliberate choices. **Body values are
+HTML-escaped, subjects are not** — `name` arrives via the public subscribe endpoint, so one subscriber
+signing up as `<script>…` would otherwise inject markup into every other recipient's email; subjects aren't
+HTML, but CR/LF is stripped because a newline there is header injection. **Unknown tokens render
+literally**, so `{{firstname}}` is visible in a test send instead of silently blanking. **`name` falls back
+to the email's local part, then "there"**, so "Hi {{name}}," never renders as "Hi ,". FE: `TemplateForm`
+lists the fields under the body.
+
+**Docs.** `CAMPAIGN_TEMPLATES_BE_HANDOFF.md` rewritten as a **record, not a request** — the endpoints it
+proposed shipped in session 8 and were at real risk of being built twice; its remaining gaps (no SPF/DKIM
+behind `verified_at`, no scheduling) are now written down. `FE_IA_BUILD_MAP.md` §4 corrected as above.
+Postman gained `GET /receivables/overdue` with tests asserting rows sum to total and every row is genuinely
+overdue.
+
+**Verification.** In-sandbox `tsc --noEmit -p client` clean throughout; changed BE files `node --check` +
+`eslint` clean (0 errors). **`npm test` could not run in the sandbox this session** (jest hangs with no
+output), so the five new merge-field cases in `tests/unit/campaign-send.test.js` are **unexecuted** — the
+logic beneath them was verified directly via `node -e`. Windows `npm run lint` / `npm test` / `npm run
+build --prefix client` remain authoritative.
+
+**Dead code found, not deleted** (the sandbox mount blocks unlink; needs `git rm` on Windows):
+`client/src/features/master/pages.tsx` (748 lines) has **zero importers** — this stream's session-5
+master-data trio, superseded at the PR #11 merge by his `masterdata/master-data-page.tsx`; removing it
+empties `features/master/`. Also `ReceivablesPage` + `ChartOfAccountsPage` in `features/finance/pages.tsx`
+are stubs nothing imports (`FinanceHub` takes both from the dedicated `receivables.tsx` /
+`chart-of-accounts.tsx`). **Do not delete `features/dashboard-mock/`** — restored in session 7 and actively
+rendered; the session-6 "safe to delete" note is stale.
+
+---
+
 ## 2026-07-18 — Post-merge: idiom convergence, last screens, entity gaps
 
 **Context.** After PR #11 merged and both streams' work was reconciled (see `SESSION_HANDOFF.md`

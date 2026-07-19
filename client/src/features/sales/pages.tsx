@@ -2025,6 +2025,9 @@ function SenderForm({ open, onClose, onCreated }: { open: boolean; onClose: () =
   );
 }
 
+/** Keep in sync with MERGE_FIELDS in src/modules/sales/marketing_campaign/marketing_campaign.service.js. */
+const MERGE_FIELDS = ["name", "email", "campaign", "year"];
+
 function TemplateForm({ open, editing, senders, onClose, onSaved, onReloadSenders }: { open: boolean; editing: Row | null; senders: Row[] | null; onClose: () => void; onSaved: () => void; onReloadSenders: () => void }) {
   const [name, setName] = React.useState("");
   const [subject, setSubject] = React.useState("");
@@ -2089,8 +2092,19 @@ function TemplateForm({ open, editing, senders, onClose, onSaved, onReloadSender
             </div>
           </Field>
           <Field label="Body" className="sm:col-span-2" hint="HTML or plain text">
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="<p>Hello…</p>" className="w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="<p>Hello {{name}},…</p>" className="w-full rounded-lg border bg-background px-3 py-2 text-sm" />
           </Field>
+          {/* Mirrors MERGE_FIELDS in marketing_campaign.service.js. Unknown tokens
+              are left as written so a typo shows up in a test send. */}
+          <div className="sm:col-span-2 rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+            <span className="font-medium text-foreground">Merge fields</span> — usable in the subject and body, replaced per recipient:{" "}
+            {MERGE_FIELDS.map((f) => (
+              <code key={f} className="num mr-1.5 rounded bg-background px-1 py-0.5">{`{{${f}}}`}</code>
+            ))}
+            <span className="block pt-1">
+              <code className="num">{"{{name}}"}</code> falls back to the email name, then “there”. Anything not in this list is left as written.
+            </span>
+          </div>
         </div>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

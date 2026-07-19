@@ -85,6 +85,44 @@ async function ageing(client, { clientId = null, asOf = null } = {}) {
   return { ...ageingBuckets(items, at), open_count: open.length };
 }
 
+/**
+ * Overdue detail — the invoice-level companion to `ageing`.
+ *
+ * Both read the SAME `repo.openInvoices` rows (outstanding = total_ttc net of
+ * payment_allocation), so the total returned here is reconcilable with the
+ * ageing report's past-due buckets by construction: this total equals
+ * d1_30 + d31_60 + d61_90 + d90_plus for the same `asOf`. That's the point —
+ * the Control Tower card and its drill-down were previously computed from two
+ * different sources (ageing vs raw invoices) and could disagree on screen.
+ */
+async function overdue(client, { clientId = null, asOf = null } = {}) {
+  const at = asOf || new Date().toISOString().slice(0, 10);
+  const open = await repo.openInvoices(client, { clientId });
+  const invoices = open
+    .filter((i) => i.payment_due_on && daysOverdue(i.payment_due_on, at) > 0)
+    .map((i) => ({
+      invoice_id: i.invoice_id,
+      doc_number: i.doc_number,
+      client_id: i.client_id,
+      total_ttc: Number(i.total_ttc) || 0,
+      allocated: Number(i.allocated) || 0,
+      outstanding: Number(i.outstanding) || 0,
+      payment_due_on: i.payment_due_on,
+      days_overdue: daysOverdue(i.payment_due_on, at),
+    }))
+    .sort((a, b) => b.days_overdue - a.days_overdue);
+  // Sum in minor units so repeated float addition can't drift the total away
+  // from the ageing report's (which buckets in cents for the same reason).
+  const totalMinor = invoices.reduce((s, i) => s + Math.round(i.outstanding * 100), 0);
+  return {
+    as_of: at,
+    total: Math.round(totalMinor) / 100,
+    count: invoices.length,
+    clients: new Set(invoices.map((i) => i.client_id)).size,
+    invoices,
+  };
+}
+
 /** Reminder plan — which overdue invoices need dunning, at what level. */
 async function reminders(client, { asOf = null } = {}) {
   const at = asOf || new Date().toISOString().slice(0, 10);
@@ -109,4 +147,4 @@ async function get(client, id) {
 
 const list = (client, q) => repo.listReceipts(client, { clientId: q.client_id, limit: q.limit, offset: q.offset });
 
-module.exports = { createDraft, post, ageing, reminders, get, list };
+module.exports = { createDraft, post, ageing, overdue, reminders, get, list };

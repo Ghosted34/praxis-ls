@@ -65,6 +65,64 @@ describe("campaign send fan-out", () => {
     expect(enqueue).not.toHaveBeenCalled();
   });
 
+  test("merge fields are substituted per recipient in subject and body", async () => {
+    repo.get.mockResolvedValue({ campaign_id: "c1", name: "Newsletter", status: "ACTIVE" });
+    repo.getTemplate.mockResolvedValue({ template_id: "t1", subject: "Hi {{name}}", body_html: "<p>Hello {{name}} ({{email}}) — {{campaign}}</p>", from_sender_id: null });
+    repo.listActiveSubscriberEmails.mockResolvedValue([
+      { email: "amina@ex.cm", name: "Amina" },
+      { email: "bruno@ex.cm", name: null },
+    ]);
+
+    await service.sendCampaign(client, { id: "c1", templateId: "t1", tenantMeta: {}, env: "live", actor: {} });
+
+    const [, , first] = enqueue.mock.calls[0];
+    expect(first.subject).toBe("Hi Amina");
+    expect(first.html).toBe("<p>Hello Amina (amina@ex.cm) — Newsletter</p>");
+
+    // No name on the row → fall back to the email's local part, never "Hello ,".
+    const [, , second] = enqueue.mock.calls[1];
+    expect(second.subject).toBe("Hi bruno");
+    expect(second.html).toContain("Hello bruno (bruno@ex.cm)");
+  });
+
+  test("merge values are HTML-escaped in the body but not in the subject", async () => {
+    repo.get.mockResolvedValue({ campaign_id: "c1", name: "N", status: "ACTIVE" });
+    repo.getTemplate.mockResolvedValue({ template_id: "t1", subject: "Hi {{name}}", body_html: "<p>{{name}}</p>", from_sender_id: null });
+    // Subscriber names come from the public subscribe endpoint — untrusted.
+    repo.listActiveSubscriberEmails.mockResolvedValue([{ email: "x@ex.cm", name: '<script>alert(1)</script>' }]);
+
+    await service.sendCampaign(client, { id: "c1", templateId: "t1" });
+
+    const [, , payload] = enqueue.mock.calls[0];
+    expect(payload.html).toBe("<p>&lt;script&gt;alert(1)&lt;/script&gt;</p>");
+    expect(payload.html).not.toContain("<script>");
+    expect(payload.subject).toBe("Hi <script>alert(1)</script>");
+  });
+
+  test("CRLF in a merge value can't inject a header via the subject", async () => {
+    repo.get.mockResolvedValue({ campaign_id: "c1", name: "N", status: "ACTIVE" });
+    repo.getTemplate.mockResolvedValue({ template_id: "t1", subject: "Hi {{name}}", body_html: "", from_sender_id: null });
+    repo.listActiveSubscriberEmails.mockResolvedValue([{ email: "x@ex.cm", name: "Eve\r\nBcc: evil@ex.cm" }]);
+
+    await service.sendCampaign(client, { id: "c1", templateId: "t1" });
+
+    const [, , payload] = enqueue.mock.calls[0];
+    expect(payload.subject).toBe("Hi Eve Bcc: evil@ex.cm");
+    expect(payload.subject).not.toMatch(/[\r\n]/);
+  });
+
+  test("unknown tokens are left intact so typos are visible", async () => {
+    repo.get.mockResolvedValue({ campaign_id: "c1", name: "N", status: "ACTIVE" });
+    repo.getTemplate.mockResolvedValue({ template_id: "t1", subject: "Hi {{firstname}}", body_html: "<p>{{nope}}</p>", from_sender_id: null });
+    repo.listActiveSubscriberEmails.mockResolvedValue([{ email: "x@ex.cm", name: "X" }]);
+
+    await service.sendCampaign(client, { id: "c1", templateId: "t1" });
+
+    const [, , payload] = enqueue.mock.calls[0];
+    expect(payload.subject).toBe("Hi {{firstname}}");
+    expect(payload.html).toBe("<p>{{nope}}</p>");
+  });
+
   test("no active subscribers → queued 0", async () => {
     repo.get.mockResolvedValue({ campaign_id: "c1", name: "N", status: "DRAFT" });
     repo.getTemplate.mockResolvedValue({ template_id: "t1", subject: "S", body_html: "b", from_sender_id: null });

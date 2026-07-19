@@ -3,7 +3,24 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-17 (session 7). **Session 7 = cross-cutting FE feature pass** — all in-sandbox
+_Last updated: 2026-07-19 (session 9). **Session 9 = Security CRUD + Security/Vault hubs, Control Tower
+drill-downs, Governance, past-due reconciliation, campaign merge fields.** Triggered by the FS colleague's
+"fleet / security / warehouse / vault / vehicle / hr aren't built — collapse into tabs like finance". **His
+read was right for fleet/warehouse/vehicle/hr and for security, but wrong for vault** (all five vault pages
+shipped in session 8). Division: this stream did **security + vault**, he has **fleet / warehouse / vehicle
+/ hr**. Shipped: (i) `features/security/pages.tsx` 104 → 872 lines, real CRUD on Users/Roles/Capabilities/
+Scopes/Field-visibility/Sessions; (ii) **SecurityHub + VaultHub** (FinanceHub-shaped, not the shared
+`TabbedHub` — see session-9 log §2 for why), routes 13 → 4 with **every old path still resolving as a hub
+section**; (iii) **Control Tower KPI drill-downs on real data** — all four cards, no new BE, mock's
+`openKpi` replaced (killing its simulated 18% random failure), CTA now routes the parent app via
+postMessage; (iv) **Governance** — Audit ledger (ledger / security events / access reviews / restore queue)
+and Notifications (inbox + preferences matrix) built off their `ResourceList` stubs; (v) **BE `GET
+/receivables/overdue`** (MOD-52, no new SQL — reuses `openInvoices`) so the Control Tower overdue card and
+its drill-down reconcile **by construction**; (vi) **BE campaign per-recipient merge** (`{{name}}` etc.,
+body HTML-escaped / subject CRLF-stripped, unknown tokens left literal); (vii) docs + Postman.
+**Windows validation outstanding for all of it** — and note **jest would not run in-sandbox this session**,
+so the five new campaign test cases are unverified. Detail + the dead-code list: session-9 log below.
+Prior: **Session 7 = cross-cutting FE feature pass** — all in-sandbox
 `tsc`-clean (Windows validators still authoritative, and the Control Tower iframe + new forms need a
 visual check via `npm run dev`). Shipped this session: (i) **access/refresh token rotation** — FE now
 captures a rotated `refresh_token` from `/auth/refresh` on boot + 401-retry (`lib/api-client.ts`,
@@ -232,6 +249,100 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-19 (session 9: Security CRUD + hubs, Control Tower drill-downs, Governance, merge fields)
+
+Prompted by the FS colleague's note that "modules under fleet, security, warehouse, vault, vehicle and hr
+aren't built — collapse them into one screen as tabs like finance". **Audit correction: vault was already
+built** (all five pages shipped session 8); **security was not** — `features/security/pages.tsx` was 104
+lines of read-only `ResourceList` stubs, as its own header admitted. Split of work: this stream took
+security + vault, he took fleet/warehouse/vehicle/hr. **All in-sandbox `tsc --noEmit -p client` clean; BE
+`node --check` + `eslint` clean (0 errors). Windows `npm run lint` / `npm test` / `npm run build --prefix
+client` remain authoritative — jest could not run in the sandbox this session (hangs with no output).**
+
+1. **Security — full CRUD** (`features/security/pages.tsx`, 104 → 872 lines). `UsersPage` (create/edit,
+   role assignment as toggle chips, status via the separate audited `POST /users/:id/status`, password via
+   `/users/:id/password`; the edit modal re-fetches `GET /users/:id` because the list's `SAFE_COLS` omits
+   `role_ids`), `RolesPage` (code locked on edit, delete disabled for `is_system`), `CapabilitiesPage`
+   (code constrained to the DB CHECK's four values), `ScopesPage` (entity picker, parent select excluding
+   self), `FieldVisibilityPage` (**needs `approve`, not `edit`** — that's how the router is gated),
+   `SessionsPage` (mine + all, per-row revoke, revoke-all). Dead `PermissionsPage` export dropped —
+   `app.tsx` always used `permission-matrix-page.tsx`.
+
+2. **SecurityHub + VaultHub** (`features/security/hub.tsx`, `features/vault/hub.tsx`). FinanceHub-shaped:
+   overview landing + tab bar + section map at `/security/:section` and `/vault/:section`. **Chose the
+   finance pattern over the shared `TabbedHub`** because `TabbedHub` publishes its bar via context and
+   expects each page to render `<HubTabs/>` — none of these eleven pages do, so it would have meant
+   editing all of them or double-rendering headers via `inlineTabs`. Vault's five pages are untouched.
+   `app.tsx` routes 13 → 4; **every old path still resolves as a hub section**, so nav, bookmarks, ⌘K and
+   `screen-registry.json` all keep working. Nav gained "Security overview" / "Vault overview" entries.
+
+3. **Control Tower KPI drill-downs — now real** (`features/dashboard.tsx`). Clicking a card used to open
+   the mock's hardcoded `kpiData` (Bolloré, Sonara, LT-4471) even though the card *values* were live. All
+   four now build from endpoints the user already reads: revenue → `/final-invoices` grouped by client
+   (names via `/clients`), SLA → `/operations` scored `ata ≤ eta`, overdue → see §5, fleet → `/vehicles`.
+   **No new drill-down BE.** Each fetch catches independently so a gated module yields that card's empty
+   state. The mock's `openKpi` is **replaced outright** (its script is top-level with no IIFE, so its
+   functions are window properties and the inline `onclick=` handlers pick up the override) — this also
+   removes its simulated ~18% random load failure, which was fine for a demo and wrong for real data. The
+   CTA now leaves the iframe: it posts `{type:'praxis-kpi-nav', id}` to the parent, which owns the id→route
+   map, so the iframe can't navigate to an arbitrary path. Drill `meta` strings carry deliberate `<b>`
+   markup so they're injected as HTML — interpolated DB values are escaped (`escHtml`), since the iframe
+   runs `allow-same-origin`. **Fixed en route:** `rgb(var(--info))` was invalid — `--info` is a raw hex
+   that `theme.ts` sets with the comment "no consumer yet", not an `R G B` triplet, and isn't in
+   `index.css` at all; switched to `--ink-3`.
+
+4. **Governance — the two stubs built** (`features/governance/pages.tsx`; `WorkflowsPage`/`ApprovalsPage`
+   untouched). `AuditPage` is now four segments over the four things `/audit` actually exposes: **Ledger**
+   (`immutable_ledger`, row → before/after JSON diff), **Security events** (`/audit/events`; these read the
+   **live** schema by design, so they show identical rows under TEST — said so in the empty state rather
+   than leaving it looking like a bug), **Access reviews** (create → decide each entry approved/revoked/
+   flagged with a note → complete; Complete stays disabled until every entry is decided), **Restore queue**
+   (`/audit/soft-deletes` request-restore + restore, with the maker-checker rule stated up front since the
+   DB enforces `restored_by <> deleted_by`). `NotificationsPage` = inbox (unread filter, mark-read,
+   read-all) + **Preferences** matrix over `GET/PUT /notifications/preferences`. Two constraints shaped it:
+   the table stores **explicit opt-outs only** (absence of a row = enabled), so the grid defaults on; and
+   `category` is free text server-side, so the six categories are a **UI convention** and any category
+   already stored for the user is merged in. **No Governance hub** — its four screens sit at unrelated
+   top-level paths (`/audit`, `/notifications`, `/workflows`, `/approvals`), so hubbing would move every
+   URL for cosmetics.
+
+5. **Past-due receivables reconciliation (BE+FE).** New **`GET /receivables/overdue`** (MOD-52, gated
+   `accounting.core`) in `smart_receivables` — **no new SQL**, it reuses the same `repo.openInvoices` rows
+   `ageing` reads, so `overdue.total === d1_30 + d31_60 + d61_90 + d90_plus` for the same `as_of` **by
+   construction**. Verified on fixtures: total 1100 = ageing past-due 1100, with the not-yet-due invoice
+   (250) correctly left in `current`. Route registered before `/:id`. FE: the Control Tower overdue card
+   **and** its drill-down now read this one payload (previously card = ageing report net of receipts, list
+   = raw invoices not net — they could disagree on screen). Amounts are `outstanding`, so a partly-paid
+   invoice shows what's actually owed, and the card no longer depends on the `reporting` feature flag.
+
+6. **Campaign per-recipient merge (BE+FE).** `sendCampaign` renders subject and body per subscriber:
+   `{{name}}`, `{{email}}`, `{{campaign}}`, `{{year}}` (`MERGE_FIELDS`). Deliberate: **body values are
+   HTML-escaped, subjects are not** — `name` comes from the public subscribe endpoint, so one subscriber
+   signing up as `<script>…` would otherwise land markup in every other recipient's email; subjects aren't
+   HTML but CR/LF is stripped (header injection). **Unknown tokens render literally** so a typo is visible
+   in a test send instead of silently blanking. `name` falls back to the email local part, then "there".
+   FE: `TemplateForm` lists the fields under the body. Five cases added to `tests/unit/campaign-send.test.js`
+   (substitution, escaping, CRLF, unknown tokens) — **unverified, jest wouldn't run in-sandbox**; the
+   underlying logic was checked directly via `node -e`.
+
+7. **Docs + Postman.** `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` rewritten as a **record, not a request** —
+   the endpoints it proposed shipped in session 8 and someone was going to build them twice; its remaining
+   gaps (no SPF/DKIM behind `verified_at`, no scheduling) are now written down. The two "hand it to the BE
+   dev" instructions below were corrected. Postman gained **`GET /receivables/overdue`** in folder 12 with
+   tests asserting rows sum to total and every row is genuinely overdue.
+
+**Dead code found (not deleted — mount blocks unlink, needs `git rm` on Windows):**
+`client/src/features/master/pages.tsx` (748 lines) has **zero importers** — it was this stream's session-5
+master-data trio, superseded at the PR #11 merge by his `masterdata/master-data-page.tsx`; deleting it
+empties `features/master/`. Also `ReceivablesPage` + `ChartOfAccountsPage` in `features/finance/pages.tsx`
+are `ResourceList` stubs nothing imports (`FinanceHub` takes both from the dedicated `receivables.tsx` /
+`chart-of-accounts.tsx`). **Do NOT delete `features/dashboard-mock/`** — restored session 7 and actively
+rendered; the session-6 "safe to delete" note is stale.
+
+**Still stubbed, his lane (24 screens):** fleet (7), wms (6), hr (10) — all `ResourceList`-only — plus a
+stray **`AssetsPage`** inside the otherwise-built `features/finance/pages.tsx`, which `/finance/assets`
+routes straight at. Worth flagging: it's not in the four areas he named.
 
 ## Session log — 2026-07-18 (session 8: FE follow-ons + all pending BE jobs)
 
@@ -907,6 +1018,16 @@ machine. Pull latest, then start at step 0.
 
 **Pick up here (priority order):**
 
+00. **Session 9 needs Windows validation + a visual pass** — `npm run lint`, `npm test`, `npm run build
+   --prefix client`. **`npm test` matters more than usual**: jest wouldn't run in the sandbox, so the five
+   new merge-field cases in `tests/unit/campaign-send.test.js` have never executed. Then `npm run dev` and
+   click: the Security and Vault hubs (all sections), the six new Security forms, **all four Control Tower
+   KPI cards** incl. CTA routing and one card with a user lacking the grant (empty state), the **access
+   review** flow end to end (most stateful thing built), notification **preferences** save round-trip, and
+   the **restore queue** as the same user who deleted a record (maker-checker rejection should read as a
+   clear error, not a mystery failure). Also worth doing: the two `git rm` deletions in the session-9
+   dead-code note, then re-run the client build — `noUnusedLocals` will catch any import that only those
+   blocks used.
 0. **Session 7 needs Windows validation + a visual pass.** Session 7's FE is in-sandbox `tsc`-clean and
    the BE `q` edits are `node --check`-clean, but run `npm run lint` + `npm run build --prefix client` +
    `npm test` on Windows and **open `npm run dev`** to eyeball the rebuilt **Control Tower iframe** and the
@@ -918,7 +1039,9 @@ machine. Pull latest, then start at step 0.
    pricing-variance, portal; no assignee/user select existed). See session-7 log §4; `tsc`-clean.
    (b) **DONE (2026-07-18)** — the Settings tiles on the generic `/settings` store (document templates,
    custom fields, email signatures, policies) are built in `features/settings/store-pages.tsx` and routed;
-   session-7 log §9. (c) hand `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` to the BE dev.
+   session-7 log §9. (c) **DONE (session 8)** — the endpoints proposed in
+   `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` were built; that file is now a **record**, not a request.
+   Nothing to hand over.
 1. **Sales/CRM funnel — DONE (session 6).** Model: **marketing → leads + opportunities → sales**;
    build order in the session-6 log + `doc/FE_IA_BUILD_MAP.md` (Sales & CRM). All six shipped in
    `client/src/features/sales/pages.tsx`: Leads & intake (MOD-20 + folded MOD-25), Meetings (MOD-21),
@@ -952,10 +1075,34 @@ machine. Pull latest, then start at step 0.
    again — do NOT delete it.** Remaining: platform/godmode console UI; the decorative KPI cards
    (revenue/SLA/fleet) still show mock values (no BE source).
 
-**Notify the BE dev:** (a) `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` — proposed `/campaigns/templates` +
-`/campaigns/senders` + send endpoints (MOD-22) so campaign templates move off the MOD-70 `/settings`
-store. (b) The session-7 `?q=` search filters were added to `operations_file`/`final_invoice`/`app_user`
-(your modules) plus the master/sales repos — confirm they survive `npm run lint`/`npm test`.
+**⚠️ For the FS colleague — read before starting anything (2026-07-19):**
+
+1. **Governance is DONE — do not build the Audit ledger.** You reported "governance pages have been done,
+   only pending is Audit ledger". That was true of the tree you can see, because **session 9 was
+   uncommitted when you looked**. As of this branch all four governance screens are real: Audit ledger
+   (`pages.tsx:255`, four segments), Notifications (`:510`, inbox + preferences), Workflows (`:736`) and
+   Approvals (`:783`) — the last two are yours and untouched. Building Audit ledger now would collide head-on.
+   (Small correction for the record: before session 9, **both** Audit *and* Notifications were
+   `ResourceList` stubs, not just Audit.)
+2. **Vault was already built** — all five pages shipped session 8. Your list had it as unbuilt; it only
+   needed a hub, which session 9 added. **Security genuinely was stubs** and is now full CRUD.
+3. **Your lane is fleet (7) + wms (6) + hr (10) — plus one you didn't name: `AssetsPage` in
+   `features/finance/pages.tsx` is still a `ResourceList` stub** and `/finance/assets` routes straight at
+   it, inside a file that otherwise looks finished.
+4. **The pattern to copy** is `features/security/{pages,hub}.tsx` from this session, not the shared
+   `TabbedHub` — see session-9 log §2 for why that component doesn't fit pages which don't render
+   `<HubTabs/>`.
+5. **Two dead files to `git rm`** (the sandbox mount blocks unlink): `features/master/pages.tsx` (748
+   lines, zero importers) and the `ReceivablesPage`/`ChartOfAccountsPage` blocks in
+   `features/finance/pages.tsx`. **Do not touch `features/dashboard-mock/`** — it's live.
+
+**Notify the BE dev:** (a) ~~`doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md`~~ — **no longer a handoff.** The
+proposed `/campaigns/templates` + `/campaigns/senders` + send endpoints (MOD-22) were built in session 8
+and are live; that doc is now a record of what shipped. Do not rebuild them. Remaining gaps there are
+per-recipient merge and real (SPF/DKIM) sender verification. (b) The session-7 `?q=` search filters were
+added to `operations_file`/`final_invoice`/`app_user` (your modules) plus the master/sales repos —
+**verified present 2026-07-19** (`operations_file.repo.js:26`, `final_invoice.repo.js:37`,
+`app_user.repo.js:138`); confirm they survive `npm run lint`/`npm test`.
 **Settings tiles with genuinely NO endpoint:** only factory languages + help center (everything else,
 incl. document templates / custom fields / policies, is on the generic `/settings` store).
 

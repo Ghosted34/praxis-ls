@@ -3,16 +3,7 @@ import { RequireAuth } from "@/app/auth/require-auth";
 import { AppShell } from "@/app/layout/app-shell";
 import { LandingPage } from "@/features/landing/landing-page";
 import { DashboardPage } from "@/features/dashboard";
-import {
-  UsersPage,
-  RolesPage,
-  CapabilitiesPage,
-  ScopesPage,
-  FieldVisibilityPage,
-  SessionsPage,
-} from "@/features/security/pages";
-import { PermissionMatrixPage } from "@/features/security/permission-matrix-page";
-import { MySecurityPage } from "@/features/security/my-security";
+import { SecurityHub } from "@/features/security/hub";
 import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
 import { AppearancePage } from "@/features/settings/appearance-page";
 import { SettingsHub } from "@/features/settings/settings-hub";
@@ -59,7 +50,7 @@ import { FinanceHub } from "@/features/finance/hub";
 import { Planned } from "@/features/scaffold/screen-scaffold";
 import { LeadsPage, MeetingsPage, OpportunitiesPage, ProposalsPage, CampaignsPage, SuccessStoriesPage } from "@/features/sales/pages";
 import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "@/features/commercial/pages";
-import { ReportsPage, ComplianceFlagsPage, DocumentsPage, SignaturesPage, VerificationPage } from "@/features/vault/pages";
+import { VaultHub } from "@/features/vault/hub";
 import { PortalAccessPage } from "@/features/portal/pages";
 import { WorkspacePage } from "@/features/workspace/workspace-page";
 import { MasterDataPage } from "@/features/masterdata/master-data-page";
@@ -85,14 +76,10 @@ export function App() {
         }
       >
         <Route index element={<DashboardPage />} />
-        <Route path="security/users" element={<UsersPage />} />
-        <Route path="security/roles" element={<RolesPage />} />
-        <Route path="security/permissions" element={<PermissionMatrixPage />} />
-        <Route path="security/capabilities" element={<CapabilitiesPage />} />
-        <Route path="security/scopes" element={<ScopesPage />} />
-        <Route path="security/field-visibility" element={<FieldVisibilityPage />} />
-        <Route path="security/sessions" element={<SessionsPage />} />
-        <Route path="security/my-security" element={<MySecurityPage />} />
+        {/* Security & access — one hub; the old per-screen paths resolve as its
+            sections, so nav entries, bookmarks and ⌘K hits keep working. */}
+        <Route path="security" element={<SecurityHub />} />
+        <Route path="security/:section" element={<SecurityHub />} />
         <Route path="fleet/vehicles" element={<VehiclesPage />} />
         <Route path="fleet/compliance" element={<VehicleCompliancePage />} />
         <Route path="fleet/work-orders" element={<WorkOrdersPage />} />
@@ -160,11 +147,9 @@ export function App() {
         <Route path="master" element={<MasterDataPage />} />
         <Route path="master/:section" element={<MasterDataPage />} />
         {/* Vault */}
-        <Route path="vault/documents" element={<DocumentsPage />} />
-        <Route path="vault/signatures" element={<SignaturesPage />} />
-        <Route path="vault/verification" element={<VerificationPage />} />
-        <Route path="vault/compliance-flags" element={<ComplianceFlagsPage />} />
-        <Route path="vault/reports" element={<ReportsPage />} />
+        {/* Vault & compliance — same shape as Security: one hub, old paths become sections. */}
+        <Route path="vault" element={<VaultHub />} />
+        <Route path="vault/:section" element={<VaultHub />} />
         {/* Comms — Smart Comms hub */}
         <Route path="comms" element={<CommsHub />} />
         <Route path="comms/:section" element={<CommsHub />} />

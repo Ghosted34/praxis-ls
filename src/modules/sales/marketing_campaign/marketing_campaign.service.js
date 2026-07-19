@@ -91,11 +91,52 @@ async function deleteTemplate(client, { id, actor = {} }) {
   return row;
 }
 
+/**
+ * Per-recipient merge fields.
+ *
+ * Authors write `{{name}}` in a subject or body and each recipient's copy is
+ * rendered from their own subscriber row. Deliberate choices:
+ *
+ *  - **Unknown tokens are left intact.** `{{firstname}}` renders literally rather
+ *    than silently vanishing, so a typo is visible in a test send instead of
+ *    producing a blank where a name should be.
+ *  - **Values are HTML-escaped in the body, raw in the subject.** `name` is
+ *    supplied by whoever hit the public subscribe endpoint, so it's untrusted;
+ *    escaping it stops a subscriber injecting markup into every other
+ *    recipient's email. Subjects aren't HTML, but newlines are stripped —
+ *    a CR/LF there is header injection.
+ *  - **`name` falls back to the email's local part**, then to "there", so
+ *    "Hi {{name}}," never renders as "Hi ,".
+ */
+const MERGE_FIELDS = ["name", "email", "campaign", "year"];
+
+const escapeHtml = (s) =>
+  String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
+
+function renderMerge(text, vars, { html = false } = {}) {
+  if (!text) return text;
+  return String(text).replace(/\{\{\s*(\w+)\s*\}\}/g, (whole, key) => {
+    if (!Object.prototype.hasOwnProperty.call(vars, key)) return whole;
+    const v = vars[key] === null || vars[key] === undefined ? "" : String(vars[key]);
+    return html ? escapeHtml(v) : v.replace(/[\r\n]+/g, " ");
+  });
+}
+
+function mergeVarsFor(subscriber, campaign) {
+  const local = String(subscriber.email || "").split("@")[0];
+  return {
+    name: subscriber.name || local || "there",
+    email: subscriber.email || "",
+    campaign: campaign.name || "",
+    year: String(new Date().getFullYear()),
+  };
+}
+
 // Send a template to every active newsletter subscriber via the chosen sender.
 // Each recipient is a durable "email" queue job (delivered by jobs/handlers/
 // email-send.js → email.service.send); `from` overrides the From header with the
-// template's sender identity while transport still resolves per-tenant. Rendering
-// is a straight body_html send today (no per-recipient personalisation/merge yet).
+// template's sender identity while transport still resolves per-tenant. Subject
+// and body are rendered per recipient through the merge fields above.
 async function sendCampaign(client, { id, templateId, tenantMeta, env = "live", actor = {} }) {
   const campaign = await repo.get(client, id);
   if (!campaign) throw new AppError("NOT_FOUND", "Campaign not found", 404);
@@ -107,12 +148,18 @@ async function sendCampaign(client, { id, templateId, tenantMeta, env = "live", 
     const sender = await repo.getSender(client, template.from_sender_id);
     if (sender) from = sender.from_name ? `"${sender.from_name}" <${sender.from_address}>` : String(sender.from_address);
   }
-  const subject = template.subject || campaign.name;
-  const html = template.body_html || "";
+  const subjectTpl = template.subject || campaign.name;
+  const htmlTpl = template.body_html || "";
   const recipients = await repo.listActiveSubscriberEmails(client);
   let queued = 0;
   for (const s of recipients) {
-    await enqueue("email", "campaign", { tenantMeta, env, to: s.email, subject, html, from, purpose: "NOTIFICATIONS", moduleKey: events.MODULE });
+    const vars = mergeVarsFor(s, campaign);
+    await enqueue("email", "campaign", {
+      tenantMeta, env, to: s.email,
+      subject: renderMerge(subjectTpl, vars),
+      html: renderMerge(htmlTpl, vars, { html: true }),
+      from, purpose: "NOTIFICATIONS", moduleKey: events.MODULE,
+    });
     queued += 1;
   }
   await audit(client, { actorUserId: actor.user_id || null, action: "campaign.sent", moduleKey: events.MODULE, entityRef: ref(id), after: { template_id: templateId, queued } });
@@ -124,4 +171,6 @@ module.exports = {
   listSenders, createSender, verifySender, deleteSender,
   listTemplates, getTemplate, createTemplate, updateTemplate, deleteTemplate,
   sendCampaign,
+  // Exported for the unit test + so the FE hint list has one source of truth.
+  MERGE_FIELDS, renderMerge, mergeVarsFor,
 };

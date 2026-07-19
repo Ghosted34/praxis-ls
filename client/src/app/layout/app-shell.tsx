@@ -137,6 +137,8 @@ const NAV: NavGroup[] = [
     heading: "Vault",
     prefix: "/vault",
     items: [
+      // These are hub sections now (features/vault/hub.tsx) — the paths are unchanged.
+      { to: "/vault", label: "Vault overview" },
       { to: "/vault/documents", label: "Document vault" },
       { to: "/vault/signatures", label: "Signatures" },
       { to: "/vault/verification", label: "Verification" },
@@ -153,13 +155,15 @@ const NAV: NavGroup[] = [
     heading: "Security & Access",
     prefix: "/security",
     items: [
+      // Hub sections (features/security/hub.tsx) — paths unchanged from before.
+      { to: "/security", label: "Security overview" },
       { to: "/security/users", label: "Users" },
       { to: "/security/roles", label: "Roles" },
       { to: "/security/permissions", label: "Permission matrix" },
       { to: "/security/capabilities", label: "Capabilities" },
       { to: "/security/scopes", label: "Scopes" },
       { to: "/security/field-visibility", label: "Field visibility" },
-      { to: "/security/sessions", label: "My sessions" },
+      { to: "/security/sessions", label: "Sessions" },
       { to: "/security/my-security", label: "My security" },
     ],
   },

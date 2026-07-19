@@ -247,11 +247,21 @@ Everything marked **ready** above is unblocked FE wiring — follow the pattern 
 
 ## 4. Already built (for context)
 
+> ⚠️ **Read "built" carefully (corrected 2026-07-19).** This section used to conflate *a screen exists at
+> that route* with *the screen is functional*. Several entries below were **read-only `ResourceList`
+> stubs** — a list and nothing else, no create/edit/actions. That ambiguity is what led the FS colleague to
+> report whole areas as done when they weren't (and, in the other direction, to report Vault as unbuilt
+> when it was). Where a claim below is a stub, it now says so.
+
 Control Tower home, IAM/Security (users, roles, permission matrix, capabilities, scopes, field
-visibility, sessions, my-security), Governance (audit, notifications, workflows, approvals),
+visibility, sessions, my-security) — **stubs until session 9, now full CRUD**; Governance (audit,
+notifications, workflows, approvals) — workflows/approvals were real, **audit + notifications were stubs
+until session 9**;
 Appearance + Login editors, Settings hub. **Finance:** chart of accounts, journals, proformas &
-advances, invoices, credit notes, receivables, statements, tax center (+ filing), assets.
-**Fleet, WMS, HR:** full standalone screens. **Settings tiles (2026-07-15):** currencies & FX,
+advances, invoices, credit notes, receivables, statements, tax center (+ filing); **assets is still a
+`ResourceList` stub** despite the rest of the file being built — `/finance/assets` routes straight at it.
+**Fleet, WMS, HR: standalone screens exist but are `ResourceList` stubs** (7 + 6 + 10 screens) — the FS
+colleague's lane as of 2026-07-19. **Settings tiles (2026-07-15):** currencies & FX,
 tax jurisdictions, bank accounts, payment gateways, scheduled reports, API keys & secrets,
 pipeline stages (read-only), document numbering. **Per-tenant PWA:** dynamic manifest + icons.
 **Session 8 (2026-07-18):** Vault trio (documents / signatures / verification); Settings store tiles
@@ -259,6 +269,17 @@ pipeline stages (read-only), document numbering. **Per-tenant PWA:** dynamic man
 templates + senders + send (MOD-22); Control Tower live KPI cards (revenue / SLA / fleet); refresh
 rotation + reuse-detection. Also corrected the Master data section (the whole hub — incl. Expense rates +
 Financial dictionary — was already built).
+**Session 9 (2026-07-19):** **Security & access — full CRUD** (`features/security/pages.tsx` 104 → 872
+lines): Users (create/edit + roles + status + password), Roles, Capabilities, Scopes, Field visibility
+(needs `approve`, not `edit`), Sessions (mine + all, revoke / revoke-all). **SecurityHub + VaultHub** —
+FinanceHub-shaped (overview + tab bar + section map), *not* the shared `TabbedHub`, which expects each page
+to render `<HubTabs/>`; routes collapsed 13 → 4 with **every old path still resolving as a hub section**.
+**Governance** — Audit ledger (Ledger + before/after diff · Security events · Access reviews · Restore
+queue) and Notifications (inbox + preferences matrix) built off their stubs. **Control Tower KPI
+drill-downs on real data** (revenue / SLA / overdue / fleet) — no new drill-down BE; the mock's `openKpi`
+is replaced outright, and its CTA now routes the parent app via postMessage. **BE:** `GET
+/receivables/overdue` (MOD-52, reuses `openInvoices` — card and drill-down reconcile by construction) and
+**campaign per-recipient merge fields** (`{{name}}`/`{{email}}`/`{{campaign}}`/`{{year}}`).
 **Merged from the other stream (same day):** Smart Comms hub (team chat / mail / external / setup + the
 `src/modules/mail` BE), **AI Control** hub (`/ai-control`), **Godmode console** (`/godmode`), Finance hub
 (chart-of-accounts / debt / receivables), governance pages, `praxis-copilot`, `screen-ai`, `tabbed-hub`,

@@ -9,7 +9,9 @@ const validator = require("./smart_receivables.validator");
 const MODULE = "MOD-52";
 const router = express.Router();
 router.use(authMiddleware);
+// Literal paths first — "/overdue" and "/ageing" must not be captured by "/:id".
 router.get("/ageing", requirePermission(MODULE, "view"), controller.ageing);
+router.get("/overdue", requirePermission(MODULE, "view"), controller.overdue);
 router.get("/reminders", requirePermission(MODULE, "view"), controller.reminders);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);

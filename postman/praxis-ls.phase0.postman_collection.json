@@ -4582,6 +4582,72 @@
           }
         }
       ]
+    },
+    {
+      "name": "14 · Master data — Corporate entities (MOD-01)",
+      "item": [
+        {
+          "name": "GET /entities  (captures entityId)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.code === 200);",
+                  "const d=(pm.response.json()||{}).data||[]; if(d[0] && d[0].entity_id) pm.collectionVariables.set('entityId', d[0].entity_id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/tenant/entities", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "entities"] }
+          }
+        },
+        {
+          "name": "PATCH /entities/:id  (address + bank_block — previously had no UI)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"address\": \"BP 1234, Douala, Cameroon\",\n  \"bank_block\": {\n    \"bank_name\": \"Afriland First Bank\",\n    \"branch\": \"Akwa\",\n    \"account_number\": \"10005-00023-91000123456-78\",\n    \"swift\": \"CCEICMCX\"\n  }\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/entities/{{entityId}}", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "entities", "{{entityId}}"] }
+          }
+        },
+        {
+          "name": "POST /entities/:id/logo  (letterhead logo — MOD-01 edit, 512 KB cap)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('200', () => pm.response.code === 200);",
+                  "const d=(pm.response.json()||{}).data||{}; pm.test('logo_light_ref set', () => !!d.logo_light_ref);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Host", "value": "{{tenantHost}}" },
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{accessToken}}" }
+            ],
+            "body": { "mode": "raw", "raw": "{\n  \"variant\": \"light\",\n  \"data_url\": \"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==\"\n}" },
+            "url": { "raw": "{{baseUrl}}/api/tenant/entities/{{entityId}}/logo", "host": ["{{baseUrl}}"], "path": ["api", "tenant", "entities", "{{entityId}}", "logo"] }
+          }
+        }
+      ]
     }
   ]
 }

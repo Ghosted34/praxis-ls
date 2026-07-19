@@ -18,7 +18,14 @@ export function HubTabs() {
   return <>{React.useContext(HubTabsContext)}</>;
 }
 
-export function TabbedHub({ eyebrow, basePath, tabs }: { eyebrow: string; basePath: string; tabs: HubTab[] }) {
+/**
+ * `inlineTabs` — render the tab bar in the shell itself (with the eyebrow above it)
+ * instead of only publishing it on context. Hubs whose tab pages already call
+ * <HubTabs/> under their own <PageHeader/> leave this off (the default); hubs whose
+ * pages own their headers and never call <HubTabs/> (e.g. Master data) switch it on
+ * so the bar still shows. Lets every hub share one implementation either way.
+ */
+export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false }: { eyebrow: string; basePath: string; tabs: HubTab[]; inlineTabs?: boolean }) {
   const { section } = useParams();
   const navigate = useNavigate();
   const active = tabs.find((t) => t.key === section) || tabs[0];
@@ -45,6 +52,12 @@ export function TabbedHub({ eyebrow, basePath, tabs }: { eyebrow: string; basePa
 
   return (
     <HubTabsContext.Provider value={tabsNode}>
+      {inlineTabs && (
+        <div className="mx-auto mb-4 max-w-6xl">
+          <div className="micro mb-2">{eyebrow}</div>
+          {tabsNode}
+        </div>
+      )}
       <div key={active.key} className="animate-fade-in">
         <Active />
       </div>

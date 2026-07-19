@@ -8,6 +8,42 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-18 — Post-merge: idiom convergence, last screens, entity gaps
+
+**Context.** After PR #11 merged and both streams' work was reconciled (see `SESSION_HANDOFF.md`
+"Post-merge reconciliation"), this pass converged the duplicated UI idioms and closed the last
+buildable FE items. **Client `tsc` clean; changed BE files `node --check` + `eslint` clean.**
+
+**Idiom convergence.** Of the three apparent conflicts, only one was real:
+- **AI** — no work: his `ScreenAi`/`PraxisCopilot` already import this stream's `AiActions`/`useAiEnabled`,
+  so they compose on the global gate rather than competing with it.
+- **Lists** — kept both (`ResourceList` self-fetches; `DataList` is presentational, and is now the default
+  for new wired screens). Real duplication was `cell()` existing twice and **diverging** on boolean casing
+  → single implementation in `lib/format.ts`, re-exported from `components/data-list.tsx` and
+  `features/sales/ui.tsx` so no import path changed.
+- **Tabs** — kept both (`TabbedHub` = route-driven shell, `Segmented` = in-page state). Master data was
+  hand-rolling an identical bar → now uses `TabbedHub`, via a new optional `inlineTabs` prop (default off)
+  because that hub's pages don't render `<HubTabs/>` and would otherwise lose their tabs.
+
+**Screens.**
+- **Module catalogue** built — `features/settings/catalogue-page.tsx` over `GET /catalogue/modules`
+  (MOD-67 view, read-only): group chips, search, counts, link to the permission matrix.
+- **Business setup retired** — it duplicated the Corporate entities editor; the route now redirects to
+  `/master/corporate-entities` and the Settings-hub card was repointed.
+
+**Corporate entity gaps (BE + FE).** `address`/`bank_block` were API-writable with no UI; the logo columns
+were unwritable (validator dropped them). Added both logo fields to the validator and a new
+**`POST /entities/:id/logo`** — 512 KB cap, allowed image types, stored per tenant+entity, audited, and
+**gated MOD-01 edit** (not the MOD-70 `/branding/logo`, which would force settings-admin rights). FE: the
+editor now covers Address, a Bank details block (→ invoice payment block) and the letterhead logo.
+
+**Control Tower.** 4th KPI card (receivables overdue) now derived FE-side from the `receivables_ageing`
+report producer — no new BE; hides when `reporting` is off. All four cards live.
+
+**Bundle.** `manualChunks` added to `vite.config.ts` for the >500 kB warning. **Unverified in-sandbox**
+(`vite build` needs the Linux rollup binary the Windows lockfile omits) — revert that file if the Windows
+build errors. Improves caching, not first-load bytes; route-level `React.lazy` deliberately deferred.
+
 ## 2026-07-18 — Session 8: FE follow-ons + every pending BE job (build BE then FE)
 
 **Context.** Cleared this stream's FE follow-on backlog, then built out **all pending BE jobs** end to
@@ -43,10 +79,10 @@ two new migrations** remain the authoritative Windows checks (sandbox can't run 
   aggregate → stays mock).
 - **Refresh-token rotation + reuse-detection.** `app_user.service.refresh()` mints a fresh refresh
   token (sliding exp), returns it, and stores its jti on the session (`user_session.refresh_jti`,
-  migration `0451`). On refresh the jti must match the session's current one; a mismatch revokes the
+  migration `0453`). On refresh the jti must match the session's current one; a mismatch revokes the
   session (replay/theft signal). Legacy NULL-jti sessions grandfathered. `issueSessionTokens` stamps
   the jti on login/2FA/PIN.
-- **Campaign templates + senders + send (MOD-22).** Migration `0450` (`campaign_sender` +
+- **Campaign templates + senders + send (MOD-22).** Migration `0452` (`campaign_sender` +
   `campaign_template`). Extended `sales/marketing_campaign` with `/campaigns/senders` (+ `/:id/verify`),
   `/campaigns/templates` CRUD, and `POST /campaigns/:id/send` (fan-out: one durable "email" queue job
   per active subscriber, template's sender as the `from` override), all registered before `/:id`. FE:
@@ -62,7 +98,8 @@ with repo/emit/queue mocked). `node --check`-clean and house-style; **jest could
 send → cleanup, capturing ids) and made **`POST /auth/refresh`** capture the rotated `refresh_token`
 (so a stale token now 401s — reuse-detection is testable in-collection).
 
-**Migrations to apply:** `0450_campaign_templates.sql`, `0451_session_refresh_jti.sql`.
+**Migrations to apply:** `0452_campaign_templates.sql`, `0453_session_refresh_jti.sql` (renumbered from
+0450/0451 post-merge — those numbers were taken by the other dev's comms/mail migrations).
 
 ## 2026-07-17 — Session 6: whole Sales/CRM + Commercial + Vault/Portal FE lane + live Control Tower
 

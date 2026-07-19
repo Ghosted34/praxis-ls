@@ -9,6 +9,7 @@ import { cn } from "@/lib/cn";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
+import { cell } from "@/lib/format";
 
 export type Column<T> = {
   key: string;
@@ -17,12 +18,10 @@ export type Column<T> = {
   className?: string;
 };
 
-export function cell(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "Yes" : "No";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
+// Canonical implementation lives in lib/format.ts (deduped at the 2026-07-18
+// merge); re-exported here so existing `import { cell } from "@/components/data-list"`
+// callers are unaffected.
+export { cell };
 
 export function PageHeader({
   title,

@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
+import { cell } from "@/lib/format";
 
 export type Row = Record<string, unknown>;
 
@@ -16,12 +17,10 @@ export function errMsg(e: unknown): string {
   return "Something went wrong.";
 }
 
-export function cell(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
+// Canonical implementation lives in lib/format.ts (deduped at the 2026-07-18
+// merge — this copy rendered booleans lowercase, his rendered them capitalised).
+// Re-exported so existing `import { cell } from "@/features/sales/ui"` callers work.
+export { cell };
 
 export function when(v: unknown): string {
   if (!v) return "—";

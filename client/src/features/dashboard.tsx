@@ -23,6 +23,20 @@ type Row = Record<string, unknown>;
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v));
 const numOrNull = (v: unknown): number | null => (v === null || v === undefined ? null : Number(v));
 
+/**
+ * Past-due receivables from the `receivables_ageing` report: every bucket except
+ * `current`. The report wraps its payload as { report_key, params, data }. Returns
+ * null when the report is unavailable (feature `reporting` off / no permission),
+ * so the KPI card hides rather than showing a misleading zero.
+ */
+function overdueTotal(ageing: Row | null): number | null {
+  const d = (ageing && (ageing.data as Row)) || null;
+  if (!d) return null;
+  const buckets = ["d1_30", "d31_60", "d61_90", "d90_plus"];
+  if (!buckets.some((k) => d[k] !== undefined)) return null;
+  return buckets.reduce((sum, k) => sum + (Number(d[k]) || 0), 0);
+}
+
 /** Derive the mock status-pill class from a free-text status. */
 function statusClass(status: string): string {
   const s = status.toLowerCase();
@@ -68,6 +82,7 @@ type LiveData = {
     sla: number | null;
     fleetActive: number | null;
     fleetTotal: number | null;
+    overdue: number | null;
   };
 };
 
@@ -106,15 +121,16 @@ function liveInjectionScript(live: LiveData): string {
     if(hsub && LIVE.heroSub) hsub.textContent = LIVE.heroSub;
     var brief = document.querySelector('.praxis .pt p');
     if(brief && LIVE.briefing) brief.innerHTML = LIVE.briefing;
-    // KPI strip: feed the three cards we have live data for (revenue / SLA /
-    // fleet). Order in the mock is [revenue, sla, overdue, fleet]; 'overdue'
-    // (index 2) has no aggregate yet so it stays as the mock sample.
+    // KPI strip: all four cards are live now. Order in the mock is
+    // [revenue, sla, overdue, fleet]; any metric that resolves null hides its card
+    // rather than showing a stale mock value.
     var cards = document.querySelectorAll('.kpis .kpi');
     function setKpi(i, kv, kd){ var c = cards[i]; if(!c) return; var a = c.querySelector('.kv'); if(a) a.innerHTML = kv; var b = c.querySelector('.kd'); if(b){ b.textContent = kd || ''; b.className = 'kd'; } }
     function hideKpi(i){ var c = cards[i]; if(c) c.style.display = 'none'; }
     var K = LIVE.kpi || {};
     if(K.revenue == null) hideKpi(0); else setKpi(0, fmtM(K.revenue) + '<small> M ' + esc(K.revenueCur || 'XAF') + '</small>', 'Locked FINAL invoices');
     if(K.sla == null) hideKpi(1); else setKpi(1, esc(K.sla) + '<small> %</small>', 'On-time delivery');
+    if(K.overdue == null) hideKpi(2); else setKpi(2, fmtM(K.overdue) + '<small> M ' + esc(K.revenueCur || 'XAF') + '</small>', 'Past due (1–90+ days)');
     if(K.fleetTotal == null || Number(K.fleetTotal) === 0) hideKpi(3); else setKpi(3, esc(K.fleetActive || 0) + '<small> / ' + esc(K.fleetTotal) + ' vehicles</small>', 'Active now');
   } catch(e){ /* keep the mock visible even if injection fails */ }
 
@@ -161,8 +177,11 @@ export function DashboardPage() {
     Promise.all([
       tenant<Row>("/dashboard/control-tower").catch(() => ({}) as Row),
       tenant<Row>("/dashboard/kpis").catch(() => ({}) as Row),
+      // Receivables-overdue has no dashboard aggregate; derive it from the existing
+      // report producer. Feature-gated `reporting` → null when off, card hides.
+      tenant<Row>("/reports/run/receivables_ageing").catch(() => null),
     ])
-      .then(([ct, kpis]) => {
+      .then(([ct, kpis, ageing]) => {
         if (!alive) return;
         const rawShips = Array.isArray(ct.live_shipments) ? (ct.live_shipments as Row[]) : [];
         const shipments = rawShips.map(toLiveShipment);
@@ -191,6 +210,7 @@ export function DashboardPage() {
             sla: numOrNull(kpis.sla_on_time_pct),
             fleetActive: numOrNull(kpis.fleet_active),
             fleetTotal: numOrNull(kpis.fleet_total),
+            overdue: overdueTotal(ageing),
           },
         });
       })

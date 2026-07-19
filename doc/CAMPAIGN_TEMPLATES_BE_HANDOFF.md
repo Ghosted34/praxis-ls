@@ -6,7 +6,7 @@ _Written 2026-07-17 (FE stream). Companion to `doc/SESSION_HANDOFF.md`._
 
 The dedicated module below was **built** and the FE moved off `/settings`:
 
-- Migration `migrations/tenant/0450_campaign_templates.sql` adds `campaign_sender`
+- Migration `migrations/tenant/0452_campaign_templates.sql` adds `campaign_sender`
   (`sender_id, from_name, from_address citext, domain, verified_at, created_at`) and
   `campaign_template` (`template_id, name, subject, body_html, from_sender_id → campaign_sender, timestamps`).
 - Endpoints added to the existing `sales/marketing_campaign` module (MOD-22, basePath `/campaigns`),
@@ -23,7 +23,8 @@ The dedicated module below was **built** and the FE moved off `/settings`:
   sender identity is passed as the `from` override (`"Name" <addr>`), transport still resolves per-tenant.
   Blocks a send on `status = ENDED`. FE: a **Send…** button on each campaign card opens `SendCampaignModal`
   (template picker) → shows "Queued to N subscribers". No per-recipient merge/personalisation yet (straight
-  `body_html`). `npm test` + Windows lint/build authoritative; **apply migrations 0450 + 0451**.
+  `body_html`). `npm test` + Windows lint/build authoritative; **apply migrations 0452 + 0453**
+  (renumbered from 0450/0451 after the merge — those numbers were taken by the comms/mail migrations).
 
 ---
 _Original proposal (for reference):_

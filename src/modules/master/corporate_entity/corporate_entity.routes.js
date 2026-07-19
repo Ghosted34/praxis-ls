@@ -14,5 +14,8 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.post("/:id/active", requirePermission(MODULE, "edit"), validator.setActive, controller.setActive);
+// Per-entity letterhead logo (light/dark). MOD-01 edit — deliberately not the
+// MOD-70-gated /branding/logo, so entity admins don't need settings-admin rights.
+router.post("/:id/logo", requirePermission(MODULE, "edit"), validator.logoUpload, controller.uploadLogo);
 
 module.exports = { basePath: "/entities", feature: null, router };

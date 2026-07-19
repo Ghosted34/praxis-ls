@@ -70,6 +70,15 @@ export const updateSupplier = (id: string, body: Partial<SupplierInput>) =>
   tenant<Supplier>(`/suppliers/${id}`, { method: "PATCH", body });
 
 /* ── Corporate entities(/entities) ──────────────────────────────── */
+/** Bank details rendered on the entity's invoices / letterhead. Free-form jsonb
+ *  server-side; these are the keys the document templates expect. */
+export type BankBlock = {
+  bank_name?: string;
+  branch?: string;
+  account_number?: string;
+  iban?: string;
+  swift?: string;
+};
 export type Entity = {
   entity_id: string;
   code: string;
@@ -77,6 +86,10 @@ export type Entity = {
   niu?: string | null;
   rccm?: string | null;
   country_code?: string | null;
+  address?: string | null;
+  bank_block?: BankBlock | null;
+  logo_light_ref?: string | null;
+  logo_dark_ref?: string | null;
   doc_prefix?: string | null;
   default_language?: string | null;
   fiscal_year_start_month?: number | null;
@@ -88,6 +101,10 @@ export type EntityInput = {
   niu?: string;
   rccm?: string;
   country_code?: string;
+  address?: string | null;
+  bank_block?: BankBlock;
+  logo_light_ref?: string | null;
+  logo_dark_ref?: string | null;
   doc_prefix?: string;
   default_language?: string;
   fiscal_year_start_month?: number;
@@ -98,6 +115,10 @@ export const updateEntity = (id: string, body: Partial<EntityInput>) =>
   tenant<Entity>(`/entities/${id}`, { method: "PATCH", body });
 export const setEntityActive = (id: string, active: boolean) =>
   tenant<Entity>(`/entities/${id}/active`, { method: "POST", body: { active } });
+/** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
+ *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */
+export const uploadEntityLogo = (id: string, dataUrl: string, variant: "light" | "dark" = "light") =>
+  tenant<Entity>(`/entities/${id}/logo`, { method: "POST", body: { data_url: dataUrl, variant } });
 
 /* ── Treasury accounts(/treasury-accounts) ──────────────────────── */
 export type Treasury = {

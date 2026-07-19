@@ -249,8 +249,36 @@ function EntityForm({ row, onClose, onSaved }: { row: api.Entity | null; onClose
   const [docPrefix, setDocPrefix] = React.useState(row?.doc_prefix ?? "");
   const [lang, setLang] = React.useState(row?.default_language ?? "fr");
   const [fyStart, setFyStart] = React.useState(row?.fiscal_year_start_month != null ? String(row.fiscal_year_start_month) : "1");
+  // Address + bank block feed the letterhead/invoice documents. Both were writable
+  // on the API but had no UI until 2026-07-18.
+  const [address, setAddress] = React.useState(row?.address ?? "");
+  const [bank, setBank] = React.useState<api.BankBlock>(row?.bank_block ?? {});
+  const [logoLight, setLogoLight] = React.useState(row?.logo_light_ref ?? "");
+  const [logoBusy, setLogoBusy] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const setBankField = (k: keyof api.BankBlock, v: string) => setBank((b) => ({ ...b, [k]: v }));
+
+  /** Entities must exist before a logo can be attached (the upload is keyed by id). */
+  async function pickLogo(file: File | null) {
+    if (!file || isNew || !row) return;
+    setLogoBusy(true);
+    setError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Could not read the file."));
+        r.readAsDataURL(file);
+      });
+      const updated = await api.uploadEntityLogo(row.entity_id, dataUrl, "light");
+      setLogoLight(updated.logo_light_ref ?? "");
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setLogoBusy(false);
+    }
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -265,6 +293,8 @@ function EntityForm({ row, onClose, onSaved }: { row: api.Entity | null; onClose
       doc_prefix: docPrefix || undefined,
       default_language: lang || undefined,
       fiscal_year_start_month: fyStart === "" ? undefined : Number(fyStart),
+      address: address.trim() || null,
+      bank_block: Object.fromEntries(Object.entries(bank).map(([k, v]) => [k, String(v ?? "").trim()]).filter(([, v]) => v)),
     };
     try {
       if (isNew) await api.createEntity(body);
@@ -299,7 +329,38 @@ function EntityForm({ row, onClose, onSaved }: { row: api.Entity | null; onClose
               {Array.from({ length: 12 }).map((_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i, 1).toLocaleString("en", { month: "long" })}</option>)}
             </Select>
           </Field>
+          <Field label="Address" hint="Printed on invoices and letterhead" className="sm:col-span-2">
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="BP 1234, Douala, Cameroon" />
+          </Field>
         </div>
+
+        <div className="space-y-2 rounded-lg border p-3">
+          <p className="text-sm font-medium">Bank details</p>
+          <p className="text-xs text-muted-foreground">Rendered in the payment block on this entity&apos;s invoices. Blank fields are omitted.</p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Bank name"><Input value={bank.bank_name ?? ""} onChange={(e) => setBankField("bank_name", e.target.value)} placeholder="Afriland First Bank" /></Field>
+            <Field label="Branch"><Input value={bank.branch ?? ""} onChange={(e) => setBankField("branch", e.target.value)} placeholder="Akwa" /></Field>
+            <Field label="Account number"><Input value={bank.account_number ?? ""} onChange={(e) => setBankField("account_number", e.target.value)} /></Field>
+            <Field label="IBAN"><Input value={bank.iban ?? ""} onChange={(e) => setBankField("iban", e.target.value)} /></Field>
+            <Field label="SWIFT / BIC"><Input value={bank.swift ?? ""} onChange={(e) => setBankField("swift", e.target.value)} /></Field>
+          </div>
+        </div>
+
+        {!isNew && (
+          <Field label="Letterhead logo" hint="PNG/JPG/WebP/SVG, max 512 KB — used on this entity's documents">
+            <div className="flex items-center gap-3">
+              {logoLight ? <img src={logoLight} alt="" className="h-10 w-auto rounded border bg-background object-contain p-1" /> : null}
+              <input
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                disabled={logoBusy}
+                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
+                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+              />
+            </div>
+          </Field>
+        )}
+
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!code || !legalName || busy} onCancel={onClose} saveLabel={isNew ? "Create entity" : "Save changes"} />
       </form>

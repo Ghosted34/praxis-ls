@@ -6,6 +6,7 @@ import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -155,7 +156,7 @@ export function CurrenciesPage() {
       {curErr ? (
         <ErrorState message={curErr} />
       ) : currencies === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : currencies.length === 0 ? (
         <EmptyState title="No currencies" hint="Currencies are seeded per tenant." />
       ) : (
@@ -185,7 +186,7 @@ export function CurrenciesPage() {
       {rateErr ? (
         <ErrorState message={rateErr} />
       ) : rates === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rates.length === 0 ? (
         <EmptyState title="No rates yet" hint="Set a rate or wait for the daily FX sync." />
       ) : (
@@ -476,7 +477,7 @@ export function TaxJurisdictionsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No jurisdictions yet" hint="Create one to start adding tax codes." />
       ) : (

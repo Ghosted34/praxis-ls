@@ -11,7 +11,7 @@ const findById = (client, id) => getById(client, "vehicle", "vehicle_id", id);
 
 async function get(client, id) {
   const { rows } = await client.query(
-    `SELECT v.*, ce.name AS entity_name
+    `SELECT v.*, ce.legal_name AS entity_name
        FROM vehicle v
        LEFT JOIN corporate_entity ce ON ce.entity_id = v.entity_id
       WHERE v.vehicle_id = $1`,
@@ -41,7 +41,7 @@ async function list(client, q = {}) {
   if (q.q) { params.push("%" + q.q + "%"); wh.push("v.registration ILIKE $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    `SELECT v.*, ce.name AS entity_name
+    `SELECT v.*, ce.legal_name AS entity_name
        FROM vehicle v
        LEFT JOIN corporate_entity ce ON ce.entity_id = v.entity_id
        ${where}

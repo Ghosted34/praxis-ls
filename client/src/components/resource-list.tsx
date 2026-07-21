@@ -8,7 +8,8 @@ import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { PageHeader } from "@/components/data-list";
 import { HubTabs } from "@/components/tabbed-hub";
 
@@ -73,7 +74,7 @@ export function ResourceList({
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint="No records returned for this endpoint." />
       ) : (

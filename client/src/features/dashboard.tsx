@@ -12,8 +12,10 @@
  */
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/app/auth/auth-context";
 import { tenant } from "@/lib/api-client";
-import { LoadingRow, ErrorState } from "@/components/ui/states";
+import { ErrorState } from "@/components/ui/states";
+import { PageSkeleton } from "@/components/ui/skeleton";
 import { errMsg } from "@/features/sales/ui";
 import mockBody from "./dashboard-mock/body.html.txt?raw";
 import mockStyle from "./dashboard-mock/style.css.txt?raw";
@@ -106,6 +108,33 @@ const KPI_ROUTE: Record<string, string> = {
   sla: "/operations",
   overdue: "/finance/receivables",
   fleet: "/fleet/vehicles",
+};
+
+/**
+ * The mock's "Applications" launcher renders every tile with a hardcoded
+ * `onclick="go('ops')"` (see dashboard-mock/script.js.txt renderApps) — so all
+ * twelve tiles opened the mock's *internal* Operations view full of sample
+ * dossiers, whichever one you clicked. Keyed by the tile's visible label,
+ * because that's the only identifier the mock's `apps` array carries.
+ *
+ * Same containment rule as KPI_ROUTE: the iframe posts a label, the parent owns
+ * the label→route map, so the iframe can't navigate to an arbitrary path.
+ */
+const APP_ROUTE: Record<string, string> = {
+  Operations: "/operations",
+  Freight: "/operations/files",
+  Fleet: "/fleet",
+  Warehouse: "/wms",
+  Invoicing: "/finance/invoices",
+  Treasury: "/master/treasury-accounts",
+  "OHADA Ledger": "/finance/journals",
+  "Tax Center": "/finance/tax",
+  CRM: "/sales/leads",
+  Procurement: "/procurement",
+  "HR & Payroll": "/hr/employees",
+  Settings: "/settings",
+  // Not a launcher tile — the floatbar's clock-in button reuses this channel.
+  Attendance: "/hr/attendance",
 };
 
 const LOCKED_STATUSES = ["ISSUED_LOCKED", "APPROVED_LOCKED", "POSTED_LOCKED"];
@@ -260,6 +289,8 @@ type LiveData = {
   activeCount: number;
   heroSub: string;
   briefing: string;
+  /** Signed-in user's first name — the mock hardcodes "Amara" in greet(). */
+  firstName: string;
   kpi: {
     revenue: number | null;
     revenueCur: string;
@@ -318,6 +349,124 @@ function liveInjectionScript(live: LiveData): string {
     if(K.overdue == null) hideKpi(2); else setKpi(2, fmtM(K.overdue) + '<small> M ' + esc(K.revenueCur || 'XAF') + '</small>', 'Past due (1–90+ days)');
     if(K.fleetTotal == null || Number(K.fleetTotal) === 0) hideKpi(3); else setKpi(3, esc(K.fleetActive || 0) + '<small> / ' + esc(K.fleetTotal) + ' vehicles</small>', 'Active now');
   } catch(e){ /* keep the mock visible even if injection fails */ }
+
+  // ── Greeting ──
+  // The mock's greet() computes the time of day but hardcodes the name, so every
+  // user was greeted as "Amara". Re-run it with the signed-in user's first name.
+  try {
+    var g = document.getElementById('greet');
+    if (g) {
+      var h = new Date().getHours();
+      var part = h < 12 ? 'morning' : h < 17 ? 'afternoon' : 'evening';
+      g.textContent = 'Good ' + part + (LIVE.firstName ? ', ' + LIVE.firstName : '');
+    }
+  } catch(e){}
+
+  // ── Live shipment rows → the real dossier ──
+  // liveRow() above renders without the mock's onclick="openDossier()", so these
+  // rows carried real refs but did nothing when clicked. Send the ref up and let
+  // the parent open Operations filtered to it.
+  try {
+    var rows = document.querySelectorAll('#liveList .liverow');
+    for (var i = 0; i < rows.length; i++) {
+      (function(row){
+        var refEl = row.querySelector('.ref');
+        var ref = refEl ? refEl.textContent.trim() : '';
+        if (!ref || ref === '—') return;
+        row.style.cursor = 'pointer';
+        row.setAttribute('role', 'link');
+        row.setAttribute('tabindex', '0');
+        function goRef(){
+          try { window.parent.postMessage({ type: 'praxis-dossier-nav', ref: ref }, '*'); } catch(e){}
+        }
+        row.onclick = goRef;
+        row.onkeydown = function(ev){
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); goRef(); }
+        };
+      })(rows[i]);
+    }
+  } catch(e){}
+
+  // ── Hero CTAs, floating search, clock ──
+  // All of these ran the mock's internal navigation (go('ops') / go('finance') /
+  // openPalette() / a fake timesheet modal). Route them into the real app.
+  try {
+    var heroBtns = document.querySelectorAll('#v-home .heroactions .btn');
+    var HERO = ['Operations', 'Invoicing'];
+    for (var b = 0; b < heroBtns.length; b++) {
+      (function(btn, label){
+        if (!label) return;
+        btn.onclick = function(ev){
+          if (ev && ev.preventDefault) ev.preventDefault();
+          try { window.parent.postMessage({ type: 'praxis-app-nav', label: label }, '*'); } catch(e){}
+          return false;
+        };
+      })(heroBtns[b], HERO[b]);
+    }
+    // The topbar/botnav/drawer copies of the palette trigger are hidden by
+    // HIDE_CHROME, but the floating action button is not — it still opened the
+    // mock's palette over the mock's own app list.
+    var fab = document.querySelector('.fab');
+    if (fab) {
+      fab.onclick = function(ev){
+        if (ev && ev.preventDefault) ev.preventDefault();
+        try { window.parent.postMessage({ type: 'praxis-open-palette' }, '*'); } catch(e){}
+        return false;
+      };
+    }
+    // Clock in/out answered with a fabricated timesheet ("8h 12m today"). Send the
+    // user to the real attendance screen instead of inventing hours.
+    var clockBtn = document.querySelector('.floatbar .fb-btn[onclick*="openClock"]');
+    if (clockBtn) {
+      clockBtn.onclick = function(ev){
+        if (ev && ev.preventDefault) ev.preventDefault();
+        try { window.parent.postMessage({ type: 'praxis-app-nav', label: 'Attendance' }, '*'); } catch(e){}
+        return false;
+      };
+    }
+  } catch(e){}
+
+  // ── Remove the mock's Praxis chat ──
+  // It has a live-looking input but praxisSend() just cycles canned replies on a
+  // timer, and it opens with "Hi Amara — I'm tracking 7 live dossiers". The real
+  // assistant already renders app-side (components/praxis-copilot.tsx, mounted in
+  // app-shell and self-gating on ai_enabled), so this is a fake duplicate.
+  try {
+    var fakeChatBtn = document.querySelector('.floatbar .fb-btn.praxis');
+    if (fakeChatBtn && fakeChatBtn.parentNode) fakeChatBtn.parentNode.removeChild(fakeChatBtn);
+    var fakePanel = document.getElementById('praxisPanel');
+    if (fakePanel && fakePanel.parentNode) fakePanel.parentNode.removeChild(fakePanel);
+  } catch(e){}
+
+  // ── Recent activity ──
+  // Four hardcoded rows (Bolloré, MSC Lucia, SLAS-INV-2026-0314, truck LT-4471).
+  // There is no activity-feed endpoint, so rather than leave fiction sitting under
+  // live KPIs, drop the section entirely. Restore it when a feed exists.
+  try {
+    var actCard = document.querySelector('#v-home .activity');
+    if (actCard) {
+      var actHead = actCard.previousElementSibling;
+      if (actHead && actHead.classList.contains('sec')) actHead.parentNode.removeChild(actHead);
+      actCard.parentNode.removeChild(actCard);
+    }
+  } catch(e){}
+
+  // ── Map: label it as illustrative ──
+  // Fixed geography and three hardcoded lanes. Kept for now (it's the visual
+  // anchor of the page) but badged so nobody reads it as live vessel positions.
+  try {
+    var mapWrap = document.querySelector('.mapsvg');
+    var host = mapWrap && mapWrap.parentNode;
+    if (host && !host.querySelector('[data-sample-badge]')) {
+      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
+      var badge = document.createElement('span');
+      badge.setAttribute('data-sample-badge', '1');
+      badge.className = 'status st-mute';
+      badge.textContent = 'Sample view · not live';
+      badge.style.cssText = 'position:absolute;top:10px;right:10px;z-index:2;padding:3px 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;';
+      host.appendChild(badge);
+    }
+  } catch(e){}
 
   // ── KPI drill-downs ──
   // The mock's openKpi renders its own sample rows and simulates an ~18% random
@@ -379,6 +528,43 @@ function liveInjectionScript(live: LiveData): string {
     };
   } catch(e){ /* drill-downs are additive — never block the tower */ }
 
+  // ── Application launcher ──
+  // renderApps() hardcodes onclick="go('ops')" on every tile, so all twelve
+  // opened the mock's sample Operations view. Rebind each tile to the real app.
+  // We rewrite the rendered DOM rather than redefining renderApps, because the
+  // mock already called it on load — and doing it this way keeps working if the
+  // mock's markup changes, since we only depend on the .lt tiles inside #launch.
+  try {
+    var tiles = document.querySelectorAll('#launch .lt');
+    for (var t = 0; t < tiles.length; t++) {
+      (function(tile){
+        var labelEl = tile.querySelector('b');
+        var label = labelEl ? labelEl.textContent.trim() : '';
+        tile.onclick = function(){
+          try { window.parent.postMessage({ type: 'praxis-app-nav', label: label }, '*'); } catch(e){}
+        };
+        // The mock styles .lt as clickable already; make the affordance honest
+        // for keyboard users too, since these are divs rather than buttons.
+        tile.setAttribute('role', 'link');
+        tile.setAttribute('tabindex', '0');
+        tile.onkeydown = function(ev){
+          if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); tile.onclick(); }
+        };
+      })(tiles[t]);
+    }
+    // "Browse all 39 →" opens the mock's own palette, which searches the mock's
+    // sample app list and then calls go() — same dead end. Point it at the real
+    // command palette instead; the parent owns what that means.
+    var browse = document.querySelector('.sec a[onclick*="openPalette"]');
+    if (browse) {
+      browse.onclick = function(ev){
+        if (ev && ev.preventDefault) ev.preventDefault();
+        try { window.parent.postMessage({ type: 'praxis-open-palette' }, '*'); } catch(e){}
+        return false;
+      };
+    }
+  } catch(e){ /* launcher rebinding is additive — never block the tower */ }
+
   // Track the app's light/dark theme (parent uses a .dark class; mock uses data-theme).
   function syncTheme(){
     try {
@@ -412,18 +598,55 @@ ${inject}
 
 export function DashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
   const [live, setLive] = React.useState<LiveData | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(true);
 
-  // The KPI modal's CTA asks the parent to route. The iframe sends a card id only;
-  // the id→route map lives here, so it can't navigate to an arbitrary path.
+  // The mock greets "Amara" regardless of who signed in. Take the first word of
+  // the display name; fall back to the email local part, then to no name at all
+  // (a bare "Good evening" reads fine — an invented name doesn't).
+  const firstName = React.useMemo(() => {
+    const display = str(user?.display_name).trim();
+    if (display) return display.split(/\s+/)[0];
+    const email = str(user?.email);
+    return email ? email.split("@")[0] : "";
+  }, [user]);
+
+  // The iframe asks the parent to navigate — it never routes itself. It sends an
+  // identifier only (a KPI card id, or an app tile's label) and the id→route maps
+  // live here, so the iframe can't reach an arbitrary path.
   React.useEffect(() => {
     function onMessage(e: MessageEvent) {
-      const d = e.data as { type?: string; id?: string } | null;
-      if (!d || d.type !== "praxis-kpi-nav") return;
-      const to = d.id ? KPI_ROUTE[d.id] : null;
-      if (to) navigate(to);
+      const d = e.data as { type?: string; id?: string; label?: string; ref?: string } | null;
+      if (!d) return;
+      if (d.type === "praxis-kpi-nav") {
+        const to = d.id ? KPI_ROUTE[d.id] : null;
+        if (to) navigate(to);
+        return;
+      }
+      if (d.type === "praxis-app-nav") {
+        const to = d.label ? APP_ROUTE[d.label] : null;
+        if (to) navigate(to);
+        return;
+      }
+      if (d.type === "praxis-dossier-nav") {
+        // There's no dossier-detail route — Operations is a list — so we deep-link
+        // its search instead. The ref is the only thing the iframe controls, and it
+        // lands in a query param, never in the path.
+        if (d.ref) navigate(`/operations/files?ref=${encodeURIComponent(d.ref)}`);
+        return;
+      }
+      if (d.type === "praxis-open-palette") {
+        // The ⌘K palette's open state lives in app-shell, which owns it via a
+        // document keydown listener — there's no prop or context reaching down
+        // here. Re-firing the app's own shortcut is the least invasive way to
+        // ask for it; lifting that state into context would be the tidier fix
+        // if anything else ever needs to open the palette programmatically.
+        document.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "k", metaKey: true, bubbles: true }),
+        );
+      }
     }
     window.addEventListener("message", onMessage);
     return () => window.removeEventListener("message", onMessage);
@@ -474,6 +697,7 @@ export function DashboardPage() {
           activeCount: active,
           heroSub,
           briefing,
+          firstName,
           kpi: {
             revenue: numOrNull(kpis.revenue_final_ttc),
             revenueCur: cur,
@@ -495,11 +719,13 @@ export function DashboardPage() {
     return () => {
       alive = false;
     };
-  }, []);
+    // firstName is in the deps so the greeting can't go stale against the session.
+    // It only changes when the signed-in user does, so this doesn't add refetches.
+  }, [firstName]);
 
   const srcDoc = React.useMemo(() => buildSrcDoc(live), [live]);
 
-  if (loading) return <LoadingRow label="Loading Control Tower…" />;
+  if (loading) return <PageSkeleton tiles={4} rows={5} cols={5} />;
   if (error) return <ErrorState message={error} />;
 
   return (

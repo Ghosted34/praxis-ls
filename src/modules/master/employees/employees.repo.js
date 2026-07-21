@@ -12,7 +12,7 @@ const insert = (client, data) => insertOne(client, "employee", data);
 /** Single employee joined to its corporate entity name. */
 async function get(client, id) {
   const { rows } = await client.query(
-    `SELECT e.*, ce.name AS entity_name
+    `SELECT e.*, ce.legal_name AS entity_name
        FROM employee e
        LEFT JOIN corporate_entity ce ON ce.entity_id = e.entity_id
       WHERE e.employee_id = $1`,
@@ -47,7 +47,7 @@ async function list(client, q = {}) {
   if (q.q) { params.push("%" + q.q + "%"); wh.push("(e.full_name ILIKE $" + params.length + " OR e.job_title ILIKE $" + params.length + " OR e.cnps_number ILIKE $" + params.length + ")"); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    `SELECT e.*, ce.name AS entity_name
+    `SELECT e.*, ce.legal_name AS entity_name
        FROM employee e
        LEFT JOIN corporate_entity ce ON ce.entity_id = e.entity_id
        ${where}

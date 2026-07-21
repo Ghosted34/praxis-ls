@@ -70,3 +70,9 @@ tmp/
 .claude/
 client folder for hub-system/hub-system.zip
 dump.rdb
+
+# Compiled Vite config. `vite.config.ts` is the source of truth, but Vite resolves
+# vite.config.js BEFORE vite.config.ts — a committed build artifact silently shadows
+# the real config and every later edit to the .ts becomes a no-op.
+client/vite.config.js
+client/vite.config.d.ts

@@ -14,7 +14,8 @@
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -176,7 +177,7 @@ export function DocumentTemplatesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No templates yet" hint="Create a template for a document type." />
       ) : (
@@ -376,7 +377,7 @@ export function CustomFieldsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No custom fields yet" hint="Define extra fields for an entity type." />
       ) : (
@@ -461,7 +462,7 @@ export function EmailSignaturesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : (
         <div className="lux-card space-y-4 p-4">
           <Field label="Signature template (HTML)" hint="Use tokens like {{user.full_name}}, {{user.email}}, {{tenant.name}}">
@@ -584,7 +585,7 @@ export function BusinessPoliciesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No policies yet" hint="Add a privacy, refund or terms policy." />
       ) : (

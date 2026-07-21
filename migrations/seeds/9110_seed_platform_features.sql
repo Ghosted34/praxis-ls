@@ -2,6 +2,35 @@
 -- SEED (PLATFORM DB) — feature catalogue + plans + plan_feature mapping.
 -- Runs after 9100 (module_catalogue). Split from 9100 to stay small.
 -- Idempotent: safe to re-run (upserts on conflict).
+--
+-- WHAT default_state MEANS (2026-07-20 — read this before changing one).
+-- Feature resolution happens in provisioning.service.js projectFeatures():
+--
+--   CASE WHEN ov.state IS NOT NULL THEN ov.state       -- per-tenant override
+--        WHEN pf.included          THEN fc.default_state -- <- plan says yes...
+--        ELSE 'off' END                                 --    ...but THIS decides
+--
+-- Note the middle branch: being included in the plan does NOT turn a feature on,
+-- it only defers to default_state. So a tenant on the *full* plan (which includes
+-- every feature) still inherits every default_state='off'. That is the intended
+-- design — but it means default_state must answer "is this module SHIPPABLE?",
+-- not "did the customer buy it?". Commercial entitlement is plan_feature's job;
+-- per-tenant exceptions are tenant_feature_override's job.
+--
+-- This matters more than it looks, because requireFeature (middleware/feature-
+-- gate.js) is mounted in FRONT of the whole router by module-loader.js and has
+-- NO bypass — not even for the CEO, who bypasses RBAC. An off feature is a hard
+-- 403 FEATURE_DISABLED for every user in the tenant.
+--
+-- 2026-07-20: nine keys below were flipped 'off' -> 'on' because their modules
+-- are built and mounted, and leaving them off made 19 modules unreachable for
+-- everyone (fleet x6, wms x3, wms.inventory x2, plus maintenance/cycle_count/
+-- hr.recruitment/hr.appraisals/hr.training/finance.debt). Diagnose any tenant
+-- with: node scripts/tenant/feature-report.js --slug=<slug>
+--
+-- Deliberately still 'off': ai.* (opt-in by design — the FE AI gate fails safe,
+-- see doc/AI_GATE_BE_HANDOFF.md) and portal.* (external client/investor/auditor
+-- access — a security decision, not a build-state one).
 -- ============================================================================
 
 INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_state, depends_on) VALUES
@@ -9,7 +38,7 @@ INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_s
  ('accounting.statements','MOD-59','Statutory statements & close','on','{accounting.core}'),
  ('accounting.tax','MOD-07','Tax center (TVA/IS/DSF/CNPS)','on','{accounting.core}'),
  ('finance.fx','MOD-08','Live FX & multi-currency','on','{}'),
- ('finance.debt','MOD-53','Project financing (debt)','off','{accounting.core}'),
+ ('finance.debt','MOD-53','Project financing (debt)','on','{accounting.core}'),
  ('operations','MOD-29','Logistics operations','on','{}'),
  ('costing','MOD-46','Costing & margin','on','{operations}'),
  ('commercial.simulators','MOD-27','Margin & extra-charge simulators','on','{costing}'),
@@ -20,14 +49,14 @@ INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_s
  ('sales.marketing','MOD-22','Marketing & newsletters','off','{sales.crm}'),
  ('procurement','MOD-60','Procurement','on','{}'),
  ('hr.payroll','MOD-17','HR & payroll','on','{}'),
- ('hr.recruitment','MOD-11','Recruitment (vacancies/applicants)','off','{hr.payroll}'),
- ('hr.appraisals','MOD-13','KPI appraisals','off','{hr.payroll}'),
- ('hr.training','MOD-18','Trainings & succession','off','{hr.payroll}'),
- ('fleet','MOD-39','Fleet management','off','{}'),
- ('fleet.maintenance','MOD-41','Fleet maintenance & work orders','off','{fleet}'),
- ('wms','MOD-33','Warehouse management','off','{}'),
- ('wms.inventory','MOD-35','WMS inventory & outbound','off','{wms}'),
- ('wms.cycle_count','MOD-38','WMS cycle counting','off','{wms}'),
+ ('hr.recruitment','MOD-11','Recruitment (vacancies/applicants)','on','{hr.payroll}'),
+ ('hr.appraisals','MOD-13','KPI appraisals','on','{hr.payroll}'),
+ ('hr.training','MOD-18','Trainings & succession','on','{hr.payroll}'),
+ ('fleet','MOD-39','Fleet management','on','{}'),
+ ('fleet.maintenance','MOD-41','Fleet maintenance & work orders','on','{fleet}'),
+ ('wms','MOD-33','Warehouse management','on','{}'),
+ ('wms.inventory','MOD-35','WMS inventory & outbound','on','{wms}'),
+ ('wms.cycle_count','MOD-38','WMS cycle counting','on','{wms}'),
  ('ai.assistant','MOD-67','AI assistant (front-end UI)','off','{}'),
  ('ai.assistant.backend','MOD-67','AI agentic actions (server)','off','{ai.assistant}'),
  ('ai.vectorization','MOD-67','AI semantic recall (vectors)','off','{ai.assistant}'),

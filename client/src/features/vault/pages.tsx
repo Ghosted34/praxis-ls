@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, Badge, Chips, Segmented, useList } from "@/features/sales/ui";
@@ -282,7 +283,7 @@ export function ReportsPage() {
           <ErrorState message={error} />
         )
       ) : catalogue === null ? (
-        <LoadingRow label="Loading reports…" />
+        <SkeletonTable />
       ) : tab === "tiles" ? (
         <div className="space-y-2">
           <p className="text-xs text-muted-foreground">Choose which reports appear as tiles on your Control Tower, toggle their visibility and order.</p>
@@ -485,7 +486,7 @@ export function ComplianceFlagsPage() {
             </label>
           </div>
           {flags === null ? (
-            <LoadingRow label="Loading flags…" />
+            <SkeletonTable />
           ) : filtered.length === 0 ? (
             <EmptyState title={flags.length ? "No flags match" : "No open flags"} hint={flags.length ? "Try another severity." : "Run the checks to scan for compliance issues."} />
           ) : (
@@ -515,7 +516,7 @@ export function ComplianceFlagsPage() {
           )}
         </>
       ) : rules === null ? (
-        <LoadingRow label="Loading rules…" />
+        <SkeletonTable />
       ) : (
         <div className="space-y-2">
           {(rules || []).map((r) => (
@@ -729,7 +730,7 @@ export function DocumentsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : shown.length === 0 ? (
         <EmptyState title={rows.length ? "No documents match" : "No documents yet"} hint={rows.length ? "Try another filter." : "Upload a document to the vault."} />
       ) : (
@@ -892,7 +893,7 @@ export function SignaturesPage() {
       ) : error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : (
         <>
           <div className="mb-3 flex items-center justify-between">

@@ -18,7 +18,7 @@ import * as api from "@/lib/operations-api";
 import { AiActions } from "@/components/ai-actions";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
-import { Link } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
@@ -193,7 +193,11 @@ export function OperationsFilesPage() {
   const [editing, setEditing] = React.useState<api.Dossier | "new" | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [view, setView] = React.useState<api.Dossier | null>(null);
-  const [q, setQ] = React.useState("");
+  // `?ref=` deep-links a single dossier — the Control Tower's live-shipment rows
+  // use it, since there's no dossier-detail route to send them to. It only seeds
+  // the initial search; the user can clear or change it like any other query.
+  const [searchParams] = useSearchParams();
+  const [q, setQ] = React.useState(() => searchParams.get("ref") || "");
   const [family, setFamily] = React.useState("ALL");
   const files = rows || [];
   const clientName = nameMap(clients, "client_id", "name");

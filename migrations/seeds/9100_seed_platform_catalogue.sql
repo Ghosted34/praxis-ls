@@ -78,6 +78,12 @@ INSERT INTO platform.module_catalogue (module_key, group_key, name, sort_order, 
  ('MOD-70','security','Settings',123,true);
 
 -- Features & plans are seeded in 9110_seed_platform_features.sql (split to keep files small). depends_on gates dependencies.
+--
+-- ⚠️ THIS BLOCK IS NOT AUTHORITATIVE (noted 2026-07-20). 9110 seeds the *same*
+-- feature_catalogue rows, runs after this file, and does so with
+-- `ON CONFLICT (feature_key) DO UPDATE SET default_state = EXCLUDED.default_state`
+-- — so 9110's values overwrite whatever is set here. Editing default_state in
+-- this file has no effect on the resulting catalogue. Change it in 9110.
 INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_state, depends_on) VALUES
  ('accounting.core','MOD-55','OHADA accounting core','on','{}'),
  ('accounting.statements','MOD-59','Statutory statements & close','on','{accounting.core}'),

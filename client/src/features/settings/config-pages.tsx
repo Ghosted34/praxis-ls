@@ -9,7 +9,8 @@
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
-import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable, PageSkeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -234,7 +235,7 @@ export function BankAccountsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No accounts yet" hint="Add a bank, cash or mobile-money account." />
       ) : (
@@ -427,7 +428,7 @@ export function PaymentGatewaysPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No gateways yet" hint="Add a provider like Paydunya, Orange or Stripe." />
       ) : (
@@ -654,7 +655,7 @@ export function ScheduledReportsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="Nothing scheduled" hint="Schedule a report to have it delivered automatically." />
       ) : (
@@ -865,7 +866,7 @@ export function ApiKeysPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No vendor keys" hint="Add a provider like OpenAI, Groq or Gemini." />
       ) : (
@@ -931,7 +932,7 @@ export function PipelineStagesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No stages" hint="Pipeline stages are seeded per tenant." />
       ) : (
@@ -1030,7 +1031,7 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
     }
   }
 
-  if (loading) return <LoadingRow label="Loading scheme…" />;
+  if (loading) return <PageSkeleton rows={5} cols={3} />;
   if (error && !scheme) return <ErrorState message={error} />;
   if (!scheme) return null;
 
@@ -1106,7 +1107,7 @@ export function NumberingPage() {
           <p className="text-sm text-muted-foreground">The module catalogue could not be loaded (it needs IAM view access). Numbering is still editable per module once the catalogue is available.</p>
         </>
       ) : modules === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : options.length === 0 ? (
         <EmptyState title="No modules" hint="No document modules are available to configure." />
       ) : (

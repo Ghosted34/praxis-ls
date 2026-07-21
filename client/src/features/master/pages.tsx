@@ -8,6 +8,7 @@ import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -268,7 +269,7 @@ export function ClientsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No clients yet" hint="Create the first client to reference it in quotations, dossiers and invoices." />
       ) : (
@@ -486,7 +487,7 @@ export function SuppliersPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No suppliers yet" hint="Create the first supplier to reference it in purchase orders and supplier invoices." />
       ) : (
@@ -695,7 +696,7 @@ export function CorporateEntitiesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No entities yet" hint="Create the legal entity you invoice and bank under." />
       ) : (

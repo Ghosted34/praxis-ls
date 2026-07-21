@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Segmented, Chips, Avatar, MetricTile, SearchSelect } from "./ui";
@@ -264,7 +265,7 @@ function LeadsTab() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading leads…" />
+        <SkeletonTable />
       ) : filtered.length === 0 ? (
         <EmptyState title={rows.length ? "No leads match" : "No leads yet"} hint={rows.length ? "Try a different filter or search." : "Capture your first lead, or triage an inbound enquiry into one."} />
       ) : (
@@ -473,7 +474,7 @@ function IntakeTab() {
         enqErr ? (
           <ErrorState message={enqErr} />
         ) : enquiries === null ? (
-          <LoadingRow label="Loading enquiries…" />
+          <SkeletonTable />
         ) : enquiries.length === 0 ? (
           <EmptyState title="No enquiries" hint="Contact-form and email enquiries land here for triage into leads." />
         ) : (
@@ -505,7 +506,7 @@ function IntakeTab() {
       ) : partErr ? (
         <ErrorState message={partErr} />
       ) : partnerships === null ? (
-        <LoadingRow label="Loading partnership requests…" />
+        <SkeletonTable />
       ) : partnerships.length === 0 ? (
         <EmptyState title="No partnership requests" hint="Inbound partnership proposals land here for review." />
       ) : (
@@ -791,7 +792,7 @@ export function MeetingsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading meetings…" />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No meetings yet" hint="Schedule the first meeting against a lead or client." />
       ) : (
@@ -1163,7 +1164,7 @@ export function OpportunitiesPage() {
       {err ? (
         <ErrorState message={err} />
       ) : loading ? (
-        <LoadingRow label="Loading pipeline…" />
+        <SkeletonTable />
       ) : (stages || []).length === 0 ? (
         <EmptyState title="No pipeline stages configured" hint="Add pipeline stages in Settings → Pipeline stages, then deals can flow across them." />
       ) : view === "board" ? (
@@ -1772,7 +1773,7 @@ export function ProposalsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading proposals…" />
+        <SkeletonTable />
       ) : filtered.length === 0 ? (
         <EmptyState title={rows.length ? "No proposals match" : "No proposals yet"} hint={rows.length ? "Try another filter." : "Draft your first proposal, or generate one with AI from an opportunity."} />
       ) : (
@@ -2277,7 +2278,7 @@ export function CampaignsPage() {
         error ? (
           <ErrorState message={error} />
         ) : campaigns === null ? (
-          <LoadingRow label="Loading campaigns…" />
+          <SkeletonTable />
         ) : campaigns.length === 0 ? (
           <EmptyState title="No campaigns yet" hint="Create your first campaign to reach the newsletter audience." />
         ) : (
@@ -2319,7 +2320,7 @@ export function CampaignsPage() {
         )
       ) : tab === "subscribers" ? (
         subscribers === null ? (
-          <LoadingRow label="Loading subscribers…" />
+          <SkeletonTable />
         ) : subscribers.length === 0 ? (
           <EmptyState title="No subscribers yet" hint="Add subscribers, or they arrive via the public newsletter form." />
       ) : (
@@ -2344,7 +2345,7 @@ export function CampaignsPage() {
           </div>
         )
       ) : templates === null ? (
-        <LoadingRow label="Loading templates…" />
+        <SkeletonTable />
       ) : (templates || []).length === 0 ? (
         <EmptyState title="No email templates yet" hint="Create a reusable campaign email — each carries its own sender name and address." />
       ) : (
@@ -2539,7 +2540,7 @@ export function SuccessStoriesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading stories…" />
+        <SkeletonTable />
       ) : filtered.length === 0 ? (
         <EmptyState title={rows.length ? "No stories match" : "No success stories yet"} hint={rows.length ? "Try another filter." : "Draft your first case study, or generate one with AI from a delivered dossier."} />
       ) : (

@@ -7,6 +7,7 @@ import { tenant, ApiError } from "@/lib/api-client";
 import { ResourceList } from "@/components/resource-list";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
@@ -392,7 +393,7 @@ export function JournalsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No entries yet" hint="Post a journal entry to get started." />
       ) : (
@@ -1026,7 +1027,7 @@ export function InvoicesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No invoices yet" hint="Create a draft to get started." />
       ) : (
@@ -1080,21 +1081,9 @@ export function InvoicesPage() {
 
 /* ── plain read-only surfaces ───────────────────────────────────── */
 
-export const ReceivablesPage = () => (
-  <ResourceList
-    title="Receivables"
-    description="Smart receivables ledger — open items, ageing and reminders."
-    endpoint="/receivables"
-  />
-);
-
-export const ChartOfAccountsPage = () => (
-  <ResourceList
-    title="Chart of accounts"
-    description="SYSCOHADA/OHADA chart — hierarchical, is_postable / requires_analytic."
-    endpoint="/chart-of-accounts"
-  />
-);
+/* NOTE: the `ReceivablesPage` and `ChartOfAccountsPage` ResourceList stubs that
+   used to live here were deleted (2026-07-20) — they had no importers. FinanceHub
+   takes both from the dedicated `./receivables` and `./chart-of-accounts` modules. */
 
 export const AssetsPage = () => (
   <ResourceList
@@ -1233,7 +1222,7 @@ function PeriodsPanel() {
       {error ? (
         <ErrorState message={error} />
       ) : periods === null ? (
-        <LoadingRow label="Loading periods…" />
+        <SkeletonTable />
       ) : periods.length === 0 ? (
         <EmptyState title="No accounting periods" hint="Periods are provisioned per entity fiscal calendar." />
       ) : (
@@ -1456,7 +1445,7 @@ function ReportTabs({
             </div>
           </div>
 
-          {error ? <ErrorState message={error} /> : loading ? <LoadingRow /> : <Report data={data} />}
+          {error ? <ErrorState message={error} /> : loading ? <SkeletonTable /> : <Report data={data} />}
         </>
       )}
     </section>
@@ -1690,7 +1679,7 @@ function DeclarationsPanel() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading declarations…" />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No declarations yet" hint="File a computed return to start the filing workflow." />
       ) : (
@@ -2116,7 +2105,7 @@ export function CreditNotesPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No credit notes yet" hint="Create one to reverse a finalised invoice." />
       ) : (

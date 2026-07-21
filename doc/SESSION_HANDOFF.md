@@ -3,7 +3,26 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-19 (session 9). **Session 9 = Security CRUD + Security/Vault hubs, Control Tower
+_Last updated: 2026-07-20 (session 10). **Session 10 = the CEO "access denied" root cause (it was never
+RBAC), a merge audit, the Pixie permission matrix, Control Tower de-mocking, and skeleton loading.**
+Headline: **19 built modules were dark for every user in the tenant, CEO included** — `requireFeature`
+(`middleware/feature-gate.js`) is mounted in front of the whole router by `module-loader.js` and has **no
+bypass**, unlike `requirePermission`, which the CEO short-circuits. Nine feature keys seeded
+`default_state='off'` and `projectFeatures()` falls through to `default_state` even when the plan includes
+everything, so a **full-plan tenant still inherited off**. Fixed in `9110` + new corrective
+**`9111_fix_feature_defaults.sql`** (needed because `applyTracked` skips already-recorded seed files, so
+editing 9110 alone only helps fresh DBs). **Verified on smartls: 19 dark → 2**, the 2 being `ai.*`, off on
+purpose. New read-only **`scripts/tenant/feature-report.js`** diagnoses any tenant. Unlocking fleet/WMS then
+exposed a latent SQL bug — **`ce.name` doesn't exist, it's `legal_name`** — in `fleet/vehicle` *and*
+`master/employees` (the latter never gated, so **HR Employees has been broken all along — tell the FS
+colleague**). Also: **permission matrix rebuilt to the Pixie layout** (roles-as-rows, one dot per cell,
+popover editor); **Control Tower de-mocked** (app tiles, hero CTAs, dossier rows, greeting, FAB, clock —
+the fake Praxis chat was **removed and must be restored when the AI chatbot lands**, see session-10 log §5);
+**loading states are now content skeletons**. Merge audit of PR #13 + the colleague's `e68a8df`: session 9
+survived intact, but he added **`<HubTabs/>` inside the shared `ResourceList`** — a new cross-cutting
+invariant — and **`client/vite.config.js` is committed build output that shadows `vite.config.ts`**.
+**Windows still owed:** `npm run lint` + `npm test`, the `git rm` deletions, and a visual pass.
+Prior: **Session 9 = Security CRUD + Security/Vault hubs, Control Tower
 drill-downs, Governance, past-due reconciliation, campaign merge fields.** Triggered by the FS colleague's
 "fleet / security / warehouse / vault / vehicle / hr aren't built — collapse into tabs like finance". **His
 read was right for fleet/warehouse/vehicle/hr and for security, but wrong for vault** (all five vault pages
@@ -249,6 +268,137 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-20 (session 10: feature-gate root cause, merge audit, Pixie matrix, Control Tower de-mock)
+
+Started from two reports: "Role & Permission matrix isn't up to standard, per the lead" and "some pages say
+access denied on a **CEO** account". The second turned out not to be RBAC at all. **All in-sandbox `tsc
+--noEmit -p client` clean; BE `node --check` + `eslint` clean (0 errors, 0 warnings). Windows `npm run lint`
+/ `npm test` / `npm run build --prefix client` still authoritative.**
+
+1. **Merge audit (asked for before anything else).** `main` was at `e68a8df`, working tree clean. **PR #13
+   (`3833bc9`) merged session 9 in and everything survived** — both hubs, the routes, `GET
+   /receivables/overdue` still registered before `/:id`, `MERGE_FIELDS`, Governance, the 5 new tests.
+   The colleague's newer `e68a8df` collapsed **fleet (7 routes) + wms (6)** into `FleetHub`/`WarehouseHub`
+   using the shared **`TabbedHub`** (not the `features/security/{pages,hub}.tsx` pattern the session-9 note
+   recommended — his choice works, just be aware there are now two hub idioms). Old deep paths still
+   resolve as `:section`. **Three things to know:**
+   - ⚠️ **He edited the shared `components/resource-list.tsx`** — `ResourceList` now renders `<HubTabs />`
+     under its header and takes an `eyebrow` passthrough. Safe today (`HubTabs` reads a context defaulting
+     to `null`, and no current `ResourceList` consumer sits inside a `TabbedHub`), but the invariant is now
+     *"any `ResourceList` inside a `TabbedHub` draws a tab bar."* **Master data is the only `inlineTabs`
+     hub; the day one of its 8 tab pages uses `ResourceList`, you get two tab bars.**
+   - Nav collapsed to one entry per area, so the **13 fleet/wms sub-screens are no longer findable in ⌘K**
+     (the palette filters `NAV`). Security/Vault kept per-section entries — the two lanes are inconsistent.
+   - ⚠️ **`client/vite.config.js` + `vite.config.d.ts` are committed build output of `vite.config.ts`.**
+     Vite resolves `.js` **before** `.ts`, so **the `.ts` is dead config** — future edits to it silently
+     no-op. Contents are currently equivalent so nothing is broken. Both are now in `.gitignore`; the
+     `git rm` is still owed (see "First thing to do").
+
+2. **THE BIG ONE — CEO "access denied" was the feature gate, not RBAC.** Two things 403 and they look
+   identical in the UI: `requirePermission` (`middleware/rbac.js`, **CEO bypasses** via
+   `bool_or(r.code='CEO')`) and `requireFeature` (`middleware/feature-gate.js`), which `module-loader.js:67`
+   mounts **in front of the entire router** and which **nothing bypasses — not the CEO, not the owner**.
+   Root cause is in `provisioning.service.js projectFeatures()`:
+   ```sql
+   CASE WHEN ov.state IS NOT NULL THEN ov.state          -- per-tenant override
+        WHEN pf.included          THEN fc.default_state  -- plan says yes... but THIS decides
+        ELSE 'off' END
+   ```
+   Plan inclusion **defers to `default_state`** rather than turning anything on, so smartls — on the
+   **full** plan, which includes every feature — still inherited `off` for nine keys. **Measured before:
+   `84 modules mounted · 17 gated+ON · 19 gated+OFF`**, the 19 being fleet ×6, wms ×3, wms.inventory ×2,
+   fleet.maintenance, wms.cycle_count, hr.recruitment, hr.appraisals, hr.training, finance.debt, ai ×2.
+   **Fix:** flipped those nine to `'on'` in `9110_seed_platform_features.sql` **and** added
+   **`migrations/seeds/9111_fix_feature_defaults.sql`** — the second file is not redundant: platform seeds
+   apply via `migrator.applyTracked()` with scope `platform-seed`, which **skips any filename already in
+   `public.schema_migration`**, so editing 9110 only ever affects databases built from scratch.
+   **Ran on Windows: `db:migrate:platform` → `db:migrate:tenants` → 19 dark became 2** (live and sandbox
+   both), the remaining 2 being `ai.assistant.backend`, deliberately off. `9100` also seeds
+   `feature_catalogue` and is **not authoritative** (9110 upserts over it) — flagged in-file.
+   **The rule now written into 9110: `default_state` answers "is this module SHIPPABLE?", not "did the
+   customer buy it?" — entitlement is `plan_feature`'s job, exceptions are `tenant_feature_override`'s.**
+   **New `scripts/tenant/feature-report.js`** (read-only, safe against prod): parses every
+   `*.routes.js` for its `feature:` key, reads the tenant's `feature_state` for both schemas, and prints
+   which mounted modules are dark and why. Also flags child-on/parent-off, since **`depends_on` is stored
+   in the catalogue but nothing enforces it at projection time** (unfixed).
+
+3. **Latent SQL bug exposed by the unlock — `ce.name` does not exist.** `corporate_entity` has
+   **`legal_name`** (`0100_identity.sql:18`). Four occurrences, `get` + `list` in each of
+   `fleet/vehicle/vehicle.repo.js` and **`master/employees/employees.repo.js`**. Fleet's was invisible
+   because the module was gated; **employees was never gated, so `/employees` list and detail have been
+   500ing since the module was written — HR Employees has never worked.** That's the FS colleague's wired
+   screen. Audited every other join in the 19 newly-unlocked modules against its `CREATE TABLE`
+   (`e.full_name`, `e.cnps_number`, `wl.zone/aisle/rack/bin`, `kt.metric/target_value/weight`, all `v.*`) —
+   all clean. **Caveat: that audit covered joins, not every column each repo selects from its own primary
+   table.** These 19 modules are executing for the first time; more of this class is plausible. Clicking
+   each Fleet/WMS tab with the server log open is the fast way to flush the rest out.
+
+4. **Permission matrix rebuilt to the Pixie reference** (`features/security/permission-matrix-page.tsx`).
+   Source: the user's screen recording of Pixie's *Org & Workflow › Permissions* (that hub is 4 tabs —
+   Org Chart / Permissions / Workflows / Pending — worth knowing if we ever build the other three).
+   **Transposed to roles-as-rows / modules-as-columns** under spanning group headers, sticky role column,
+   horizontal scroll. The old layout was modules-as-rows × roles-as-columns with **five letter buttons per
+   cell** — 350+ hit targets on screen; that density is what the lead was reacting to. Each cell is now
+   **one dot showing the strongest grant**, coloured from theme tokens (`--ink-3` / `--primary` / `--warn` /
+   `--bad` / `--ok`; note `--primary` is a full `rgb()` and must **not** be wrapped in `rgb(var(…))`, and
+   there is still no `--info` in `index.css`). Editing is preserved — clicking a cell opens a **popover**
+   with the five real toggles, `position: fixed` off the cell rect because the scrolling grid with sticky
+   columns would clip an absolutely-positioned child. Plus legend, module search, and a New-role link to
+   `/security/roles` (reuses the existing CRUD rather than duplicating it).
+   **Two deliberate departures from Pixie — raise these before the lead reads them as misses:** (i) no
+   **Export** dot — Pixie's legend has six, our `permission` table has five booleans and `rbac.js` maps
+   `export`→`can_read` as a placeholder, so a sixth would advertise a grant that doesn't exist; (ii) the
+   **ceo row renders lit-and-locked**, because `requirePermission` short-circuits on `role.code='CEO'` and
+   never reads those grants — the old page said so in a footnote while still offering toggles that did
+   nothing.
+
+5. **Control Tower de-mocked** (`features/dashboard.tsx`). Audited the whole mock against what the
+   injection overrides. Now routed through the parent via `postMessage` (iframe sends an identifier only;
+   the parent owns every id→route map, so the iframe can't reach an arbitrary path):
+   - **Application launcher** — `renderApps()` hardcodes `onclick="go('ops')"` on **all twelve tiles**, so
+     Settings, Treasury, CRM et al. every one opened the mock's sample Operations view. New `APP_ROUTE`
+     keyed by the tile's visible label (the only identifier the mock's `apps` array carries). Tiles also
+     got `role="link"` / `tabindex` / Enter-Space — they're divs, so they were mouse-only.
+   - **Live shipment rows** — the injected `liveRow()` had already dropped the mock's `openDossier()`, so
+     these carried **real refs but did nothing on click**. They now post the ref; the parent deep-links
+     `/operations/files?ref=…`, and `OperationsFilesPage` seeds its existing search box from that param
+     (there is no dossier-detail route to send them to).
+   - **Hero CTAs** ("New Operation File" / "New Invoice"), the **floating search FAB** (`HIDE_CHROME` hides
+     the topbar/botnav/drawer palette triggers but not `.fab`), and **clock in/out** (was fabricating
+     "8h 12m today" — now goes to `/hr/attendance`).
+   - **Greeting** — `script.js:414` computes time-of-day but **hardcodes "Amara"**; now uses the signed-in
+     user's first name, falling back to the email local part, then to a bare "Good evening".
+   - **Removed:** the **Recent activity** feed (four fabricated rows — Bolloré, MSC Lucia,
+     SLAS-INV-2026-0314, truck LT-4471 — no endpoint exists) and the **mock Praxis chat**.
+     ⚠️ **THE AI CHATBOT IS COMING BACK — this is a removal, not a decision.** What was deleted is the
+     mock's fake panel: a live-looking input whose `praxisSend()` cycles canned replies on a 520 ms timer,
+     opening with "Hi Amara — I'm tracking 7 live dossiers". The **real** assistant already exists app-side
+     (`components/praxis-copilot.tsx`, mounted in `app-shell.tsx:614`, self-gating on `ai_enabled`). When
+     the chatbot work lands: decide whether the floatbar entry point should return and open the *real*
+     copilot (a `postMessage` type + a trigger on `PraxisCopilot`), and turn on `ai.assistant.backend` —
+     which also needs a re-login, since the FE gate reads `user.ai_enabled` off the session payload.
+   - **Map kept, badged `Sample view · not live`** (top-right, using the mock's own `st-mute` pill). Fixed
+     geography, three hardcoded lanes. Wiring it to real vessel positions is deferred by decision.
+   - ⚠️ All of the above lives in the **injection script**, which `buildSrcDoc` only includes when `live`
+     is non-null. A failed fetch renders `ErrorState` instead of the iframe, so it's fine in practice — but
+     if you want the removals unconditional, strip those blocks from `body.html.txt` directly.
+
+6. **Loading states → content skeletons.** `LoadingRow` was a bare spinner in ~60 places. Added
+   **`PageSkeleton`** (title / subtitle / toolbar / optional KPI tiles / rows) to `components/ui/skeleton.tsx`
+   and used it for the three whole-screen loads (Control Tower with a 4-tile band, permission matrix,
+   numbering scheme). Swapped **~35 list slots to `SkeletonTable`** — these pages already render their
+   header first, so the skeleton lands exactly where the rows will. **`LoadingRow` deliberately survives in
+   the 9 genuinely inline spots** (modals, expanding panels, detail views: "Loading invoice…", "Checking
+   credit…", "Running…"). `skeleton.tsx` documents which of the three to reach for. Note this covers *data*
+   loading only — routes are still eagerly imported, so page switches don't suspend; if route-level
+   `React.lazy` ever lands, `PageSkeleton` is the right `Suspense` fallback.
+
+7. **Dead code.** Removed the `ReceivablesPage`/`ChartOfAccountsPage` `ResourceList` stubs from
+   `features/finance/pages.tsx` (zero importers; `FinanceHub` takes both from the dedicated modules).
+   `features/master/pages.tsx` (748 lines, zero importers) and the two vite artifacts still need `git rm`
+   **on Windows** — the sandbox mount blocks unlink, and a failed `git rm` leaves a stale
+   `.git/index.lock` (`Remove-Item .git\index.lock -Force`).
 
 ## Session log — 2026-07-19 (session 9: Security CRUD + hubs, Control Tower drill-downs, Governance, merge fields)
 
@@ -1018,6 +1168,26 @@ machine. Pull latest, then start at step 0.
 
 **Pick up here (priority order):**
 
+000. **Session 10 — Windows chores + a visual pass.** Nothing here is `tsc`/`eslint`-dirty, but none of it
+   has been through `npm run lint` / `npm test` / `npm run build --prefix client`. Do the deletions first,
+   since `noUnusedLocals` will catch anything they orphan:
+   ```powershell
+   Remove-Item .git\index.lock -Force     # left by a git rm the sandbox mount blocked
+   git rm client\vite.config.js client\vite.config.d.ts
+   git rm client\src\features\master\pages.tsx
+   npm run build --prefix client
+   ```
+   ⚠️ Deleting the two vite artifacts makes **`vite.config.ts` live config for the first time in a while**.
+   I diffed them — equivalent apart from compiled syntax (`feature-${area}` vs `.concat`) — so the build
+   should produce the same chunks. If it doesn't, that's the tell that something existed only in the `.js`.
+   Then `npm run dev` and click: **`/security/permissions`** (the rebuilt matrix — dot colours, the cell
+   popover, that the ceo row is locked, the module search), the **Control Tower** (every app tile, both
+   hero buttons, a live-shipment row landing on `/operations/files?ref=…`, the greeting showing *your*
+   name, the FAB opening the real palette, the map badge), **Fleet and Warehouse** tab by tab with the
+   server log open (see session-10 log §3 — more never-executed SQL is plausible), and any screen mid-load
+   for the new skeletons (throttle to Slow 3G if local is too fast to see them).
+   **Also still true from session 9: `npm test` has never run the five campaign merge-field cases.**
+
 00. **Session 9 needs Windows validation + a visual pass** — `npm run lint`, `npm test`, `npm run build
    --prefix client`. **`npm test` matters more than usual**: jest wouldn't run in the sandbox, so the five
    new merge-field cases in `tests/unit/campaign-send.test.js` have never executed. Then `npm run dev` and
@@ -1075,6 +1245,22 @@ machine. Pull latest, then start at step 0.
    again — do NOT delete it.** Remaining: platform/godmode console UI; the decorative KPI cards
    (revenue/SLA/fleet) still show mock values (no BE source).
 
+**⚠️ For the FS colleague — added 2026-07-20 (session 10):**
+
+1. **`master/employees/employees.repo.js` selected `ce.name`, which has never existed** — the column is
+   `corporate_entity.legal_name`. `get` and `list` both. That module is **not** feature-gated, so nothing
+   was hiding it: **`/employees` has been 500ing since it was written and HR Employees has never worked.**
+   Fixed here, but it's your screen — worth knowing rather than rediscovering.
+2. **19 modules were dark for everyone, including the CEO** — `fleet`, `wms` and the HR extras among them,
+   i.e. most of your lane. It was the feature gate, not RBAC (session-10 log §2). Fixed and re-projected;
+   run `node scripts/tenant/feature-report.js --slug=<slug>` if a page 403s and you want to know which of
+   the two layers is refusing.
+3. **Your `e68a8df` added `<HubTabs/>` to the shared `components/resource-list.tsx`.** Fine as it stands,
+   but it means *any* `ResourceList` rendered inside a `TabbedHub` now draws a tab bar. Master data is the
+   only `inlineTabs` hub — if one of its tab pages ever moves to `ResourceList`, it'll render two bars.
+4. **Fleet/WMS sub-screens dropped out of ⌘K** when the nav collapsed to one entry per area (the palette
+   filters `NAV`). Security/Vault kept theirs, so the two lanes now behave differently — worth picking one.
+
 **⚠️ For the FS colleague — read before starting anything (2026-07-19):**
 
 1. **Governance is DONE — do not build the Audit ledger.** You reported "governance pages have been done,
@@ -1128,6 +1314,26 @@ To preview the app: `npm run dev` (backend, repo root) + `cd client && npm run d
 Check the new `/login` landing + the top-bar nav / More sidebar first.
 
 ## Known remaining work / gaps
+
+- **AI chatbot — COMING, not cancelled (2026-07-20).** Session 10 deleted the *mock's* Praxis chat from the
+  Control Tower (canned replies on a timer, greeting a hardcoded "Amara"). The real assistant already
+  exists: `components/praxis-copilot.tsx`, mounted in `app-shell.tsx:614`, self-gating on `ai_enabled`,
+  and `/ai/ask` + `/ai/governance` are built. Three things when the work lands: (a) turn on
+  `ai.assistant.backend` — the last route-gated feature still `off` by design — and note **users must
+  re-login**, since the FE gate reads `user.ai_enabled` off the session payload issued at sign-in;
+  (b) decide whether the Control Tower floatbar gets its "Chat with Praxis AI" entry point back, opening
+  the **real** copilot via a `postMessage` type plus a trigger on `PraxisCopilot`; (c) `ai.assistant` and
+  `ai.vectorization` are separate keys, also off.
+- **Control Tower — still mock (2026-07-20):** the **map** (fixed geography + three hardcoded lanes; now
+  badged *Sample view · not live*, wiring deferred by decision) and the **Recent activity** feed (deleted
+  rather than left fictional — needs an activity endpoint that doesn't exist). Everything else on the home
+  view is live or routes into the real app; see session-10 log §5.
+- **`depends_on` is not enforced at projection time** — it's stored in `platform.feature_catalogue` but
+  `projectFeatures()` never consults it, so a child feature can be on with its parent off.
+  `scripts/tenant/feature-report.js` flags the condition; nothing fixes it.
+- **Fleet/WMS may hide more never-executed SQL.** Those 19 modules ran for the first time on 2026-07-20.
+  The join audit (session-10 log §3) is clean, but it didn't cover every column each repo selects from its
+  own primary table.
 
 - **Quick PIN — DONE (2026-07-18).** FE done (login modal + `/security/my-security`, backend
   `/auth/pin/*`); the `user_device` migration (columns: `device_id, user_id, label, pin_hash,

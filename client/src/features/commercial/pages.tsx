@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile, SearchSelect } from "@/features/sales/ui";
@@ -460,7 +461,7 @@ export function QuotationsPage() {
           <ErrorState message={error} />
         )
       ) : rows === null ? (
-        <LoadingRow label="Loading quotations…" />
+        <SkeletonTable />
       ) : filtered.length === 0 ? (
         <EmptyState title={rows.length ? "No quotations match" : "No quotations yet"} hint={rows.length ? "Try another filter." : "Draft your first quotation."} />
       ) : (
@@ -637,7 +638,7 @@ export function MarginSimulationsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading simulations…" />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No simulations yet" hint="Run a margin simulation to price a service package before quoting." />
       ) : (
@@ -840,7 +841,7 @@ export function ExtraChargeSimulationsPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading simulations…" />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No simulations yet" hint="Estimate a demurrage charge before it lands on a dossier." />
       ) : (
@@ -1007,7 +1008,7 @@ export function PricingVariancePage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading variance index…" />
+        <SkeletonTable />
       ) : filtered.length === 0 ? (
         <EmptyState title={rows.length ? "No rows match" : "No variance computed yet"} hint={rows.length ? "Try another flag." : "Compute variance for a dossier to see its R/Y/G flag."} />
       ) : (

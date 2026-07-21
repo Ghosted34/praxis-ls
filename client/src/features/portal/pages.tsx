@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
+import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, useList, SearchSelect } from "@/features/sales/ui";
@@ -208,7 +209,7 @@ export function PortalAccessPage() {
       {error ? (
         <ErrorState message={error} />
       ) : rows === null ? (
-        <LoadingRow label="Loading grants…" />
+        <SkeletonTable />
       ) : rows.length === 0 ? (
         <EmptyState title="No active grants" hint="Grant a client, investor or auditor scoped read-access to get started." />
       ) : (

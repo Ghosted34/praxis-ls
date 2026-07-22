@@ -81,6 +81,48 @@ services:
       # STORAGE_LOCAL_PATH=./data/vault — the document vault MUST persist across
       # container rebuilds or every uploaded/rendered document is lost.
       - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
+
+  # Hot-standby copy of the api on host port 3001. nginx lists it as `backup`,
+  # so it receives traffic ONLY while the primary is down — which is exactly the
+  # window during a rolling deploy (scripts/deploy.sh restarts standby first,
+  # then the primary). Keeping it backup-only also keeps all socket.io clients
+  # on one instance (no cross-instance emit fan-out exists).
+  api-standby:
+    build:
+      context: .
+      target: runtime
+    container_name: praxis-ls-standby
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      TENANT_DB_HOST_DEFAULT: postgres
+      REDIS_URL: redis://redis:6379
+      PORT: "8080"
+      ENABLE_WORKERS: "false"
+    ports:
+      - "127.0.0.1:3001:8080"
+    volumes:
+      - ./media:/app/media
+      - ./uploads:/app/uploads
+      - ./logs:/app/logs
+      - ./data:/app/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
 
   worker:
     build:

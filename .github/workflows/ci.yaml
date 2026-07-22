@@ -23,7 +23,10 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm ci
+        # npm install, NOT ci: the lockfile is Windows-generated, so `ci` on a
+        # Linux runner can omit linux platform binaries (sharp, argon2) — the
+        # same trap the Dockerfile documents.
+        run: npm install --no-audit --no-fund
 
       - name: Syntax check every source file
         # node --check catches parse/syntax errors the linter's config might skip

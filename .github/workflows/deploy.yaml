@@ -1,24 +1,42 @@
-# Deployment workflow — PLACEHOLDER (intentionally manual-only).
+# Deploy — SSH rolling deploy to the production VPS.
 #
-# CI (parse/lint/test/image-build) lives in ci.yaml and runs automatically.
-# Deployment is NOT wired yet: the hosting target, registry, and secrets are
-# undecided (doc/WORK_TO_BE_DONE.md Phase 5 — "CI/CD" and "Go-live"). This file
-# exists so the workflow slot is real and valid rather than an empty file that
-# GitHub reports as an invalid workflow.
+# Triggers after the CI workflow SUCCEEDS on main (never deploys a red build),
+# or manually via workflow_dispatch. The server does the actual work in
+# scripts/deploy.sh: build → migrate → roll standby → roll primary → worker.
+# nginx's backup upstream (praxis-ls-standby on :3001) absorbs traffic while
+# the primary restarts, so the reload is effectively zero-downtime.
 #
-# To activate: add build-and-push (to your registry) + a deploy step keyed off
-# the environment's secrets, and switch the trigger below from workflow_dispatch
-# to `push: { tags: ['v*'] }` or whatever release cadence is chosen.
-name: Deploy (placeholder)
+# Required repo secrets (Settings → Secrets and variables → Actions):
+#   DEPLOY_HOST      server IP or hostname        e.g. 51.254.165.120
+#   DEPLOY_USER      ssh user                     e.g. root
+#   DEPLOY_SSH_KEY   PRIVATE key (openssh format) whose public half is in
+#                    ~/.ssh/authorized_keys on the server
+name: Deploy
 
 on:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch: {}
 
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
-  noop:
+  deploy:
     runs-on: ubuntu-latest
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
-      - name: Not configured yet
-        run: |
-          echo "Deployment is not configured yet — see doc/WORK_TO_BE_DONE.md Phase 5."
-          echo "CI (lint/test/build) runs in ci.yaml."
+      - name: Rolling deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          script: |
+            set -e
+            cd ~/praxis-ls
+            bash scripts/deploy.sh

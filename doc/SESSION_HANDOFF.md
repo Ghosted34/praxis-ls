@@ -470,8 +470,24 @@ de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it
   **first `docker compose build` on the server is the test**; blank page at `/` = clientbuild
   stage didn't run.
 
-**Still owed (unchanged):** Windows lint/test/build, the two `npm install`s (root: AWS SDK;
-client: socket.io-client), apply migration 0460, and the session-10 `git rm` list.
+**Session 12 (cont. 2) — LIVE DEPLOY + branding seed + CI/CD.** The app is **deployed and
+running** at `smartls.praxisls.com` (VPS 51.254.165.120, Cloudflare DNS-only wildcard).
+Deploy shakeout fixed en route: client build needed `@types/node` (only ever transitive on
+Windows) + an unused React import in `help-page.tsx`; **`TENANT_DB_HOST_DEFAULT` must be
+`postgres` in compose** (the migrator ignores `DB_HOST`; its AggregateError has an empty
+message — db-script error prints fixed); env guard rejects default `ENCRYPTION_KEY` in prod
+(by design); **`seed-money-path` now uses `node:http` because undici's fetch silently drops
+the `Host` header** (tenant resolved as 'api' → 404; workaround was `--url=https://<tenant
+domain>`). New: **`scripts/tenant/seed-branding.js`** (Lovable palette — orange #F5821F,
+Playfair/Montserrat, status colours — into `setting` section='appearance', both schemas,
+non-clobbering unless `--force`; deliberately skips secondary/accent surface tokens).
+**CI/CD:** `deploy.yaml` now real — triggers on CI success on main, SSHes and runs new
+**`scripts/deploy.sh`** (build → `compose run migrate` → roll **api-standby** → roll api →
+worker). Zero-downtime = new `api-standby` service on :3001 + nginx `upstream` with
+`backup` (config in DEPLOYMENT.md §5) — standby idles unless the primary is down, which
+also sidesteps socket.io cross-instance fan-out. Healthchecks added to api services
+(`--wait` depends on them). ci.yaml: `npm ci`→`npm install` (Windows lockfile omits Linux
+platform binaries). Secrets needed on GitHub: `DEPLOY_HOST/USER/SSH_KEY`.
 
 ## Session log — 2026-07-20 (session 10: feature-gate root cause, merge audit, Pixie matrix, Control Tower de-mock)
 

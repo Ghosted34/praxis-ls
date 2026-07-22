@@ -59,19 +59,42 @@ const ok = (m) => console.log(`  ✓ ${m}`);
 const skip = (m) => console.log(`  – ${m}`);
 const fail = (m) => console.log(`  ✗ ${m}`);
 
-async function call(method, path, body) {
-  const res = await fetch(BASE + path, {
-    method,
-    headers: {
-      Host: HOST,
-      "X-Praxis-Env": "sandbox",
-      "X-Praxis-Tenant": slug, // dev-mode resolver fallback; Host wins in prod
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    body: body === undefined ? undefined : JSON.stringify(body),
+// NB: NOT global fetch — undici treats Host as a forbidden header and silently
+// drops it, so the API would resolve the tenant from the URL's hostname (breaks
+// whenever the target isn't <slug>.<domain>, e.g. docker service names).
+// node:http/https honour an explicit Host header.
+const nodeHttp = require("node:http");
+const nodeHttps = require("node:https");
+function rawRequest(method, url, headers, payload) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const lib = u.protocol === "https:" ? nodeHttps : nodeHttp;
+    const req = lib.request(
+      { hostname: u.hostname, port: u.port || (u.protocol === "https:" ? 443 : 80), path: u.pathname + u.search, method, headers },
+      (res) => {
+        let data = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (data += c));
+        res.on("end", () => resolve({ status: res.statusCode || 0, ok: (res.statusCode || 0) >= 200 && (res.statusCode || 0) < 300, text: data }));
+      },
+    );
+    req.on("error", reject);
+    if (payload !== undefined) req.write(payload);
+    req.end();
   });
-  const text = await res.text();
+}
+
+async function call(method, path, body) {
+  const payload = body === undefined ? undefined : JSON.stringify(body);
+  const res = await rawRequest(method, BASE + path, {
+    Host: HOST,
+    "X-Praxis-Env": "sandbox",
+    "X-Praxis-Tenant": slug, // dev-mode resolver fallback; Host wins in prod
+    "Content-Type": "application/json",
+    ...(payload !== undefined ? { "Content-Length": Buffer.byteLength(payload) } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  }, payload);
+  const text = res.text;
   let json = null;
   try {
     json = text ? JSON.parse(text) : null;
@@ -135,9 +158,8 @@ async function main() {
   // 0. Health preflight — fail fast (and clearly) if we're pointed at the wrong port.
   console.log(`  → API target: ${BASE}  (Host: ${HOST})`);
   try {
-    const h = await fetch(HEALTH);
-    const t = await h.text();
-    if (!h.ok || !/"ok"\s*:\s*true/.test(t)) throw new Error("no health JSON");
+    const h = await rawRequest("GET", HEALTH, { Host: HOST });
+    if (!h.ok || !/"ok"\s*:\s*true/.test(h.text)) throw new Error("no health JSON");
   } catch {
     throw new Error(
       `API not reachable at ${HEALTH} — the Node server is probably on another port ` +

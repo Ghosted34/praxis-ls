@@ -101,6 +101,14 @@ Host-based; a wrong/hardcoded Host = "unknown tenant") and the **WebSocket
 upgrade** (Smart Comms real-time):
 
 ```nginx
+# primary api (:3000) + hot standby (:3001). `backup` = standby only receives
+# traffic while the primary is down — exactly the rolling-deploy window, which
+# is what makes deploys zero-downtime. Also keeps websockets on one instance.
+upstream praxis_api {
+    server 127.0.0.1:3000 max_fails=1 fail_timeout=3s;
+    server 127.0.0.1:3001 backup;
+}
+
 server {
     listen 443 ssl http2;
     server_name *.praxisls.com praxisls.com;
@@ -111,8 +119,9 @@ server {
     client_max_body_size 50m;            # document uploads
 
     location / {
-        proxy_pass http://127.0.0.1:3000;
+        proxy_pass http://praxis_api;
         proxy_http_version 1.1;
+        proxy_next_upstream error timeout http_502 http_503;
         proxy_set_header Host              $host;          # ← REQUIRED
         proxy_set_header X-Real-IP         $remote_addr;
         proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
@@ -139,16 +148,28 @@ served by the api container itself; there is no separate frontend server).
 
 ## 6. Updating a running deployment
 
+**Automatic (CI/CD):** every push to `main` runs CI (lint / tests / image
+build); when CI is green, the Deploy workflow SSHes to the server and runs
+`scripts/deploy.sh` — build → migrate → roll the standby api → roll the primary
+(nginx serves from the standby during the gap) → worker. One-time setup: add
+repo secrets `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` (private key whose
+public half is in the server's `~/.ssh/authorized_keys`).
+
+**Manual (same thing, by hand):**
+
 ```bash
-cd praxis-ls
-git pull
-docker compose build
-docker compose up -d      # migrate runs again automatically, then api/worker recreate
+cd ~/praxis-ls && bash scripts/deploy.sh
 ```
 
-Migrations are tracked per file — re-running is safe. If `migrate` exits
-non-zero, api/worker keep running on the old schema; check
+Migrations are tracked per file — re-running is safe. Keep them **additive**
+(new tables/columns, not renames/drops) so the old code stays correct during
+the seconds both versions run. If `migrate` fails, the script stops before
+touching the running containers — nothing breaks; check
 `docker compose logs migrate`.
+
+**Optional but recommended for the deploy user:** a dedicated non-root
+`deploy` user in the `docker` group instead of root, with a single-purpose SSH
+key.
 
 ## 7. Operations notes
 

@@ -26,6 +26,6 @@ provisionTenant({
     process.exit(0);
   })
   .catch((e) => {
-    console.error("[praxis-db] provisioning FAILED:", e.message);
+    console.error("[praxis-db] provisioning FAILED:", (e.message || e.code || String(e)) + (e && e.errors ? " — " + e.errors.map((x) => x.message || x.code).join("; ") : ""));
     process.exit(1);
   });

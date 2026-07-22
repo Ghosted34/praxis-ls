@@ -30,6 +30,6 @@ const a = Object.fromEntries(
 })()
   .then(() => process.exit(0))
   .catch((e) => {
-    console.error("[praxis-db] tenant upgrade FAILED:", e.message);
+    console.error("[praxis-db] tenant upgrade FAILED:", (e.message || e.code || String(e)) + (e && e.errors ? " — " + e.errors.map((x) => x.message || x.code).join("; ") : ""));
     process.exit(1);
   });

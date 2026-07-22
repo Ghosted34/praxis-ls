@@ -488,6 +488,13 @@ worker). Zero-downtime = new `api-standby` service on :3001 + nginx `upstream` w
 also sidesteps socket.io cross-instance fan-out. Healthchecks added to api services
 (`--wait` depends on them). ci.yaml: `npm ci`→`npm install` (Windows lockfile omits Linux
 platform binaries). Secrets needed on GitHub: `DEPLOY_HOST/USER/SSH_KEY`.
+**CSP fix (prod-only bug):** helmet's default CSP (`script-src 'self'`, `script-src-attr
+'none'`) broke the Control Tower — the `<iframe srcDoc>` mock inherits the parent CSP, and
+its live-data bridge is an inline script + inline `onclick=` handlers. Never seen in dev
+because Vite serves without helmet. `server.js` now sets an explicit CSP: default helmet
+directives with `script-src`/`script-src-attr` `'unsafe-inline'` and `img-src` + https:/
+blob:/data: (tenant-authored image URLs). **Tightening owed:** per-route CSP for the mock
+or convert its handlers to addEventListener, then restore defaults.
 
 ## Session log — 2026-07-20 (session 10: feature-gate root cause, merge audit, Pixie matrix, Control Tower de-mock)
 

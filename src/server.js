@@ -58,7 +58,28 @@ function buildApp() {
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", true);
-  app.use(helmet());
+  // Helmet with the default CSP relaxed on exactly two knobs. The Control Tower
+  // renders the Lovable mock in an <iframe srcDoc> whose document INHERITS this
+  // page's CSP: its live-data bridge is an inline <script> (needs
+  // script-src 'unsafe-inline') and the mock's controls are inline onclick=
+  // attributes (needs script-src-attr — helmet defaults it to 'none').
+  // img-src additionally allows https:/blob:/data: because tenant-authored
+  // branding (login hero, logos) may point at external URLs.
+  // Tightening path (tracked): serve the mock from its own route with a
+  // per-route CSP, or migrate its handlers to addEventListener — then restore
+  // the defaults here.
+  app.use(
+    helmet({
+      contentSecurityPolicy: {
+        directives: {
+          ...helmet.contentSecurityPolicy.getDefaultDirectives(),
+          "script-src": ["'self'", "'unsafe-inline'"],
+          "script-src-attr": ["'unsafe-inline'"],
+          "img-src": ["'self'", "data:", "blob:", "https:"],
+        },
+      },
+    }),
+  );
   app.use(cors(buildCorsOptions()));
   app.use(requestIdMiddleware);
   app.use(express.json({ limit: "2mb" }));

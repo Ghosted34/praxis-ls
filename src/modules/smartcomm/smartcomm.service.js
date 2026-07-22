@@ -15,8 +15,17 @@ const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
 const { emitEvent, audit } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
+const realtime = require("../../realtime");
+const requestContext = require("../../config/request-context");
 
 const gref = (id) => "comms_group:" + id;
+
+/** Push a live event to a channel's subscribers (best-effort; no-op if the
+ *  socket server isn't running). Scoped to the ambient request's tenant. */
+function rtPublish(groupId, event, payload) {
+  const slug = requestContext.getTenant();
+  if (slug) realtime.publish(slug, groupId, event, payload);
+}
 
 async function assertMember(client, groupId, userId) {
   const m = await repo.findMember(client, groupId, userId);
@@ -84,6 +93,7 @@ async function postMessage(client, { groupId, body = null, mediaVaultId = null, 
     await repo.updateChannel(client, groupId, {}); // bump updated_at
     await emitEvent(client, { eventTypeKey: events.MESSAGE_POSTED, moduleKey: events.MODULE, entityRef: "comms_message:" + m.message_id, actorUserId: actor.user_id || null });
     await client.query("COMMIT");
+    rtPublish(groupId, "comms:message", { group_id: groupId, message: m });
     return m;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
@@ -91,13 +101,17 @@ async function editMessage(client, { messageId, body, actor }) {
   const m = await repo.getMessage(client, messageId);
   if (!m) throw new AppError("NOT_FOUND", "Message not found", 404);
   if (m.sender_user_id !== actor.user_id) throw new AppError("NOT_YOURS", "You can only edit your own message", 403);
-  return repo.editMessage(client, messageId, body);
+  const updated = await repo.editMessage(client, messageId, body);
+  rtPublish(m.group_id, "comms:message_edited", { group_id: m.group_id, message: updated });
+  return updated;
 }
 async function deleteMessage(client, { messageId, actor }) {
   const m = await repo.getMessage(client, messageId);
   if (!m) throw new AppError("NOT_FOUND", "Message not found", 404);
   if (m.sender_user_id !== actor.user_id) throw new AppError("NOT_YOURS", "You can only delete your own message", 403);
-  return { deleted: Boolean(await repo.softDeleteMessage(client, messageId)) };
+  const deleted = Boolean(await repo.softDeleteMessage(client, messageId));
+  if (deleted) rtPublish(m.group_id, "comms:message_deleted", { group_id: m.group_id, message_id: messageId });
+  return { deleted };
 }
 async function thread(client, { groupId, actor, limit, before }) {
   await assertMember(client, groupId, actor.user_id);
@@ -107,13 +121,19 @@ async function thread(client, { groupId, actor, limit, before }) {
 }
 
 // ── Reactions / stars / search ──
-async function react(client, { messageId, emoji, actor }) { const r = await repo.toggleReaction(client, { messageId, userId: actor.user_id, emoji }); return { ...r, reactions: await repo.listReactions(client, messageId) }; }
+async function react(client, { messageId, emoji, actor }) {
+  const r = await repo.toggleReaction(client, { messageId, userId: actor.user_id, emoji });
+  const reactions = await repo.listReactions(client, messageId);
+  const msg = await repo.getMessage(client, messageId);
+  if (msg) rtPublish(msg.group_id, "comms:reaction", { group_id: msg.group_id, message_id: messageId, reactions });
+  return { ...r, reactions };
+}
 async function star(client, { messageId, actor }) { return repo.toggleStar(client, { messageId, userId: actor.user_id }); }
 const starred = (client, actor) => repo.listStarredForUser(client, actor.user_id);
 async function search(client, { actor, term }) { if (!term || term.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422); return repo.searchMessages(client, actor.user_id, term); }
 
 // ── Reads / presence ──
-async function markRead(client, { groupId, actor }) { await assertMember(client, groupId, actor.user_id); await repo.markChannelRead(client, groupId, actor.user_id); return { ok: true }; }
+async function markRead(client, { groupId, actor }) { await assertMember(client, groupId, actor.user_id); await repo.markChannelRead(client, groupId, actor.user_id); rtPublish(groupId, "comms:read", { group_id: groupId, user_id: actor.user_id }); return { ok: true }; }
 const unread = (client, actor) => repo.unreadCountForUser(client, actor.user_id);
 
 // ── Drafts ──

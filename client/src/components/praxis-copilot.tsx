@@ -51,6 +51,13 @@ export function PraxisCopilot() {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [msgs, open]);
 
+  // Openable from elsewhere (e.g. the command palette's "Ask Praxis AI…").
+  React.useEffect(() => {
+    const openCopilot = () => setOpen(true);
+    window.addEventListener("praxis:open-copilot", openCopilot);
+    return () => window.removeEventListener("praxis:open-copilot", openCopilot);
+  }, []);
+
   // Global AI gate: when the tenant has AI off, no Praxis affordance shows (doc/AI_GATE_BE_HANDOFF.md).
   if (!aiEnabled) return null;
 

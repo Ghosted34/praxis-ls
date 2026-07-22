@@ -115,6 +115,8 @@ function start() {
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );
+  // Real-time layer (Smart Comms) attaches to the same HTTP server.
+  require("./realtime").initSocket(server);
   const shutdown = (sig) => {
     logger.info({ sig }, "shutting down");
     server.close(() => process.exit(0));

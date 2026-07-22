@@ -105,6 +105,10 @@ const Schema = z.object({
   S3_BUCKET: z.string().default(""),
   S3_ACCESS_KEY: z.string().default(""),
   S3_SECRET_KEY: z.string().default(""),
+  S3_REGION: z.string().default("us-east-1"),
+  // Path-style (bucket in the path, not the host) — required for MinIO and most
+  // S3-compatible providers; virtual-hosted style is the AWS default.
+  S3_FORCE_PATH_STYLE: bool(true),
 
   PUPPETEER_EXECUTABLE_PATH: z.string().default(""),
   SANDBOX_WIPE_DAYS: int(14),

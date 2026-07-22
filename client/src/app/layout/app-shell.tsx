@@ -14,7 +14,6 @@ import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-do
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { tokenStore } from "@/lib/token-store";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
@@ -179,7 +178,7 @@ const NAV: NavGroup[] = [
 ];
 
 /** Areas surfaced inline in the top bar (in order). The rest live under More. */
-const TOPBAR = ["Overview", "Finance", "Warehouse", "Fleet"];
+const TOPBAR = ["Overview", "Operations", "Fleet", "Finance"];
 
 // --- tiny inline icons (stroke inherits currentColor) ----------------------
 type IP = React.SVGProps<SVGSVGElement>;
@@ -241,12 +240,108 @@ const SearchIcon = (p: IP) => (
     <path d="M21 21l-4-4" />
   </svg>
 );
+const OperationsIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 5h6l2 3h8v11H4z" />
+  </svg>
+);
+const BellIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6" />
+    <path d="M10 20a2 2 0 004 0" />
+  </svg>
+);
+const ChatIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" />
+  </svg>
+);
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
+  Operations: OperationsIcon,
   Finance: FinanceIcon,
   Warehouse: WarehouseIcon,
   Fleet: FleetIcon,
 };
+
+/** Initials from a name or email local-part. */
+function initialsOf(nameOrEmail?: string | null): string {
+  if (!nameOrEmail) return "?";
+  const base = nameOrEmail.includes("@") ? nameOrEmail.split("@")[0].replace(/[._-]+/g, " ") : nameOrEmail;
+  const parts = base.trim().split(/\s+/);
+  return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
+}
+
+/** Round icon Link used for the messages + notification affordances. */
+function IconLink({ to, label, children }: { to: string; label: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      title={label}
+      className="relative hidden h-9 w-9 place-items-center rounded-xl border text-muted-foreground transition-colors hover:text-foreground sm:grid"
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** User avatar + dropdown (email · My security · Sign out). */
+function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string } | null; onLogout: () => void }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef<HTMLDivElement>(null);
+  const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
+  const email = user?.email || "";
+
+  React.useEffect(() => {
+    function onDown(e: MouseEvent) {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, []);
+
+  return (
+    <div className="relative" ref={ref} data-navarea>
+      <button
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className="flex items-center gap-2 rounded-xl border p-1 pr-2 transition-colors hover:bg-accent/50"
+      >
+        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
+          {initialsOf(name || email)}
+        </span>
+        <span className="hidden text-left leading-tight sm:block">
+          <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
+          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{email}</span>
+        </span>
+        <ChevronIcon className={cn("hidden transition-transform sm:block", open && "rotate-180")} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          style={{ background: "var(--popover)" }}
+          className="absolute right-0 top-[calc(100%+8px)] z-50 w-60 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
+        >
+          <div className="border-b px-3 pb-2 pt-1">
+            <div className="truncate text-sm font-semibold capitalize">{name}</div>
+            <div className="truncate text-xs text-muted-foreground">{email}</div>
+          </div>
+          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="mt-1 block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            My security
+          </Link>
+          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            Appearance
+          </Link>
+          <button role="menuitem" onClick={onLogout} className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
+            Sign out
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
 
 /** A top-bar area: a direct link (single item) or a hover/click dropdown. */
 function NavArea({
@@ -534,9 +629,9 @@ export function AppShell() {
           <button
             onClick={() => setPaletteOpen(true)}
             className="hidden items-center gap-2 rounded-xl border bg-accent/40 px-3 py-2 text-muted-foreground lg:flex"
-            title="Search screens (⌘K)"
+            title="Search (⌘K)"
           >
-            <span className="text-xs">Search screens…</span>
+            <span className="text-xs">Search…</span>
             <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
           </button>
           <div className="inline-flex items-center rounded-xl border p-0.5 text-xs font-semibold" role="group" aria-label="Data environment">
@@ -565,11 +660,10 @@ export function AppShell() {
               TEST
             </button>
           </div>
-          <span className="hidden text-sm text-muted-foreground sm:inline">{user?.email}</span>
           <ThemeToggle />
-          <Button variant="outline" size="sm" onClick={onLogout}>
-            Sign out
-          </Button>
+          <IconLink to="/comms" label="Messages"><ChatIcon /></IconLink>
+          <IconLink to="/notifications" label="Notifications"><BellIcon /></IconLink>
+          <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>
       </header>
 

@@ -14,6 +14,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/smartcomm-api";
+import { useCommsChannel } from "@/lib/comms-socket";
 
 /* avatar colouring — a fixed per-person palette (pixie parity), not the brand accent */
 const AVATAR_COLOURS = ["#C9A86C", "#7FB069", "#5B9BD5", "#C0626E", "#9B7EDE", "#4DB6AC", "#E2934D", "#D46BA3"];
@@ -262,6 +263,24 @@ function Thread({ channelId, meId, nameOf, onBack, onSent }: { channelId: string
   const bottomRef = React.useRef<HTMLDivElement | null>(null);
   const msgs = thread.data?.messages || [];
 
+  // Live updates (socket.io). Any channel event refreshes the thread; a peer's
+  // typing shows a transient indicator. The 8s poll below stays as a fallback
+  // for when the socket can't connect.
+  const [typingName, setTypingName] = React.useState<string | null>(null);
+  const typingTimer = React.useRef<number | null>(null);
+  const { setTyping } = useCommsChannel(channelId, {
+    "comms:message": () => { thread.reload(); onSent(); },
+    "comms:message_edited": () => thread.reload(),
+    "comms:message_deleted": () => thread.reload(),
+    "comms:reaction": () => thread.reload(),
+    "channel:typing": (p: { user_id?: string }) => {
+      if (!p?.user_id || p.user_id === meId) return;
+      setTypingName(nameOf[p.user_id] || "Someone");
+      if (typingTimer.current) window.clearTimeout(typingTimer.current);
+      typingTimer.current = window.setTimeout(() => setTypingName(null), 3000);
+    },
+  });
+
   React.useEffect(() => { api.markRead(channelId).catch(() => {}); }, [channelId, msgs.length]);
   React.useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length]);
   React.useEffect(() => { const t = window.setInterval(() => thread.reload(), 8000); return () => window.clearInterval(t); }, [thread]);
@@ -297,8 +316,9 @@ function Thread({ channelId, meId, nameOf, onBack, onSent }: { channelId: string
         }) : <div className="flex h-full items-center justify-center micro">No messages yet — say hello.</div>}
         <div ref={bottomRef} />
       </div>
+      {typingName && <div className="px-4 pb-1 text-[11px] italic text-muted-foreground">{typingName} is typing…</div>}
       <form className="flex items-center gap-2 border-t border-border px-3 py-2" onSubmit={send}>
-        <Input value={text} onChange={(e) => setText(e.target.value)} placeholder="Write a message…" className="flex-1" />
+        <Input value={text} onChange={(e) => { setText(e.target.value); setTyping(); }} placeholder="Write a message…" className="flex-1" />
         <Button type="submit" loading={busy} disabled={!text.trim()}>Send</Button>
       </form>
     </>

@@ -194,6 +194,36 @@ function resolvedFeatures(slug) {
   });
 }
 
+/**
+ * Recent platform audit trail (Watch-the-Watcher). Read-only, joins actor +
+ * tenant for human-readable names. Optional `slug` scopes to one tenant.
+ */
+function recentAudit({ slug, limit } = {}) {
+  return withPlatform(async (pf) => {
+    const lim = Math.min(Math.max(parseInt(limit, 10) || 100, 1), 500);
+    const params = [];
+    let where = "";
+    if (slug) {
+      await tenantIdOf(pf, slug); // 404s on unknown slug
+      params.push(slug);
+      where = "WHERE t.slug = $1";
+    }
+    const { rows } = await pf.query(
+      "SELECT a.audit_id, a.action, a.entity_ref, a.payload, a.ip, a.created_at, " +
+        "u.full_name AS actor_name, u.email AS actor_email, " +
+        "t.slug AS tenant_slug, t.display_name AS tenant_name " +
+        "FROM platform.platform_audit a " +
+        "LEFT JOIN platform.platform_user u ON u.platform_user_id = a.actor_id " +
+        "LEFT JOIN platform.tenant t ON t.tenant_id = a.tenant_id " +
+        where +
+        " ORDER BY a.created_at DESC LIMIT " +
+        lim,
+      params,
+    );
+    return rows;
+  });
+}
+
 const listModules = () =>
   withPlatform((pf) =>
     pf
@@ -222,6 +252,7 @@ module.exports = {
   setFeature,
   clearFeatureOverride,
   resolvedFeatures,
+  recentAudit,
   listModules,
   listFeatures,
   listPlans,

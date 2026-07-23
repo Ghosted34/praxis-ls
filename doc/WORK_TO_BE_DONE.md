@@ -21,8 +21,9 @@ complete**. Screens wired to live BE this session (all typecheck clean; lint + `
 - [x] Master-data trio (Clients/Suppliers/Corporate entities) — session 5.
 
 **FE follow-ons still open:** tax-code picker for Quotations (so VAT flags from the FE); Reports
-dashboard-tile picker (`/reports/tiles`) feeding the Control Tower; platform/godmode console UI; vault
-Documents/Signatures/Verification (BE gaps). Not this stream: finance + operations screens (FS colleague).
+dashboard-tile picker (`/reports/tiles`) feeding the Control Tower; ~~platform/godmode console UI~~ **(the
+Platform Console shipped 2026-07-23 — standalone `platform-console/` app; see SESSION_HANDOFF session 13)**;
+vault Documents/Signatures/Verification (BE gaps). Not this stream: finance + operations screens (FS colleague).
 
 ## Immediate / pre-build (from kickoff)
 
@@ -75,7 +76,8 @@ Documents/Signatures/Verification (BE gaps). Not this stream: finance + operatio
 
 **Built since (2026-07-09):** the permission **grant-matrix editor** (`client/src/features/security/permission-matrix-page.tsx` — roles × modules, grouped/collapsible, five R/C/U/D/A toggles per cell → `PUT /api/tenant/permissions/grant` upsert, fires Watch-the-Watcher); **light/dark/system** theme toggle; a branded **boot splash**. Backing endpoints added: `GET /api/tenant/catalogue/modules` (the MOD-xx list from the platform catalogue) and `PUT /api/tenant/permissions/grant`.
 
-**Still not built (frontend):** platform console UI (proposal pending, see above), the Test/Live toggle, per-tenant PWA manifest, and richer editors on the other skeletal Security/Governance screens. **Handover to Phase 1: see `doc/HANDOVER.md`.**
+**Still not built (frontend):** ~~platform console UI (proposal pending, see above)~~ **— built 2026-07-23,
+standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-tenant PWA manifest, and richer editors on the other skeletal Security/Governance screens. **Handover to Phase 1: see `doc/HANDOVER.md`.**
 
 **Verify caveat:** the client was written but could not be `npm install`/`tsc`-checked in the build sandbox — it boots and login works against the live backend (confirmed 2026-07-09); treat the first `npm run build` as the real typecheck.
 
@@ -158,7 +160,7 @@ Documents/Signatures/Verification (BE gaps). Not this stream: finance + operatio
 - [x] AI governance: usage caps, PII/financial redaction, full AI-call logging — `ai/governance/` (148 ln)
 - [x] Pricing Variance Index (R/Y/G, no raw cost exposure) — `commercial/pricing_variance/` (52 ln)
 - [~] Portals: Client / Investor / Audit Terminal — `portal/` backend (staff grant + scoped views) **plus external-user auth (2026-07-22, new `portal_auth/` module + migration `0460_portal_user.sql`)**: public `POST /portal/auth/login` issues a portal-scoped JWT (`typ:"portal"`, off the RBAC path); `portalAuth(type)` re-checks the `portal_access` grant per request (revoke takes effect immediately) and injects the scope; `GET /portal/{me,client,investor,auditor}` reuse `portal.service`'s scoped views; staff invite/manage external users via `MOD-67`-gated `/portal/users`. **Apply migration 0460 to each tenant (live+sandbox) before use.** **FE portals (the external-facing pages) still pending.**
-- [ ] Support & Feedback dashboard (ticket lifecycle) — **held until the Platform/dev console is in scope** (per PRD §11.2 it's a tenant→Praxis channel whose triage half lives on the platform console, so it pairs with that build)
+- [~] Support & Feedback dashboard (ticket lifecycle, PRD §11.2) — **BE + platform-console triage built (2026-07-23)**. Central `platform.support_ticket` (already in `0030_platform_ops.sql`) is the store — no cross-tenant fan-out. Tenant-side API: new `src/modules/dashboard/support/` (ungated, `authMiddleware`) — `POST/GET /api/tenant/support/tickets`, `GET /tickets/:id`, `POST /tickets/:id/csat` (CSAT only on SHIPPED/DECLINED), scoped to `req.tenant.tenant_id`, stamped with `req.user.email`, written to the platform DB via `services/platform/db`. Platform-side: `services/platform/support.service.js` + `GET /api/platform/support/tickets` (aggregate across tenants + `?status/kind/tenant` filters), `GET /tickets/:id`, `PATCH /tickets/:id` status transition (audited `support.status_changed`). Console **Support** tab is now a live triage board (lanes by status, filters, per-ticket detail + transitions). **Tenant-app FE built too** — `client/src/features/support/support-page.tsx` (route `/support`, nav under Overview): raise a ticket (kind/title/body), track status, and rate resolved tickets (CSAT). Full loop is complete. **Not yet run against a live API** (Windows `npm run lint`/`test`/`build` + a click-through owed, per the usual rule).
 - [~] Smart Comms Portal — `smartcomm/` scaffold only (thin service); WebSocket/threads/certified-export pending
 - [~] Reporting & Insights dashboards — `vault/report/` scaffold; per-role Excel/PDF export pending
 - [~] Settings module (MOD-70): configuration hub — partial: `security/setting`, `security/numbering_setting`, `branding/` (appearance) exist; unified hub + remaining sections pending

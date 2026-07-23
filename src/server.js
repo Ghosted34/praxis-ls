@@ -99,11 +99,33 @@ function buildApp() {
     app.use("/media", express.static(path.resolve(config.STORAGE_LOCAL_PATH), { maxAge: "1h" }));
   }
 
+  // Praxis-side Platform Console — a standalone React/Vite app that only ever
+  // calls /api/platform (NOT tenant-scoped). Served at the ROOT of the dedicated
+  // admin host (config.PLATFORM_CONSOLE_HOST, e.g. admin.praxisls.com) and NEVER
+  // on a tenant host — so `tenant.example.com/console` can't reach it. Requires
+  // nginx to pass the Host header through (it already does; see DEPLOYMENT.md).
+  const consoleHost = (config.PLATFORM_CONSOLE_HOST || "").toLowerCase();
+  const consoleDir = path.resolve(__dirname, "../platform-console/dist");
+  const hasConsole = consoleHost && fs.existsSync(path.join(consoleDir, "index.html"));
+  const onConsoleHost = (req) => consoleHost && String(req.hostname || "").toLowerCase() === consoleHost;
+  if (hasConsole) {
+    const consoleStatic = express.static(consoleDir, { index: false, maxAge: "1h" });
+    app.use((req, res, next) => {
+      if (!onConsoleHost(req)) return next();                 // tenant host → not here
+      if (req.path.startsWith("/api") || req.path.startsWith("/media")) return next();
+      consoleStatic(req, res, () => res.sendFile(path.join(consoleDir, "index.html")));
+    });
+    logger.info({ consoleHost }, "serving platform console at admin host root");
+  }
+
   // Single-origin: when client/dist exists, serve the built PWA alongside /api.
+  // Skipped on the admin console host so the tenant app never renders there.
   const clientDist = path.resolve(__dirname, "../client/dist");
   if (fs.existsSync(path.join(clientDist, "index.html"))) {
-    app.use(express.static(clientDist, { index: false, maxAge: "1h" }));
+    const clientStatic = express.static(clientDist, { index: false, maxAge: "1h" });
+    app.use((req, res, next) => (onConsoleHost(req) ? next() : clientStatic(req, res, next)));
     app.get("*", (req, res, next) => {
+      if (onConsoleHost(req)) return next();
       if (req.path.startsWith("/api") || req.path.startsWith("/media")) return next();
       res.sendFile(path.join(clientDist, "index.html"));
     });

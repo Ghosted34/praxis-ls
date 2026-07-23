@@ -40,6 +40,11 @@ const Schema = z.object({
   LOG_LEVEL: z.string().default("info"),
   APP_NAME: z.string().default("praxis-ls-api"),
   CORS_ORIGINS: z.string().default(""),
+  // Dedicated host for the Praxis-side Platform Console (e.g. admin.praxisls.com).
+  // The console static app is served ONLY when the request Host matches this, at
+  // the root of that host; tenant hosts never serve it. Empty (default) = the
+  // console is not served by the API at all (use its Vite dev server locally).
+  PLATFORM_CONSOLE_HOST: z.string().default(""),
 
   DB_HOST: z.string().default(urlParts.host || "localhost"),
   DB_PORT: int(urlParts.port || 5432),

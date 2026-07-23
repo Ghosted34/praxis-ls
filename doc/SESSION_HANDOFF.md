@@ -3,7 +3,35 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-22 (session 12). **Session 12 = operations 360° modal full-match (BE+FE)** —
+_Last updated: 2026-07-23 (session 13). **Session 13 = Platform Console (Praxis-side admin UI) built from
+zero, + Support & Feedback shipped end-to-end.** The `/api/platform/*` backend (tenant provision / suspend /
+resume / go-live / migrate / capacity / sandbox-interval + wipe / per-tenant feature toggles / plans /
+catalogue) had a full BE and **no frontend** — that was the "platform console UI (proposal pending)" gap.
+Built a **standalone React 18 + Vite + TS app** in `platform-console/` (its own toolchain like `client/`,
+HashRouter, typed `/api/platform` client with Bearer + token store, distinct dark "ops" theme): **Overview**
+(tenant counts by status/plan + recent activity), **Tenants** (+ provision modal), **Tenant detail** (go-live/
+suspend/resume/migrate/sandbox-wipe, capacity + sandbox-interval setters, DB/subdomains, **feature toggles**
+with plan/override/default source + clear-override, **per-tenant audit**), **Plans**, **Catalogue**,
+**Audit**, **Support**. **Host-gated serving (the key rule):** `server.js` serves `platform-console/dist`
+**only** when `Host === PLATFORM_CONSOLE_HOST` (new env, e.g. `admin.praxisls.com`), at that host's **root**;
+tenant hosts never serve it, the admin host never serves the tenant SPA, **there is no `/console` path**
+(so `tenant.example.com/console` cannot reach it). New Docker **`consolebuild`** stage → copies dist into
+runtime; `.env.example` + **DEPLOYMENT.md §5b** updated (wildcard DNS already routes `admin.*`, just set the
+env). New read-only BE **`GET /api/platform/audit`** (actor+tenant names, `?tenant`/`?limit`) powers the
+Audit page + detail activity. **Support & Feedback (PRD §11.2) — both halves + the loop**, over the
+pre-existing central **`platform.support_ticket`** (no cross-tenant fan-out): tenant BE
+**`src/modules/dashboard/support/`** (ungated, `authMiddleware` — POST/GET `/tickets`, `GET /tickets/:id`,
+`POST /tickets/:id/csat` [CSAT only on SHIPPED/DECLINED], scoped to `req.tenant.tenant_id`, writes the
+platform DB); platform BE **`services/platform/support.service.js`** + `GET/PATCH /api/platform/support/
+tickets` (aggregate across tenants + `?status/kind/tenant`, status transition audited `support.status_changed`);
+console **Support** = live triage board (lanes / filters / per-ticket detail + transitions); tenant client
+**`/support`** page (`client/src/features/support/support-page.tsx`, nav under Overview) to raise/track/rate.
+**Verified: console `tsc -b` + `vite build` clean (~203 kB / 64 kB gz); full client `tsc -b --force` clean;
+every touched BE file `node --check` clean.** ⚠️ **NOT run against a live API** — the usual owed: Windows
+`npm run lint` / `npm test` / `npm run build --prefix client`, `npm install` in `platform-console/`, set
+`PLATFORM_CONSOLE_HOST`, create a Root Admin (`node scripts/platform/create-admin.js`), and a click-through
+(raise a ticket as a tenant → see it on the console board → move status → confirm it reflects back). Detail:
+the session-13 log below. Prior: **Session 12 = operations 360° modal full-match (BE+FE)** —
 the session-11 "owed" item. `repo/service.overview()` now return the Money breakdown (billed
 service HT / débours / TVA off locked FINAL invoices, planned service/débours split, actual,
 `dossier_margin` + `margin_percent` named to ride the existing `dossier.margin` field-mask, budget
@@ -296,6 +324,68 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-23 (session 13: Platform Console built + Support & Feedback end-to-end)
+
+Two things: (1) built the **Platform Console** — the Praxis-side admin UI over `/api/platform/*` that had
+never had a frontend; (2) shipped **Support & Feedback** (PRD §11.2) end-to-end. **Verified in-sandbox this
+time:** console `tsc -b` + `vite build` clean, full client `tsc -b --force` clean, all touched BE files
+`node --check` clean. **Not run against a live API** — Windows validators + a click-through still owed.
+
+**1. Platform Console — new standalone app `platform-console/`.** Chosen with the user: a *separate*
+React 18 + Vite 5 + TS app (its own toolchain, `npm install` not `ci` — same Windows-lockfile caveat as
+`client/`), **not** folded into the tenant `client/` (different auth, must never touch tenant data). No
+Tailwind — plain CSS with a distinct dark "ops" palette (brand orange/blue accents) so it's unmistakably
+the Praxis side. HashRouter (no server-side SPA fallback needed). Structure: `src/lib/` (`api.ts` typed
+`/api/platform` client + `localStorage` token store + `ApiError` w/ 401→reauth; `types.ts`; `format.ts`;
+`useAsync.ts` load/reload hook), `src/components/` (`ui.tsx` Button/Field/Pill/Card/Modal/ConfirmModal/
+Loading/Empty, `Shell.tsx` topbar+nav, `Toast.tsx` context), `src/features/` (Login, Overview, Tenants,
+TenantDetail, Plans, Catalogue, Audit, Support). Covers **everything the BE already supported** plus the
+two new BE bits below. First login needs a Root Admin (`scripts/platform/create-admin.js`); platform-tier
+2FA still returns 501 (unchanged).
+
+**2. Host-gated serving — the isolation rule.** The console is served by the **api container itself**
+(baked in via a new Docker **`consolebuild`** stage → `COPY --from=consolebuild … ./platform-console/dist`),
+but `src/server.js` serves it **only when `req.hostname === config.PLATFORM_CONSOLE_HOST`** (new env,
+default empty), at that host's **root**, and **skips the tenant SPA on that host**; on every tenant host the
+console middleware is skipped. Net: `admin.example.com` → console; `tenant.example.com` → tenant app;
+**no `/console` path exists** so a tenant host can't reach the console at all. `.env.example` +
+`DEPLOYMENT.md §5b` document it (the existing `*.domain` nginx wildcard already routes `admin.*` to the api
+with Host passthrough, so no new nginx block is required — just set the env). CORS: admin is a subdomain of
+`APP_BASE_DOMAIN`, already auto-allowed; a fully-separate host is a `CORS_ORIGINS` entry.
+
+**3. New BE `GET /api/platform/audit`** (read-only). `tenants.service.recentAudit({slug,limit})` reads
+`platform.platform_audit` LEFT-joined to `platform_user` (actor name/email) + `tenant` (slug/name),
+optional `?tenant=<slug>` scope, `?limit` capped 1–500. Wired through the platform controller/routes
+(before `/tenants/:slug`, distinct path). Powers the console **Audit** page and the per-tenant activity card
+on Tenant detail. No schema change.
+
+**4. Support & Feedback (PRD §11.2) — both halves + tenant FE.** The table `platform.support_ticket`
+**already existed** in `0030_platform_ops.sql` (central, keyed by `tenant_id`) — so tickets live in the
+platform DB and the console triages across all tenants **with no cross-tenant fan-out**, and **no migration
+was needed**.
+- **Tenant BE — new `src/modules/dashboard/support/`** (auto-mounts at `/api/tenant/support`, **ungated**
+  `feature:null` — reaching Praxis for help must never be switchable off; `authMiddleware`). `POST /tickets`
+  (kind SUPPORT|BUG|FEATURE, title, body, context), `GET /tickets` (this tenant only), `GET /tickets/:id`,
+  `POST /tickets/:id/csat` (1–5, **only on SHIPPED/DECLINED**). Every query scoped to `req.tenant.tenant_id`,
+  stamped with `req.user.email`; writes the platform DB via `services/platform/db` (the deliberate
+  cross-boundary write — the store is platform-side by design).
+- **Platform BE — new `services/platform/support.service.js`** + `GET /api/platform/support/tickets`
+  (aggregate across tenants, joined to tenant names, `?status/kind/tenant` filters), `GET /tickets/:id`,
+  `PATCH /tickets/:id` status transition (NEW→TRIAGED→IN_PROGRESS→SHIPPED/DECLINED, validated, **audited
+  `support.status_changed`** into `platform_audit`). New `ticketStatus` zod schema in the platform validator.
+- **Console FE** — the **Support** tab is a live triage board: five status lanes with counts, kind/tenant
+  filters, per-ticket detail modal (body + context JSON + requester) with status-transition buttons.
+- **Tenant FE — `client/src/features/support/support-page.tsx`** (route `/support` in `app.tsx`, nav under
+  Overview in `app-shell.tsx`): KPIs, "Raise a ticket" modal (kind/title/body), tickets `DataList` with
+  kind/status pills, and a 1–5 CSAT picker on resolved tickets. Built on the client's real primitives
+  (`tenant()`/`useList`/`PageHeader`/`DataList`/`Modal`/`Field`/`Select`/`Pill`/`KpiRow`).
+
+**5. Owed / next.** Windows `npm run lint` + `npm test` + `npm run build --prefix client`; `npm install` in
+`platform-console/`; set `PLATFORM_CONSOLE_HOST` and redeploy; create a Root Admin; live click-through of
+both the console and the tenant→console support loop. No new tenant migrations (support table pre-existed;
+audit endpoint is read-only). The tenant support page has **no RBAC gate beyond auth** — if "visible to
+admins only" is wanted later, add a permission key (there's no support permission today).
 
 ## Session log — 2026-07-22 (session 11: verification, sandbox tooling, FE CRUD, real-time comms, portal auth, FE polish)
 

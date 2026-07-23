@@ -4,7 +4,9 @@ Paste-in context for a fresh session, plus a running record of the FE reskin wor
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
 _Last updated: 2026-07-23 (session 13). **Session 13 = Platform Console (Praxis-side admin UI) built from
-zero, + Support & Feedback shipped end-to-end.** The `/api/platform/*` backend (tenant provision / suspend /
+zero, + Support & Feedback shipped end-to-end.** (Post-session: fixed CI `docker-build` — a malformed
+`fsevents` entry in `platform-console/package-lock.json` broke the `consolebuild` stage on Linux; see the
+session-13 log item 6.) The `/api/platform/*` backend (tenant provision / suspend /
 resume / go-live / migrate / capacity / sandbox-interval + wipe / per-tenant feature toggles / plans /
 catalogue) had a full BE and **no frontend** — that was the "platform console UI (proposal pending)" gap.
 Built a **standalone React 18 + Vite + TS app** in `platform-console/` (its own toolchain like `client/`,
@@ -386,6 +388,17 @@ was needed**.
 both the console and the tenant→console support loop. No new tenant migrations (support table pre-existed;
 audit endpoint is read-only). The tenant support page has **no RBAC gate beyond auth** — if "visible to
 admins only" is wanted later, add a permission key (there's no support permission today).
+
+**6. CI `docker-build` fix (post-session).** GitHub CI's `docker-build` job failed in the new
+**`consolebuild`** stage: `npm install --prefix platform-console` threw `npm error Invalid Version:` on
+the Linux runner. Root cause: `platform-console/package-lock.json` carried a **malformed `fsevents` entry**
+(`node_modules/vite/node_modules/fsevents` had only `{dev, optional}` — no `version`/`resolved`/`integrity`/
+`os`/`engines`), a Windows-npm lockfile artifact for that macOS-only optional dep. On Linux, npm's dedup
+pass calls `semver.gte` on the empty version and throws, killing the stage (never hit on Windows/macOS
+where the entry is skipped or complete). **Fix:** completed that entry to a full record matching the valid
+sibling under `rollup` (`version 2.3.3` + resolved/integrity/os `["darwin"]`/engines). Verified: clean
+`npm install` reproduces green in a Linux sandbox; the root and `client/` lockfiles were checked and are
+clean (no other missing-version entries). One-line lockfile change; nothing else touched.
 
 ## Session log — 2026-07-22 (session 11: verification, sandbox tooling, FE CRUD, real-time comms, portal auth, FE polish)
 

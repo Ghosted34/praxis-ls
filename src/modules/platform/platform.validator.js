@@ -25,6 +25,9 @@ const schemas = {
   feature: z.object({ state: onoff }),
   capacity: z.object({ tier: z.enum(["S", "M", "L", "XL"]) }),
   sandbox: z.object({ days: z.number().int().positive().max(365) }),
+  ticketStatus: z.object({
+    status: z.enum(["NEW", "TRIAGED", "IN_PROGRESS", "SHIPPED", "DECLINED"]),
+  }),
 };
 
 const validate = (schemaKey) => (req, _res, next) => {

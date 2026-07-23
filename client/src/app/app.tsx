@@ -45,6 +45,7 @@ import { CostingHub } from "@/features/costing/hub";
 import { ProcurementHub } from "@/features/procurement/hub";
 import { AiControlHub } from "@/features/ai-control/hub";
 import { GodModePage } from "@/features/godmode/godmode-page";
+import { SupportPage } from "@/features/support/support-page";
 import { CommsHub } from "@/features/comms/hub";
 import { BootGate } from "@/app/boot-gate";
 
@@ -96,6 +97,7 @@ export function App() {
         {/* Overview */}
         <Route path="workspace" element={<WorkspacePage />} />
         <Route path="help" element={<HelpPage />} />
+        <Route path="support" element={<SupportPage />} />
         <Route path="godmode" element={<GodModePage />} />
         {/* AI Control — governance admin hub */}
         <Route path="ai-control" element={<AiControlHub />} />

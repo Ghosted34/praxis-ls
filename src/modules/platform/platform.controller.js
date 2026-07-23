@@ -6,6 +6,7 @@
 const tenants = require("../../services/platform/tenants.service");
 const provisioning = require("../../services/platform/provisioning.service");
 const platformAuthService = require("../../services/platform/auth.service");
+const support = require("../../services/platform/support.service");
 const { asyncHandler } = require("../../utils/errors");
 
 const actor = (req) =>
@@ -31,6 +32,11 @@ const listPlans = asyncHandler(async (_req, res) =>
 
 const list = asyncHandler(async (_req, res) =>
   res.json({ data: await tenants.list() }),
+);
+const audit = asyncHandler(async (req, res) =>
+  res.json({
+    data: await tenants.recentAudit({ slug: req.query.tenant, limit: req.query.limit }),
+  }),
 );
 const get = asyncHandler(async (req, res) =>
   res.json({ data: await tenants.get(req.params.slug) }),
@@ -98,12 +104,30 @@ const clearFeature = asyncHandler(async (req, res) =>
   }),
 );
 
+const supportList = asyncHandler(async (req, res) =>
+  res.json({
+    data: await support.list({
+      status: req.query.status,
+      kind: req.query.kind,
+      tenant: req.query.tenant,
+      limit: req.query.limit,
+    }),
+  }),
+);
+const supportGet = asyncHandler(async (req, res) =>
+  res.json({ data: await support.get(req.params.id) }),
+);
+const supportSetStatus = asyncHandler(async (req, res) =>
+  res.json({ data: await support.setStatus(req.params.id, req.body.status, actor(req)) }),
+);
+
 module.exports = {
   login,
   listModules,
   listFeatures,
   listPlans,
   list,
+  audit,
   get,
   provision,
   suspend,
@@ -116,4 +140,7 @@ module.exports = {
   features,
   setFeature,
   clearFeature,
+  supportList,
+  supportGet,
+  supportSetStatus,
 };

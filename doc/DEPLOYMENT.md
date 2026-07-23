@@ -146,6 +146,66 @@ nginx -t && systemctl reload nginx
 Then open `https://smartls.praxisls.com` → the landing/login page (the SPA is
 served by the api container itself; there is no separate frontend server).
 
+### 5b. Platform console (Praxis-side admin UI)
+
+The **Platform Console** (`platform-console/` — a standalone React/Vite app for
+Root Admins) is built into the image (`consolebuild` stage) and served by the api
+container **only on a dedicated admin host**, at that host's root. It talks solely
+to `/api/platform`, which is **not** tenant-scoped (mounted outside the Host
+resolver).
+
+**Host-gated — this is the key rule.** The console is served **only** when the
+request `Host` equals **`PLATFORM_CONSOLE_HOST`** (set it in `.env`, e.g.
+`PLATFORM_CONSOLE_HOST=admin.praxisls.com`). On that host the tenant SPA is *not*
+served; on every tenant host the console is *not* served. So
+`smartls.praxisls.com/console` (or any tenant path) can **never** reach it — there
+is no `/console` route at all. If `PLATFORM_CONSOLE_HOST` is empty, the console
+isn't served by the api at all (use its Vite dev server locally — see the README).
+
+**DNS:** point `admin` at the same A record as the wildcard. The existing wildcard
+server block (`*.praxisls.com`) already proxies it to the api with the `Host`
+header passed through, so **no new nginx block is required** — the host gate does
+the rest. Just set the env var and redeploy:
+
+```bash
+# in .env
+PLATFORM_CONSOLE_HOST=admin.praxisls.com
+```
+
+Optional hardening — a dedicated server block that exposes *only* the platform
+API + console on the admin host (belt-and-braces; the app already refuses tenant
+data there):
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name admin.praxisls.com;
+
+    ssl_certificate     /etc/letsencrypt/live/praxisls.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/praxisls.com/privkey.pem;
+
+    location /              { proxy_pass http://praxis_api; include /etc/nginx/snippets/praxis-proxy.conf; }
+    location /api/platform/ { proxy_pass http://praxis_api; include /etc/nginx/snippets/praxis-proxy.conf; }
+    location /api/health    { proxy_pass http://praxis_api; include /etc/nginx/snippets/praxis-proxy.conf; }
+    # Deliberately no /api/tenant — tenant modules are unreachable from admin.
+}
+```
+
+`praxis-proxy.conf` = the same `proxy_set_header` lines (incl. the **`Host`
+passthrough**, which the host gate depends on, and the websocket upgrade) as the
+main block; factor them into a snippet or paste inline.
+
+**CORS:** the console uses a Bearer token (no cookies) and calls the API
+**same-origin** on the admin host, so nothing is needed. Admin is a subdomain of
+`APP_BASE_DOMAIN`, which is auto-allowed anyway. If a colleague later hosts the
+console on a *different* domain that doesn't proxy `/api/platform`, add that origin
+to the `CORS_ORIGINS` env var (comma-separated).
+
+**First login:** create a Root Admin with `node scripts/platform/create-admin.js`
+(the console can't bootstrap the first platform user). Leave TOTP unset — the
+platform-tier 2FA verify step isn't wired yet (the API returns 501 if a secret
+is present).
+
 ## 6. Updating a running deployment
 
 **Automatic (CI/CD):** every push to `main` runs CI (lint / tests / image

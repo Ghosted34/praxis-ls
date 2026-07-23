@@ -25,6 +25,8 @@ router.get("/catalogue/modules", c.listModules);
 router.get("/catalogue/features", c.listFeatures);
 router.get("/plans", c.listPlans);
 
+router.get("/audit", c.audit);
+
 router.get("/tenants", c.list);
 router.post("/tenants", validate("provision"), c.provision);
 router.get("/tenants/:slug", c.get);
@@ -43,5 +45,10 @@ router.patch(
   c.setFeature,
 );
 router.delete("/tenants/:slug/features/:featureKey", c.clearFeature);
+
+// Support & Feedback triage — aggregate across all tenants (PRD §11.2).
+router.get("/support/tickets", c.supportList);
+router.get("/support/tickets/:id", c.supportGet);
+router.patch("/support/tickets/:id", validate("ticketStatus"), c.supportSetStatus);
 
 module.exports = router;

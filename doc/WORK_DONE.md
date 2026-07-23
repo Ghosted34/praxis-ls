@@ -8,6 +8,48 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-23 — Session 13: Platform Console (Praxis admin UI) built + Support & Feedback end-to-end
+
+**Context.** The `/api/platform/*` backend (provision/suspend/resume/go-live/migrate/capacity/sandbox/
+feature-toggles/plans/catalogue) had shipped long ago with **no frontend** — the standing "platform console
+UI (proposal pending)" gap. Also closed out **Support & Feedback** (PRD §11.2), which had been *held until
+the console existed* because its triage half lives there.
+
+**Platform Console — new standalone app `platform-console/`.** A *separate* React 18 + Vite 5 + TS app
+(own toolchain, `npm install` not `ci`), deliberately not folded into the tenant `client/` (own platform
+auth; must never touch tenant data). Plain CSS, distinct dark "ops" theme; HashRouter; typed `/api/platform`
+client with Bearer + `localStorage` token store. Screens: **Overview** (tenant counts by status/plan +
+recent activity), **Tenants** + provision modal, **Tenant detail** (go-live/suspend/resume/migrate/
+sandbox-wipe, capacity + sandbox-interval setters, DB/subdomains, feature toggles w/ plan/override/default
+source + clear-override, per-tenant audit), **Plans**, **Catalogue**, **Audit**, **Support**. Verified
+`tsc -b` + `vite build` clean (~203 kB, 64 kB gz).
+
+**Host-gated serving.** `src/server.js` serves `platform-console/dist` **only** when
+`req.hostname === PLATFORM_CONSOLE_HOST` (new env, e.g. `admin.praxisls.com`), at that host's root, and does
+**not** serve the tenant SPA there; tenant hosts never serve the console and **there is no `/console` path**
+(so `tenant.example.com/console` can't reach it). New Docker `consolebuild` stage bakes the dist into the
+image. `.env.example` + `DEPLOYMENT.md §5b` document it — the existing `*.domain` nginx wildcard already
+routes `admin.*` to the api with Host passthrough, so no new nginx block is needed; just set the env.
+
+**New BE `GET /api/platform/audit`** (read-only): recent `platform_audit` rows with actor + tenant names,
+optional `?tenant=<slug>` + `?limit` (1–500). Powers the Audit page + per-tenant activity card.
+
+**Support & Feedback — both halves + the loop.** The central `platform.support_ticket` table already
+existed (in `0030_platform_ops.sql`), so tickets live platform-side and the console aggregates with **no
+cross-tenant fan-out** and **no migration**.
+- Tenant BE: new `src/modules/dashboard/support/` (auto-mounts `/api/tenant/support`, **ungated**, authed) —
+  create/list/detail + CSAT (only on resolved tickets), scoped to `req.tenant.tenant_id`, stamped with
+  `req.user.email`, writing the platform DB via `services/platform/db`.
+- Platform BE: new `services/platform/support.service.js` + `GET /api/platform/support/tickets` (aggregate +
+  `?status/kind/tenant`), `GET /tickets/:id`, `PATCH /tickets/:id` status transition (audited
+  `support.status_changed`).
+- Console FE: **Support** = live triage board (status lanes, filters, per-ticket detail + transitions).
+- Tenant FE: `client/src/features/support/support-page.tsx` (route `/support`, nav under Overview) — raise a
+  ticket, track status, rate resolved tickets. Full client `tsc -b --force` clean.
+
+**Not run against a live API** — Windows `npm run lint`/`test`/`build --prefix client`, `npm install` in
+`platform-console/`, set `PLATFORM_CONSOLE_HOST`, create a Root Admin, and a click-through are owed.
+
 ## 2026-07-19 — Session 9: Security CRUD + Security/Vault hubs, Control Tower drill-downs, Governance, reconciliation, merge fields
 
 **Context.** The FS colleague reported that "modules under fleet, security, warehouse, vault, vehicle and

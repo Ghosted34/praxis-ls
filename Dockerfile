@@ -36,10 +36,20 @@ COPY . .
 RUN npm install --prefix client --no-audit --no-fund \
  && npm run build --prefix client
 
+# ---- Platform console build ----------------------------------------------
+# The Praxis-side admin console (platform-console/) is its own Vite app; server.js
+# serves its dist ONLY on the admin host (PLATFORM_CONSOLE_HOST). Same Windows-
+# lockfile caveat → npm install (vite/rollup need linux-musl binaries).
+FROM base AS consolebuild
+COPY platform-console/ ./platform-console/
+RUN npm install --prefix platform-console --no-audit --no-fund \
+ && npm run build --prefix platform-console
+
 FROM base AS runtime
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 COPY --from=clientbuild /app/client/dist ./client/dist
+COPY --from=consolebuild /app/platform-console/dist ./platform-console/dist
 ENV NODE_ENV=production
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--"]

@@ -1,0 +1,26 @@
+{
+  "name": "praxis-platform-console",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Praxis-side Platform Console — React 18 + Vite + TS. Root-Admin UI over /api/platform (tenant provisioning, features, plans, audit). Standalone app; served only on the admin host.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.0",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.2",
+    "typescript": "^5.6.2",
+    "vite": "^5.4.8"
+  }
+}

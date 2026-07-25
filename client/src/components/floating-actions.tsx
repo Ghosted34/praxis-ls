@@ -16,6 +16,7 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { useAiEnabled } from "@/components/ai-actions";
+import { ClockPunch } from "@/components/clock-punch";
 import { cn } from "@/lib/cn";
 
 type IP = React.SVGProps<SVGSVGElement>;
@@ -23,7 +24,6 @@ const s = (p: IP) => ({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColo
 const AiIcon = (p: IP) => (<svg {...s(p)}><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>);
 const ChatIcon = (p: IP) => (<svg {...s(p)}><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" /></svg>);
 const HelpIcon = (p: IP) => (<svg {...s(p)}><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 013.5-1.8c1 .5 1.5 1.6 1 2.6-.4.9-1.5 1.2-2 2-.2.4-.2.8-.2 1.2" /><circle cx="12" cy="17" r="0.6" fill="currentColor" /></svg>);
-const ClockIcon = (p: IP) => (<svg {...s(p)}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>);
 const BurstIcon = (p: IP) => (<svg {...s(p)} width={24} height={24}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" /><circle cx="12" cy="12" r="2.5" /></svg>);
 
 export function FloatingActions({ badge = 0 }: { badge?: number }) {
@@ -83,12 +83,6 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   const openNow = () => { if (draggedRef.current) return; if (closeTimer.current) clearTimeout(closeTimer.current); setOpen(true); };
   const closeSoon = () => { if (closeTimer.current) clearTimeout(closeTimer.current); closeTimer.current = setTimeout(() => setOpen(false), 220); };
 
-  // Live clock shown at the top of the expanded cluster (replaces the Lovable
-  // mock's standalone floating clock).
-  const [now, setNow] = React.useState(() => new Date());
-  React.useEffect(() => { const id = setInterval(() => setNow(new Date()), 15000); return () => clearInterval(id); }, []);
-  const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-
   React.useEffect(() => {
     function onDown(e: MouseEvent) {
       if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
@@ -117,14 +111,7 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   // place and it would drift away from the cursor.
   return createPortal(
     <div ref={ref} style={containerStyle} onMouseEnter={openNow} onMouseLeave={closeSoon} className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:bottom-6">
-      {open && (
-        <div className="flex items-center gap-2 animate-fade-in">
-          <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium tabular-nums text-foreground shadow-md">{timeStr}</span>
-          <div className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg" aria-label={`Current time ${timeStr}`}>
-            <ClockIcon />
-          </div>
-        </div>
-      )}
+      <ClockPunch />
       {open &&
         actions.map((a, i) => (
           <div key={a.key} className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>

@@ -10,6 +10,59 @@ const base = makeRepo({ table: "attendance_log", pk: "attendance_id", activeColu
 
 module.exports = {
   ...base,
+
+  // ── Self-service resolution ──
+  async employeeIdForUser(client, userId) {
+    const { rows } = await client.query("SELECT employee_id FROM app_user WHERE user_id = $1", [userId]);
+    return rows[0] ? rows[0].employee_id : null;
+  },
+  async entityForEmployee(client, employeeId) {
+    const { rows } = await client.query("SELECT entity_id FROM employee WHERE employee_id = $1", [employeeId]);
+    return rows[0] ? rows[0].entity_id : null;
+  },
+  async openForEmployee(client, employeeId) {
+    const { rows } = await client.query(
+      "SELECT * FROM attendance_log WHERE employee_id = $1 AND clock_out_at IS NULL ORDER BY clock_in_at DESC LIMIT 1",
+      [employeeId],
+    );
+    return rows[0] || null;
+  },
+
+  // ── Worksites (geofence centres) ──
+  activeSitesForEntity(client, entityId) {
+    return client
+      .query(
+        "SELECT * FROM work_site WHERE is_active = true AND (entity_id = $1 OR entity_id IS NULL) ORDER BY name",
+        [entityId],
+      )
+      .then((r) => r.rows);
+  },
+  listSites(client) {
+    return client.query("SELECT * FROM work_site ORDER BY is_active DESC, name").then((r) => r.rows);
+  },
+  getSite(client, id) {
+    return client.query("SELECT * FROM work_site WHERE work_site_id = $1", [id]).then((r) => r.rows[0] || null);
+  },
+  insertSite(client, data) {
+    const { entity_id = null, name, latitude, longitude, radius_m = 150, is_active = true } = data;
+    return client
+      .query(
+        "INSERT INTO work_site (entity_id, name, latitude, longitude, radius_m, is_active) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *",
+        [entity_id, name, latitude, longitude, radius_m, is_active],
+      )
+      .then((r) => r.rows[0]);
+  },
+  async updateSite(client, id, fields) {
+    const keys = Object.keys(fields);
+    if (!keys.length) return this.getSite(client, id);
+    const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
+    const { rows } = await client.query(
+      "UPDATE work_site SET " + set + ", updated_at = now() WHERE work_site_id = $1 RETURNING *",
+      [id, ...keys.map((k) => fields[k])],
+    );
+    return rows[0] || null;
+  },
+
   async list(client, q = {}) {
     const { limit, offset } = page(q);
     const params = [limit, offset];

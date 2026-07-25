@@ -47,28 +47,9 @@ export const EmployeesPage = () => (
   />
 );
 
-export const PayrollPage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Payroll"
-    description="Monthly payroll runs — open a run, then compute CNPS/IRPP/CAC/CFC/FNE, approve and post to the ledger."
-    endpoint="/payroll"
-    idKey="payroll_run_id"
-    createLabel="Open payroll run"
-    canDelete={false}
-    canEdit={false}
-    columns={[
-      { key: "period_code", label: "Period" },
-      { key: "status", label: "Status" },
-      { key: "entity_id", label: "Entity" },
-      { key: "created_at", label: "Created" },
-    ]}
-    fields={[
-      entityPicker(true),
-      { name: "period_code", label: "Period (YYYY-MM)", required: true, placeholder: "2026-06" },
-    ]}
-  />
-);
+// Payroll is now a run workstation (compute → approve → post → disburse), not a
+// CRUD table — see ./payroll.
+export { PayrollPage } from "./payroll";
 
 export const VacanciesPage = () => (
   <CrudResource
@@ -149,54 +130,11 @@ export const AppraisalsPage = () => (
   />
 );
 
-export const AttendancePage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Attendance"
-    description="Clock-in / clock-out logs with optional GPS."
-    endpoint="/attendance"
-    idKey="attendance_id"
-    columns={[
-      { key: "employee_id", label: "Employee" },
-      { key: "clock_in_at", label: "Clock in" },
-      { key: "clock_out_at", label: "Clock out" },
-    ]}
-    fields={[
-      employeePicker("employee_id", "Employee"),
-      { name: "clock_in_at", label: "Clock in", type: "datetime" },
-      { name: "clock_out_at", label: "Clock out", type: "datetime" },
-    ]}
-  />
-);
+// Attendance is now a geofenced Time Clock, not a CRUD table — see ./attendance.
+export { AttendancePage } from "./attendance";
 
-export const LeavePage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Leave & allowances"
-    description="Leave, salary-advance and mission requests."
-    endpoint="/leave"
-    idKey="leave_request_id"
-    columns={[
-      { key: "employee_id", label: "Employee" },
-      { key: "kind", label: "Kind" },
-      { key: "starts_on", label: "From" },
-      { key: "ends_on", label: "To" },
-      { key: "status", label: "Status" },
-    ]}
-    fields={[
-      employeePicker("employee_id", "Employee"),
-      { name: "kind", label: "Kind", type: "select", options: [
-        { value: "leave", label: "Leave" }, { value: "salary_advance", label: "Salary advance" }, { value: "mission", label: "Mission" },
-      ] },
-      { name: "starts_on", label: "From", type: "date" },
-      { name: "ends_on", label: "To", type: "date" },
-      { name: "amount", label: "Amount (salary advance, XAF)", type: "number" },
-      { name: "status", label: "Status", type: "select", options: [
-        { value: "REQUESTED", label: "Requested" }, { value: "APPROVED", label: "Approved" }, { value: "REJECTED", label: "Rejected" },
-      ] },
-    ]}
-  />
-);
+// Leave is now an approve/reject request queue, not a CRUD table — see ./leave.
+export { LeavePage } from "./leave";
 
 export const SopsPage = () => (
   <CrudResource

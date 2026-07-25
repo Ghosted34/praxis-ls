@@ -4,5 +4,8 @@ module.exports = {
   CREATED: "attendance.created",
   UPDATED: "attendance.updated",
   ARCHIVED: "attendance.archived",
+  CLOCKED_IN: "attendance.clocked_in",
   CLOCKED_OUT: "attendance.clocked_out",
+  OFFSITE: "attendance.offsite_clock_in",
+  SITE_CHANGED: "work_site.changed",
 };

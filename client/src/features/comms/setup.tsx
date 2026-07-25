@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/mail-api";
+import * as scapi from "@/lib/smartcomm-api";
 
 const PURPOSES: { key: string; label: string; blurb: string }[] = [
   { key: "BILLING", label: "Billing", blurb: "Invoices, receipts, statements" },
@@ -101,6 +102,88 @@ function SecretCard({ title, description, fields, onSave }: { title: string; des
   );
 }
 
+/* Live test result line (shared by the WhatsApp + SMTP cards). */
+function TestLine({ result }: { result: scapi.TestResult | null }) {
+  if (!result) return null;
+  return result.ok
+    ? <span className="micro text-[rgb(var(--ok))]">✓ Connected{typeof result.verified_name === "string" ? ` · ${result.verified_name}` : ""}{typeof result.smtp_host === "string" ? ` · ${result.smtp_host}` : ""}</span>
+    : <span className="micro text-[rgb(var(--bad))]">✗ {String(result.error || "Failed").slice(0, 80)}</span>;
+}
+
+/* WhatsApp + SMTP provider config — encrypted token/pass + a live connection
+ * test. Secrets are write-only (blank keeps the current value). */
+function ChannelConfig() {
+  const cfg = useResource(() => scapi.getCommsConfig(), []);
+  const wa = cfg.data?.whatsapp;
+  const em = cfg.data?.email;
+
+  // WhatsApp
+  const [waF, setWaF] = React.useState({ phone_id: "", token: "" });
+  const [waBusy, setWaBusy] = React.useState(false);
+  const [waTest, setWaTest] = React.useState<scapi.TestResult | null>(null);
+  const [waErr, setWaErr] = React.useState<string | null>(null);
+  React.useEffect(() => { if (wa) setWaF((s) => ({ ...s, phone_id: wa.phone_id || "" })); }, [wa]);
+  async function saveWa(e: React.FormEvent) {
+    e.preventDefault(); setWaBusy(true); setWaErr(null); setWaTest(null);
+    try { await scapi.setWhatsappConfig({ phone_id: waF.phone_id || undefined, token: waF.token || undefined }); setWaF((s) => ({ ...s, token: "" })); cfg.reload(); }
+    catch (err) { setWaErr(errMsg(err)); } finally { setWaBusy(false); }
+  }
+  async function testWa() { setWaTest(null); setWaErr(null); try { setWaTest(await scapi.testWhatsapp()); } catch (err) { setWaErr(errMsg(err)); } }
+
+  // SMTP
+  const [emF, setEmF] = React.useState({ smtp_host: "", smtp_port: "", smtp_user: "", smtp_pass: "" });
+  const [emBusy, setEmBusy] = React.useState(false);
+  const [emTest, setEmTest] = React.useState<scapi.TestResult | null>(null);
+  const [emErr, setEmErr] = React.useState<string | null>(null);
+  React.useEffect(() => { if (em) setEmF((s) => ({ ...s, smtp_host: em.smtp_host || "", smtp_port: em.smtp_port ? String(em.smtp_port) : "", smtp_user: em.smtp_user || "" })); }, [em]);
+  async function saveEm(e: React.FormEvent) {
+    e.preventDefault(); setEmBusy(true); setEmErr(null); setEmTest(null);
+    try { await scapi.setEmailConfig({ smtp_host: emF.smtp_host || undefined, smtp_port: emF.smtp_port === "" ? undefined : Number(emF.smtp_port), smtp_user: emF.smtp_user || undefined, smtp_pass: emF.smtp_pass || undefined }); setEmF((s) => ({ ...s, smtp_pass: "" })); cfg.reload(); }
+    catch (err) { setEmErr(errMsg(err)); } finally { setEmBusy(false); }
+  }
+  async function testEm() { setEmTest(null); setEmErr(null); try { setEmTest(await scapi.testEmail()); } catch (err) { setEmErr(errMsg(err)); } }
+
+  return (
+    <>
+      <form onSubmit={saveWa} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div><h3 className="font-display text-base font-semibold">WhatsApp Business API</h3><p className="micro">Meta Cloud API — token encrypted, phone-number ID, live check.</p></div>
+          <Pill tone={wa?.token_set ? "ok" : "warn"}>{wa?.token_set ? `Token set${wa.token_last4 ? ` · …${wa.token_last4}` : ""}` : "Not set"}</Pill>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Phone number ID"><Input value={waF.phone_id} onChange={(e) => setWaF((s) => ({ ...s, phone_id: e.target.value }))} placeholder="1234567890" /></Field>
+          <Field label="Access token" hint={wa?.token_set ? "Leave blank to keep current." : "Cloud API permanent token."}><Input type="password" value={waF.token} onChange={(e) => setWaF((s) => ({ ...s, token: e.target.value }))} placeholder="••••••" /></Field>
+        </div>
+        {waErr && <div className="mt-2"><ErrorState message={waErr} /></div>}
+        <div className="mt-3 flex items-center justify-end gap-3">
+          <TestLine result={waTest} />
+          <Button type="button" size="sm" variant="outline" onClick={testWa} disabled={waBusy}>Test</Button>
+          <Button type="submit" size="sm" loading={waBusy} disabled={waBusy}>Save</Button>
+        </div>
+      </form>
+
+      <form onSubmit={saveEm} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="mb-3 flex items-center justify-between">
+          <div><h3 className="font-display text-base font-semibold">Shared SMTP login</h3><p className="micro">Fallback transport for senders without their own — password encrypted.</p></div>
+          <Pill tone={em?.pass_set ? "ok" : "warn"}>{em?.pass_set ? "Password set" : "Not set"}</Pill>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="SMTP host"><Input value={emF.smtp_host} onChange={(e) => setEmF((s) => ({ ...s, smtp_host: e.target.value }))} placeholder="smtp.provider.com" /></Field>
+          <Field label="SMTP port"><Input type="number" className="num" value={emF.smtp_port} onChange={(e) => setEmF((s) => ({ ...s, smtp_port: e.target.value }))} placeholder="587" /></Field>
+          <Field label="SMTP user"><Input value={emF.smtp_user} onChange={(e) => setEmF((s) => ({ ...s, smtp_user: e.target.value }))} placeholder="apikey / user" /></Field>
+          <Field label="SMTP password" hint={em?.pass_set ? "Leave blank to keep current." : undefined}><Input type="password" value={emF.smtp_pass} onChange={(e) => setEmF((s) => ({ ...s, smtp_pass: e.target.value }))} placeholder="••••••" /></Field>
+        </div>
+        {emErr && <div className="mt-2"><ErrorState message={emErr} /></div>}
+        <div className="mt-3 flex items-center justify-end gap-3">
+          <TestLine result={emTest} />
+          <Button type="button" size="sm" variant="outline" onClick={testEm} disabled={emBusy}>Test</Button>
+          <Button type="submit" size="sm" loading={emBusy} disabled={emBusy}>Save</Button>
+        </div>
+      </form>
+    </>
+  );
+}
+
 export function SetupPage() {
   const senders = useResource(() => api.listSenders(), []);
   const navigate = useNavigate();
@@ -132,18 +215,7 @@ export function SetupPage() {
 
       <h2 className="mb-2 mt-8 font-display text-lg font-semibold">Credentials &amp; channels</h2>
       <div className="grid gap-4 lg:grid-cols-2">
-        <SecretCard
-          title="Shared SMTP login"
-          description="Used by all section senders that don't set their own (write-only)."
-          fields={[{ key: "smtp_user", label: "SMTP user" }, { key: "smtp_pass", label: "SMTP password", type: "password" }]}
-          onSave={async (val) => { if (val.smtp_user) await api.putSetting("email", "smtp_user", val.smtp_user); if (val.smtp_pass) await api.putSetting("email", "smtp_pass", val.smtp_pass); }}
-        />
-        <SecretCard
-          title="WhatsApp Business API"
-          description="Cloud API token, phone-number ID and inbound webhook token."
-          fields={[{ key: "token", label: "Access token", type: "password" }, { key: "phone_id", label: "Phone number ID" }, { key: "webhook_secret", label: "Webhook verify token", type: "password" }]}
-          onSave={async (val) => { await api.putSetting("messaging", "whatsapp", val); }}
-        />
+        <ChannelConfig />
         <SecretCard
           title="Instagram / Meta"
           description="Instagram Graph API access token for DMs."

@@ -104,8 +104,21 @@ async function overview(client, id) {
     invoice: ip ? { doc_number: ip.doc_number, status: ip.status, issuer: person(ip.issuer_id, ip.issuer_name), validator: person(ip.validator_id, ip.validator_name), approver: person(ip.approver_id, ip.approver_name) } : null,
   };
 
+  // Lifecycle readiness (drives the 360° prompt + the dossier.milestones_completed /
+  // dossier.fully_collected signals). Derived from live state so the badge is robust
+  // even if a signal was missed.
+  const msTotal = Object.values(milestones).reduce((a, b) => a + b, 0);
+  const milestonesComplete = msTotal > 0 && (milestones.DONE || 0) === msTotal;
+  const fullyCollected = billed > 0 && Number(agg.outstanding.outstanding || 0) === 0;
+  const readiness = {
+    milestones_complete: milestonesComplete,
+    fully_collected: fullyCollected,
+    ready_to_complete: milestonesComplete && !["COMPLETED", "CANCELLED"].includes(dossier.status),
+  };
+
   return {
     dossier: { dossier_id: dossier.dossier_id, ref: dossier.ref, status: dossier.status, client_id: dossier.client_id, service_type_id: dossier.service_type_id },
+    readiness,
     costing: { count: agg.costing.count, planned_cost: plannedCost },
     costs: { actual_cost: actualCost, gl_entries: agg.actual.entries },
     invoicing: { count: agg.invoices.count, invoiced_ttc: Number(agg.invoices.invoiced_ttc || 0), billed_ttc: billed, outstanding: Number(agg.outstanding.outstanding || 0) },

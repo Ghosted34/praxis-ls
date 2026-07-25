@@ -106,6 +106,23 @@ async function withTenantConnection(meta, env, fn) {
   }
 }
 
+/**
+ * All LIVE tenants with an active database, as connection metas (same shape
+ * resolveByHost returns). Used by background fan-out schedulers (orchestration
+ * dispatch, aging, scheduled reports) to iterate tenants. Platform-pool read.
+ */
+async function listActiveTenants() {
+  const { rows } = await platform().query(
+    `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
+            td.db_host, td.db_port, td.db_name, td.app_role, td.live_schema, td.sandbox_schema, td.pool_max
+       FROM platform.tenant t
+       JOIN platform.tenant_database td ON td.tenant_id = t.tenant_id AND td.is_active
+      WHERE t.status = 'LIVE'
+      ORDER BY t.slug`,
+  );
+  return rows;
+}
+
 async function closeAll() {
   for (const p of pools.values()) await p.end();
   pools.clear();
@@ -120,5 +137,6 @@ module.exports = {
   invalidateHost,
   poolFor,
   withTenantConnection,
+  listActiveTenants,
   closeAll,
 };

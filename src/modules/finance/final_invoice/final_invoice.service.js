@@ -39,19 +39,48 @@ async function replaceLines(client, invoiceId, lines) {
 const econLinesFrom = (lineRows, dossierId) =>
   lineRows.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.line_ht), is_debours: l.is_debours, dossier_id: dossierId }));
 
-async function createDraft(client, opts) {
+/** Insert a DRAFT invoice. TX-AGNOSTIC: assumes the caller's transaction context
+ *  (so it can run inside a costing-approval tx OR standalone). */
+async function createDraftCore(client, opts) {
   const { entityId, clientId = null, dossierId = null, lines = [], actor = {} } = opts;
+  const invoice = await repo.insertInvoice(client, {
+    entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "FINAL",
+    status: "DRAFT", issued_by: actor.user_id || null,
+  });
+  if (lines.length) await replaceLines(client, invoice.invoice_id, lines);
+  await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(invoice.invoice_id), after: invoice });
+  return get(client, invoice.invoice_id);
+}
+
+async function createDraft(client, opts) {
   await client.query("BEGIN");
   try {
-    const invoice = await repo.insertInvoice(client, {
-      entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "FINAL",
-      status: "DRAFT", issued_by: actor.user_id || null,
-    });
-    if (lines.length) await replaceLines(client, invoice.invoice_id, lines);
-    await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(invoice.invoice_id), after: invoice });
+    const r = await createDraftCore(client, opts);
     await client.query("COMMIT");
-    return get(client, invoice.invoice_id);
+    return r;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * Idempotently open a DRAFT invoice shell for a dossier's approved costing.
+ * Shared by BOTH the synchronous costing-approval handoff (A7 #3) and the async
+ * orchestration backstop handler — so they can never diverge or double-create.
+ * TX-agnostic; skips if a FINAL invoice already exists for the dossier.
+ */
+async function ensureDraftForCosting(client, costingId) {
+  if (!costingId) return { skipped: "no costing id" };
+  const { rows } = await client.query(
+    "SELECT c.dossier_id, d.entity_id, d.client_id " +
+      "FROM costing c JOIN dossier d ON d.dossier_id = c.dossier_id WHERE c.costing_id = $1",
+    [costingId],
+  );
+  const r = rows[0];
+  if (!r || !r.dossier_id) return { skipped: "costing has no dossier" };
+  if (!r.entity_id) return { skipped: "dossier has no entity" };
+  const exists = await client.query("SELECT 1 FROM invoice WHERE dossier_id = $1 AND type = 'FINAL' LIMIT 1", [r.dossier_id]);
+  if (exists.rows.length) return { skipped: "final invoice already exists for dossier" };
+  const inv = await createDraftCore(client, { entityId: r.entity_id, clientId: r.client_id, dossierId: r.dossier_id, actor: { user_id: null } });
+  return { created: true, invoice_id: inv.invoice_id };
 }
 
 async function updateDraft(client, { invoiceId, patch = {}, lines = null, actor = {} }) {
@@ -168,4 +197,4 @@ async function previewTotals(client, { invoiceId, entryDate = null }) {
   return { totals: determined.totals, advance_open: advanceOpen, line_count: lineRows.length };
 }
 
-module.exports = { createDraft, updateDraft, submit, postApproved, previewTotals, list, get };
+module.exports = { createDraft, createDraftCore, ensureDraftForCosting, updateDraft, submit, postApproved, previewTotals, list, get };

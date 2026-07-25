@@ -103,6 +103,29 @@ async function notify({
   } catch {
     // push service may not be configured; skip silently
   }
+  // Fire WhatsApp for the user's registered number if they've OPTED IN to the
+  // WhatsApp channel (default OFF). Best-effort: not-configured / no number /
+  // send failure must never block the in-app notification.
+  try {
+    if (type) {
+      const waAllowed = await isChannelEnabled({
+        user_id,
+        notification_type: type,
+        channel: "whatsapp",
+        defaultEnabled: false,
+      });
+      if (waAllowed) {
+        const { rows: u } = await query("SELECT whatsapp_number FROM app_user WHERE user_id = $1", [user_id]);
+        const to = u[0] && u[0].whatsapp_number;
+        if (to) {
+          const whatsapp = require("./whatsapp.service");
+          await whatsapp.sendText({ query }, { to, body: body ? `${title} — ${body}` : title });
+        }
+      }
+    }
+  } catch {
+    // whatsapp not configured / no number / send failed — skip silently
+  }
   return rows[0];
 }
 
@@ -233,7 +256,7 @@ async function upsertPreference({
   return rows[0];
 }
 
-async function isChannelEnabled({ user_id, notification_type, channel }) {
+async function isChannelEnabled({ user_id, notification_type, channel, defaultEnabled = true }) {
   const col = CHANNEL_COLUMN[channel];
   if (!col) throw new Error(`Unknown notification channel: ${channel}`);
   const { rows } = await query(
@@ -241,7 +264,10 @@ async function isChannelEnabled({ user_id, notification_type, channel }) {
       WHERE user_id = $1 AND notification_type = $2`,
     [user_id, notification_type],
   );
-  return rows.length === 0 ? true : rows[0].enabled;
+  // No preference row → fall back to the channel default. In-app/push default ON;
+  // outbound WhatsApp is opt-in (default OFF) so we never message a number the
+  // user never asked us to use.
+  return rows.length === 0 ? defaultEnabled : rows[0].enabled;
 }
 
 module.exports = {

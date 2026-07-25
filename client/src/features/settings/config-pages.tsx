@@ -2,11 +2,12 @@
  *  - BankAccountsPage    → /treasury-accounts (+ /entities for the picker)
  *  - PaymentGatewaysPage → /payment-gateways (credentials write-only)
  *  - ScheduledReportsPage→ /reports/scheduled (+ /reports/catalogue)
- *  - ApiKeysPage         → /ai/governance/vendors (api_key write-only, test)
+ *  - ApiKeysPage         → /settings/integration_secret (add/rotate + test; AI keys live in AI Control)
  *  - PipelineStagesPage  → /opportunities/stages (read-only — no stage CRUD yet)
  *  - NumberingPage       → /numbering-schemes/:moduleKey (+ /catalogue/modules)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -709,48 +710,47 @@ export function ScheduledReportsPage() {
   );
 }
 
-/* ─────────────────────── API keys / AI vendors ─────────────────────── */
+/* ─────────────────────── API keys & integration secrets ─────────────────────── */
 
-function VendorForm({ open, onClose, onSaved, editing }: { open: boolean; onClose: () => void; onSaved: () => void; editing: Row | null }) {
-  const isEdit = !!editing;
-  const [vendor, setVendor] = React.useState("");
-  const [displayName, setDisplayName] = React.useState("");
-  const [endpoint, setEndpoint] = React.useState("");
-  const [defaultModel, setDefaultModel] = React.useState("");
-  const [currentModel, setCurrentModel] = React.useState("");
-  const [apiKey, setApiKey] = React.useState("");
-  const [active, setActive] = React.useState(true);
+/* Generic tenant integration secrets, wired to /settings/integration_secret
+ * (write-only; only last4 is ever returned). Domain-owned keys live on their own
+ * screens and are hidden here: FX → Currencies & FX, WhatsApp/SMTP → Comms →
+ * Setup, AI providers → AI Control → Vendors. */
+type Integration = { key: string; provider: string; keyName: string; label: string; hint: string };
+const KNOWN_INTEGRATIONS: Integration[] = [];
+// Secrets configured by a dedicated screen — never surfaced on this generic page.
+const DOMAIN_OWNED = new Set(["fx_exchangerate", "whatsapp_token", "email_smtp_pass"]);
+
+type KeyInit = { key?: string; label?: string; provider?: string; keyName?: string; locked?: boolean; configured?: boolean };
+
+function KeyForm({ open, onClose, onSaved, initial }: { open: boolean; onClose: () => void; onSaved: () => void; initial: KeyInit | null }) {
+  const locked = !!initial?.locked;
+  const configured = !!initial?.configured;
+  const [key, setKey] = React.useState("");
+  const [provider, setProvider] = React.useState("");
+  const [keyName, setKeyName] = React.useState("");
+  const [secret, setSecret] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!open) return;
-    setVendor(editing ? String(editing.vendor ?? "") : "");
-    setDisplayName(editing ? String(editing.display_name ?? "") : "");
-    setEndpoint(editing ? String(editing.endpoint_url ?? "") : "");
-    setDefaultModel(editing ? String(editing.default_model ?? "") : "");
-    setCurrentModel(editing ? String(editing.current_model ?? "") : "");
-    setApiKey("");
-    setActive(editing ? editing.is_active !== false : true);
+    setKey(initial?.key ?? "");
+    setProvider(initial?.provider ?? "");
+    setKeyName(initial?.keyName ?? "");
+    setSecret("");
     setError(null);
-  }, [open, editing]);
+  }, [open, initial]);
 
-  const canSubmit = !!vendor.trim() && !busy;
+  const canSubmit = !!key.trim() && !!provider.trim() && !!secret.trim() && !busy;
 
   async function submit() {
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/ai/governance/vendors/${encodeURIComponent(vendor.trim())}`, {
+      await tenant(`/settings/integration_secret/${encodeURIComponent(key.trim())}`, {
         method: "PUT",
-        body: {
-          api_key: apiKey.trim() || undefined,
-          display_name: displayName.trim() || undefined,
-          endpoint_url: endpoint.trim() || undefined,
-          default_model: defaultModel.trim() || undefined,
-          current_model: currentModel.trim() || undefined,
-          is_active: active,
-        },
+        body: { value: { provider: provider.trim(), key_name: keyName.trim() || undefined, secret: secret.trim() } },
       });
       onSaved();
       onClose();
@@ -761,46 +761,38 @@ function VendorForm({ open, onClose, onSaved, editing }: { open: boolean; onClos
     }
   }
 
+  const title = configured ? `Rotate ${initial?.label ?? key}` : initial?.label ? `Set up ${initial.label}` : "Add key";
+
   return (
     <Modal
       open={open}
       onClose={onClose}
-      title={isEdit ? `Configure ${cell(editing?.vendor)}` : "Add vendor key"}
-      description="Third-party AI provider credentials. The API key is encrypted and write-only — leave blank to keep the current key."
+      title={title}
+      description="Encrypted, write-only third-party key. It is never returned — only the last 4 characters are shown."
       size="lg"
     >
       <div className="space-y-4">
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Vendor" hint="e.g. openai, groq, gemini" required>
-            <Input value={vendor} onChange={(e) => setVendor(e.target.value)} placeholder="openai" disabled={isEdit} />
+          <Field label="Key" hint="Stable identifier used in code" required>
+            <Input value={key} onChange={(e) => setKey(e.target.value)} placeholder="fx_exchangerate" disabled={locked} />
           </Field>
-          <Field label="Display name">
-            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="OpenAI" />
+          <Field label="Provider" required>
+            <Input value={provider} onChange={(e) => setProvider(e.target.value)} placeholder="exchangerate-api" disabled={locked} />
           </Field>
-          <Field label="Endpoint URL" hint="Base URL for the provider API" className="sm:col-span-2">
-            <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} placeholder="https://api.openai.com/v1" />
+          <Field label="Key name" hint="Optional label (e.g. env var name)">
+            <Input value={keyName} onChange={(e) => setKeyName(e.target.value)} placeholder="EXCHANGERATE_API_KEY" />
           </Field>
-          <Field label="Default model">
-            <Input value={defaultModel} onChange={(e) => setDefaultModel(e.target.value)} placeholder="gpt-4o-mini" />
-          </Field>
-          <Field label="Current model" hint="Overrides the default when set">
-            <Input value={currentModel} onChange={(e) => setCurrentModel(e.target.value)} placeholder="gpt-4o" />
-          </Field>
-          <Field label="API key" hint={isEdit ? "Leave blank to keep the current key." : "Stored encrypted; never returned."} className="sm:col-span-2">
-            <Input type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder={isEdit ? "•••••• (unchanged)" : "sk-…"} />
+          <Field label="Secret" hint={configured ? "Enter the new value to rotate." : "Stored encrypted; never returned."} required>
+            <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={configured ? "•••••• (new value)" : "paste key…"} />
           </Field>
         </div>
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} />
-          Active
-        </label>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>
             Cancel
           </Button>
           <Button onClick={submit} loading={busy} disabled={!canSubmit}>
-            {isEdit ? "Save" : "Add vendor"}
+            {configured ? "Rotate key" : "Save key"}
           </Button>
         </div>
       </div>
@@ -811,35 +803,48 @@ function VendorForm({ open, onClose, onSaved, editing }: { open: boolean; onClos
 export function ApiKeysPage() {
   const [nonce, setNonce] = React.useState(0);
   const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/ai/governance/vendors", nonce);
+  const { rows, error } = useList("/settings/integration_secret", nonce);
   const [formOpen, setFormOpen] = React.useState(false);
-  const [editing, setEditing] = React.useState<Row | null>(null);
+  const [initial, setInitial] = React.useState<KeyInit | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
-  const [rowError, setRowError] = React.useState<string | null>(null);
-  const [testResult, setTestResult] = React.useState<{ vendor: string; ok: boolean; text: string } | null>(null);
+  const [testResult, setTestResult] = React.useState<{ key: string; ok: boolean; text: string } | null>(null);
 
-  function openNew() {
-    setEditing(null);
+  // Known integrations always show (as "Set up" rows until configured); any
+  // other configured keys are appended as custom rows.
+  const display = React.useMemo(() => {
+    const known = KNOWN_INTEGRATIONS.map((k) => ({
+      key: k.key, label: k.label, provider: k.provider, keyName: k.keyName, hint: k.hint,
+      row: (rows || []).find((r) => String(r.key) === k.key),
+    }));
+    const extra = (rows || [])
+      .filter((r) => !KNOWN_INTEGRATIONS.some((k) => k.key === String(r.key)) && !DOMAIN_OWNED.has(String(r.key)))
+      .map((r) => {
+        const v = (r.value || {}) as { provider?: string; key_name?: string };
+        return { key: String(r.key), label: String(r.key), provider: v.provider || "", keyName: v.key_name || "", hint: "", row: r };
+      });
+    return [...known, ...extra];
+  }, [rows]);
+
+  function openAdd() {
+    setInitial(null);
     setFormOpen(true);
   }
-  function openEdit(r: Row) {
-    setEditing(r);
+  function openConfigure(d: (typeof display)[number]) {
+    const v = (d.row?.value || {}) as { last4?: string };
+    // key + provider are locked for a specific integration so the stored value
+    // keeps matching the backend consumer + test probe.
+    setInitial({ key: d.key, label: d.label, provider: d.provider, keyName: d.keyName, locked: true, configured: !!v.last4 });
     setFormOpen(true);
   }
 
-  async function test(vendor: string) {
-    setRowBusy(vendor);
-    setRowError(null);
+  async function test(key: string) {
+    setRowBusy(key);
     setTestResult(null);
     try {
-      const res = await tenant<{ ok?: boolean; models?: number; error?: string }>(`/ai/governance/vendors/${encodeURIComponent(vendor)}/test`, { method: "POST" });
-      setTestResult({
-        vendor,
-        ok: res.ok === true,
-        text: res.ok ? `Connected — ${res.models ?? 0} models available.` : res.error || "Test failed.",
-      });
+      const res = await tenant<{ ok?: boolean; provider?: string; error?: string }>(`/settings/integration_secret/${encodeURIComponent(key)}/test`, { method: "POST" });
+      setTestResult({ key, ok: res.ok === true, text: res.ok ? "Connected." : res.error || "Test failed." });
     } catch (e) {
-      setTestResult({ vendor, ok: false, text: errMsg(e) });
+      setTestResult({ key, ok: false, text: errMsg(e) });
     } finally {
       setRowBusy(null);
     }
@@ -850,16 +855,17 @@ export function ApiKeysPage() {
       <header className="mb-5 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">API keys &amp; secrets</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Encrypted, write-only third-party AI provider keys. Keys are never returned — only their status.</p>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Encrypted, write-only third-party integration keys (FX &amp; more). Keys are never returned — only their last 4 characters. AI provider keys are managed in{" "}
+            <Link to="/ai-control" className="underline underline-offset-2 hover:text-foreground">AI Control → Vendors</Link>.
+          </p>
         </div>
-        <Button onClick={openNew}>Add vendor key</Button>
+        <Button onClick={openAdd}>Add key</Button>
       </header>
-
-      <PageError message={rowError} />
 
       {testResult && (
         <div className={`mb-3 rounded-lg border px-4 py-3 text-sm ${testResult.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
-          <span className="font-medium">{testResult.vendor}:</span> {testResult.text}
+          <span className="font-medium">{testResult.key}:</span> {testResult.text}
         </div>
       )}
 
@@ -867,42 +873,43 @@ export function ApiKeysPage() {
         <ErrorState message={error} />
       ) : rows === null ? (
         <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No vendor keys" hint="Add a provider like OpenAI, Groq or Gemini." />
+      ) : display.length === 0 ? (
+        <EmptyState title="No custom keys" hint="FX lives in Currencies & FX, messaging keys in Comms → Setup, and AI keys in AI Control. Use “Add key” for anything else." />
       ) : (
         <Table>
           <THead>
             <TR>
-              <TH>Vendor</TH>
-              <TH>Name</TH>
-              <TH>Model</TH>
-              <TH>Status</TH>
-              <TH>Key rotated</TH>
+              <TH>Integration</TH>
+              <TH>Provider</TH>
+              <TH>Secret</TH>
+              <TH>Updated</TH>
               <TH>Actions</TH>
             </TR>
           </THead>
           <TBody>
-            {rows.map((r) => {
-              const vendor = String(r.vendor);
-              const active = r.is_active !== false;
-              const model = r.current_model || r.default_model;
+            {display.map((d) => {
+              const v = (d.row?.value || {}) as { last4?: string };
+              const isSet = !!v.last4;
               return (
-                <TR key={vendor}>
-                  <TD className="text-sm font-medium">{cell(r.vendor)}</TD>
-                  <TD className="text-sm">{cell(r.display_name)}</TD>
-                  <TD className="text-sm">{cell(model)}</TD>
-                  <TD className="text-sm">
-                    <StatusPill active={active} />
+                <TR key={d.key}>
+                  <TD className="text-sm font-medium">
+                    {d.label}
+                    {d.label !== d.key && <span className="ml-2 num text-xs text-muted-foreground">{d.key}</span>}
+                    {d.hint && <div className="text-xs font-normal text-muted-foreground">{d.hint}</div>}
                   </TD>
-                  <TD className="text-sm">{fmtDate(r.last_rotated_at)}</TD>
+                  <TD className="text-sm">{cell(d.provider)}</TD>
+                  <TD className="text-sm">{isSet ? <StatusPill active on={`set · …${v.last4}`} off="—" /> : <StatusPill active={false} on="" off="not set" />}</TD>
+                  <TD className="text-sm">{fmtDate(d.row?.updated_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="ghost" onClick={() => openEdit(r)}>
-                        Configure
+                      <Button size="sm" variant="ghost" onClick={() => openConfigure(d)}>
+                        {isSet ? "Rotate" : "Set up"}
                       </Button>
-                      <Button size="sm" variant="outline" loading={rowBusy === vendor} onClick={() => test(vendor)}>
-                        Test
-                      </Button>
+                      {isSet && (
+                        <Button size="sm" variant="outline" loading={rowBusy === d.key} onClick={() => test(d.key)}>
+                          Test
+                        </Button>
+                      )}
                     </div>
                   </TD>
                 </TR>
@@ -912,7 +919,7 @@ export function ApiKeysPage() {
         </Table>
       )}
 
-      <VendorForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={reload} editing={editing} />
+      <KeyForm open={formOpen} onClose={() => setFormOpen(false)} onSaved={reload} initial={initial} />
     </section>
   );
 }

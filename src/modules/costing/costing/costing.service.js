@@ -11,7 +11,9 @@ const { computeCosting } = require("./costing.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const finalInvoice = require("../../finance/final_invoice/final_invoice.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
 
 const LOCKED = new Set(["APPROVED_LOCKED", "REJECTED"]);
@@ -71,7 +73,18 @@ async function setStatus(client, { id, to, actor = {} }) {
     const totals = computeCosting(await repo.listLines(client, id), before.margin_percent);
     await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals && totals.service_base ? totals.service_base : null });
   }
-  if (status === "APPROVED_LOCKED") await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
+  if (status === "APPROVED_LOCKED") {
+    await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
+    // SYNCHRONOUS handoff (A7 #3): open the DRAFT final invoice now, in-request.
+    // TX-agnostic + idempotent; the async orchestration handler is a backstop and
+    // no-ops once this has run. Best-effort — a draft-shell failure must not block
+    // the approval (the backstop retries).
+    try {
+      await finalInvoice.ensureDraftForCosting(client, id);
+    } catch (err) {
+      logger.warn({ err: err.message, costing_id: id }, "sync draft-invoice on costing approval failed; async backstop will retry");
+    }
+  }
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });
   return row;
 }

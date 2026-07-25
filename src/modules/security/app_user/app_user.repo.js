@@ -116,7 +116,7 @@ async function setTotpEnabled(client, userId, enabled) {
 
 
 // ── User administration (safe reads exclude secrets; role assignment) ──
-const SAFE_COLS = "user_id, username, email, full_name, is_2fa_enabled, employee_id, status, failed_logins, last_login_at, created_at, updated_at";
+const SAFE_COLS = "user_id, username, email, full_name, whatsapp_number, is_2fa_enabled, employee_id, status, failed_logins, last_login_at, created_at, updated_at";
 
 async function insertUser(client, data) {
   const keys = Object.keys(data);

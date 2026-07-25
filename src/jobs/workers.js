@@ -28,6 +28,8 @@ const PROCESSORS = [
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
   { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
+  { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
+  { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];
@@ -60,6 +62,23 @@ function startWorkers() {
   return workers;
 }
 
+/**
+ * Register the recurring orchestration tick (BullMQ repeat). Idempotent across
+ * restarts — BullMQ dedupes a repeatable by its name + repeat options. Disabled
+ * when the interval is 0.
+ */
+async function scheduleRecurring() {
+  const every = config.ORCHESTRATION_DISPATCH_INTERVAL_MS;
+  if (!every || every <= 0) {
+    logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");
+    return;
+  }
+  // eslint-disable-next-line global-require
+  const { enqueue } = require("./queue-producer");
+  await enqueue("orchestration-scheduler", "tick", {}, { repeat: { every }, removeOnComplete: true, removeOnFail: 50 });
+  logger.info({ every }, "orchestration scheduler registered");
+}
+
 async function shutdown(sig) {
   logger.info({ sig }, "worker shutting down");
   await Promise.allSettled(workers.map((w) => w.close()));
@@ -73,6 +92,7 @@ async function main() {
 
   await initRedis();
   startWorkers();
+  await scheduleRecurring();
   logger.info({ env: config.NODE_ENV, queues: PROCESSORS.map((p) => p.name) }, "praxis-ls worker ready");
 
   process.on("SIGTERM", () => shutdown("SIGTERM"));

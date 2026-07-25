@@ -119,6 +119,13 @@ async function reverse(client, { entryId, reason = null, entryDate = null, actor
     const original = await repo.getEntry(client, entryId);
     if (!original) throw new AppError("NOT_FOUND", "Entry not found", 404);
     if (original.status !== "validated") throw new AppError("NOT_REVERSIBLE", "Only a validated entry can be reversed", 422);
+    // #23.16 one reversal per entry — never over-reverse. (The DB unique index
+    // ux_one_reversal_per_entry is the final authority; this is the friendly 409.)
+    const existing = await client.query(
+      "SELECT 1 FROM journal_entry WHERE corrects_entry_id = $1 AND status = 'validated' LIMIT 1",
+      [entryId],
+    );
+    if (existing.rows.length) throw new AppError("ALREADY_REVERSED", "Entry has already been reversed", 409);
     const origLines = await repo.listLines(client, entryId);
     const contra = origLines.map((l) => ({
       account_code: l.account_code,

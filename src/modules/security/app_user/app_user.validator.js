@@ -41,6 +41,7 @@ const schemas = {
     username: z.string().optional().nullable(),
     email: z.string().trim().email().optional(),
     employee_id: z.string().uuid().optional().nullable(),
+    whatsapp_number: z.string().min(6).max(20).optional().nullable(),
     role_ids: z.array(z.string().uuid()).optional(),
   }),
   password: z.object({ new_password: z.string().min(8) }),

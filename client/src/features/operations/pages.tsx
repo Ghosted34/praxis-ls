@@ -174,6 +174,46 @@ function DocGroup<T>({ title, rows, empty, render, keyOf }: { title: string; row
   );
 }
 
+/** Lifecycle readiness banner (consumes the dossier.milestones_completed /
+ *  dossier.fully_collected orchestration signals, surfaced via overview.readiness).
+ *  Prompts to complete the file once its milestones are done. */
+function ReadinessBanner({
+  readiness, status, dossierId, onChanged,
+}: {
+  readiness: NonNullable<api.DossierOverview["readiness"]>;
+  status: string;
+  dossierId: string;
+  onChanged: () => void;
+}) {
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+  const done = status === "COMPLETED";
+  async function complete() {
+    setBusy(true); setErr(null);
+    try { await api.transitionDossier(dossierId, "COMPLETED"); onChanged(); }
+    catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  }
+  return (
+    <div className="rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm text-foreground">
+          <span className="flex flex-wrap items-center gap-1.5">
+            {readiness.milestones_complete && <Pill tone="ok">Milestones complete</Pill>}
+            {readiness.fully_collected && <Pill tone="ok">Fully collected</Pill>}
+            <span className="text-muted-foreground">
+              {done ? "This file is complete." : readiness.ready_to_complete ? "Ready to complete." : "In progress."}
+            </span>
+          </span>
+        </div>
+        {readiness.ready_to_complete && !done && (
+          <Button size="sm" onClick={complete} loading={busy}>Mark complete</Button>
+        )}
+      </div>
+      {err && <div className="mt-2"><ErrorState message={err} /></div>}
+    </div>
+  );
+}
+
 /** 360° modal: per-file rollup in Milestones / Money / People / Documents tabs.
  *  Margin figures arrive nulled for roles masked on `dossier.margin` (server-side);
  *  the Money tab shows a "restricted" note instead of a number in that case. */
@@ -200,6 +240,9 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
             <Stat label="Billed" value={money(d.invoicing.billed_ttc)} tone="ok" />
             <Stat label="Outstanding" value={money(d.invoicing.outstanding)} tone="warn" />
           </div>
+          {d.readiness && (d.readiness.ready_to_complete || d.readiness.fully_collected || d.dossier.status === "COMPLETED") && (
+            <ReadinessBanner readiness={d.readiness} status={d.dossier.status} dossierId={dossier.dossier_id} onChanged={() => ov.reload()} />
+          )}
           <Segmented value={tab} options={TABS_360} onChange={setTab} />
 
           {tab === "milestones" && (

@@ -63,6 +63,9 @@ async function advance(client, { instanceId, to, evidenceVaultId = null, actor =
   if (to === "DONE") { fields.completed_at = new Date().toISOString(); fields.completed_by = actor.user_id || null; }
   if (evidenceVaultId) fields.evidence_vault_id = evidenceVaultId;
   const row = await repo.updateInstance(client, instanceId, fields);
+  // Emit on the DOSSIER ref so orchestration can react (e.g. all-milestones-done
+  // → dossier.milestones_completed). Previously advance only audited.
+  await emitEvent(client, { eventTypeKey: events.ADVANCED, moduleKey: events.MODULE, entityRef: "dossier:" + inst.dossier_id, actorUserId: actor.user_id || null, payload: { milestone_instance_id: instanceId, code: inst.code, to } });
   await audit(client, { actorUserId: actor.user_id || null, action: events.ADVANCED, moduleKey: events.MODULE, entityRef: "milestone_instance:" + instanceId, before: inst, after: row });
   return row;
 }

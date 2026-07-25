@@ -125,6 +125,8 @@ export const advanceMilestone = (id: string, body: { evidence_vault_id?: string 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {
   dossier: { dossier_id: string; ref: string; status: string; client_id?: string | null; service_type_id?: string | null };
+  /** Lifecycle readiness — powers the "ready to complete / fully collected" prompt. */
+  readiness?: { milestones_complete: boolean; fully_collected: boolean; ready_to_complete: boolean } | null;
   costing: { count: number; planned_cost?: number | null };
   costs: { actual_cost?: number | null; gl_entries: number };
   invoicing: { count: number; invoiced_ttc?: number | null; billed_ttc?: number | null; outstanding?: number | null };

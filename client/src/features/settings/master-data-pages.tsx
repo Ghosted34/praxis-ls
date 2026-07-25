@@ -131,6 +131,74 @@ function SetRateForm({ open, onClose, onSaved, codes }: { open: boolean; onClose
   );
 }
 
+/* Automatic FX sync key — the exchangerate-api.com key the daily FX cron uses.
+ * Encrypted + write-only (only last4 shown), with a live connection test. Lives
+ * here, in Currencies & FX, next to the rates it populates. */
+function FxSyncCard() {
+  const [nonce, setNonce] = React.useState(0);
+  const { rows } = useList("/settings/integration_secret", nonce);
+  const fx = (rows || []).find((r) => String(r.key) === "fx_exchangerate");
+  const last4 = (fx?.value as { last4?: string } | undefined)?.last4;
+  const isSet = !!last4;
+  const [secret, setSecret] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [testing, setTesting] = React.useState(false);
+  const [msg, setMsg] = React.useState<{ ok: boolean; text: string } | null>(null);
+
+  async function save() {
+    setBusy(true);
+    setMsg(null);
+    try {
+      await tenant("/settings/integration_secret/fx_exchangerate", {
+        method: "PUT",
+        body: { value: { provider: "exchangerate-api", key_name: "EXCHANGERATE_API_KEY", secret } },
+      });
+      setSecret("");
+      setNonce((n) => n + 1);
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg(e) });
+    } finally {
+      setBusy(false);
+    }
+  }
+  async function test() {
+    setTesting(true);
+    setMsg(null);
+    try {
+      const r = await tenant<{ ok?: boolean; error?: string }>("/settings/integration_secret/fx_exchangerate/test", { method: "POST" });
+      setMsg({ ok: r.ok === true, text: r.ok ? "Connected." : r.error || "Test failed." });
+    } catch (e) {
+      setMsg({ ok: false, text: errMsg(e) });
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  return (
+    <div className="rounded-2xl border bg-card p-5 shadow-sm">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <h3 className="text-base font-semibold">Automatic FX sync</h3>
+          <p className="text-xs text-muted-foreground">Daily rates from exchangerate-api.com. The key is encrypted — only the last 4 characters are shown.</p>
+        </div>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isSet ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+          {isSet ? `key set · …${last4}` : "no key"}
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="API key" hint={isSet ? "Leave blank to keep the current key." : "exchangerate-api.com key."}>
+          <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={isSet ? "•••••• (unchanged)" : "paste key…"} />
+        </Field>
+      </div>
+      {msg && <div className={`mt-2 text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{msg.text}</div>}
+      <div className="mt-3 flex items-center justify-end gap-2">
+        <Button size="sm" variant="outline" loading={testing} onClick={test} disabled={!isSet && !secret}>Test</Button>
+        <Button size="sm" loading={busy} onClick={save} disabled={!secret}>Save</Button>
+      </div>
+    </div>
+  );
+}
+
 export function CurrenciesPage() {
   const [nonce, setNonce] = React.useState(0);
   const reload = () => setNonce((n) => n + 1);
@@ -183,6 +251,9 @@ export function CurrenciesPage() {
       )}
 
       <h2 className="mb-2 mt-8 text-sm font-semibold text-muted-foreground">Exchange rates</h2>
+      <div className="mb-4">
+        <FxSyncCard />
+      </div>
       {rateErr ? (
         <ErrorState message={rateErr} />
       ) : rates === null ? (

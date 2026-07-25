@@ -31,6 +31,21 @@ export type Channel = {
 
 export type Colleague = { user_id: string; full_name?: string | null; email: string };
 
+/* ── Outbound provider config (WhatsApp / email) — set + live test ── */
+export type CommsConfig = {
+  whatsapp: { phone_id: string | null; api_version: string; token_set: boolean; token_last4: string | null };
+  email: { smtp_host: string | null; smtp_port: number; smtp_user: string | null; from: string | null; reply_to: string | null; pass_set: boolean };
+};
+export type TestResult = { ok: boolean; error?: string; status?: number } & Record<string, unknown>;
+
+export const getCommsConfig = () => tenant<CommsConfig>("/smartcomm/config");
+export const setWhatsappConfig = (body: { phone_id?: string; api_version?: string; token?: string }) =>
+  tenant<CommsConfig>("/smartcomm/config/whatsapp", { method: "PUT", body });
+export const setEmailConfig = (body: { smtp_host?: string; smtp_port?: number; smtp_user?: string; smtp_pass?: string; from?: string; reply_to?: string }) =>
+  tenant<CommsConfig>("/smartcomm/config/email", { method: "PUT", body });
+export const testWhatsapp = () => tenant<TestResult>("/smartcomm/config/whatsapp/test", { method: "POST" });
+export const testEmail = () => tenant<TestResult>("/smartcomm/config/email/test", { method: "POST" });
+
 export const listChannels = () => tenant<Channel[]>("/smartcomm/channels");
 export const getChannel = (id: string) => tenant<Channel>(`/smartcomm/channels/${id}`);
 export const createChannel = (body: { name: string; kind?: ChannelKind; member_ids?: string[]; topic?: string }) =>

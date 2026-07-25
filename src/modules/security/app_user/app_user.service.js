@@ -400,7 +400,7 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
   await client.query("BEGIN");
   try {
     const fields = {};
-    for (const k of ["username", "full_name", "employee_id"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    for (const k of ["username", "full_name", "employee_id", "whatsapp_number"]) if (patch[k] !== undefined) fields[k] = patch[k];
     if (patch.email !== undefined) fields.email = String(patch.email).toLowerCase();
     if (Object.keys(fields).length) await repo.updateUserFields(client, id, fields);
     if (Array.isArray(patch.role_ids)) {

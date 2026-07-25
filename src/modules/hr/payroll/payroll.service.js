@@ -124,12 +124,15 @@ async function tryPost(client, run, actor) {
   // 661 gross + 664 employer charges (debit); credit 431 CNPS, 447 taxes,
   // 422 net payable. Credits = gross + employer by construction (balanced).
   const employeeDeductions = round(gross - net); // CNPS_ee + taxes_ee
+  // NOTE: buildAndInsert expects `account_code` (not `account`) and requires a
+  // source_doc_ref to validate — both were missing, so this post silently threw
+  // and degraded to null (payroll never hit the GL). Fixed.
   const lines = [
-    { account: "661", debit: round(gross), credit: 0, label: "Salaires bruts" },
-    { account: "664", debit: round(employer), credit: 0, label: "Charges sociales employeur" },
-    { account: "431", debit: 0, credit: round(cnps), label: "CNPS" },
-    { account: "447", debit: 0, credit: round(taxes), label: "Impôts & taxes sur salaires" },
-    { account: "422", debit: 0, credit: round(gross + employer - cnps - taxes), label: "Personnel — rémunérations dues" },
+    { account_code: "661", debit: round(gross), credit: 0 },
+    { account_code: "664", debit: round(employer), credit: 0 },
+    { account_code: "431", debit: 0, credit: round(cnps) },
+    { account_code: "447", debit: 0, credit: round(taxes) },
+    { account_code: "422", debit: 0, credit: round(gross + employer - cnps - taxes) },
   ];
   void employeeDeductions;
   try {
@@ -138,6 +141,7 @@ async function tryPost(client, run, actor) {
       entryDate: periodEnd(run.period_code),
       journalCode: "OD",
       description: `Payroll ${run.period_code}`,
+      sourceDocRef: ref(run.payroll_run_id),
       source: "SYSTEM_AUTO",
       lines,
       actor,

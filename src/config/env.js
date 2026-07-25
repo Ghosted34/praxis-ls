@@ -125,6 +125,10 @@ const Schema = z.object({
   PUPPETEER_EXECUTABLE_PATH: z.string().default(""),
   SANDBOX_WIPE_DAYS: int(14),
 
+  // Orchestration outbox (Plan A): how often the scheduler fans a dispatch job
+  // per tenant to drain event_log. 0 disables the recurring schedule.
+  ORCHESTRATION_DISPATCH_INTERVAL_MS: int(30000),
+
   // Web-Push (VAPID) — deploy-wide identity, one keypair per deployment. Set +
   // tested in the Platform Console (private key encrypted in platform_setting);
   // these env vars are a fallback only. Generate via the console or web-push.

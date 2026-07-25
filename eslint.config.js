@@ -14,6 +14,7 @@ module.exports = [
       "data/**",
       "doc/**",
       "client/**",
+      "platform-console/**",
       "assets/**",
       "media/**",
       "packages/**",

@@ -76,3 +76,5 @@ dump.rdb
 # the real config and every later edit to the .ts becomes a no-op.
 client/vite.config.js
 client/vite.config.d.ts
+platform-console/vite.config.js
+platform-console/vite.config.d.ts

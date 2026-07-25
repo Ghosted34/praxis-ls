@@ -16,6 +16,7 @@
  */
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
+import { smartCell } from "@/lib/format";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -46,11 +47,11 @@ export type FieldSpec = {
   only?: "create" | "edit";
 };
 
+// Human-readable §5 cell: ISO timestamps → readable dates, UUIDs → short,
+// numbers grouped, booleans → Yes/No (see lib/format.ts). Keeps Fleet/WMS/HR
+// tables from showing raw ISO strings / UUIDs in their default columns.
 function fmt(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+  return smartCell(v);
 }
 
 /**

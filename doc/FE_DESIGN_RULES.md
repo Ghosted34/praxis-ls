@@ -175,6 +175,15 @@ Helpers live in `lib/format.ts`.
 Rule of thumb: if a value is a UUID, an ISO timestamp, a dotted event key, or a
 SCREAMING_ENUM, it needs a formatter before it reaches the DOM.
 
+**`smartCell` is the generic §5 cell** (`lib/format.ts`): ISO datetime/date → readable,
+UUID → 8 chars, decimal strings → grouped, booleans → Yes/No, arrays/objects → summarised
+(never raw JSON). The shared `ResourceList` **and `CrudResource`** default columns route
+through it (session 14 — that's what fixed the Fleet/WMS/HR raw-ISO "Added" columns), and
+hand-built stringifier `cell()` helpers should delegate to it rather than `String(v)`.
+Backend-baked human strings count too: the Watch-the-Watcher notification writer
+(`shared/events/emit.js`) humanizes the event key, resolves the actor UUID to a name and
+shortens the entity ref at write time (a notification row has no join back to `app_user`).
+
 > **Dark-mode `<select>`:** always use the shared `Select` from `components/ui/modal.tsx`
 > (it sets a solid background + explicit option colours so the native dropdown list is
 > legible in dark mode — a transparent select renders its options with the browser default

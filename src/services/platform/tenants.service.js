@@ -107,6 +107,33 @@ function goLive(slug, actorId) {
   });
 }
 
+/** Change a tenant's plan, then re-project features so the new plan's included
+ *  set takes effect immediately in the tenant DB (same re-projection as a
+ *  feature override). Per-tenant overrides are preserved (they still win over
+ *  the plan). */
+async function setPlan(slug, planCode, actorId) {
+  await withPlatform(async (pf) => {
+    const id = await tenantIdOf(pf, slug);
+    const plan = await pf.query(
+      "SELECT plan_id FROM platform.plan WHERE code=$1",
+      [planCode],
+    );
+    if (plan.rows.length === 0) {
+      const e = new Error(`unknown plan '${planCode}'`);
+      e.status = 400;
+      throw e;
+    }
+    await pf.query("UPDATE platform.tenant SET plan_id=$2 WHERE tenant_id=$1", [
+      id,
+      plan.rows[0].plan_id,
+    ]);
+    await audit(pf, actorId, id, "tenant.plan_changed", slug, { plan: planCode });
+    logger.info({ slug, plan: planCode }, "tenant plan changed");
+  });
+  await provisioning.projectFeatures(slug);
+  return { slug, plan: planCode };
+}
+
 function setCapacity(slug, tier, actorId) {
   return withPlatform(async (pf) => {
     const id = await tenantIdOf(pf, slug);
@@ -247,6 +274,7 @@ module.exports = {
   suspend,
   resume,
   goLive,
+  setPlan,
   setCapacity,
   setSandboxInterval,
   setFeature,

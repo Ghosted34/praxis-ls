@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { platform } from "@/lib/api";
 import type { AuditRow, TenantListRow } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
-import { fmtDateTime, titleCase } from "@/lib/format";
+import { fmtDateTime, humanizeAction, titleCase } from "@/lib/format";
 import { Card, Empty, Loading, PageHeader, Pill } from "@/components/ui";
 
 export function Overview() {
@@ -20,7 +20,10 @@ export function Overview() {
     }
     return {
       total: rows.length,
-      live: rows.filter((r) => r.is_live).length,
+      // Count by STATUS so every tenant lands in exactly one bucket. (is_live is
+      // the separate go-live toggle; a provisioned tenant is status=LIVE even
+      // before it's switched live, so counting is_live here left it uncounted.)
+      live: by("LIVE"),
       suspended: by("SUSPENDED"),
       provisioning: by("PROVISIONING"),
       overrides: rows.reduce((n, r) => n + (Number(r.overrides) || 0), 0),
@@ -71,7 +74,7 @@ export function Overview() {
                   {(audit.data || []).slice(0, 8).map((a) => (
                     <div key={a.audit_id} className="between" style={{ gap: 10, alignItems: "baseline" }}>
                       <div style={{ minWidth: 0 }}>
-                        <span className="mono" style={{ fontSize: 12.5 }}>{a.action}</span>
+                        <span style={{ fontSize: 12.5 }}>{humanizeAction(a.action)}</span>
                         {a.tenant_slug && <span className="muted" style={{ fontSize: 12 }}> · {a.tenant_slug}</span>}
                       </div>
                       <span className="muted" style={{ fontSize: 11.5, whiteSpace: "nowrap" }}>{fmtDateTime(a.created_at)}</span>

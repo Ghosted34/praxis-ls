@@ -21,7 +21,7 @@ export function Login() {
     setBase(clean);
     try {
       const data = await platform.login(email.trim(), password);
-      saveSession(clean, data.access_token, data.user);
+      saveSession(clean, data.access_token, data.refresh_token ?? null, data.user);
       toast("Welcome, " + (data.user.full_name || data.user.email));
       nav("/overview");
     } catch (e2) {

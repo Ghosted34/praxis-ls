@@ -5,10 +5,24 @@ export interface PlatformUser {
   email: string;
   full_name: string;
   role: string;
+  capabilities?: string[];
+  is_active?: boolean;
+  last_login_at?: string | null;
+  created_at?: string;
+}
+
+export interface PlatformRole {
+  role_id: string;
+  code: string;
+  name: string;
+  is_system: boolean;
+  capabilities: string[];
+  user_count: number;
 }
 
 export interface LoginResult {
   access_token: string;
+  refresh_token?: string;
   token_type: string;
   expires_in: string | number;
   user: PlatformUser;

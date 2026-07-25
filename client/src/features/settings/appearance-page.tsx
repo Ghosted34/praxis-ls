@@ -27,7 +27,7 @@ const COLORS: { key: keyof Branding; token: string }[] = [
 ];
 
 export function AppearancePage() {
-  const { branding, setBranding } = useBranding();
+  const { branding, setBranding, ready } = useBranding();
 
   const [name, setName] = React.useState(branding.name || "");
   const [theme, setTheme] = React.useState<"dark" | "light">(branding.theme || "dark");
@@ -46,6 +46,29 @@ export function AppearancePage() {
 
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<{ kind: "ok" | "err"; text: string } | null>(null);
+
+  // The form fields are seeded from `branding` at mount. On a hard reload this
+  // component can mount BEFORE the public GET /branding resolves, so it captures
+  // the defaults ("Praxis LS" + default colours). Re-seed the fields once, when
+  // branding becomes ready, so they reflect the tenant's saved values instead of
+  // staying stuck on defaults. Guarded so a later save/edit is never clobbered.
+  const syncedRef = React.useRef(false);
+  React.useEffect(() => {
+    if (!ready || syncedRef.current) return;
+    syncedRef.current = true;
+    setName(branding.name || "");
+    setTheme(branding.theme || "dark");
+    const seed: Record<string, string> = {};
+    for (const { key } of COLORS) seed[key] = (branding[key] as string | null) || "";
+    setColors(seed);
+    setLogoUrl(branding.logoUrl || "");
+    setLogoAltUrl(branding.logoAltUrl || "");
+    setFaviconUrl(branding.faviconUrl || "");
+    setFontDisplay(branding.fontDisplay || "");
+    setFontBody(branding.fontBody || "");
+    setFontMono(branding.fontMono || "");
+    setRadius(branding.radius || "");
+  }, [ready, branding]);
 
   const setColor = (k: string, v: string) => setColors((c) => ({ ...c, [k]: v }));
   const primary = colors.primary || "#0f766e";

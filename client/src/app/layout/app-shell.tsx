@@ -254,11 +254,6 @@ const BellIcon = (p: IP) => (
     <path d="M10 20a2 2 0 004 0" />
   </svg>
 );
-const ChatIcon = (p: IP) => (
-  <svg {...sic(p)}>
-    <path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" />
-  </svg>
-);
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
   Operations: OperationsIcon,
@@ -707,7 +702,8 @@ export function AppShell() {
             </button>
           </div>
           <ThemeToggle />
-          <IconLink to="/comms" label="Messages" count={unread.messages}><ChatIcon /></IconLink>
+          {/* Messages lives on the Smart Comms floating pin, so it's intentionally
+              not duplicated here — only Notifications stays in the top bar. */}
           <IconLink to="/notifications" label="Notifications" count={unread.notifications}><BellIcon /></IconLink>
           <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>

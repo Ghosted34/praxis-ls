@@ -32,6 +32,7 @@
  * Editing requires the 'approve' grant (or CEO); others get a 403 on save.
  */
 import * as React from "react";
+import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
 import {
   fetchRoles,
@@ -375,23 +376,31 @@ export function PermissionMatrixPage() {
         </div>
       )}
 
-      {/* Grant editor — fixed-positioned so the scrolling grid can't clip it. */}
-      {open && openGrant && (
+      {/* Grant editor — rendered in a portal to <body> so position:fixed is
+          viewport-relative. Without the portal, a transformed page ancestor
+          becomes the containing block for the fixed element and shoves it far
+          from the clicked cell. Anchored just below the cell, flipping above
+          when there isn't room, and clamped to stay on screen. */}
+      {open && openGrant && createPortal(
         <div
           data-grant-editor
           role="dialog"
           aria-label={`Permissions for ${open.role.code} on ${open.mod.name}`}
-          style={{
-            position: "fixed",
-            top: Math.min(open.rect.bottom + 6, window.innerHeight - 210),
-            left: Math.min(open.rect.left - 80, window.innerWidth - 260),
-            width: 240,
-          }}
+          style={(() => {
+            const PW = 240, PH = 232, GAP = 6, PAD = 8;
+            const roomBelow = open.rect.bottom + GAP + PH <= window.innerHeight;
+            return {
+              position: "fixed" as const,
+              top: roomBelow ? open.rect.bottom + GAP : Math.max(PAD, open.rect.top - GAP - PH),
+              left: Math.max(PAD, Math.min(open.rect.left, window.innerWidth - PW - PAD)),
+              width: PW,
+            };
+          })()}
           className="z-50 rounded-xl border bg-popover p-3 text-popover-foreground shadow-l"
         >
           <div className="mb-1 font-mono text-xs font-semibold">{open.role.code}</div>
           <div className="mb-2 truncate text-xs text-muted-foreground" title={open.mod.module_key}>
-            {open.mod.name} · {open.mod.module_key}
+            {open.mod.name}
           </div>
           <div className="space-y-1">
             {PERMS.map((p) => {
@@ -418,7 +427,8 @@ export function PermissionMatrixPage() {
               );
             })}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       <p className="mt-3 text-xs text-muted-foreground">

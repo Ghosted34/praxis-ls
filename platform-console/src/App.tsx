@@ -7,6 +7,8 @@ import { Overview } from "@/features/Overview";
 import { Tenants } from "@/features/Tenants";
 import { TenantDetail } from "@/features/TenantDetail";
 import { Plans } from "@/features/Plans";
+import { Users } from "@/features/Users";
+import { Roles } from "@/features/Roles";
 import { Catalogue } from "@/features/Catalogue";
 import { Audit } from "@/features/Audit";
 import { Support } from "@/features/Support";
@@ -26,6 +28,8 @@ export default function App() {
       <Route path="/tenants" element={<RequireAuth><Tenants /></RequireAuth>} />
       <Route path="/tenants/:slug" element={<RequireAuth><TenantDetail /></RequireAuth>} />
       <Route path="/plans" element={<RequireAuth><Plans /></RequireAuth>} />
+      <Route path="/users" element={<RequireAuth><Users /></RequireAuth>} />
+      <Route path="/roles" element={<RequireAuth><Roles /></RequireAuth>} />
       <Route path="/catalogue" element={<RequireAuth><Catalogue /></RequireAuth>} />
       <Route path="/integrations" element={<RequireAuth><Integrations /></RequireAuth>} />
       <Route path="/audit" element={<RequireAuth><Audit /></RequireAuth>} />

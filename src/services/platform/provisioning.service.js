@@ -4,6 +4,7 @@
  */
 "use strict";
 
+const argon2 = require("argon2");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
@@ -121,8 +122,34 @@ async function provisionTenant(input) {
   }
 
   await projectFeatures(slug);
+  await seedDisplayName(slug, name);
   logger.info({ slug }, "tenant provisioned");
   return { slug, dbName, host, tenantId };
+}
+
+/**
+ * Seed the tenant-facing brand name (setting appearance.display_name, both
+ * schemas) from the provisioning display name, so a fresh tenant opens with a
+ * sensible name on the app header / login / browser tab instead of the generic
+ * fallback. ON CONFLICT DO NOTHING — the tenant's own Appearance edit always
+ * wins and re-provisioning never clobbers it.
+ */
+async function seedDisplayName(slug, name) {
+  if (!name) return;
+  const cli = m.client(m.tenantDbName(slug), { superuser: true });
+  await cli.connect();
+  try {
+    for (const schema of ["live", "sandbox"]) {
+      await cli.query(
+        `INSERT INTO ${schema}.setting (section, key, value)
+         VALUES ('appearance', 'display_name', to_jsonb($1::text))
+         ON CONFLICT (section, key) DO NOTHING`,
+        [name],
+      );
+    }
+  } finally {
+    await cli.end();
+  }
 }
 
 async function projectFeatures(slug) {
@@ -200,6 +227,80 @@ async function wipeSandbox(input) {
   return { slug };
 }
 
+/**
+ * Bootstrap a tenant's first admin from the platform console (same effect as
+ * scripts/tenant/create-admin.js). A freshly provisioned tenant has no app_user
+ * rows, so nobody can log in; this creates one in the tenant's LIVE schema with
+ * an Argon2id password and assigns a role (default CEO, which bypasses RBAC so
+ * the first user can then grant scoped access to everyone else). Idempotent on
+ * email (re-runs reset the password + reactivate).
+ */
+async function createAdmin(input) {
+  const slug = input.slug;
+  const email = String(input.email || "").trim().toLowerCase();
+  const password = input.password;
+  const name = input.name || email;
+  const role = input.role || "CEO";
+  if (!slug) throw new Error("slug is required");
+  if (!email || !password) {
+    const e = new Error("email and password are required");
+    e.status = 400;
+    throw e;
+  }
+
+  const cli = m.client(m.tenantDbName(slug), { superuser: true });
+  await cli.connect();
+  let userId;
+  try {
+    await cli.query("SET search_path = live, public");
+    const hash = await argon2.hash(password, { type: argon2.argon2id });
+    const { rows: userRows } = await cli.query(
+      `INSERT INTO app_user (email, full_name, password_hash, status)
+       VALUES ($1,$2,$3,'ACTIVE')
+       ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, status = 'ACTIVE'
+       RETURNING user_id`,
+      [email, name, hash],
+    );
+    userId = userRows[0].user_id;
+    const { rows: roleRows } = await cli.query(
+      "SELECT role_id FROM role WHERE code = $1",
+      [role],
+    );
+    if (roleRows.length === 0) {
+      const e = new Error(`role '${role}' is not seeded in this tenant`);
+      e.status = 400;
+      throw e;
+    }
+    await cli.query(
+      "INSERT INTO user_role (user_id, role_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
+      [userId, roleRows[0].role_id],
+    );
+  } finally {
+    await cli.end();
+  }
+
+  // Audit the bootstrap into the platform trail (Watch-the-Watcher).
+  const pf = m.client(config.DB_NAME);
+  await pf.connect();
+  try {
+    const t = await pf.query(
+      "SELECT tenant_id FROM platform.tenant WHERE slug = $1",
+      [slug],
+    );
+    if (t.rows[0]) {
+      await audit(pf, input.actorId || null, t.rows[0].tenant_id, "tenant.admin_created", slug, {
+        email,
+        role,
+      });
+    }
+  } finally {
+    await pf.end();
+  }
+
+  logger.info({ slug, email, role }, "tenant admin created");
+  return { slug, email, role, user_id: userId };
+}
+
 async function listTenantSlugs() {
   const pf = m.client(config.DB_NAME);
   await pf.connect();
@@ -227,5 +328,6 @@ module.exports = {
   migrateAllTenants,
   wipeSandbox,
   projectFeatures,
+  createAdmin,
   listTenantSlugs,
 };

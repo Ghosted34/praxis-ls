@@ -202,9 +202,27 @@ console on a *different* domain that doesn't proxy `/api/platform`, add that ori
 to the `CORS_ORIGINS` env var (comma-separated).
 
 **First login:** create a Root Admin with `node scripts/platform/create-admin.js`
-(the console can't bootstrap the first platform user). Leave TOTP unset — the
+(the console can't bootstrap the *first* platform user). Leave TOTP unset — the
 platform-tier 2FA verify step isn't wired yet (the API returns 501 if a secret
 is present).
+
+**Console capabilities (session 14).** Beyond first-login bootstrap, the console now
+manages **platform users and RBAC itself**: a **permission matrix** (roles ×
+capabilities, `Roles` page) where you can add custom roles, and a **Users** page to
+create/edit/deactivate/delete operators. This requires migration
+**`0031_platform_rbac.sql`** (platform_role + role permissions) — applied automatically
+by the `migrate` service on deploy (`db:migrate:platform`), so no extra step. Root Admin
+bypasses capability checks (like the tenant CEO); other roles are governed by their matrix
+row. The console also has **stateless token refresh** now (login issues an access+refresh
+pair; a 401 silently refreshes) so admins aren't logged out at the 15-min access TTL — no
+config needed, but note there's no server-side session/remote-kill at this tier yet
+(deactivating the platform_user via the Users page is the revocation lever).
+
+**Console-driven tenant onboarding (session 14).** A tenant can now be set up entirely
+from the console — **Provision → change Plan / capacity / sandbox → Create admin → Go
+live** — so `scripts/tenant/create-admin.js` is optional (the console's **Create admin**
+button does the same Argon2id write into the tenant LIVE schema). Provisioning also seeds
+the tenant's brand display name from the provisioning name.
 
 ## 6. Updating a running deployment
 

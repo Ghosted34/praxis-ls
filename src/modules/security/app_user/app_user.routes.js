@@ -39,6 +39,7 @@ usersRouter.put("/:id/email-signature", requirePermission(MODULE, "edit"), valid
 const authRouter = express.Router();
 authRouter.post("/login", validator.login, controller.login);
 authRouter.post("/refresh", validator.refresh, controller.refresh);
+authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
 authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);
 authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);

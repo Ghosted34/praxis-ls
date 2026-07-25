@@ -581,6 +581,9 @@ function liveInjectionScript(live: LiveData): string {
 /** CSS that hides the mock's own app chrome so it sits inside the real app shell. */
 const HIDE_CHROME = `
   .testban, header.topbar, .botnav, .drawer, .drawer-scrim { display: none !important; }
+  /* The mock's own floating sun-FAB and clock/quick-tools floatbar are removed —
+     the real app provides a single draggable action cluster (floating-actions.tsx). */
+  .fab, .floatbar { display: none !important; }
   html, body { background: transparent; }
   .app { min-height: auto; }
   .scroll { padding-top: 8px; height: auto; overflow: visible; }

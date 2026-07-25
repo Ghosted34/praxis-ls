@@ -37,6 +37,10 @@ const refresh = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
+const me = asyncHandler(async (req, res) =>
+  res.json({ data: await req.identityDb((client) => service.me(client, req.user)) }),
+);
+
 const logout = asyncHandler(async (req, res) => {
   const result = await req.identityDb((client) =>
     service.logout(client, { actor: req.user, sessionId: req.body.session_id || null }),
@@ -82,5 +86,6 @@ module.exports = {
   enableTotp,
   disableTotp,
   refresh,
+  me,
   logout,
 };

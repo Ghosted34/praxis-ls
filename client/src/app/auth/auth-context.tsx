@@ -1,10 +1,12 @@
 /**
  * Auth context — holds the current user + access/refresh lifecycle.
  *
- * The backend has no /me endpoint (whoami returns tenant/env only), so we stash
- * the user object returned by login alongside the refresh token and restore it
- * on reload after confirming the refresh token still works. Access tokens stay
- * in memory (token-store); refresh survives reload.
+ * We stash the user object returned by login alongside the refresh token and
+ * restore it on reload after confirming the refresh token still works (instant,
+ * no flicker). We then re-fetch GET /auth/me to pick up the latest tenant
+ * feature state (ai_enabled/channels) — so a platform-console feature toggle
+ * reflects on the next reload without forcing a full re-login. Access tokens
+ * stay in memory (token-store); refresh survives reload.
  *
  * 2FA: login may return { pending_2fa } instead of tokens — the UI then collects
  * a code and calls verify2fa().
@@ -79,10 +81,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // trip that reuse-detection, logging the user out well before the 30-min
     // idle window. Sharing the de-dupe collapses them into one rotation.
     tryRefresh()
-      .then((ok) => {
+      .then(async (ok) => {
         if (ok) {
-          setUser(readUser());
+          setUser(readUser()); // instant restore from cache (no flicker)
           setStatus("authed");
+          // Re-resolve the tenant feature block so a platform-console toggle
+          // (ai_enabled / channels) is reflected without a full re-login.
+          try {
+            const fresh = await tenant<User>("/auth/me");
+            persistUser(fresh);
+            setUser(fresh);
+          } catch {
+            /* keep the cached user block */
+          }
         } else {
           tokenStore.clear();
           persistUser(null);

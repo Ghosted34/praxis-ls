@@ -1123,7 +1123,7 @@ export function NumberingPage() {
             <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
               {options.map((m) => (
                 <option key={String(m.module_key)} value={String(m.module_key)}>
-                  {cell(m.name)} ({cell(m.module_key)})
+                  {cell(m.name)}
                 </option>
               ))}
             </Select>

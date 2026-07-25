@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { platform } from "@/lib/api";
 import type { AuditRow } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
-import { fmtDateTime } from "@/lib/format";
+import { fmtDateTime, humanizeAction, kvSummary } from "@/lib/format";
 import { Empty, Loading, PageHeader } from "@/components/ui";
 
 export function Audit() {
@@ -43,13 +43,13 @@ export function Audit() {
                 {shown.map((a) => (
                   <tr key={a.audit_id}>
                     <td className="dim" style={{ whiteSpace: "nowrap" }}>{fmtDateTime(a.created_at)}</td>
-                    <td><span className="mono">{a.action}</span></td>
+                    <td>{humanizeAction(a.action)}</td>
                     <td>{a.tenant_slug ? <Link to={"/tenants/" + a.tenant_slug} className="mono" style={{ color: "var(--brand-2)" }}>{a.tenant_slug}</Link> : <span className="muted">—</span>}</td>
                     <td className="dim">{a.actor_name || a.actor_email || "—"}</td>
                     <td className="mono dim">{a.entity_ref || "—"}</td>
                     <td className="dim" style={{ maxWidth: 260, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {a.payload && Object.keys(a.payload).length > 0 ? (
-                        <span className="mono" style={{ fontSize: 12 }}>{JSON.stringify(a.payload)}</span>
+                        <span style={{ fontSize: 12 }}>{kvSummary(a.payload)}</span>
                       ) : (
                         <span className="muted">—</span>
                       )}

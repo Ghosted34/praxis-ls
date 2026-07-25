@@ -3,7 +3,26 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-23 (session 13). **Session 13 = Platform Console (Praxis-side admin UI) built from
+_Last updated: 2026-07-24 (session 14). **Session 14 = platform-tier RBAC (a permission
+matrix with custom-role addition), Plans CRUD + per-plan feature matrix, platform-user management,
+platform-console token refresh, tenant-lifecycle completion (plan change + create-admin from the
+console), the feature-toggle→tenant-screen fix, a human-readable sweep, and a batch of UI fixes.**
+Headline BE fix: **a console feature toggle finally reaches the tenant screen** — `governance.isFeatureEnabled`
+(the tenant-level switch the login payload uses for `ai_enabled`/`channels`) read the tenant `ai_feature_flag`
+table, but the platform console writes the projected **`feature_state`** table; the two were disconnected
+(and `ai.assistant.backend` had no `ai_feature_flag` row at all, so AI was hard-off). It now computes the
+effective state = **console entitlement (`feature_state`) AND tenant preference (`ai_feature_flag`)** — the
+"console gates, tenant refines" model — plus a new **`GET /auth/me`** (client re-fetches it on boot) so a
+toggle reflects without a full re-login. **User-verified live: toggling AI on in the console now shows the AI
+UI on the tenant.** New platform migration **`0031_platform_rbac.sql`** (platform_role + role×capability
+matrix; frees `platform_user.role` from its 3-value CHECK; Root Admin bypasses checks like the tenant CEO)
+and seed **`9112_add_channel_features.sql`** (WhatsApp/Instagram into the platform catalogue). **Verified:
+Windows `npm run lint`/`npm test`/`npm run build --prefix client` + platform-console build all pass (user-run);
+in-sandbox all touched BE `node --check` + eslint clean, full client + console `tsc -b` clean.** **Deploy note:**
+`scripts/deploy.sh`'s `migrate` service already runs `db:migrate:platform && db:migrate:tenants`, so a normal
+deploy applies 0031 + 9112 AND re-projects every tenant automatically — no manual console Migrate needed in
+prod (that button is for local dev / ad-hoc single-tenant re-projection). Full detail: the session-14 log
+below. Prior: **Session 13 = Platform Console (Praxis-side admin UI) built from
 zero, + Support & Feedback shipped end-to-end.** (Post-session: fixed CI `docker-build` — a malformed
 `fsevents` entry in `platform-console/package-lock.json` broke the `consolebuild` stage on Linux; see the
 session-13 log item 6.) The `/api/platform/*` backend (tenant provision / suspend /
@@ -326,6 +345,104 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-24 (session 14: feature-toggle fix, platform RBAC, Plans CRUD, users, console refresh, lifecycle, human-readable + UI)
+
+A large, user-driven batch (rapid-fire, verified screen-by-screen against the user's local
+`:5173` tenant / `:5174` console). **All BE `node --check` + eslint clean; full client + platform-console
+`tsc -b` clean; Windows lint/test/build user-confirmed green.**
+
+**1. Feature toggle → tenant screen (the headline bug).** There were two disconnected feature systems:
+the platform-projected **`feature_state`** (tenant DB, written by the console via
+`tenant_feature_override` → `projectFeatures`, read by the route gate `requireFeature`) and the tenant
+**`ai_feature_flag`** (AI + comms flags). The login payload's `ai_enabled`/`channels` came from
+`governance.isFeatureEnabled`, which read **`ai_feature_flag`** — a table the console never touches — and
+**no `ai.assistant.backend` row is ever seeded there**, so AI was unconditionally off regardless of the
+console. Fix (`ai/governance/governance.service.js` + `.repo.js` new `featureStateOn`): `isFeatureEnabled`
+now returns **entitlement (`feature_state`='on') AND preference (`ai_feature_flag.is_enabled`, default ON
+when entitled and no row)** — "console gates, tenant refines". Added **`GET /api/tenant/auth/me`**
+(`app_user.service.me` + controller + route) recomputing `ai_enabled`/`channels`; the client boot
+(`auth-context.tsx`) re-fetches it after the refresh so a toggle reflects on reload (no full re-login).
+New seed **`9112_add_channel_features.sql`** brings `whatsapp`/`instagram` into the platform
+`feature_catalogue` (+ Full/Enterprise `plan_feature`) so the console can gate them too. **User-verified:
+AI UI now appears on the tenant after enabling in the console.**
+
+**2. Platform-tier RBAC — permission matrix + custom roles (pivot from a fixed-role set).** New migration
+**`0031_platform_rbac.sql`**: `platform.platform_role` + `platform.platform_role_permission` (role×capability
+matrix), drops the old 3-value CHECK on `platform_user.role`, seeds the 3 built-ins (Root Admin / Support /
+Billing) with their capability sets. Middleware (`middleware/platform-auth.js`): a **`CAP_CATALOGUE`** (13
+caps: tenants.read/write, features.write, plans.read/write, users.read/write, roles.read/write,
+support.read/write, audit.read, catalogue.read), `platformAuth` now loads the role's caps into
+`req.platformCaps`, and **`requireCap(cap)`** gates each route — **Root Admin bypasses checks** (like the
+tenant CEO, so it can't lock itself out). `platform.routes.js` fully re-gated per-route (was a blanket
+`requirePlatformRole("PLATFORM_ROOT_ADMIN")`). Services: **`roles.service.js`** (list matrix / create /
+setPermissions / delete — guards system roles + in-use), **`users.service.js`** (CRUD, Argon2id, guards:
+no self-delete, always ≥1 active Root Admin, role validated against the roles table), **`plans.service.js`**
+(below). Login/refresh now return the user's **`capabilities`** so the console hides controls a role can't
+use. Console FE: **Roles** page (live roles×capabilities matrix + add/delete custom role), **Users** page
+(create/edit/password/activate/delete, role dropdown from the matrix), nav gated via a new `can(cap)` helper
+(caps come from the login payload). **⚠️ 0031 must be applied before the console Roles/Users pages work.**
+
+**3. Plans CRUD + per-plan feature matrix.** `plans.service.js` + routes under `/plans`: create, edit
+(name/prices), **feature matrix editor** (toggle a plan's included features → re-projects `feature_state`
+for every tenant on that plan), and **delete-with-reassign** (move tenants to a replacement plan, re-project,
+then delete; `plan_feature` cascades). Console `Plans` page rebuilt with these + a features modal. Plan
+audit rows land in `platform_audit` (tenant_id NULL).
+
+**4. Platform-console token refresh (fixes "logged out / page reloads on refresh").** The console had **no
+refresh** — its api-client cleared the session and bounced to login on any 401, so the admin was kicked out
+at the 15-min access TTL. `services/platform/auth.service.js`: login now issues a **stateless refresh token**
+(`typ:"platform_refresh"`, `JWT_REFRESH_SECRET`) and **`refresh()`** mints a fresh pair after re-checking
+`is_active` (the revocation lever; no platform session table, so no rotation-reuse detection yet). New
+**`POST /api/platform/auth/refresh`**. Console `api.ts`: stores the refresh token, **silent refresh-on-401 +
+retry** (de-duped) before clearing the session; `Login.tsx` persists it.
+
+**5. Tenant setup / lifecycle completion from the console.** **Plan change** — `PATCH /tenants/:slug/plan`
+(re-projects, keeps overrides) + a Plan card on Tenant detail. **Create first admin** —
+`POST /tenants/:slug/admin` (`provisioning.createAdmin`: Argon2id into the tenant LIVE schema, role default
+CEO, audited) + a Create-admin modal — so a tenant can be onboarded entirely from the console (no CLI).
+**Provisioning now seeds the tenant brand name** (`setting appearance.display_name`, both schemas,
+`ON CONFLICT DO NOTHING`) from the provisioning display name, so a fresh tenant opens with a real name;
+the tenant can still override it in Appearance.
+
+**6. Human-readable sweep (both apps).** **Notifications** (the Watch-the-Watcher fan-out in
+`shared/events/emit.js`) baked raw event keys + full UUIDs (`permission.changed on permission:<uuid> by
+<uuid>`) which the `.micro` style then UPPERCASED — now it humanizes the event, resolves the actor UUID to a
+name, and shortens the entity ref; FE `governance/pages.tsx` drops `.micro` on the body and runs
+event/action columns through `enumLabel`. **`CrudResource`** default cell + settings `master-data-pages.tsx`
+`cell()` now route through **`smartCell`**, so Fleet/WMS/HR tables and the FX Exchange-rates table show
+readable dates/decimals instead of raw ISO/`1300.00000000`. **Platform console** Audit/Overview/TenantDetail
+activity humanized (`humanizeAction`, `kvSummary`, `enumLabel` added to `platform-console/src/lib/format.ts`).
+**`(MOD-xx)` stripped** from the document-module dropdown (`config-pages.tsx`) and the permission-matrix
+popover subtitle (kept as a hover title).
+
+**7. UI fixes (all user-screenshot-driven).**
+   - **Permission-matrix popover** (`security/permission-matrix-page.tsx`) opened far from the clicked cell —
+     a transformed page ancestor broke `position:fixed`. Now **portaled to `document.body`** + anchored to
+     the cell (flips above when tight). Same root cause + fix applies to the FAB below.
+   - **Draggable floating pin** (`components/floating-actions.tsx`): now draggable (press-drag the FAB,
+     position persisted to localStorage), **portaled to body** (fixed = viewport) and anchored by the
+     **right/bottom edge** so it doesn't drift when the cluster expands; hover-open suppressed mid-drag. A
+     **live clock** was added to the cluster, replacing the Lovable mock's standalone floating clock.
+   - **Lovable-mock chrome removed**: the mock's orange sun `.fab` and clock `.floatbar` are now hidden via
+     the dashboard iframe's `HIDE_CHROME` (`features/dashboard.tsx`).
+   - **Header**: the duplicate **Messages** icon removed (it lives on the floating pin); only Notifications
+     stays. `ChatIcon` def removed (unused).
+   - **Browser tab title** now shows the tenant brand name (`branding-context.tsx` sets `document.title` in
+     `paint()`), falling back to "Praxis LS".
+   - **Appearance form re-sync**: its fields were seeded from `branding` once at mount, so a hard reload
+     landing on that page captured the pre-fetch defaults ("Praxis LS" + default colours) and never
+     re-synced. Now re-seeds once when branding becomes `ready` (guarded so it never clobbers edits/saves).
+   - **Console Overview** "Provisioning 0 / everything 0" was a stat bug: it counted **Live by `is_live`**,
+     so a provisioned tenant (status=LIVE but `is_live=false`, i.e. not yet gone-live) fell into no bucket.
+     Now counts **by status**, so every tenant lands in exactly one.
+
+**8. Owed / notes.** Apply **0031** (+ 9112) to the platform DB and **restart the API** for the BE changes;
+`db:migrate:platform && db:migrate:tenants` (what the deploy `migrate` service runs) covers both tiers + the
+re-projection. Platform-tier 2FA still 501 (unchanged). Platform refresh is stateless (no remote-kill /
+reuse-detection at this tier — would need a platform session table). The `TanStack Query` adoption (to kill
+the on-reload skeleton flash via caching) was discussed and **not** done — an incremental option that wraps
+the existing `api-client`.
 
 ## Session log — 2026-07-23 (session 13: Platform Console built + Support & Feedback end-to-end)
 

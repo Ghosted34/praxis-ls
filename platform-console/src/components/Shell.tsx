@@ -1,13 +1,16 @@
 import { type ReactNode } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
-import { clearSession, session } from "@/lib/api";
+import { clearSession, session, can } from "@/lib/api";
 import { initials } from "@/lib/format";
 import { useToast } from "@/components/Toast";
 
-const TABS = [
+// `cap` (when set) hides the tab unless the signed-in role has that capability.
+const TABS: { to: string; label: string; cap?: string }[] = [
   { to: "/overview", label: "Overview" },
   { to: "/tenants", label: "Tenants" },
   { to: "/plans", label: "Plans" },
+  { to: "/users", label: "Users", cap: "users.read" },
+  { to: "/roles", label: "Roles", cap: "roles.read" },
   { to: "/catalogue", label: "Catalogue" },
   { to: "/integrations", label: "Integrations" },
   { to: "/audit", label: "Audit" },
@@ -36,7 +39,7 @@ export function Shell({ children }: { children: ReactNode }) {
           </div>
         </div>
         <nav className="tabs">
-          {TABS.map((t) => (
+          {TABS.filter((t) => !t.cap || can(t.cap)).map((t) => (
             <NavLink key={t.to} to={t.to} className={({ isActive }) => (isActive ? "active" : "")}>
               {t.label}
             </NavLink>

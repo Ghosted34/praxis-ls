@@ -26,6 +26,23 @@
 // is the oversight tier per the RBAC journey doc.
 const WATCHER_ROLE_CODES = ["CEO", "MANAGEMENT"];
 
+/** "permission.changed" → "Permission changed" (for human-readable notifications). */
+function humanizeEventKey(key) {
+  const w = String(key || "").replace(/[._]+/g, " ").trim();
+  return w ? w.charAt(0).toUpperCase() + w.slice(1) : "Change";
+}
+
+/** "permission:f64ba62b-ff25-…" → "permission f64ba62b" (type + short id, no full UUID). */
+function shortRef(ref) {
+  if (!ref) return "";
+  const s = String(ref);
+  const i = s.indexOf(":");
+  if (i === -1) return s.replace(/_/g, " ");
+  const type = s.slice(0, i).replace(/_/g, " ");
+  const id = s.slice(i + 1);
+  return `${type} ${id.length > 8 ? id.slice(0, 8) : id}`.trim();
+}
+
 async function emitEvent(client, e) {
   const key = e.eventTypeKey;
 
@@ -59,9 +76,23 @@ async function emitEvent(client, e) {
   // notification.repo.isChannelEnabled(client, userId, channel, category)
   // before inserting, so per-user opt-outs are honored (settings-are-enforced).
   if (isCritical) {
-    const body = e.entityRef
-      ? `${key} on ${e.entityRef}${e.actorUserId ? ` by ${e.actorUserId}` : ""}`
-      : `${key}${e.actorUserId ? ` by ${e.actorUserId}` : ""}`;
+    // Human-readable title/body: humanize the dotted event key, resolve the actor
+    // UUID to a name, and shorten the entity ref (type + short id) — otherwise the
+    // inbox shows raw keys and full UUIDs. Baked at write time since the reader
+    // (notification row) has no join back to app_user.
+    let actorName = null;
+    if (e.actorUserId) {
+      const a = await client.query(
+        "SELECT full_name, email FROM app_user WHERE user_id = $1",
+        [e.actorUserId],
+      );
+      actorName = a.rows[0] ? a.rows[0].full_name || a.rows[0].email : null;
+    }
+    const label = humanizeEventKey(key);
+    const refPart = e.entityRef ? ` on ${shortRef(e.entityRef)}` : "";
+    const byPart = actorName ? ` by ${actorName}` : "";
+    const title = `Security-critical change: ${label}`;
+    const body = `${label}${refPart}${byPart}`;
     await client.query(
       `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority)
        SELECT DISTINCT u.user_id, 'IN_APP', $1, $2, $3, $4, 'HIGH'
@@ -70,7 +101,7 @@ async function emitEvent(client, e) {
          JOIN role r       ON r.role_id  = ur.role_id
         WHERE r.code = ANY($5::text[])
           AND u.status = 'ACTIVE'`,
-      [key, `Security-critical change: ${key}`, body, e.entityRef || null, WATCHER_ROLE_CODES],
+      [key, title, body, e.entityRef || null, WATCHER_ROLE_CODES],
     );
   }
 }

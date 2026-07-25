@@ -10,6 +10,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { smartCell } from "@/lib/format";
 
 type Row = Record<string, unknown>;
 
@@ -21,11 +22,9 @@ function errMsg(e: unknown): string {
   return "Something went wrong.";
 }
 
+// Human-readable §5 cell (ISO dates → readable, decimals grouped, UUIDs short).
 function cell(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+  return smartCell(v);
 }
 
 function today(): string {

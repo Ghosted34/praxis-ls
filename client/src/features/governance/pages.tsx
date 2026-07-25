@@ -12,7 +12,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
-import { money, num, dateFmt } from "@/lib/format";
+import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as wf from "@/lib/workflow-api";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
@@ -280,7 +280,7 @@ export function AuditPage() {
   }
 
   const ledgerCols: Column<LedgerEntry>[] = [
-    { key: "action", label: "Action", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.action}</span> },
+    { key: "action", label: "Action", render: (r) => <span className="font-medium text-[rgb(var(--primary))]">{enumLabel(r.action)}</span> },
     { key: "module_key", label: "Module", render: (r) => (r.module_key ? <Pill tone="mute">{r.module_key}</Pill> : "—") },
     { key: "entity_ref", label: "Entity", render: (r) => <span className="num text-muted-foreground">{r.entity_ref || "—"}</span> },
     { key: "actor_user_id", label: "Actor", render: (r) => actor(r.actor_user_id) },
@@ -288,7 +288,7 @@ export function AuditPage() {
   ];
   const eventCols: Column<SecurityEvent>[] = [
     { key: "priority", label: "Priority", render: (r) => <Pill tone={String(r.priority).toUpperCase() === "HIGH" ? "bad" : "mute"}>{r.priority || "NORMAL"}</Pill> },
-    { key: "event_type_key", label: "Event", render: (r) => <span className="num font-medium text-foreground">{r.event_type_key}</span> },
+    { key: "event_type_key", label: "Event", render: (r) => <span className="font-medium text-foreground">{r.event_type_key ? enumLabel(r.event_type_key) : "—"}</span> },
     { key: "module_key", label: "Module", render: (r) => r.module_key || "—" },
     { key: "entity_ref", label: "Entity", render: (r) => <span className="num text-muted-foreground">{r.entity_ref || "—"}</span> },
     { key: "actor_user_id", label: "Actor", render: (r) => actor(r.actor_user_id) },
@@ -535,12 +535,12 @@ export function NotificationsPage() {
       render: (r) => (
         <div className="min-w-0">
           <div className={r.read_at ? "text-muted-foreground" : "font-semibold text-foreground"}>{r.title}</div>
-          {r.body && <div className="micro truncate">{r.body}</div>}
+          {r.body && <div className="truncate text-xs text-muted-foreground">{r.body}</div>}
         </div>
       ),
     },
     { key: "priority", label: "Priority", render: (r) => <Pill tone={String(r.priority).toUpperCase() === "HIGH" ? "bad" : "mute"}>{r.priority || "NORMAL"}</Pill> },
-    { key: "event_type_key", label: "Event", render: (r) => <span className="num text-muted-foreground">{r.event_type_key || "—"}</span> },
+    { key: "event_type_key", label: "Event", render: (r) => <span className="text-muted-foreground">{r.event_type_key ? enumLabel(r.event_type_key) : "—"}</span> },
     { key: "created_at", label: "When", render: (r) => <span className="num">{dateFmt(r.created_at)}</span> },
     {
       key: "_a", label: "",

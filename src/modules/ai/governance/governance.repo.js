@@ -18,6 +18,14 @@ async function setFlag(client, key, fields) {
   const { rows } = await client.query("UPDATE ai_feature_flag SET " + set + ", updated_at = now() WHERE feature_key = $1 RETURNING *", [key, ...keys.map((k) => fields[k])]);
   return rows[0] || null;
 }
+/** Level-1 entitlement: is `key` switched ON in the platform-projected
+ *  feature_state (the ceiling the platform console controls)? feature_state is
+ *  the documented single source of truth the tenant app reads (0130). Missing
+ *  row → off. */
+async function featureStateOn(client, key) {
+  const { rows } = await client.query("SELECT state FROM feature_state WHERE feature_key = $1", [key]);
+  return rows.length > 0 && rows[0].state === "on";
+}
 
 // ── Access grants ──
 const insertGrant = (client, data) => insertOne(client, "ai_access_grant", data);
@@ -90,7 +98,7 @@ async function upsertVendor(client, vendor, fields) {
 }
 
 module.exports = {
-  listFlags, getFlag, setFlag,
+  listFlags, getFlag, setFlag, featureStateOn,
   insertGrant, grantFor, revokeGrant, listGrants,
   activeBudget, insertBudget, spentInPeriod, insertUsage, listUsage,
   listVendors, getVendorSafe, getVendorFull, upsertVendor,

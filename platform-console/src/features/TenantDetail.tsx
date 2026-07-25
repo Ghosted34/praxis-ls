@@ -1,10 +1,10 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { platform } from "@/lib/api";
-import type { AuditRow, FeatureRow, TenantDatabase, TenantDetail as TDetail } from "@/lib/types";
+import type { AuditRow, FeatureRow, Plan, TenantDatabase, TenantDetail as TDetail } from "@/lib/types";
 import { useAsync, type AsyncState } from "@/lib/useAsync";
-import { fmtDateTime } from "@/lib/format";
-import { Button, Card, ConfirmModal, Empty, Loading, Pill, SourcePill, StatusPill } from "@/components/ui";
+import { fmtDateTime, humanizeAction } from "@/lib/format";
+import { Button, Card, ConfirmModal, Empty, Field, Loading, Modal, Pill, SourcePill, StatusPill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
 const CAP_TIERS = ["S", "M", "L", "XL"];
@@ -17,7 +17,9 @@ export function TenantDetail() {
   const tenant = useAsync<TDetail>(() => platform.tenant(slug) as Promise<TDetail>, [slug]);
   const features = useAsync<FeatureRow[]>(() => platform.features(slug) as Promise<FeatureRow[]>, [slug]);
   const audit = useAsync<AuditRow[]>(() => platform.audit({ tenant: slug, limit: 25 }) as Promise<AuditRow[]>, [slug]);
+  const plans = useAsync<Plan[]>(() => platform.plans() as Promise<Plan[]>, []);
   const [confirm, setConfirm] = useState<ConfirmSpec | null>(null);
+  const [showAdmin, setShowAdmin] = useState(false);
 
   const reloadAll = () => { tenant.reload(); features.reload(); audit.reload(); };
 
@@ -67,6 +69,7 @@ export function TenantDetail() {
               action: () => platform.suspend(slug).then(() => { toast("Tenant suspended"); reloadAll(); }),
             })}>Suspend</Button>
           )}
+          <Button size="sm" variant="primary" onClick={() => setShowAdmin(true)}>Create admin</Button>
           <Button size="sm" onClick={() => run({
             title: `Migrate '${t.slug}'?`, confirmLabel: "Run migrations",
             body: <>Applies any pending tenant DB migrations to <code className="tag">{db.db_name || t.slug}</code>.</>,
@@ -81,6 +84,7 @@ export function TenantDetail() {
       </div>
 
       <div className="grid2">
+        <PlanCard slug={slug} t={t} plans={plans.data || []} onSaved={reloadAll} />
         <CapacityCard slug={slug} db={db} onSaved={reloadAll} />
         <SandboxCard slug={slug} t={t} onSaved={reloadAll} />
       </div>
@@ -121,7 +125,91 @@ export function TenantDetail() {
           onConfirm={() => confirm.action().catch(fail)}
         />
       )}
+
+      {showAdmin && <CreateAdminModal slug={slug} onClose={() => setShowAdmin(false)} onDone={() => { setShowAdmin(false); reloadAll(); }} />}
     </>
+  );
+}
+
+function CreateAdminModal({ slug, onClose, onDone }: { slug: string; onClose: () => void; onDone: () => void }) {
+  const { toast } = useToast();
+  const [email, setEmail] = useState("");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState("CEO");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function submit() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await platform.createAdmin(slug, { email: email.trim(), name: name.trim() || undefined, password, role });
+      toast(`Admin ${email.trim()} created`);
+      onDone();
+    } catch (e) {
+      const anyE = e as { message?: string; fields?: Record<string, string[]> };
+      let msg = anyE.message || "Create admin failed";
+      if (anyE.fields) msg += " — " + Object.entries(anyE.fields).map(([k, v]) => `${k}: ${(v as string[]).join(", ")}`).join("; ");
+      setErr(msg);
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      title="Create tenant admin"
+      onClose={onClose}
+      footer={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant="primary" onClick={submit} loading={busy} disabled={!email || password.length < 8}>Create admin</Button>
+        </>
+      }
+    >
+      <div className="stack" style={{ gap: 13 }}>
+        <p className="muted" style={{ margin: 0, fontSize: 12 }}>
+          Bootstraps a login for <code className="tag">{slug}</code> (live schema). Default role CEO bypasses RBAC so this first user can grant access to everyone else.
+        </p>
+        <Field label="Email"><input type="email" placeholder="admin@acme.cm" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+        <Field label="Full name (optional)"><input placeholder="Jane Doe" value={name} onChange={(e) => setName(e.target.value)} /></Field>
+        <Field label="Password" hint="at least 8 characters"><input type="password" value={password} onChange={(e) => setPassword(e.target.value)} /></Field>
+        <Field label="Role"><input value={role} onChange={(e) => setRole(e.target.value)} /></Field>
+        {err && <div className="pill bad">{err}</div>}
+      </div>
+    </Modal>
+  );
+}
+
+function PlanCard({ slug, t, plans, onSaved }: { slug: string; t: TDetail; plans: Plan[]; onSaved: () => void }) {
+  const { toast, fail } = useToast();
+  const current = String(t.plan_code || "");
+  const [plan, setPlan] = useState(current);
+  const [busy, setBusy] = useState(false);
+  const options = plans.length ? plans.map((p) => p.code) : current ? [current] : [];
+  const save = () => {
+    if (!plan || plan === current) return;
+    setBusy(true);
+    platform.setPlan(slug, plan)
+      .then(() => { toast("Plan changed to " + plan); onSaved(); })
+      .catch(fail).finally(() => setBusy(false));
+  };
+  return (
+    <Card title="Plan">
+      <dl className="kv">
+        <dt>Current</dt><dd>{current ? <Pill tone="mute">{current}</Pill> : "—"}</dd>
+        <dt>Change to</dt>
+        <dd className="row" style={{ gap: 8 }}>
+          <select value={plan} onChange={(e) => setPlan(e.target.value)} style={{ width: "auto" }}>
+            {options.map((code) => <option key={code} value={code}>{code}</option>)}
+          </select>
+          <Button size="sm" onClick={save} loading={busy} disabled={!plan || plan === current}>Change</Button>
+        </dd>
+      </dl>
+      <p className="muted" style={{ margin: "10px 4px 0", fontSize: 12 }}>
+        Re-projects the plan’s included features. Per-tenant overrides are kept.
+      </p>
+    </Card>
   );
 }
 
@@ -253,7 +341,7 @@ function AuditCard({ state }: { state: AsyncState<AuditRow[]> }) {
                 {rows.map((a) => (
                   <tr key={a.audit_id}>
                     <td className="dim" style={{ whiteSpace: "nowrap" }}>{fmtDateTime(a.created_at)}</td>
-                    <td><span className="mono">{a.action}</span></td>
+                    <td>{humanizeAction(a.action)}</td>
                     <td className="dim">{a.actor_name || a.actor_email || "—"}</td>
                     <td className="mono dim">{a.entity_ref || "—"}</td>
                   </tr>

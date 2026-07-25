@@ -84,10 +84,22 @@ async function canUseFeature(client, { userId, featureKey, onDate = null }) {
 
 /** Lightweight tenant-level switch: is a feature turned on for this tenant?
  *  Ignores the per-user grant + budget (those are enforced at call time in the
- *  orchestrator). Used by auth to tell the UI whether to show any AI at all. */
+ *  orchestrator). Used by auth to tell the UI whether to show any AI/comms at all.
+ *
+ *  Two-level model ("console gates, tenant refines"):
+ *   - Level 1 (ceiling): the platform console's projected `feature_state`. OFF
+ *     here = hard off; the tenant cannot self-enable. This is what makes a
+ *     console toggle actually reach the tenant screen.
+ *   - Level 2 (preference): the tenant's own `ai_feature_flag.is_enabled`, which
+ *     only matters once entitled. Default ON when entitled and the tenant has
+ *     set no explicit preference (no flag row), so entitling a feature shows it
+ *     immediately without a second tenant-side flip.
+ *  Effective = entitled AND tenant-enabled. */
 async function isFeatureEnabled(client, featureKey) {
+  const entitled = await repo.featureStateOn(client, featureKey);
+  if (!entitled) return false;
   const flag = await repo.getFlag(client, featureKey);
-  return Boolean(flag && flag.is_enabled);
+  return flag ? Boolean(flag.is_enabled) : true;
 }
 
 /** Append a usage row against the active budget period (cost accounting). */

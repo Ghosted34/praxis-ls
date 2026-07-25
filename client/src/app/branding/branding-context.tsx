@@ -35,6 +35,9 @@ function paint(b: Branding) {
     fontMono: b.fontMono,
     radius: b.radius,
   });
+  // Reflect the tenant's brand name in the browser tab (falls back to the app
+  // name before/without tenant branding).
+  document.title = b.name || "Praxis LS";
 }
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {

@@ -343,6 +343,22 @@ async function refresh(client, { refreshToken }) {
   return { access_token: accessToken, refresh_token: rotatedRefreshToken, token_type: "Bearer", expires_in: config.JWT_ACCESS_TTL };
 }
 
+/** Recompute the login user block (ai_enabled/channels) for the already-signed-in
+ *  user, without a full re-login. Lets a platform-console feature toggle reflect
+ *  on the next poll/refresh instead of forcing sign-out. Same source of truth as
+ *  issueSessionTokens (resolveAiEnabled/resolveChannels → effective feature_state). */
+async function me(client, user) {
+  const ai_enabled = await resolveAiEnabled(client);
+  const channels = await resolveChannels(client);
+  return {
+    user_id: user.user_id,
+    email: user.email,
+    display_name: user.display_name,
+    ai_enabled,
+    channels,
+  };
+}
+
 async function logout(client, { actor, sessionId }) {
   if (sessionId) {
     await repo.killSession(client, sessionId, actor.user_id);
@@ -519,5 +535,6 @@ module.exports = {
   disableTotp,
   refresh,
   refreshTokenReused,
+  me,
   logout,
 };

@@ -10,13 +10,6 @@ const locationLabel = (r: Record<string, unknown>) =>
 const locationPicker = (name: string, label: string): FieldSpec => ({
   name, label, type: "select", optionsEndpoint: "/locations", optionValue: "location_id", optionLabel: locationLabel,
 });
-const clientPicker = (name: string, label: string): FieldSpec => ({
-  name, label, type: "select", optionsEndpoint: "/clients", optionValue: "client_id", optionLabel: "name",
-});
-const dossierPicker: FieldSpec = {
-  name: "dossier_id", label: "Dossier", type: "select",
-  optionsEndpoint: "/operations", optionValue: "dossier_id", optionLabel: "ref",
-};
 const userPicker = (name: string, label: string): FieldSpec => ({
   name, label, type: "select", optionsEndpoint: "/users", optionValue: "user_id", optionLabel: "full_name",
 });
@@ -47,92 +40,14 @@ export const LocationsPage = () => (
   />
 );
 
-export const InventoryPage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Inventory"
-    description="Stock on hand & state. Client goods are tracked operationally, not as own stock."
-    endpoint="/inventory"
-    idKey="inventory_item_id"
-    columns={[
-      { key: "sku", label: "SKU" },
-      { key: "description", label: "Description" },
-      { key: "qty_on_hand", label: "Qty" },
-      { key: "uom", label: "UoM" },
-      { key: "state", label: "State" },
-      { key: "location_id", label: "Location" },
-    ]}
-    fields={[
-      { name: "description", label: "Description", required: true },
-      { name: "sku", label: "SKU" },
-      clientPicker("owner_client_id", "Owner (client)"),
-      dossierPicker,
-      locationPicker("location_id", "Location"),
-      { name: "qty_on_hand", label: "Qty on hand", type: "number" },
-      { name: "uom", label: "Unit of measure", placeholder: "unit / pallet / bag" },
-      { name: "state", label: "State", type: "select", options: [
-        { value: "AVAILABLE", label: "Available" },
-        { value: "QA_HOLD", label: "QA hold" },
-        { value: "ALLOCATED", label: "Allocated" },
-        { value: "DISPATCHED", label: "Dispatched" },
-        { value: "DAMAGED", label: "Damaged" },
-      ] },
-      { name: "is_own_stock", label: "Own stock (SmartLS consumable)", type: "checkbox" },
-    ]}
-  />
-);
+// Inventory is now a stock ledger with move/state actions + movement journal.
+export { InventoryPage } from "./inventory";
 
-export const InboundPage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Inbound / GRN"
-    description="Goods received & QA gate."
-    endpoint="/inbound"
-    idKey="grn_inbound_id"
-    columns={[
-      { key: "dossier_id", label: "Dossier" },
-      { key: "qa_status", label: "QA" },
-      { key: "putaway_location", label: "Putaway" },
-      { key: "created_at", label: "When" },
-    ]}
-    fields={[
-      dossierPicker,
-      { name: "qa_status", label: "QA status", type: "select", options: [
-        { value: "HOLD", label: "Hold" },
-        { value: "PASSED", label: "Passed" },
-        { value: "REJECTED", label: "Rejected" },
-      ] },
-      locationPicker("putaway_location", "Putaway location"),
-    ]}
-  />
-);
+// Inbound is now a receiving + QA workstation (Hold → Pass w/ putaway | Reject).
+export { InboundPage } from "./inbound";
 
-export const OutboundPage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Outbound"
-    description="Pick / pack / dispatch orders."
-    endpoint="/outbound"
-    idKey="outbound_order_id"
-    columns={[
-      { key: "client_id", label: "Client" },
-      { key: "status", label: "Status" },
-      { key: "dispatched_at", label: "Dispatched" },
-      { key: "created_at", label: "Created" },
-    ]}
-    fields={[
-      clientPicker("client_id", "Client"),
-      dossierPicker,
-      { name: "status", label: "Status", type: "select", options: [
-        { value: "CREATED", label: "Created" },
-        { value: "PICKING", label: "Picking" },
-        { value: "PACKED", label: "Packed" },
-        { value: "DISPATCHED", label: "Dispatched" },
-        { value: "CANCELLED", label: "Cancelled" },
-      ] },
-    ]}
-  />
-);
+// Outbound is now a pick/pack/dispatch workstation with line handling.
+export { OutboundPage } from "./outbound";
 
 export const EquipmentPage = () => (
   <CrudResource
@@ -161,22 +76,5 @@ export const EquipmentPage = () => (
   />
 );
 
-export const CycleCountsPage = () => (
-  <CrudResource
-    eyebrow={eyebrow}
-    title="Cycle counts"
-    description="Physical counts & discrepancies."
-    endpoint="/cycle-counts"
-    idKey="cycle_count_id"
-    columns={[
-      { key: "location_id", label: "Location" },
-      { key: "counted_by", label: "Counted by" },
-      { key: "discrepancy", label: "Discrepancy" },
-      { key: "created_at", label: "When" },
-    ]}
-    fields={[
-      locationPicker("location_id", "Location"),
-      userPicker("counted_by", "Counted by"),
-    ]}
-  />
-);
+// Cycle counts is now a count sheet (expected vs counted, live variance).
+export { CycleCountsPage } from "./cycle-count";

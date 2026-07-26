@@ -6,10 +6,12 @@
  */
 "use strict";
 const repo = require("./appraisal.repo");
+const earningRepo = require("../payroll/earning.repo");
 const events = require("./appraisal.events");
 const { computeRating, weightedScore } = require("./appraisal.rules");
 const employeeService = require("../../master/employees/employees.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "appraisal:" + id;
 
@@ -18,9 +20,35 @@ module.exports = {
 
   async list(client, q) {
     const rows = await repo.list(client, q);
-    return rows.map((r) => ({ ...r, weighted_score: weightedScore(r.rating, r.weight) }));
+    const rewards = await earningRepo.bySourceRefs(client, rows.map((r) => ref(r.appraisal_id)));
+    return rows.map((r) => {
+      const rw = rewards[ref(r.appraisal_id)];
+      return { ...r, weighted_score: weightedScore(r.rating, r.weight), reward_amount: rw ? Number(rw.amount) : null, reward_status: rw ? rw.status : null };
+    });
   },
   get: (client, id) => repo.findById(client, id),
+
+  /**
+   * Recommend a performance reward — creates/updates a PENDING employee_earning
+   * (a bonus) tied to this appraisal. Payroll adds it to gross next run; once a
+   * validated run pays it, it locks (409 on further changes).
+   */
+  async recommendReward(client, { id, amount, label = null, actor = {} }) {
+    const a = await repo.findById(client, id);
+    if (!a) throw new AppError("NOT_FOUND", "Appraisal not found", 404);
+    if (!(Number(amount) >= 0)) throw new AppError("BAD_AMOUNT", "amount must be a non-negative number", 422);
+    const emp = await client.query("SELECT entity_id FROM employee WHERE employee_id = $1", [a.employee_id]);
+    const entityId = emp.rows[0] ? emp.rows[0].entity_id : null;
+    const earning = await earningRepo.upsertFromSource(client, {
+      employee_id: a.employee_id, entity_id: entityId, period_code: a.period_code,
+      kind: "BONUS", label: label || `Appraisal reward · ${a.period_code}`, amount: Number(amount),
+      source_ref: ref(id), created_by: actor.user_id || null,
+    });
+    if (!earning) throw new AppError("REWARD_LOCKED", "This reward was already paid in a validated payroll run and can't be changed", 409);
+    await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: "appraisal.reward", moduleKey: events.MODULE, entityRef: ref(id), after: earning });
+    return earning;
+  },
 
   async create(client, { data, actor = {} }) {
     if (data.employee_id) await employeeService.assertActive(client, data.employee_id);

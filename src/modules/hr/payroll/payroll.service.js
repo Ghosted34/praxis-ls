@@ -15,6 +15,7 @@
  */
 "use strict";
 const repo = require("./payroll.repo");
+const earningRepo = require("./earning.repo");
 const events = require("./payroll.events");
 const { computePayslip, DEFAULTS } = require("./payroll.rules");
 const employeeService = require("../../master/employees/employees.service");
@@ -57,9 +58,21 @@ async function compute(client, { id, config = null, actor = {} }) {
   const roster = await employeeService.roster(client, { entity_id: run.entity_id });
   await repo.deleteItems(client, id);
 
+  // Variable pay (appraisal rewards etc.) → added to GROSS so statutory
+  // withholdings apply. Read-only here; the run marks them APPLIED on validate.
+  const earnings = await earningRepo.pendingByEntityPeriod(client, run.entity_id, run.period_code);
+  const bonusByEmployee = {};
+  for (const e of earnings) bonusByEmployee[e.employee_id] = { total: Number(e.total || 0), lines: e.lines || [] };
+
   let totalGross = 0, totalNet = 0, totalEmployer = 0, count = 0;
   for (const emp of roster) {
-    const slip = computePayslip(emp, { config: cfg });
+    const bonus = bonusByEmployee[emp.employee_id] || { total: 0, lines: [] };
+    const base = round(Number(emp.base_salary || 0));
+    const gross = round(base + bonus.total);
+    const slip = computePayslip(emp, { gross, config: cfg });
+    slip.base = base;
+    slip.earnings = round(bonus.total);
+    slip.earning_lines = bonus.lines;
     await repo.insertItem(client, {
       payroll_run_id: id,
       employee_id: emp.employee_id,
@@ -95,6 +108,10 @@ async function setStatus(client, { id, status, actor = {} }) {
   const patch = { status };
   if (entry_id) patch.entry_id = entry_id;
   const row = await repo.updateRun(client, id, patch);
+  // Consume the variable-pay earnings this run paid, so they're paid once.
+  if (status === "VALIDATED") {
+    await earningRepo.markAppliedForRun(client, { runId: id, entityId: before.entity_id, periodCode: before.period_code });
+  }
   // On submit-for-approval, open the tenant's configurable approval chain (bound
   // to payroll.status_changed). No workflow bound → autoApproved; the manual
   // APPROVED transition path is unchanged (BUILD_CONVENTIONS §2).

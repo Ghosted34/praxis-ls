@@ -33,4 +33,23 @@ module.exports = {
     await audit(client, { actorUserId: actor.user_id, action: events.STATUS_CHANGED, moduleKey: events.MODULE, entityRef, before, after: row });
     return row;
   },
+
+  listParts: (client, { id }) => repo.listParts(client, id),
+
+  // Add a part line and roll the work-order cost up to the sum of its parts, so
+  // the maintenance cost stays a true reflection of consumed labour/spares.
+  async addPart(client, { id, data, actor }) {
+    const wo = await repo.findById(client, id);
+    if (!wo) return null;
+    if (wo.status === "DONE" || wo.status === "CANCELLED") {
+      throw new AppError("INVALID_STATE", `Cannot add parts to a ${wo.status} work order`, 422);
+    }
+    await repo.addPart(client, { work_order_id: id, ...data });
+    const parts = await repo.listParts(client, id);
+    const cost = parts.reduce((s, p) => s + Number(p.qty) * Number(p.unit_cost), 0);
+    const row = await repo.update(client, id, { cost });
+    const entityRef = `work_order:${id}`;
+    await audit(client, { actorUserId: actor.user_id, action: "part_added", moduleKey: events.MODULE, entityRef, before: wo, after: row });
+    return { ...row, parts };
+  },
 };

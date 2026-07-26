@@ -27,6 +27,12 @@ module.exports = {
   async create(client, { data, actor = {} }) {
     const payload = { ...data };
     if (actor.user_id && !payload.counted_by) payload.counted_by = actor.user_id;
+    // discrepancy is a jsonb column: an array/object must be sent as JSON text,
+    // otherwise node-pg serialises a JS array as a Postgres array literal ("{…}")
+    // and the jsonb cast fails (22P02). summariseDiscrepancy reads it back fine.
+    if (payload.discrepancy !== null && payload.discrepancy !== undefined && typeof payload.discrepancy !== "string") {
+      payload.discrepancy = JSON.stringify(payload.discrepancy);
+    }
     const row = await repo.insert(client, payload);
     const summary = summariseDiscrepancy(row.discrepancy);
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.cycle_count_id), actorUserId: actor.user_id || null });

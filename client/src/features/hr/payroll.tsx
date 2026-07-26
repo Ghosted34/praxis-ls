@@ -20,7 +20,7 @@ import * as api from "@/lib/hr-api";
 const shell = "mx-auto max-w-6xl animate-fade-in";
 
 const STATUS_TONE: Record<string, Tone> = {
-  OPEN: "mute", COMPUTED: "info", SUBMITTED: "warn", APPROVED: "warn", VALIDATED: "ok", DISBURSED: "ok", REJECTED: "bad",
+  OPEN: "mute", COMPUTED: "blue", SUBMITTED: "warn", APPROVED: "warn", VALIDATED: "ok", DISBURSED: "ok", REJECTED: "bad",
 };
 const n = (v: unknown) => Number(v || 0);
 
@@ -46,6 +46,8 @@ function Breakdown({ slip }: { slip?: api.Slip | null }) {
   );
   return (
     <div className="grid gap-x-8 gap-y-1 rounded-lg bg-muted/40 p-3 text-sm sm:grid-cols-2">
+      {b.base != null && <Row k="Base salary" v={b.base} />}
+      {b.earnings ? <Row k="Bonus / earnings" v={b.earnings} /> : null}
       <Row k="Gross" v={b.gross} />
       <Row k="CNPS (employee)" v={ee.cnps_pension} />
       <Row k="IRPP" v={ee.irpp} />

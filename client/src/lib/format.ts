@@ -61,6 +61,18 @@ export function humanizeRef(ref?: string | null): string {
   return `${typeLabel} ${shownId}`;
 }
 
+/** Expiry bucket for dated compliance/licence items (expiry boards). */
+export type ExpiryLevel = "valid" | "soon" | "expired" | "none";
+export function expiryStatus(d?: string | null, soonDays = 30): ExpiryLevel {
+  if (!d) return "none";
+  const t = new Date(d).getTime();
+  if (!Number.isFinite(t)) return "none";
+  const now = Date.now();
+  if (t < now) return "expired";
+  if (t < now + soonDays * 864e5) return "soon";
+  return "valid";
+}
+
 export function todayISO(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

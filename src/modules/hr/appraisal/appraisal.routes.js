@@ -14,6 +14,7 @@ router.get("/", requirePermission(M, "view"), controller.list);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.patch("/:id", requirePermission(M, "edit"), validator.update, controller.update);
+router.post("/:id/reward", requirePermission(M, "approve"), validator.reward, controller.reward);
 router.delete("/:id", requirePermission(M, "delete"), controller.archive);
 
 module.exports = { basePath: "/appraisals", feature: "hr.appraisals", router };

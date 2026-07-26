@@ -63,11 +63,34 @@ export type PayrollRun = {
 };
 export type Slip = {
   gross?: number;
+  base?: number;
+  earnings?: number;
+  earning_lines?: { label?: string; kind?: string; amount?: number }[];
   net_pay?: number;
   total_employer_charges?: number;
   employee?: Record<string, number>;
   employer?: Record<string, number>;
 };
+
+/* ── Appraisals + performance rewards ── */
+export type Appraisal = {
+  appraisal_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  period_code: string;
+  metric?: string | null;
+  target_value?: number | string | null;
+  actual_value?: number | string | null;
+  rating?: number | string | null;
+  weight?: number | string | null;
+  weighted_score?: number | null;
+  comments?: string | null;
+  reward_amount?: number | null;
+  reward_status?: string | null; // PENDING | APPLIED
+};
+export const listAppraisals = (params?: { employee_id?: string }) => tenant<Appraisal[]>("/appraisals" + qs(params));
+export const recommendReward = (id: string, body: { amount: number; label?: string }) =>
+  tenant(`/appraisals/${id}/reward`, { method: "POST", body });
 export type PayrollItem = {
   payroll_run_item_id?: string;
   employee_id: string;
@@ -98,11 +121,78 @@ export type LeaveRequest = {
   status: string; // REQUESTED | APPROVED | REJECTED
   created_at?: string | null;
 };
-export const listLeave = (params?: { status?: string }) => tenant<LeaveRequest[]>("/leave" + qs(params));
+export const listLeave = (params?: { status?: string; employee_id?: string }) => tenant<LeaveRequest[]>("/leave" + qs(params));
 export const createLeave = (body: { employee_id: string; kind: string; starts_on?: string; ends_on?: string; amount?: number }) =>
   tenant<LeaveRequest>("/leave", { method: "POST", body });
 export const decideLeave = (id: string, status: "APPROVED" | "REJECTED") =>
   tenant<LeaveRequest>(`/leave/${id}/decision`, { method: "POST", body: { status } });
+
+/* ── Employees (profile 360) ── */
+export type Employee = {
+  employee_id: string;
+  full_name?: string | null;
+  entity_id?: string | null;
+  entity_name?: string | null;
+  department?: string | null;
+  job_title?: string | null;
+  employment_type?: string | null;
+  cnps_number?: string | null;
+  base_salary?: number | string | null;
+  is_active?: boolean | null;
+  is_driver?: boolean | null;
+};
+export const listEmployees = () => tenant<Employee[]>("/employees");
+export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
+export const createEmployee = (body: { full_name: string; entity_id?: string; department?: string; job_title?: string; employment_type?: string }) =>
+  tenant<Employee>("/employees", { method: "POST", body });
+export const setEmployeeActive = (id: string, is_active: boolean) =>
+  tenant<Employee>(`/employees/${id}/active`, { method: "POST", body: { is_active } });
+
+/* ── HR contracts (lifecycle) ── */
+export type Contract = {
+  hr_contract_id: string;
+  employee_id?: string | null;
+  employee_name?: string | null;
+  kind?: string | null;
+  status: string; // DRAFT | ISSUED | SIGNED | ENDED
+  effective_on?: string | null;
+  end_on?: string | null;
+  created_at?: string | null;
+};
+export const listContracts = (params?: { employee_id?: string; status?: string }) => tenant<Contract[]>("/contracts" + qs(params));
+export const createContract = (body: { employee_id?: string; kind: string; effective_on?: string; end_on?: string }) =>
+  tenant<Contract>("/contracts", { method: "POST", body });
+export const setContractStatus = (id: string, status: string) =>
+  tenant<Contract>(`/contracts/${id}/status`, { method: "POST", body: { status } });
+
+/* ── Vacancies + applicant pipeline (recruitment kanban) ── */
+export type Vacancy = {
+  vacancy_id: string;
+  title?: string | null;
+  department?: string | null;
+  description?: string | null;
+  status: string; // DRAFT | OPEN | CLOSED
+  posted_to_website?: boolean | null;
+  created_at?: string | null;
+};
+export type Applicant = {
+  applicant_id: string;
+  vacancy_id: string;
+  full_name: string;
+  email?: string | null;
+  phone?: string | null;
+  status: string; // APPLIED | SHORTLISTED | INTERVIEWED | HIRED | REJECTED | TALENT_POOL
+};
+export const listVacancies = () => tenant<Vacancy[]>("/vacancies");
+export const createVacancy = (body: { title: string; department?: string; description?: string }) =>
+  tenant<Vacancy>("/vacancies", { method: "POST", body });
+export const setVacancyStatus = (id: string, status: string) =>
+  tenant<Vacancy>(`/vacancies/${id}/status`, { method: "POST", body: { status } });
+export const listApplicants = (vacancyId: string) => tenant<Applicant[]>(`/vacancies/${vacancyId}/applicants`);
+export const addApplicant = (vacancyId: string, body: { full_name: string; email?: string; phone?: string }) =>
+  tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, { method: "POST", body });
+export const setApplicantStatus = (vacancyId: string, applicantId: string, status: string) =>
+  tenant<Applicant>(`/vacancies/${vacancyId}/applicants/${applicantId}`, { method: "PATCH", body: { status } });
 
 export const listSites = () => tenant<WorkSite[]>("/attendance/work-sites");
 export const createSite = (body: { name: string; latitude: number; longitude: number; radius_m?: number }) =>

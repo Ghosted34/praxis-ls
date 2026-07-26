@@ -5,7 +5,10 @@ const { AppError } = require("../../../utils/errors");
 const create = z.object({
   location_id: z.string().uuid().optional(),
   counted_by: z.string().uuid().optional(),
-  discrepancy: z.record(z.any()).optional(), // jsonb: {inventory_item_id: {expected, counted}}
+  // jsonb — an array of count lines { inventory_item_id?, expected, counted }
+  // (what summariseDiscrepancy consumes); a keyed object is still accepted for
+  // back-compat with any older payloads.
+  discrepancy: z.union([z.array(z.any()), z.record(z.any())]).optional(),
   certified_report_vault_id: z.string().uuid().optional(), // Rapport d'Audit
 });
 const schemas = { create, update: create.partial() };

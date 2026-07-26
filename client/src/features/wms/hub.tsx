@@ -13,6 +13,7 @@ export function WarehouseHub() {
     <TabbedHub
       eyebrow="Warehouse"
       basePath="/wms"
+      inPlace
       tabs={[
         { key: "locations", label: "Locations", Component: LocationsPage },
         { key: "inventory", label: "Inventory", Component: InventoryPage },

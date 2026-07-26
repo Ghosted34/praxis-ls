@@ -18,6 +18,8 @@ router.post("/", requirePermission(M, "create"), validator.create, controller.cr
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.patch("/:id", requirePermission(M, "edit"), validator.update, controller.update);
 router.post("/:id/status", requirePermission(M, "edit"), validator.status, controller.setStatus);
+router.get("/:id/parts", requirePermission(M, "view"), controller.listParts);
+router.post("/:id/parts", requirePermission(M, "edit"), validator.part, controller.addPart);
 router.delete("/:id", requirePermission(M, "delete"), controller.archive);
 
 module.exports = { basePath: "/work-orders", feature: "fleet.maintenance", router };

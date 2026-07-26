@@ -25,18 +25,24 @@ export function HubTabs() {
  * pages own their headers and never call <HubTabs/> (e.g. Master data) switch it on
  * so the bar still shows. Lets every hub share one implementation either way.
  */
-export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false }: { eyebrow: string; basePath: string; tabs: HubTab[]; inlineTabs?: boolean }) {
+export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace = false }: { eyebrow: string; basePath: string; tabs: HubTab[]; inlineTabs?: boolean; inPlace?: boolean }) {
   const { section } = useParams();
   const navigate = useNavigate();
-  const active = tabs.find((t) => t.key === section) || tabs[0];
+  // `inPlace` swaps tab content in local state without touching the route, so the
+  // hub stays on one page (no URL change / scroll reset). Routed hubs keep their
+  // deep-linkable `<basePath>/:section` behaviour (the default).
+  const [localKey, setLocalKey] = React.useState(() => tabs.find((t) => t.key === section)?.key ?? tabs[0].key);
+  const activeKey = inPlace ? localKey : section;
+  const active = tabs.find((t) => t.key === activeKey) || tabs[0];
   const Active = active.Component;
+  const go = (key: string) => (inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`));
 
   const tabsNode = (
     <div aria-label={`${eyebrow} sections`} className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
       {tabs.map((t) => (
         <button
           key={t.key}
-          onClick={() => navigate(`${basePath}/${t.key}`)}
+          onClick={() => go(t.key)}
           className={cn(
             "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors",
             active.key === t.key

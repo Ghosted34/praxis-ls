@@ -10,7 +10,8 @@ const create = z.object({
   rating: z.number().optional(),
   comments: z.string().optional(),
 });
-const schemas = { create, update: create.partial() };
+const reward = z.object({ amount: z.number().nonnegative(), label: z.string().optional() });
+const schemas = { create, update: create.partial(), reward };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -19,4 +20,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), reward: mw("reward"), schemas };

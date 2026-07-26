@@ -4,9 +4,16 @@
  */
 "use strict";
 
-/** INSERT one row from a plain object → RETURNING *. */
+/** INSERT one row from a plain object → RETURNING *. An empty object inserts a
+ *  fully-defaulted row (`DEFAULT VALUES`) rather than emitting the invalid
+ *  `() VALUES ()` — lets modules whose columns are all defaulted (e.g. an
+ *  outbound order created in status CREATED) be opened with an empty body. */
 async function insertOne(client, table, data, returning = "*") {
   const keys = Object.keys(data);
+  if (keys.length === 0) {
+    const { rows } = await client.query(`INSERT INTO ${table} DEFAULT VALUES RETURNING ${returning}`);
+    return rows[0];
+  }
   const cols = keys.join(", ");
   const params = keys.map((_, i) => `$${i + 1}`).join(", ");
   const { rows } = await client.query(

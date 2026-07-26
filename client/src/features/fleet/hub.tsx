@@ -14,6 +14,7 @@ export function FleetHub() {
     <TabbedHub
       eyebrow="Fleet"
       basePath="/fleet"
+      inPlace
       tabs={[
         { key: "vehicles", label: "Vehicles", Component: VehiclesPage },
         { key: "compliance", label: "Compliance", Component: VehicleCompliancePage },

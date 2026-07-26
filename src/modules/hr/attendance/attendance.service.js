@@ -109,9 +109,15 @@ module.exports = {
   },
 
 
-  /** The caller's currently-open punch (or null). */
+  /**
+   * The caller's currently-open punch (or null). Unlike clock-in/out this never
+   * 422s on a non-employee user (e.g. an admin/manager viewing the app): the
+   * always-visible clock widget polls this on mount for everyone, so a user with
+   * no linked employee simply has "no open punch" rather than an error.
+   */
   async open(client, { employeeId = null, actor = {} }) {
-    const empId = await resolveEmployee(client, employeeId, actor);
+    const empId = employeeId || (actor && actor.user_id ? await repo.employeeIdForUser(client, actor.user_id) : null);
+    if (!empId) return null;
     return repo.openForEmployee(client, empId);
   },
 
@@ -128,7 +134,7 @@ module.exports = {
     if (mode === "block" && geo.within === false) {
       throw new AppError(
         "OUT_OF_GEOFENCE",
-        "You are outside the allowed worksite" + (geo.distance_m != null ? ` (${geo.distance_m} m away)` : ""),
+        "You are outside the allowed worksite" + (geo.distance_m !== null && geo.distance_m !== undefined ? ` (${geo.distance_m} m away)` : ""),
         422,
       );
     }
@@ -138,7 +144,7 @@ module.exports = {
       latitude, longitude, accuracy_m: accuracy,
       work_site_id: geo.work_site_id, distance_m: geo.distance_m,
       within_geofence: geo.within, geo_label: geo.label,
-      location: latitude != null && longitude != null ? { lat: latitude, lng: longitude, accuracy } : null,
+      location: latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined ? { lat: latitude, lng: longitude, accuracy } : null,
     });
     const entityRef = `attendance:${row.attendance_id}`;
     await emitEvent(client, { eventTypeKey: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null, payload: { within_geofence: geo.within, work_site_id: geo.work_site_id } });
@@ -161,7 +167,7 @@ module.exports = {
     if (before.clock_out_at) throw new AppError("ALREADY_CLOSED", "Attendance already clocked out", 422);
 
     let outGeo = { within: null, label: null };
-    if (latitude != null && longitude != null) {
+    if (latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined) {
       const entityId = await repo.entityForEmployee(client, before.employee_id);
       const g = await resolveGeo(client, { entityId, lat: latitude, lng: longitude });
       outGeo = { within: g.within, label: g.label };

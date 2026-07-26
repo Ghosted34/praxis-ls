@@ -12,7 +12,13 @@ const create = z.object({
   opened_on: z.string().optional(),
 });
 const status = z.object({ status: z.enum(["OPEN", "IN_PROGRESS", "DONE", "CANCELLED"]) });
-const schemas = { create, update: create.partial(), status };
+const part = z.object({
+  label: z.string().min(1),
+  qty: z.number().positive(),
+  unit_cost: z.number().nonnegative(),
+  inventory_item_id: z.string().uuid().optional(),
+});
+const schemas = { create, update: create.partial(), status, part };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
@@ -21,4 +27,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), status: mw("status"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), status: mw("status"), part: mw("part"), schemas };

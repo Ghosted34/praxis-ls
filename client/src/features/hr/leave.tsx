@@ -21,7 +21,7 @@ const shell = "mx-auto max-w-6xl animate-fade-in";
 
 const STATUS_TONE: Record<string, Tone> = { REQUESTED: "warn", APPROVED: "ok", REJECTED: "bad" };
 const KIND: Record<string, { label: string; tone: Tone }> = {
-  leave: { label: "Leave", tone: "info" },
+  leave: { label: "Leave", tone: "blue" },
   salary_advance: { label: "Salary advance", tone: "warn" },
   mission: { label: "Mission", tone: "mute" },
 };

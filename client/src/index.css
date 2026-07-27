@@ -63,6 +63,10 @@
   --shadow-m: 0 4px 12px rgb(16 30 52 / 0.06), 0 14px 34px rgb(16 30 52 / 0.09);
   --shadow-l: 0 18px 48px rgb(16 30 52 / 0.16);
   --mesh: 0.5;
+
+  /* Motion (Lovable) */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dur: 0.3s;
 }
 
 .dark {
@@ -213,6 +217,43 @@
   .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad) / 0.13); }
   .st-mute { color: rgb(var(--ink) / 0.7); background: rgb(var(--ink) / 0.06); }
 
+  /* Filter chips (Lovable) — surface pill, orange-tinted when active. Tint
+     tracks --primary via color-mix so tenant re-branding recolours them. */
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 8px 14px;
+    border-radius: 10px;
+    font-size: 12.5px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: rgb(var(--ink) / 0.72);
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-s);
+    transition: all var(--dur) var(--ease);
+  }
+  .chip:hover { transform: translateY(-1px); }
+  .chip.on {
+    color: var(--primary);
+    background: color-mix(in srgb, var(--primary) 12%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+  }
+  .chip .ct {
+    font-size: 10px;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgb(var(--ink) / 0.07);
+  }
+
+  /* Section header (Lovable) — serif w400 title + hairline rule + optional link */
+  .sec { display: flex; align-items: center; gap: 12px; margin: 30px 2px 16px; }
+  .sec h2 { font-family: var(--font-display); font-weight: 400; font-size: 21px; }
+  .sec .ln { flex: 1; height: 1px; background: var(--border); }
+  .sec a { font-size: 12px; font-weight: 600; color: var(--primary); }
+
   /* Glassmorphic top command bar */
   .lux-topbar {
     background: color-mix(in srgb, var(--card) 82%, transparent);
@@ -270,6 +311,30 @@
     background: linear-gradient(135deg, rgb(var(--brand-orange)), rgb(var(--brand-orange-deep)));
     color: #fff;
     box-shadow: 0 8px 20px rgb(var(--brand-orange) / 0.35);
+  }
+
+  /* Kit button recipes (Lovable). Colours track --primary via color-mix so the
+     tenant loader's re-tint keeps working; hover lifts per the reference. */
+  .btn-primary {
+    color: var(--primary-foreground);
+    background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 82%, #000));
+    border: 1px solid transparent;
+    box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 35%, transparent);
+  }
+  .btn-primary:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 45%, transparent);
+  }
+  .btn-surface {
+    color: var(--foreground);
+    background: var(--card);
+    border: 1px solid var(--border);
+    box-shadow: var(--shadow-s);
+  }
+  .btn-surface:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--shadow-m);
+    border-color: color-mix(in srgb, var(--primary) 40%, transparent);
   }
   /* Mobile bottom nav (Lovable). Display is driven by `flex md:hidden`
      utilities on the element; this class only styles it. */
@@ -729,6 +794,30 @@
   .landing-bg { animation: none; }
   .landing-content > *,
   .login-card { animation: none; }
+}
+
+/* Content enter animation (Lovable) — cards/tables/views rise in on mount. */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: none; }
+}
+.animate-fade-up { animation: fadeUp 0.5s var(--ease) both; }
+
+/* Modal entrance (Lovable "rise"). */
+@keyframes modalRise {
+  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  to { opacity: 1; transform: none; }
+}
+.animate-modal-rise { animation: modalRise 0.28s var(--ease) both; }
+
+/* Reduced motion — kill all animation/transition globally (reference parity). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }
 
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */

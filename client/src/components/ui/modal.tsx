@@ -47,7 +47,7 @@ export function Modal({
       aria-modal="true"
       aria-label={title}
     >
-      <div className={cn("lux-card my-8 w-full bg-background p-6 shadow-xl", width)}>
+      <div className={cn("animate-modal-rise my-8 w-full rounded-[22px] border bg-background p-6 shadow-[var(--shadow-l)]", width)}>
         <header className="mb-4">
           <h2 className="font-display text-xl tracking-tight">{title}</h2>
           {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
@@ -100,9 +100,9 @@ export const Select = React.forwardRef<HTMLSelectElement, React.SelectHTMLAttrib
         // Solid bg + explicit option colours so the native dropdown list is
         // legible in dark mode (a transparent select renders its option popup
         // with the browser default — light bg + light text = unreadable).
-        "flex h-10 w-full rounded-md border border-input bg-background text-foreground px-3 py-2 text-sm",
+        "flex h-10 w-full rounded-[10px] border border-input bg-background text-foreground px-3 py-2 text-[13px]",
         "[&>option]:bg-background [&>option]:text-foreground",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background",
+        "transition-colors focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)] focus-visible:outline-none",
         "disabled:cursor-not-allowed disabled:opacity-50",
         className,
       )}

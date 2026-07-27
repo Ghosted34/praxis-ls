@@ -10,6 +10,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel, expiryStatus, type ExpiryLevel } from "@/lib/format";
@@ -109,6 +110,7 @@ export function VehicleCompliancePage() {
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(r) => r.compliance_id} empty={{ title: "No compliance records", hint: "Add insurance or visite-technique expiries to track." }} />
       {creating && <NewComplianceForm onClose={() => setCreating(false)} onSaved={rows.reload} />}
       {renewing && <RenewModal row={renewing} onClose={() => setRenewing(null)} onSaved={rows.reload} />}
+      <ScreenAi path="fleet/compliance" />
     </section>
   );
 }

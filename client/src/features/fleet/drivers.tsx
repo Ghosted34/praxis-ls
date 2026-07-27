@@ -9,6 +9,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, expiryStatus, type ExpiryLevel } from "@/lib/format";
@@ -115,6 +116,7 @@ export function DriversPage() {
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(r) => r.driver_license_id} empty={{ title: "No licences", hint: "Record driver licences to track expiry." }} />
       {creating && <NewLicenceForm onClose={() => setCreating(false)} onSaved={rows.reload} />}
       {renewing && <RenewModal row={renewing} onClose={() => setRenewing(null)} onSaved={rows.reload} />}
+      <ScreenAi path="fleet/drivers" />
     </section>
   );
 }

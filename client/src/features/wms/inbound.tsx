@@ -9,6 +9,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { TransitionButtons, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
@@ -102,14 +104,16 @@ export function InboundPage() {
     { key: "created", label: "Received", render: (g) => <span className="num text-muted-foreground">{dateFmt(g.created_at)}</span> },
     {
       key: "_a", label: "",
-      render: (g) => (
-        <div className="flex justify-end gap-2">
-          {g.qa_status === "HOLD" && <>
-            <Button size="sm" variant="outline" loading={busy === g.grn_inbound_id} onClick={() => reject(g)}>Reject</Button>
-            <Button size="sm" onClick={() => setPassing(g)}>Pass QA</Button>
-          </>}
-        </div>
-      ),
+      render: (g) => {
+        const items: Transition[] =
+          g.qa_status === "HOLD"
+            ? [
+                { to: "REJECTED", label: "Reject", variant: "outline", loading: busy === g.grn_inbound_id },
+                { to: "PASS", label: "Pass QA" },
+              ]
+            : [];
+        return <TransitionButtons items={items} onTransition={(to) => (to === "REJECTED" ? reject(g) : setPassing(g))} />;
+      },
     },
   ];
 
@@ -120,6 +124,7 @@ export function InboundPage() {
       <DataList columns={cols} rows={grns.data} error={grns.error} loading={grns.loading} rowKey={(g) => g.grn_inbound_id} empty={{ title: "Nothing received", hint: "Open a receipt when goods arrive." }} />
       {creating && <NewGrnForm onClose={() => setCreating(false)} onSaved={grns.reload} />}
       {passing && <PassModal grn={passing} locations={locs.data || []} onClose={() => setPassing(null)} onSaved={grns.reload} />}
+      <ScreenAi path="wms/inbound" />
     </section>
   );
 }

@@ -40,9 +40,19 @@ export function PraxisCopilot() {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight;
   }, [msgs, open]);
 
-  // Openable from elsewhere (e.g. the command palette's "Ask Praxis AI…").
+  // Latest `send` in a ref so the (once-registered) event listener always calls
+  // the current closure, not a stale one.
+  const sendRef = React.useRef<(t: string) => void>(() => {});
+
+  // Openable from elsewhere: the command palette's "Ask Praxis AI…" (no payload)
+  // and a screen's clickable AI-action cards (which pass `detail.prompt` to
+  // auto-ask — writes still come back AWAITING_CONFIRM for the human).
   React.useEffect(() => {
-    const openCopilot = () => setOpen(true);
+    const openCopilot = (e: Event) => {
+      setOpen(true);
+      const prompt = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
+      if (prompt) sendRef.current(prompt);
+    };
     window.addEventListener("praxis:open-copilot", openCopilot);
     return () => window.removeEventListener("praxis:open-copilot", openCopilot);
   }, []);
@@ -65,6 +75,7 @@ export function PraxisCopilot() {
       setBusy(false);
     }
   }
+  sendRef.current = send;
 
   async function runAction(mi: number, run: AiActionRun) {
     setConfirming(run.action_run_id);

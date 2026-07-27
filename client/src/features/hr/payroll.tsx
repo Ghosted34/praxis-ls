@@ -11,6 +11,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
@@ -188,6 +189,7 @@ export function PayrollPage() {
       <DataList columns={cols} rows={runs.data} error={runs.error} loading={runs.loading} rowKey={(r) => r.payroll_run_id} empty={{ title: "No payroll runs", hint: "Create a run for the month to begin." }} />
       {view && <RunDetail runId={view} onClose={() => setView(null)} onChanged={runs.reload} />}
       {creating && <NewRunForm onClose={() => setCreating(false)} onSaved={(id) => { runs.reload(); setView(id); }} />}
+      <ScreenAi path="hr/payroll" />
     </section>
   );
 }

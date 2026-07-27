@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { StepBar, StatusActionBar, LineTable, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
@@ -43,45 +45,34 @@ function WorkOrderDetail({ order: initial, onClose, onChanged }: { order: api.Wo
   }
 
   const rows = parts.data || [];
+  const transitions: Transition[] = (TRANSITIONS[order.status] || []).map((s) => ({
+    to: s,
+    label: STATUS_LABEL[s] || s,
+    variant: s === "CANCELLED" ? "outline" : "default",
+  }));
 
   return (
     <Modal open onClose={onClose} size="xl" title={`${enumLabel(order.kind)} · ${order.registration || order.work_order_id.slice(0, 8)}`} description={order.description || undefined}>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Pill tone={STATUS_TONE[order.status] || "mute"}>{enumLabel(order.status)}</Pill>
-            <span className="text-sm text-muted-foreground">Cost <span className="num font-medium text-foreground">{money(order.cost)}</span></span>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            {(TRANSITIONS[order.status] || []).map((s) => (
-              <Button key={s} size="sm" variant={s === "CANCELLED" ? "outline" : "default"} loading={busy === "st:" + s} onClick={() => toState(s)}>{STATUS_LABEL[s] || s}</Button>
-            ))}
-          </div>
-        </div>
+        <StepBar steps={["OPEN", "IN_PROGRESS", "DONE"]} current={order.status} />
+        <StatusActionBar status={order.status} tone={STATUS_TONE[order.status]} transitions={transitions} onTransition={toState} busyKey={busy}>
+          <span className="text-sm text-muted-foreground">Cost <span className="num font-medium text-foreground">{money(order.cost)}</span></span>
+        </StatusActionBar>
 
         {error && <ErrorState message={error} />}
 
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground">
-              <tr><th className="px-3 py-2 text-left font-medium">Part / labour</th><th className="px-3 py-2 text-right font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Unit cost</th><th className="px-3 py-2 text-right font-medium">Line total</th></tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {parts.loading ? (
-                <tr><td colSpan={4} className="px-3 py-4 text-center micro">Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={4} className="px-3 py-4 text-center micro">No parts logged yet.</td></tr>
-              ) : rows.map((r) => (
-                <tr key={r.work_order_part_id}>
-                  <td className="px-3 py-1.5">{r.label}</td>
-                  <td className="px-3 py-1.5 text-right num">{num(r.qty)}</td>
-                  <td className="px-3 py-1.5 text-right num">{money(r.unit_cost)}</td>
-                  <td className="px-3 py-1.5 text-right num">{money(Number(r.qty) * Number(r.unit_cost))}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LineTable
+          rows={rows}
+          loading={parts.loading}
+          empty="No parts logged yet."
+          rowKey={(r) => r.work_order_part_id}
+          columns={[
+            { label: "Part / labour", render: (r) => r.label },
+            { label: "Qty", align: "right", render: (r) => <span className="num">{num(r.qty)}</span> },
+            { label: "Unit cost", align: "right", render: (r) => <span className="num">{money(r.unit_cost)}</span> },
+            { label: "Line total", align: "right", render: (r) => <span className="num">{money(Number(r.qty) * Number(r.unit_cost))}</span> },
+          ]}
+        />
 
         {canEdit && (
           <form onSubmit={addPart} className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-[1fr_90px_130px_auto] sm:items-end">
@@ -155,6 +146,7 @@ export function WorkOrdersPage() {
       <DataList columns={cols} rows={orders.data} error={orders.error} loading={orders.loading} rowKey={(o) => o.work_order_id} empty={{ title: "No work orders", hint: "Open one to start logging maintenance." }} />
       {view && <WorkOrderDetail order={view} onClose={() => setView(null)} onChanged={orders.reload} />}
       {creating && <NewWorkOrderForm onClose={() => setCreating(false)} onSaved={orders.reload} />}
+      <ScreenAi path="fleet/work-orders" />
     </section>
   );
 }

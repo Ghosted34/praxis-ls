@@ -11,6 +11,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
@@ -79,11 +80,66 @@ function NewEmployeeForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
   );
 }
 
+function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employee; onClose: () => void; onSaved: (e: api.Employee) => void }) {
+  const { rows: entities } = useList<{ entity_id: string; legal_name?: string }>("/entities");
+  const [f, setF] = React.useState({
+    full_name: employee.full_name || "",
+    entity_id: employee.entity_id || "",
+    department: employee.department || "",
+    job_title: employee.job_title || "",
+    employment_type: employee.employment_type || "CDI",
+  });
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setError(null);
+    try {
+      const updated = await api.updateEmployee(employee.employee_id, {
+        full_name: f.full_name,
+        entity_id: f.entity_id || undefined,
+        department: f.department || undefined,
+        job_title: f.job_title || undefined,
+        employment_type: f.employment_type || undefined,
+      });
+      onSaved(updated); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open onClose={onClose} title="Edit employee" description="Update role, department and employment details.">
+      <form className="space-y-4" onSubmit={submit}>
+        <Field label="Full name" required><Input value={f.full_name} onChange={(e) => set("full_name", e.target.value)} /></Field>
+        <Field label="Entity">
+          <Select value={f.entity_id} onChange={(e) => set("entity_id", e.target.value)}>
+            <option value="">—</option>
+            {(entities || []).map((en) => <option key={en.entity_id} value={en.entity_id}>{en.legal_name || en.entity_id.slice(0, 8)}</option>)}
+          </Select>
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
+          <Field label="Job title"><Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="Accountant" /></Field>
+        </div>
+        <Field label="Employment type">
+          <Select value={f.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
+            {["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPORARY"].map((t) => <option key={t} value={t}>{t}</option>)}
+          </Select>
+        </Field>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="submit" loading={busy} disabled={!f.full_name || busy}>Save changes</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function EmployeeDetail({ employee: initial, onChanged }: { employee: api.Employee; onChanged: () => void }) {
   const [employee, setEmployee] = React.useState(initial);
   React.useEffect(() => setEmployee(initial), [initial]);
   const [tab, setTab] = React.useState<Tab>("Contracts");
   const [busy, setBusy] = React.useState(false);
+  const [editing, setEditing] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const eid = employee.employee_id;
   const active = employee.is_active !== false;
@@ -114,10 +170,14 @@ function EmployeeDetail({ employee: initial, onChanged }: { employee: api.Employ
             <p className="mt-1 text-sm text-muted-foreground">{[employee.job_title, employee.department, employee.entity_name].filter(Boolean).join(" · ") || "—"}</p>
             <p className="mt-0.5 micro">{[employee.employment_type && enumLabel(employee.employment_type), employee.cnps_number && `CNPS ${employee.cnps_number}`, employee.base_salary != null && `Base ${money(employee.base_salary)}`].filter(Boolean).join(" · ")}</p>
           </div>
-          <Button size="sm" variant={active ? "outline" : "default"} loading={busy} onClick={toggleActive}>{active ? "Suspend" : "Activate"}</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>
+            <Button size="sm" variant={active ? "outline" : "default"} loading={busy} onClick={toggleActive}>{active ? "Suspend" : "Activate"}</Button>
+          </div>
         </div>
         {error && <div className="mt-3"><ErrorState message={error} /></div>}
       </div>
+      {editing && <EditEmployeeForm employee={employee} onClose={() => setEditing(false)} onSaved={(e) => { setEmployee(e); onChanged(); }} />}
 
       <div className="flex flex-wrap gap-1 border-b">
         {TABS.map((t) => (
@@ -192,6 +252,7 @@ export function EmployeesPage() {
         </div>
       )}
       {creating && <NewEmployeeForm onClose={() => setCreating(false)} onSaved={(e) => { employees.reload(); setSelId(e.employee_id); }} />}
+      <ScreenAi path="hr/employees" />
     </section>
   );
 }

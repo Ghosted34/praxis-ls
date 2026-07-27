@@ -47,7 +47,7 @@ function SectionCard({ purpose, label, blurb, existing, onSaved }: { purpose: st
     <form onSubmit={save} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
         <div>
-          <h3 className="font-display text-base font-semibold">{label}</h3>
+          <h3 className="font-display text-base">{label}</h3>
           <p className="micro">{blurb}</p>
         </div>
         <Pill tone={existing ? (existing.is_active ? "ok" : "mute") : "warn"}>{existing ? (existing.is_active ? "Active" : "Off") : "Not set"}</Pill>
@@ -84,7 +84,7 @@ function SecretCard({ title, description, fields, onSave }: { title: string; des
   }
   return (
     <form onSubmit={save} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-base font-semibold">{title}</h3>
+      <h3 className="font-display text-base">{title}</h3>
       <p className="micro mb-3">{description}</p>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((fd) => (
@@ -147,7 +147,7 @@ function ChannelConfig() {
     <>
       <form onSubmit={saveWa} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <div><h3 className="font-display text-base font-semibold">WhatsApp Business API</h3><p className="micro">Meta Cloud API — token encrypted, phone-number ID, live check.</p></div>
+          <div><h3 className="font-display text-base">WhatsApp Business API</h3><p className="micro">Meta Cloud API — token encrypted, phone-number ID, live check.</p></div>
           <Pill tone={wa?.token_set ? "ok" : "warn"}>{wa?.token_set ? `Token set${wa.token_last4 ? ` · …${wa.token_last4}` : ""}` : "Not set"}</Pill>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -164,7 +164,7 @@ function ChannelConfig() {
 
       <form onSubmit={saveEm} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <div><h3 className="font-display text-base font-semibold">Shared SMTP login</h3><p className="micro">Fallback transport for senders without their own — password encrypted.</p></div>
+          <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Fallback transport for senders without their own — password encrypted.</p></div>
           <Pill tone={em?.pass_set ? "ok" : "warn"}>{em?.pass_set ? "Password set" : "Not set"}</Pill>
         </div>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -198,13 +198,13 @@ export function SetupPage() {
       <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <div className="micro uppercase tracking-wide">Comms</div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Setup &amp; channels</h1>
+          <h1 className="font-display text-2xl tracking-tight text-foreground">Setup &amp; channels</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Per-section email senders, shared credentials, and the WhatsApp / Instagram APIs.</p>
         </div>
         <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
       </div>
 
-      <h2 className="mb-2 font-display text-lg font-semibold">Section senders</h2>
+      <h2 className="mb-2 font-display text-lg">Section senders</h2>
       <p className="micro mb-3">Each section mails from its own verified address. Set the From identity and (optionally) a dedicated SMTP host.</p>
       {senders.error && <ErrorState message={errMsg(senders.error)} />}
       <div className="grid gap-4 lg:grid-cols-2">
@@ -213,7 +213,7 @@ export function SetupPage() {
         ))}
       </div>
 
-      <h2 className="mb-2 mt-8 font-display text-lg font-semibold">Credentials &amp; channels</h2>
+      <h2 className="mb-2 mt-8 font-display text-lg">Credentials &amp; channels</h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChannelConfig />
         <SecretCard

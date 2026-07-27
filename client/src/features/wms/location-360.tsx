@@ -11,6 +11,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { PageHeader } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt, enumLabel } from "@/lib/format";
@@ -183,6 +184,7 @@ export function LocationsPage() {
         </div>
       )}
       {creating && <NewLocationForm onClose={() => setCreating(false)} onSaved={locs.reload} />}
+      <ScreenAi path="wms/locations" />
     </section>
   );
 }

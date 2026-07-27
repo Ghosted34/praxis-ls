@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
+import { TransitionButtons, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/wms-api";
@@ -107,10 +109,13 @@ export function EquipmentPage() {
 
   function actions(e: api.Equipment) {
     const b = busy === e.wms_equipment_id;
-    if (e.status === "AVAILABLE") return <><Button size="sm" onClick={() => setCheckout(e)}>Check out</Button><Button size="sm" variant="outline" disabled={b} onClick={() => move(e, "MAINTENANCE")}>Maint.</Button></>;
-    if (e.status === "IN_USE") return <><Button size="sm" loading={b} onClick={() => move(e, "AVAILABLE")}>Return</Button><Button size="sm" variant="outline" disabled={b} onClick={() => move(e, "MAINTENANCE")}>Maint.</Button></>;
-    if (e.status === "MAINTENANCE") return <><Button size="sm" loading={b} onClick={() => move(e, "AVAILABLE")}>Available</Button><Button size="sm" variant="outline" disabled={b} onClick={() => move(e, "OUT_OF_SERVICE")}>Retire</Button></>;
-    return <Button size="sm" variant="outline" loading={b} onClick={() => move(e, "AVAILABLE")}>Restore</Button>;
+    const byStatus: Record<string, Transition[]> = {
+      AVAILABLE: [{ to: "CHECKOUT", label: "Check out" }, { to: "MAINTENANCE", label: "Maint.", variant: "outline" }],
+      IN_USE: [{ to: "AVAILABLE", label: "Return", loading: b }, { to: "MAINTENANCE", label: "Maint.", variant: "outline" }],
+      MAINTENANCE: [{ to: "AVAILABLE", label: "Available", loading: b }, { to: "OUT_OF_SERVICE", label: "Retire", variant: "outline" }],
+    };
+    const items = byStatus[e.status] || [{ to: "AVAILABLE", label: "Restore", variant: "outline", loading: b }];
+    return <TransitionButtons items={items} onTransition={(to) => (to === "CHECKOUT" ? setCheckout(e) : move(e, to))} className="justify-start" />;
   }
 
   return (
@@ -140,6 +145,7 @@ export function EquipmentPage() {
       )}
       {checkout && <CheckoutModal item={checkout} users={users || []} onClose={() => setCheckout(null)} onSaved={equipment.reload} />}
       {creating && <NewEquipmentForm locations={locs.data || []} onClose={() => setCreating(false)} onSaved={equipment.reload} />}
+      <ScreenAi path="wms/equipment" />
     </section>
   );
 }

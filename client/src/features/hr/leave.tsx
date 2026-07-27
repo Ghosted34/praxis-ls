@@ -11,6 +11,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt } from "@/lib/format";
@@ -125,6 +126,7 @@ export function LeavePage() {
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
       <DataList columns={cols} rows={q.data} error={q.error} loading={q.loading} rowKey={(r) => r.leave_request_id} empty={{ title: pendingOnly ? "Nothing pending" : "No requests", hint: pendingOnly ? "No requests awaiting a decision." : "Raise a request to get started." }} />
       {creating && <NewRequestForm onClose={() => setCreating(false)} onSaved={q.reload} />}
+      <ScreenAi path="hr/leave" />
     </section>
   );
 }

@@ -62,13 +62,18 @@ export function AiActions({ actions }: { actions?: AiAction[] }) {
       </div>
       <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         {actions.map((a) => (
-          <div key={a.label} className="lux-card flex items-start gap-3 p-3">
+          <button
+            key={a.label}
+            type="button"
+            onClick={() => window.dispatchEvent(new CustomEvent("praxis:open-copilot", { detail: { prompt: a.describe } }))}
+            className="lux-card flex items-start gap-3 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:shadow-[var(--shadow-m)]"
+          >
             <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${AI_CLASS[a.kind]}`}>{AI_LABEL[a.kind]}</span>
             <div className="min-w-0">
               <p className="text-sm font-medium text-foreground">{a.label}</p>
               <p className="text-xs text-muted-foreground">{a.describe}</p>
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </div>

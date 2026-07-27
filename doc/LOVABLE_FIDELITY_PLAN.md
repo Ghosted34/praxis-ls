@@ -1,7 +1,18 @@
 # Lovable UI-Fidelity Plan — full app redesign to the reference mock
 
-_Drafted 2026-07-22 (session 12). Status: **audit complete, quick wins shipped, kit
-restyle NOT started** — this doc is the handoff for whoever picks it up._
+_Drafted 2026-07-22 (session 12). Status: **DONE — kit restyle shipped in session 15 (2026-07-27).**_
+
+> **Session 15 update.** The full kit restyle below is implemented. `index.css` (font-display w400,
+> `--ease`/`--dur`, `fadeUp`+`modalRise`, global reduced-motion, `.chip*`/`.sec*`, `.btn-primary`/
+> `.btn-surface`), `button.tsx`, `table.tsx`+`data-list.tsx` (tablecard, orange row hover, micro header,
+> **+ mobile card fallback**), `kpi-tile.tsx` (icon square + serif value + delta), `modal.tsx`+`input.tsx`
+> (radius/rise/border-tint focus), and the `Chips`/`Segmented` + every hand-rolled filter/nav pill row are
+> converted. Serif `font-semibold` stripped app-wide. All colours track `--primary` via `color-mix` so
+> tenant re-tint still works. Verified in-sandbox: `tsc -b` + Tailwind compile clean; Windows
+> `npm run build`/side-by-side screenshots still owed (the Definition of Done). The original plan follows
+> for reference.
+
+---
 
 ## Goal
 

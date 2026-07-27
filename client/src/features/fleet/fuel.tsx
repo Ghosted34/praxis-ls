@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
@@ -132,6 +133,7 @@ export function FuelLogPage() {
 
       <DataList columns={cols} rows={fills.data} error={fills.error} loading={fills.loading} rowKey={(r) => r.fuel_log_id} empty={{ title: "No fills", hint: "Log a fuel fill to start tracking consumption." }} />
       {logging && <LogFillForm vehicles={vehicles.data || []} presetVehicle={veh} onClose={() => setLogging(false)} onSaved={fills.reload} />}
+      <ScreenAi path="fleet/fuel" />
     </section>
   );
 }

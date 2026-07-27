@@ -68,7 +68,7 @@ function AgeingPanel({ a }: { a: api.Ageing | null }) {
   const max = Math.max(1, ...rows.map((r) => Number(r.v || 0)));
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg font-semibold">Receivables ageing</h3>
+      <h3 className="font-display text-lg">Receivables ageing</h3>
       <div className="micro mb-4 uppercase tracking-wide">Smart receivables ledger · XAF</div>
       <div className="space-y-3">
         {rows.map((r) => (
@@ -113,7 +113,7 @@ function CashPanel({ tb, accts }: { tb: api.TrialBalance | null; accts: api.Trea
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg font-semibold">Cash position</h3>
+      <h3 className="font-display text-lg">Cash position</h3>
       <div className="micro mb-4 uppercase tracking-wide">Treasury · bank · cash · mobile money</div>
       {groups.length ? (
         <div className="flex flex-wrap items-center gap-6">
@@ -205,12 +205,12 @@ function CommandCenter() {
       {/* header — title left, module links + dynamic create button right */}
       <header className="mb-5 border-b border-border pb-4">
         <div className="micro mb-1 uppercase tracking-wide">Hub › Finance · OHADA</div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Finance &amp; treasury</h1>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Finance &amp; treasury</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Every money event posts to the SYSCOHADA ledger at source. Débours never inflate turnover.</p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="chips">
             {MORE.map((m) => (
-              <button key={m.slug} onClick={() => navigate(`/finance/${m.slug}`)} className="rounded-full border border-border px-3 py-1 text-[13px] text-muted-foreground transition-colors hover:border-primary hover:text-primary">{m.label}</button>
+              <button key={m.slug} onClick={() => navigate(`/finance/${m.slug}`)} className="chip">{m.label}</button>
             ))}
           </div>
           <Button onClick={() => navigate(active.route)}>{active.noun}</Button>
@@ -229,8 +229,8 @@ function CommandCenter() {
           </div>
         </div>
         <div className="flex items-center gap-8">
-          <div className="text-right"><div className="micro uppercase tracking-wide">Total débit</div><div className="num font-display text-lg font-semibold">{money(t?.debit)}</div></div>
-          <div className="text-right"><div className="micro uppercase tracking-wide">Total crédit</div><div className="num font-display text-lg font-semibold">{money(t?.credit)}</div></div>
+          <div className="text-right"><div className="micro uppercase tracking-wide">Total débit</div><div className="num font-display text-lg">{money(t?.debit)}</div></div>
+          <div className="text-right"><div className="micro uppercase tracking-wide">Total crédit</div><div className="num font-display text-lg">{money(t?.credit)}</div></div>
         </div>
       </div>
 
@@ -242,13 +242,12 @@ function CommandCenter() {
 
       {/* chips + search */}
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="chips">
           {(Object.keys(CHIP_META) as ChipKey[]).map((k) => {
             const on = chip === k;
             return (
-              <button key={k} onClick={() => setChip(k)}
-                className={`rounded-full border px-3.5 py-1.5 text-sm transition-colors ${on ? "border-transparent bg-primary font-semibold text-primary-foreground shadow-sm" : "border-border text-muted-foreground hover:text-foreground"}`}>
-                {CHIP_META[k].label} <span className="num opacity-70">{counts[k]}</span>
+              <button key={k} onClick={() => setChip(k)} className={`chip ${on ? "on" : ""}`}>
+                {CHIP_META[k].label} <span className="ct num">{counts[k]}</span>
               </button>
             );
           })}

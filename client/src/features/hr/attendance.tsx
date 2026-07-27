@@ -11,6 +11,7 @@ import { Modal, Field } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
@@ -161,6 +162,7 @@ export function AttendancePage() {
       <div className="mt-8">
         <Worksites />
       </div>
+      <ScreenAi path="hr/attendance" />
     </section>
   );
 }

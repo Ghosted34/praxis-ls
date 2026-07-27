@@ -1,6 +1,17 @@
 # UI Depth Overhaul — HR & Employees, Fleet, Vehicles, Warehouse
 
-**Status:** audit + plan for discussion.
+> **Session 15 update (2026-07-27) — substantially DONE.** All 21 core screens across HR/Fleet/WMS are
+> archetypes (360 / run / queue / kanban / lifecycle / ledger / count-sheet / time-clock / expiry board), not
+> CRUD tables. The **per-screen AI gate** (a cross-cutting requirement that had been dropped) was restored on
+> all 21 and the AI-action cards were made **clickable** (open the copilot + auto-ask; writes human-confirmed).
+> The **shared blocks** the plan called for are now real (`components/ui/workflow.tsx`: StepBar /
+> StatusActionBar / TransitionButtons / LineTable), adopted in 9 screens (the rest can migrate incrementally).
+> **SOPs → onboarding checklist** and **Talent pool → succession board** are built out with two new backend
+> modules (`hr/onboarding`, `hr/succession`). Open questions resolved: **map tiles → pin-less** (coords/address
+> only, no map lib added); sequence followed roughly as proposed. Remaining tail is optional polish. See
+> `SESSION_HANDOFF.md` session-15 log.
+
+**Status:** audit + plan — largely implemented (see session-15 banner above).
 **Problem in one line:** the backend modules carry real domain lifecycles, but the client wraps each in a generic `CrudResource` (list / create / edit / delete) — so the *actions* that make the system perform are missing, and edit/delete sit where a workflow belongs.
 
 ## The evidence

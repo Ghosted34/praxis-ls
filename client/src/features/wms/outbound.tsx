@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { StepBar, StatusActionBar, LineTable, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
@@ -20,6 +22,7 @@ const STATUS_TONE: Record<string, Tone> = { CREATED: "mute", PICKING: "blue", PA
 const TRANSITIONS: Record<string, string[]> = {
   CREATED: ["PICKING", "CANCELLED"], PICKING: ["PACKED", "CANCELLED"], PACKED: ["DISPATCHED", "CANCELLED"], DISPATCHED: [], CANCELLED: [],
 };
+const STATUS_LABEL: Record<string, string> = { PICKING: "Start picking", PACKED: "Mark packed", DISPATCHED: "Dispatch", CANCELLED: "Cancel" };
 
 function Toggle({ on, label, doneLabel, disabled, busy, onClick }: { on: boolean; label: string; doneLabel: string; disabled?: boolean; busy?: boolean; onClick: () => void }) {
   return (
@@ -55,44 +58,33 @@ function OrderDetail({ order: initial, invMap, inventory, onClose, onChanged }: 
   }
 
   const rows = lines.data || [];
+  const transitions: Transition[] = (TRANSITIONS[order.status] || []).map((s) => ({
+    to: s,
+    label: STATUS_LABEL[s] || s,
+    variant: s === "CANCELLED" ? "outline" : "default",
+  }));
+  const locked = order.status === "DISPATCHED" || order.status === "CANCELLED";
 
   return (
     <Modal open onClose={onClose} size="xl" title={`Outbound · ${order.outbound_order_id.slice(0, 8)}`} description={order.dispatched_at ? `Dispatched ${dateFmt(order.dispatched_at)}` : undefined}>
       <div className="space-y-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <Pill tone={STATUS_TONE[order.status] || "mute"}>{order.status}</Pill>
-          <div className="flex flex-wrap gap-2">
-            {(TRANSITIONS[order.status] || []).map((s) => (
-              <Button key={s} size="sm" variant={s === "CANCELLED" ? "outline" : "default"} loading={busy === "st:" + s} onClick={() => toState(s)}>
-                {s === "PICKING" ? "Start picking" : s === "PACKED" ? "Mark packed" : s === "DISPATCHED" ? "Dispatch" : "Cancel"}
-              </Button>
-            ))}
-          </div>
-        </div>
+        <StepBar steps={["CREATED", "PICKING", "PACKED", "DISPATCHED"]} current={order.status} />
+        <StatusActionBar status={order.status} tone={STATUS_TONE[order.status]} transitions={transitions} onTransition={toState} busyKey={busy} />
 
         {error && <ErrorState message={error} />}
 
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="bg-muted/50 text-muted-foreground">
-              <tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-right font-medium">Qty</th><th className="px-3 py-2 text-right font-medium">Pick</th><th className="px-3 py-2 text-right font-medium">Pack</th></tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {lines.loading ? (
-                <tr><td colSpan={4} className="px-3 py-4 text-center micro">Loading…</td></tr>
-              ) : rows.length === 0 ? (
-                <tr><td colSpan={4} className="px-3 py-4 text-center micro">No lines yet.</td></tr>
-              ) : rows.map((l) => (
-                <tr key={l.outbound_line_id}>
-                  <td className="px-3 py-1.5">{l.inventory_item_id ? (invMap[l.inventory_item_id] || l.inventory_item_id.slice(0, 8)) : "—"}</td>
-                  <td className="px-3 py-1.5 text-right num">{num(l.qty)}</td>
-                  <td className="px-3 py-1.5 text-right"><Toggle on={l.picked} label="Pick" doneLabel="Picked" busy={busy === l.outbound_line_id + "picked"} disabled={order.status === "DISPATCHED" || order.status === "CANCELLED"} onClick={() => flip(l, "picked")} /></td>
-                  <td className="px-3 py-1.5 text-right"><Toggle on={l.packed} label="Pack" doneLabel="Packed" busy={busy === l.outbound_line_id + "packed"} disabled={!l.picked || order.status === "DISPATCHED" || order.status === "CANCELLED"} onClick={() => flip(l, "packed")} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <LineTable
+          rows={rows}
+          loading={lines.loading}
+          empty="No lines yet."
+          rowKey={(l) => l.outbound_line_id}
+          columns={[
+            { label: "Item", render: (l) => (l.inventory_item_id ? invMap[l.inventory_item_id] || l.inventory_item_id.slice(0, 8) : "—") },
+            { label: "Qty", align: "right", render: (l) => <span className="num">{num(l.qty)}</span> },
+            { label: "Pick", align: "right", render: (l) => <Toggle on={l.picked} label="Pick" doneLabel="Picked" busy={busy === l.outbound_line_id + "picked"} disabled={locked} onClick={() => flip(l, "picked")} /> },
+            { label: "Pack", align: "right", render: (l) => <Toggle on={l.packed} label="Pack" doneLabel="Packed" busy={busy === l.outbound_line_id + "packed"} disabled={!l.picked || locked} onClick={() => flip(l, "packed")} /> },
+          ]}
+        />
 
         {canEditLines && (
           <form onSubmit={add} className="grid gap-3 rounded-lg border bg-muted/30 p-4 sm:grid-cols-[1fr_120px_auto] sm:items-end">
@@ -142,6 +134,7 @@ export function OutboundPage() {
       <HubTabs />
       <DataList columns={cols} rows={orders.data} error={orders.error} loading={orders.loading} rowKey={(o) => o.outbound_order_id} empty={{ title: "No outbound orders", hint: "Create an order to start picking." }} />
       {view && <OrderDetail order={view} invMap={invMap} inventory={inv.data || []} onClose={() => setView(null)} onChanged={orders.reload} />}
+      <ScreenAi path="wms/outbound" />
     </section>
   );
 }

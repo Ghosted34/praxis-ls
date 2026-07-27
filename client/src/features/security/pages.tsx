@@ -266,11 +266,7 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
                   key={r.role_id}
                   type="button"
                   onClick={() => toggleRole(r.role_id)}
-                  className={
-                    on
-                      ? "rounded-full border border-transparent bg-primary px-3 py-1 text-[13px] font-semibold text-primary-foreground"
-                      : "rounded-full border border-border px-3 py-1 text-[13px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
-                  }
+                  className={`chip ${on ? "on" : ""}`}
                 >
                   {r.name}
                 </button>

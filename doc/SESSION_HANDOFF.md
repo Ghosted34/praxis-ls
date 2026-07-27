@@ -3,7 +3,20 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-24 (session 14). **Session 14 = platform-tier RBAC (a permission
+_Last updated: 2026-07-27 (session 15). **Session 15 = the Lovable kit-fidelity restyle finished; the
+per-screen AI gate restored across all 21 HR/Fleet/WMS screens AND the AI-action cards made clickable
+(open the copilot + auto-ask, writes still human-confirmed); shared workflow blocks extracted
+(`components/ui/workflow.tsx` — StepBar / StatusActionBar / TransitionButtons / LineTable) and adopted in
+9 screens; SOPs & Talent pool built out for real with two NEW backend modules — `hr/succession` (MOD-19,
+`/succession`) and `hr/onboarding` (MOD-16, `/onboarding`) — plus a succession board + onboarding-checklist
+UI; and a run of fixes: platform-console `citext = uuid` 500s (`plans.planIdOf` + `roles.roleIdOf`),
+vacancy→employee role carry-over on hire, an employee-profile Edit modal, mobile table/kanban overflow
+(card fallback + `min-w-0`), the dead `crud-resource.tsx` deleted, and client + platform-console ESLint flat
+configs added.** Two live-DB gotchas surfaced and are operational, not code: **Appraisals 500 =
+`0466_employee_earning` unapplied → run `db:migrate:tenants`**; and the new BE modules need an **API restart**
+to mount. In-sandbox `tsc -b`, Tailwind compile, and root/backend ESLint all clean; Windows `npm run build`/
+`npm test` + `npm install` (client + platform-console, for the new ESLint deps) still owed. Full detail: the
+session-15 log below. Prior: **Session 14 = platform-tier RBAC (a permission
 matrix with custom-role addition), Plans CRUD + per-plan feature matrix, platform-user management,
 platform-console token refresh, tenant-lifecycle completion (plan change + create-admin from the
 console), the feature-toggle→tenant-screen fix, a human-readable sweep, and a batch of UI fixes.**
@@ -345,6 +358,98 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-27 (session 15: Lovable kit fidelity, AI gate + clickable actions, workflow blocks, SOPs/Talent build-out, fixes)
+
+A large FE-fidelity + depth batch driven screen-by-screen against the user's local tenant. **In-sandbox
+`tsc -b` clean (client), Tailwind/PostCSS compile clean, root + backend ESLint clean. NOT runnable in-sandbox:
+client `vite build` (Windows-lockfile → Linux rollup native "Bus error"), `jest` (needs Postgres), client/
+platform-console ESLint (their new flat-config deps aren't installed here). Windows validators authoritative.**
+
+**1. Lovable kit-fidelity restyle — finished (was "audit complete, kit restyle NOT started" in
+`LOVABLE_FIDELITY_PLAN.md`).** All restyle lives in the shared kit so every screen re-skins at once, tokens
+only (colours track `--primary` via `color-mix` so tenant re-tint keeps working):
+   - **`index.css`**: `--ease`/`--dur` motion tokens, `fadeUp` + `modalRise` keyframes, a global
+     `prefers-reduced-motion` kill-switch, `.chip`/`.chip.on`/`.chip .ct` + `.sec` classes, and
+     `.btn-primary`/`.btn-surface` recipes. `.font-display` already forced weight 400; **stripped the
+     now-redundant `font-semibold` off every serif heading** (~9 files: operations, finance, security, vault,
+     comms, help, workspace, permission-matrix).
+   - **`components/ui/button.tsx`** — `default` = gradient + orange glow + `-1px` hover lift; `outline` =
+     surface + lift + orange hover border (radius 11, 13px/600).
+   - **`components/ui/table.tsx` + `data-list.tsx`** — tablecard wrapper (`rounded-[var(--radius)]`, overflow-x
+     scroll), micro uppercase header on `--secondary`, faint row borders, **orange row hover**, `fadeUp`.
+     Header no longer `font-semibold`. **Mobile card fallback** added to `DataList`: table on `sm+`, a
+     label/value card per row on phones (unlabelled action columns drop to a full-width footer).
+   - **`components/ui/kpi-tile.tsx`** — 38px orange-tinted icon square + serif-30 value + optional `delta` +
+     `-3px` hover lift + `fadeUp`.
+   - **`components/ui/modal.tsx` + `input.tsx`** — modal radius 22 + `shadow-l` + `modalRise`; inputs/select
+     surface bg, radius 10, 13px, **border-tint focus** (no ring). Dark-mode option-colour fix kept.
+   - **Chips/segmented** — `features/sales/ui.tsx` `Chips`→`.chip` and `Segmented`→reference seg recipe; **every
+     hand-rolled filter/nav pill row converted** (operations, finance hub + "more modules", chart-of-accounts,
+     comms/mail, vault hub, security hub, security role-toggle).
+
+**2. Per-screen AI gate restored across HR/Fleet/WMS (was a systematic gap).** `screen-specs.ts` had **zero**
+`ai` entries for `hr/`, `fleet/`, `wms/` while every other area had them, and none of the 21 rebuilt screens
+rendered `<ScreenAi/>`. Added `ai` specs (read/write actions) for all 21 paths and dropped
+`<ScreenAi path="area/screen" />` into each screen (scripted, CRLF-safe). **AI-action cards are now clickable**
+(`components/ai-actions.tsx`): a card dispatches `praxis:open-copilot` with `detail.prompt = action.describe`;
+`components/praxis-copilot.tsx` opens and auto-sends it (via a `sendRef` so the once-registered listener isn't
+stale). Writes still return AWAITING_CONFIRM → Confirm button, so the "human confirm on writes" promise holds.
+Works on every screen because `AiActions` is shared.
+
+**3. Shared workflow blocks — extracted + adopted (the depth plan's "build once, reuse").** New
+**`components/ui/workflow.tsx`**: `StepBar` (linear lifecycle stepper), `StatusActionBar` (status Pill +
+transition buttons), `TransitionButtons` (the per-row / detail action group; each item carries its own
+`loading`), `LineTable` (bordered line-item grid w/ loading/empty). Adopted in **9 screens**: work-orders +
+outbound (StepBar+StatusActionBar+LineTable), cycle-count (LineTable), contracts + incidents + dispatch +
+inbound + equipment (TransitionButtons, some routing modal-open vs status set), vehicle 360 (TransitionButtons
+for the Active⇄Inactive→Disposed ladder). StepBar is only used where the lifecycle is strictly linear
+(work-orders, outbound); toggle/branching lifecycles keep just the action bar.
+
+**4. SOPs & Talent pool built out for real (was "light reference lists", backend-blocked).** The tables
+existed (`0360_hr_breadth.sql`: `succession_plan`, `onboarding_checklist`, `onboarding_item`) but had **no
+routes** — so two NEW auto-discovered modules were added:
+   - **`src/modules/hr/succession/`** (MOD-19, basePath `/succession`, `feature:null`) — CRUD via the shared
+     resource kit; `repo.list` LEFT-JOINs `employee` for incumbent/successor names. Mirrors `talent_pool`.
+   - **`src/modules/hr/onboarding/`** (MOD-16, basePath `/onboarding`) — custom parent/child: list checklists
+     (w/ employee name + done/total counts), create (employee + optional initial items), add item, toggle item
+     (sets `done_at`), complete. `audit`-only (no `emitEvent`; `event_log.event_type_key` has no FK so it'd be
+     safe either way).
+   - **FE**: Talent tab → **"Talent & succession"** (KPIs + a succession board of role→incumbent/successor
+     cards with a readiness pill + New-plan form, above the candidate bench). SOPs tab → **"SOPs & onboarding"**
+     with a Procedures/Onboarding chip toggle; Onboarding = checklist cards w/ progress bars + a detail modal
+     (tick items, add steps, mark complete). No migration needed (tables pre-existed) — **API restart mounts
+     the two modules**; tenant DBs must have run 0360 (normal provisioning has).
+
+**5. Fixes.**
+   - **Platform-console `citext = uuid` 500 (empty Features/Roles).** `plans.service.planIdOf` compared one
+     param against a `uuid` column AND a `citext` column (`WHERE plan_id = $1 OR code = $1`); a uuid arg made PG
+     type `$1` as uuid, so `code = $1` errored (`42883`), 500'd the endpoint, and the console rendered the error
+     as an **empty table** (it was never a missing seed — the catalogue seed exists + is complete). Fixed by
+     comparing on text (`plan_id::text = $1 OR code = $1`); **same latent bug fixed in `roles.service.roleIdOf`**.
+   - **Vacancy → employee role carry-over.** `vacancy.service.setApplicantStatus` (on the transition into
+     `HIRED`) provisioned the employee with only `full_name` — so the profile showed "—". Now copies the
+     vacancy's `title` → `employee.job_title` and `department` → `employee.department`. (Email/phone/CV still
+     don't carry — no columns; would need a migration.)
+   - **Employee 360 Edit.** New Edit button + prefilled modal (name / entity / department / job title /
+     employment type) → `PATCH /employees/:id` (endpoint already existed; added `updateEmployee` to `hr-api.ts`)
+     — the way to fix pre-fix hires like the "Jane Doe / role —" case.
+   - **Mobile overflow.** Wide tables scroll in-card + the new card fallback; the **vacancy kanban** clipped its
+     last column because it sat in a grid track (`min-width:auto` grew to content) — fixed with `min-w-0` so the
+     board's `overflow-x-auto` engages. (Sales kanban is in a block section, already fine.)
+   - **Dead code.** Deleted the unused `components/crud-resource.tsx`.
+   - **ESLint gates.** `client/` and `platform-console/` shipped **no** flat config, so `eslint .` self-ignored
+     under ESLint 9 (client lint gate was effectively off). Added `eslint.config.js` (typescript-eslint +
+     react-hooks + react-refresh) + devDeps + fixed the `lint` script (dropped the ineffective `--ext`) to both.
+     **Needs `npm install` in each before the lint runs.**
+
+**6. Owed / notes.** Windows: `npm install && npm run lint && npm run build` in `client/` and `npm install &&
+npm run lint` in `platform-console/`; `npm test` at root. **`db:migrate:tenants`** (applies `0466_employee_
+earning` — the Appraisals 500 — and any other pending tenant migrations). **Restart the API** to mount
+`hr/succession` + `hr/onboarding`. Flip **`ai.assistant.backend` on per tenant** in the console so the AI panel
+shows. Set **`PLATFORM_CONSOLE_HOST`** for the prod console. StepBar has no more clean linear-lifecycle homes
+without building new detail modals. Optional follow-ups: carry applicant email/phone onto the employee (needs
+columns) and a stored employee↔applicant/vacancy link for traceability (today it's audit-trail only).
 
 ## Session log — 2026-07-24 (session 14: feature-toggle fix, platform RBAC, Plans CRUD, users, console refresh, lifecycle, human-readable + UI)
 

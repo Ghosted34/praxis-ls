@@ -15,7 +15,8 @@
  * implementation and one active-tab style.
  */
 import { TabbedHub, type HubTab } from "@/components/tabbed-hub";
-import { ClientsPage, SuppliersPage, CorporateEntitiesPage, ExpenseRatesPage, FinancialDictionaryPage } from "./pages";
+import { ClientsPage } from "./client-360"; // customer 360 (replaces the flat clients CRUD)
+import { SuppliersPage, CorporateEntitiesPage, ExpenseRatesPage, FinancialDictionaryPage } from "./pages";
 import { CurrenciesPage, TaxJurisdictionsPage } from "@/features/settings/master-data-pages";
 import { BankAccountsPage } from "@/features/settings/config-pages";
 

@@ -10,6 +10,11 @@ export type WarehouseLocation = {
   label?: string | null;
   name?: string | null;
   zone?: string | null;
+  aisle?: string | null;
+  rack?: string | null;
+  bin?: string | null;
+  yard?: string | null;
+  capacity_units?: number | string | null;
 };
 
 export type InventoryItem = {
@@ -69,8 +74,29 @@ export const createInbound = (body?: { dossier_id?: string }) => tenant<GrnInbou
 export const setInboundQa = (id: string, qa_status: "PASSED" | "REJECTED", putaway_location?: string) =>
   tenant<GrnInbound>(`/inbound/${id}/qa`, { method: "POST", body: { qa_status, putaway_location } });
 
+/* ── Equipment (allocation board) ── */
+export type Equipment = {
+  wms_equipment_id: string;
+  label: string;
+  status: string; // AVAILABLE | IN_USE | MAINTENANCE | OUT_OF_SERVICE
+  assigned_to?: string | null;
+  location_id?: string | null;
+  zone?: string | null;
+  aisle?: string | null;
+  rack?: string | null;
+  bin?: string | null;
+};
+export const listEquipment = () => tenant<Equipment[]>("/equipment");
+export const createEquipment = (body: { label: string; location_id?: string }) =>
+  tenant<Equipment>("/equipment", { method: "POST", body });
+export const setEquipmentStatus = (id: string, status: string, assigned_to?: string | null) =>
+  tenant<Equipment>(`/equipment/${id}/status`, { method: "POST", body: { status, assigned_to } });
+
 export const listLocations = () => tenant<WarehouseLocation[]>("/locations");
-export const locationLabel = (l?: WarehouseLocation) => (l ? l.code || l.label || l.name || l.location_id.slice(0, 8) : "—");
+export const createLocation = (body: { zone?: string; aisle?: string; rack?: string; bin?: string; yard?: string; capacity_units?: number }) =>
+  tenant<WarehouseLocation>("/locations", { method: "POST", body });
+export const locationLabel = (l?: WarehouseLocation) =>
+  l ? l.code || l.label || l.name || [l.zone, l.aisle, l.rack, l.bin, l.yard].filter(Boolean).join(" · ") || l.location_id.slice(0, 8) : "—";
 
 /* ── Outbound (pick / pack / dispatch) ── */
 export type OutboundOrder = {

@@ -52,10 +52,11 @@ async function emitEvent(client, e) {
   // placeholder across an INSERT value AND a subquery made Postgres fail to
   // deduce a single type for it (SQLSTATE 42P08).
   const crit = await client.query(
-    `SELECT is_security_critical FROM event_type WHERE key = $1`,
+    `SELECT is_security_critical, is_approvable FROM event_type WHERE key = $1`,
     [key],
   );
   const isCritical = crit.rows[0] ? crit.rows[0].is_security_critical === true : false;
+  const isApprovable = crit.rows[0] ? crit.rows[0].is_approvable === true : false;
 
   // priority: caller override wins; else HIGH for security-critical, else NORMAL.
   const priority = e.priority || (isCritical ? "HIGH" : "NORMAL");
@@ -65,6 +66,18 @@ async function emitEvent(client, e) {
      VALUES ($1,$2,$3,$4,$5,$6)`,
     [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority, e.payload || {}],
   );
+
+  // Universal approval retrofit: if this event type is approvable, open the first
+  // approval task (idempotent). No-op when no active workflow is bound, so the
+  // record follows its own flow (auto-approve default). Runs in the caller's
+  // transaction so the task is atomic with the change. `require` is lazy to keep
+  // the module load order (executor → query-helpers only, no cycle back to emit).
+  if (isApprovable && e.entityRef) {
+    // eslint-disable-next-line global-require
+    const executor = require("../../services/workflow/executor");
+    const amountXaf = e.payload && (e.payload.amount_xaf ?? e.payload.amount ?? e.payload.total_ttc);
+    await executor.start(client, { eventTypeKey: key, entityRef: e.entityRef, amountXaf: amountXaf ?? null });
+  }
 
   // Watch-the-Watcher fan-out — only for security-critical events. A HIGH in-app
   // notification to every active CEO/MANAGEMENT user (the "watchers"), in the

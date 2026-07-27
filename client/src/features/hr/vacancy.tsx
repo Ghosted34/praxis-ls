@@ -145,7 +145,7 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
               <span className="text-sm font-medium text-foreground">{COL_LABEL[col]}</span>
               <span className="micro">{byStatus[col]?.length || 0}</span>
             </div>
-            <div className="space-y-2 rounded-lg border bg-muted/30 p-2 min-h-24">
+            <div className="max-h-[62vh] space-y-2 overflow-y-auto rounded-lg border bg-muted/30 p-2 min-h-24">
               {applicants.loading ? <div className="px-2 py-3 micro">Loading…</div> : (byStatus[col] || []).map((a) => (
                 <div key={a.applicant_id} className="rounded-md border bg-card p-3">
                   <div className="text-sm font-medium text-foreground">{a.full_name}</div>

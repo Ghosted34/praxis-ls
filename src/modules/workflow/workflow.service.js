@@ -145,8 +145,10 @@ module.exports = {
   listApprovals: (client, q) => repo.listApprovals(client, q),
   actApproval: async (client, opts) => {
     const result = await executor.act(client, opts);
-    if (result.completed && result.approved && result.entityRef) {
-      result.dispatch = await onApproved.dispatch(client, result.entityRef, opts.actor || {});
+    if (result.completed && result.entityRef) {
+      result.dispatch = result.approved
+        ? await onApproved.dispatch(client, result.entityRef, opts.actor || {})
+        : await onApproved.dispatchReject(client, result.entityRef, opts.actor || {});
     }
     return result;
   },

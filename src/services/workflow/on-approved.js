@@ -12,10 +12,17 @@
 "use strict";
 
 const handlers = new Map();
+const rejectHandlers = new Map();
 
 /** Register `fn(client, { id, entityRef, actor })` for an entity_ref prefix. */
 function register(prefix, fn) {
   handlers.set(prefix, fn);
+}
+
+/** Register the REJECT counterpart — called when a chain completes as rejected,
+ *  so the module can move its record to a terminal rejected state. Optional. */
+function registerReject(prefix, fn) {
+  rejectHandlers.set(prefix, fn);
 }
 
 function handlerFor(entityRef) {
@@ -32,4 +39,13 @@ async function dispatch(client, entityRef, actor = {}) {
   return { dispatched: true, result };
 }
 
-module.exports = { register, dispatch, handlerFor, _handlers: handlers };
+/** Invoke the owning module's reject handler for a rejected entity_ref. No-op if none. */
+async function dispatchReject(client, entityRef, actor = {}) {
+  const fn = rejectHandlers.get(String(entityRef).split(":")[0]);
+  if (!fn) return { dispatched: false, reason: "no_handler" };
+  const id = String(entityRef).split(":")[1];
+  const result = await fn(client, { id, entityRef, actor });
+  return { dispatched: true, result };
+}
+
+module.exports = { register, registerReject, dispatch, dispatchReject, handlerFor, _handlers: handlers };

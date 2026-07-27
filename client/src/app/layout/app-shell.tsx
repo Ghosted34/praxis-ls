@@ -41,25 +41,12 @@ const NAV: NavGroup[] = [
   {
     heading: "Commercial",
     prefix: "/commercial",
-    items: [
-      { to: "/commercial/quotations", label: "Quotations" },
-      { to: "/commercial/margin-simulation", label: "Margin simulation" },
-      { to: "/commercial/extra-charge-simulation", label: "Extra-charge simulation" },
-      { to: "/commercial/pricing-variance", label: "Pricing variance" },
-    ],
+    items: [{ to: "/commercial", label: "Commercial" }],
   },
   {
     heading: "Sales & CRM",
     prefix: "/sales",
-    items: [
-      { to: "/sales/leads", label: "Leads & intake" },
-      { to: "/sales/leads?tab=intake", label: "Inbound intake" },
-      { to: "/sales/opportunities", label: "Opportunities" },
-      { to: "/sales/proposals", label: "Proposals" },
-      { to: "/sales/meetings", label: "Meetings" },
-      { to: "/sales/campaigns", label: "Marketing campaigns" },
-      { to: "/sales/success-stories", label: "Success stories" },
-    ],
+    items: [{ to: "/sales", label: "Sales & CRM" }],
   },
   {
     heading: "Operations",
@@ -106,18 +93,7 @@ const NAV: NavGroup[] = [
   {
     heading: "People & HR",
     prefix: "/hr",
-    items: [
-      { to: "/hr/employees", label: "Employees" },
-      { to: "/hr/payroll", label: "Payroll" },
-      { to: "/hr/vacancies", label: "Vacancies" },
-      { to: "/hr/contracts", label: "Contracts" },
-      { to: "/hr/appraisals", label: "Appraisals" },
-      { to: "/hr/attendance", label: "Attendance" },
-      { to: "/hr/leave", label: "Leave & allowances" },
-      { to: "/hr/sops", label: "SOPs" },
-      { to: "/hr/trainings", label: "Trainings" },
-      { to: "/hr/talent-pool", label: "Talent pool" },
-    ],
+    items: [{ to: "/hr", label: "People & HR" }],
   },
   {
     heading: "Master data",
@@ -127,15 +103,7 @@ const NAV: NavGroup[] = [
   {
     heading: "Vault",
     prefix: "/vault",
-    items: [
-      // These are hub sections now (features/vault/hub.tsx) — the paths are unchanged.
-      { to: "/vault", label: "Vault overview" },
-      { to: "/vault/documents", label: "Document vault" },
-      { to: "/vault/signatures", label: "Signatures" },
-      { to: "/vault/verification", label: "Verification" },
-      { to: "/vault/compliance-flags", label: "Compliance flags" },
-      { to: "/vault/reports", label: "Reports" },
-    ],
+    items: [{ to: "/vault", label: "Vault & compliance" }],
   },
   {
     heading: "Comms",
@@ -145,18 +113,7 @@ const NAV: NavGroup[] = [
   {
     heading: "Security & Access",
     prefix: "/security",
-    items: [
-      // Hub sections (features/security/hub.tsx) — paths unchanged from before.
-      { to: "/security", label: "Security overview" },
-      { to: "/security/users", label: "Users" },
-      { to: "/security/roles", label: "Roles" },
-      { to: "/security/permissions", label: "Permission matrix" },
-      { to: "/security/capabilities", label: "Capabilities" },
-      { to: "/security/scopes", label: "Scopes" },
-      { to: "/security/field-visibility", label: "Field visibility" },
-      { to: "/security/sessions", label: "Sessions" },
-      { to: "/security/my-security", label: "My security" },
-    ],
+    items: [{ to: "/security", label: "Security & access" }],
   },
   {
     heading: "Governance",
@@ -467,32 +424,56 @@ function NavArea({
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
   return (
     <nav className="flex flex-col gap-5 p-3">
-      {NAV.map((g) => (
-        <div key={g.heading}>
-          <p className="micro px-3 pb-2">{g.heading === "Overview" ? "Overview" : g.heading}</p>
-          <div className="flex flex-col gap-0.5">
-            {g.items.map((it) => (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                end={it.to === "/"}
-                onClick={onNavigate}
-                style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
-                className={({ isActive }) =>
-                  cn(
-                    "rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-accent font-semibold text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )
-                }
-              >
-                {it.label}
-              </NavLink>
-            ))}
+      {NAV.map((g) => {
+        // Single-screen areas (now hubs) collapse to just their caps heading,
+        // which itself is the link — no duplicate row beneath it.
+        if (g.items.length === 1) {
+          const it = g.items[0];
+          return (
+            <NavLink
+              key={g.heading}
+              to={it.to}
+              end={it.to === "/"}
+              onClick={onNavigate}
+              style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
+              className={({ isActive }) =>
+                cn(
+                  "micro block rounded-md border-l-[3px] border-transparent px-3 py-2 transition-colors",
+                  isActive ? "bg-accent text-foreground" : "hover:bg-accent/60 hover:text-foreground",
+                )
+              }
+            >
+              {g.heading}
+            </NavLink>
+          );
+        }
+        return (
+          <div key={g.heading}>
+            <p className="micro px-3 pb-2">{g.heading === "Overview" ? "Overview" : g.heading}</p>
+            <div className="flex flex-col gap-0.5">
+              {g.items.map((it) => (
+                <NavLink
+                  key={it.to}
+                  to={it.to}
+                  end={it.to === "/"}
+                  onClick={onNavigate}
+                  style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
+                  className={({ isActive }) =>
+                    cn(
+                      "rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+                      isActive
+                        ? "bg-accent font-semibold text-foreground"
+                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                    )
+                  }
+                >
+                  {it.label}
+                </NavLink>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </nav>
   );
 }

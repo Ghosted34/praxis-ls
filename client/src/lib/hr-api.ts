@@ -194,6 +194,31 @@ export const addApplicant = (vacancyId: string, body: { full_name: string; email
 export const setApplicantStatus = (vacancyId: string, applicantId: string, status: string) =>
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants/${applicantId}`, { method: "PATCH", body: { status } });
 
+/* ── Trainings + attendance roster ── */
+export type Training = {
+  training_id: string;
+  title?: string | null;
+  scheduled_on?: string | null;
+  facilitator?: string | null;
+  status: string; // SCHEDULED | DONE | CANCELLED
+};
+export type TrainingAttendee = {
+  training_attendance_id: string;
+  training_id: string;
+  employee_id?: string | null;
+  attended?: boolean | null;
+};
+export const listTrainings = () => tenant<Training[]>("/trainings");
+export const createTraining = (body: { title: string; scheduled_on?: string; facilitator?: string }) =>
+  tenant<Training>("/trainings", { method: "POST", body });
+export const setTrainingStatus = (id: string, status: string) =>
+  tenant<Training>(`/trainings/${id}/status`, { method: "POST", body: { status } });
+export const listTrainingAttendees = (trainingId: string) => tenant<TrainingAttendee[]>(`/trainings/${trainingId}/attendees`);
+export const addTrainingAttendee = (trainingId: string, employee_id: string) =>
+  tenant<TrainingAttendee>(`/trainings/${trainingId}/attendees`, { method: "POST", body: { employee_id } });
+export const setTrainingAttendee = (trainingId: string, attendeeId: string, attended: boolean) =>
+  tenant<TrainingAttendee>(`/trainings/${trainingId}/attendees/${attendeeId}`, { method: "PATCH", body: { attended } });
+
 export const listSites = () => tenant<WorkSite[]>("/attendance/work-sites");
 export const createSite = (body: { name: string; latitude: number; longitude: number; radius_m?: number }) =>
   tenant<WorkSite>("/attendance/work-sites", { method: "POST", body });

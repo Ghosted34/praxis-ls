@@ -36,7 +36,7 @@ const shell = "mx-auto max-w-6xl animate-fade-in";
 
 /* ══════════════════════════════ Clients ═════════════════════════ */
 
-function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; onClose: () => void; onSaved: () => void }) {
+export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; onClose: () => void; onSaved: () => void }) {
   const isNew = row === null;
   const { rows: entities } = useList<api.Entity>("/entities");
   const [name, setName] = React.useState(row?.name ?? "");

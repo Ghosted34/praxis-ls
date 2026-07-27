@@ -67,6 +67,14 @@ function createTask(client, wf, step, { entityRef, amountXaf }) {
  */
 async function start(client, { eventTypeKey, entityRef, amountXaf = null }) {
   if (!entityRef) throw new AppError("NO_ENTITY_REF", "entityRef is required", 422);
+  // Idempotency guard: never open a second chain for an entity that already has
+  // a pending task. This lets the universal emit-hook and a module's explicit
+  // start() coexist without ever double-opening.
+  const dup = await client.query(
+    "SELECT 1 FROM approval_task WHERE entity_ref = $1 AND status = 'PENDING' LIMIT 1",
+    [entityRef],
+  );
+  if (dup.rows.length) return { autoApproved: false, alreadyPending: true };
   const wf = await getWorkflowForEvent(client, eventTypeKey);
   if (!wf) return { autoApproved: true, reason: "no_workflow" };
   const steps = await getSteps(client, wf.workflow_id);

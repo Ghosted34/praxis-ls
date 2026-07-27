@@ -20,22 +20,11 @@ import { DocumentTemplatesPage, CustomFieldsPage, EmailSignaturesPage, BusinessP
 import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
 import { FleetHub } from "@/features/fleet/hub";
 import { WarehouseHub } from "@/features/wms/hub";
-import {
-  EmployeesPage,
-  PayrollPage,
-  VacanciesPage,
-  ContractsPage,
-  AppraisalsPage,
-  AttendancePage,
-  LeavePage,
-  SopsPage,
-  TrainingsPage,
-  TalentPoolPage,
-} from "@/features/hr/pages";
+import { HrHub } from "@/features/hr/hub";
 import { FinanceHub } from "@/features/finance/hub";
 import { Planned } from "@/features/scaffold/screen-scaffold";
-import { LeadsPage, MeetingsPage, OpportunitiesPage, ProposalsPage, CampaignsPage, SuccessStoriesPage } from "@/features/sales/pages";
-import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "@/features/commercial/pages";
+import { SalesHub } from "@/features/sales/hub";
+import { CommercialHub } from "@/features/commercial/hub";
 import { VaultHub } from "@/features/vault/hub";
 import { PortalAccessPage } from "@/features/portal/pages";
 import { WorkspacePage } from "@/features/workspace/workspace-page";
@@ -73,19 +62,12 @@ export function App() {
         {/* Warehouse — one hub, deep-linkable tabs */}
         <Route path="wms" element={<WarehouseHub />} />
         <Route path="wms/:section" element={<WarehouseHub />} />
-        <Route path="hr/employees" element={<EmployeesPage />} />
-        <Route path="hr/payroll" element={<PayrollPage />} />
+        {/* People & HR — one hub, deep-linkable tabs (old /hr/<screen> paths resolve) */}
+        <Route path="hr" element={<HrHub />} />
+        <Route path="hr/:section" element={<HrHub />} />
         {/* Finance — one hub, deep-linkable tabs (per-section routes still resolve) */}
         <Route path="finance" element={<FinanceHub />} />
         <Route path="finance/:section" element={<FinanceHub />} />
-        <Route path="hr/vacancies" element={<VacanciesPage />} />
-        <Route path="hr/contracts" element={<ContractsPage />} />
-        <Route path="hr/appraisals" element={<AppraisalsPage />} />
-        <Route path="hr/attendance" element={<AttendancePage />} />
-        <Route path="hr/leave" element={<LeavePage />} />
-        <Route path="hr/sops" element={<SopsPage />} />
-        <Route path="hr/trainings" element={<TrainingsPage />} />
-        <Route path="hr/talent-pool" element={<TalentPoolPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="workflows" element={<WorkflowsPage />} />
@@ -103,18 +85,13 @@ export function App() {
         <Route path="ai-control" element={<AiControlHub />} />
         <Route path="ai-control/:section" element={<AiControlHub />} />
         {/* Commercial */}
-        <Route path="commercial/quotations" element={<QuotationsPage />} />
-        <Route path="commercial/margin-simulation" element={<MarginSimulationsPage />} />
-        <Route path="commercial/extra-charge-simulation" element={<ExtraChargeSimulationsPage />} />
-        <Route path="commercial/pricing-variance" element={<PricingVariancePage />} />
-        {/* Sales / CRM — Leads folds in Inbound intake as a tab (intake route redirects) */}
-        <Route path="sales/leads" element={<LeadsPage />} />
+        {/* Commercial — one hub, deep-linkable tabs */}
+        <Route path="commercial" element={<CommercialHub />} />
+        <Route path="commercial/:section" element={<CommercialHub />} />
+        {/* Sales & CRM — one hub, deep-linkable tabs (intake is a Leads tab) */}
+        <Route path="sales" element={<SalesHub />} />
         <Route path="sales/inbound-intake" element={<Navigate to="/sales/leads?tab=intake" replace />} />
-        <Route path="sales/opportunities" element={<OpportunitiesPage />} />
-        <Route path="sales/proposals" element={<ProposalsPage />} />
-        <Route path="sales/meetings" element={<MeetingsPage />} />
-        <Route path="sales/campaigns" element={<CampaignsPage />} />
-        <Route path="sales/success-stories" element={<SuccessStoriesPage />} />
+        <Route path="sales/:section" element={<SalesHub />} />
         {/* Operations — hub */}
         <Route path="operations" element={<OperationsHub />} />
         <Route path="operations/:section" element={<OperationsHub />} />

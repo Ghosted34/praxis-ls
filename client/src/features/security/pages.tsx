@@ -164,6 +164,8 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
   const [password, setPassword] = React.useState("");
   const [status, setStatus] = React.useState(user?.status || "ACTIVE");
   const [roleIds, setRoleIds] = React.useState<string[]>([]);
+  const [employeeId, setEmployeeId] = React.useState(user?.employee_id || "");
+  const employees = useList<{ employee_id: string; full_name?: string }>("/employees");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hydrating, setHydrating] = React.useState(editing);
@@ -190,7 +192,7 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
       if (editing && user) {
         await tenant(`/users/${user.user_id}`, {
           method: "PATCH",
-          body: { full_name: fullName, email, username: username || null, role_ids: roleIds },
+          body: { full_name: fullName, email, username: username || null, employee_id: employeeId || null, role_ids: roleIds },
         });
         // Status is a separate endpoint (audited transition, not a field patch).
         if (status !== user.status) {
@@ -199,7 +201,7 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
       } else {
         await tenant("/users", {
           method: "POST",
-          body: { email, full_name: fullName, password, username: username || null, status, role_ids: roleIds },
+          body: { email, full_name: fullName, password, username: username || null, employee_id: employeeId || null, status, role_ids: roleIds },
         });
       }
       onSaved();
@@ -229,6 +231,22 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
               <option value="ACTIVE">Active</option>
               <option value="SUSPENDED">Suspended</option>
               <option value="LOCKED">Locked</option>
+            </Select>
+          </Field>
+          <Field label="Employee" hint="Link this login to a staff record — picks up their name." className="sm:col-span-2">
+            <Select
+              value={employeeId}
+              onChange={(e) => {
+                const id = e.target.value;
+                setEmployeeId(id);
+                const emp = (employees.rows || []).find((x) => x.employee_id === id);
+                if (emp && !fullName.trim()) setFullName(emp.full_name || "");
+              }}
+            >
+              <option value="">— No linked employee —</option>
+              {(employees.rows || []).map((emp) => (
+                <option key={emp.employee_id} value={emp.employee_id}>{emp.full_name || emp.employee_id.slice(0, 8)}</option>
+              ))}
             </Select>
           </Field>
           {!editing && (

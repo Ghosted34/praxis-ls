@@ -50,6 +50,20 @@ module.exports = {
     const entityRef = `vacancy:${vacancyId}`;
     await emitEvent(client, { eventTypeKey: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id });
     await audit(client, { actorUserId: actor.user_id, action: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef, before, after: row });
+
+    // Hiring an applicant provisions the employee record the rest of the system
+    // builds on (payroll, contracts, dispatch). Only on the transition INTO HIRED
+    // so re-saving the status can't create duplicates. Runs in the caller's tx.
+    if (status === "HIRED" && before.status !== "HIRED" && row.full_name) {
+      const ins = await client.query(
+        "INSERT INTO employee (full_name, is_active) VALUES ($1, true) RETURNING employee_id",
+        [row.full_name],
+      );
+      const employeeId = ins.rows[0].employee_id;
+      await emitEvent(client, { eventTypeKey: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, actorUserId: actor.user_id, payload: { provisioned_from_applicant: applicantId, vacancy_id: vacancyId } });
+      await audit(client, { actorUserId: actor.user_id, action: "employee_provisioned", moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, after: { employee_id: employeeId, full_name: row.full_name, source: "vacancy_hire" } });
+      return { ...row, provisioned_employee_id: employeeId };
+    }
     return row;
   },
 };

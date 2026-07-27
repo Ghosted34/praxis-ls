@@ -24,6 +24,8 @@ module.exports = {
     const before = await repo.findById(client, id);
     if (!before) return null;
     if (before.status !== "REQUESTED") {
+      // Idempotent: if an approval chain already moved it, don't error.
+      if (before.status === status) return before;
       throw new AppError("INVALID_TRANSITION", `Request already ${before.status}`, 422);
     }
     const row = await repo.update(client, id, { status });
@@ -33,3 +35,10 @@ module.exports = {
     return row;
   },
 };
+
+// Approval-engine finalize: when a configured leave workflow clears (or is
+// rejected), move the request to its terminal state — so the central Approvals
+// inbox and the HR leave queue stay in lockstep (single source of truth).
+const onApproved = require("../../../services/workflow/on-approved");
+onApproved.register("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "APPROVED", actor: actor || {} }));
+onApproved.registerReject("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "REJECTED", actor: actor || {} }));

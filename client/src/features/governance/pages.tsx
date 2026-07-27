@@ -12,7 +12,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
-import { money, num, dateFmt, enumLabel } from "@/lib/format";
+import { money, num, dateFmt, enumLabel, humanizeRef } from "@/lib/format";
 import * as wf from "@/lib/workflow-api";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
@@ -770,7 +770,8 @@ export function WorkflowsPage() {
 /* ═══════════════════════ Approvals — runtime queue ═══════════════════════ */
 type ApprovalTask = {
   approval_task_id?: string; id?: string; entity_ref?: string | null; status?: string | null;
-  step_kind?: string | null; amount_xaf?: number | string | null; workflow_name?: string | null; created_at?: string | null;
+  step_kind?: string | null; step_seq?: number | null; amount_xaf?: number | string | null; workflow_name?: string | null; created_at?: string | null;
+  leave_kind?: string | null; leave_employee?: string | null; leave_starts?: string | null; leave_ends?: string | null;
 };
 const actTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
@@ -779,6 +780,16 @@ const actTone = (s?: string | null): Tone => {
   if (u === "PENDING") return "warn";
   return "mute";
 };
+const LEAVE_KIND: Record<string, string> = { leave: "Leave", salary_advance: "Salary advance", mission: "Mission" };
+/** Human title + subtitle for an approval row's entity (leave summary, else humanised ref). */
+function entityLabel(r: ApprovalTask): { title: string; sub?: string } {
+  if (r.leave_employee) {
+    const kind = LEAVE_KIND[r.leave_kind || "leave"] || "Leave";
+    const dates = [r.leave_starts, r.leave_ends].filter(Boolean).map((d) => dateFmt(d)).join(" – ");
+    return { title: `${kind} · ${r.leave_employee}`, sub: dates || undefined };
+  }
+  return { title: humanizeRef(r.entity_ref) };
+}
 
 export function ApprovalsPage() {
   const { rows, error, loading, reload } = useList<ApprovalTask>("/approvals?status=PENDING");
@@ -796,9 +807,12 @@ export function ApprovalsPage() {
   }
 
   const columns: Column<ApprovalTask>[] = [
-    { key: "entity_ref", label: "Entity", render: (r) => <span className="num font-medium text-foreground">{r.entity_ref || "—"}</span> },
-    { key: "workflow", label: "Workflow", render: (r) => r.workflow_name || "—" },
-    { key: "stage", label: "Stage", render: (r) => (r.step_kind ? <Pill tone="blue">{r.step_kind}</Pill> : "—") },
+    { key: "entity_ref", label: "Item", render: (r) => {
+      const { title, sub } = entityLabel(r);
+      return <div className="min-w-0"><div className="font-medium text-foreground">{title}</div>{sub && <div className="num micro">{sub}</div>}</div>;
+    } },
+    { key: "workflow", label: "Workflow", render: (r) => <span className="text-muted-foreground">{r.workflow_name || "—"}</span> },
+    { key: "stage", label: "Stage", render: (r) => (r.step_kind ? <Pill tone="blue">{enumLabel(r.step_kind)}{r.step_seq ? ` · ${r.step_seq}` : ""}</Pill> : "—") },
     { key: "amount", label: "Amount · XAF", className: "num text-right", render: (r) => money(r.amount_xaf) },
     { key: "created", label: "Raised", render: (r) => dateFmt(r.created_at) },
     { key: "status", label: "Status", render: (r) => <Pill tone={actTone(r.status)}>{r.status || "PENDING"}</Pill> },

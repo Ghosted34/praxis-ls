@@ -113,11 +113,28 @@ module.exports = {
     const wh = [];
     if (q.status) {
       params.push(q.status);
-      wh.push(`status = $${params.length}`);
+      wh.push(`at.status = $${params.length}`);
     }
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
+    // Decorate for a human-readable inbox: the workflow name, the current stage,
+    // and (for the live HR case) a leave summary so rows don't read as raw
+    // "prefix:uuid". Other entity types fall back to a humanised ref client-side.
     const { rows } = await client.query(
-      `SELECT * FROM approval_task ${where} ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+      `SELECT at.*,
+              w.name        AS workflow_name,
+              ws.step_kind  AS step_kind,
+              ws.step_seq   AS step_seq,
+              lr.kind       AS leave_kind,
+              lr.starts_on  AS leave_starts,
+              lr.ends_on    AS leave_ends,
+              e.full_name   AS leave_employee
+         FROM approval_task at
+         LEFT JOIN workflow      w  ON w.workflow_id       = at.workflow_id
+         LEFT JOIN workflow_step ws ON ws.workflow_step_id = at.workflow_step_id
+         LEFT JOIN leave_request lr ON at.entity_ref = 'leave_allowance:' || lr.leave_request_id::text
+         LEFT JOIN employee      e  ON e.employee_id = lr.employee_id
+         ${where}
+        ORDER BY at.created_at DESC LIMIT $1 OFFSET $2`,
       params,
     );
     return rows;

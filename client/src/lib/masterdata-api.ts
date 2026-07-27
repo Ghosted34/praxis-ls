@@ -32,6 +32,13 @@ export type ClientInput = {
 export const listClients = () => tenant<Client[]>("/clients");
 export const getClientCredit = (id: string) =>
   tenant<{ credit_limit: number | null; outstanding: number; available: number | null }>(`/clients/${id}/credit`);
+/* Client 360 rollups — receivables (overdue) + receipts. */
+export type OverdueInvoice = { invoice_id: string; doc_number?: string | null; total_ttc: number; outstanding: number; payment_due_on?: string | null; days_overdue: number };
+export type OverdueResult = { as_of: string; total: number; count: number; invoices: OverdueInvoice[] };
+export const clientOverdue = (clientId: string) => tenant<OverdueResult>(`/receivables/overdue?client_id=${encodeURIComponent(clientId)}`);
+export type Receipt = { receipt_id: string; client_id?: string | null; amount: number | string; method?: string | null; received_on?: string | null; status?: string | null };
+export const clientReceipts = (clientId: string) => tenant<Receipt[]>(`/receivables?client_id=${encodeURIComponent(clientId)}`);
+
 export const createClient = (body: ClientInput) => tenant<Client>("/clients", { method: "POST", body });
 export const updateClient = (id: string, body: Partial<ClientInput>) =>
   tenant<Client>(`/clients/${id}`, { method: "PATCH", body });

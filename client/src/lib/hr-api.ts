@@ -147,6 +147,10 @@ export const createEmployee = (body: { full_name: string; entity_id?: string; de
   tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, { method: "POST", body: { is_active } });
+export const updateEmployee = (
+  id: string,
+  body: Partial<{ full_name: string; entity_id: string; department: string; job_title: string; employment_type: string }>,
+) => tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
 
 /* ── HR contracts (lifecycle) ── */
 export type Contract = {

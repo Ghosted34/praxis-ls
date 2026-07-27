@@ -80,10 +80,10 @@ domain methods), each covering its documented core flow — not stubs.
 - MOD-13 KPI Appraisals (hr) ✅
 - MOD-14 Attendance (hr) ✅  — clock-in/clock-out (guarded, employee integrity)
 - MOD-15 Leave & Allowances (hr) ✅  — REQUESTED→decide (approve/reject)
-- MOD-16 SOPs & Onboarding (hr) ✅
+- MOD-16 SOPs & Onboarding (hr) ✅  — SOP docs (versioned, category filter) + **onboarding checklists** (`hr/onboarding` module, `/onboarding`: create → add/tick items → complete), s15
 - MOD-17 Pay Slips / Payroll (hr) ✅  — **full Cameroon statutory compute**: CNPS pension/family/injury, CFC, 30% frais pro, progressive IRPP barème, CAC surtax → run→compute→post GL (KB §9)
 - MOD-18 Trainings (hr) ✅  — sessions + attendee rosters
-- MOD-19 Talent Pool / Succession (hr) ✅
+- MOD-19 Talent Pool / Succession (hr) ✅  — candidate bench + **succession board** (`hr/succession` module, `/succession`: role→incumbent/successor + readiness), s15
 - MOD-33 Inbound Operations (wms) ✅  — receiving + QA
 - MOD-34 Space & Location Management (wms) ✅  — locations (+ label)
 - MOD-35 Inventory Control & Tracking (wms) ✅  — stock move (in/out/transfer) + movements ledger

@@ -31,14 +31,14 @@ export function HelpPage() {
         <div className="micro mb-1 uppercase tracking-wide">
           <Link to="/" className="transition-colors hover:text-primary">Hub</Link> › Help center
         </div>
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Help center</h1>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Help center</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Guides, FAQs and shortcuts for getting around the workspace.</p>
       </header>
 
       <div className="mb-8 grid gap-3 sm:grid-cols-2">
         {GUIDES.map((g) => (
           <Link key={g.title} to={g.to || "/"} className="rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary">
-            <div className="font-display text-base font-semibold text-foreground">{g.title}</div>
+            <div className="font-display text-base text-foreground">{g.title}</div>
             <p className="mt-1 text-sm text-muted-foreground">{g.body}</p>
           </Link>
         ))}
@@ -68,7 +68,7 @@ export function HelpPage() {
       </div>
 
       <div className="rounded-xl border border-border bg-card p-4">
-        <div className="font-display text-base font-semibold text-foreground">Still stuck?</div>
+        <div className="font-display text-base text-foreground">Still stuck?</div>
         <p className="mt-1 text-sm text-muted-foreground">
           Ask the Praxis AI assistant (when enabled) from the floating button, or reach your workspace admin. Full documentation is coming to this page.
         </p>

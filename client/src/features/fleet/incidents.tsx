@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { TransitionButtons } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateTimeFmt, enumLabel } from "@/lib/format";
@@ -98,11 +100,10 @@ export function IncidentsPage() {
     {
       key: "_a", label: "",
       render: (i) => (
-        <div className="flex justify-end gap-2">
-          {(TRANSITIONS[i.status || ""] || []).map((s) => (
-            <Button key={s} size="sm" variant={s === "CLOSED" ? "outline" : "default"} loading={busy === i.fleet_incident_id + s} onClick={() => toStatus(i, s)}>{STATUS_LABEL[s] || s}</Button>
-          ))}
-        </div>
+        <TransitionButtons
+          items={(TRANSITIONS[i.status || ""] || []).map((s) => ({ to: s, label: STATUS_LABEL[s] || s, variant: s === "CLOSED" ? "outline" : "default", loading: busy === i.fleet_incident_id + s }))}
+          onTransition={(s) => toStatus(i, s)}
+        />
       ),
     },
   ];
@@ -113,6 +114,7 @@ export function IncidentsPage() {
       <HubTabs />
       <DataList columns={cols} rows={inc.data} error={inc.error} loading={inc.loading} rowKey={(i) => i.fleet_incident_id} empty={{ title: "No incidents", hint: "A clean record — report one if something happens." }} />
       {creating && <NewIncidentForm onClose={() => setCreating(false)} onSaved={inc.reload} />}
+      <ScreenAi path="fleet/incidents" />
     </section>
   );
 }

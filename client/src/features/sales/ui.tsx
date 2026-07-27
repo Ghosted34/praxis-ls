@@ -97,14 +97,14 @@ export function Badge({ label }: { label: string }) {
 /** Pixie-style segmented tab control, driven by --primary. */
 export function Segmented<T extends string>({ value, options, onChange }: { value: T; options: { value: T; label: string }[]; onChange: (v: T) => void }) {
   return (
-    <div className="inline-flex rounded-lg border bg-muted/40 p-1">
+    <div className="inline-flex rounded-[10px] border bg-[rgb(var(--ink)_/_0.05)] p-[3px]">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           aria-pressed={value === o.value}
-          className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${value === o.value ? "bg-primary text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`rounded-[7px] px-[11px] py-[5px] text-[11px] font-bold transition-all ${value === o.value ? "bg-card text-primary shadow-[var(--shadow-s)]" : "text-muted-foreground hover:text-foreground"}`}
         >
           {o.label}
         </button>
@@ -116,15 +116,13 @@ export function Segmented<T extends string>({ value, options, onChange }: { valu
 /** Pixie-style filter chip row. */
 export function Chips({ value, options, onChange }: { value: string; options: { value: string; label: string }[]; onChange: (v: string) => void }) {
   return (
-    <div className="flex flex-wrap gap-2">
+    <div className="chips">
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
-          className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-            value === o.value ? "border-primary/40 bg-primary/10 text-primary" : "border-border bg-transparent text-muted-foreground hover:text-foreground"
-          }`}
+          className={`chip ${value === o.value ? "on" : ""}`}
         >
           {o.label}
         </button>

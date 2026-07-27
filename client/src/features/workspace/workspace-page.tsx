@@ -30,7 +30,7 @@ function Panel({ title, cta, children }: { title: string; cta?: React.ReactNode;
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-display text-lg font-semibold">{title}</h3>
+        <h3 className="font-display text-lg">{title}</h3>
         {cta}
       </div>
       {children}

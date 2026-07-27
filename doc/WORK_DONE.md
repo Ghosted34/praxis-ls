@@ -8,6 +8,37 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-27 — Session 15: Lovable kit fidelity + AI gate/clickable actions + workflow blocks + SOPs/Talent build-out + fixes
+
+**Context.** FE-fidelity + depth pass over the HR/Fleet/WMS rebuild, plus the loose ends the two plan docs
+(`LOVABLE_FIDELITY_PLAN.md`, `UI_DEPTH_OVERHAUL_PLAN.md`) still tracked. Full detail: `SESSION_HANDOFF.md`
+session-15 log. Headlines:
+
+- **Lovable kit restyle finished** (shared kit only, tokens via `color-mix` off `--primary`): `index.css`
+  (motion tokens, `fadeUp`/`modalRise`, global reduced-motion, `.chip*`/`.sec*`, `.btn-primary`/`.btn-surface`,
+  serif `font-semibold` stripped app-wide), `button.tsx`, `table.tsx`+`data-list.tsx` (tablecard + orange row
+  hover + micro header + **mobile card fallback**), `kpi-tile.tsx` (icon square + serif value + delta),
+  `modal.tsx`+`input.tsx`, `Chips`/`Segmented` + every hand-rolled filter/nav pill row.
+- **Per-screen AI gate restored** on all 21 HR/Fleet/WMS screens (`screen-specs.ts` `ai` specs + `<ScreenAi/>`
+  per screen) and the **AI-action cards made clickable** (`ai-actions.tsx` dispatches `praxis:open-copilot`
+  with a prompt; `praxis-copilot.tsx` auto-asks; writes stay AWAITING_CONFIRM).
+- **Shared workflow blocks** `components/ui/workflow.tsx` (StepBar / StatusActionBar / TransitionButtons /
+  LineTable) adopted in 9 screens.
+- **SOPs → onboarding checklist, Talent → succession board** built out with two NEW auto-mounted backend
+  modules: `src/modules/hr/succession/` (MOD-19, `/succession`) and `src/modules/hr/onboarding/` (MOD-16,
+  `/onboarding`) — tables pre-existed in `0360_hr_breadth.sql`, so no migration; **API restart mounts them**.
+- **Fixes:** platform-console `citext = uuid` 500 (`plans.planIdOf` + `roles.roleIdOf`, compare on text) —
+  this, not a missing seed, was why the console Features/Roles tables rendered empty; vacancy→employee **role
+  carry-over** on hire (`vacancy.service` copies vacancy title/department); **employee 360 Edit** modal
+  (`PATCH /employees/:id`); mobile table/kanban overflow (card fallback + `min-w-0`); deleted dead
+  `crud-resource.tsx`; added `client/` + `platform-console/` **ESLint flat configs** (were unlinted under
+  ESLint 9).
+- **Operational (not code):** Appraisals 500 = `0466_employee_earning` unapplied → `db:migrate:tenants`.
+
+**Validated in-sandbox:** client `tsc -b`, Tailwind compile, root + backend ESLint all clean. **Owed on
+Windows:** `npm install` (client + platform-console, for the new ESLint deps) + `npm run lint`/`build`, root
+`npm test`, `db:migrate:tenants`, API restart, flip `ai.assistant.backend` per tenant.
+
 ## 2026-07-23 — Session 13: Platform Console (Praxis admin UI) built + Support & Feedback end-to-end
 
 **Context.** The `/api/platform/*` backend (provision/suspend/resume/go-live/migrate/capacity/sandbox/

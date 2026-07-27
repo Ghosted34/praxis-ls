@@ -195,7 +195,7 @@ export function TeamChatPage() {
     <section className="animate-fade-in">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <h1 className="font-display text-2xl font-semibold tracking-tight text-foreground">Messaging</h1>
+          <h1 className="font-display text-2xl tracking-tight text-foreground">Messaging</h1>
           <p className="micro">Unified inbox</p>
         </div>
         <button onClick={() => navigate("/comms/setup")} className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:text-foreground" aria-label="Setup & channels" title="Setup & channels">

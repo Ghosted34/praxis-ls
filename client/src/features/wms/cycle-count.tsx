@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { LineTable } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
@@ -61,28 +63,22 @@ function CountSheet({ locations, onClose, onSaved }: { locations: api.WarehouseL
           <div className="rounded-lg border bg-muted/30 p-4 text-sm text-muted-foreground">No stock recorded at this location.</div>
         ) : (
           <>
-            <div className="overflow-hidden rounded-lg border">
-              <table className="w-full text-sm">
-                <thead className="bg-muted/50 text-muted-foreground">
-                  <tr><th className="px-3 py-2 text-left font-medium">Item</th><th className="px-3 py-2 text-right font-medium">Expected</th><th className="px-3 py-2 text-right font-medium">Counted</th><th className="px-3 py-2 text-right font-medium">Variance</th></tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {items.map((i) => {
+            <LineTable
+              rows={items}
+              rowKey={(i) => i.inventory_item_id}
+              columns={[
+                { label: "Item", render: (i) => <>{i.description}{i.sku ? <span className="ml-2 num text-xs text-muted-foreground">{i.sku}</span> : null}</> },
+                { label: "Expected", align: "right", render: (i) => <span className="num">{num(i.qty_on_hand)}</span> },
+                { label: "Counted", align: "right", render: (i) => <Input type="number" className="num ml-auto w-24 text-right" value={counts[i.inventory_item_id] ?? ""} onChange={(e) => setCounts((s) => ({ ...s, [i.inventory_item_id]: e.target.value }))} /> },
+                {
+                  label: "Variance", align: "right",
+                  render: (i) => {
                     const v = varianceOf(i);
-                    return (
-                      <tr key={i.inventory_item_id}>
-                        <td className="px-3 py-1.5">{i.description}{i.sku ? <span className="ml-2 num text-xs text-muted-foreground">{i.sku}</span> : null}</td>
-                        <td className="px-3 py-1.5 text-right num">{num(i.qty_on_hand)}</td>
-                        <td className="px-3 py-1.5 text-right">
-                          <Input type="number" className="num ml-auto w-24 text-right" value={counts[i.inventory_item_id] ?? ""} onChange={(e) => setCounts((s) => ({ ...s, [i.inventory_item_id]: e.target.value }))} />
-                        </td>
-                        <td className={"px-3 py-1.5 text-right num " + (v === 0 ? "text-muted-foreground" : v > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[rgb(var(--bad))]")}>{v > 0 ? `+${num(v)}` : num(v)}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+                    return <span className={"num " + (v === 0 ? "text-muted-foreground" : v > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[rgb(var(--bad))]")}>{v > 0 ? `+${num(v)}` : num(v)}</span>;
+                  },
+                },
+              ]}
+            />
             <div className="flex items-center justify-between">
               <span className="text-sm text-muted-foreground">{offCount === 0 ? "No variance" : `${offCount} line${offCount > 1 ? "s" : ""} off`}</span>
               <div className="flex gap-2">
@@ -128,6 +124,7 @@ export function CycleCountsPage() {
       <HubTabs />
       <DataList columns={cols} rows={counts.data} error={counts.error} loading={counts.loading} rowKey={(c) => c.cycle_count_id} empty={{ title: "No counts yet", hint: "Run a count on a location to check stock accuracy." }} />
       {open && <CountSheet locations={locs.data || []} onClose={() => setOpen(false)} onSaved={counts.reload} />}
+      <ScreenAi path="wms/cycle-counts" />
     </section>
   );
 }

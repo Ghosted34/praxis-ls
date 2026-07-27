@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { TransitionButtons, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
@@ -111,15 +113,23 @@ export function DispatchPage() {
     { key: "in", label: "In", render: (d) => <span className="num text-muted-foreground">{d.check_in_at ? `${dateFmt(d.check_in_at)}${d.odometer_in != null ? ` · ${num(d.odometer_in)}km` : ""}` : "—"}</span> },
     {
       key: "_a", label: "",
-      render: (d) => (
-        <div className="flex justify-end gap-2">
-          {d.status === "ASSIGNED" && <>
-            <Button size="sm" variant="outline" loading={busy === d.fleet_dispatch_id} onClick={() => cancel(d)}>Cancel</Button>
-            <Button size="sm" onClick={() => setOdo({ dispatch: d, to: "OUT" })}>Check out</Button>
-          </>}
-          {d.status === "OUT" && <Button size="sm" onClick={() => setOdo({ dispatch: d, to: "RETURNED" })}>Check in</Button>}
-        </div>
-      ),
+      render: (d) => {
+        const items: Transition[] =
+          d.status === "ASSIGNED"
+            ? [
+                { to: "CANCELLED", label: "Cancel", variant: "outline", loading: busy === d.fleet_dispatch_id },
+                { to: "OUT", label: "Check out" },
+              ]
+            : d.status === "OUT"
+              ? [{ to: "RETURNED", label: "Check in" }]
+              : [];
+        return (
+          <TransitionButtons
+            items={items}
+            onTransition={(to) => (to === "CANCELLED" ? cancel(d) : setOdo({ dispatch: d, to: to as "OUT" | "RETURNED" }))}
+          />
+        );
+      },
     },
   ];
 
@@ -130,6 +140,7 @@ export function DispatchPage() {
       <DataList columns={cols} rows={disp.data} error={disp.error} loading={disp.loading} rowKey={(d) => d.fleet_dispatch_id} empty={{ title: "No dispatches", hint: "Assign a vehicle to get started." }} />
       {creating && <NewDispatchForm onClose={() => setCreating(false)} onSaved={disp.reload} />}
       {odo && <OdometerModal dispatch={odo.dispatch} to={odo.to} onClose={() => setOdo(null)} onSaved={disp.reload} />}
+      <ScreenAi path="fleet/dispatch" />
     </section>
   );
 }

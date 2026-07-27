@@ -10,6 +10,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
@@ -181,6 +182,7 @@ export function InventoryPage() {
       <DataList columns={cols} rows={items.data} error={items.error} loading={items.loading} rowKey={(i) => i.inventory_item_id} empty={{ title: "No stock", hint: "Add a stock item to get started." }} />
       {view && <ItemDetail item={view} locMap={locMap} locations={locs.data || []} onClose={() => setView(null)} onChanged={items.reload} />}
       {creating && <NewItemForm locations={locs.data || []} onClose={() => setCreating(false)} onSaved={items.reload} />}
+      <ScreenAi path="wms/inventory" />
     </section>
   );
 }

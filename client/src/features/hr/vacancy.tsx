@@ -11,6 +11,7 @@ import { Modal, Field } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
@@ -119,7 +120,7 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
   }
 
   return (
-    <div className="space-y-4">
+    <div className="min-w-0 space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl border bg-card p-5">
         <div>
           <div className="flex items-center gap-2">
@@ -190,6 +191,7 @@ export function VacanciesPage() {
         </div>
       )}
       {creating && <NewVacancyForm onClose={() => setCreating(false)} onSaved={(v) => { vacancies.reload(); setSelId(v.vacancy_id); }} />}
+      <ScreenAi path="hr/vacancies" />
     </section>
   );
 }

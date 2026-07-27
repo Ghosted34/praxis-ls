@@ -11,6 +11,7 @@ import { Modal, Field } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num } from "@/lib/format";
@@ -84,6 +85,7 @@ export function AppraisalsPage() {
       <PageHeader eyebrow={<HubCrumb area="HR" />} title="Appraisals" description="KPI ratings and performance rewards. A recommended reward is added to the employee's next payroll run." />
       <DataList columns={cols} rows={list.data} error={list.error} loading={list.loading} rowKey={(a) => a.appraisal_id} empty={{ title: "No appraisals", hint: "Rate an employee against a KPI target to begin." }} />
       {reward && <RewardForm appraisal={reward} onClose={() => setReward(null)} onSaved={list.reload} />}
+      <ScreenAi path="hr/appraisals" />
     </section>
   );
 }

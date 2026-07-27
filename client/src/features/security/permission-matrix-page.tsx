@@ -217,7 +217,7 @@ export function PermissionMatrixPage() {
   return (
     <section className="animate-fade-in">
       <header className="mb-4">
-        <h1 className="font-display text-2xl font-semibold tracking-tight">Permission matrix</h1>
+        <h1 className="font-display text-2xl tracking-tight">Permission matrix</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Role × module access. Each dot is the strongest grant on that pair — click any cell to edit
           the five underlying permissions. Changes save instantly and are audited.

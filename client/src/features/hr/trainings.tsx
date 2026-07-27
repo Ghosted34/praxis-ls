@@ -10,6 +10,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
@@ -145,6 +146,7 @@ export function TrainingsPage() {
       <DataList columns={cols} rows={trainings.data} error={trainings.error} loading={trainings.loading} rowKey={(t) => t.training_id} empty={{ title: "No trainings", hint: "Schedule a session to get started." }} />
       {creating && <NewTrainingForm onClose={() => setCreating(false)} onSaved={trainings.reload} />}
       {roster && <RosterModal training={roster} onClose={() => setRoster(null)} />}
+      <ScreenAi path="hr/trainings" />
     </section>
   );
 }

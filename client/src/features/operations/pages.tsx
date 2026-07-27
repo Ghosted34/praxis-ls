@@ -19,7 +19,7 @@ import { AiActions } from "@/components/ai-actions";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Segmented } from "@/features/sales/ui";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
@@ -496,16 +496,12 @@ export function OperationsFilesPage() {
 
   return (
     <section className={shell}>
-      <header className="mb-4 border-b border-border pb-4">
-        <div className="micro mb-1 uppercase tracking-wide"><Link to="/" className="transition-colors hover:text-primary">Hub</Link> › Operations</div>
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Operation files</h1>
-            <p className="mt-1 max-w-2xl text-sm text-muted-foreground">The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view.</p>
-          </div>
-          <Button onClick={() => setEditing("new")}>New file</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow={<HubCrumb area="Operations" />}
+        title="Operation files"
+        description="The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
+        action={<Button onClick={() => setEditing("new")}>New file</Button>}
+      />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Files" value={num(files.length)} />
@@ -514,16 +510,12 @@ export function OperationsFilesPage() {
         <KpiTile label="Completed" value={num(files.filter((d) => d.status === "COMPLETED").length)} />
       </KpiRow>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="chips">
           {chips.map((c) => {
             const on = family === c.key;
             return (
-              <button
-                key={c.key}
-                onClick={() => setFamily(c.key)}
-                className={`rounded-full border px-3 py-1 text-[13px] transition-colors ${on ? "border-transparent bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}
-              >
-                {c.label} <span className="num opacity-70">{famCounts[c.key] ?? 0}</span>
+              <button key={c.key} onClick={() => setFamily(c.key)} className={`chip ${on ? "on" : ""}`}>
+                {c.label} <span className="ct num">{famCounts[c.key] ?? 0}</span>
               </button>
             );
           })}

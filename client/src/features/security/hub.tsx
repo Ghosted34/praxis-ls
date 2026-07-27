@@ -100,7 +100,7 @@ function Bar({ parts }: { parts: { label: string; value: number; tone: string }[
 function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg font-semibold">{title}</h3>
+      <h3 className="font-display text-lg">{title}</h3>
       <div className="micro mb-4 uppercase tracking-wide">{subtitle}</div>
       {children}
     </div>
@@ -128,18 +128,18 @@ function Overview() {
   return (
     <section className={shell}>
       <header className="mb-5 border-b border-border pb-4">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Security &amp; access</h1>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Security &amp; access</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Access is data, not code: role × capability × scope × CRUD-per-module × field visibility. Identity resolves against the live
           schema, so these rows are the same under both LIVE and TEST.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="chips">
             {TABS.slice(0, 6).map((t) => (
               <button
                 key={t.slug}
                 onClick={() => navigate(`/security/${t.slug}`)}
-                className="rounded-full border border-border px-3 py-1 text-[13px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                className="chip"
               >
                 {t.label}
               </button>

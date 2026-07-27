@@ -133,13 +133,12 @@ export function ChartOfAccountsPage() {
         <KpiTile label="Analytic" value={num(accounts.filter((a) => a.requires_analytic).length)} />
       </KpiRow>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex flex-wrap gap-1.5">
+        <div className="chips">
           {chips.map((c) => {
             const on = klass === c;
             return (
-              <button key={String(c)} onClick={() => setKlass(c)}
-                className={`rounded-full border px-3 py-1 text-[13px] transition-colors ${on ? "border-transparent bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}>
-                {c === "ALL" ? "All" : `Class ${c}`} <span className="num opacity-70">{c === "ALL" ? accounts.length : classCounts[c] ?? 0}</span>
+              <button key={String(c)} onClick={() => setKlass(c)} className={`chip ${on ? "on" : ""}`}>
+                {c === "ALL" ? "All" : `Class ${c}`} <span className="ct num">{c === "ALL" ? accounts.length : classCounts[c] ?? 0}</span>
               </button>
             );
           })}

@@ -33,9 +33,12 @@ async function list() {
 }
 
 async function roleIdOf(idOrCode) {
+  // Compare on text so one param matches either the uuid role_id or the citext
+  // code — a bare `role_id = $1 OR code = $1` errors (citext = uuid, 42883) when
+  // a uuid is passed. See plans.service.js planIdOf for the same fix.
   const { rows } = await platformDb.query(
-    "SELECT role_id, code, is_system FROM platform.platform_role WHERE role_id = $1 OR code = $1",
-    [idOrCode],
+    "SELECT role_id, code, is_system FROM platform.platform_role WHERE role_id::text = $1 OR code = $1",
+    [String(idOrCode)],
   );
   if (!rows[0]) throw new AppError("NOT_FOUND", "Role not found", 404);
   return rows[0];

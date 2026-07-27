@@ -42,7 +42,13 @@ function list() {
 }
 
 async function planIdOf(code) {
-  const { rows } = await platformDb.query("SELECT plan_id FROM platform.plan WHERE plan_id = $1 OR code = $1", [code]);
+  // Accept either a plan_id (uuid) or a plan code (citext). Compare on text so a
+  // single param works against both columns — otherwise Postgres infers $1 as
+  // uuid from `plan_id = $1` and then `code = $1` errors (citext = uuid, 42883).
+  const { rows } = await platformDb.query(
+    "SELECT plan_id FROM platform.plan WHERE plan_id::text = $1 OR code = $1",
+    [String(code)],
+  );
   if (!rows[0]) throw new AppError("NOT_FOUND", `plan '${code}' not found`, 404);
   return rows[0].plan_id;
 }

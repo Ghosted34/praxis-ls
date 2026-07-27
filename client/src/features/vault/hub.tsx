@@ -90,7 +90,7 @@ function Panel({ title, subtitle, action, children }: { title: string; subtitle:
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h3 className="font-display text-lg font-semibold">{title}</h3>
+          <h3 className="font-display text-lg">{title}</h3>
           <div className="micro uppercase tracking-wide">{subtitle}</div>
         </div>
         {action}
@@ -121,18 +121,18 @@ function Overview() {
   return (
     <section className={shell}>
       <header className="mb-5 border-b border-border pb-4">
-        <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground">Vault &amp; compliance</h1>
+        <h1 className="font-display text-3xl tracking-tight text-foreground">Vault &amp; compliance</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
           Every document carries a SHA-256 content hash, so a stored file can be re-checked against its DNA at any time. Compliance rules
           run over the same corpus and raise flags for anything missing or aged.
         </p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1.5">
+          <div className="chips">
             {TABS.map((t) => (
               <button
                 key={t.slug}
                 onClick={() => navigate(`/vault/${t.slug}`)}
-                className="rounded-full border border-border px-3 py-1 text-[13px] text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+                className="chip"
               >
                 {t.label}
               </button>

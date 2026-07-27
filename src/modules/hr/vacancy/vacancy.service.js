@@ -55,9 +55,12 @@ module.exports = {
     // builds on (payroll, contracts, dispatch). Only on the transition INTO HIRED
     // so re-saving the status can't create duplicates. Runs in the caller's tx.
     if (status === "HIRED" && before.status !== "HIRED" && row.full_name) {
+      // Carry the vacancy's role (title) + department onto the new employee, so
+      // the profile isn't a nameless "—" the moment it's provisioned.
+      const vacancy = await repo.findById(client, vacancyId);
       const ins = await client.query(
-        "INSERT INTO employee (full_name, is_active) VALUES ($1, true) RETURNING employee_id",
-        [row.full_name],
+        "INSERT INTO employee (full_name, job_title, department, is_active) VALUES ($1, $2, $3, true) RETURNING employee_id",
+        [row.full_name, vacancy?.title || null, vacancy?.department || null],
       );
       const employeeId = ins.rows[0].employee_id;
       await emitEvent(client, { eventTypeKey: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, actorUserId: actor.user_id, payload: { provisioned_from_applicant: applicantId, vacancy_id: vacancyId } });

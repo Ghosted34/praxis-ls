@@ -35,12 +35,12 @@ export function PageHeader({
   eyebrow?: React.ReactNode;
 }) {
   return (
-    <header className="mb-4 flex items-start justify-between gap-4 border-b pb-3">
-      <div className="flex items-start gap-3">
-      <span aria-hidden className="mt-0.5 h-8 w-1 rounded-full bg-gradient-to-b from-primary to-transparent" />
-        <div>
+    <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-3">
+      <div className="flex min-w-0 items-start gap-3">
+      <span aria-hidden className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-gradient-to-b from-primary to-transparent" />
+        <div className="min-w-0">
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
-          <h1 className="font-display text-[22px] font-semibold leading-tight tracking-tight">{title}</h1>
+          <h1 className="font-display text-[22px] leading-tight tracking-tight">{title}</h1>
           {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
         </div>
       </div>
@@ -72,29 +72,58 @@ export function DataList<T extends Record<string, unknown>>({
     return <EmptyState title={empty?.title || "Nothing here yet"} hint={empty?.hint || "No records returned."} />;
 
   return (
-    <Table>
-      <THead>
-        <TR>
-          {columns.map((c) => (
-            <TH key={c.key}>{c.label}</TH>
-          ))}
-        </TR>
-      </THead>
-      <TBody>
+    <>
+      {/* Table — sm and up. Below that it would overflow, so we swap to cards. */}
+      <div className="hidden sm:block">
+        <Table>
+          <THead>
+            <TR>
+              {columns.map((c) => (
+                <TH key={c.key}>{c.label}</TH>
+              ))}
+            </TR>
+          </THead>
+          <TBody>
+            {rows.map((r, i) => (
+              <TR
+                key={rowKey(r, i)}
+                className={onRowClick ? "cursor-pointer" : undefined}
+                onClick={onRowClick ? () => onRowClick(r) : undefined}
+              >
+                {columns.map((c) => (
+                  <TD key={c.key} className={c.className}>
+                    {c.render ? c.render(r) : cell(r[c.key])}
+                  </TD>
+                ))}
+              </TR>
+            ))}
+          </TBody>
+        </Table>
+      </div>
+
+      {/* Card fallback — phones. Each row becomes a label/value card; unlabelled
+          columns (e.g. row actions) render full-width at the foot of the card. */}
+      <div className="animate-fade-up space-y-2 sm:hidden">
         {rows.map((r, i) => (
-          <TR
+          <div
             key={rowKey(r, i)}
-            className={onRowClick ? "cursor-pointer" : undefined}
+            className={cn("lux-card p-3", onRowClick && "cursor-pointer")}
             onClick={onRowClick ? () => onRowClick(r) : undefined}
           >
-            {columns.map((c) => (
-              <TD key={c.key} className={cn("text-sm", c.className)}>
-                {c.render ? c.render(r) : cell(r[c.key])}
-              </TD>
-            ))}
-          </TR>
+            {columns.map((c) => {
+              const val = c.render ? c.render(r) : cell(r[c.key]);
+              return c.label ? (
+                <div key={c.key} className="flex items-baseline justify-between gap-3 py-0.5">
+                  <span className="micro shrink-0">{c.label}</span>
+                  <span className="min-w-0 text-right text-[13px]">{val}</span>
+                </div>
+              ) : (
+                <div key={c.key} className="mt-2 flex flex-wrap justify-end gap-2">{val}</div>
+              );
+            })}
+          </div>
         ))}
-      </TBody>
-    </Table>
+      </div>
+    </>
   );
 }

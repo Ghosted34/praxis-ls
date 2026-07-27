@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { TransitionButtons } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
@@ -86,11 +88,10 @@ export function ContractsPage() {
     {
       key: "_a", label: "",
       render: (c) => (
-        <div className="flex justify-end gap-2">
-          {(TRANSITIONS[c.status] || []).map((s) => (
-            <Button key={s} size="sm" variant={s === "ENDED" ? "outline" : "default"} loading={busy === c.hr_contract_id + s} onClick={() => toStatus(c, s)}>{STATUS_LABEL[s] || s}</Button>
-          ))}
-        </div>
+        <TransitionButtons
+          items={(TRANSITIONS[c.status] || []).map((s) => ({ to: s, label: STATUS_LABEL[s] || s, variant: s === "ENDED" ? "outline" : "default", loading: busy === c.hr_contract_id + s }))}
+          onTransition={(s) => toStatus(c, s)}
+        />
       ),
     },
   ];
@@ -101,6 +102,7 @@ export function ContractsPage() {
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(c) => c.hr_contract_id} empty={{ title: "No contracts", hint: "Draft a contract to get started." }} />
       {creating && <NewContractForm onClose={() => setCreating(false)} onSaved={rows.reload} />}
+      <ScreenAi path="hr/contracts" />
     </section>
   );
 }

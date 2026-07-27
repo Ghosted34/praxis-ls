@@ -10,6 +10,8 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
+import { TransitionButtons, type Transition } from "@/components/ui/workflow";
+import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
@@ -89,13 +91,15 @@ function VehicleDetail({ vehicle: initial, onChanged }: { vehicle: api.Vehicle; 
             </div>
             <p className="mt-1 text-sm text-muted-foreground">{[vehicle.category, vehicle.entity_name].filter(Boolean).join(" · ") || "—"}</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {(LADDER[vehicle.status || ""] || []).map((s) => (
-              <Button key={s} size="sm" variant={s === "DISPOSED" ? "outline" : "default"} loading={busy === s} onClick={() => toStatus(s)}>
-                {s === "ACTIVE" ? "Reactivate" : s === "INACTIVE" ? "Deactivate" : "Dispose"}
-              </Button>
-            ))}
-          </div>
+          <TransitionButtons
+            items={(LADDER[vehicle.status || ""] || []).map((s): Transition => ({
+              to: s,
+              label: s === "ACTIVE" ? "Reactivate" : s === "INACTIVE" ? "Deactivate" : "Dispose",
+              variant: s === "DISPOSED" ? "outline" : "default",
+              loading: busy === s,
+            }))}
+            onTransition={toStatus}
+          />
         </div>
         {error && <div className="mt-3"><ErrorState message={error} /></div>}
       </div>
@@ -212,6 +216,7 @@ export function VehiclesPage() {
           {selected ? <VehicleDetail vehicle={selected} onChanged={vehicles.reload} /> : <EmptyState title="No vehicle selected" hint="Choose a vehicle from the list." />}
         </div>
       )}
+      <ScreenAi path="fleet/vehicles" />
     </section>
   );
 }

@@ -98,14 +98,12 @@ export function MailPage() {
       </div>
 
       {/* section chips */}
-      <div className="mb-4 flex flex-wrap gap-2">
-        <button onClick={() => setIdentityId("")}
-          className={`rounded-full border px-3 py-1 text-[13px] transition-colors ${!identityId ? "border-transparent bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}>
+      <div className="chips mb-4">
+        <button onClick={() => setIdentityId("")} className={`chip ${!identityId ? "on" : ""}`}>
           All sections
         </button>
         {list.map((s) => (
-          <button key={s.email_identity_id} onClick={() => setIdentityId(s.email_identity_id)}
-            className={`flex items-center gap-1.5 rounded-full border px-3 py-1 text-[13px] transition-colors ${identityId === s.email_identity_id ? "border-transparent bg-primary text-primary-foreground" : "border-border text-muted-foreground hover:text-foreground"}`}>
+          <button key={s.email_identity_id} onClick={() => setIdentityId(s.email_identity_id)} className={`chip ${identityId === s.email_identity_id ? "on" : ""}`}>
             {s.purpose}{!s.is_active && <span className="opacity-70">· off</span>}
           </button>
         ))}

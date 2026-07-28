@@ -48,6 +48,24 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
+const forgotPassword = asyncHandler(async (req, res) => {
+  // Same-origin per tenant → build the reset link from the requesting host so
+  // the emailed link lands back on this tenant's workspace. Force https in prod.
+  const proto = process.env.NODE_ENV === "production" ? "https" : req.protocol;
+  const origin = `${proto}://${req.get("host")}`;
+  const result = await req.identityDb((client) =>
+    service.requestPasswordReset(client, { email: req.body.email, ip: req.ip, origin }),
+  );
+  res.json({ data: result });
+});
+
+const resetPassword = asyncHandler(async (req, res) => {
+  const result = await req.identityDb((client) =>
+    service.resetPassword(client, { token: req.body.token, newPassword: req.body.new_password, ip: req.ip }),
+  );
+  res.json({ data: result });
+});
+
 const verifyTotp = asyncHandler(async (req, res) => {
   const result = await req.identityDb((client) =>
     service.verifyTotp(client, {
@@ -81,6 +99,8 @@ module.exports = {
   list, get, create, update, setPassword, setStatus, getSignature, setSignature,
   pinRegister, pinLogin, pinDevices, pinRevoke,
   login,
+  forgotPassword,
+  resetPassword,
   verifyTotp,
   setupTotp,
   enableTotp,

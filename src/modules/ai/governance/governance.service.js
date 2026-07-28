@@ -73,12 +73,26 @@ async function setBudget(client, { periodStart, periodEnd, softCapXaf = null, ha
   return row;
 }
 
-/** The gate every AI entry point calls: is this user allowed to use this feature now? */
+// The tenant-level feature key the platform console projects into `feature_state`
+// (what the login/UI gate resolves). The orchestrator's per-call gate resolves the
+// SAME switch, so if the UI shows AI the runtime agrees — previously this gate read
+// a never-seeded `ai_feature_flag['assistant']` row, so a console toggle never
+// reached the orchestrator and every ask blocked with "feature disabled".
+const TENANT_FEATURE_KEY = "ai.assistant.backend";
+
+/** The gate every AI entry point calls: is this user allowed to use this feature now?
+ *  Tenant enablement = the console's `feature_state` ceiling + the tenant's
+ *  `ai_feature_flag` preference (default ON when entitled), via `isFeatureEnabled`.
+ *  A per-user access grant only RESTRICTS: an explicit, un-revoked grant is honoured,
+ *  but a MISSING grant means "not specifically restricted" → allowed for an entitled
+ *  tenant (the copilot is already bounded by the user's RBAC). An explicit revoked
+ *  grant blocks that user; the budget hard-cap always blocks. */
 async function canUseFeature(client, { userId, featureKey, onDate = null }) {
-  const flag = await repo.getFlag(client, featureKey);
-  const grant = userId ? await repo.grantFor(client, userId, featureKey) : null;
+  const enabled = await isFeatureEnabled(client, TENANT_FEATURE_KEY);
+  const explicit = userId ? await repo.grantFor(client, userId, featureKey) : null;
+  const grant = explicit || { revoked_at: null };
   const budget = await budgetStatus(client, { onDate });
-  const verdict = canUse({ flag, grant, budgetState: budget.state });
+  const verdict = canUse({ flag: { is_enabled: enabled }, grant, budgetState: budget.state });
   return { ...verdict, feature_key: featureKey, budget_state: budget.state, spent_xaf: budget.spent_xaf };
 }
 

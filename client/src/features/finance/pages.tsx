@@ -6,6 +6,7 @@ import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
 import { ResourceList } from "@/components/resource-list";
+import { DocumentView } from "@/components/document-view";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -1057,6 +1058,7 @@ export function InvoicesPage() {
   const [draftOpen, setDraftOpen] = React.useState(false);
   const [submitTarget, setSubmitTarget] = React.useState<Record<string, unknown> | null>(null);
   const [editId, setEditId] = React.useState<string | null>(null);
+  const [viewDoc, setViewDoc] = React.useState<{ recordId: string; title: string } | null>(null);
   const [clientName, setClientName] = React.useState<Record<string, string>>({});
   const reload = () => setNonce((n) => n + 1);
 
@@ -1125,22 +1127,15 @@ export function InvoicesPage() {
                 <TD className="num text-sm">{moneyFmt(invField(r, ["total_ttc", "total", "amount_ttc"]) as number | string | null)}</TD>
                 <TD className="text-sm">{dateFmt(invField(r, ["created_at", "issued_on"]) as string | null)}</TD>
                 <TD>
-                  {isDraft(r) ? (
-                    <div className="flex gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => setEditId(String(invField(r, ["invoice_id", "id"]) ?? ""))}
-                      >
-                        Edit
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setSubmitTarget(r)}>
-                        Submit
-                      </Button>
-                    </div>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
+                  <div className="flex flex-wrap gap-2">
+                    {isDraft(r) && (
+                      <>
+                        <Button size="sm" variant="ghost" onClick={() => setEditId(String(invField(r, ["invoice_id", "id"]) ?? ""))}>Edit</Button>
+                        <Button size="sm" variant="outline" onClick={() => setSubmitTarget(r)}>Submit</Button>
+                      </>
+                    )}
+                    <Button size="sm" variant="ghost" onClick={() => setViewDoc({ recordId: String(invField(r, ["invoice_id", "id"]) ?? ""), title: String(invField(r, ["doc_number", "ref"]) ?? "Invoice") })}>View</Button>
+                  </div>
                 </TD>
               </TR>
             ))}
@@ -1151,6 +1146,7 @@ export function InvoicesPage() {
       <InvoiceDraftForm open={draftOpen} onClose={() => setDraftOpen(false)} onCreated={reload} />
       <InvoiceSubmitForm invoice={submitTarget} onClose={() => setSubmitTarget(null)} onSubmitted={reload} />
       <InvoiceEditForm invoiceId={editId} onClose={() => setEditId(null)} onSaved={reload} />
+      {viewDoc && <DocumentView docType="FINAL_INVOICE" recordId={viewDoc.recordId} title={viewDoc.title} sendable onClose={() => setViewDoc(null)} />}
     </section>
   );
 }

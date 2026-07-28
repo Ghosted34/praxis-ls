@@ -16,7 +16,7 @@ import * as React from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, tenant } from "@/lib/api-client";
 import { OtpInput } from "@/components/ui/otp-input";
 import {
   MailIcon,
@@ -31,7 +31,7 @@ import {
 } from "@/components/ui/icons";
 
 type Tab = "password" | "pin";
-type Stage = "credentials" | "twofa";
+type Stage = "credentials" | "twofa" | "forgot" | "forgot-sent";
 
 export function LoginModal({ onClose }: { onClose: () => void }) {
   const { login, verify2fa, pinLogin } = useAuth();
@@ -110,6 +110,22 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
     }
   }
 
+  async function onForgot(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      // Always succeeds server-side (no account enumeration) — so we always
+      // advance to the confirmation, whether or not the email is registered.
+      await tenant("/auth/forgot-password", { method: "POST", body: { email: email.trim() }, auth: false, retry: false });
+      setStage("forgot-sent");
+    } catch (err) {
+      setError(friendly(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onPin(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
@@ -141,7 +157,13 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         <p className="login-card-kicker">{brandName}</p>
         <h2 className="login-card-title">Welcome back</h2>
         <p className="login-card-sub">
-          {stage === "twofa" ? "Two-factor authentication" : "Sign in to your command center."}
+          {stage === "twofa"
+            ? "Two-factor authentication"
+            : stage === "forgot"
+              ? "Reset your password"
+              : stage === "forgot-sent"
+                ? "Check your inbox"
+                : "Sign in to your command center."}
         </p>
 
         {stage === "credentials" && (
@@ -211,7 +233,10 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
               <button
                 type="button"
                 className="login-link"
-                onClick={() => setError("Password resets aren't wired up yet — contact your administrator.")}
+                onClick={() => {
+                  setError(null);
+                  setStage("forgot");
+                }}
               >
                 Forgot password?
               </button>
@@ -274,6 +299,70 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
             </button>
             <p className="login-note">PIN works only on a device where you enabled it. New device? Use your password.</p>
           </form>
+        )}
+
+        {/* --- Forgot-password stage --- */}
+        {stage === "forgot" && (
+          <form onSubmit={onForgot} className="mt-5 flex flex-col gap-4" noValidate>
+            <p className="login-note">
+              Enter your account email and we'll send you a link to reset your password.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="login-label" htmlFor="lm-forgot-email">
+                Email
+              </label>
+              <div className="login-field">
+                <MailIcon width={17} height={17} />
+                <input
+                  id="lm-forgot-email"
+                  type="email"
+                  autoComplete="username"
+                  required
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="you@company.com"
+                />
+              </div>
+            </div>
+
+            {error && <p className="login-error">{error}</p>}
+
+            <button type="submit" className="login-submit" disabled={busy || !email.trim()}>
+              {busy ? "Sending…" : "Send reset link"}
+              {!busy && <ArrowRightIcon width={16} height={16} />}
+            </button>
+            <button
+              type="button"
+              className="login-note"
+              onClick={() => {
+                setStage("credentials");
+                setError(null);
+              }}
+            >
+              ← Back to sign in
+            </button>
+          </form>
+        )}
+
+        {/* --- Forgot-password confirmation --- */}
+        {stage === "forgot-sent" && (
+          <div className="mt-6 flex flex-col gap-5">
+            <p className="login-note">
+              If an account exists for <strong>{email.trim()}</strong>, we've sent a password-reset link. It
+              expires in 30 minutes. Check your inbox — and your spam folder just in case.
+            </p>
+            <button
+              type="button"
+              className="login-submit"
+              onClick={() => {
+                setStage("credentials");
+                setError(null);
+              }}
+            >
+              Back to sign in
+            </button>
+          </div>
         )}
 
         {/* --- 2FA stage (retained) --- */}

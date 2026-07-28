@@ -14,7 +14,15 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
-      registerType: "autoUpdate",
+      // "prompt" (was "autoUpdate"): an ERP shouldn't reload itself out from
+      // under a user mid-task. The service worker installs the new build in the
+      // background and we surface a "New version available — Reload" toast
+      // (components/pwa/pwa-updater.tsx) so the user applies it when ready.
+      registerType: "prompt",
+      // We register the SW ourselves via virtual:pwa-register/react (the updater
+      // component) so we can drive the update/offline-ready toasts — so the
+      // plugin must NOT also auto-inject a registration script.
+      injectRegister: false,
       includeAssets: ["favicon.ico"],
       // Per-tenant PWA: the manifest is served dynamically by the API from the
       // tenant's branding (src/routes/pwa.js). Subdomain-per-tenant = one origin

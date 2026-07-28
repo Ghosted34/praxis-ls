@@ -6,6 +6,7 @@ const user = { user_id: "u1" };
 function makeClient(runOrder, actionKeyById) {
   return {
     query: async (sql, params = []) => {
+      if (/FROM feature_state/.test(sql)) return { rows: [{ state: "on" }] };
       if (/FROM ai_feature_flag/.test(sql)) return { rows: [{ is_enabled: true }] };
       if (/FROM ai_access_grant/.test(sql)) return { rows: [{ revoked_at: null }] };
       if (/FROM ai_budget_period/.test(sql)) return { rows: [] };

@@ -26,22 +26,28 @@
  */
 "use strict";
 
+const crypto = require("crypto");
 const argon2 = require("argon2");
 const jwt = require("jsonwebtoken");
 const { v4: uuid } = require("uuid");
 const { authenticator } = require("otplib");
 
 const { config } = require("../../../config/env");
+const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const identityCache = require("../../../shared/cache/identity-cache");
 const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
+const emailService = require("../../../services/email.service");
+const passwordPolicy = require("../../../shared/security/password-policy");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
 const governance = require("../../ai/governance/governance.service");
 
 const TWOFA_PENDING_TTL = "5m";
+/** Reset links live for 30 minutes and are single-use (doc plan §1.1). */
+const RESET_TTL_MIN = 30;
 /** Feature flag that turns the whole AI surface on/off for a tenant. Drives the
  *  FE global AI gate — see client/src/components/ai-actions.tsx. */
 const AI_FEATURE_KEY = "ai.assistant.backend";
@@ -381,6 +387,108 @@ async function logout(client, { actor, sessionId }) {
 }
 
 
+// ── Self-service password reset (email one-time link) ──
+const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex");
+
+/** Branded HTML for the reset email. Kept inline (no template engine) and
+ *  table-free/simple so it renders in strict mail clients. */
+function resetEmailHtml({ name, link }) {
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101e34">
+  <div style="max-width:520px;margin:0 auto;padding:32px 24px">
+    <div style="background:#ffffff;border-radius:14px;padding:32px;box-shadow:0 4px 12px rgba(16,30,52,.06)">
+      <h1 style="margin:0 0 12px;font-size:20px;color:#101e34">Reset your password</h1>
+      <p style="margin:0 0 16px;font-size:15px;line-height:1.5;color:#4e6280">Hi ${name}, we received a request to reset your Praxis LS password. Click the button below to choose a new one. This link expires in ${RESET_TTL_MIN} minutes and can be used once.</p>
+      <p style="margin:24px 0"><a href="${link}" style="display:inline-block;background:#F5821F;color:#ffffff;text-decoration:none;padding:12px 22px;border-radius:10px;font-weight:600;font-size:15px">Reset password</a></p>
+      <p style="margin:16px 0 0;font-size:13px;line-height:1.5;color:#84a0b0">If the button doesn't work, paste this link into your browser:<br><span style="word-break:break-all;color:#1c9bd7">${link}</span></p>
+      <p style="margin:20px 0 0;font-size:13px;line-height:1.5;color:#84a0b0">Didn't request this? You can safely ignore this email — your password won't change.</p>
+    </div>
+  </div></body></html>`;
+}
+
+async function sendResetEmail(client, { to, name, token, origin }) {
+  const base = origin || `https://app.${config.APP_BASE_DOMAIN}`;
+  const link = `${base}/reset-password?token=${encodeURIComponent(token)}`;
+  const firstName = name ? String(name).trim().split(/\s+/)[0] : "there";
+  const text = `Hi ${firstName},\n\nWe received a request to reset your Praxis LS password. Open the link below within ${RESET_TTL_MIN} minutes to choose a new one (single use):\n\n${link}\n\nIf you didn't request this, ignore this email — your password won't change.`;
+  await emailService.send(client, {
+    to,
+    subject: "Reset your Praxis LS password",
+    html: resetEmailHtml({ name: firstName, link }),
+    text,
+    purpose: "NOTIFICATIONS",
+    moduleKey: events.MODULE,
+  });
+}
+
+/**
+ * Begin recovery. ALWAYS resolves to { ok: true } regardless of whether the
+ * email maps to an active account — we must not leak which addresses exist
+ * (mirrors login()'s "same error for no-such-user vs wrong-password" stance).
+ * A live token is created and mailed only for an ACTIVE user.
+ */
+async function requestPasswordReset(client, { email, ip, origin }) {
+  const normalized = String(email || "").toLowerCase();
+  const user = await repo.findByEmail(client, normalized);
+
+  if (user && user.status === "ACTIVE") {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + RESET_TTL_MIN * 60 * 1000);
+    await repo.invalidateUserResets(client, user.user_id); // one live link at a time
+    await repo.createResetToken(client, { userId: user.user_id, tokenHash: sha256(token), expiresAt, ip });
+    await emitEvent(client, { eventTypeKey: events.PASSWORD_RESET_REQUESTED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, actorUserId: user.user_id });
+    await audit(client, { actorUserId: user.user_id, action: events.PASSWORD_RESET_REQUESTED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, ip });
+    try {
+      await sendResetEmail(client, { to: user.email, name: user.full_name, token, origin });
+    } catch (err) {
+      // Mail failure must not change the response (no enumeration) — the token
+      // stays valid so a retry/resend can still deliver. Surface it in logs.
+      logger.error({ err: err.message, user_id: user.user_id }, "[auth] password-reset email failed to send");
+    }
+  }
+  return { ok: true };
+}
+
+/**
+ * Complete recovery: verify the one-time token, apply the full password policy
+ * (length/complexity + HIBP breach check), re-hash with Argon2id, mark the token
+ * used, and FORCE-LOGOUT every session the user has (decided behaviour).
+ */
+async function resetPassword(client, { token, newPassword, ip }) {
+  const invalid = () => new AppError("INVALID_RESET_TOKEN", "This reset link is invalid or has expired. Please request a new one.", 400);
+  if (!token) throw invalid();
+
+  const row = await repo.findResetByHash(client, sha256(token));
+  if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) throw invalid();
+
+  const user = await repo.getUserSafe(client, row.user_id);
+  if (!user || user.status !== "ACTIVE") throw invalid();
+
+  // Enforce policy BEFORE opening a transaction (HIBP call can be slow).
+  await passwordPolicy.assertStrongPassword(newPassword, { email: user.email });
+
+  await client.query("BEGIN");
+  let killed = [];
+  try {
+    const hash = await argon2.hash(String(newPassword), ARGON);
+    await repo.setPasswordHash(client, user.user_id, hash);
+    await repo.markResetUsed(client, row.reset_id);
+    killed = await repo.killAllSessionsForUser(client, user.user_id, user.user_id);
+    await emitEvent(client, { eventTypeKey: events.PASSWORD_RESET_COMPLETED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, actorUserId: user.user_id });
+    await audit(client, { actorUserId: user.user_id, action: events.PASSWORD_RESET_COMPLETED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, ip });
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+
+  // Best-effort cache/session-index cleanup (outside the txn — a Redis hiccup
+  // must not undo a committed password change).
+  await identityCache.invalidateUser(user.user_id);
+  await Promise.allSettled(killed.map((sid) => sessionStore.removeSession(sid, user.user_id)));
+  return { reset: true };
+}
+
+
 // ── User administration (Argon2id password, roles, lifecycle) ──
 const ARGON = { type: argon2.argon2id };
 
@@ -395,7 +503,7 @@ async function getUser(client, id) {
   return u;
 }
 async function createUser(client, { data, actor = {} }) {
-  if (!data.password || String(data.password).length < 8) throw new AppError("WEAK_PASSWORD", "password must be at least 8 characters", 422);
+  await passwordPolicy.assertStrongPassword(data.password, { email: data.email });
   await client.query("BEGIN");
   try {
     const password_hash = await argon2.hash(String(data.password), ARGON);
@@ -441,7 +549,9 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
 }
 /** Admin/self password reset — Argon2id re-hash + drop cached identity. */
 async function setPassword(client, { id, newPassword, actor = {} }) {
-  if (!newPassword || String(newPassword).length < 8) throw new AppError("WEAK_PASSWORD", "password must be at least 8 characters", 422);
+  const target = await repo.getUserSafe(client, id);
+  if (!target) throw new AppError("NOT_FOUND", "User not found", 404);
+  await passwordPolicy.assertStrongPassword(newPassword, { email: target.email });
   const hash = await argon2.hash(String(newPassword), ARGON);
   const row = await repo.setPasswordHash(client, id, hash);
   if (!row) throw new AppError("NOT_FOUND", "User not found", 404);
@@ -537,4 +647,6 @@ module.exports = {
   refreshTokenReused,
   me,
   logout,
+  requestPasswordReset,
+  resetPassword,
 };

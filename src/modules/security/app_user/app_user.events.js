@@ -12,4 +12,6 @@ module.exports = {
   TOKEN_REFRESHED: "auth.token_refreshed",
   TWOFA_ENABLED: "auth.2fa_enabled",
   TWOFA_DISABLED: "auth.2fa_disabled",
+  PASSWORD_RESET_REQUESTED: "auth.password_reset_requested",
+  PASSWORD_RESET_COMPLETED: "auth.password_reset_completed",
 };

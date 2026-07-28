@@ -1,6 +1,7 @@
 "use strict";
 const service = require("./final_invoice.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { enqueueDocument } = require("../../../services/documents/generate");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
@@ -30,6 +31,11 @@ module.exports = {
     const data = await req.tenantDb((c) => service.submit(c, {
       invoiceId: req.params.id, entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, actor: actor(req), ip: req.ip,
     }));
+    // On the issue transition, auto-render the branded invoice PDF into the vault
+    // (fire-and-forget; the other captured docTypes wire the same one line).
+    if (data && data.status === "ISSUED_LOCKED") {
+      enqueueDocument({ tenantMeta: req.tenant, env: req.env, docType: "FINAL_INVOICE", recordId: req.params.id });
+    }
     res.json({ data });
   }),
 };

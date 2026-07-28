@@ -7,10 +7,18 @@
  */
 "use strict";
 const express = require("express");
+const rateLimit = require("express-rate-limit");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./app_user.controller");
 const validator = require("./app_user.validator");
+
+// Abuse guards on the PUBLIC recovery endpoints. forgot-password is the
+// enumeration/spam surface (per IP); reset-password is a token-guessing surface
+// (per IP). Both fail with a generic 429 so they leak nothing.
+const RL = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, message: { error: { code: "RATE_LIMITED", message: "Too many attempts. Please try again later." } } };
+const forgotLimiter = rateLimit({ ...RL, max: 5 });
+const resetLimiter = rateLimit({ ...RL, max: 10 });
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
 // one deliberately-ungated security module, see doc/WORK_TO_BE_DONE.md Phase 0).
@@ -39,6 +47,10 @@ usersRouter.put("/:id/email-signature", requirePermission(MODULE, "edit"), valid
 const authRouter = express.Router();
 authRouter.post("/login", validator.login, controller.login);
 authRouter.post("/refresh", validator.refresh, controller.refresh);
+// Self-service password recovery (public: this is how a locked-out user gets
+// back in). forgot-password always returns { ok: true } (no user enumeration).
+authRouter.post("/forgot-password", forgotLimiter, validator.forgotPassword, controller.forgotPassword);
+authRouter.post("/reset-password", resetLimiter, validator.resetPassword, controller.resetPassword);
 authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
 authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);

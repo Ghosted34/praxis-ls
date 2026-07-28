@@ -48,6 +48,12 @@ const schemas = {
   status: z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
 };
 
+// Self-service reset. Full strength policy (length/complexity + HIBP) is enforced
+// in the service so it can return rich messages and a fail-open breach check; the
+// validator only guards the request shape.
+const forgotPassword = zValidate(z.object({ email: z.string().trim().email() }));
+const resetPassword = zValidate(z.object({ token: z.string().min(16), new_password: z.string().min(1) }));
+
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
 const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
 const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/) }));
@@ -55,6 +61,7 @@ const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_i
 module.exports = {
   ...passthrough,
   login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
+  forgotPassword, resetPassword,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),
   password: zValidate(schemas.password),

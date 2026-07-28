@@ -16,6 +16,7 @@ import { useBranding } from "@/app/branding/branding-context";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
@@ -331,6 +332,18 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
           <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
             Appearance
           </Link>
+          {!isStandalone() && (
+            <button
+              role="menuitem"
+              onClick={() => {
+                setOpen(false);
+                openInstallUi();
+              }}
+              className="block w-full rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            >
+              Install app
+            </button>
+          )}
           <button role="menuitem" onClick={onLogout} className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
             Sign out
           </button>

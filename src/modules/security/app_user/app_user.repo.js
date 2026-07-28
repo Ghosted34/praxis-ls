@@ -227,10 +227,48 @@ async function ceoRoleId(client) {
   return rows[0] ? rows[0].role_id : null;
 }
 
+// ── Self-service password reset (password_reset, migration 0471) ──
+/** Store a reset token by its SHA-256 hash (never the raw token). */
+async function createResetToken(client, { userId, tokenHash, expiresAt, ip }) {
+  const { rows } = await client.query(
+    `INSERT INTO password_reset (user_id, token_hash, expires_at, requested_ip)
+     VALUES ($1,$2,$3,$4) RETURNING reset_id`,
+    [userId, tokenHash, expiresAt, ip || null],
+  );
+  return rows[0].reset_id;
+}
+/** Look up a reset row by token hash; caller checks used_at/expires_at. */
+async function findResetByHash(client, tokenHash) {
+  const { rows } = await client.query(
+    "SELECT reset_id, user_id, expires_at, used_at FROM password_reset WHERE token_hash = $1",
+    [tokenHash],
+  );
+  return rows[0] || null;
+}
+/** Single-use: stamp used_at so a token can't be replayed. */
+async function markResetUsed(client, resetId) {
+  await client.query("UPDATE password_reset SET used_at = now() WHERE reset_id = $1 AND used_at IS NULL", [resetId]);
+}
+/** Invalidate any outstanding reset tokens for a user (called before issuing a
+ *  fresh one, so only the newest link works). */
+async function invalidateUserResets(client, userId) {
+  await client.query("UPDATE password_reset SET used_at = now() WHERE user_id = $1 AND used_at IS NULL", [userId]);
+}
+/** Force-logout: kill every live session for a user, returning the killed ids
+ *  so the caller can also drop them from the Redis session index. */
+async function killAllSessionsForUser(client, userId, killedBy) {
+  const { rows } = await client.query(
+    "UPDATE user_session SET killed_at = now(), killed_by = $2 WHERE user_id = $1 AND killed_at IS NULL RETURNING session_id",
+    [userId, killedBy || null],
+  );
+  return rows.map((r) => r.session_id);
+}
+
 module.exports = {
   ...crud,
   insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   getSignature, upsertSignature, ceoRoleId,
+  createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser,
   insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,
   recordLoginSuccess,

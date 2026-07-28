@@ -2,6 +2,7 @@ import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { AppShell } from "@/app/layout/app-shell";
 import { LandingPage } from "@/features/landing/landing-page";
+import { ResetPasswordPage } from "@/features/auth/reset-password-page";
 import { HelpPage } from "@/features/help/help-page";
 import { DashboardPage } from "@/features/dashboard";
 import { SecurityHub } from "@/features/security/hub";
@@ -16,7 +17,8 @@ import {
   PipelineStagesPage,
   NumberingPage,
 } from "@/features/settings/config-pages";
-import { DocumentTemplatesPage, CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
+import { CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
+import { TemplateStudioPage } from "@/features/settings/document-templates-page";
 import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
 import { FleetHub } from "@/features/fleet/hub";
 import { WarehouseHub } from "@/features/wms/hub";
@@ -37,12 +39,15 @@ import { GodModePage } from "@/features/godmode/godmode-page";
 import { SupportPage } from "@/features/support/support-page";
 import { CommsHub } from "@/features/comms/hub";
 import { BootGate } from "@/app/boot-gate";
+import { PwaLayer } from "@/components/pwa/pwa-layer";
 
 export function App() {
   return (
     <BootGate>
+      <PwaLayer />
       <Routes>
         <Route path="/login" element={<LandingPage />} />
+        <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       <Route
         element={
@@ -130,7 +135,7 @@ export function App() {
         <Route path="settings/scheduled-reports" element={<ScheduledReportsPage />} />
         <Route path="settings/api-keys" element={<ApiKeysPage />} />
         <Route path="settings/factory-languages" element={<Planned />} />
-        <Route path="settings/document-templates" element={<DocumentTemplatesPage />} />
+        <Route path="settings/document-templates" element={<TemplateStudioPage />} />
         <Route path="settings/email-signatures" element={<EmailSignaturesPage />} />
         {/* No BE yet — scaffolded like factory-languages. The Settings hub still
             links here (settings-hub.tsx), so without this route the card dead-ends

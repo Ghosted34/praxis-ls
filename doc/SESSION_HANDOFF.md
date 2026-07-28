@@ -437,6 +437,28 @@ routes** — so two NEW auto-discovered modules were added:
    - **Mobile overflow.** Wide tables scroll in-card + the new card fallback; the **vacancy kanban** clipped its
      last column because it sat in a grid track (`min-width:auto` grew to content) — fixed with `min-w-0` so the
      board's `overflow-x-auto` engages. (Sales kanban is in a block section, already fine.)
+   - **AI runtime gate disconnected from the console (AI "unavailable: feature disabled" despite the toggle
+     on).** Session-14 wired `feature_state` → the login/UI gate, but the orchestrator's per-call gate
+     (`governance.canUseFeature`) still read a **never-seeded `ai_feature_flag['assistant']` row** (key mismatch
+     vs the console's `ai.assistant.backend`) and treated a missing row as OFF — so the panel showed but every
+     ask 403'd. Fixed: `canUseFeature` now resolves tenant enablement via **`isFeatureEnabled('ai.assistant.
+     backend')`** (the same feature_state ceiling + default-ON preference the UI uses), and a **missing per-user
+     access grant is now permissive** (opt-out: only an explicit *revoked* grant blocks; budget hard-cap still
+     blocks) — the copilot is already RBAC-bounded, and grants were never provisioned so requiring one made the
+     console toggle inert. Pure `canUse` rules untouched (its tests stay green); `tests/unit/ai-gate.test.js`
+     updated to the console-driven model. **Restart the API** to apply.
+   - **AI retrieval crashed instead of degrading when embeddings fail.** On a bad/absent embeddings key the
+     vendor service logs "skipping vectors" and returns `[]`, but `retrieval.service.retrieve` then did
+     `toVec(embedOne(...))` → `undefined.join` → a 500. Guarded it: no embedding → return no vector hits, so the
+     assistant still answers (just without KB grounding).
+   - **AI vendor keys had no way in.** "AI Control → Vendors" lists rows meant to be *seeded on bootstrap* +
+     edited to paste a key, but **no seed ever created them** (`0400_ai.sql` makes the table, inserts nothing) —
+     empty list, no Add button = dead end. Added an **"Add vendor" button** + form (`features/ai-control/
+     pages.tsx`) using the runtime's real vendor ids (**`embeddings`** ← the one that fixes the pgvector 401,
+     `deepseek` chat, `gemini` vision, `groq` voice; `PUT /vendors/:vendor` upserts), AND a seed
+     **`migrations/tenant/0470_seed_ai_vendors.sql`** (endpoint+model only, no key, `ON CONFLICT DO NOTHING`) so
+     the four rows pre-appear. A DB vendor row overrides the `.env` key (which ships `__rotate_me__`
+     placeholders → the 401). Run `db:migrate:tenants` to seed existing tenants.
    - **Dead code.** Deleted the unused `components/crud-resource.tsx`.
    - **ESLint gates.** `client/` and `platform-console/` shipped **no** flat config, so `eslint .` self-ignored
      under ESLint 9 (client lint gate was effectively off). Added `eslint.config.js` (typescript-eslint +

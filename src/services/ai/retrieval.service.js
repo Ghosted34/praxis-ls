@@ -20,7 +20,14 @@ const toVec = (arr) => `[${arr.join(",")}]`;
 async function retrieve(opts) {
   const k = opts.k || 6;
   const allowed = opts.allowed || ["normal"];
-  const qvec = toVec(await embeddings.embedOne(opts.tenantClient, opts.query));
+
+  // Embed the query. When embeddings are unavailable (no vendor configured, or an
+  // auth/network error) the service logs "skipping vectors" and returns []/undefined
+  // — degrade gracefully to NO vector grounding rather than crashing on an undefined
+  // vector. The assistant still answers, just without knowledge-base recall.
+  const vec = await embeddings.embedOne(opts.tenantClient, opts.query);
+  if (!vec || !vec.length) return [];
+  const qvec = toVec(vec);
 
   const hits = [];
 

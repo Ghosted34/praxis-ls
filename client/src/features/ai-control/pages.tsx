@@ -238,9 +238,73 @@ function VendorKeyForm({ vendor, onClose, onSaved }: { vendor: api.Vendor; onClo
   );
 }
 
+/* Common OpenAI-compatible providers, prefilled but fully editable. `PUT
+ * /vendors/:vendor` upserts, so "adding" is just setting a new vendor row. */
+// Vendor ids MUST match what the runtime resolves (embeddings.service uses
+// "embeddings"; llm.service PRIMARY is "deepseek"; ai-vision uses "gemini";
+// ai-transcribe uses "groq"). A DB row for the right id overrides the .env key.
+const VENDOR_PRESETS: { vendor: string; display_name: string; endpoint_url: string; default_model: string; note: string }[] = [
+  { vendor: "embeddings", display_name: "Embeddings (OpenAI)", endpoint_url: "https://api.openai.com/v1", default_model: "text-embedding-3-small", note: "pgvector recall — fixes the embeddings 401" },
+  { vendor: "deepseek", display_name: "DeepSeek", endpoint_url: "https://api.deepseek.com/v1", default_model: "deepseek-chat", note: "assistant / chat (primary)" },
+  { vendor: "gemini", display_name: "Google Gemini", endpoint_url: "https://generativelanguage.googleapis.com/v1beta/openai", default_model: "gemini-1.5-flash", note: "document vision" },
+  { vendor: "groq", display_name: "Groq", endpoint_url: "https://api.groq.com/openai/v1", default_model: "whisper-large-v3", note: "voice-to-text" },
+];
+
+function AddVendorForm({ existing, onClose, onSaved }: { existing: string[]; onClose: () => void; onSaved: () => void }) {
+  const [preset, setPreset] = React.useState("openai");
+  const p0 = VENDOR_PRESETS[0];
+  const [f, setF] = React.useState({ vendor: p0.vendor, display_name: p0.display_name, endpoint_url: p0.endpoint_url, default_model: p0.default_model, api_key: "" });
+  const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  function applyPreset(id: string) {
+    setPreset(id);
+    const p = VENDOR_PRESETS.find((x) => x.vendor === id);
+    setF(p
+      ? { vendor: p.vendor, display_name: p.display_name, endpoint_url: p.endpoint_url, default_model: p.default_model, api_key: "" }
+      : { vendor: "", display_name: "", endpoint_url: "", default_model: "", api_key: "" });
+  }
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const id = f.vendor.trim().toLowerCase();
+  const dup = existing.includes(id);
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setError(null);
+    try {
+      await api.setVendor(id, { display_name: f.display_name || undefined, endpoint_url: f.endpoint_url || undefined, default_model: f.default_model || undefined, api_key: f.api_key || undefined });
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open onClose={onClose} title="Add AI vendor" description="Register a provider + its API key (encrypted at rest). OpenAI-compatible endpoints.">
+      <form className="space-y-4" onSubmit={submit}>
+        <Field label="Provider">
+          <Select value={preset} onChange={(e) => applyPreset(e.target.value)}>
+            {VENDOR_PRESETS.map((p) => <option key={p.vendor} value={p.vendor}>{p.display_name} — {p.note}</option>)}
+            <option value="custom">Custom…</option>
+          </Select>
+        </Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Vendor id" required hint={dup ? "Already added — this will overwrite it." : "lowercase key, e.g. openai"}>
+            <Input value={f.vendor} onChange={(e) => set("vendor", e.target.value)} disabled={preset !== "custom"} />
+          </Field>
+          <Field label="Display name"><Input value={f.display_name} onChange={(e) => set("display_name", e.target.value)} /></Field>
+        </div>
+        <Field label="Endpoint URL" hint="OpenAI-compatible base; the app appends /embeddings or /chat/completions."><Input value={f.endpoint_url} onChange={(e) => set("endpoint_url", e.target.value)} placeholder="https://api.openai.com/v1" /></Field>
+        <Field label="Default model"><Input value={f.default_model} onChange={(e) => set("default_model", e.target.value)} placeholder="text-embedding-3-small" /></Field>
+        <Field label="API key" required><Input type="password" value={f.api_key} onChange={(e) => set("api_key", e.target.value)} placeholder="sk-…" /></Field>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="submit" loading={busy} disabled={!id || !f.api_key || busy}>Add vendor</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 export function AiVendorsPage() {
   const { rows, error, loading, reload } = useList<api.Vendor>("/ai/governance/vendors");
   const [editing, setEditing] = React.useState<api.Vendor | null>(null);
+  const [adding, setAdding] = React.useState(false);
   const [testing, setTesting] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
 
@@ -268,10 +332,11 @@ export function AiVendorsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Vendors & keys" description="LLM/vision/voice providers — model, encrypted API key, and a connection test." />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Vendors & keys" description="LLM/vision/voice providers — model, encrypted API key, and a connection test." action={<Button onClick={() => setAdding(true)}>Add vendor</Button>} />
       <HubTabs />
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(v) => v.vendor} empty={{ title: "No vendors", hint: "Vendor rows seed on bootstrap." }} />
+      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(v) => v.vendor} empty={{ title: "No vendors yet", hint: "Add a provider (e.g. OpenAI for embeddings) and paste its API key." }} />
       {editing && <VendorKeyForm vendor={editing} onClose={() => setEditing(null)} onSaved={reload} />}
+      {adding && <AddVendorForm existing={(rows || []).map((v) => v.vendor)} onClose={() => setAdding(false)} onSaved={reload} />}
     </section>
   );
 }

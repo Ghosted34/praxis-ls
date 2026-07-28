@@ -4,7 +4,7 @@
  *  - ScheduledReportsPage→ /reports/scheduled (+ /reports/catalogue)
  *  - ApiKeysPage         → /settings/integration_secret (add/rotate + test; AI keys live in AI Control)
  *  - PipelineStagesPage  → /opportunities/stages (read-only — no stage CRUD yet)
- *  - NumberingPage       → /numbering-schemes/:moduleKey (+ /catalogue/modules)
+ *  - NumberingPage       → /numbering-schemes/:moduleKey (static doc-type list)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import * as React from "react";
 import { Link } from "react-router-dom";
@@ -1090,16 +1090,46 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
   );
 }
 
+// The document types that actually draw a number from the tenant's numbering
+// sequences — the moduleKey each issuer passes to numbering.allocate(). This is
+// the canonical list (mirrors scripts/tenant/seed-numbering.js and the
+// document_vault doc_type registry); the page is driven by it instead of the
+// full module catalogue, which listed every MOD-xx (IAM, WMS, HR…) — none of
+// which issue documents — and required IAM-view access just to load.
+const DOC_NUMBER_MODULES: { group: string; items: { key: string; label: string }[] }[] = [
+  {
+    group: "Documents",
+    items: [
+      { key: "MOD-51", label: "Final invoice" },
+      { key: "MOD-51-CN", label: "Credit note" },
+      { key: "MOD-50", label: "Proforma / customer advance" },
+      { key: "MOD-52", label: "Payment receipt" },
+      { key: "MOD-27", label: "Quotation" },
+      { key: "MOD-23", label: "Proposal" },
+      { key: "MOD-60", label: "Purchase order" },
+      { key: "MOD-62", label: "Purchase request" },
+      { key: "MOD-61", label: "Supplier invoice" },
+      { key: "MOD-30", label: "Transit order" },
+      { key: "MOD-32", label: "Delivery note" },
+      { key: "MOD-29", label: "Dossier / operations file" },
+      { key: "MOD-49", label: "Cash request / régie advance" },
+    ],
+  },
+  {
+    group: "Master codes",
+    items: [
+      { key: "MOD-04", label: "Supplier code" },
+      { key: "MOD-03", label: "Client code" },
+    ],
+  },
+];
+
+const DOC_MODULE_LABEL: Record<string, string> = Object.fromEntries(
+  DOC_NUMBER_MODULES.flatMap((g) => g.items.map((it) => [it.key, it.label])),
+);
+
 export function NumberingPage() {
-  const { rows: modules, error } = useList("/catalogue/modules", 0);
-  const [selected, setSelected] = React.useState<string>("");
-
-  const options = (modules || []).filter((m) => m.module_key);
-  const current = options.find((m) => String(m.module_key) === selected);
-
-  React.useEffect(() => {
-    if (!selected && options.length) setSelected(String(options[0].module_key));
-  }, [options, selected]);
+  const [selected, setSelected] = React.useState<string>(DOC_NUMBER_MODULES[0].items[0].key);
 
   return (
     <section className="mx-auto max-w-4xl animate-fade-in">
@@ -1108,29 +1138,26 @@ export function NumberingPage() {
         <p className="mt-1 text-sm text-muted-foreground">Per-document numbering schemes — prefix, padding, reset cadence and separator.</p>
       </header>
 
-      {error ? (
-        <>
-          <PageError message={error} />
-          <p className="text-sm text-muted-foreground">The module catalogue could not be loaded (it needs IAM view access). Numbering is still editable per module once the catalogue is available.</p>
-        </>
-      ) : modules === null ? (
-        <SkeletonTable />
-      ) : options.length === 0 ? (
-        <EmptyState title="No modules" hint="No document modules are available to configure." />
-      ) : (
-        <div className="space-y-4">
-          <Field label="Document module">
-            <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
-              {options.map((m) => (
-                <option key={String(m.module_key)} value={String(m.module_key)}>
-                  {cell(m.name)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          {selected && <NumberingEditor key={selected} moduleKey={selected} label={current ? cell(current.name) : selected} />}
-        </div>
-      )}
+      <div className="space-y-4">
+        <Field label="Document type">
+          <Select value={selected} onChange={(e) => setSelected(e.target.value)}>
+            {/* Disabled header rows group the list while staying direct <option>
+                children, so the Select's option-colour styling still applies
+                (an <optgroup> would nest them and lose it in dark mode). */}
+            {DOC_NUMBER_MODULES.map((g) => (
+              <React.Fragment key={g.group}>
+                <option disabled>{"— " + g.group + " —"}</option>
+                {g.items.map((it) => (
+                  <option key={it.key} value={it.key}>
+                    {it.label}
+                  </option>
+                ))}
+              </React.Fragment>
+            ))}
+          </Select>
+        </Field>
+        <NumberingEditor key={selected} moduleKey={selected} label={DOC_MODULE_LABEL[selected] || selected} />
+      </div>
     </section>
   );
 }

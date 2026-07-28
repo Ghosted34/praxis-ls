@@ -41,6 +41,7 @@ const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
 const emailService = require("../../../services/email.service");
 const passwordPolicy = require("../../../shared/security/password-policy");
+const notificationRepo = require("../../notification/notification.repo");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
 const governance = require("../../ai/governance/governance.service");
@@ -473,6 +474,18 @@ async function resetPassword(client, { token, newPassword, ip }) {
     await repo.setPasswordHash(client, user.user_id, hash);
     await repo.markResetUsed(client, row.reset_id);
     killed = await repo.killAllSessionsForUser(client, user.user_id, user.user_id);
+    // Security notification to the affected user (unconditional — security alerts
+    // ignore preferences). They'll see it in their inbox on next sign-in; it's the
+    // "your password changed, and if it wasn't you, act now" trail.
+    await notificationRepo.insertForUser(client, {
+      userId: user.user_id,
+      eventTypeKey: events.PASSWORD_RESET_COMPLETED,
+      title: "Your password was changed",
+      body: "Your password was reset and all sessions were signed out. If this wasn't you, contact your administrator immediately.",
+      entityRef: `app_user:${user.user_id}`,
+      priority: "HIGH",
+      category: "security",
+    });
     await emitEvent(client, { eventTypeKey: events.PASSWORD_RESET_COMPLETED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, actorUserId: user.user_id });
     await audit(client, { actorUserId: user.user_id, action: events.PASSWORD_RESET_COMPLETED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, ip });
     await client.query("COMMIT");

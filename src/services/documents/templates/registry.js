@@ -151,7 +151,11 @@ const TEMPLATES = {
         k.head(entity, { fr: "Reçu de paiement", en: "Payment receipt" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Method" }, data.method]], c),
         k.parties([{ label: { fr: "Reçu de", en: "Received from" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], c),
         k.section({ fr: "Montant reçu", en: "Amount received" }, `<div class="box" style="font-size:22px;font-weight:700">${k.money(data.amount, ccy)}</div>`, c),
-        data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
+        (data.allocations && data.allocations.length)
+          ? k.section({ fr: "Imputation", en: "Applied to" }, k.lineTable(
+            [{ key: "label", label: { fr: "Facture", en: "Invoice" } }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }],
+            data.allocations.map((a) => ({ label: a.label, amount: k.money(a.amount, ccy) })), c), c)
+          : data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
         k.signatureBlock(c),
         k.footer(entity, c, verify),
       ].join("");

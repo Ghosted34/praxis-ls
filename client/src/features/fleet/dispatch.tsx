@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -124,10 +125,13 @@ export function DispatchPage() {
               ? [{ to: "RETURNED", label: "Check in" }]
               : [];
         return (
-          <TransitionButtons
-            items={items}
-            onTransition={(to) => (to === "CANCELLED" ? cancel(d) : setOdo({ dispatch: d, to: to as "OUT" | "RETURNED" }))}
-          />
+          <div className="flex items-center justify-end gap-2">
+            <DocButton docType="TRIP_SHEET" id={d.fleet_dispatch_id} title={`Trip sheet ${d.registration || d.fleet_dispatch_id.slice(0, 8)}`} label="View" />
+            <TransitionButtons
+              items={items}
+              onTransition={(to) => (to === "CANCELLED" ? cancel(d) : setOdo({ dispatch: d, to: to as "OUT" | "RETURNED" }))}
+            />
+          </div>
         );
       },
     },

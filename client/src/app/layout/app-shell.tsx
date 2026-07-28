@@ -17,6 +17,7 @@ import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
+import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
@@ -206,12 +207,6 @@ const OperationsIcon = (p: IP) => (
     <path d="M4 5h6l2 3h8v11H4z" />
   </svg>
 );
-const BellIcon = (p: IP) => (
-  <svg {...sic(p)}>
-    <path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6" />
-    <path d="M10 20a2 2 0 004 0" />
-  </svg>
-);
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
   Operations: OperationsIcon,
@@ -230,8 +225,10 @@ function initialsOf(nameOrEmail?: string | null): string {
 
 /** Unread counts for the messages + notifications badges. Polls gently and
  *  refetches when the data environment flips. Failures (feature off, 403) → 0. */
-function useUnreadCounts(env: string): { messages: number; notifications: number } {
+function useUnreadCounts(env: string): { messages: number; notifications: number; reload: () => void } {
   const [counts, setCounts] = React.useState({ messages: 0, notifications: 0 });
+  const [tick, setTick] = React.useState(0);
+  const reload = React.useCallback(() => setTick((t) => t + 1), []);
   React.useEffect(() => {
     let live = true;
     const num = (v: unknown): number => {
@@ -261,27 +258,8 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
       live = false;
       clearInterval(id);
     };
-  }, [env]);
-  return counts;
-}
-
-/** Round icon Link (messages / notifications) with an optional unread badge. */
-function IconLink({ to, label, count = 0, children }: { to: string; label: string; count?: number; children: React.ReactNode }) {
-  return (
-    <Link
-      to={to}
-      aria-label={count > 0 ? `${label} (${count} unread)` : label}
-      title={label}
-      className="relative hidden h-9 w-9 place-items-center rounded-xl border text-muted-foreground transition-colors hover:text-foreground sm:grid"
-    >
-      {children}
-      {count > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground">
-          {count > 99 ? "99+" : count}
-        </span>
-      )}
-    </Link>
-  );
+  }, [env, tick]);
+  return { ...counts, reload };
 }
 
 /** User avatar + dropdown (email · My security · Sign out). */
@@ -698,7 +676,7 @@ export function AppShell() {
           <ThemeToggle />
           {/* Messages lives on the Smart Comms floating pin, so it's intentionally
               not duplicated here — only Notifications stays in the top bar. */}
-          <IconLink to="/notifications" label="Notifications" count={unread.notifications}><BellIcon /></IconLink>
+          <NotificationBell count={unread.notifications} onChange={unread.reload} />
           <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>
       </header>

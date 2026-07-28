@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill } from "@/components/ui/pill";
@@ -116,6 +117,7 @@ export function CycleCountsPage() {
         return <Pill tone="bad">{s.off_lines} off · net {num(s.net_variance)}</Pill>;
       },
     },
+    { key: "_a", label: "", render: (c) => <div className="flex justify-end"><DocButton docType="CYCLE_COUNT_SHEET" id={c.cycle_count_id} title={`Cycle count ${c.cycle_count_id.slice(0, 8)}`} label="View" /></div> },
   ];
 
   return (

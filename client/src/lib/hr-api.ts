@@ -161,6 +161,7 @@ export type Contract = {
   status: string; // DRAFT | ISSUED | SIGNED | ENDED
   effective_on?: string | null;
   end_on?: string | null;
+  pdf_vault_id?: string | null; // set once a signed copy is uploaded
   created_at?: string | null;
 };
 export const listContracts = (params?: { employee_id?: string; status?: string }) => tenant<Contract[]>("/contracts" + qs(params));
@@ -168,6 +169,16 @@ export const createContract = (body: { employee_id?: string; kind: string; effec
   tenant<Contract>("/contracts", { method: "POST", body });
 export const setContractStatus = (id: string, status: string) =>
   tenant<Contract>(`/contracts/${id}/status`, { method: "POST", body: { status } });
+/** Email the drafted contract (rendered from the template) to a recipient. */
+export const sendContract = (id: string, to: string) =>
+  tenant(`/document-templates/EMPLOYMENT_CONTRACT/${id}/send`, { method: "POST", body: { to } });
+/** Upload an already-signed contract PDF (base64 data URL): vault it and tie the
+ *  vault doc to the contract row via pdf_vault_id. */
+export const uploadContractSigned = async (id: string, dataUrl: string) => {
+  const doc = await tenant<{ doc_id?: string; vault_id?: string }>("/documents", { method: "POST", body: { data_url: dataUrl, doc_type: "EMPLOYMENT_CONTRACT", entity_ref: `hr_contract:${id}` } });
+  const vaultId = doc.doc_id || doc.vault_id;
+  return tenant<Contract>(`/contracts/${id}`, { method: "PATCH", body: { pdf_vault_id: vaultId } });
+};
 
 /* ── Vacancies + applicant pipeline (recruitment kanban) ── */
 export type Vacancy = {

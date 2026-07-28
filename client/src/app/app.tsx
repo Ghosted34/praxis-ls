@@ -19,6 +19,7 @@ import {
 } from "@/features/settings/config-pages";
 import { CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
 import { TemplateStudioPage } from "@/features/settings/document-templates-page";
+import { DocumentPage } from "@/components/document-view";
 import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
 import { FleetHub } from "@/features/fleet/hub";
 import { WarehouseHub } from "@/features/wms/hub";
@@ -136,6 +137,7 @@ export function App() {
         <Route path="settings/api-keys" element={<ApiKeysPage />} />
         <Route path="settings/factory-languages" element={<Planned />} />
         <Route path="settings/document-templates" element={<TemplateStudioPage />} />
+        <Route path="documents/:docType/:id" element={<DocumentPage />} />
         <Route path="settings/email-signatures" element={<EmailSignaturesPage />} />
         {/* No BE yet — scaffolded like factory-languages. The Settings hub still
             links here (settings-hub.tsx), so without this route the card dead-ends

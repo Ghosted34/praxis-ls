@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -610,6 +611,7 @@ export function TransitOrdersPage() {
     { key: "service_direction", label: "Direction" },
     { key: "declared_value", label: "Declared value", className: "num text-right", render: (r) => money(r.declared_value) },
     { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="TRANSIT_ORDER" id={r.transit_order_id} title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>
@@ -684,6 +686,7 @@ export function DeliveryNotesPage() {
     { key: "city_zone", label: "City / zone" },
     { key: "contact_person", label: "Contact" },
     { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="DELIVERY_NOTE" id={r.delivery_note_id} title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>

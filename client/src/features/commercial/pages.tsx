@@ -19,6 +19,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile, SearchSelect } from "@/features/sales/ui";
+import { DocButton } from "@/components/doc-button";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
 /* ═══════════════════════════════════ QUOTATIONS ═══════════════════════════════════ */
@@ -311,6 +312,7 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
               <Badge label={status || "DRAFT"} />
               {data?.client_id ? <span className="text-xs text-muted-foreground">{clientName.get(String(data.client_id)) ?? "Client"}</span> : null}
               {data?.valid_until ? <span className="text-xs text-muted-foreground">valid until {when(data.valid_until)}</span> : null}
+              <span className="ml-auto"><DocButton docType="QUOTATION" id={id} title={quotation?.doc_number ? String(quotation.doc_number) : "Quotation"} /></span>
             </div>
 
             {lines.length > 0 && (

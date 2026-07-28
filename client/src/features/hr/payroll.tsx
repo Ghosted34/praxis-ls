@@ -6,6 +6,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -84,7 +85,12 @@ function RunDetail({ runId, onClose, onChanged }: { runId: string; onClose: () =
     { key: "emp", label: "Employee", render: (it) => <span className="font-medium text-foreground">{it.employee_name || it.employee_id.slice(0, 8)}</span> },
     { key: "gross", label: "Gross", className: "num text-right", render: (it) => money(it.gross) },
     { key: "net", label: "Net pay", className: "num text-right", render: (it) => money(it.net_pay) },
-    { key: "_a", label: "", render: (it) => <div className="flex justify-end"><Button size="sm" variant="ghost" onClick={() => setOpenItem(openItem === it.employee_id ? null : it.employee_id)}>{openItem === it.employee_id ? "Hide" : "Breakdown"}</Button></div> },
+    { key: "_a", label: "", render: (it) => (
+      <div className="flex justify-end gap-2">
+        {it.payroll_run_item_id && <DocButton docType="PAYSLIP" id={it.payroll_run_item_id} title={`Payslip ${it.employee_name || ""}`.trim()} label="Payslip" />}
+        <Button size="sm" variant="ghost" onClick={() => setOpenItem(openItem === it.employee_id ? null : it.employee_id)}>{openItem === it.employee_id ? "Hide" : "Breakdown"}</Button>
+      </div>
+    ) },
   ];
 
   return (

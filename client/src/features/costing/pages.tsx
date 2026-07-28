@@ -5,6 +5,7 @@
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -256,7 +257,8 @@ export function CashRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="CASH_REQUEST" id={r.cash_request_id} title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.cash_request_id} onClick={() => submitCr(r)}>Submit</Button>}
         </div>
       ),

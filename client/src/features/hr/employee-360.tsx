@@ -6,6 +6,8 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
+import { UploadSigned } from "@/features/hr/contracts";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -189,9 +191,21 @@ function EmployeeDetail({ employee: initial, onChanged }: { employee: api.Employ
       </div>
 
       {tab === "Contracts" && (
-        <MiniTable empty={cRows.length === 0} head={<><Th>Kind</Th><Th>Status</Th><Th>Effective</Th><Th>Ends</Th></>}>
+        <MiniTable empty={cRows.length === 0} head={<><Th>Kind</Th><Th>Status</Th><Th>Effective</Th><Th>Ends</Th><Th></Th></>}>
           {cRows.map((c) => (
-            <tr key={c.hr_contract_id}><Td>{enumLabel(c.kind)}</Td><Td><Pill tone={CONTRACT_TONE[c.status] || "mute"}>{enumLabel(c.status)}</Pill></Td><Td>{dateFmt(c.effective_on)}</Td><Td>{dateFmt(c.end_on)}</Td></tr>
+            <tr key={c.hr_contract_id}>
+              <Td>{enumLabel(c.kind)}</Td>
+              <Td><Pill tone={CONTRACT_TONE[c.status] || "mute"}>{enumLabel(c.status)}</Pill></Td>
+              <Td>{dateFmt(c.effective_on)}</Td>
+              <Td>{dateFmt(c.end_on)}</Td>
+              <Td>
+                <div className="flex items-center justify-end gap-2">
+                  {c.pdf_vault_id && <Pill tone="ok">Signed</Pill>}
+                  <DocButton docType="EMPLOYMENT_CONTRACT" id={c.hr_contract_id} title={`Contract ${enumLabel(c.kind)}`} label="View" />
+                  <UploadSigned contract={c} onDone={contracts.reload} />
+                </div>
+              </Td>
+            </tr>
           ))}
         </MiniTable>
       )}

@@ -18,6 +18,7 @@
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
@@ -1589,6 +1590,7 @@ function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit }: { pr
               <Badge label={status || "DRAFT"} />
               {data?.doc_number ? <span className="text-xs text-muted-foreground">№ {cell(data.doc_number)}</span> : null}
               {data?.ai_generated ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">AI-drafted</span> : null}
+              <span className="ml-auto"><DocButton docType="PROPOSAL" id={id} title={proposal?.title ? String(proposal.title) : "Proposal"} /></span>
             </div>
 
             {narratives.length > 0 && (

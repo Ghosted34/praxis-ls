@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
@@ -112,7 +113,12 @@ export function InboundPage() {
                 { to: "PASS", label: "Pass QA" },
               ]
             : [];
-        return <TransitionButtons items={items} onTransition={(to) => (to === "REJECTED" ? reject(g) : setPassing(g))} />;
+        return (
+          <div className="flex items-center justify-end gap-2">
+            <DocButton docType="GRN" id={g.grn_inbound_id} title={`GRN ${g.grn_inbound_id.slice(0, 8)}`} label="View" />
+            <TransitionButtons items={items} onTransition={(to) => (to === "REJECTED" ? reject(g) : setPassing(g))} />
+          </div>
+        );
       },
     },
   ];

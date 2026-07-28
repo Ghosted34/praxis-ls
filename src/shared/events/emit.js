@@ -21,6 +21,8 @@
  */
 "use strict";
 
+const { categoryFor } = require("../notifications/categories");
+
 // Roles that receive Watch-the-Watcher alerts (role.code, seeded in
 // 9020_seed_rbac_events.sql). CEO already sees everything by design; MANAGEMENT
 // is the oversight tier per the RBAC journey doc.
@@ -76,7 +78,7 @@ async function emitEvent(client, e) {
     // eslint-disable-next-line global-require
     const executor = require("../../services/workflow/executor");
     const amountXaf = e.payload && (e.payload.amount_xaf ?? e.payload.amount ?? e.payload.total_ttc);
-    await executor.start(client, { eventTypeKey: key, entityRef: e.entityRef, amountXaf: amountXaf ?? null });
+    await executor.start(client, { eventTypeKey: key, entityRef: e.entityRef, amountXaf: amountXaf ?? null, actorUserId: e.actorUserId || null });
   }
 
   // Watch-the-Watcher fan-out — only for security-critical events. A HIGH in-app
@@ -106,17 +108,32 @@ async function emitEvent(client, e) {
     const byPart = actorName ? ` by ${actorName}` : "";
     const title = `Security-critical change: ${label}`;
     const body = `${label}${refPart}${byPart}`;
+    // Tag with the notification category so the inbox can filter it. These are
+    // security-critical events, but categoryFor keeps the value accurate to the
+    // event's domain (they resolve to 'security' for RBAC/auth keys).
+    const category = categoryFor(key);
     await client.query(
-      `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority)
-       SELECT DISTINCT u.user_id, 'IN_APP', $1, $2, $3, $4, 'HIGH'
+      `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
+       SELECT DISTINCT u.user_id, 'IN_APP', $1, $2, $3, $4, 'HIGH', $6
          FROM app_user u
          JOIN user_role ur ON ur.user_id = u.user_id
          JOIN role r       ON r.role_id  = ur.role_id
         WHERE r.code = ANY($5::text[])
           AND u.status = 'ACTIVE'`,
-      [key, title, body, e.entityRef || null, WATCHER_ROLE_CODES],
+      [key, title, body, e.entityRef || null, WATCHER_ROLE_CODES, category],
     );
   }
+
+  // Curated domain-event notifications to the module's permission-holders
+  // (finance to start). Allowlisted + best-effort inside — a no-op for the ~99%
+  // of events not on the list, and never throws into the business op.
+  await require("../notifications/notify-events").onEvent(client, {
+    eventTypeKey: key,
+    moduleKey: e.moduleKey || null,
+    entityRef: e.entityRef || null,
+    actorUserId: e.actorUserId || null,
+    payload: e.payload || {},
+  });
 }
 
 async function audit(client, a) {

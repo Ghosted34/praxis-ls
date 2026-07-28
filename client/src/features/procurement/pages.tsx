@@ -6,6 +6,7 @@ import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -189,7 +190,8 @@ export function PurchaseOrdersPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="PURCHASE_ORDER" id={r.po_id} title={r.ref || `PO ${r.po_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => approve(r)}>Approve</Button>}
         </div>
       ),
@@ -364,7 +366,8 @@ export function SupplierInvoicesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="SUPPLIER_INVOICE" id={r.supplier_invoice_id} title={r.ref || `Invoice ${r.supplier_invoice_id.slice(0, 8)}`} label="View" />
           {!String(r.status).includes("POSTED") && <Button size="sm" variant="outline" loading={busyId === r.supplier_invoice_id} onClick={() => post(r)}>Post</Button>}
         </div>
       ),

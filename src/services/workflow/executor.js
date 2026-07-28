@@ -65,7 +65,7 @@ function createTask(client, wf, step, { entityRef, amountXaf }) {
  * Open the first approval task for an approvable event. If no active workflow or
  * no applicable step, the record needs no approval → { autoApproved: true }.
  */
-async function start(client, { eventTypeKey, entityRef, amountXaf = null }) {
+async function start(client, { eventTypeKey, entityRef, amountXaf = null, actorUserId = null }) {
   if (!entityRef) throw new AppError("NO_ENTITY_REF", "entityRef is required", 422);
   // Idempotency guard: never open a second chain for an entity that already has
   // a pending task. This lets the universal emit-hook and a module's explicit
@@ -81,6 +81,10 @@ async function start(client, { eventTypeKey, entityRef, amountXaf = null }) {
   const applicable = applicableSteps(steps, amountXaf);
   if (applicable.length === 0) return { autoApproved: true, reason: "no_applicable_step" };
   const task = await createTask(client, wf, applicable[0], { entityRef, amountXaf });
+  // Tell the eligible approvers (best-effort; never blocks task creation).
+  await require("./notify-approvals").onTaskOpened(client, {
+    entityRef, roleId: applicable[0].role_id, amountXaf, excludeUserId: actorUserId,
+  });
   return { autoApproved: false, task, workflow_id: wf.workflow_id, step_seq: applicable[0].step_seq };
 }
 
@@ -110,12 +114,22 @@ async function act(client, { approvalTaskId, action, actor = {}, note = null }) 
     [approvalTaskId, status, actor.user_id || null, note],
   );
 
-  if (action === "reject") return { completed: true, approved: false, entityRef: task.entity_ref };
+  const notifyApprovals = require("./notify-approvals");
+
+  if (action === "reject") {
+    await notifyApprovals.onOutcome(client, { entityRef: task.entity_ref, approved: false, actorUserId: actor.user_id || null });
+    return { completed: true, approved: false, entityRef: task.entity_ref };
+  }
 
   const steps = await getSteps(client, task.workflow_id);
   const next = nextStep(steps, task.step_seq, task.amount_xaf);
-  if (!next) return { completed: true, approved: true, entityRef: task.entity_ref };
+  if (!next) {
+    await notifyApprovals.onOutcome(client, { entityRef: task.entity_ref, approved: true, actorUserId: actor.user_id || null });
+    return { completed: true, approved: true, entityRef: task.entity_ref };
+  }
   const newTask = await createTask(client, { workflow_id: task.workflow_id }, next, { entityRef: task.entity_ref, amountXaf: task.amount_xaf });
+  // Notify the next step's approvers that it's now their turn.
+  await notifyApprovals.onTaskOpened(client, { entityRef: task.entity_ref, roleId: next.role_id, amountXaf: task.amount_xaf, excludeUserId: actor.user_id || null });
   return { advanced: true, task: newTask, step_seq: next.step_seq };
 }
 

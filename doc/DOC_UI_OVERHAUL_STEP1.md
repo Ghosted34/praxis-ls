@@ -107,9 +107,58 @@ sheet: record rendered in its template layout (iframe) + **Download PDF** (`/gen
 ✅ **Finance invoices exemplar** — `finance/hub.tsx` invoice rows now open `DocumentView`
 (FINAL_INVOICE, sendable). The proven pattern.
 
-**Rollout ("then all") — remaining wiring**, per the map above, each = `onRowClick →
-DocumentView docType=… recordId=…`, plus a per-doc real-record `load()` where the record
-id isn't the invoice table (proforma/receipt/quotation/proposal loaders exist; the Phase
-2/4 docs need their `loadRecord` branch added, mirroring the invoice one). Order: Finance
-(proforma, credit note, receipt, dunning) → Commercial → Sales → Procurement → Operations
-(+ dossier-360 related docs) → Costing → HR → Fleet → WMS → Vault/Reports → Comms.
+**Native detail (session 15 revision).** The doc page is now `DocumentPage` at route
+`/documents/:docType/:id`, rendered **natively in the app theme** (dark cards, status
+Pill), NOT the white sheet — the sheet is only what Download/Send produce. Preview endpoint
+returns `data` (+ status) for the native render; reports keep the paper preview. A tiny
+`<DocButton docType id title/>` (`components/doc-button.tsx`) is the drop-in.
+
+**Wired so far:** Finance **Invoices** (View per row) + **Receipts** (drawer), **Commercial
+Quotations** (detail), **Sales Proposals** (detail), **Procurement** POs + supplier invoices
+(View per row), **Costing** cash requests (View per row), **HR** contracts (View) + payslips
+(Payslip per run-detail row), **Fleet** work orders (View in the detail modal). Real
+`loadRecord` branches now exist for FINAL/PROFORMA/CREDIT invoice-family, QUOTATION,
+PAYMENT_RECEIPT, PROPOSAL, SUPPLIER_INVOICE, PURCHASE_ORDER, CASH_REQUEST, REGIE_ADVANCE,
+WORK_ORDER, EMPLOYMENT_CONTRACT, PAYSLIP.
+
+**Now also wired (session 15, full rollout):**
+- **Credit note** — `CreditNotesPage` (finance/pages.tsx) View button. No `credit_note`
+  table exists; credit notes are `invoice` rows with `type='CREDIT_NOTE'`, and the list
+  returns `invoice_id`, so the button passes `String(r.invoice_id ?? r.credit_note_id)` into
+  the invoice-family loader.
+- **Delivery note** + **transit order** — View column on both operations lists.
+- **GRN** — View in the inbound list actions.
+- **Cycle-count sheet** — View column on the cycle-count list (lines pulled from the
+  `discrepancy` jsonb).
+- **Trip sheet** — View in the dispatch list actions (vehicle reg + driver + odometer).
+
+Sparse docs (delivery/transit/GRN carry few fields; their line data isn't modelled) render
+their heads + whatever the table holds; the template line tables show empty where there's no
+source data.
+
+**Also wired since:**
+- **Proforma / advance** — View on `ProformasPage`; loader reads the `advance` table (not
+  `invoice`), renders client + amount + applied.
+- **Receipts** — now show *what is paid for* (payment_allocation → invoices) natively and in
+  the PDF template.
+- **"From" fix** — every view page now renders the issuing entity (was blank vs the template
+  because preview returns `legal_name`, PartyCol read `name`).
+- **Contracts** — send-on-create (optional email in the new-contract form → renders + emails
+  the drafted contract), upload/replace a **signed** PDF (vaulted, tied via `pdf_vault_id`),
+  View/Download prefers the signed copy; surfaced on both the Contracts screen and the
+  employee-360 Contracts tab.
+- Render fixes for work orders (parts/cost), contracts (party + type/effective + articles),
+  proposals (narratives + line items), cycle-count (item names), trip sheet (odometer/route).
+
+**Remaining:**
+- **Régie advance** — loader done, but the list's row id is ambiguous (`SELECT *` returns
+  `regie_advance_id` while the client type/rowKey use `regie_id`). Reconcile that field
+  before wiring the button.
+- **Purchase request** — picker entry added; loader still sample-only (schema not yet mapped).
+- **Operations dossier-360** — still to surface related invoices with Download (the "download
+  invoices from operations" ask).
+- **Send follow-ups** — mailer sends inline HTML (no PDF attachment channel); recipient is
+  prompted/typed rather than resolved per-doc (no client/supplier/employee email on masters).
+- **Verification** — full `tsc` / `vite build` / `jest` on a real machine (native bundlers
+  segfault in-sandbox; only per-file syntax checks ran here).
+- **DSF** statutory form — pixel-exact version deferred (needs official reference).

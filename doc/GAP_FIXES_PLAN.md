@@ -122,12 +122,67 @@ Complements the existing system/CEO-role delete guard in `iam_role.service.js`.
 
 ---
 
+## Tier 5 — Document pipeline consolidation (follow-through on 1.1)
+
+Audit finding: the document capability is smeared across four layers with no
+owner — the `document_template` setting (1.1), two shared services
+(`services/documents/document.service.js`, `services/pdf.service.js`), the
+`vault` group (`document_vault`, `document_signature`, `document_verification`,
+`compliance_flag`), and ~15 issuing modules that each call `documents.capture()`
+with a hand-written `docType` string. 1.1 stores templates; nothing consumes
+them. These fixes make the settings contract real and give the pipeline a spine.
+No new top-level module — everything folds into `vault/document_vault`,
+`security/setting`, and the shared `pdf`/`documents` services.
+
+### 5.1 Enforce `document_template` at render → **`services/pdf.service`** + **`security/setting`**
+The blocker. `document_template` (1.1) is validated on write but has **zero
+readers** — `pdf.service.renderAndStore` takes fully-formed `html` from the
+caller and the `pdf-render` job passes it straight through, so `body_html` /
+`css_vars` / the draft→published→archived `status` render nothing. This breaks
+the "settings must be enforced" rule: a configured template is a contract the
+renderer must honor. Add a resolver — `renderDocType(client, { docType, data,
+entityRef })` — that reads `getSetting(client, "document_template", docType)`,
+**refuses a non-`published` template** (`CONFLICT "template not published"`),
+interpolates `data` into `body_html`, injects `css_vars`, and hands the result to
+the existing `renderAndStore`. Issuers stop passing raw `html`. Missing template
+for a `docType` → explicit `NOT_CONFIGURED`, not a silent blank doc.
+
+### 5.2 `doc_type` registry → **`vault/document_vault`**
+Today all 15 issuers pass free-string literals (`"FINAL_INVOICE"`, …) into
+`capture()`, and 1.1 keys templates "one per doc_type" — so template keys and
+issuer strings can drift with nothing joining them. Add a single exported
+`DOC_TYPES` map/enum in `document_vault` (the table's owner); `capture()` and the
+5.1 resolver both validate `docType` against it. One list to keep template keys
+and issuer calls in lockstep.
+
+### 5.3 Unify capture semantics + audit → **`vault/document_vault`**
+`capture()` (create-once, used by every system doc) emits **no event and no
+audit**, while `createDocument()` (ad-hoc upload) emits `CREATED` + audit — so the
+bulk of documents skip the trail that manual uploads get, wrong for compliance
+evidence. And `final_invoice` calls `capture()` with no `storagePath` yet
+`status: "VERIFIED"`, landing a row at `pending://…` **and** VERIFIED at once,
+contradicting `fetchBytes`'s own NOT_READY-if-pending guard. Fix: `capture()`
+emits `CREATED` on insert / `UPDATED` on sync + audits both; forbid a `VERIFIED`
+status without a real (non-`pending://`) `storage_path` — a captured-but-unrendered
+doc stays `PENDING` until `renderAndStore` supplies bytes.
+
+### 5.4 Close the cross-module repo reach → **`vault/document_signature` / `document_verification`**
+Both `sign` and `verify` import `document_vault.repo` directly, leaking through
+the module boundary to another module's repo shape. Add the two reads they need
+(`getByRef`, `getDoc`) to `document_vault.service` and have sign/verify depend on
+the **service**, not the repo. SQL still lives only in `document_vault`'s repo;
+the boundary stops leaking.
+
+---
+
 ## Sequencing
 1. Tier 1 (setting-hosted: 1.1, 1.4, 2.2 are pure `setting` extensions — cheapest;
    then 1.2 notification prefs, 1.3 vault/report scheduling).
 2. Tier 3.1 appearance (no migration).
 3. Tier 2.3 payment gateways, 2.1 email signatures.
 4. Tier 3.2 login editor, Tier 4 IAM.
+5. Tier 5 document pipeline — needs 1.1 landed first; do 5.2 (registry) → 5.1
+   (resolver, the payoff) → 5.3 (capture/audit) → 5.4 (boundary).
 
 ## Verify per change
 - RBAC denies without a grant; self-service (notification prefs) works without one.
@@ -135,3 +190,7 @@ Complements the existing system/CEO-role delete guard in `iam_role.service.js`.
 - Secret sections never return the value (assert `*_enc` absent from responses).
 - Public GETs (branding, login) work pre-auth; everything else 401s.
 - No new top-level module dir added; each change lives in an existing module.
+- (Tier 5) A `draft`/`archived` template refuses to render; an unknown `docType`
+  is rejected, not silently blank; `capture()` writes to `immutable_ledger`; no
+  row is `VERIFIED` while `storage_path` is `pending://`; sign/verify import the
+  `document_vault` service, not its repo.

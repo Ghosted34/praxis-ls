@@ -4,12 +4,15 @@
  */
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
-const { page } = require("../../../shared/db/query-helpers");
+const { page, insertOne } = require("../../../shared/db/query-helpers");
 
 const base = makeRepo({ table: "grn_inbound", pk: "grn_inbound_id", activeColumn: null, searchColumn: null, orderBy: "created_at DESC" });
 
 module.exports = {
   ...base,
+  insertLine: (client, data) => insertOne(client, "grn_line", data),
+  listLines: async (client, id) =>
+    (await client.query("SELECT * FROM grn_line WHERE grn_inbound_id = $1 ORDER BY grn_line_id", [id])).rows,
   async list(client, q = {}) {
     const { limit, offset } = page(q);
     const params = [limit, offset];

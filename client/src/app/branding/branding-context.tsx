@@ -38,6 +38,20 @@ function paint(b: Branding) {
   // Reflect the tenant's brand name in the browser tab (falls back to the app
   // name before/without tenant branding).
   document.title = b.name || "Praxis LS";
+  // Swap the tab favicon to the tenant's uploaded one. The static index.html
+  // link is only the default; nothing applied the branding favicon before, so a
+  // configured favicon never showed.
+  if (b.faviconUrl) {
+    let link = document.querySelector<HTMLLinkElement>('link[rel~="icon"]');
+    if (!link) {
+      link = document.createElement("link");
+      link.rel = "icon";
+      document.head.appendChild(link);
+    }
+    // Drop the fixed type so PNG/WEBP favicons aren't mislabelled as x-icon.
+    link.removeAttribute("type");
+    link.href = b.faviconUrl;
+  }
 }
 
 export function BrandingProvider({ children }: { children: React.ReactNode }) {

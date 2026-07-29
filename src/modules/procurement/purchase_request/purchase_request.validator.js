@@ -2,7 +2,12 @@
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
 const schemas = {
-  create: z.object({ requested_by: z.string().uuid().optional().nullable(), department: z.string().optional(), justification: z.string().optional() }),
+  create: z.object({
+    requested_by: z.string().uuid().optional().nullable(),
+    department: z.string().optional(),
+    justification: z.string().optional(),
+    lines: z.array(z.object({ label: z.string().min(1), qty: z.number().nonnegative().optional(), unit_price: z.number().nonnegative().optional() })).optional(),
+  }),
   transition: z.object({ to: z.enum(["SUBMITTED", "APPROVED", "REJECTED", "ORDERED"]), entity_id: z.string().uuid().optional().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
 };
 const mw = (k) => (req, _res, next) => {

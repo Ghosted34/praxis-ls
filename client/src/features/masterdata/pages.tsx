@@ -43,6 +43,7 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
   const [entityId, setEntityId] = React.useState(row?.entity_id ?? "");
   const [niu, setNiu] = React.useState(row?.niu ?? "");
   const [rccm, setRccm] = React.useState(row?.rccm ?? "");
+  const [email, setEmail] = React.useState(row?.email ?? "");
   const [terms, setTerms] = React.useState(row?.payment_terms_days != null ? String(row.payment_terms_days) : "");
   const [credit, setCredit] = React.useState(row?.credit_limit != null ? String(row.credit_limit) : "");
   const [wht, setWht] = React.useState(row?.is_withholding_agent ?? false);
@@ -59,6 +60,7 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
       entity_id: entityId || undefined,
       niu: niu || undefined,
       rccm: rccm || undefined,
+      email: email || undefined,
       payment_terms_days: terms === "" ? undefined : Number(terms),
       credit_limit: credit === "" ? undefined : Number(credit),
       is_withholding_agent: wht,
@@ -95,6 +97,7 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
           </Field>
           <Field label="NIU"><Input value={niu} onChange={(e) => setNiu(e.target.value)} /></Field>
           <Field label="RCCM"><Input value={rccm} onChange={(e) => setRccm(e.target.value)} /></Field>
+          <Field label="Email" hint="Used to send invoices & receipts"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="billing@client.cm" /></Field>
           <Field label="Credit limit (XAF)">
             <Input type="number" min="0" step="0.01" className="num text-right" value={credit} onChange={(e) => setCredit(e.target.value)} />
           </Field>
@@ -153,6 +156,7 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
   const [type, setType] = React.useState(row?.supplier_type ?? "");
   const [niu, setNiu] = React.useState(row?.niu ?? "");
   const [rccm, setRccm] = React.useState(row?.rccm ?? "");
+  const [email, setEmail] = React.useState(row?.email ?? "");
   const [method, setMethod] = React.useState(row?.payment_method ?? "");
   const [rating, setRating] = React.useState(row?.rating != null ? String(row.rating) : "");
   const [nonResident, setNonResident] = React.useState(row?.is_non_resident ?? false);
@@ -169,6 +173,7 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
       supplier_type: type || undefined,
       niu: niu || undefined,
       rccm: rccm || undefined,
+      email: email || undefined,
       payment_method: (method || undefined) as api.SupplierInput["payment_method"],
       rating: rating === "" ? undefined : Number(rating),
       is_non_resident: nonResident,
@@ -199,6 +204,7 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
           </Field>
           <Field label="NIU"><Input value={niu} onChange={(e) => setNiu(e.target.value)} /></Field>
           <Field label="RCCM"><Input value={rccm} onChange={(e) => setRccm(e.target.value)} /></Field>
+          <Field label="Email" hint="Used to send purchase orders"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ap@supplier.cm" /></Field>
           <Field label="Rating (1–5)"><Input type="number" min="1" max="5" className="num" value={rating} onChange={(e) => setRating(e.target.value)} /></Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={nonResident} onChange={(e) => setNonResident(e.target.checked)} /> Non-resident (WHT)</label>
           {!isNew && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>}

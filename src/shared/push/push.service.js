@@ -60,33 +60,52 @@ async function configuredClient() {
   return webpush;
 }
 
-/** Push to all of a user's registered subscriptions. Never throws. */
-async function sendToUser({ user_id, title, body, url, tag }) {
+/**
+ * Push to all of a user's registered subscriptions. Never throws.
+ *
+ * Two call styles:
+ *   sendToUser(tenantClient, { user_id, ... })  → reads the TENANT
+ *     `push_subscription` table (where the opt-in endpoint stores them). This is
+ *     the path notify() uses.
+ *   sendToUser({ user_id, ... })                → legacy: reads
+ *     `shared.push_subscription` via the platform pool. Kept for back-compat.
+ * Subscriptions that come back gone (404/410) are pruned from whichever table
+ * they were read from.
+ */
+async function sendToUser(a, b) {
+  const hasClient = b !== undefined;
+  const opts = hasClient ? b : a;
+  const { user_id, title, body, url, tag } = opts || {};
+  // A tenant client exposes .query(sql, params); the legacy platform `query` is
+  // a bare function. Normalise both to q(sql, params).
+  const client = hasClient ? a : null;
+  const q = client
+    ? (sql, params) => client.query(sql, params)
+    : query
+      ? (sql, params) => query(sql, params)
+      : null;
+  const table = client ? "push_subscription" : "shared.push_subscription";
+
   const webpush = await configuredClient();
-  if (!webpush || !query) return { sent: 0, reason: "push not configured" };
+  if (!webpush || !q) return { sent: 0, reason: "push not configured" };
   let subs;
   try {
-    const res = await query(
-      "SELECT endpoint, p256dh, auth FROM shared.push_subscription WHERE user_id = $1",
-      [user_id],
-    );
+    const res = await q(`SELECT endpoint, p256dh, auth FROM ${table} WHERE user_id = $1`, [user_id]);
     subs = res.rows;
   } catch {
-    // subscription table not provisioned yet — registration pipeline pending
+    // subscription table not provisioned yet
     return { sent: 0, reason: "no push_subscription table" };
   }
   const payload = JSON.stringify({ title, body, url, tag });
   let sent = 0;
   for (const s of subs) {
     try {
-      // eslint-disable-next-line no-await-in-loop
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload);
       sent += 1;
     } catch (err) {
       if (err.statusCode === 404 || err.statusCode === 410) {
         // expired/gone subscription — prune it
-        // eslint-disable-next-line no-await-in-loop
-        await query("DELETE FROM shared.push_subscription WHERE endpoint = $1", [s.endpoint]).catch(() => {});
+        await q(`DELETE FROM ${table} WHERE endpoint = $1`, [s.endpoint]).catch(() => {});
       } else {
         logger.warn({ err: err.message }, "[push] send failed");
       }

@@ -40,7 +40,7 @@ type DocData = {
   number?: string; date?: string; due?: string; valid_until?: string; status?: string;
   period?: string; method?: string; po_ref?: string; original_ref?: string; reason?: string;
   staff_no?: string; supplier?: string; vehicle?: string; driver?: string; location?: string;
-  kind?: string; effective_on?: string; end_on?: string; description?: string; qa_status?: string;
+  kind?: string; effective_on?: string; end_on?: string; description?: string; qa_status?: string; department?: string;
   odometer_out?: number; odometer_in?: number; distance?: number | null; origin?: string; destination?: string;
   party?: Party; parties?: Party[]; lines?: Line[]; parts?: Line[]; totals?: Record<string, number>;
   earnings?: Line[]; deductions?: Line[]; gross?: number; total_deductions?: number; net?: number;
@@ -53,9 +53,10 @@ type DocData = {
 const PARTY_LABEL: Record<string, string> = {
   PURCHASE_ORDER: "Supplier", SUPPLIER_INVOICE: "Supplier", EMPLOYMENT_CONTRACT: "Employee",
   PAYSLIP: "Employee", DELIVERY_NOTE: "Consignee", TRIP_SHEET: "Vehicle",
+  PURCHASE_REQUEST: "Requested by",
 };
 type Entity = { legal_name?: string; niu?: string; rccm?: string; address?: string };
-type Preview = { html: string; data?: DocData | null; title?: { fr?: string; en?: string }; entity?: Entity; report?: boolean };
+type Preview = { html: string; data?: DocData | null; title?: { fr?: string; en?: string }; entity?: Entity; suggested_to?: string | null; report?: boolean };
 
 /** The issuing entity renders as the "From" party. The preview returns it as
  *  { legal_name, niu, rccm } — map those onto the Party shape PartyCol expects
@@ -146,7 +147,7 @@ export function DocumentPage() {
     } catch (e) { setError(errMsg(e)); } finally { setBusy(null); }
   }
   async function send() {
-    const to = window.prompt("Send document to (email):");
+    const to = window.prompt("Send document to (email):", pv?.suggested_to || "");
     if (!to) return;
     setBusy("send"); setError(null); setNote(null);
     try { await tenant(`/document-templates/${docType}/${id}/send`, { method: "POST", body: { to } }); setNote(`Sent to ${to}.`); }
@@ -195,7 +196,7 @@ export function DocumentPage() {
             </div>
           </Card>
 
-          {(d.date || d.due || d.valid_until || d.period || d.method || d.po_ref || d.original_ref || d.reason || d.supplier || d.vehicle || d.driver || d.location || d.staff_no || d.kind || d.effective_on || d.end_on || d.qa_status || d.odometer_out != null || d.odometer_in != null || d.distance != null || d.origin || d.destination) && (
+          {(d.date || d.due || d.valid_until || d.period || d.method || d.po_ref || d.original_ref || d.reason || d.supplier || d.vehicle || d.driver || d.location || d.staff_no || d.kind || d.effective_on || d.end_on || d.qa_status || d.department || d.odometer_out != null || d.odometer_in != null || d.distance != null || d.origin || d.destination) && (
             <Card>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
                 {d.date && <KV label="Date">{dateFmt(d.date)}</KV>}
@@ -205,6 +206,7 @@ export function DocumentPage() {
                 {d.effective_on && <KV label="Effective">{dateFmt(d.effective_on)}</KV>}
                 {d.end_on && <KV label="Ends">{dateFmt(d.end_on)}</KV>}
                 {d.period && <KV label="Period">{d.period}</KV>}
+                {d.department && <KV label="Department">{d.department}</KV>}
                 {d.method && <KV label="Method">{d.method}</KV>}
                 {d.po_ref && <KV label="PO ref">{d.po_ref}</KV>}
                 {d.qa_status && <KV label="QA">{enumLabel(d.qa_status)}</KV>}

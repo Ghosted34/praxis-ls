@@ -235,7 +235,26 @@ export const platform = {
     api<SettingTestResult>(`/settings/${encodeURIComponent(section)}/${encodeURIComponent(key)}/test`, { method: "POST" }),
   generateVapid: (subject?: string) =>
     api<{ public_key: string; subject: string }>("/settings/push/vapid/generate", { method: "POST", body: { subject } }),
+
+  // Deploy-wide AI vendor keys — one shared set every tenant's AI runtime uses.
+  aiVendors: () => api<AiVendor[]>("/ai-vendors"),
+  setAiVendor: (vendor: string, body: AiVendorInput) =>
+    api<AiVendor>(`/ai-vendors/${encodeURIComponent(vendor)}`, { method: "PUT", body }),
+  testAiVendor: (vendor: string) =>
+    api<SettingTestResult>(`/ai-vendors/${encodeURIComponent(vendor)}/test`, { method: "POST" }),
 };
+
+export type AiVendor = {
+  vendor: string;
+  display_name: string | null;
+  endpoint_url: string | null;
+  default_model: string | null;
+  current_model: string | null;
+  is_active: boolean;
+  has_key: boolean;
+  last_rotated_at: string | null;
+};
+export type AiVendorInput = { api_key?: string; display_name?: string; endpoint_url?: string; default_model?: string; current_model?: string; is_active?: boolean };
 
 export type PlatformSetting = {
   section: string;

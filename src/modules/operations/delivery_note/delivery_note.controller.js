@@ -11,7 +11,7 @@ module.exports = {
   }),
   create: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.create(c, { entityId: b.entity_id, dossierId: b.dossier_id, consignee: b.consignee, cityZone: b.city_zone, contactPerson: b.contact_person, date: b.date, actor: actor(req) }));
+    const data = await req.tenantDb((c) => service.create(c, { entityId: b.entity_id, dossierId: b.dossier_id, consignee: b.consignee, cityZone: b.city_zone, contactPerson: b.contact_person, lines: b.lines, date: b.date, actor: actor(req) }));
     res.status(201).json({ data });
   }),
 };

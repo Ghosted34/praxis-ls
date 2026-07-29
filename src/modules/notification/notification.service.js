@@ -65,14 +65,29 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body 
 }
 
 /**
+ * Best-effort web-push to the user's registered devices. Push is a device-level
+ * opt-in (subscribing IS the opt-in), so we mirror the in-app decision: push
+ * only when the in-app notification was actually delivered. sendToUser reads the
+ * tenant push_subscription table on the caller's client and no-ops cleanly when
+ * push isn't configured (no VAPID / web-push). NEVER throws.
+ */
+async function deliverPush(client, { userId, title, body }) {
+  try {
+    await pushService.sendToUser(client, { user_id: userId, title, body, url: "/notifications", tag: userId });
+  } catch (err) {
+    logger.warn({ err: err.message, user_id: userId }, "[notify] push delivery skipped/failed");
+  }
+}
+
+/**
  * Canonical notification producer. Derives the category from the event type
  * (unless one is passed), and — for NON-security categories — honours the
  * recipient's per-(channel, category) preferences before delivering. Security
  * categories are unconditional (a user can't silence "your password changed").
- * Writes the IN_APP row (the source of truth) and fans out to EMAIL best-effort.
- * Returns the inserted in-app row, or null when in-app is suppressed by pref.
- * Runs on the caller's connection so the in-app write can join the triggering
- * transaction; email is a best-effort side effect (see deliverEmail).
+ * Writes the IN_APP row (the source of truth) and fans out to EMAIL + web-push
+ * best-effort. Returns the inserted in-app row, or null when in-app is
+ * suppressed by pref. Runs on the caller's connection so the in-app write can
+ * join the triggering transaction; email/push are best-effort side effects.
  */
 async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
   if (!userId || !title) return null;
@@ -87,6 +102,11 @@ async function notify(client, { userId, eventTypeKey = null, title, body = null,
   // EMAIL fan-out (best-effort, own preference check). Runs even when in-app was
   // suppressed, since a user may prefer email-only for a category.
   await deliverEmail(client, { userId, category: cat, isSecurity, title, body });
+
+  // PUSH fan-out — mirror the in-app decision (delivered in-app, or security).
+  if (inApp || isSecurity) {
+    await deliverPush(client, { userId, title, body });
+  }
 
   return inApp;
 }

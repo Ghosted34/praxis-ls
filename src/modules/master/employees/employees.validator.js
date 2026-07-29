@@ -12,6 +12,7 @@ const base = {
   full_name: z.string().min(2),
   department: z.string().max(120).optional(),
   job_title: z.string().max(120).optional(),
+  email: z.string().email().optional().or(z.literal("")),
   employment_type: z.union([z.enum(EMPLOYMENT_TYPES), z.string().max(40)]).optional(),
   cnps_number: z.string().max(40).optional(),
   base_salary: z.number().nonnegative().optional(),

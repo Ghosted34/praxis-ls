@@ -55,6 +55,9 @@ const DOMAIN_TO_CATEGORY = {
   employee: "operations", appraisal: "operations", procurement: "operations", wms: "operations",
   fleet: "operations", operations: "operations", master: "operations",
   transit_order: "operations", inbound: "operations", equipment: "operations", inventory: "operations",
+  goods_received: "operations", purchase_order: "operations", purchase_request: "operations",
+  hr_contract: "operations", leave_allowance: "operations", vacancy: "operations", training: "operations",
+  incident: "operations", work_order: "operations", fuel_log: "operations",
 
   // sales & CRM
   client: "sales", lead: "sales", campaign: "sales", contact_enquiry: "sales",

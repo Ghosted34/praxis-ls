@@ -6,6 +6,7 @@ const base = {
   name: z.string().min(1),
   supplier_type: z.string().optional(),
   niu: z.string().optional(), rccm: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
   payment_method: z.enum(["BANK", "CASH", "MOBILE_MONEY", "CHEQUE"]).optional(),
   momo_network: z.string().optional(), momo_number: z.string().optional(),
   is_non_resident: z.boolean().optional(),

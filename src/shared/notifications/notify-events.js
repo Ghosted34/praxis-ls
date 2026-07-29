@@ -42,6 +42,30 @@ const NOTIFIABLE = {
   "opportunity.won": { action: "view", title: "Opportunity won" },
   "opportunity.lost": { action: "view", title: "Opportunity lost" },
   "proposal.accepted": { action: "view", title: "Proposal accepted" },
+
+  // ── Procurement ──
+  "goods_received.created": { action: "view", title: "Goods received" },
+  "supplier_invoice.posted": { action: "view", title: "Supplier invoice posted" },
+
+  // ── HR ──
+  "payroll.posted": { action: "view", title: "Payroll posted" },
+
+  // ── Fleet compliance expiries (high-signal deadlines) ──
+  "vehicle.insurance.expiring": { action: "view", title: "Vehicle insurance expiring", priority: "HIGH" },
+  "vehicle.visite_technique.expiring": { action: "view", title: "Vehicle inspection expiring", priority: "HIGH" },
+  "driver.license.expiring": { action: "view", title: "Driver licence expiring", priority: "HIGH" },
+  "incident.status_changed": { action: "view", title: "Incident updated" },
+
+  // ── Compliance & documents ──
+  "compliance_flag.raised": { action: "view", title: "Compliance flag raised", priority: "HIGH" },
+  "document.signed": { action: "view", title: "Document signed" },
+
+  // ── HR lifecycle ──
+  "leave_allowance.decided": { action: "view", title: "Leave request decided" },
+  "hr_contract.status_changed": { action: "view", title: "Contract status changed" },
+
+  // ── Assets ──
+  "asset.disposed": { action: "view", title: "Asset disposed" },
 };
 
 function shortEntity(entityRef) {

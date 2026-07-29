@@ -21,6 +21,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
+import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
 
 type NavItem = { to: string; label: string };
@@ -138,6 +139,19 @@ const NAV: NavGroup[] = [
     ],
   },
 ];
+
+/** The grouped nav, minus AI-only destinations when AI is off for the tenant.
+ *  AI Control is a no-op surface without AI provisioned, so it's hidden (and any
+ *  group left empty is dropped). */
+function useVisibleNav(): NavGroup[] {
+  const aiEnabled = useAiEnabled();
+  return React.useMemo(() => {
+    if (aiEnabled) return NAV;
+    return NAV
+      .map((g) => ({ ...g, items: g.items.filter((it) => it.to !== "/ai-control") }))
+      .filter((g) => g.items.length > 0);
+  }, [aiEnabled]);
+}
 
 /** Areas surfaced inline in the top bar (in order). The rest live under More. */
 const TOPBAR = ["Overview", "Operations", "Fleet", "Finance"];
@@ -413,9 +427,10 @@ function NavArea({
 
 /** The full grouped menu — rendered inside the More overlay sidebar. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
+  const nav = useVisibleNav();
   return (
     <nav className="flex flex-col gap-5 p-3">
-      {NAV.map((g) => {
+      {nav.map((g) => {
         // Single-screen areas (now hubs) collapse to just their caps heading,
         // which itself is the link — no duplicate row beneath it.
         if (g.items.length === 1) {
@@ -602,6 +617,7 @@ export function AppShell() {
   }
 
   const topbarGroups = TOPBAR.map((h) => NAV.find((g) => g.heading === h)!).filter(Boolean);
+  const visibleNav = useVisibleNav();
 
   return (
     <div className="flex h-full flex-col">
@@ -718,7 +734,7 @@ export function AppShell() {
 
       <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
 
-      <CommandPalette open={paletteOpen} groups={NAV} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />
     </div>

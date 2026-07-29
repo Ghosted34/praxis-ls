@@ -77,6 +77,14 @@ const schemas = {
     secret: z.string().min(1).max(4000).optional(),
   }),
   vapidGenerate: z.object({ subject: z.string().min(3).optional() }),
+  aiVendorSet: z.object({
+    api_key: z.string().min(1).optional(),
+    display_name: z.string().optional(),
+    endpoint_url: z.string().optional(),
+    default_model: z.string().optional(),
+    current_model: z.string().optional(),
+    is_active: z.boolean().optional(),
+  }),
 };
 
 const validate = (schemaKey) => (req, _res, next) => {

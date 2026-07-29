@@ -78,4 +78,9 @@ router.get("/settings/:section/:key", c.settingGet);
 router.put("/settings/:section/:key", validate("platformSetting"), c.settingPut);
 router.post("/settings/:section/:key/test", c.settingTest);
 
+// Deploy-wide AI vendor keys — one shared set every tenant's AI runtime uses.
+router.get("/ai-vendors", c.aiVendorsList);
+router.put("/ai-vendors/:vendor", validate("aiVendorSet"), c.aiVendorSet);
+router.post("/ai-vendors/:vendor/test", c.aiVendorTest);
+
 module.exports = router;

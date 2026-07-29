@@ -28,14 +28,47 @@ async function safeGet(client, key) {
 
 const list = () => registry.list();
 
+const LOGO_MIME = { png: "image/png", jpg: "image/jpeg", jpeg: "image/jpeg", webp: "image/webp", svg: "image/svg+xml", gif: "image/gif" };
+
+// Turn a stored logo reference into something that renders EVERYWHERE — the live
+// preview iframe, the Puppeteer-rendered PDF (which has no page origin, so a
+// relative /media URL never loads), and emailed HTML. We inline the bytes as a
+// base64 data URI. `ref` is either a storage key or a /media/<key> public URL.
+async function resolveLogo(ref) {
+  if (!ref) return null;
+  if (/^data:/i.test(ref)) return ref;
+  if (/^https?:/i.test(ref)) return ref; // remote/CDN URL — used as-is
+  const key = String(ref).replace(/^\/media\//, "").replace(/^\/+/, "");
+  try {
+    const buf = await storage.get(key);
+    if (buf && buf.length) {
+      const ext = (key.split(".").pop() || "png").toLowerCase();
+      return `data:${LOGO_MIME[ext] || "image/png"};base64,${buf.toString("base64")}`;
+    }
+  } catch { /* fall through to the raw ref */ }
+  return ref;
+}
+
+// Tenant-wide letterhead logo reference (Appearance → logo_url), used when a
+// corporate entity has no per-entity logo of its own. Most tenants set only the
+// branding logo, so without this the documents fall back to the brand *name*.
+async function brandingLogoRef(client) {
+  try {
+    const { rows } = await client.query(
+      "SELECT value FROM setting WHERE section = 'appearance' AND key = 'logo_url' LIMIT 1",
+    );
+    const v = rows[0] && rows[0].value;
+    return v ? (typeof v === "string" ? v : String(v)) : null;
+  } catch { return null; }
+}
+
 async function resolveEntity(client, entityId) {
   const q = entityId
     ? await client.query("SELECT * FROM corporate_entity WHERE entity_id = $1", [entityId])
     : await client.query("SELECT * FROM corporate_entity ORDER BY created_at LIMIT 1");
   const entity = q.rows[0] || {};
-  let logo_url = null;
-  try { if (entity.logo_light_ref) logo_url = storage.publicUrl(entity.logo_light_ref); } catch { logo_url = null; }
-  return { entity, brand: { logo_url } };
+  const ref = entity.logo_light_ref || (await brandingLogoRef(client));
+  return { entity, brand: { logo_url: await resolveLogo(ref) } };
 }
 
 /** entity override merged over the tenant default (entity_id = null). */
@@ -62,7 +95,7 @@ async function getConfig(client, { docType, entityId }) {
     docType, entity_id: entityId || null, title: tpl.title, fields: tpl.fields || [],
     tenant_default: (def && def.value) || {},
     entity_override: ov ? ov.value : null,
-    defaults: kit.defaults({ logo_url: entity.logo_light_ref ? storage.publicUrl(entity.logo_light_ref) : null }),
+    defaults: kit.defaults({ logo_url: await resolveLogo(entity.logo_light_ref || (await brandingLogoRef(client))) }),
   };
 }
 
@@ -272,6 +305,26 @@ async function loadRecord(client, docType, recordId) {
     };
   }
 
+  if (docType === "PURCHASE_REQUEST") {
+    const { rows } = await client.query(
+      "SELECT pr.*, u.full_name AS requester FROM purchase_request pr LEFT JOIN app_user u ON u.user_id = pr.requested_by WHERE pr.pr_id = $1",
+      [recordId],
+    );
+    const pr = rows[0];
+    if (!pr) return null;
+    const lr = await client.query("SELECT label, qty, unit_price FROM purchase_request_line WHERE pr_id = $1 ORDER BY purchase_request_line_id", [recordId]);
+    const lines = lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), amount: Number(l.qty) * Number(l.unit_price) }));
+    const total = lines.reduce((s2, l) => s2 + l.amount, 0);
+    return {
+      entity_id: null,
+      data: {
+        number: pr.doc_number || String(pr.pr_id).slice(0, 8), date: pr.created_at, status: pr.status, department: pr.department,
+        party: { name: pr.requester || pr.department || "—", lines: [pr.department].filter(Boolean) },
+        reason: pr.justification || undefined, lines, totals: { total_ttc: total }, currency: "XAF",
+      },
+    };
+  }
+
   if (docType === "CASH_REQUEST") {
     const { rows } = await client.query("SELECT * FROM cash_request WHERE cash_request_id = $1", [recordId]);
     const cr = rows[0];
@@ -315,21 +368,24 @@ async function loadRecord(client, docType, recordId) {
     const { rows } = await client.query("SELECT * FROM delivery_note WHERE delivery_note_id = $1", [recordId]);
     const dn = rows[0];
     if (!dn) return null;
-    return { entity_id: null, data: { number: dn.doc_number || String(dn.delivery_note_id).slice(0, 8), date: dn.created_at, dossier_ref: dn.dossier_id ? String(dn.dossier_id).slice(0, 8) : null, party: { name: dn.consignee || "—", lines: [dn.city_zone, dn.contact_person].filter(Boolean) }, lines: [], currency: "XAF" } };
+    const lr = await client.query("SELECT label, qty FROM delivery_note_line WHERE delivery_note_id = $1 ORDER BY delivery_note_line_id", [recordId]);
+    return { entity_id: null, data: { number: dn.doc_number || String(dn.delivery_note_id).slice(0, 8), date: dn.created_at, dossier_ref: dn.dossier_id ? String(dn.dossier_id).slice(0, 8) : null, party: { name: dn.consignee || "—", lines: [dn.city_zone, dn.contact_person].filter(Boolean) }, lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty) })), currency: "XAF" } };
   }
 
   if (docType === "TRANSIT_ORDER") {
     const { rows } = await client.query("SELECT * FROM transit_order WHERE transit_order_id = $1", [recordId]);
     const to = rows[0];
     if (!to) return null;
-    return { entity_id: null, data: { number: to.ot_number || String(to.transit_order_id).slice(0, 8), date: to.created_at, mode: to.service_direction || "—", carrier: "—", carrier_ref: to.customs_regime || "", origin: "", destination: "", lines: [], currency: "XAF" } };
+    const lr = await client.query("SELECT label, packages, weight FROM transit_order_line WHERE transit_order_id = $1 ORDER BY transit_order_line_id", [recordId]);
+    return { entity_id: null, data: { number: to.ot_number || String(to.transit_order_id).slice(0, 8), date: to.created_at, mode: to.service_direction || "—", carrier: "—", carrier_ref: to.customs_regime || "", origin: "", destination: "", lines: lr.rows.map((l) => ({ label: l.label, qty: String(Number(l.packages)), weight: l.weight || "" })), currency: "XAF" } };
   }
 
   if (docType === "GRN") {
     const { rows } = await client.query("SELECT * FROM grn_inbound WHERE grn_inbound_id = $1", [recordId]);
     const g = rows[0];
     if (!g) return null;
-    return { entity_id: null, data: { number: String(g.grn_inbound_id).slice(0, 8), date: g.created_at, po_ref: g.dossier_id ? String(g.dossier_id).slice(0, 8) : null, qa_status: g.qa_status, supplier: "—", lines: [], currency: "XAF" } };
+    const lr = await client.query("SELECT item, ordered, received, condition FROM grn_line WHERE grn_inbound_id = $1 ORDER BY grn_line_id", [recordId]);
+    return { entity_id: null, data: { number: String(g.grn_inbound_id).slice(0, 8), date: g.created_at, po_ref: g.dossier_id ? String(g.dossier_id).slice(0, 8) : null, qa_status: g.qa_status, supplier: "—", lines: lr.rows.map((l) => ({ item: l.item, ordered: String(Number(l.ordered)), received: String(Number(l.received)), condition: l.condition || "" })), currency: "XAF" } };
   }
 
   if (docType === "CYCLE_COUNT_SHEET") {
@@ -399,6 +455,37 @@ async function loadRecord(client, docType, recordId) {
   return null;
 }
 
+// Each sendable docType → the SQL that yields its recipient email from the
+// party master (client/supplier/employee) or a CRM lead. $1 is the record id.
+const RECIPIENT_SQL = {
+  FINAL_INVOICE: "SELECT cm.email FROM invoice i JOIN client_master cm ON cm.client_id = i.client_id WHERE i.invoice_id = $1",
+  CREDIT_NOTE: "SELECT cm.email FROM invoice i JOIN client_master cm ON cm.client_id = i.client_id WHERE i.invoice_id = $1",
+  QUOTATION: "SELECT cm.email FROM quotation q JOIN client_master cm ON cm.client_id = q.client_id WHERE q.quotation_id = $1",
+  PAYMENT_RECEIPT: "SELECT cm.email FROM payment_receipt r JOIN client_master cm ON cm.client_id = r.client_id WHERE r.receipt_id = $1",
+  PROFORMA_ADVANCE: "SELECT cm.email FROM advance a JOIN client_master cm ON cm.client_id = a.client_id WHERE a.advance_id = $1",
+  PROPOSAL: "SELECT COALESCE(l.email, cm.email) AS email FROM proposal p LEFT JOIN lead l ON l.lead_id = p.lead_id LEFT JOIN client_master cm ON cm.client_id = p.client_id WHERE p.proposal_id = $1",
+  PURCHASE_ORDER: "SELECT sm.email FROM purchase_order po JOIN supplier_master sm ON sm.supplier_id = po.supplier_id WHERE po.po_id = $1",
+  SUPPLIER_INVOICE: "SELECT sm.email FROM supplier_invoice si JOIN supplier_master sm ON sm.supplier_id = si.supplier_id WHERE si.supplier_invoice_id = $1",
+  EMPLOYMENT_CONTRACT: "SELECT e.email FROM hr_contract c JOIN employee e ON e.employee_id = c.employee_id WHERE c.hr_contract_id = $1",
+  PAYSLIP: "SELECT e.email FROM payroll_run_item i JOIN employee e ON e.employee_id = i.employee_id WHERE i.payroll_run_item_id = $1",
+  // Consignee/carrier aren't emailable masters, so resolve to the dossier's
+  // client (the served party); the Send prompt stays editable for a different one.
+  DELIVERY_NOTE: "SELECT cm.email FROM delivery_note dn JOIN dossier d ON d.dossier_id = dn.dossier_id JOIN client_master cm ON cm.client_id = d.client_id WHERE dn.delivery_note_id = $1",
+  TRANSIT_ORDER: "SELECT cm.email FROM transit_order t JOIN dossier d ON d.dossier_id = t.dossier_id JOIN client_master cm ON cm.client_id = d.client_id WHERE t.transit_order_id = $1",
+};
+
+/** Best-effort recipient email for a record, resolved from the party master
+ *  (client/supplier/employee) or a CRM lead. Returns null when none is stored →
+ *  the caller falls back to a manually-supplied address. */
+async function resolveRecipient(client, docType, recordId) {
+  if (!recordId || !RECIPIENT_SQL[docType]) return null;
+  try {
+    const { rows } = await client.query(RECIPIENT_SQL[docType], [recordId]);
+    return (rows[0] && rows[0].email) || null;
+  } catch { /* resolution is best-effort */ }
+  return null;
+}
+
 /** Live preview → HTML (no PDF). Real record when recordId + a loader exist, else sample. */
 async function preview(client, { docType, entityId, recordId, config }) {
   const tpl = registry.get(docType);
@@ -417,6 +504,7 @@ async function preview(client, { docType, entityId, recordId, config }) {
     data, // structured data for the native (app-themed) detail view
     title: tpl.title,
     entity: { legal_name: entity.legal_name, niu: entity.niu, rccm: entity.rccm },
+    suggested_to: real ? await resolveRecipient(client, docType, recordId) : null,
     report: !!tpl.report,
   };
 }
@@ -449,20 +537,30 @@ async function renderPdfFromData(client, { docType, data, entityId, actor }) {
   return pdf.renderAndStore(client, { html, key, entityRef, docType, actor });
 }
 
-/** Send a document to a recipient: render it and email the rendered document
- *  inline (the mailer has no attachment channel), then vault a PDF copy
- *  (best-effort) and audit. `to` is required — client contact emails aren't
- *  stored on the master today, so the caller supplies/confirms the recipient. */
+/** Send a document to a recipient: render it, attach the PDF (falling back to
+ *  inline HTML if the render fails), then vault a PDF copy (best-effort) and
+ *  audit. `to` is resolved from the record where possible (e.g. a proposal's
+ *  lead) and otherwise supplied by the caller. */
 async function send(client, { docType, entityId, recordId, to, subject, actor = {} }) {
   const tpl = registry.get(docType);
   if (!tpl) throw new AppError("UNKNOWN_DOC", `No template '${docType}'`, 404);
-  if (!to) throw new AppError("NO_RECIPIENT", "recipient email 'to' is required", 422);
+  const recipient = to || (await resolveRecipient(client, docType, recordId));
+  if (!recipient) throw new AppError("NO_RECIPIENT", "recipient email 'to' is required", 422);
   const { html } = await preview(client, { docType, entityId, recordId });
   const title = (tpl.title && (tpl.title.en || tpl.title.fr)) || docType;
-  await emailSvc.send(client, { to, subject: subject || title, html, purpose: "NOTIFICATIONS", moduleKey: "MOD-70" });
+
+  // Attach the rendered PDF so the recipient gets a real document, not just an
+  // inline HTML body. Best-effort: if Puppeteer fails, still send inline.
+  let attachments = null;
+  try {
+    const buffer = await pdf.renderHtml(html);
+    if (buffer && buffer.length) attachments = [{ filename: `${docType.toLowerCase()}.pdf`, content: buffer, contentType: "application/pdf" }];
+  } catch { /* fall back to inline HTML only */ }
+
+  await emailSvc.send(client, { to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70" });
   try { await generate(client, { docType, entityId, recordId, actor }); } catch { /* vault copy is best-effort */ }
-  await audit(client, { actorUserId: actor.user_id || null, action: "document.sent", moduleKey: "MOD-70", entityRef: `${docType.toLowerCase()}:${recordId || "adhoc"}`, after: { to, docType } });
-  return { sent: true, to, docType };
+  await audit(client, { actorUserId: actor.user_id || null, action: "document.sent", moduleKey: "MOD-70", entityRef: `${docType.toLowerCase()}:${recordId || "adhoc"}`, after: { to: recipient, docType, attached: !!attachments } });
+  return { sent: true, to: recipient, docType, attached: !!attachments };
 }
 
 module.exports = { list, getConfig, setConfig, records, preview, generate, renderPdfFromData, send };

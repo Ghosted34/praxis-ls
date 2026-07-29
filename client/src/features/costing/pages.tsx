@@ -306,10 +306,11 @@ export function RegiePage() {
   const [open, setOpen] = React.useState(false);
   const list = rows || [];
   const columns: Column<api.Regie>[] = [
-    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.regie_id.slice(0, 8)}</span> },
+    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.regie_advance_id.slice(0, 8)}</span> },
     { key: "amount", label: "Amount", className: "num text-right", render: (r) => money(r.amount) },
-    { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
-    { key: "created_at", label: "Issued", render: (r) => dateFmt(r.created_at) },
+    { key: "state", label: "Status", render: (r) => (r.state ? <Pill tone={tone(r.state)}>{r.state}</Pill> : "—") },
+    { key: "issued_on", label: "Issued", render: (r) => dateFmt(r.issued_on || r.created_at) },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="REGIE_ADVANCE" id={r.regie_advance_id} title={`Régie ${r.regie_advance_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>
@@ -319,7 +320,7 @@ export function RegiePage() {
         <KpiTile label="Advances" value={num(list.length)} />
         <KpiTile label="Total float" value={money(list.reduce((s, r) => s + (Number(r.amount) || 0), 0))} />
       </KpiRow>
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.regie_id} empty={{ title: "No advances", hint: "Issue a cash advance to a holder." }} />
+      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.regie_advance_id} empty={{ title: "No advances", hint: "Issue a cash advance to a holder." }} />
       {open && <RegieForm onClose={() => setOpen(false)} onSaved={reload} />}
     </section>
   );

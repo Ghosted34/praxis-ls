@@ -41,21 +41,41 @@ function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; d
 
 /* ═══════════════════ Purchase requests ═══════════════════ */
 
+type PrLine = { label: string; qty: string; unit_price: string };
+const blankPrLine = (): PrLine => ({ label: "", qty: "1", unit_price: "" });
+
 function PrForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [department, setDepartment] = React.useState("");
   const [justification, setJustification] = React.useState("");
+  const [lines, setLines] = React.useState<PrLine[]>([blankPrLine()]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const setLine = (i: number, k: keyof PrLine, v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
-    try { await api.createPurchaseRequest({ department: department || undefined, justification: justification || undefined }); onSaved(); onClose(); }
-    catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    try {
+      const cleaned = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 }));
+      await api.createPurchaseRequest({ department: department || undefined, justification: justification || undefined, lines: cleaned.length ? cleaned : undefined });
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
   return (
     <Modal open onClose={onClose} title="New purchase request" description="Ask for a purchase to be raised.">
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Department"><Input value={department} onChange={(e) => setDepartment(e.target.value)} /></Field>
         <Field label="Justification"><Input value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Why this is needed" /></Field>
+        <div className="space-y-2">
+          <div className="micro">Items</div>
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_70px_110px_auto] items-center gap-2">
+              <Input value={l.label} onChange={(e) => setLine(i, "label", e.target.value)} placeholder="Item / description" />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder="Qty" />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.unit_price} onChange={(e) => setLine(i, "unit_price", e.target.value)} placeholder="Unit (XAF)" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, blankPrLine()])}>Add item</Button>
+        </div>
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={busy} onCancel={onClose} saveLabel="Create request" />
       </form>
@@ -79,7 +99,8 @@ export function PurchaseRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="PURCHASE_REQUEST" id={r.pr_id} title={r.ref || `Request ${r.pr_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.pr_id} onClick={() => submitPr(r)}>Submit</Button>}
         </div>
       ),

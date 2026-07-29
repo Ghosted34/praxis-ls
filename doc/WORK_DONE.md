@@ -8,6 +8,49 @@ later without re-reading every diff.
 
 ---
 
+## 2026-07-29 — Session 16: document-UI overhaul finished + master emails + doc line items + logo fix + contract signed-copy + AI vendors → platform
+
+**Documents.** Native `DocumentPage` detail (route `/documents/:docType/:id`) + drop-in `<DocButton>` wired
+across every doc surface; real `loadRecord` loaders for the full set (invoice family, quotation, receipt with
+`payment_allocation` lines, proforma from the `advance` table, PO, supplier invoice, PR, cash request, régie,
+work order, contract, payslip, delivery/transit/GRN/cycle-count/trip-sheet). Native renderer gained
+parts/cost, contract party+articles, proposal narratives+lines, cycle-count item-name resolution, trip-sheet
+odometer, and a `fromParty()` mapper (the **"From" was blank** because preview returns `{legal_name,niu,rccm}`
+but `PartyCol` read `name`). Operations 360° Documents tab now lists invoices with View.
+
+**Logo.** `resolveLogo()` inlines the logo as a **base64 data URI** (renders in preview + Puppeteer PDF +
+email) with a **branding-logo fallback** — fixes the double-wrapped `/media//media` URL and the per-entity-only
+lookup that left the logo blank on every document.
+
+**Contract signed-copy.** Send-on-create (email the drafted contract), Upload/Replace signed PDF (vaulted →
+`hr_contract.pdf_vault_id`), Download prefers the signed copy; on Contracts + employee-360.
+
+**Send.** `email.service` now supports `attachments`; the document `send` attaches the rendered PDF and
+resolves the recipient from party-master emails. **`0475_master_email.sql`** adds `email` to
+client/supplier/employee (+ validators + forms).
+
+**Line items — `0476_document_lines.sql`.** purchase_request_line / delivery_note_line / transit_order_line /
+grn_line + backend inserts, template loaders, and create-form line editors.
+
+**DSF.** Bespoke SYSCOHADA structured build (identification / income statement / balance sheet / IS 33%).
+
+**AI vendors → platform (shared keys).** **`platform/0060_ai_vendor.sql`** + `services/platform/
+ai-vendor.service.js` + `/api/platform/ai-vendors` routes; the AI runtime (llm/embeddings/transcribe/vision)
+reads the ONE shared set (env fallback kept); tenant **Vendors tab + `/ai/governance/vendors` removed**;
+managed in the console under **Integrations → AI providers**; console nav slimmed to 5 primary + **More**.
+
+**Other UI.** AI Control menu hidden for AI-off tenants (`useVisibleNav` + route guard); clock-in moved inside
+the floating cluster; favicon applied from branding (`paint()`); vendor-card status control fixed.
+
+**Docs.** New `doc/PLATFORM_CONSOLE_DEPLOY.md`; `doc/DOC_UI_OVERHAUL_STEP1.md` + `doc/SESSION_HANDOFF.md`
+updated.
+
+**Migrations owed:** platform `0060`, tenant `0475` + `0476`. **Verification owed:** full `tsc` / `vite build`
+/ `jest` on a real machine (in-sandbox: backend ESLint + per-file TS syntax checks clean); set the shared AI
+keys in the console; verify a live AI call on a tenant.
+
+---
+
 ## 2026-07-27 — Session 15: Lovable kit fidelity + AI gate/clickable actions + workflow blocks + SOPs/Talent build-out + fixes
 
 **Context.** FE-fidelity + depth pass over the HR/Fleet/WMS rebuild, plus the loose ends the two plan docs

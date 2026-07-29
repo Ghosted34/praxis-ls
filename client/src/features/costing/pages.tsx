@@ -14,12 +14,12 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
-import type { Entity } from "@/lib/masterdata-api";
+import type { Entity, DictItem } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
-const TONES: Record<string, Tone> = { DRAFT: "mute", COMPUTED: "blue", APPROVED: "ok", SUBMITTED: "warn", REJECTED: "bad", DISBURSED: "ok", OPEN: "blue", SETTLED: "ok" };
+const TONES: Record<string, Tone> = { DRAFT: "mute", COMPUTED: "blue", APPROVED: "ok", APPROVED_LOCKED: "ok", SUBMITTED: "warn", SUBMITTED_FOR_VALIDATION: "warn", SUBMITTED_FOR_APPROVAL: "warn", REJECTED: "bad", DISBURSED: "ok", OPEN: "blue", SETTLED: "ok" };
 const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
 const refOf = (rows: Dossier[] | null) => { const m: Record<string, string> = {}; (rows || []).forEach((d) => { m[d.dossier_id] = d.ref; }); return m; };
 
@@ -99,11 +99,11 @@ export function CostingPage() {
 
   async function approve(c: api.Costing) {
     setBusyId(c.costing_id);
-    try { await api.setCostingStatus(c.costing_id, "APPROVED"); reload(); } finally { setBusyId(null); }
+    try { await api.setCostingStatus(c.costing_id, "APPROVE"); reload(); } finally { setBusyId(null); }
   }
 
   const columns: Column<api.Costing>[] = [
-    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.costing_id.slice(0, 8)}</span> },
+    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.doc_number || r.ref || r.costing_id?.slice(0, 8) || "—"}</span> },
     { key: "dossier_id", label: "Dossier", render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—") },
     { key: "margin_percent", label: "Margin", render: (r) => (r.margin_percent != null ? `${r.margin_percent}%` : "—") },
     { key: "total", label: "Total", className: "num text-right", render: (r) => money(r.total ?? r.total_cost) },
@@ -111,7 +111,7 @@ export function CostingPage() {
     {
       key: "_a", label: "", render: (r) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {r.status !== "APPROVED" && <Button size="sm" variant="outline" loading={busyId === r.costing_id} onClick={() => approve(r)}>Approve</Button>}
+          {!["APPROVED_LOCKED", "REJECTED"].includes(r.status) && <Button size="sm" variant="outline" loading={busyId === r.costing_id} onClick={() => approve(r)}>Approve</Button>}
         </div>
       ),
     },
@@ -122,7 +122,7 @@ export function CostingPage() {
       <HubTabs />
       <KpiRow>
         <KpiTile label="Costings" value={num(list.length)} />
-        <KpiTile label="Approved" value={num(list.filter((c) => c.status === "APPROVED").length)} />
+        <KpiTile label="Approved" value={num(list.filter((c) => c.status === "APPROVED_LOCKED").length)} />
         <KpiTile label="Draft" value={num(list.filter((c) => c.status === "DRAFT").length)} />
       </KpiRow>
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.costing_id} empty={{ title: "No costings yet", hint: "Build a costing sheet for a dossier." }} />
@@ -176,16 +176,27 @@ export function CostTrackingPage() {
 
 function CashRequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
+  const { rows: dict } = useList<DictItem>("/financial-dictionary");
   const [dossierId, setDossierId] = React.useState("");
-  const [lines, setLines] = React.useState<api.CashLine[]>([{ label: "", budget_amount: 0 }]);
+  const [lines, setLines] = React.useState<api.CashLine[]>([{ dictionary_item_id: null, label: "", budget_amount: 0 }]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const setLine = (i: number, p: Partial<api.CashLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
+  // Pick a budget line from the Financial Dictionary; the item's label is stored
+  // alongside its id so the request reads the same standardised category names.
+  const pickItem = (i: number, id: string) => {
+    const item = (dict || []).find((d) => d.dictionary_item_id === id);
+    setLine(i, { dictionary_item_id: id || null, label: item ? item.label_fr || item.code : "" });
+  };
+
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      await api.createCashRequest({ dossier_id: dossierId || undefined, lines: lines.filter((l) => l.label).map((l) => ({ label: l.label, budget_amount: Number(l.budget_amount) || 0 })) });
+      await api.createCashRequest({
+        dossier_id: dossierId || undefined,
+        lines: lines.filter((l) => l.dictionary_item_id || l.label).map((l) => ({ dictionary_item_id: l.dictionary_item_id || undefined, label: l.label || "Line", budget_amount: Number(l.budget_amount) || 0 })),
+      });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -202,12 +213,17 @@ function CashRequestForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="micro">Budget lines</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { label: "", budget_amount: 0 }])}>+ Add line</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { dictionary_item_id: null, label: "", budget_amount: 0 }])}>+ Add line</Button>
           </div>
           <div className="space-y-2">
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_140px_auto] items-end gap-2">
-                <Field label="Label"><Input value={l.label ?? ""} onChange={(e) => setLine(i, { label: e.target.value })} /></Field>
+                <Field label="Budget line">
+                  <Select value={l.dictionary_item_id ?? ""} onChange={(e) => pickItem(i, e.target.value)}>
+                    <option value="">Select a category…</option>
+                    {(dict || []).filter((d) => d.is_active !== false).map((d) => <option key={d.dictionary_item_id} value={d.dictionary_item_id}>{d.label_fr || d.code}</option>)}
+                  </Select>
+                </Field>
                 <Field label="Budget"><Input type="number" className="num text-right" value={String(l.budget_amount ?? "")} onChange={(e) => setLine(i, { budget_amount: Number(e.target.value) })} /></Field>
                 <Button type="button" size="sm" variant="outline" disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>
               </div>
@@ -235,7 +251,7 @@ export function CashRequestsPage() {
   }
 
   const columns: Column<api.CashRequest>[] = [
-    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.cash_request_id.slice(0, 8)}</span> },
+    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.doc_number || r.ref || r.cash_request_id?.slice(0, 8) || "—"}</span> },
     { key: "dossier_id", label: "Dossier", render: (r) => (r.dossier_id ? dref[r.dossier_id] || "—" : "—") },
     { key: "total_budget", label: "Budget", className: "num text-right", render: (r) => money(r.total_budget) },
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
@@ -306,9 +322,9 @@ export function RegiePage() {
   const [open, setOpen] = React.useState(false);
   const list = rows || [];
   const columns: Column<api.Regie>[] = [
-    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.regie_advance_id.slice(0, 8)}</span> },
+    { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.doc_number || r.ref || r.regie_advance_id?.slice(0, 8) || "—"}</span> },
     { key: "amount", label: "Amount", className: "num text-right", render: (r) => money(r.amount) },
-    { key: "state", label: "Status", render: (r) => (r.state ? <Pill tone={tone(r.state)}>{r.state}</Pill> : "—") },
+    { key: "status", label: "Status", render: (r) => { const st = r.state ?? r.status; return st ? <Pill tone={tone(st)}>{st}</Pill> : "—"; } },
     { key: "issued_on", label: "Issued", render: (r) => dateFmt(r.issued_on || r.created_at) },
     { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="REGIE_ADVANCE" id={r.regie_advance_id} title={`Régie ${r.regie_advance_id.slice(0, 8)}`} label="View" /></div> },
   ];

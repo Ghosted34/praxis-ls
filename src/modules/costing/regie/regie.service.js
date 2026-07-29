@@ -36,13 +36,15 @@ async function issue(client, opts) {
       ],
       validate: true, actor, ip,
     });
+    // Allocate the number BEFORE insert so it persists on the row (doc_number),
+    // rather than being computed and thrown away.
+    const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: entryDate });
     const advance = await repo.insertAdvance(client, {
       holder_user_id: holderUserId, amount, issued_on: entryDate,
       policy_window_days: windowDays, issue_entry_id: entry.entry_id, state: "ISSUED",
+      doc_number: number,
     });
-    const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: entryDate });
     await documents.capture(client, { entityRef: "regie_advance:" + advance.regie_advance_id, docType: "REGIE_ADVANCE", status: "VERIFIED" });
-    advance.doc_number = number;
     await emitEvent(client, { eventTypeKey: events.ISSUED, moduleKey: events.MODULE, entityRef: "regie_advance:" + advance.regie_advance_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.ISSUED, moduleKey: events.MODULE, entityRef: "regie_advance:" + advance.regie_advance_id, after: advance, ip });
     await client.query("COMMIT");

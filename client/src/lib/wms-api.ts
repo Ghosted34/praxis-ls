@@ -70,7 +70,7 @@ export type GrnInbound = {
   created_at?: string | null;
 };
 export const listInbound = () => tenant<GrnInbound[]>("/inbound");
-export const createInbound = (body?: { dossier_id?: string }) => tenant<GrnInbound>("/inbound", { method: "POST", body: body || {} });
+export const createInbound = (body?: { dossier_id?: string; lines?: { item: string; ordered?: number; received?: number; condition?: string }[] }) => tenant<GrnInbound>("/inbound", { method: "POST", body: body || {} });
 export const setInboundQa = (id: string, qa_status: "PASSED" | "REJECTED", putaway_location?: string) =>
   tenant<GrnInbound>(`/inbound/${id}/qa`, { method: "POST", body: { qa_status, putaway_location } });
 

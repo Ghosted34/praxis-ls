@@ -325,7 +325,8 @@ export function RegiePage() {
     { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.doc_number || r.ref || r.regie_advance_id?.slice(0, 8) || "—"}</span> },
     { key: "amount", label: "Amount", className: "num text-right", render: (r) => money(r.amount) },
     { key: "status", label: "Status", render: (r) => { const st = r.state ?? r.status; return st ? <Pill tone={tone(st)}>{st}</Pill> : "—"; } },
-    { key: "created_at", label: "Issued", render: (r) => dateFmt(r.created_at) },
+    { key: "issued_on", label: "Issued", render: (r) => dateFmt(r.issued_on || r.created_at) },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="REGIE_ADVANCE" id={r.regie_advance_id} title={`Régie ${r.regie_advance_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>

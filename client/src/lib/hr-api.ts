@@ -135,6 +135,7 @@ export type Employee = {
   entity_name?: string | null;
   department?: string | null;
   job_title?: string | null;
+  email?: string | null;
   employment_type?: string | null;
   cnps_number?: string | null;
   base_salary?: number | string | null;
@@ -143,13 +144,13 @@ export type Employee = {
 };
 export const listEmployees = () => tenant<Employee[]>("/employees");
 export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
-export const createEmployee = (body: { full_name: string; entity_id?: string; department?: string; job_title?: string; employment_type?: string }) =>
+export const createEmployee = (body: { full_name: string; entity_id?: string; department?: string; job_title?: string; email?: string; employment_type?: string }) =>
   tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, { method: "POST", body: { is_active } });
 export const updateEmployee = (
   id: string,
-  body: Partial<{ full_name: string; entity_id: string; department: string; job_title: string; employment_type: string }>,
+  body: Partial<{ full_name: string; entity_id: string; department: string; job_title: string; email: string; employment_type: string }>,
 ) => tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
 
 /* ── HR contracts (lifecycle) ── */

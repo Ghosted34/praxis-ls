@@ -150,15 +150,35 @@ source data.
 - Render fixes for work orders (parts/cost), contracts (party + type/effective + articles),
   proposals (narratives + line items), cycle-count (item names), trip sheet (odometer/route).
 
+**Now closed:**
+- **Régie advance** — reconciled the client field (`regie_advance_id` + `state` + `issued_on`;
+  the old `regie_id`/`status` were undefined and crashed the ref cell) and wired the View.
+- **Purchase request** — real loader (purchase_request + requester name via app_user;
+  department + justification; header-only, no lines) and View on the PR list.
+- **Operations dossier-360** — the 360° Documents tab now has an **Invoices** group with a
+  View per invoice (backend overview returns `document_rows.invoices`), and View buttons on
+  the transit-order and delivery-note rows there.
+
+**Send follow-ups (done):**
+- **PDF attachment** — `email.service.send` now takes `attachments`; the document `send`
+  renders the PDF (Puppeteer) and attaches it, falling back to inline HTML if the render
+  fails. Vault copy + audit unchanged.
+- **Recipient resolution** — `resolveRecipient(docType, recordId)` returns an address where
+  one genuinely exists (proposal → `lead.email`; masters store no email otherwise). Preview
+  returns `suggested_to`; the Send prompt pre-fills it. `send` uses it when `to` is omitted.
+- **DSF** — bespoke `dsfBuild` (SYSCOHADA-structured: identification, income statement,
+  balance sheet, IS computation at 33%) replaces the generic report renderer. Reads live
+  producer output or the enriched sample. Still a structured summary, not the official DGI
+  liasse (needs the master PDF for pixel parity — noted in-doc footer).
+
+**Recipient coverage (done):**
+- Migration `0475_master_email.sql` adds `email` (citext) to `client_master`, `supplier_master`
+  and `employee`. Validators + the client/supplier/employee forms now capture it.
+- `resolveRecipient` covers all the party-linked sendables: invoices, credit notes, quotations,
+  receipts, proforma/advances, proposals (client or lead), POs, supplier invoices, payslips
+  and contracts → the stored master email, falling back to a typed address when blank.
+- **Run `db:migrate:tenants`** to apply 0475 before the resolved-recipient send works.
+
 **Remaining:**
-- **Régie advance** — loader done, but the list's row id is ambiguous (`SELECT *` returns
-  `regie_advance_id` while the client type/rowKey use `regie_id`). Reconcile that field
-  before wiring the button.
-- **Purchase request** — picker entry added; loader still sample-only (schema not yet mapped).
-- **Operations dossier-360** — still to surface related invoices with Download (the "download
-  invoices from operations" ask).
-- **Send follow-ups** — mailer sends inline HTML (no PDF attachment channel); recipient is
-  prompted/typed rather than resolved per-doc (no client/supplier/employee email on masters).
 - **Verification** — full `tsc` / `vite build` / `jest` on a real machine (native bundlers
-  segfault in-sandbox; only per-file syntax checks ran here).
-- **DSF** statutory form — pixel-exact version deferred (needs official reference).
+  segfault in-sandbox; only per-file syntax checks + backend eslint ran here).

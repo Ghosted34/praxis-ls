@@ -15,10 +15,14 @@ const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "purchase_request:" + id;
 
-async function createDraft(client, { requestedBy = null, department = null, justification = null, actor = {} }) {
+async function createDraft(client, { requestedBy = null, department = null, justification = null, lines = [], actor = {} }) {
   await client.query("BEGIN");
   try {
     const pr = await repo.insertPR(client, { requested_by: requestedBy || actor.user_id || null, department, justification, status: "DRAFT" });
+    for (const l of lines || []) {
+      if (!l || !l.label) continue;
+      await repo.insertLine(client, { pr_id: pr.pr_id, label: l.label, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 });
+    }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(pr.pr_id), after: pr });
     await client.query("COMMIT");
     return pr;

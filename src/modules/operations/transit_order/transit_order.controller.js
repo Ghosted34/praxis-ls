@@ -11,7 +11,7 @@ module.exports = {
   }),
   create: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.create(c, { entityId: b.entity_id, dossierId: b.dossier_id, customsRegime: b.customs_regime, serviceDirection: b.service_direction, declaredValue: b.declared_value, submittedDocs: b.submitted_docs || [], date: b.date, actor: actor(req) }));
+    const data = await req.tenantDb((c) => service.create(c, { entityId: b.entity_id, dossierId: b.dossier_id, customsRegime: b.customs_regime, serviceDirection: b.service_direction, declaredValue: b.declared_value, submittedDocs: b.submitted_docs || [], lines: b.lines, date: b.date, actor: actor(req) }));
     res.status(201).json({ data });
   }),
   update: asyncHandler(async (req, res) => {

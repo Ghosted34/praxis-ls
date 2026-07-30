@@ -111,21 +111,25 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   // place and it would drift away from the cursor.
   return createPortal(
     <div ref={ref} style={containerStyle} onMouseEnter={openNow} onMouseLeave={closeSoon} className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:bottom-6">
-      <ClockPunch />
-      {open &&
-        actions.map((a, i) => (
-          <div key={a.key} className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
-            <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">{a.label}</span>
-            <button
-              onClick={a.onClick}
-              title={a.label}
-              aria-label={a.label}
-              className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 hover:text-[rgb(var(--primary))]"
-            >
-              <a.Icon />
-            </button>
-          </div>
-        ))}
+      {open && (
+        <>
+          {actions.map((a, i) => (
+            <div key={a.key} className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
+              <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">{a.label}</span>
+              <button
+                onClick={a.onClick}
+                title={a.label}
+                aria-label={a.label}
+                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 hover:text-[rgb(var(--primary))]"
+              >
+                <a.Icon />
+              </button>
+            </div>
+          ))}
+          {/* Clock-in lives inside the expanded cluster, not always-on. */}
+          <ClockPunch />
+        </>
+      )}
       <button
         onPointerDown={startDrag}
         onClick={() => { if (draggedRef.current) return; setOpen((o) => !o); }}

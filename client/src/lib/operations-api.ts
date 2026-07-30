@@ -69,6 +69,7 @@ export type TransitOrderInput = {
   service_direction?: string;
   declared_value?: number;
   submitted_docs?: unknown[];
+  lines?: { label: string; packages?: number; weight?: string }[];
   date?: string;
 };
 export const listTransitOrders = () => tenant<TransitOrder[]>("/transit-orders");
@@ -93,6 +94,7 @@ export type DeliveryNoteInput = {
   consignee?: string;
   city_zone?: string;
   contact_person?: string;
+  lines?: { label: string; qty?: number }[];
   date?: string;
 };
 export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");
@@ -155,6 +157,7 @@ export type DossierOverview = {
   procurement: { po_count: number; po_total?: number | null };
   documents: { transit_orders: number; delivery_notes: number };
   document_rows?: {
+    invoices?: { invoice_id: string; ref?: string | null; status?: string | null; total_ttc?: number | null; type?: string | null; created_at?: string }[];
     transit: { transit_order_id: string; ref?: string | null; customs_regime?: string | null; service_direction?: string | null; declared_value?: number | null; created_at?: string }[];
     delivery: { delivery_note_id: string; ref?: string | null; consignee?: string | null; city_zone?: string | null; created_at?: string }[];
     vault: { doc_id: string; doc_type?: string | null; status?: string | null; entity_ref?: string | null; version_no?: number | null; created_at?: string }[];

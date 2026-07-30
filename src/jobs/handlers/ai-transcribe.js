@@ -9,6 +9,7 @@ const registry = require("../../services/tenant/registry.service");
 const transcription = require("../../services/ai/transcription.service");
 const orchestrator = require("../../services/ai/orchestrator.service");
 const governance = require("../../modules/ai/governance/governance.service");
+const platformVendors = require("../../services/platform/ai-vendor.service");
 const { buildExecutorMap } = require("../../services/ai/action-registrar");
 
 const executor = buildExecutorMap();
@@ -21,7 +22,7 @@ module.exports = async function aiTranscribe(job) {
     const gate = await governance.canUseFeature(c, { userId: user.user_id, featureKey: "voice" });
     if (!gate.allowed) return { blocked: true, reason: gate.reason };
 
-    const vendor = await governance.getVendorConfig(c, "groq");
+    const vendor = await platformVendors.getConfig("groq");
     const audio = Buffer.from(audioBase64, "base64");
     const { text, audio_seconds, provider } = await transcription.transcribe({ audio, mimeType, vendor });
     await governance.recordUsage(c, { userId: user.user_id, featureKey: "voice", conversationId, provider, callType: "transcribe", audioSeconds: audio_seconds });

@@ -32,6 +32,8 @@ export default function App() {
       <Route path="/roles" element={<RequireAuth><Roles /></RequireAuth>} />
       <Route path="/catalogue" element={<RequireAuth><Catalogue /></RequireAuth>} />
       <Route path="/integrations" element={<RequireAuth><Integrations /></RequireAuth>} />
+      {/* AI vendor keys now live under Integrations → AI providers. */}
+      <Route path="/ai-vendors" element={<Navigate to="/integrations" replace />} />
       <Route path="/audit" element={<RequireAuth><Audit /></RequireAuth>} />
       <Route path="/support" element={<RequireAuth><Support /></RequireAuth>} />
       <Route path="*" element={<Navigate to={session.token ? "/overview" : "/login"} replace />} />

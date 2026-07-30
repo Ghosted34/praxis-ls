@@ -1,8 +1,8 @@
 /**
- * LLM chat + function-calling. Vendor-agnostic, DB-first: creds/endpoint/model
- * come from the encrypted ai_vendor_credential rows via
- * governance.getVendorConfig(client, vendor). If a vendor isn't configured in the
- * DB, we fall back to .env (BUILD_CONVENTIONS §7: DB-first, env-fallback). If
+ * LLM chat + function-calling. Vendor-agnostic, platform-first: creds/endpoint/
+ * model come from the ONE shared, encrypted platform.ai_vendor_credential set via
+ * platformVendors.getConfig(vendor). If a vendor isn't configured there, we fall
+ * back to .env (BUILD_CONVENTIONS §7: DB-first, env-fallback). If
  * neither is set, the call degrades to a clear stub. All vendors here speak the
  * OpenAI-compatible /chat/completions shape.
  */
@@ -10,7 +10,7 @@
 
 const axios = require("axios");
 const { config } = require("../../config/env");
-const governance = require("../../modules/ai/governance/governance.service");
+const platformVendors = require("../platform/ai-vendor.service");
 const { logger } = require("../../config/logger");
 
 const PRIMARY = "deepseek";
@@ -22,12 +22,12 @@ const ENV_VENDORS = {
   openai: { vendor: "openai", api_key: config.OPENAI_API_KEY, endpoint_url: config.OPENAI_BASE_URL, model: config.OPENAI_MODEL },
 };
 
-/** DB-first, env-fallback vendor config for a chat vendor, or null. */
+/** Platform-first, env-fallback vendor config for a chat vendor, or null. Keys
+ *  are the ONE shared deploy-wide set (platform.ai_vendor_credential); `client`
+ *  is kept for signature compatibility but no longer sources the key. */
 async function resolveVendor(client, name) {
-  if (client) {
-    const db = await governance.getVendorConfig(client, name);
-    if (db && db.api_key && db.endpoint_url) return db;
-  }
+  const db = await platformVendors.getConfig(name);
+  if (db && db.is_active !== false && db.api_key && db.endpoint_url) return db;
   const env = ENV_VENDORS[name];
   if (env && env.api_key && env.endpoint_url) return env;
   return null;

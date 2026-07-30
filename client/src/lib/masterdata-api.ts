@@ -13,6 +13,7 @@ export type Client = {
   client_type_id?: string | null;
   niu?: string | null;
   rccm?: string | null;
+  email?: string | null;
   payment_terms_days?: number | null;
   credit_limit?: number | null;
   is_withholding_agent?: boolean;
@@ -24,6 +25,7 @@ export type ClientInput = {
   client_type_id?: string;
   niu?: string;
   rccm?: string;
+  email?: string;
   payment_terms_days?: number;
   credit_limit?: number;
   is_withholding_agent?: boolean;
@@ -51,6 +53,7 @@ export type Supplier = {
   supplier_type?: string | null;
   niu?: string | null;
   rccm?: string | null;
+  email?: string | null;
   payment_method?: string | null;
   momo_network?: string | null;
   momo_number?: string | null;
@@ -64,6 +67,7 @@ export type SupplierInput = {
   supplier_type?: string;
   niu?: string;
   rccm?: string;
+  email?: string;
   payment_method?: "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE";
   momo_network?: string;
   momo_number?: string;

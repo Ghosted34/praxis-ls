@@ -14,11 +14,15 @@ const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "transit_order:" + id;
 
-async function create(client, { entityId, dossierId = null, customsRegime = null, serviceDirection = null, declaredValue = null, submittedDocs = [], date = null, actor = {} }) {
+async function create(client, { entityId, dossierId = null, customsRegime = null, serviceDirection = null, declaredValue = null, submittedDocs = [], lines = [], date = null, actor = {} }) {
   await client.query("BEGIN");
   try {
     const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: date || new Date().toISOString().slice(0, 10) });
     const to = await repo.insertTO(client, { dossier_id: dossierId, ot_number: number, customs_regime: customsRegime, service_direction: serviceDirection, declared_value: declaredValue, submitted_docs: JSON.stringify(submittedDocs) });
+    for (const l of lines || []) {
+      if (!l || !l.label) continue;
+      await repo.insertLine(client, { transit_order_id: to.transit_order_id, label: l.label, packages: Number(l.packages) || 1, weight: l.weight || null });
+    }
     await documents.capture(client, { entityRef: ref(to.transit_order_id), docType: "TRANSIT_ORDER", status: "VERIFIED" });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(to.transit_order_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(to.transit_order_id), after: to });

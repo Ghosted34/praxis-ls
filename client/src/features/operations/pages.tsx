@@ -355,6 +355,22 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                 <Stat label="Delivery notes" value={num(d.documents.delivery_notes)} />
               </div>
               <DocGroup
+                title="Invoices"
+                rows={docs?.invoices || []}
+                empty="No invoices on this file."
+                keyOf={(r) => r.invoice_id}
+                render={(r) => (
+                  <div className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
+                    <span className="num text-sm text-foreground">{r.ref || r.invoice_id.slice(0, 8)}</span>
+                    <div className="flex items-center gap-3">
+                      {r.status && <Pill tone={tone(r.status)}>{r.status}</Pill>}
+                      <span className="num micro">{money(r.total_ttc)}</span>
+                      <DocButton docType={r.type === "CREDIT_NOTE" ? "CREDIT_NOTE" : "FINAL_INVOICE"} id={r.invoice_id} title={r.ref || `Invoice ${r.invoice_id.slice(0, 8)}`} label="View" />
+                    </div>
+                  </div>
+                )}
+              />
+              <DocGroup
                 title="Vault documents"
                 rows={docs?.vault || []}
                 empty="No documents in the vault for this file."
@@ -381,6 +397,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                       {r.customs_regime && <Pill tone="mute">{r.customs_regime}</Pill>}
                       <span className="micro">{r.service_direction || "—"}</span>
                       <span className="num micro">{money(r.declared_value)}</span>
+                      <DocButton docType="TRANSIT_ORDER" id={r.transit_order_id} title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`} label="View" />
                     </div>
                   </div>
                 )}
@@ -396,6 +413,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-muted-foreground">{r.consignee || "—"}</span>
                       <span className="micro">{dateFmt(r.created_at)}</span>
+                      <DocButton docType="DELIVERY_NOTE" id={r.delivery_note_id} title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`} label="View" />
                     </div>
                   </div>
                 )}
@@ -544,14 +562,18 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
     service_direction: row?.service_direction ?? "", declared_value: row?.declared_value != null ? String(row.declared_value) : "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [lines, setLines] = React.useState<{ label: string; packages: string; weight: string }[]>([{ label: "", packages: "1", weight: "" }]);
+  const setLine = (i: number, k: "label" | "packages" | "weight", v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
+    const cargo = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), packages: Number(l.packages) || 1, weight: l.weight || undefined }));
     const body: api.TransitOrderInput = {
       entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, customs_regime: f.customs_regime || undefined,
       service_direction: f.service_direction || undefined, declared_value: f.declared_value === "" ? undefined : Number(f.declared_value),
+      ...(isNew && cargo.length ? { lines: cargo } : {}),
     };
     try {
       if (isNew) await api.createTransitOrder(body);
@@ -591,6 +613,20 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
           </Field>
           <Field label="Declared value" className="sm:col-span-2"><Input type="number" min="0" step="0.01" className="num text-right" value={f.declared_value} onChange={(e) => set("declared_value", e.target.value)} /></Field>
         </div>
+        {isNew && (
+          <div className="space-y-2">
+            <div className="micro">Cargo</div>
+            {lines.map((l, i) => (
+              <div key={i} className="grid grid-cols-[1fr_80px_90px_auto] items-center gap-2">
+                <Input value={l.label} onChange={(e) => setLine(i, "label", e.target.value)} placeholder="Cargo / goods" />
+                <Input type="number" min="0" step="any" className="num text-right" value={l.packages} onChange={(e) => setLine(i, "packages", e.target.value)} placeholder="Pkgs" />
+                <Input value={l.weight} onChange={(e) => setLine(i, "weight", e.target.value)} placeholder="Weight" />
+                <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { label: "", packages: "1", weight: "" }])}>Add cargo</Button>
+          </div>
+        )}
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel={isNew ? "Create order" : "Save changes"} />
       </form>
@@ -636,13 +672,16 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [f, setF] = React.useState({ entity_id: "", dossier_id: "", consignee: "", city_zone: "", contact_person: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [lines, setLines] = React.useState<{ label: string; qty: string }[]>([{ label: "", qty: "1" }]);
+  const setLine = (i: number, k: "label" | "qty", v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      await api.createDeliveryNote({ entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, consignee: f.consignee || undefined, city_zone: f.city_zone || undefined, contact_person: f.contact_person || undefined });
+      const goods = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), qty: Number(l.qty) || 1 }));
+      await api.createDeliveryNote({ entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, consignee: f.consignee || undefined, city_zone: f.city_zone || undefined, contact_person: f.contact_person || undefined, lines: goods.length ? goods : undefined });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -666,6 +705,17 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <Field label="Consignee" className="sm:col-span-2"><Input value={f.consignee} onChange={(e) => set("consignee", e.target.value)} /></Field>
           <Field label="City / zone"><Input value={f.city_zone} onChange={(e) => set("city_zone", e.target.value)} /></Field>
           <Field label="Contact person"><Input value={f.contact_person} onChange={(e) => set("contact_person", e.target.value)} /></Field>
+        </div>
+        <div className="space-y-2">
+          <div className="micro">Goods delivered</div>
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_80px_auto] items-center gap-2">
+              <Input value={l.label} onChange={(e) => setLine(i, "label", e.target.value)} placeholder="Item / description" />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder="Qty" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { label: "", qty: "1" }])}>Add item</Button>
         </div>
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel="Create note" />

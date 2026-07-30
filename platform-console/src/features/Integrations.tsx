@@ -3,6 +3,7 @@ import { platform, type PlatformSetting, type SettingTestResult } from "@/lib/ap
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
 import { Button, Card, Empty, Field, Loading, PageHeader, Pill } from "@/components/ui";
+import { AiVendorsSection } from "@/features/AiVendors";
 
 /**
  * Deploy-wide integration credentials (S3 / Geoapify / VAPID). Root-admin sets
@@ -27,6 +28,8 @@ export function Integrations() {
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
         </div>
       )}
+      {/* AI providers are deploy-wide integrations too — one shared key set. */}
+      <AiVendorsSection />
     </>
   );
 }

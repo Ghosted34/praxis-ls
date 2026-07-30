@@ -1,6 +1,6 @@
 /**
- * Embeddings — OpenAI-compatible endpoint. DB-first: creds/endpoint/model from
- * governance.getVendorConfig(client, "embeddings"); falls back to .env
+ * Embeddings — OpenAI-compatible endpoint. Platform-first: creds/endpoint/model
+ * from the shared platform.ai_vendor_credential "embeddings" row; falls back to .env
  * (OPENAI_API_KEY/OPENAI_BASE_URL/EMBEDDINGS_MODEL) per BUILD_CONVENTIONS §7. The
  * pgvector dimension is a schema constant. With no vendor configured at all we
  * return empty vectors and the chunk embedding stays NULL — retrieval finds no
@@ -10,14 +10,13 @@
 
 const axios = require("axios");
 const { config } = require("../../config/env");
-const governance = require("../../modules/ai/governance/governance.service");
+const platformVendors = require("../platform/ai-vendor.service");
 const { logger } = require("../../config/logger");
 
-async function resolveVendor(client) {
-  if (client) {
-    const db = await governance.getVendorConfig(client, "embeddings");
-    if (db && db.api_key && db.endpoint_url) return db;
-  }
+async function resolveVendor(_client) {
+  // Shared deploy-wide key (platform.ai_vendor_credential), env fallback.
+  const db = await platformVendors.getConfig("embeddings");
+  if (db && db.is_active !== false && db.api_key && db.endpoint_url) return db;
   if (config.OPENAI_API_KEY && config.OPENAI_BASE_URL) {
     return { api_key: config.OPENAI_API_KEY, endpoint_url: config.OPENAI_BASE_URL, model: config.EMBEDDINGS_MODEL };
   }

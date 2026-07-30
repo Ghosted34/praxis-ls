@@ -20,8 +20,8 @@ async function create(client, { entityId, dossierId = null, customsRegime = null
     const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: date || new Date().toISOString().slice(0, 10) });
     const to = await repo.insertTO(client, { dossier_id: dossierId, ot_number: number, customs_regime: customsRegime, service_direction: serviceDirection, declared_value: declaredValue, submitted_docs: JSON.stringify(submittedDocs) });
     for (const l of lines || []) {
-      if (!l || !l.label) continue;
-      await repo.insertLine(client, { transit_order_id: to.transit_order_id, label: l.label, packages: Number(l.packages) || 1, weight: l.weight || null });
+      if (!l || !l.inventory_item_id) continue;
+      await repo.insertLine(client, { transit_order_id: to.transit_order_id, inventory_item_id: l.inventory_item_id, label: l.label || null, packages: Number(l.packages) || 1, weight: l.weight || null });
     }
     await documents.capture(client, { entityRef: ref(to.transit_order_id), docType: "TRANSIT_ORDER", status: "VERIFIED" });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(to.transit_order_id), actorUserId: actor.user_id || null });

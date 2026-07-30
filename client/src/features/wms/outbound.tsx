@@ -130,7 +130,7 @@ export function OutboundPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Outbound" description="Pick, pack and dispatch outbound orders." action={<Button onClick={newOrder} loading={creating}>New order</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Outbound" description="Pick, pack and dispatch outbound orders." action={<Button onClick={newOrder} loading={creating}>New order</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={orders.data} error={orders.error} loading={orders.loading} rowKey={(o) => o.outbound_order_id} empty={{ title: "No outbound orders", hint: "Create an order to start picking." }} />
       {view && <OrderDetail order={view} invMap={invMap} inventory={inv.data || []} onClose={() => setView(null)} onChanged={orders.reload} />}

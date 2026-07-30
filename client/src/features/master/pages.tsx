@@ -10,6 +10,8 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { AiActions } from "@/components/ai-actions";
@@ -258,13 +260,7 @@ export function ClientsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Clients</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Customer registry referenced across sales, operations and receivables.</p>
-        </div>
-        <Button onClick={openNew}>New client</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Clients" description="Customer registry referenced across sales, operations and receivables." action={<Button onClick={openNew}>New client</Button>} />
 
       {error ? (
         <ErrorState message={error} />
@@ -476,13 +472,7 @@ export function SuppliersPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Suppliers</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Vendor registry referenced across procurement and payables.</p>
-        </div>
-        <Button onClick={openNew}>New supplier</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Suppliers" description="Vendor registry referenced across procurement and payables." action={<Button onClick={openNew}>New supplier</Button>} />
 
       {error ? (
         <ErrorState message={error} />
@@ -679,13 +669,7 @@ export function CorporateEntitiesPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Corporate entities</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The legal entities you operate — used by treasury, tax and document numbering.</p>
-        </div>
-        <Button onClick={openNew}>New entity</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Corporate entities" description="The legal entities you operate — used by treasury, tax and document numbering." action={<Button onClick={openNew}>New entity</Button>} />
 
       {rowError && (
         <div className="mb-3">

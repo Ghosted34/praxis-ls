@@ -196,7 +196,7 @@ export function VehiclesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Vehicles" description="The fleet registry — pick a vehicle for its full maintenance, dispatch and compliance history." action={<Button onClick={() => setCreating(true)}>New vehicle</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Vehicles" description="The fleet registry — pick a vehicle for its full maintenance, dispatch and compliance history." action={<Button onClick={() => setCreating(true)}>New vehicle</Button>} />
       <HubTabs />
       {creating && <NewVehicleForm onClose={() => setCreating(false)} onSaved={(v) => { vehicles.reload(); setSelId(v.vehicle_id); }} />}
       {vehicles.error ? <ErrorState message={vehicles.error} /> : (

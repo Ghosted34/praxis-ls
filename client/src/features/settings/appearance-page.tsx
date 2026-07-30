@@ -10,6 +10,8 @@ import { useBranding } from "@/app/branding/branding-context";
 import { saveBranding, type Branding } from "@/lib/branding";
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, Field, Segmented, ColorRow, ImageField } from "@/components/settings/controls";
 
@@ -110,12 +112,9 @@ export function AppearancePage() {
 
   return (
     <section className="mx-auto max-w-3xl animate-fade-in pb-24">
-      <h1 className="font-display text-2xl tracking-tight">Appearance</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        White-label the workspace — identity, colours, logos, type. Changes apply on save.
-      </p>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Appearance" description="White-label the workspace — identity, colours, logos, type. Changes apply on save." />
 
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="mt-2 flex flex-col gap-5">
         <SettingsCard title="Identity" desc="Shown across the app and on the login screen.">
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Display name">

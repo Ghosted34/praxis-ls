@@ -11,6 +11,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
@@ -136,7 +137,8 @@ export function ClientsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Clients" description="Customer master with a live 360 — terms, outstanding balance, dossiers and receipts." action={<Button onClick={() => setEditing("new")}>New client</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Clients" description="Customer master with a live 360 — terms, outstanding balance, dossiers and receipts." action={<Button onClick={() => setEditing("new")}>New client</Button>} />
+      <HubTabs />
       {clients.error ? <ErrorState message={clients.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
           <div className="space-y-2">

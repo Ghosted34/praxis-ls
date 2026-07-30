@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -93,26 +93,37 @@ function RunDetail({ runId, onClose, onChanged }: { runId: string; onClose: () =
     ) },
   ];
 
+  const headerRight = d ? (
+    <div className="flex items-center gap-2">
+      <Pill tone={STATUS_TONE[d.status] || "mute"}>{d.status}</Pill>
+      {d.entry_id && <Pill tone="ok">Posted to GL</Pill>}
+    </div>
+  ) : undefined;
+
+  const footer = d && actionsFor(d.status).length ? (
+    <>
+      {actionsFor(d.status).map((a) => (
+        <Button key={a.label} variant={a.variant || "default"} loading={busy === a.label} onClick={() => run_(a)}>{a.label}</Button>
+      ))}
+    </>
+  ) : undefined;
+
   return (
-    <Modal open onClose={onClose} size="xl" title={d ? `Payroll · ${d.period_code}` : "Payroll run"} description={d ? undefined : "Loading…"}>
+    <Modal
+      open
+      onClose={onClose}
+      size="xl"
+      title={d ? `Payroll · ${d.period_code}` : "Payroll run"}
+      description={d ? `${num(items.length)} employees` : "Loading…"}
+      headerRight={headerRight}
+      footer={footer}
+    >
       {run.loading ? (
         <div className="py-10 text-center micro">Loading run…</div>
       ) : run.error ? (
         <ErrorState message={errMsg(run.error)} />
       ) : d ? (
         <div className="space-y-5">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Pill tone={STATUS_TONE[d.status] || "mute"}>{d.status}</Pill>
-              {d.entry_id && <Pill tone="ok">Posted to GL</Pill>}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {actionsFor(d.status).map((a) => (
-                <Button key={a.label} size="sm" variant={a.variant || "default"} loading={busy === a.label} onClick={() => run_(a)}>{a.label}</Button>
-              ))}
-            </div>
-          </div>
-
           <KpiRow>
             <KpiTile label="Employees" value={num(items.length)} />
             <KpiTile label="Gross" value={money(totals.gross)} />
@@ -187,11 +198,12 @@ export function PayrollPage() {
   return (
     <section className={shell}>
       <PageHeader
-        eyebrow={<HubCrumb area="HR" />}
+        eyebrow={<HubCrumb area="Human capital" to="/hr" />}
         title="Payroll"
         description="Monthly runs — compute payslips, run the approval chain, and post the payroll journal."
         action={<Button onClick={() => setCreating(true)}>New run</Button>}
       />
+      <HubTabs />
       <DataList columns={cols} rows={runs.data} error={runs.error} loading={runs.loading} rowKey={(r) => r.payroll_run_id} empty={{ title: "No payroll runs", hint: "Create a run for the month to begin." }} />
       {view && <RunDetail runId={view} onClose={() => setView(null)} onChanged={runs.reload} />}
       {creating && <NewRunForm onClose={() => setCreating(false)} onSaved={(id) => { runs.reload(); setView(id); }} />}

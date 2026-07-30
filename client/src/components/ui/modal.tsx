@@ -1,12 +1,18 @@
 /**
- * Minimal portal-based modal — the shell every finance write form opens into.
+ * Portal-based modal — the shell every write form / detail view opens into.
  * Renders into document.body so it escapes the app-shell stacking context.
- * Closes on backdrop click and Escape; locks body scroll while open. No
- * dependency — matches the design system (lux-card surface, muted overlay).
+ * Closes on backdrop click and Escape; locks body scroll while open.
+ *
+ * Structured in three regions so tall content behaves: a STICKY header (title +
+ * close, plus optional `headerRight` actions), a SCROLLABLE body (children), and
+ * an optional STICKY `footer` for primary actions. The card is height-bounded, so
+ * only the body scrolls — the header and footer stay put. On mobile it becomes a
+ * bottom sheet; on sm+ a centred dialog.
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { cn } from "@/lib/cn";
+import { XIcon } from "@/components/ui/icons";
 
 export function Modal({
   open,
@@ -14,14 +20,22 @@ export function Modal({
   title,
   description,
   children,
+  footer,
+  headerRight,
   size = "md",
+  bodyClassName,
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   description?: string;
   children: React.ReactNode;
+  /** Sticky footer content (e.g. Cancel + Save). Rendered right-aligned. */
+  footer?: React.ReactNode;
+  /** Actions/status shown in the header, left of the close button. */
+  headerRight?: React.ReactNode;
   size?: "md" | "lg" | "xl";
+  bodyClassName?: string;
 }) {
   React.useEffect(() => {
     if (!open) return;
@@ -41,18 +55,41 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/40 p-4 backdrop-blur-sm animate-fade-in sm:items-center"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-0 backdrop-blur-sm animate-fade-in sm:items-center sm:p-4"
       onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       role="dialog"
       aria-modal="true"
       aria-label={title}
     >
-      <div className={cn("animate-modal-rise my-8 w-full rounded-[22px] border bg-background p-6 shadow-[var(--shadow-l)]", width)}>
-        <header className="mb-4">
-          <h2 className="font-display text-xl tracking-tight">{title}</h2>
-          {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
+      <div
+        className={cn(
+          "animate-modal-rise flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-2xl border bg-background shadow-[var(--shadow-l)] sm:max-h-[calc(100vh-4rem)] sm:rounded-2xl",
+          width,
+        )}
+      >
+        <header className="flex shrink-0 items-start justify-between gap-4 border-b px-6 py-4">
+          <div className="min-w-0">
+            <h2 className="truncate font-display text-xl tracking-tight">{title}</h2>
+            {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            {headerRight}
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="grid h-8 w-8 place-items-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <XIcon width={18} height={18} />
+            </button>
+          </div>
         </header>
-        {children}
+        <div className={cn("flex-1 overflow-y-auto px-6 py-5", bodyClassName)}>{children}</div>
+        {footer && (
+          <footer className="flex shrink-0 flex-wrap items-center justify-end gap-2 border-t bg-[color-mix(in_srgb,var(--muted)_60%,transparent)] px-6 py-3.5">
+            {footer}
+          </footer>
+        )}
       </div>
     </div>,
     document.body,

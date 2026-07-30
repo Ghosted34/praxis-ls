@@ -88,6 +88,47 @@ export const ShieldIcon = (p: P) => (
     <path d="M12 3l7 3v5c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6l7-3Z" />
   </svg>
 );
+export const PlusIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 5v14M5 12h14" />
+  </svg>
+);
+export const SearchIcon = (p: P) => (
+  <svg {...base(p)}>
+    <circle cx="11" cy="11" r="7" />
+    <path d="m21 21-4.3-4.3" />
+  </svg>
+);
+export const FilterIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3 5h18l-7 8v6l-4-2v-4L3 5Z" />
+  </svg>
+);
+export const DownloadIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+  </svg>
+);
+export const TrashIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2m2 0-1 13a1 1 0 0 1-1 1H8a1 1 0 0 1-1-1L6 7" />
+  </svg>
+);
+export const PencilIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M4 20h4L18.5 9.5a2.12 2.12 0 0 0-3-3L5 17v3Z" />
+  </svg>
+);
+export const RefreshIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M21 12a9 9 0 1 1-3-6.7L21 8m0-5v5h-5" />
+  </svg>
+);
+export const SendIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
+  </svg>
+);
 /** The tenant brand glyph — a soft "X" mark echoing the hub logo. Uses currentColor. */
 export const BrandGlyph = (p: P) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden width={22} height={22} {...p}>

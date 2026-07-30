@@ -120,23 +120,13 @@ const NAV: NavGroup[] = [
   },
   {
     heading: "Governance",
-    items: [
-      { to: "/audit", label: "Audit ledger" },
-      { to: "/notifications", label: "Notifications" },
-      { to: "/workflows", label: "Workflows" },
-      { to: "/approvals", label: "Approvals" },
-    ],
+    prefix: "/governance",
+    items: [{ to: "/governance", label: "Governance" }],
   },
   {
     heading: "Settings & Admin",
-    items: [
-      { to: "/settings", label: "Settings" },
-      { to: "/ai-control", label: "AI Control" },
-      { to: "/appearance", label: "Appearance" },
-      { to: "/settings/numbering", label: "Numbering schemes" },
-      { to: "/settings/catalogue", label: "Catalogue" },
-      { to: "/portal/access", label: "Portal access" },
-    ],
+    prefix: "/settings",
+    items: [{ to: "/settings", label: "Settings & admin" }],
   },
 ];
 
@@ -221,12 +211,90 @@ const OperationsIcon = (p: IP) => (
     <path d="M4 5h6l2 3h8v11H4z" />
   </svg>
 );
+const CommercialIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="3" y="7" width="18" height="12" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+const SalesIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="8" cy="9" r="2.5" />
+    <path d="M3.5 19a4.5 4.5 0 0 1 9 0" />
+    <circle cx="16.5" cy="9" r="2.5" />
+    <path d="M14 19a4.5 4.5 0 0 1 6.5-4" />
+  </svg>
+);
+const ProcurementIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="9" cy="20" r="1.4" />
+    <circle cx="17" cy="20" r="1.4" />
+    <path d="M3 4h2l2.4 12h10L20 8H6" />
+  </svg>
+);
+const CostingIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2" />
+  </svg>
+);
+const HrIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20a7 7 0 0 1 14 0" />
+  </svg>
+);
+const MasterIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <ellipse cx="12" cy="6" rx="7" ry="3" />
+    <path d="M5 6v6c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3 3 7 3s7-1.3 7-3v-6" />
+  </svg>
+);
+const VaultIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="5" y="10" width="14" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+const CommsIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 5h16v11H8l-4 3z" />
+  </svg>
+);
+const SecurityIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+  </svg>
+);
+const GovernanceIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M10 5h9M10 12h9M10 19h9" />
+    <path d="M4 5l1.4 1.4L8 4M4 12l1.4 1.4L8 11M4 19l1.4 1.4L8 18" />
+  </svg>
+);
+const SettingsIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3v2.5M12 18.5V21M4.2 7l2.2 1.3M17.6 15.7 19.8 17M4.2 17l2.2-1.3M17.6 8.3 19.8 7" />
+  </svg>
+);
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
+  Commercial: CommercialIcon,
+  "Sales & CRM": SalesIcon,
   Operations: OperationsIcon,
+  Procurement: ProcurementIcon,
+  Costing: CostingIcon,
   Finance: FinanceIcon,
   Warehouse: WarehouseIcon,
   Fleet: FleetIcon,
+  "People & HR": HrIcon,
+  "Master data": MasterIcon,
+  Vault: VaultIcon,
+  Comms: CommsIcon,
+  "Security & Access": SecurityIcon,
+  Governance: GovernanceIcon,
+  "Settings & Admin": SettingsIcon,
 };
 
 /** Initials from a name or email local-part. */
@@ -277,7 +345,7 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
 }
 
 /** User avatar + dropdown (email · My security · Sign out). */
-function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string } | null; onLogout: () => void }) {
+function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null } | null; onLogout: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
@@ -299,9 +367,13 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         aria-expanded={open}
         className="flex items-center gap-2 rounded-xl border p-1 pr-2 transition-colors hover:bg-accent/50"
       >
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
-          {initialsOf(name || email)}
-        </span>
+        {user?.avatar_url ? (
+          <img src={user.avatar_url} alt={name} className="h-8 w-8 rounded-lg object-cover" />
+        ) : (
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
+            {initialsOf(name || email)}
+          </span>
+        )}
         <span className="hidden text-left leading-tight sm:block">
           <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
           <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{email}</span>
@@ -318,7 +390,10 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
             <div className="truncate text-sm font-semibold capitalize">{name}</div>
             <div className="truncate text-xs text-muted-foreground">{email}</div>
           </div>
-          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="mt-1 block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+          <Link to="/my-hr" role="menuitem" onClick={() => setOpen(false)} className="mt-1 block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            My HR
+          </Link>
+          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
             My security
           </Link>
           <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
@@ -425,14 +500,33 @@ function NavArea({
   );
 }
 
-/** The full grouped menu — rendered inside the More overlay sidebar. */
+/** The full grouped menu — rendered inside the More overlay sidebar. Every group
+ *  carries its area icon. Single-screen areas (now hubs) are a single link;
+ *  multi-item areas (Overview) are a collapsible section with a chevron. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
   const nav = useVisibleNav();
+  const { pathname } = useLocation();
+  // Route-driven expansion: a multi-item section is open only while you're on one
+  // of its screens, and snaps shut the moment you navigate away. `manual` lets you
+  // peek from elsewhere, but it's cleared on every navigation so it can't stick open.
+  const [manual, setManual] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => setManual({}), [pathname]);
+  const inGroup = (g: NavGroup) =>
+    g.items.some((it) => (it.to === "/" ? pathname === "/" : pathname === it.to || pathname.startsWith(it.to + "/")));
+  const childLink = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "block rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+      isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+    );
+  const activeBorder = ({ isActive }: { isActive: boolean }) =>
+    isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined;
+
   return (
-    <nav className="flex flex-col gap-5 p-3">
+    <nav className="flex flex-col gap-0.5 p-3">
       {nav.map((g) => {
-        // Single-screen areas (now hubs) collapse to just their caps heading,
-        // which itself is the link — no duplicate row beneath it.
+        const Icon = AREA_ICON[g.heading] || MoreIcon;
+
+        // Single-screen areas (hubs) → one icon+label link.
         if (g.items.length === 1) {
           const it = g.items[0];
           return (
@@ -441,42 +535,44 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               to={it.to}
               end={it.to === "/"}
               onClick={onNavigate}
-              style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
+              style={activeBorder}
               className={({ isActive }) =>
                 cn(
-                  "micro block rounded-md border-l-[3px] border-transparent px-3 py-2 transition-colors",
-                  isActive ? "bg-accent text-foreground" : "hover:bg-accent/60 hover:text-foreground",
+                  "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                 )
               }
             >
-              {g.heading}
+              <Icon />
+              <span>{g.heading}</span>
             </NavLink>
           );
         }
+
+        // Multi-item area (Overview) → collapsible section. Open while you're on
+        // one of its screens (route-driven), collapsed everywhere else.
+        const open = inGroup(g) || !!manual[g.heading];
         return (
           <div key={g.heading}>
-            <p className="micro px-3 pb-2">{g.heading === "Overview" ? "Overview" : g.heading}</p>
-            <div className="flex flex-col gap-0.5">
-              {g.items.map((it) => (
-                <NavLink
-                  key={it.to}
-                  to={it.to}
-                  end={it.to === "/"}
-                  onClick={onNavigate}
-                  style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
-                  className={({ isActive }) =>
-                    cn(
-                      "rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
-                      isActive
-                        ? "bg-accent font-semibold text-foreground"
-                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                    )
-                  }
-                >
-                  {it.label}
-                </NavLink>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setManual((m) => ({ ...m, [g.heading]: !open }))}
+              aria-expanded={open}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            >
+              <Icon />
+              <span className="flex-1 text-left">{g.heading}</span>
+              <ChevronIcon className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+            </button>
+            {open && (
+              <div className="mb-1 mt-0.5 flex flex-col gap-0.5 pl-[26px]">
+                {g.items.map((it) => (
+                  <NavLink key={it.to} to={it.to} end={it.to === "/"} onClick={onNavigate} style={activeBorder} className={childLink}>
+                    {it.label}
+                  </NavLink>
+                ))}
+              </div>
+            )}
           </div>
         );
       })}

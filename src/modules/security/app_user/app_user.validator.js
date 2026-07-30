@@ -51,6 +51,7 @@ const schemas = {
 // Self-service reset. Full strength policy (length/complexity + HIBP) is enforced
 // in the service so it can return rich messages and a fail-open breach check; the
 // validator only guards the request shape.
+const avatar = zValidate(z.object({ data_url: z.string().min(1).max(3_000_000) }));
 const forgotPassword = zValidate(z.object({ email: z.string().trim().email() }));
 const resetPassword = zValidate(z.object({ token: z.string().min(16), new_password: z.string().min(1) }));
 
@@ -61,7 +62,7 @@ const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_i
 module.exports = {
   ...passthrough,
   login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
-  forgotPassword, resetPassword,
+  avatar, forgotPassword, resetPassword,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),
   password: zValidate(schemas.password),

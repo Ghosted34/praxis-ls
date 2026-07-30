@@ -6,6 +6,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
+import { InventoryItemSelect } from "@/components/catalogue-select";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -516,7 +517,7 @@ export function OperationsFilesPage() {
   return (
     <section className={shell}>
       <PageHeader
-        eyebrow={<HubCrumb area="Operations" />}
+        eyebrow={<HubCrumb area="Operations" to="/operations" />}
         title="Operation files"
         description="The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
         action={<Button onClick={() => setEditing("new")}>New file</Button>}
@@ -562,14 +563,14 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
     service_direction: row?.service_direction ?? "", declared_value: row?.declared_value != null ? String(row.declared_value) : "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
-  const [lines, setLines] = React.useState<{ label: string; packages: string; weight: string }[]>([{ label: "", packages: "1", weight: "" }]);
-  const setLine = (i: number, k: "label" | "packages" | "weight", v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
+  const [lines, setLines] = React.useState<{ inventory_item_id: string; label: string; packages: string; weight: string }[]>([{ inventory_item_id: "", label: "", packages: "1", weight: "" }]);
+  const setLine = (i: number, patch: Partial<{ inventory_item_id: string; label: string; packages: string; weight: string }>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
-    const cargo = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), packages: Number(l.packages) || 1, weight: l.weight || undefined }));
+    const cargo = lines.filter((l) => l.inventory_item_id).map((l) => ({ inventory_item_id: l.inventory_item_id, label: l.label, packages: Number(l.packages) || 1, weight: l.weight || undefined }));
     const body: api.TransitOrderInput = {
       entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, customs_regime: f.customs_regime || undefined,
       service_direction: f.service_direction || undefined, declared_value: f.declared_value === "" ? undefined : Number(f.declared_value),
@@ -618,13 +619,13 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
             <div className="micro">Cargo</div>
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_80px_90px_auto] items-center gap-2">
-                <Input value={l.label} onChange={(e) => setLine(i, "label", e.target.value)} placeholder="Cargo / goods" />
-                <Input type="number" min="0" step="any" className="num text-right" value={l.packages} onChange={(e) => setLine(i, "packages", e.target.value)} placeholder="Pkgs" />
-                <Input value={l.weight} onChange={(e) => setLine(i, "weight", e.target.value)} placeholder="Weight" />
+                <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, label })} />
+                <Input type="number" min="0" step="any" className="num text-right" value={l.packages} onChange={(e) => setLine(i, { packages: e.target.value })} placeholder="Pkgs" />
+                <Input value={l.weight} onChange={(e) => setLine(i, { weight: e.target.value })} placeholder="Weight" />
                 <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
               </div>
             ))}
-            <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { label: "", packages: "1", weight: "" }])}>Add cargo</Button>
+            <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { inventory_item_id: "", label: "", packages: "1", weight: "" }])}>Add cargo</Button>
           </div>
         )}
         {error && <ErrorState message={error} />}
@@ -651,7 +652,7 @@ export function TransitOrdersPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Transit orders" description="Customs transit declarations." action={<Button onClick={() => setEditing("new")}>New order</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Transit orders" description="Customs transit declarations." action={<Button onClick={() => setEditing("new")}>New order</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Orders" value={num(list.length)} />
@@ -672,15 +673,15 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [f, setF] = React.useState({ entity_id: "", dossier_id: "", consignee: "", city_zone: "", contact_person: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
-  const [lines, setLines] = React.useState<{ label: string; qty: string }[]>([{ label: "", qty: "1" }]);
-  const setLine = (i: number, k: "label" | "qty", v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
+  const [lines, setLines] = React.useState<{ inventory_item_id: string; label: string; qty: string }[]>([{ inventory_item_id: "", label: "", qty: "1" }]);
+  const setLine = (i: number, patch: Partial<{ inventory_item_id: string; label: string; qty: string }>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      const goods = lines.filter((l) => l.label.trim()).map((l) => ({ label: l.label.trim(), qty: Number(l.qty) || 1 }));
+      const goods = lines.filter((l) => l.inventory_item_id).map((l) => ({ inventory_item_id: l.inventory_item_id, label: l.label, qty: Number(l.qty) || 1 }));
       await api.createDeliveryNote({ entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, consignee: f.consignee || undefined, city_zone: f.city_zone || undefined, contact_person: f.contact_person || undefined, lines: goods.length ? goods : undefined });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
@@ -710,12 +711,12 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <div className="micro">Goods delivered</div>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-[1fr_80px_auto] items-center gap-2">
-              <Input value={l.label} onChange={(e) => setLine(i, "label", e.target.value)} placeholder="Item / description" />
-              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, "qty", e.target.value)} placeholder="Qty" />
+              <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, label })} />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="Qty" />
               <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
             </div>
           ))}
-          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { label: "", qty: "1" }])}>Add item</Button>
+          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { inventory_item_id: "", label: "", qty: "1" }])}>Add item</Button>
         </div>
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel="Create note" />
@@ -740,7 +741,7 @@ export function DeliveryNotesPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Delivery notes" description="Proof-of-delivery documents." action={<Button onClick={() => setOpen(true)}>New note</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Delivery notes" description="Proof-of-delivery documents." action={<Button onClick={() => setOpen(true)}>New note</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Notes" value={num((rows || []).length)} />
@@ -789,7 +790,7 @@ export function MilestonesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Milestones" description="Track a dossier's milestone chain; manage the templates that seed them." />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Milestones" description="Track a dossier's milestone chain; manage the templates that seed them." />
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>

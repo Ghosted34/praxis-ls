@@ -69,7 +69,7 @@ export type TransitOrderInput = {
   service_direction?: string;
   declared_value?: number;
   submitted_docs?: unknown[];
-  lines?: { label: string; packages?: number; weight?: string }[];
+  lines?: { inventory_item_id: string; label?: string; packages?: number; weight?: string }[];
   date?: string;
 };
 export const listTransitOrders = () => tenant<TransitOrder[]>("/transit-orders");
@@ -94,7 +94,7 @@ export type DeliveryNoteInput = {
   consignee?: string;
   city_zone?: string;
   contact_person?: string;
-  lines?: { label: string; qty?: number }[];
+  lines?: { inventory_item_id: string; label?: string; qty?: number }[];
   date?: string;
 };
 export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");

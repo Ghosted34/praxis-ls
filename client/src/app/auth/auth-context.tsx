@@ -20,6 +20,10 @@ export type User = {
   user_id: string;
   email: string;
   display_name?: string;
+  /** Self-service profile picture (a /media URL), or absent → initials fallback. */
+  avatar_url?: string | null;
+  /** The employee record this login is linked to (drives the My HR self views). */
+  employee_id?: string | null;
   /** Per-tenant AI switch, resolved from the ai.assistant.backend feature flag
    *  and returned by the auth endpoints. Absent ⇒ AI off (opt-in). Drives the
    *  global AI gate — see components/ai-actions.tsx. */
@@ -40,6 +44,8 @@ type AuthState = {
   pinLogin: (email: string, pin: string) => Promise<void>;
   registerPin: (pin: string, label?: string | null) => Promise<{ device_id: string }>;
   logout: () => Promise<void>;
+  /** Merge fields into the cached user (e.g. after an avatar upload). */
+  patchUser: (partial: Partial<User>) => void;
 };
 
 const USER_KEY = "praxis.user";
@@ -181,8 +187,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setStatus("anon");
   };
 
+  const patchUser = (partial: Partial<User>) =>
+    setUser((u) => {
+      if (!u) return u;
+      const next = { ...u, ...partial };
+      persistUser(next);
+      return next;
+    });
+
   return (
-    <AuthCtx.Provider value={{ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout }}>
+    <AuthCtx.Provider value={{ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser }}>
       {children}
     </AuthCtx.Provider>
   );

@@ -105,7 +105,7 @@ export function VehicleCompliancePage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Vehicle compliance" description="Insurance and visite-technique expiry — renew before they lapse." action={<Button onClick={() => setCreating(true)}>New record</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Vehicle compliance" description="Insurance and visite-technique expiry — renew before they lapse." action={<Button onClick={() => setCreating(true)}>New record</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(r) => r.compliance_id} empty={{ title: "No compliance records", hint: "Add insurance or visite-technique expiries to track." }} />
       {creating && <NewComplianceForm onClose={() => setCreating(false)} onSaved={rows.reload} />}

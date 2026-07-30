@@ -1,8 +1,19 @@
-/** Compact KPI tile + row — the glass summary strip at the top of a list screen.
- *  A tenant-tinted accent bar keeps it from feeling flat. Values use the `.num`
- *  tabular class. Kept deliberately short so it doesn't crowd out the table. */
+/** Compact KPI stat bar — a single slim strip of stats above a list screen,
+ *  so four numbers don't eat the vertical space four cards used to. Each tile is
+ *  an inline `icon · value · label` cluster; on desktop they share one divided
+ *  row, on mobile they stack. Values use the `.num` tabular class. Optional
+ *  `tone` tints the icon; `delta` shows a trend chip. Props are unchanged from
+ *  the previous card version, so every existing screen inherits this for free. */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+
+const TONE: Record<string, string> = {
+  accent: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary",
+  ok: "bg-[rgb(var(--ok)_/_0.12)] text-[rgb(var(--ok))]",
+  warn: "bg-[rgb(var(--warn)_/_0.15)] text-[rgb(var(--warn))]",
+  bad: "bg-[rgb(var(--bad)_/_0.12)] text-[rgb(var(--bad))]",
+  info: "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue))]",
+};
 
 export function KpiTile({
   label,
@@ -10,40 +21,43 @@ export function KpiTile({
   hint,
   icon,
   delta,
+  tone = "accent",
 }: {
   label: string;
   value: React.ReactNode;
   hint?: string;
   icon?: React.ReactNode;
   delta?: { value: React.ReactNode; dir?: "up" | "down" };
+  tone?: "accent" | "ok" | "warn" | "bad" | "info";
 }) {
   return (
-    <div className="lux-card animate-fade-up relative overflow-hidden px-5 py-[18px] transition-all duration-200 hover:-translate-y-[3px] hover:shadow-[var(--shadow-m)]">
-      <div className="flex items-start justify-between gap-2">
-        <div className="micro">{label}</div>
-        {icon && (
-          <span className="grid h-[38px] w-[38px] shrink-0 place-items-center rounded-[11px] bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary">
-            {icon}
-          </span>
-        )}
-      </div>
-      <div className="num mt-2 font-display text-[30px] leading-none">{value}</div>
+    <div className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5">
+      {icon && (
+        <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-md text-[14px]", TONE[tone])}>
+          {icon}
+        </span>
+      )}
+      <span className="num text-[18px] font-semibold leading-none">{value}</span>
+      <span className="truncate text-[12px] text-muted-foreground">{label}</span>
       {delta && (
-        <div
+        <span
           className={cn(
-            "mt-2 inline-flex items-center gap-1 text-[11px] font-semibold",
+            "ml-auto shrink-0 text-[11px] font-semibold",
             delta.dir === "down" ? "text-[rgb(var(--bad))]" : "text-[rgb(var(--ok))]",
           )}
         >
-          <span aria-hidden>{delta.dir === "down" ? "▾" : "▴"}</span>
           {delta.value}
-        </div>
+        </span>
       )}
-      {hint && <div className="mt-1 text-[11px] text-muted-foreground">{hint}</div>}
+      {hint && !delta && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{hint}</span>}
     </div>
   );
 }
 
 export function KpiRow({ children }: { children: React.ReactNode }) {
-  return <div className="mb-4 grid grid-cols-2 gap-2.5 sm:grid-cols-3 lg:grid-cols-4">{children}</div>;
+  return (
+    <div className="mb-4 flex flex-col divide-y overflow-hidden rounded-[10px] border bg-card shadow-[var(--shadow-s)] sm:flex-row sm:divide-x sm:divide-y-0">
+      {children}
+    </div>
+  );
 }

@@ -9,6 +9,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
@@ -326,6 +327,7 @@ export function AuditPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Governance" to="/governance" />}
         title="Audit ledger"
         description="Append-only trail of every create, lock, post, reverse, permission change and AI action. Writes are blocked at the database, not just the API."
         action={tab === "reviews" ? <Button onClick={() => setNewReview(true)}>New review</Button> : undefined}
@@ -588,6 +590,7 @@ export function NotificationsPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Governance" to="/governance" />}
         title="Notifications"
         description="Your inbox. System-generated only — Watch-the-Watcher writes HIGH alerts here on security-critical changes."
         action={tab === "inbox" && unread.length > 0 ? <Button variant="outline" onClick={markAll} loading={busy === "__all"}>Mark all read</Button> : undefined}
@@ -788,7 +791,7 @@ export function WorkflowsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader title="Workflows" description="Validate/approve chains bound to approvable events — the org's approval routing." action={<Button onClick={() => setCreating(true)}>New workflow</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Workflows" description="Validate/approve chains bound to approvable events — the org's approval routing." action={<Button onClick={() => setCreating(true)}>New workflow</Button>} />
       <KpiRow>
         <KpiTile label="Workflows" value={num(list.length)} />
         <KpiTile label="Active" value={num(list.filter((w) => w.is_active).length)} />
@@ -865,7 +868,7 @@ export function ApprovalsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader title="Approvals" description="Your runtime approval queue — validate or approve/reject items routed to you by workflow." />
+      <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Approvals" description="Your runtime approval queue — validate or approve/reject items routed to you by workflow." />
       <KpiRow>
         <KpiTile label="Pending" value={num(list.length)} />
         <KpiTile label="To validate" value={num(list.filter((r) => r.step_kind === "VALIDATE").length)} />

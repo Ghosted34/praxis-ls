@@ -122,7 +122,7 @@ export function CycleCountsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Cycle counts" description="Count stock against the system by location; variances raise reconciliation." action={<Button onClick={() => setOpen(true)}>New count</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Cycle counts" description="Count stock against the system by location; variances raise reconciliation." action={<Button onClick={() => setOpen(true)}>New count</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={counts.data} error={counts.error} loading={counts.loading} rowKey={(c) => c.cycle_count_id} empty={{ title: "No counts yet", hint: "Run a count on a location to check stock accuracy." }} />
       {open && <CountSheet locations={locs.data || []} onClose={() => setOpen(false)} onSaved={counts.reload} />}

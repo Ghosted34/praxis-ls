@@ -110,7 +110,7 @@ export function IncidentsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Incidents" description="Report fleet incidents and work them through review to closure." action={<Button onClick={() => setCreating(true)}>Report incident</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Incidents" description="Report fleet incidents and work them through review to closure." action={<Button onClick={() => setCreating(true)}>Report incident</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={inc.data} error={inc.error} loading={inc.loading} rowKey={(i) => i.fleet_incident_id} empty={{ title: "No incidents", hint: "A clean record — report one if something happens." }} />
       {creating && <NewIncidentForm onClose={() => setCreating(false)} onSaved={inc.reload} />}

@@ -139,7 +139,7 @@ export function DispatchPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Dispatch" description="Assign vehicles and drivers; check out and in with odometer readings." action={<Button onClick={() => setCreating(true)}>New dispatch</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Dispatch" description="Assign vehicles and drivers; check out and in with odometer readings." action={<Button onClick={() => setCreating(true)}>New dispatch</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={disp.data} error={disp.error} loading={disp.loading} rowKey={(d) => d.fleet_dispatch_id} empty={{ title: "No dispatches", hint: "Assign a vehicle to get started." }} />
       {creating && <NewDispatchForm onClose={() => setCreating(false)} onSaved={disp.reload} />}

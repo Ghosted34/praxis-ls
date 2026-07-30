@@ -147,6 +147,13 @@ async function updateUserFields(client, id, fields) {
   const { rows } = await client.query("UPDATE app_user SET " + set + ", updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, ...keys.map((k) => fields[k])]);
   return rows[0] || null;
 }
+async function setAvatar(client, id, url) {
+  const { rows } = await client.query(
+    "UPDATE app_user SET avatar_ref = $2, updated_at = now() WHERE user_id = $1 RETURNING avatar_ref",
+    [id, url],
+  );
+  return rows[0] || null;
+}
 async function setPasswordHash(client, id, hash) {
   const { rows } = await client.query("UPDATE app_user SET password_hash = $2, updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, hash]);
   return rows[0] || null;
@@ -266,7 +273,7 @@ async function killAllSessionsForUser(client, userId, killedBy) {
 
 module.exports = {
   ...crud,
-  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
+  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   getSignature, upsertSignature, ceoRoleId,
   createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser,
   insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,

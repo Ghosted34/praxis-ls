@@ -72,6 +72,8 @@ async function authMiddleware(req, _res, next) {
     user_id: user.user_id,
     email: user.email,
     display_name: user.display_name,
+    employee_id: user.employee_id || null,
+    avatar_ref: user.avatar_ref || null,
     role_ids: user.role_ids || [],
     is_ceo: user.is_ceo === true,
     jwt_iat: payload.iat,

@@ -10,8 +10,10 @@
  * overview reads as a posture summary across exactly those axes.
  */
 import * as React from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { TabbedHub, HubCrumb, HubTabs, type HubTab } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -21,56 +23,6 @@ import { PermissionMatrixPage } from "./permission-matrix-page";
 import { MySecurityPage } from "./my-security";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
-
-type TabDef = { slug: string; label: string; Component: React.ComponentType };
-
-const TABS: TabDef[] = [
-  { slug: "users", label: "Users", Component: UsersPage },
-  { slug: "roles", label: "Roles", Component: RolesPage },
-  { slug: "permissions", label: "Permission matrix", Component: PermissionMatrixPage },
-  { slug: "capabilities", label: "Capabilities", Component: CapabilitiesPage },
-  { slug: "scopes", label: "Scopes", Component: ScopesPage },
-  { slug: "field-visibility", label: "Field visibility", Component: FieldVisibilityPage },
-  { slug: "sessions", label: "Sessions", Component: SessionsPage },
-  { slug: "my-security", label: "My security", Component: MySecurityPage },
-];
-
-const BY_SLUG: Record<string, TabDef> = Object.fromEntries(TABS.map((t) => [t.slug, t]));
-
-/** Tab bar rendered by the shell — the pages own their own headers below it. */
-function HubTabBar({ active }: { active: string | null }) {
-  const navigate = useNavigate();
-  return (
-    <div className="mx-auto mb-4 max-w-6xl">
-      <div className="micro mb-2">Hub › Security &amp; access</div>
-      <div aria-label="Security sections" className="inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
-        <button
-          onClick={() => navigate("/security")}
-          className={
-            active === null
-              ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-              : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          }
-        >
-          Overview
-        </button>
-        {TABS.map((t) => (
-          <button
-            key={t.slug}
-            onClick={() => navigate(`/security/${t.slug}`)}
-            className={
-              active === t.slug
-                ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-                : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            }
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 /** Horizontal proportion bar — one segment per status. */
 function Bar({ parts }: { parts: { label: string; value: number; tone: string }[] }) {
@@ -127,27 +79,13 @@ function Overview() {
 
   return (
     <section className={shell}>
-      <header className="mb-5 border-b border-border pb-4">
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Security &amp; access</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Access is data, not code: role × capability × scope × CRUD-per-module × field visibility. Identity resolves against the live
-          schema, so these rows are the same under both LIVE and TEST.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="chips">
-            {TABS.slice(0, 6).map((t) => (
-              <button
-                key={t.slug}
-                onClick={() => navigate(`/security/${t.slug}`)}
-                className="chip"
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <Button onClick={() => navigate("/security/users")}>Manage users</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
+        title="Security & access"
+        description="Access is data, not code: role × capability × scope × CRUD-per-module × field visibility. Identity resolves against the live schema, so these rows are the same under both LIVE and TEST."
+        action={<Button onClick={() => navigate("/security/users")}>Manage users</Button>}
+      />
+      <HubTabs />
 
       <KpiRow>
         <KpiTile label="Users" value={num(all.length)} hint={`${active} active`} />
@@ -221,17 +159,18 @@ function Overview() {
   );
 }
 
-export function SecurityHub() {
-  const { section } = useParams();
-  const tab = section ? BY_SLUG[section] : null;
-  // An unknown section falls back to the overview rather than a blank screen.
-  const active = tab ? tab.slug : null;
-  const Active = tab?.Component;
+const TABS: HubTab[] = [
+  { key: "overview", label: "Overview", Component: Overview },
+  { key: "users", label: "Users", Component: UsersPage },
+  { key: "roles", label: "Roles", Component: RolesPage },
+  { key: "permissions", label: "Permission matrix", Component: PermissionMatrixPage },
+  { key: "capabilities", label: "Capabilities", Component: CapabilitiesPage },
+  { key: "scopes", label: "Scopes", Component: ScopesPage },
+  { key: "field-visibility", label: "Field visibility", Component: FieldVisibilityPage },
+  { key: "sessions", label: "Sessions", Component: SessionsPage },
+  { key: "my-security", label: "My security", Component: MySecurityPage },
+];
 
-  return (
-    <div className="animate-fade-in">
-      <HubTabBar active={active} />
-      {Active ? <div key={active}><Active /></div> : <Overview />}
-    </div>
-  );
+export function SecurityHub() {
+  return <TabbedHub eyebrow="Security & access" basePath="/security" tabs={TABS} />;
 }

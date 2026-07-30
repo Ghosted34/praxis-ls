@@ -11,11 +11,17 @@ attachment + recipient resolution (master emails, `0475`); document line items (
 AI vendor keys migrated to the platform (shared, deploy-wide — `platform/0060`, console **Integrations → AI
 providers**, tenant Vendors tab removed); AI Control menu hidden for AI-off tenants; clock-in/favicon/nav fixes.
 
+**Also landed (late):** doc-numbering display fix (lists read the real `doc_number`/`ot_number`, not the
+unpopulated `ref`); line items locked to catalogue selects (PO/PR → financial dictionary, GRN/delivery/transit
+→ inventory) via `catalogue-select.tsx` + `0477_line_item_refs` FK columns.
+
 **Remaining / owed:**
 
-- Run migrations: platform `0060_ai_vendor`, tenant `0475_master_email` + `0476_document_lines`.
+- Run migrations: platform `0060_ai_vendor`, tenant `0475_master_email` + `0476_document_lines` +
+  `0477_line_item_refs`.
 - Full `tsc` / `vite build` / `jest` on a real machine (native bundlers can't run in-sandbox).
 - Set the shared AI provider keys in the console and verify a live AI chat/embedding on a tenant.
+- Seed the **financial-dictionary** + **inventory** masters so the new line-item selects have options.
 - **DSF pixel-exact** — still a structured summary; needs the official DGI liasse PDF to match exactly.
 
 

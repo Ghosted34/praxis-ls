@@ -17,8 +17,8 @@ module.exports = {
     const { lines, ...header } = data || {};
     const row = await base.create(client, { data: header, actor });
     for (const l of lines || []) {
-      if (!l || !l.item) continue;
-      await repo.insertLine(client, { grn_inbound_id: row.grn_inbound_id, item: l.item, ordered: Number(l.ordered) || 0, received: Number(l.received) || 0, condition: l.condition || null });
+      if (!l || !l.inventory_item_id) continue;
+      await repo.insertLine(client, { grn_inbound_id: row.grn_inbound_id, inventory_item_id: l.inventory_item_id, item: l.item || null, ordered: Number(l.ordered) || 0, received: Number(l.received) || 0, condition: l.condition || null });
     }
     return row;
   },

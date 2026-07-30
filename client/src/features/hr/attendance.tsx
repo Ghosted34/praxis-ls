@@ -12,7 +12,7 @@ import { Pill } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -150,8 +150,8 @@ export function AttendancePage() {
   const [date, setDate] = React.useState(today);
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="HR" />} title="Attendance" description="Team clock-ins, lateness and absences. Employees clock in/out from the clock in the bottom-right." />
-      <div className="mb-4 flex items-center gap-3">
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Attendance" description="Team clock-ins, lateness and absences. Employees clock in/out from the clock in the bottom-right." />
+      <HubTabs />      <div className="mb-4 flex items-center gap-3">
         <span className="micro">Day</span>
         <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-auto" />
       </div>

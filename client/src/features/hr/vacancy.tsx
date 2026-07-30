@@ -12,7 +12,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -175,8 +175,8 @@ export function VacanciesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Vacancies" description="Recruitment pipeline — move applicants through the hiring stages." action={<Button onClick={() => setCreating(true)}>New vacancy</Button>} />
-      {vacancies.error ? <ErrorState message={vacancies.error} /> : (
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Vacancies" description="Recruitment pipeline — move applicants through the hiring stages." action={<Button onClick={() => setCreating(true)}>New vacancy</Button>} />
+      <HubTabs />      {vacancies.error ? <ErrorState message={vacancies.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
           <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
             {vacancies.loading ? <div className="px-3 py-4 micro">Loading…</div> : rows.length === 0 ? <div className="px-3 py-4 micro">No vacancies.</div> : rows.map((v) => (

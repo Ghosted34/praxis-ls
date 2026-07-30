@@ -469,9 +469,21 @@ bundlers segfault in-sandbox, so no full `vite build` here).
     host-gating, run migrations, set shared AI keys, verify runtime, rollback). `doc/DOC_UI_OVERHAUL_STEP1.md`
     kept current.
 
+13. **Numbering display + line-item integrity.** (a) Issued/posted docs had real numbers but the lists showed
+    UUIDs because they read `r.ref`, which the list repos never populated (DB column is `doc_number`/`ot_number`).
+    Aliased the number `AS ref` in the PR/PO/supplier-invoice/transit/delivery list queries. Draft docs are
+    still numberless by design (numbered at Submit/Issue/Post). (b) Line items were **free-text** → data could
+    drift; now they reference a real catalogue row via a shared `catalogue-select.tsx`
+    (`DictionaryItemSelect`/`InventoryItemSelect`): PO + PR → financial dictionary, GRN + delivery note +
+    transit order → inventory. **`0477_line_item_refs.sql`** adds the FK columns (`dictionary_item_id` /
+    `inventory_item_id`); the row's `label` stays as a display snapshot (like `po_item`). NB the selects are
+    empty until the dictionary/inventory masters have rows.
+
 **Migrations to run:** platform **`0060_ai_vendor`** + tenant **`0475_master_email`** + **`0476_document_lines`**
-(`deploy.sh`'s migrate service runs both sets). **Owed:** full `tsc` / `vite build` / `jest` on a real machine;
-set the shared AI keys in the console; verify a live AI chat/embedding on a tenant (credential path changed).
++ **`0477_line_item_refs`** (`deploy.sh`'s migrate service runs both sets). **Owed:** full `tsc` / `vite build`
+/ `jest` on a real machine; set the shared AI keys in the console; verify a live AI chat/embedding on a tenant
+(credential path changed); ensure the financial-dictionary + inventory masters are seeded so the line selects
+have options.
 
 ## Session log — 2026-07-27 (session 15: Lovable kit fidelity, AI gate + clickable actions, workflow blocks, SOPs/Talent build-out, fixes)
 

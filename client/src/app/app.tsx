@@ -7,6 +7,8 @@ import { HelpPage } from "@/features/help/help-page";
 import { DashboardPage } from "@/features/dashboard";
 import { SecurityHub } from "@/features/security/hub";
 import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
+import { GovernanceHub } from "@/features/governance/hub";
+import { MyHrPage } from "@/features/hr/my-hr";
 import { AppearancePage } from "@/features/settings/appearance-page";
 import { SettingsHub } from "@/features/settings/settings-hub";
 import { LoginEditor } from "@/features/settings/login-editor";
@@ -74,6 +76,8 @@ export function App() {
         {/* Finance — one hub, deep-linkable tabs (per-section routes still resolve) */}
         <Route path="finance" element={<FinanceHub />} />
         <Route path="finance/:section" element={<FinanceHub />} />
+        <Route path="governance" element={<GovernanceHub />} />
+        <Route path="my-hr" element={<MyHrPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="workflows" element={<WorkflowsPage />} />

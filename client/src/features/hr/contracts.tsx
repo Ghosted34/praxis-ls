@@ -13,7 +13,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { TransitionButtons } from "@/components/ui/workflow";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -145,8 +145,8 @@ export function ContractsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Contracts" description="Issue and progress employee contracts through their lifecycle." action={<Button onClick={() => setCreating(true)}>New contract</Button>} />
-      {error && <div className="mb-3"><ErrorState message={error} /></div>}
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Contracts" description="Issue and progress employee contracts through their lifecycle." action={<Button onClick={() => setCreating(true)}>New contract</Button>} />
+      <HubTabs />      {error && <div className="mb-3"><ErrorState message={error} /></div>}
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(c) => c.hr_contract_id} empty={{ title: "No contracts", hint: "Draft a contract to get started." }} />
       {creating && <NewContractForm onClose={() => setCreating(false)} onSaved={rows.reload} />}
       <ScreenAi path="hr/contracts" />

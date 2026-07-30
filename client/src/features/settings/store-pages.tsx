@@ -17,6 +17,8 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Row, cell, errMsg, useList, Badge } from "@/features/sales/ui";
@@ -164,13 +166,7 @@ export function DocumentTemplatesPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Document templates</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Letterhead and body templates per document type — invoices, POs, receipts, contracts.</p>
-        </div>
-        <Button onClick={() => edit(null)}>New template</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document templates" description="Letterhead and body templates per document type — invoices, POs, receipts, contracts." action={<Button onClick={() => edit(null)}>New template</Button>} />
 
       <PageError message={rowError} />
 
@@ -364,13 +360,7 @@ export function CustomFieldsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Custom fields</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Per-entity field definitions — extra fields a consuming module can render and store.</p>
-        </div>
-        <Button onClick={() => edit(null)}>New definition</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Custom fields" description="Per-entity field definitions — extra fields a consuming module can render and store." action={<Button onClick={() => edit(null)}>New definition</Button>} />
 
       <PageError message={rowError} />
 
@@ -454,10 +444,7 @@ export function EmailSignaturesPage() {
 
   return (
     <section className="mx-auto max-w-4xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Email signatures</h1>
-        <p className="mt-1 text-sm text-muted-foreground">The tenant-wide brand signature template. Per-staff rendering is managed on each user's profile.</p>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Email signatures" description="The tenant-wide brand signature template. Per-staff rendering is managed on each user's profile." />
 
       {error ? (
         <ErrorState message={error} />
@@ -572,13 +559,7 @@ export function BusinessPoliciesPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Business policies</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Named policy documents — privacy, refund, QMS, terms and more.</p>
-        </div>
-        <Button onClick={() => edit(null)}>New policy</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Business policies" description="Named policy documents — privacy, refund, QMS, terms and more." action={<Button onClick={() => edit(null)}>New policy</Button>} />
 
       <PageError message={rowError} />
 

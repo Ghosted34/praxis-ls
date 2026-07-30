@@ -166,7 +166,9 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
   const [status, setStatus] = React.useState(user?.status || "ACTIVE");
   const [roleIds, setRoleIds] = React.useState<string[]>([]);
   const [employeeId, setEmployeeId] = React.useState(user?.employee_id || "");
-  const employees = useList<{ employee_id: string; full_name?: string }>("/employees");
+  // Live-schema employees only — app_user + its employee FK live in the live
+  // schema, so linking must never offer sandbox employees (would 409/EMPLOYEE_NOT_FOUND).
+  const employees = useList<{ employee_id: string; full_name?: string }>("/users/employees");
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [hydrating, setHydrating] = React.useState(editing);

@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { DocButton } from "@/components/doc-button";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -199,7 +200,7 @@ export function ReceivablesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Receivables" description="Ageing, receipts and dunning — the collections side of the money loop." action={<Button onClick={() => setCreating(true)}>New receipt</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title="Receivables" description="Ageing, receipts and dunning — the collections side of the money loop." action={<Button onClick={() => setCreating(true)}>New receipt</Button>} />
       <KpiRow>
         <KpiTile label="Current" value={money(a?.current)} />
         <KpiTile label="1–30 days" value={money(a?.d1_30)} />

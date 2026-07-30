@@ -1439,7 +1439,7 @@ function ReportTabs({
   }, [path, isCustom, activeTab.path]);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
+    <section className="mx-auto max-w-6xl animate-fade-in">
       <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title={title} description={description} />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b">

@@ -358,12 +358,15 @@ async function refresh(client, { refreshToken }) {
 async function me(client, user) {
   const ai_enabled = await resolveAiEnabled(client);
   const channels = await resolveChannels(client);
+  const roles = await repo.roleNames(client, user.user_id).catch(() => []);
   return {
     user_id: user.user_id,
     email: user.email,
     display_name: user.display_name,
     employee_id: user.employee_id || null,
     avatar_url: user.avatar_ref || null,
+    // Primary role for the account menu; "+N" hints at additional roles.
+    role: roles.length ? (roles.length > 1 ? `${roles[0]} +${roles.length - 1}` : roles[0]) : null,
     ai_enabled,
     channels,
   };
@@ -540,6 +543,8 @@ async function getUser(client, id) {
   u.role_ids = await repo.roleIds(client, id);
   return u;
 }
+/** Employees linkable to a user — always the live/identity schema (see repo). */
+const listLinkableEmployees = (client) => repo.listEmployeesLite(client);
 async function createUser(client, { data, actor = {} }) {
   await passwordPolicy.assertStrongPassword(data.password, { email: data.email });
   await client.query("BEGIN");
@@ -562,8 +567,18 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
   await client.query("BEGIN");
   try {
     const fields = {};
-    for (const k of ["username", "full_name", "employee_id", "whatsapp_number"]) if (patch[k] !== undefined) fields[k] = patch[k];
+    for (const k of ["username", "full_name", "whatsapp_number"]) if (patch[k] !== undefined) fields[k] = patch[k];
     if (patch.email !== undefined) fields.email = String(patch.email).toLowerCase();
+    // employee_id: only apply when it actually CHANGES, so editing other fields
+    // never re-touches a now-stale employee link (that would raise a raw FK 409
+    // and make the user impossible to edit). When it does change to a real value,
+    // validate the target exists and return a clear message instead of a 23503.
+    if (patch.employee_id !== undefined && (patch.employee_id || null) !== (before.employee_id || null)) {
+      if (patch.employee_id && !(await repo.employeeExists(client, patch.employee_id))) {
+        throw new AppError("EMPLOYEE_NOT_FOUND", "That employee record no longer exists — pick another or clear the link.", 422);
+      }
+      fields.employee_id = patch.employee_id || null;
+    }
     if (Object.keys(fields).length) await repo.updateUserFields(client, id, fields);
     if (Array.isArray(patch.role_ids)) {
       // Last-owner guard (4.3): don't let a role change strip the CEO role from
@@ -673,7 +688,7 @@ async function revokePinDevice(client, { userId, deviceId }) {
 }
 
 module.exports = {
-  listUsers, getUser, createUser, updateUser, setPassword, setStatus,
+  listUsers, getUser, listLinkableEmployees, createUser, updateUser, setPassword, setStatus,
   getSignature, setSignature,
   registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
   login,

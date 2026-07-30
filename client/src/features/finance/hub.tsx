@@ -273,17 +273,9 @@ function CommandCenter() {
 
 export function FinanceHub() {
   const { section } = useParams();
-  const navigate = useNavigate();
   const Deep = section ? DEEP[section] : null;
-  if (Deep) {
-    return (
-      <div className="animate-fade-in">
-        <div className="mx-auto mb-3 max-w-6xl">
-          <button onClick={() => navigate("/finance")} className="text-sm text-muted-foreground transition-colors hover:text-primary">← Back to Finance &amp; treasury</button>
-        </div>
-        <Deep />
-      </div>
-    );
-  }
+  // The deep pages now carry a clickable "Hub › Finance" crumb, so the old
+  // "← Back to Finance & treasury" link is redundant and has been removed.
+  if (Deep) return <div className="animate-fade-in"><Deep /></div>;
   return <CommandCenter />;
 }

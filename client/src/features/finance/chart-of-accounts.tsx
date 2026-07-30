@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
@@ -126,7 +127,7 @@ export function ChartOfAccountsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Chart of accounts" description="SYSCOHADA/OHADA statutory chart — postable leaves and analytic accounts." action={<Button onClick={() => setEditing("new")}>New account</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title="Chart of accounts" description="SYSCOHADA/OHADA statutory chart — postable leaves and analytic accounts." action={<Button onClick={() => setEditing("new")}>New account</Button>} />
       <KpiRow>
         <KpiTile label="Accounts" value={num(accounts.length)} />
         <KpiTile label="Postable" value={num(accounts.filter((a) => a.is_postable).length)} />

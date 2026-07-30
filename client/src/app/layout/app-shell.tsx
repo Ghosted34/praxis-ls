@@ -278,6 +278,25 @@ const SettingsIcon = (p: IP) => (
     <path d="M12 3v2.5M12 18.5V21M4.2 7l2.2 1.3M17.6 15.7 19.8 17M4.2 17l2.2-1.3M17.6 8.3 19.8 7" />
   </svg>
 );
+const PaletteIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="8.5" cy="10" r="1" />
+    <circle cx="15.5" cy="10" r="1" />
+    <circle cx="12" cy="15.5" r="1" />
+  </svg>
+);
+const DownloadIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+  </svg>
+);
+const LogoutIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3" />
+    <path d="M10 17l-5-5 5-5M5 12h11" />
+  </svg>
+);
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
   Commercial: CommercialIcon,
@@ -295,6 +314,40 @@ const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   "Security & Access": SecurityIcon,
   Governance: GovernanceIcon,
   "Settings & Admin": SettingsIcon,
+};
+
+// --- per-child icons for the Overview section (side panel + header dropdown) ---
+const WorkspaceIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="4" y="4" width="7" height="7" rx="1" />
+    <rect x="13" y="4" width="7" height="7" rx="1" />
+    <rect x="4" y="13" width="7" height="7" rx="1" />
+    <rect x="13" y="13" width="7" height="7" rx="1" />
+  </svg>
+);
+const SupportIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9a2.5 2.5 0 1 1 3 2.4c-.6.2-1 .8-1 1.6" />
+    <path d="M12 17h.01" />
+  </svg>
+);
+const GodModeIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M13 3 4 14h6l-1 7 9-11h-6z" />
+  </svg>
+);
+const DotIcon = (p: IP) => (
+  <svg {...sic(p)} width={14} height={14}>
+    <circle cx="12" cy="12" r="3.5" />
+  </svg>
+);
+/** Icon per Overview child, keyed by route. Falls back to a small dot. */
+const CHILD_ICON: Record<string, (p: IP) => React.JSX.Element> = {
+  "/": TowerIcon,
+  "/workspace": WorkspaceIcon,
+  "/support": SupportIcon,
+  "/godmode": GodModeIcon,
 };
 
 /** Initials from a name or email local-part. */
@@ -344,12 +397,13 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
   return { ...counts, reload };
 }
 
-/** User avatar + dropdown (email · My security · Sign out). */
-function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null } | null; onLogout: () => void }) {
+/** User avatar + dropdown (role · My HR · My security · Sign out). */
+function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
   const email = user?.email || "";
+  const role = user?.role || "Member";
 
   React.useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -376,7 +430,7 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         )}
         <span className="hidden text-left leading-tight sm:block">
           <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
-          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{email}</span>
+          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{role}</span>
         </span>
         <ChevronIcon className={cn("hidden transition-transform sm:block", open && "rotate-180")} />
       </button>
@@ -388,16 +442,16 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         >
           <div className="border-b px-3 pb-2 pt-1">
             <div className="truncate text-sm font-semibold capitalize">{name}</div>
-            <div className="truncate text-xs text-muted-foreground">{email}</div>
+            <div className="truncate text-xs text-muted-foreground">{role}</div>
           </div>
-          <Link to="/my-hr" role="menuitem" onClick={() => setOpen(false)} className="mt-1 block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            My HR
+          <Link to="/my-hr" role="menuitem" onClick={() => setOpen(false)} className="mt-1 flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <HrIcon /> My HR
           </Link>
-          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            My security
+          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <SecurityIcon /> My security
           </Link>
-          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            Appearance
+          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <PaletteIcon /> Appearance
           </Link>
           {!isStandalone() && (
             <button
@@ -406,13 +460,13 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
                 setOpen(false);
                 openInstallUi();
               }}
-              className="block w-full rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
             >
-              Install app
+              <DownloadIcon /> Install app
             </button>
           )}
-          <button role="menuitem" onClick={onLogout} className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
-            Sign out
+          <button role="menuitem" onClick={onLogout} className="mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
+            <LogoutIcon /> Sign out
           </button>
         </div>
       )}
@@ -439,7 +493,7 @@ function NavArea({
   onHoverClose: () => void;
 }) {
   const Icon = AREA_ICON[group.heading] || MoreIcon;
-  const label = group.heading === "Overview" ? "Control Tower" : group.heading;
+  const label = group.heading;
 
   // Single-item area (Overview) → direct link, no dropdown. Hovering it should
   // still dismiss any open sibling dropdown.
@@ -476,24 +530,28 @@ function NavArea({
           style={{ background: "var(--popover)" }}
           className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-56 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
         >
-          {group.items.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              role="menuitem"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                cn(
-                  "block rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-accent font-semibold text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                )
-              }
-            >
-              {it.label}
-            </NavLink>
-          ))}
+          {group.items.map((it) => {
+            const CIcon = CHILD_ICON[it.to] || DotIcon;
+            return (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                role="menuitem"
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-accent font-semibold text-foreground"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )
+                }
+              >
+                <CIcon />
+                <span>{it.label}</span>
+              </NavLink>
+            );
+          })}
         </div>
       )}
     </div>
@@ -515,7 +573,7 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
     g.items.some((it) => (it.to === "/" ? pathname === "/" : pathname === it.to || pathname.startsWith(it.to + "/")));
   const childLink = ({ isActive }: { isActive: boolean }) =>
     cn(
-      "block rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+      "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
       isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
     );
   const activeBorder = ({ isActive }: { isActive: boolean }) =>
@@ -566,11 +624,15 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
             </button>
             {open && (
               <div className="mb-1 mt-0.5 flex flex-col gap-0.5 pl-[26px]">
-                {g.items.map((it) => (
-                  <NavLink key={it.to} to={it.to} end={it.to === "/"} onClick={onNavigate} style={activeBorder} className={childLink}>
-                    {it.label}
-                  </NavLink>
-                ))}
+                {g.items.map((it) => {
+                  const CIcon = CHILD_ICON[it.to] || DotIcon;
+                  return (
+                    <NavLink key={it.to} to={it.to} end={it.to === "/"} onClick={onNavigate} style={activeBorder} className={childLink}>
+                      <CIcon />
+                      <span>{it.label}</span>
+                    </NavLink>
+                  );
+                })}
               </div>
             )}
           </div>

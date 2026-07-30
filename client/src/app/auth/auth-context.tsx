@@ -24,6 +24,8 @@ export type User = {
   avatar_url?: string | null;
   /** The employee record this login is linked to (drives the My HR self views). */
   employee_id?: string | null;
+  /** Primary role display name, for the account menu. */
+  role?: string | null;
   /** Per-tenant AI switch, resolved from the ai.assistant.backend feature flag
    *  and returned by the auth endpoints. Absent ⇒ AI off (opt-in). Drives the
    *  global AI gate — see components/ai-actions.tsx. */
@@ -120,6 +122,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(r.user);
     setPendingToken(null);
     setStatus("authed");
+    // The login / 2FA / PIN payloads carry a MINIMAL user block (no avatar_url or
+    // employee_id). Hydrate the full profile from /me — with tokens now set, this
+    // is authenticated — so the avatar shows immediately instead of only after a
+    // hard refresh. Best-effort: if it fails, boot restore will hydrate later.
+    tenant<User>("/auth/me")
+      .then((fresh) => {
+        persistUser(fresh);
+        setUser(fresh);
+      })
+      .catch(() => {
+        /* keep the minimal user */
+      });
   }
 
   const login: AuthState["login"] = async (email, password, keepSignedIn = true) => {

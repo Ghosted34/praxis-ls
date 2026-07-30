@@ -164,7 +164,7 @@ export function MySecurityPage() {
   const errCls = "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive";
 
   return (
-    <section className="mx-auto max-w-2xl animate-fade-in">
+    <section className="mx-auto max-w-6xl animate-fade-in">
       <PageHeader eyebrow={<HubCrumb area="Security & access" to="/security" />} title="My security" description="Protect your account with an authenticator app and a device-bound Quick PIN." />
       <HubTabs />
 
@@ -200,6 +200,7 @@ export function MySecurityPage() {
           </div>
         </SettingsCard>
 
+        <div className="grid gap-5 lg:grid-cols-2 lg:items-start">
         {/* MFA */}
         <SettingsCard title="Authenticator app (MFA)" desc="Time-based codes as a second factor at sign-in.">
           {!setup ? (
@@ -303,6 +304,7 @@ export function MySecurityPage() {
 
           {pinMsg && <p className={`mt-4 ${pinMsg.kind === "ok" ? okCls : errCls}`}>{pinMsg.text}</p>}
         </SettingsCard>
+        </div>
       </div>
     </section>
   );

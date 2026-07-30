@@ -5,6 +5,7 @@ const service = require("./app_user.service");
 const actor = (req) => req.user || { user_id: null };
 const list = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listUsers(c, req.query)) }));
 const get = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getUser(c, req.params.id)) }));
+const linkableEmployees = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listLinkableEmployees(c)) }));
 const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req) })) }));
 const update = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateUser(c, { id: req.params.id, patch: req.body, actor: actor(req) })) }));
 const setPassword = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setPassword(c, { id: req.params.id, newPassword: req.body.new_password, actor: actor(req) })) }));
@@ -103,7 +104,7 @@ const disableTotp = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  list, get, create, update, setPassword, setStatus, getSignature, setSignature,
+  list, get, linkableEmployees, create, update, setPassword, setStatus, getSignature, setSignature,
   pinRegister, pinLogin, pinDevices, pinRevoke,
   login,
   setAvatar,

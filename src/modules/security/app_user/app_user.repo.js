@@ -147,6 +147,19 @@ async function updateUserFields(client, id, fields) {
   const { rows } = await client.query("UPDATE app_user SET " + set + ", updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, ...keys.map((k) => fields[k])]);
   return rows[0] || null;
 }
+async function employeeExists(client, employeeId) {
+  const { rows } = await client.query("SELECT 1 FROM employee WHERE employee_id = $1", [employeeId]);
+  return rows.length > 0;
+}
+/** Active employees in THIS (identity/live) schema — the only ones an app_user
+ *  can be linked to, since app_user + its employee FK live in the live schema.
+ *  Used by the user-edit picker so it never offers sandbox employees. */
+async function listEmployeesLite(client) {
+  const { rows } = await client.query(
+    "SELECT employee_id, full_name FROM employee WHERE is_active = true ORDER BY full_name",
+  );
+  return rows;
+}
 async function setAvatar(client, id, url) {
   const { rows } = await client.query(
     "UPDATE app_user SET avatar_ref = $2, updated_at = now() WHERE user_id = $1 RETURNING avatar_ref",
@@ -176,6 +189,14 @@ async function roleCodes(client, id) {
 async function roleIds(client, id) {
   const { rows } = await client.query("SELECT role_id FROM user_role WHERE user_id = $1", [id]);
   return rows.map((r) => r.role_id);
+}
+/** Display names of a user's roles (system roles first), for the account menu. */
+async function roleNames(client, id) {
+  const { rows } = await client.query(
+    "SELECT r.name FROM user_role ur JOIN role r ON r.role_id = ur.role_id WHERE ur.user_id = $1 ORDER BY r.is_system DESC, r.name",
+    [id],
+  );
+  return rows.map((r) => r.name);
 }
 /** Count ACTIVE users holding the CEO role (for the last-CEO guard). */
 async function countActiveCeos(client) {
@@ -273,8 +294,8 @@ async function killAllSessionsForUser(client, userId, killedBy) {
 
 module.exports = {
   ...crud,
-  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
-  getSignature, upsertSignature, ceoRoleId,
+  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
+  getSignature, upsertSignature, ceoRoleId, roleNames,
   createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser,
   insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,

@@ -31,6 +31,10 @@ const MODULE = "MOD-67";
 const usersRouter = express.Router();
 usersRouter.use(authMiddleware);
 usersRouter.get("/", requirePermission(MODULE, "view"), controller.list);
+// Live-schema employees for the user↔employee link picker (before /:id so
+// "employees" isn't captured as an :id). app_user + its FK live in the live
+// schema, so the picker must not offer sandbox employees.
+usersRouter.get("/employees", requirePermission(MODULE, "view"), controller.linkableEmployees);
 usersRouter.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);

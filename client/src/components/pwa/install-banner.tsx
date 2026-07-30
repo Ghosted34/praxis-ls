@@ -98,9 +98,13 @@ export function InstallBanner() {
       className="fixed inset-x-0 bottom-0 z-[60] flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+12px)]"
     >
       <div className="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border bg-popover p-4 shadow-l">
-        <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
-          {brandName.charAt(0)}
-        </div>
+        {branding.logoUrl ? (
+          <img src={branding.logoUrl} alt={brandName} className="h-10 w-auto max-w-[7rem] flex-none rounded-lg object-contain" />
+        ) : (
+          <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
+            {brandName.charAt(0)}
+          </div>
+        )}
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold text-foreground">Install {brandName}</p>
           {iosMode ? (

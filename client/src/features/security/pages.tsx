@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
@@ -367,10 +368,12 @@ export function UsersPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Users"
         description="Tenant user accounts. Roles decide reach; status decides whether they can sign in at all."
         action={<Button onClick={() => setForm({ user: null })}>New user</Button>}
       />
+      <HubTabs />
       <KpiRow>
         <KpiTile label="Users" value={num(all.length)} />
         <KpiTile label="Active" value={num(active)} />
@@ -491,10 +494,12 @@ export function RolesPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Roles"
         description="Job areas, stored as rows rather than code. Seeded system roles can't be deleted."
         action={<Button onClick={() => setForm({ role: null })}>New role</Button>}
       />
+      <HubTabs />
       <KpiRow>
         <KpiTile label="Roles" value={num(all.length)} />
         <KpiTile label="Tenant-defined" value={num(all.filter((r) => !r.is_system).length)} />
@@ -578,10 +583,12 @@ export function CapabilitiesPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Capabilities"
         description="ISSUER / VALIDATOR / APPROVER / LINE_MANAGER — who may act on a document, independent of which module they can see."
         action={<Button onClick={() => setForm({ cap: null })}>New capability</Button>}
       />
+      <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.capability_id} onRowClick={(r) => setForm({ cap: r })} empty={{ title: "No capabilities", hint: "The four standard capabilities are normally seeded." }} />
       {form && <CapabilityForm cap={form.cap} onClose={() => setForm(null)} onSaved={reload} />}
       {del && <ConfirmDelete title="Delete capability" what={`${del.code} · ${del.name}`} path={`/capabilities/${del.capability_id}`} onClose={() => setDel(null)} onDone={reload} />}
@@ -696,10 +703,12 @@ export function ScopesPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Scopes"
         description="The entity, branch or department a user is confined to. Deleting a scope cascades to its assignments."
         action={<Button onClick={() => setForm({ scope: null })}>New scope</Button>}
       />
+      <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.scope_id} onRowClick={(r) => setForm({ scope: r })} empty={{ title: "No scopes", hint: "Add HQ first, then branches beneath it." }} />
       {form && <ScopeForm scope={form.scope} scopes={all} entities={entitiesQ.rows || []} onClose={() => setForm(null)} onSaved={reload} />}
       {del && <ConfirmDelete title="Delete scope" what={`${del.code} · ${del.name}`} path={`/scopes/${del.scope_id}`} onClose={() => setDel(null)} onDone={reload} />}
@@ -801,10 +810,12 @@ export function FieldVisibilityPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Field visibility"
         description="Per-role masking of confidential fields — margins, salaries, cost rates. Editing these needs the approve action, not just edit."
         action={<Button onClick={() => setForm({ fv: null })}>New rule</Button>}
       />
+      <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.field_visibility_id} onRowClick={(r) => setForm({ fv: r })} empty={{ title: "No masking rules", hint: "Without a rule every field is visible to anyone who can read the record." }} />
       {form && <FieldVisForm fv={form.fv} roles={rolesQ.rows || []} onClose={() => setForm(null)} onSaved={reload} />}
       {del && <ConfirmDelete title="Delete field rule" what={`${del.field_key} · ${del.visibility}`} path={`/field-visibility/${del.field_visibility_id}`} onClose={() => setDel(null)} onDone={reload} />}
@@ -866,10 +877,12 @@ export function SessionsPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Sessions"
         description="Active sign-ins. Revoking a session invalidates its refresh token immediately — the next refresh is rejected as reuse."
         action={tab === "mine" ? <Button variant="outline" onClick={killAllMine} loading={busy}>Revoke all mine</Button> : undefined}
       />
+      <HubTabs />
       <Segmented
         value={tab}
         onChange={setTab}

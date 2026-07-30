@@ -118,7 +118,7 @@ export function CostingPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Costing" description="Planned cost sheets and margin per dossier." action={<Button onClick={() => setOpen(true)}>New costing</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Costing" description="Planned cost sheets and margin per dossier." action={<Button onClick={() => setOpen(true)}>New costing</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Costings" value={num(list.length)} />
@@ -149,7 +149,7 @@ export function CostTrackingPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Cost tracking" description="Actual costs booked against a dossier, vs the plan." />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Cost tracking" description="Actual costs booked against a dossier, vs the plan." />
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>
@@ -266,7 +266,7 @@ export function CashRequestsPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Cash requests" description="Advances requested against dossier budgets." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Cash requests" description="Advances requested against dossier budgets." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Requests" value={num(list.length)} />
@@ -330,7 +330,7 @@ export function RegiePage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Régie d'avance" description="Cash advances (floats) and their ageing." action={<Button onClick={() => setOpen(true)}>Issue advance</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Régie d'avance" description="Cash advances (floats) and their ageing." action={<Button onClick={() => setOpen(true)}>Issue advance</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Advances" value={num(list.length)} />

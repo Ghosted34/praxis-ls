@@ -50,6 +50,8 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { ErrorState } from "@/components/ui/states";
 import { PageSkeleton } from "@/components/ui/skeleton";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { cn } from "@/lib/cn";
 
 const key = (roleId: string, moduleKey: string) => `${roleId}::${moduleKey}`;
@@ -215,14 +217,13 @@ export function PermissionMatrixPage() {
     : null;
 
   return (
-    <section className="animate-fade-in">
-      <header className="mb-4">
-        <h1 className="font-display text-2xl tracking-tight">Permission matrix</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Role × module access. Each dot is the strongest grant on that pair — click any cell to edit
-          the five underlying permissions. Changes save instantly and are audited.
-        </p>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Security & access" to="/security" />}
+        title="Permission matrix"
+        description="Role × module access. Each dot is the strongest grant on that pair — click any cell to edit the five underlying permissions. Changes save instantly and are audited."
+      />
+      <HubTabs />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">

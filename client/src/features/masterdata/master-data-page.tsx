@@ -32,7 +32,7 @@ const TABS: HubTab[] = [
 ];
 
 export function MasterDataPage() {
-  // inlineTabs: these tab pages own their own headers and don't call <HubTabs/>,
-  // so the shell renders the bar (preserves the previous look exactly).
-  return <TabbedHub eyebrow="Master data" basePath="/master" tabs={TABS} inlineTabs />;
+  // Costing pattern: each tab page renders its own PageHeader then the HubTabs
+  // bar, so the tab strip sits under the page header (not above the breadcrumb).
+  return <TabbedHub eyebrow="Master data" basePath="/master" tabs={TABS} />;
 }

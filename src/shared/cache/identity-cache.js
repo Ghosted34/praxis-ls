@@ -53,6 +53,8 @@ async function getAuthUser(client, userId) {
     `SELECT u.user_id,
             u.email,
             u.full_name AS display_name,
+            u.employee_id,
+            u.avatar_ref,
             u.status,
             COALESCE(
               array_agg(DISTINCT ur.role_id) FILTER (WHERE ur.role_id IS NOT NULL),

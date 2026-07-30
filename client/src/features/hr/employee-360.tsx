@@ -14,7 +14,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -251,8 +251,8 @@ export function EmployeesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Employees" description="The staff master — pick a person for their full HR record and history." action={<Button onClick={() => setCreating(true)}>New employee</Button>} />
-      {employees.error ? <ErrorState message={employees.error} /> : (
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Employees" description="The staff master — pick a person for their full HR record and history." action={<Button onClick={() => setCreating(true)}>New employee</Button>} />
+      <HubTabs />      {employees.error ? <ErrorState message={employees.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <div className="space-y-2">
             <Input placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />

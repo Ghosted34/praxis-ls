@@ -143,7 +143,7 @@ export function WorkOrdersPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Work orders" description="Log maintenance jobs, parts and labour; cost rolls up from the parts." action={<Button onClick={() => setCreating(true)}>New work order</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Work orders" description="Log maintenance jobs, parts and labour; cost rolls up from the parts." action={<Button onClick={() => setCreating(true)}>New work order</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={orders.data} error={orders.error} loading={orders.loading} rowKey={(o) => o.work_order_id} empty={{ title: "No work orders", hint: "Open one to start logging maintenance." }} />
       {view && <WorkOrderDetail order={view} onClose={() => setView(null)} onChanged={orders.reload} />}

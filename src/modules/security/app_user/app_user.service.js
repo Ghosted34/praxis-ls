@@ -40,6 +40,7 @@ const identityCache = require("../../../shared/cache/identity-cache");
 const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
 const emailService = require("../../../services/email.service");
+const storage = require("../../../services/storage.service");
 const passwordPolicy = require("../../../shared/security/password-policy");
 const notificationRepo = require("../../notification/notification.repo");
 const repo = require("./app_user.repo");
@@ -361,9 +362,33 @@ async function me(client, user) {
     user_id: user.user_id,
     email: user.email,
     display_name: user.display_name,
+    employee_id: user.employee_id || null,
+    avatar_url: user.avatar_ref || null,
     ai_enabled,
     channels,
   };
+}
+
+// ── Self-service profile picture ──
+const AVATAR_EXT = { "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg", "image/webp": "webp", "image/gif": "gif" };
+const MAX_AVATAR_BYTES = 1024 * 1024; // 1 MB
+
+/** Store a base64 data-URL avatar and set it on the user. Returns the /media URL. */
+async function setAvatar(client, { userId, dataUrl, slug }) {
+  const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
+  if (!m) throw new AppError("BAD_IMAGE", "Expected a base64 image data URL", 400);
+  const contentType = m[1].toLowerCase();
+  const ext = AVATAR_EXT[contentType];
+  if (!ext) throw new AppError("UNSUPPORTED_IMAGE", `Unsupported image type: ${contentType}`, 415);
+  const buffer = Buffer.from(m[2], "base64");
+  if (buffer.length > MAX_AVATAR_BYTES) throw new AppError("IMAGE_TOO_LARGE", "Avatar must be 1 MB or smaller", 413);
+
+  const key = `tenant_${slug || "t"}/avatars/${userId}_${crypto.randomBytes(5).toString("hex")}.${ext}`;
+  const stored = await storage.put(buffer, { key, contentType });
+  const row = await repo.setAvatar(client, userId, stored.public_url);
+  await identityCache.invalidateUser(userId); // so the new avatar shows on next request
+  await audit(client, { actorUserId: userId, action: "app_user.avatar_set", moduleKey: events.MODULE, entityRef: "app_user:" + userId });
+  return { avatar_url: (row && row.avatar_ref) || stored.public_url };
 }
 
 async function logout(client, { actor, sessionId }) {
@@ -660,6 +685,7 @@ module.exports = {
   refreshTokenReused,
   me,
   logout,
+  setAvatar,
   requestPasswordReset,
   resetPassword,
 };

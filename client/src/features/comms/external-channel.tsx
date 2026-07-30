@@ -22,7 +22,7 @@ function ExternalChannel({ platform }: { platform: Platform }) {
   const [q, setQ] = React.useState("");
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader eyebrow={<HubCrumb area="Comms" />} title={m.label} description={m.blurb} />
+      <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title={m.label} description={m.blurb} />
       <HubTabs />
 
       <div className="mb-4 rounded-xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn)/0.08)] px-4 py-3 text-sm">

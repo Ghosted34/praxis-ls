@@ -30,18 +30,28 @@ export function PageHeader({
   eyebrow,
 }: {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   action?: React.ReactNode;
   eyebrow?: React.ReactNode;
 }) {
   return (
     <header className="mb-4 flex flex-wrap items-start justify-between gap-x-4 gap-y-3 border-b pb-3">
       <div className="flex min-w-0 items-start gap-3">
-      <span aria-hidden className="mt-0.5 h-8 w-1 shrink-0 rounded-full bg-gradient-to-b from-primary to-transparent" />
+        <span aria-hidden className="mt-1 h-7 w-1 shrink-0 rounded-full bg-primary" />
         <div className="min-w-0">
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
-          <h1 className="font-display text-[22px] leading-tight tracking-tight">{title}</h1>
-          {description && <p className="mt-0.5 text-sm text-muted-foreground">{description}</p>}
+          {description ? (
+            // Inside a hub the tab bar already names the screen, so leading with
+            // the tab-duplicating title is redundant — lead with the one-line
+            // description instead. When there's no eyebrow (standalone page), keep
+            // the title as a small kicker above it so no context is lost.
+            <>
+              {!eyebrow && title && <div className="micro mb-1">{title}</div>}
+              <p className="max-w-2xl text-[15px] font-medium leading-snug text-foreground">{description}</p>
+            </>
+          ) : (
+            <h1 className="font-display text-[22px] leading-tight tracking-tight">{title}</h1>
+          )}
         </div>
       </div>
       {action && <div className="shrink-0">{action}</div>}

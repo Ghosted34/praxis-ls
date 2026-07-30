@@ -48,6 +48,13 @@ const logout = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
+const setAvatar = asyncHandler(async (req, res) => {
+  const result = await req.identityDb((client) =>
+    service.setAvatar(client, { userId: req.user.user_id, dataUrl: req.body.data_url, slug: req.tenant && req.tenant.slug }),
+  );
+  res.json({ data: result });
+});
+
 const forgotPassword = asyncHandler(async (req, res) => {
   // Same-origin per tenant → build the reset link from the requesting host so
   // the emailed link lands back on this tenant's workspace. Force https in prod.
@@ -99,6 +106,7 @@ module.exports = {
   list, get, create, update, setPassword, setStatus, getSignature, setSignature,
   pinRegister, pinLogin, pinDevices, pinRevoke,
   login,
+  setAvatar,
   forgotPassword,
   resetPassword,
   verifyTotp,

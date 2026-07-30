@@ -84,7 +84,7 @@ export function MailPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader eyebrow={<HubCrumb area="Comms" />} title="Mail" description="Every section sends from its own verified address — outbound log and inbound replies." />
+      <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title="Mail" description="Every section sends from its own verified address — outbound log and inbound replies." />
       <HubTabs />
 
       {/* direction toggle */}

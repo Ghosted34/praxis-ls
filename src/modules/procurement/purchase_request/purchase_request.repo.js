@@ -22,7 +22,7 @@ async function listPR(client, q = {}) {
   const wh = ["1=1"];
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   const { rows } = await client.query(
-    "SELECT * FROM purchase_request WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params,
+    "SELECT *, doc_number AS ref FROM purchase_request WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params,
   );
   return rows;
 }

@@ -8,6 +8,10 @@ import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
 import { ResourceList } from "@/components/resource-list";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
+import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { Pill } from "@/components/ui/pill";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
@@ -380,60 +384,47 @@ export function JournalsPage() {
   const isValidated = (r: Record<string, unknown>) => String(r.status ?? "").toLowerCase() === "validated";
   const isReversal = (r: Record<string, unknown>) => !!r.corrects_entry_id;
 
+  const list = rows ?? [];
+  const columns: Column<Record<string, unknown>>[] = [
+    ...JOURNAL_COLS.map((c): Column<Record<string, unknown>> => ({
+      key: c.key,
+      label: c.label,
+      render: (r) => (
+        <span className="text-sm">
+          {c.key === "entry_date" ? dateFmt(r[c.key] as string) : fmtCell(r[c.key])}
+          {c.key === "description" && isReversal(r) && <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">reversal</span>}
+        </span>
+      ),
+    })),
+    {
+      key: "_a", label: "", render: (r) => (
+        isValidated(r) && !isReversal(r)
+          ? <div className="flex justify-end"><Button size="sm" variant="outline" onClick={() => setReverseTarget(r)}>Reverse</Button></div>
+          : <span className="text-xs text-muted-foreground">—</span>
+      ),
+    },
+  ];
+
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Journals</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            General ledger journal entries — balanced-or-rejected, reversal-not-edit.
-            General ledger journal entries — balanced-or-rejected, reversal-not-edit.
-          </p>
-        </div>
-        <Button onClick={() => setPostOpen(true)}>Post entry</Button>
-      </header>
-
-      {error ? (
-        <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No entries yet" hint="Post a journal entry to get started." />
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              {JOURNAL_COLS.map((c) => (
-                <TH key={c.key}>{c.label}</TH>
-              ))}
-              <TH>Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r, i) => (
-              <TR key={i}>
-                {JOURNAL_COLS.map((c) => (
-                  <TD key={c.key} className="text-sm">
-                    {c.key === "entry_date" ? dateFmt(r[c.key] as string) : fmtCell(r[c.key])}
-                    {c.key === "description" && isReversal(r) && (
-                      <span className="ml-2 rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground">reversal</span>
-                    )}
-                  </TD>
-                ))}
-                <TD>
-                  {isValidated(r) && !isReversal(r) ? (
-                    <Button size="sm" variant="outline" onClick={() => setReverseTarget(r)}>
-                      Reverse
-                    </Button>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      )}
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title="Journals"
+        description="General ledger journal entries — balanced-or-rejected, reversal-not-edit."
+        action={<Button onClick={() => setPostOpen(true)}>Post entry</Button>}
+      />
+      <KpiRow>
+        <KpiTile label="Entries" value={String(list.length)} />
+        <KpiTile label="Validated" value={String(list.filter(isValidated).length)} />
+      </KpiRow>
+      <DataList
+        columns={columns}
+        rows={list}
+        loading={rows === null}
+        error={error}
+        rowKey={(r, i) => String(r.entry_id ?? r.entry_no ?? i)}
+        empty={{ title: "No entries yet", hint: "Post a journal entry to get started." }}
+      />
 
       <JournalEntryForm open={postOpen} onClose={() => setPostOpen(false)} onPosted={reload} />
       <JournalReverseForm entry={reverseTarget} onClose={() => setReverseTarget(null)} onReversed={reload} />
@@ -595,60 +586,43 @@ export const ProformasPage = () => {
   }, []);
 
   const str = (r: Record<string, unknown>, k: string) => (r[k] == null ? "" : String(r[k]));
+  const list = rows ?? [];
+  const totalOpen = list.reduce((s, r) => s + Math.max(0, Number(r.amount ?? 0) - Number(r.applied_amount ?? 0)), 0);
+  const columns: Column<Record<string, unknown>>[] = [
+    { key: "received", label: "Received", render: (r) => dateFmt(str(r, "received_on") || str(r, "created_at") || null) },
+    { key: "client", label: "Client", render: (r) => <span className="font-medium text-foreground">{clientName[str(r, "client_id")] || "—"}</span> },
+    { key: "dossier", label: "Dossier", render: (r) => <span className="num text-muted-foreground">{dossierRef[str(r, "dossier_id")] || (r.dossier_id ? str(r, "dossier_id").slice(0, 8) : "—")}</span> },
+    { key: "amount", label: "Amount", className: "num text-right", render: (r) => moneyFmt(Number(r.amount ?? 0)) },
+    { key: "applied", label: "Applied", className: "num text-right", render: (r) => moneyFmt(Number(r.applied_amount ?? 0)) },
+    { key: "open", label: "Open", className: "num text-right", render: (r) => <span className="font-medium">{moneyFmt(Math.max(0, Number(r.amount ?? 0) - Number(r.applied_amount ?? 0)))}</span> },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="PROFORMA_ADVANCE" id={str(r, "advance_id")} title={`Proforma ${clientName[str(r, "client_id")] || ""}`.trim()} label="View" /></div> },
+  ];
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Proforma &amp; advances</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Advance payments received against a proforma — posts to 4191 (customer advances), not revenue. Priced offers with line items live in Quotations.
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Link to="/commercial/quotations" className="text-sm text-muted-foreground transition-colors hover:text-primary">View quotations →</Link>
-          <Button onClick={() => setOpen(true)}>Record advance</Button>
-        </div>
-      </header>
-
-      {error ? (
-        <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No advances yet" hint="Record a customer advance to get started." />
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Received</TH>
-              <TH>Client</TH>
-              <TH>Dossier</TH>
-              <TH>Amount</TH>
-              <TH>Applied</TH>
-              <TH>Open</TH>
-              <TH></TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r, i) => {
-              const amount = Number(r.amount ?? 0);
-              const applied = Number(r.applied_amount ?? 0);
-              return (
-                <TR key={str(r, "advance_id") || i}>
-                  <TD className="text-sm">{dateFmt(str(r, "received_on") || str(r, "created_at") || null)}</TD>
-                  <TD className="text-sm font-medium">{clientName[str(r, "client_id")] || "—"}</TD>
-                  <TD className="num text-sm text-muted-foreground">{dossierRef[str(r, "dossier_id")] || (r.dossier_id ? str(r, "dossier_id").slice(0, 8) : "—")}</TD>
-                  <TD className="num text-sm">{moneyFmt(amount)}</TD>
-                  <TD className="num text-sm">{moneyFmt(applied)}</TD>
-                  <TD className="num text-sm font-medium">{moneyFmt(Math.max(0, amount - applied))}</TD>
-                  <TD><div className="flex justify-end"><DocButton docType="PROFORMA_ADVANCE" id={str(r, "advance_id")} title={`Proforma ${clientName[str(r, "client_id")] || ""}`.trim()} label="View" /></div></TD>
-                </TR>
-              );
-            })}
-          </TBody>
-        </Table>
-      )}
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title="Proforma & advances"
+        description="Advance payments received against a proforma — posts to 4191 (customer advances), not revenue. Priced offers with line items live in Quotations."
+        action={(
+          <div className="flex items-center gap-3">
+            <Link to="/commercial/quotations" className="text-sm text-muted-foreground transition-colors hover:text-primary">View quotations →</Link>
+            <Button onClick={() => setOpen(true)}>Record advance</Button>
+          </div>
+        )}
+      />
+      <KpiRow>
+        <KpiTile label="Advances" value={String(list.length)} />
+        <KpiTile label="Open (unapplied)" value={moneyFmt(totalOpen)} />
+      </KpiRow>
+      <DataList
+        columns={columns}
+        rows={list}
+        loading={rows === null}
+        error={error}
+        rowKey={(r, i) => str(r, "advance_id") || String(i)}
+        empty={{ title: "No advances yet", hint: "Record a customer advance to get started." }}
+      />
 
       <AdvancePaymentForm open={open} onClose={() => setOpen(false)} onPaid={reload} />
     </section>
@@ -1037,15 +1011,6 @@ function InvoiceEditForm({
   );
 }
 
-const INVOICE_COLS = [
-  { key: "doc_number", label: "Number" },
-  { key: "client", label: "Client" },
-  { key: "type", label: "Type" },
-  { key: "status", label: "Status" },
-  { key: "total_ttc", label: "Total TTC" },
-  { key: "created_at", label: "Created" },
-];
-
 function invField(r: Record<string, unknown>, keys: string[]): unknown {
   for (const k of keys) if (r[k] !== undefined && r[k] !== null) return r[k];
   return null;
@@ -1092,59 +1057,52 @@ export function InvoicesPage() {
     return s === "" || s === "DRAFT";
   };
 
+  const list = rows ?? [];
+  const money0 = (v: unknown) => moneyFmt(v as number | string | null);
+  const totalTtc = list.reduce((s, r) => s + (Number(invField(r, ["total_ttc", "total", "amount_ttc"]) ?? 0) || 0), 0);
+  const columns: Column<Record<string, unknown>>[] = [
+    { key: "ref", label: "Number", render: (r) => <span className="num font-medium text-foreground">{fmtCell(invField(r, ["doc_number", "ref"]) ?? "— (draft)")}</span> },
+    { key: "client", label: "Client", render: (r) => clientName[String(invField(r, ["client_id"]) ?? "")] || "—" },
+    { key: "type", label: "Type", render: (r) => <span className="text-muted-foreground">{fmtCell(invField(r, ["type"]))}</span> },
+    { key: "status", label: "Status", render: (r) => { const s = String(invField(r, ["status", "state"]) ?? ""); return s ? <Pill tone={/PAID|LOCKED|ISSUED/i.test(s) ? "ok" : /DRAFT/i.test(s) ? "mute" : "blue"}>{enumLabel(s)}</Pill> : <Pill tone="mute">Draft</Pill>; } },
+    { key: "total", label: "Total TTC", className: "num text-right", render: (r) => money0(invField(r, ["total_ttc", "total", "amount_ttc"])) },
+    { key: "created", label: "Created", render: (r) => dateFmt(invField(r, ["created_at", "issued_on"]) as string | null) },
+    {
+      key: "_a", label: "", render: (r) => (
+        <div className="flex flex-wrap justify-end gap-2">
+          {isDraft(r) && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setEditId(String(invField(r, ["invoice_id", "id"]) ?? ""))}>Edit</Button>
+              <Button size="sm" variant="outline" onClick={() => setSubmitTarget(r)}>Submit</Button>
+            </>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => navigate(`/documents/FINAL_INVOICE/${String(invField(r, ["invoice_id", "id"]) ?? "")}?title=${encodeURIComponent(String(invField(r, ["doc_number", "ref"]) ?? "Invoice"))}`)}>View</Button>
+        </div>
+      ),
+    },
+  ];
+
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Invoices</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Final invoices — revenue recognition, clears advance + débours.
-          </p>
-        </div>
-        <Button onClick={() => setDraftOpen(true)}>New draft</Button>
-      </header>
-
-      {error ? (
-        <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No invoices yet" hint="Create a draft to get started." />
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              {INVOICE_COLS.map((c) => (
-                <TH key={c.key}>{c.label}</TH>
-              ))}
-              <TH>Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r, i) => (
-              <TR key={i}>
-                <TD className="text-sm">{fmtCell(invField(r, ["doc_number", "ref"]) ?? "— (draft)")}</TD>
-                <TD className="text-sm">{clientName[String(invField(r, ["client_id"]) ?? "")] || "—"}</TD>
-                <TD className="text-sm">{fmtCell(invField(r, ["type"]))}</TD>
-                <TD className="text-sm">{enumLabel(String(invField(r, ["status", "state"]) ?? "") || null)}</TD>
-                <TD className="num text-sm">{moneyFmt(invField(r, ["total_ttc", "total", "amount_ttc"]) as number | string | null)}</TD>
-                <TD className="text-sm">{dateFmt(invField(r, ["created_at", "issued_on"]) as string | null)}</TD>
-                <TD>
-                  <div className="flex flex-wrap gap-2">
-                    {isDraft(r) && (
-                      <>
-                        <Button size="sm" variant="ghost" onClick={() => setEditId(String(invField(r, ["invoice_id", "id"]) ?? ""))}>Edit</Button>
-                        <Button size="sm" variant="outline" onClick={() => setSubmitTarget(r)}>Submit</Button>
-                      </>
-                    )}
-                    <Button size="sm" variant="ghost" onClick={() => navigate(`/documents/FINAL_INVOICE/${String(invField(r, ["invoice_id", "id"]) ?? "")}?title=${encodeURIComponent(String(invField(r, ["doc_number", "ref"]) ?? "Invoice"))}`)}>View</Button>
-                  </div>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      )}
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title="Invoices"
+        description="Final invoices — revenue recognition, clears advance + débours."
+        action={<Button onClick={() => setDraftOpen(true)}>New draft</Button>}
+      />
+      <KpiRow>
+        <KpiTile label="Invoices" value={String(list.length)} />
+        <KpiTile label="Drafts" value={String(list.filter(isDraft).length)} />
+        <KpiTile label="Billed (TTC)" value={money0(totalTtc)} />
+      </KpiRow>
+      <DataList
+        columns={columns}
+        rows={list}
+        loading={rows === null}
+        error={error}
+        rowKey={(r, i) => String(invField(r, ["invoice_id", "id"]) ?? i)}
+        empty={{ title: "No invoices yet", hint: "Create a draft to get started." }}
+      />
 
       <InvoiceDraftForm open={draftOpen} onClose={() => setDraftOpen(false)} onCreated={reload} />
       <InvoiceSubmitForm invoice={submitTarget} onClose={() => setSubmitTarget(null)} onSubmitted={reload} />
@@ -1161,6 +1119,7 @@ export function InvoicesPage() {
 
 export const AssetsPage = () => (
   <ResourceList
+    eyebrow={<HubCrumb area="Finance" to="/finance" />}
     title="Assets"
     description="Fixed-asset register with depreciation schedule, period posting and disposal."
     endpoint="/assets"
@@ -1191,26 +1150,28 @@ function ReportTable({ rows }: { rows: Record<string, unknown>[] }) {
   if (rows.length === 0) return <EmptyState title="Nothing to show" hint="The report returned no rows." />;
   const cols = Object.keys(rows[0]).slice(0, 8);
   return (
-    <Table>
-      <THead>
-        <TR>
-          {cols.map((c) => (
-            <TH key={c}>{keyLabel(c)}</TH>
-          ))}
-        </TR>
-      </THead>
-      <TBody>
-        {rows.map((r, i) => (
-          <TR key={i}>
+    <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+      <Table>
+        <THead>
+          <TR>
             {cols.map((c) => (
-              <TD key={c} className="num text-sm">
-                {fmt(r[c])}
-              </TD>
+              <TH key={c}>{keyLabel(c)}</TH>
             ))}
           </TR>
-        ))}
-      </TBody>
-    </Table>
+        </THead>
+        <TBody>
+          {rows.map((r, i) => (
+            <TR key={i}>
+              {cols.map((c) => (
+                <TD key={c} className="num text-sm">
+                  {fmt(r[c])}
+                </TD>
+              ))}
+            </TR>
+          ))}
+        </TBody>
+      </Table>
+    </div>
   );
 }
 
@@ -1479,10 +1440,7 @@ function ReportTabs({
 
   return (
     <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="font-display text-2xl tracking-tight">{title}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{description}</p>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title={title} description={description} />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b">
         {tabs.map((t) => (
@@ -2204,60 +2162,47 @@ export function CreditNotesPage() {
     return s === "" || s === "DRAFT";
   };
 
+  const list = rows ?? [];
+  const columns: Column<CreditNote>[] = [
+    { key: "ref", label: "Number", render: (r) => <span className="num font-medium text-foreground">{fmtCell(r.doc_number ?? "— (draft)")}</span> },
+    { key: "status", label: "Status", render: (r) => { const s = String(r.status ?? ""); return s ? <Pill tone={/POSTED|LOCKED/i.test(s) ? "ok" : /DRAFT/i.test(s) ? "mute" : "blue"}>{enumLabel(s)}</Pill> : <Pill tone="mute">Draft</Pill>; } },
+    { key: "total", label: "Total TTC", className: "num text-right", render: (r) => moneyFmt(r.total_ttc as number | string | null) },
+    { key: "created", label: "Created", render: (r) => dateFmt(r.created_at as string | null) },
+    {
+      key: "_a", label: "", render: (r) => (
+        <div className="flex justify-end gap-2">
+          <DocButton docType="CREDIT_NOTE" id={String(r.invoice_id ?? r.credit_note_id ?? "")} title={r.doc_number ? String(r.doc_number) : "Credit note"} label="View" />
+          {isDraft(r) && (
+            <>
+              <Button size="sm" variant="ghost" onClick={() => setEditId(String(r.credit_note_id))}>Edit</Button>
+              <Button size="sm" variant="outline" onClick={() => setPostTarget(r)}>Post</Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Credit notes</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Reverse a finalised invoice — draft, then post the contra entry.</p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>New credit note</Button>
-      </header>
-
-      {error ? (
-        <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No credit notes yet" hint="Create one to reverse a finalised invoice." />
-      ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Number</TH>
-              <TH>Status</TH>
-              <TH>Total TTC</TH>
-              <TH>Created</TH>
-              <TH>Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r) => (
-              <TR key={String(r.credit_note_id)}>
-                <TD className="text-sm">{fmtCell(r.doc_number ?? "— (draft)")}</TD>
-                <TD className="text-sm">{enumLabel(r.status ? String(r.status) : null)}</TD>
-                <TD className="num text-sm">{moneyFmt(r.total_ttc as number | string | null)}</TD>
-                <TD className="text-sm">{dateFmt(r.created_at as string | null)}</TD>
-                <TD>
-                  <div className="flex gap-2">
-                    <DocButton docType="CREDIT_NOTE" id={String(r.invoice_id ?? r.credit_note_id ?? "")} title={r.doc_number ? String(r.doc_number) : "Credit note"} label="View" />
-                    {isDraft(r) && (
-                      <>
-                        <Button size="sm" variant="ghost" onClick={() => setEditId(String(r.credit_note_id))}>
-                          Edit
-                        </Button>
-                        <Button size="sm" variant="outline" onClick={() => setPostTarget(r)}>
-                          Post
-                        </Button>
-                      </>
-                    )}
-                  </div>
-                </TD>
-              </TR>
-            ))}
-          </TBody>
-        </Table>
-      )}
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title="Credit notes"
+        description="Reverse a finalised invoice — draft, then post the contra entry."
+        action={<Button onClick={() => setCreateOpen(true)}>New credit note</Button>}
+      />
+      <KpiRow>
+        <KpiTile label="Credit notes" value={String(list.length)} />
+        <KpiTile label="Drafts" value={String(list.filter(isDraft).length)} />
+      </KpiRow>
+      <DataList
+        columns={columns}
+        rows={list}
+        loading={rows === null}
+        error={error}
+        rowKey={(r) => String(r.credit_note_id)}
+        empty={{ title: "No credit notes yet", hint: "Create one to reverse a finalised invoice." }}
+      />
 
       <CreditNoteCreateForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} />
       <CreditNoteEditForm creditNoteId={editId} onClose={() => setEditId(null)} onSaved={reload} />

@@ -70,7 +70,7 @@ export function LocationsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Locations" description="Warehouse slotting by zone, aisle, rack and bin." action={<Button onClick={() => setCreating(true)}>New location</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Locations" description="Warehouse slotting by zone, aisle, rack and bin." action={<Button onClick={() => setCreating(true)}>New location</Button>} />
       <HubTabs />
       {locs.error ? <ErrorState message={locs.error} /> : locs.loading ? (
         <div className="px-3 py-6 text-center micro">Loading…</div>

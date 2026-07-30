@@ -20,7 +20,7 @@ async function listTO(client, q = {}) {
   const params = [limit, offset];
   const wh = ["1=1"];
   if (q.dossier_id) { params.push(q.dossier_id); wh.push("dossier_id = $" + params.length); }
-  const { rows } = await client.query("SELECT * FROM transit_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
+  const { rows } = await client.query("SELECT *, ot_number AS ref FROM transit_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
 module.exports = { insertTO, getTO, update, listTO, insertLine, listLines };

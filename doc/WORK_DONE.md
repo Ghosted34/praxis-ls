@@ -45,9 +45,17 @@ the floating cluster; favicon applied from branding (`paint()`); vendor-card sta
 **Docs.** New `doc/PLATFORM_CONSOLE_DEPLOY.md`; `doc/DOC_UI_OVERHAUL_STEP1.md` + `doc/SESSION_HANDOFF.md`
 updated.
 
-**Migrations owed:** platform `0060`, tenant `0475` + `0476`. **Verification owed:** full `tsc` / `vite build`
-/ `jest` on a real machine (in-sandbox: backend ESLint + per-file TS syntax checks clean); set the shared AI
-keys in the console; verify a live AI call on a tenant.
+**Numbering + line-item integrity (late in session).** Fixed lists showing UUIDs instead of doc numbers —
+aliased the number column `AS ref` in the PR/PO/supplier-invoice/transit/delivery list queries (they read
+`r.ref`, which was never populated). Converted the free-text line inputs to catalogue selects
+(`components/catalogue-select.tsx`): PO + PR → financial dictionary, GRN + delivery note + transit order →
+inventory; **`0477_line_item_refs.sql`** adds the `dictionary_item_id`/`inventory_item_id` FKs (label kept as a
+snapshot). Selects are empty until the dictionary/inventory masters have rows.
+
+**Migrations owed:** platform `0060`, tenant `0475` + `0476` + `0477`. **Verification owed:** full `tsc` /
+`vite build` / `jest` on a real machine (in-sandbox: backend ESLint + per-file TS syntax checks clean); set the
+shared AI keys in the console; verify a live AI call on a tenant; seed the financial-dictionary + inventory
+masters so the line selects have options.
 
 ---
 

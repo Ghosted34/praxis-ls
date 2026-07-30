@@ -177,7 +177,7 @@ export function InventoryPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Inventory" description="Stock on hand by item and state — receive, issue, adjust, transfer, and the movement journal." action={<Button onClick={() => setCreating(true)}>New item</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Inventory" description="Stock on hand by item and state — receive, issue, adjust, transfer, and the movement journal." action={<Button onClick={() => setCreating(true)}>New item</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={items.data} error={items.error} loading={items.loading} rowKey={(i) => i.inventory_item_id} empty={{ title: "No stock", hint: "Add a stock item to get started." }} />
       {view && <ItemDetail item={view} locMap={locMap} locations={locs.data || []} onClose={() => setView(null)} onChanged={items.reload} />}

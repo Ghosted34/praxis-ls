@@ -58,4 +58,19 @@ async function listItems(client, runId) {
   return rows;
 }
 
-module.exports = { createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems };
+/** An employee's own payslips across runs (My HR). Only DISBURSED/APPROVED runs
+ *  are the employee's real pay history; drafts are excluded. */
+async function payslipsForEmployee(client, employeeId) {
+  const { rows } = await client.query(
+    `SELECT pri.payroll_run_item_id, pri.gross, pri.net_pay,
+            pr.period_code, pr.status
+       FROM payroll_run_item pri
+       JOIN payroll_run pr ON pr.payroll_run_id = pri.payroll_run_id
+      WHERE pri.employee_id = $1 AND pr.status IN ('APPROVED','VALIDATED','DISBURSED')
+      ORDER BY pr.period_code DESC`,
+    [employeeId],
+  );
+  return rows;
+}
+
+module.exports = { createRun, findRun, runByPeriod, updateRun, listRuns, deleteItems, insertItem, listItems, payslipsForEmployee };

@@ -18,6 +18,8 @@
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -545,11 +547,9 @@ export function LeadsPage() {
   const [tab, setTab] = React.useState<"leads" | "intake">(initialTab as "leads" | "intake");
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="font-display text-2xl tracking-tight">Leads & intake</h1>
-        <p className="mt-1 text-sm text-muted-foreground">The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them(·).</p>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />} title="Leads & intake" description="The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them." />
+      <HubTabs />
 
       <div className="mb-5">
         <Segmented
@@ -781,14 +781,14 @@ export function MeetingsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Meetings</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Scheduling and minutes against a lead or client — the CRM activity log.</p>
-        </div>
-        <Button onClick={() => setFormOpen(true)}>Schedule meeting</Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Meetings"
+        description="Scheduling and minutes against a lead or client — the CRM activity log."
+        action={<Button onClick={() => setFormOpen(true)}>Schedule meeting</Button>}
+      />
+      <HubTabs />
 
       {error ? (
         <ErrorState message={error} />
@@ -1123,11 +1123,11 @@ export function OpportunitiesPage() {
 
   return (
     <section className="mx-auto max-w-[1400px] animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Opportunities</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The sales pipeline — drag deals across stages; value × probability is the weighted forecast.</p>
-        </div>
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Opportunities"
+        description="The sales pipeline — drag deals across stages; value × probability is the weighted forecast."
+        action={(
         <div className="flex items-center gap-3">
           <Segmented
             value={view}
@@ -1146,7 +1146,9 @@ export function OpportunitiesPage() {
             New opportunity
           </Button>
         </div>
-      </header>
+        )}
+      />
+      <HubTabs />
 
       {/* Forecast strip (Pixie "Today" metric row) */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -1749,21 +1751,14 @@ export function ProposalsPage() {
   }, [rows, filter, search]);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Proposals</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Formal proposals with narrative + line items — drafted, reviewed, sent, then accepted.</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          New proposal
-        </Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Proposals"
+        description="Formal proposals with narrative + line items — drafted, reviewed, sent, then accepted."
+        action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New proposal</Button>}
+      />
+      <HubTabs />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <Chips value={filter} options={PROPOSAL_FILTERS} onChange={setFilter} />
@@ -2235,11 +2230,11 @@ export function CampaignsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Marketing campaigns</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Outbound campaigns and the newsletter audience — launch, pause, measure.</p>
-        </div>
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Marketing campaigns"
+        description="Outbound campaigns and the newsletter audience — launch, pause, measure."
+        action={(
         <div className="flex items-center gap-3">
           <Segmented
             value={tab}
@@ -2258,7 +2253,9 @@ export function CampaignsPage() {
             <Button onClick={() => openTemplate(null)}>New template</Button>
           )}
         </div>
-      </header>
+        )}
+      />
+      <HubTabs />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <MetricTile label="Active" value={String(counts.active)} accent />
@@ -2513,21 +2510,14 @@ export function SuccessStoriesPage() {
   const filtered = React.useMemo(() => (rows || []).filter((r) => !filter || storyStatus(r) === filter), [rows, filter]);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Success stories</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Portfolio case studies — draft, sign off, then publish.</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          New story
-        </Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
+        title="Success stories"
+        description="Portfolio case studies — draft, sign off, then publish."
+        action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New story</Button>}
+      />
+      <HubTabs />
 
       <div className="mb-4">
         <Chips value={filter} options={STORY_FILTERS} onChange={setFilter} />

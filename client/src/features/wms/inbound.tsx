@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { InventoryItemSelect } from "@/components/catalogue-select";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -53,20 +54,20 @@ function PassModal({ grn, locations, onClose, onSaved }: { grn: api.GrnInbound; 
   );
 }
 
-type GrnLine = { item: string; ordered: string; received: string; condition: string };
-const blankGrnLine = (): GrnLine => ({ item: "", ordered: "", received: "", condition: "" });
+type GrnLine = { inventory_item_id: string; item: string; ordered: string; received: string; condition: string };
+const blankGrnLine = (): GrnLine => ({ inventory_item_id: "", item: "", ordered: "", received: "", condition: "" });
 
 function NewGrnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
   const [dossierId, setDossierId] = React.useState("");
   const [lines, setLines] = React.useState<GrnLine[]>([blankGrnLine()]);
-  const setLine = (i: number, k: keyof GrnLine, v: string) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, [k]: v } : l)));
+  const setLine = (i: number, patch: Partial<GrnLine>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      const rows = lines.filter((l) => l.item.trim()).map((l) => ({ item: l.item.trim(), ordered: Number(l.ordered) || 0, received: Number(l.received) || 0, condition: l.condition || undefined }));
+      const rows = lines.filter((l) => l.inventory_item_id).map((l) => ({ inventory_item_id: l.inventory_item_id, item: l.item, ordered: Number(l.ordered) || 0, received: Number(l.received) || 0, condition: l.condition || undefined }));
       await api.createInbound({ dossier_id: dossierId || undefined, lines: rows.length ? rows : undefined });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
@@ -84,10 +85,10 @@ function NewGrnForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => 
           <div className="micro">Received items</div>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-[1fr_70px_70px_90px_auto] items-center gap-2">
-              <Input value={l.item} onChange={(e) => setLine(i, "item", e.target.value)} placeholder="Item" />
-              <Input type="number" min="0" step="any" className="num text-right" value={l.ordered} onChange={(e) => setLine(i, "ordered", e.target.value)} placeholder="Ord." />
-              <Input type="number" min="0" step="any" className="num text-right" value={l.received} onChange={(e) => setLine(i, "received", e.target.value)} placeholder="Rec." />
-              <Input value={l.condition} onChange={(e) => setLine(i, "condition", e.target.value)} placeholder="Condition" />
+              <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, item: label })} />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.ordered} onChange={(e) => setLine(i, { ordered: e.target.value })} placeholder="Ord." />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.received} onChange={(e) => setLine(i, { received: e.target.value })} placeholder="Rec." />
+              <Input value={l.condition} onChange={(e) => setLine(i, { condition: e.target.value })} placeholder="Condition" />
               <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
             </div>
           ))}
@@ -147,7 +148,7 @@ export function InboundPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Inbound / GRN" description="Receive goods and clear them through QA before putaway." action={<Button onClick={() => setCreating(true)}>New receipt</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Inbound / GRN" description="Receive goods and clear them through QA before putaway." action={<Button onClick={() => setCreating(true)}>New receipt</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={grns.data} error={grns.error} loading={grns.loading} rowKey={(g) => g.grn_inbound_id} empty={{ title: "Nothing received", hint: "Open a receipt when goods arrive." }} />
       {creating && <NewGrnForm onClose={() => setCreating(false)} onSaved={grns.reload} />}

@@ -53,6 +53,8 @@ authRouter.post("/forgot-password", forgotLimiter, validator.forgotPassword, con
 authRouter.post("/reset-password", resetLimiter, validator.resetPassword, controller.resetPassword);
 authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
+// Self-service profile picture upload (base64 data URL → /media, sets avatar_ref).
+authRouter.post("/avatar", authMiddleware, validator.avatar, controller.setAvatar);
 authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);
 authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);
 authRouter.post("/2fa/enable", authMiddleware, validator.totpCode, controller.enableTotp);

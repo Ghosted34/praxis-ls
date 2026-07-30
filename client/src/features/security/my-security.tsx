@@ -7,7 +7,7 @@
  */
 import * as React from "react";
 import { useAuth } from "@/app/auth/auth-context";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, tenant } from "@/lib/api-client";
 import { pinStore } from "@/lib/pin-store";
 import {
   setupTotp,
@@ -19,6 +19,8 @@ import {
   type PinDeviceRow,
 } from "@/lib/security-api";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { OtpInput } from "@/components/ui/otp-input";
 import { SettingsCard, Field } from "@/components/settings/controls";
@@ -34,7 +36,38 @@ function errText(e: unknown): string {
 }
 
 export function MySecurityPage() {
-  const { user, registerPin } = useAuth();
+  const { user, registerPin, patchUser } = useAuth();
+
+  // --- Profile picture ---
+  const avatarInput = React.useRef<HTMLInputElement>(null);
+  const [avatarBusy, setAvatarBusy] = React.useState(false);
+  const [avatarMsg, setAvatarMsg] = React.useState<Msg>(null);
+  async function onAvatarPick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    if (file.size > 1024 * 1024) {
+      setAvatarMsg({ kind: "err", text: "Image must be 1 MB or smaller." });
+      return;
+    }
+    setAvatarBusy(true);
+    setAvatarMsg(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Couldn't read that image."));
+        r.readAsDataURL(file);
+      });
+      const res = await tenant<{ avatar_url: string }>("/auth/avatar", { method: "POST", body: { data_url: dataUrl } });
+      patchUser({ avatar_url: res.avatar_url });
+      setAvatarMsg({ kind: "ok", text: "Profile picture updated." });
+    } catch (err) {
+      setAvatarMsg({ kind: "err", text: errText(err) });
+    } finally {
+      setAvatarBusy(false);
+    }
+  }
 
   // --- MFA ---
   const [setup, setSetup] = React.useState<TotpSetup | null>(null);
@@ -132,12 +165,41 @@ export function MySecurityPage() {
 
   return (
     <section className="mx-auto max-w-2xl animate-fade-in">
-      <h1 className="font-display text-2xl tracking-tight">My security</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Protect your account with an authenticator app and a device-bound Quick PIN.
-      </p>
+      <PageHeader eyebrow={<HubCrumb area="Security & access" to="/security" />} title="My security" description="Protect your account with an authenticator app and a device-bound Quick PIN." />
+      <HubTabs />
 
-      <div className="mt-6 flex flex-col gap-5">
+      <div className="mt-2 flex flex-col gap-5">
+        {/* Profile picture */}
+        <SettingsCard title="Profile picture" desc="Shown on your account menu across the app.">
+          <div className="flex items-center gap-4">
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="Your avatar" className="h-16 w-16 rounded-xl object-cover" />
+            ) : (
+              <span className="grid h-16 w-16 place-items-center rounded-xl bg-primary text-xl font-bold text-primary-foreground">
+                {(user?.display_name || user?.email || "?").charAt(0).toUpperCase()}
+              </span>
+            )}
+            <div>
+              <input
+                ref={avatarInput}
+                type="file"
+                accept="image/png,image/jpeg,image/webp,image/gif"
+                className="hidden"
+                onChange={onAvatarPick}
+              />
+              <Button variant="outline" onClick={() => avatarInput.current?.click()} loading={avatarBusy}>
+                Change picture
+              </Button>
+              <p className="mt-1 text-xs text-muted-foreground">PNG, JPG, WEBP or GIF, up to 1 MB.</p>
+              {avatarMsg && (
+                <p className={`mt-1 text-xs ${avatarMsg.kind === "ok" ? "text-[rgb(var(--ok))]" : "text-[rgb(var(--bad))]"}`}>
+                  {avatarMsg.text}
+                </p>
+              )}
+            </div>
+          </div>
+        </SettingsCard>
+
         {/* MFA */}
         <SettingsCard title="Authenticator app (MFA)" desc="Time-based codes as a second factor at sign-in.">
           {!setup ? (

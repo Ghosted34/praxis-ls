@@ -72,26 +72,28 @@ export function ResourceList({
       ) : rows.length === 0 ? (
         <EmptyState title="Nothing here yet" hint="No records returned for this endpoint." />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              {cols.map((c) => (
-                <TH key={c.key}>{c.label}</TH>
-              ))}
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r, i) => (
-              <TR key={i}>
+        <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+          <Table>
+            <THead>
+              <TR>
                 {cols.map((c) => (
-                  <TD key={c.key} className="text-sm">
-                    {fmt(r[c.key])}
-                  </TD>
+                  <TH key={c.key}>{c.label}</TH>
                 ))}
               </TR>
-            ))}
-          </TBody>
-        </Table>
+            </THead>
+            <TBody>
+              {rows.map((r, i) => (
+                <TR key={i}>
+                  {cols.map((c) => (
+                    <TD key={c.key} className="text-sm">
+                      {fmt(r[c.key])}
+                    </TD>
+                  ))}
+                </TR>
+              ))}
+            </TBody>
+          </Table>
+        </div>
       )}
     </section>
   );

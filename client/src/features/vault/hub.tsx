@@ -12,8 +12,10 @@
  * render a proper "enable it" state.
  */
 import * as React from "react";
-import { useParams, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { TabbedHub, HubCrumb, HubTabs, type HubTab } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -21,18 +23,6 @@ import { num, dateFmt } from "@/lib/format";
 import { DocumentsPage, SignaturesPage, VerificationPage, ComplianceFlagsPage, ReportsPage } from "./pages";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
-
-type TabDef = { slug: string; label: string; Component: React.ComponentType };
-
-const TABS: TabDef[] = [
-  { slug: "documents", label: "Documents", Component: DocumentsPage },
-  { slug: "signatures", label: "Signatures", Component: SignaturesPage },
-  { slug: "verification", label: "Verification", Component: VerificationPage },
-  { slug: "compliance-flags", label: "Compliance flags", Component: ComplianceFlagsPage },
-  { slug: "reports", label: "Reports", Component: ReportsPage },
-];
-
-const BY_SLUG: Record<string, TabDef> = Object.fromEntries(TABS.map((t) => [t.slug, t]));
 
 type Doc = { doc_id: string; doc_type?: string | null; status?: string | null; entity_ref?: string | null; created_at?: string | null };
 type Flag = { flag_id: string; rule_key: string; severity?: string | null; message?: string | null; resolved_at?: string | null; created_at?: string | null };
@@ -50,40 +40,6 @@ const docTone = (s?: string | null): Tone => {
   if (u === "ARCHIVED") return "mute";
   return "warn";
 };
-
-function HubTabBar({ active }: { active: string | null }) {
-  const navigate = useNavigate();
-  return (
-    <div className="mx-auto mb-4 max-w-6xl">
-      <div className="micro mb-2">Hub › Vault &amp; compliance</div>
-      <div aria-label="Vault sections" className="inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
-        <button
-          onClick={() => navigate("/vault")}
-          className={
-            active === null
-              ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-              : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          }
-        >
-          Overview
-        </button>
-        {TABS.map((t) => (
-          <button
-            key={t.slug}
-            onClick={() => navigate(`/vault/${t.slug}`)}
-            className={
-              active === t.slug
-                ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-                : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            }
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 function Panel({ title, subtitle, action, children }: { title: string; subtitle: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
@@ -120,27 +76,13 @@ function Overview() {
 
   return (
     <section className={shell}>
-      <header className="mb-5 border-b border-border pb-4">
-        <h1 className="font-display text-3xl tracking-tight text-foreground">Vault &amp; compliance</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">
-          Every document carries a SHA-256 content hash, so a stored file can be re-checked against its DNA at any time. Compliance rules
-          run over the same corpus and raise flags for anything missing or aged.
-        </p>
-        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="chips">
-            {TABS.map((t) => (
-              <button
-                key={t.slug}
-                onClick={() => navigate(`/vault/${t.slug}`)}
-                className="chip"
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-          <Button onClick={() => navigate("/vault/documents")}>Upload document</Button>
-        </div>
-      </header>
+      <PageHeader
+        eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
+        title="Vault & compliance"
+        description="Every document carries a SHA-256 content hash, so a stored file can be re-checked against its DNA at any time. Compliance rules run over the same corpus and raise flags for anything missing or aged."
+        action={<Button onClick={() => navigate("/vault/documents")}>Upload document</Button>}
+      />
+      <HubTabs />
 
       {bothFailed && (
         <div className="mb-5 rounded-xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn)/0.08)] px-4 py-3 text-sm">
@@ -241,16 +183,15 @@ function Overview() {
   );
 }
 
-export function VaultHub() {
-  const { section } = useParams();
-  const tab = section ? BY_SLUG[section] : null;
-  const active = tab ? tab.slug : null;
-  const Active = tab?.Component;
+const TABS: HubTab[] = [
+  { key: "overview", label: "Overview", Component: Overview },
+  { key: "documents", label: "Documents", Component: DocumentsPage },
+  { key: "signatures", label: "Signatures", Component: SignaturesPage },
+  { key: "verification", label: "Verification", Component: VerificationPage },
+  { key: "compliance-flags", label: "Compliance flags", Component: ComplianceFlagsPage },
+  { key: "reports", label: "Reports", Component: ReportsPage },
+];
 
-  return (
-    <div className="animate-fade-in">
-      <HubTabBar active={active} />
-      {Active ? <div key={active}><Active /></div> : <Overview />}
-    </div>
-  );
+export function VaultHub() {
+  return <TabbedHub eyebrow="Vault & compliance" basePath="/vault" tabs={TABS} />;
 }

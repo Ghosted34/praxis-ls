@@ -20,8 +20,8 @@ async function createDraft(client, { requestedBy = null, department = null, just
   try {
     const pr = await repo.insertPR(client, { requested_by: requestedBy || actor.user_id || null, department, justification, status: "DRAFT" });
     for (const l of lines || []) {
-      if (!l || !l.label) continue;
-      await repo.insertLine(client, { pr_id: pr.pr_id, label: l.label, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 });
+      if (!l || !l.dictionary_item_id) continue;
+      await repo.insertLine(client, { pr_id: pr.pr_id, dictionary_item_id: l.dictionary_item_id, label: l.label || null, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(pr.pr_id), after: pr });
     await client.query("COMMIT");

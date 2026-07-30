@@ -4,6 +4,7 @@ import { TabbedHub } from "@/components/tabbed-hub";
 import {
   EmployeesPage, PayrollPage, VacanciesPage, ContractsPage, AppraisalsPage,
   AttendancePage, LeavePage, TrainingsPage, SopsPage, TalentPoolPage,
+  QueriesPage, SanctionsPage,
 } from "./pages";
 
 export function HrHub() {
@@ -11,13 +12,14 @@ export function HrHub() {
     <TabbedHub
       eyebrow="People & HR"
       basePath="/hr"
-      inlineTabs
       tabs={[
         { key: "employees", label: "Employees", Component: EmployeesPage },
         { key: "payroll", label: "Payroll", Component: PayrollPage },
         { key: "vacancies", label: "Vacancies", Component: VacanciesPage },
         { key: "contracts", label: "Contracts", Component: ContractsPage },
         { key: "appraisals", label: "Appraisals", Component: AppraisalsPage },
+        { key: "queries", label: "Queries", Component: QueriesPage },
+        { key: "sanctions", label: "Sanctions", Component: SanctionsPage },
         { key: "attendance", label: "Attendance", Component: AttendancePage },
         { key: "leave", label: "Leave", Component: LeavePage },
         { key: "trainings", label: "Trainings", Component: TrainingsPage },

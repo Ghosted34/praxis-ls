@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, ActivePill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
@@ -230,7 +231,8 @@ export function SuppliersPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader title="Suppliers" description="Vendor master — payment, tax residency and rating." action={<Button onClick={() => setEditing("new")}>New supplier</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Suppliers" description="Vendor master — payment, tax residency and rating." action={<Button onClick={() => setEditing("new")}>New supplier</Button>} />
+      <HubTabs />
       <KpiRow>
         <KpiTile label="Suppliers" value={num(suppliers.length)} />
         <KpiTile label="Active" value={num(suppliers.filter((s) => s.is_active).length)} />
@@ -409,7 +411,8 @@ export function CorporateEntitiesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Corporate entities" description="The legal entities we bill and report from." action={<Button onClick={() => setEditing("new")}>New entity</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Corporate entities" description="The legal entities we bill and report from." action={<Button onClick={() => setEditing("new")}>New entity</Button>} />
+      <HubTabs />
       <KpiRow>
         <KpiTile label="Entities" value={num(entities.length)} />
         <KpiTile label="Active" value={num(entities.filter((e) => e.is_active).length)} />
@@ -506,7 +509,8 @@ export function ExpenseRatesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Expense rates" description="Per-shipping-line rates that feed costing." action={<Button onClick={() => setEditing("new")}>New rate</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Expense rates" description="Per-shipping-line rates that feed costing." action={<Button onClick={() => setEditing("new")}>New rate</Button>} />
+      <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.expense_rate_id} empty={{ title: "No expense rates", hint: "Add a rate per shipping line and dictionary item." }} />
       {editing !== null && <ExpenseRateForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
       <ScreenAi path="master/expense-rates" />
@@ -640,7 +644,8 @@ export function FinancialDictionaryPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader title="Financial dictionary" description="Billable & cost lines with their OHADA posting rules." action={<Button onClick={() => setEditing("new")}>New item</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Financial dictionary" description="Billable & cost lines with their OHADA posting rules." action={<Button onClick={() => setEditing("new")}>New item</Button>} />
+      <HubTabs />
       <KpiRow>
         <KpiTile label="Items" value={num(items.length)} />
         <KpiTile label="Débours" value={num(items.filter((i) => i.category === "debours").length)} />

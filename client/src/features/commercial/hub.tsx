@@ -8,7 +8,6 @@ export function CommercialHub() {
     <TabbedHub
       eyebrow="Commercial"
       basePath="/commercial"
-      inlineTabs
       tabs={[
         { key: "quotations", label: "Quotations", Component: QuotationsPage },
         { key: "margin-simulation", label: "Margin simulation", Component: MarginSimulationsPage },

@@ -22,6 +22,12 @@ docker compose build
 echo "── running migrations (platform + all tenants)"
 docker compose run --rm migrate
 
+echo "── syncing AI action catalogue (all tenants)"
+# Rebuilds ai_action_catalogue from the *.ai.js manifests so the assistant is told
+# about every read + vetted write. Idempotent upsert by action_key; without this the
+# catalogue drifts and the copilot only "knows" whatever was last synced by hand.
+docker compose run --rm api node scripts/ai/sync-actions.js --all
+
 echo "── rolling api-standby"
 docker compose up -d --no-deps --wait api-standby
 

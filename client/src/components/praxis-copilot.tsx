@@ -12,6 +12,7 @@ import { Pill } from "@/components/ui/pill";
 import { askPraxis, confirmAiAction, confirmAiBatch, type AiActionRun } from "@/lib/ai-api";
 import { errMsg } from "@/lib/use-resource";
 import { useAiEnabled } from "@/components/ai-actions";
+import { Markdown } from "@/components/markdown";
 
 type Msg = {
   role: "user" | "praxis";
@@ -136,7 +137,7 @@ export function PraxisCopilot() {
               msgs.map((m, i) => (
                 <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
                   <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "border border-border bg-card"}`}>
-                    <div className="whitespace-pre-wrap">{m.text}</div>
+                    {m.role === "praxis" ? <Markdown text={m.text} /> : <div className="whitespace-pre-wrap">{m.text}</div>}
                     {m.actions && m.actions.length > 0 && !m.done && (
                       <div className="mt-2 space-y-1.5 border-t border-border pt-2">
                         {m.batchId ? (

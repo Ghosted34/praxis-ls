@@ -151,7 +151,11 @@ const TEMPLATES = {
         k.head(entity, { fr: "Reçu de paiement", en: "Payment receipt" }, data.number, [[{ fr: "Date", en: "Date" }, k.dateFmt(data.date)], [{ fr: "Mode", en: "Method" }, data.method]], c),
         k.parties([{ label: { fr: "Reçu de", en: "Received from" }, name: data.party && data.party.name, lines: (data.party && data.party.lines) || [] }], c),
         k.section({ fr: "Montant reçu", en: "Amount received" }, `<div class="box" style="font-size:22px;font-weight:700">${k.money(data.amount, ccy)}</div>`, c),
-        data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
+        (data.allocations && data.allocations.length)
+          ? k.section({ fr: "Imputation", en: "Applied to" }, k.lineTable(
+            [{ key: "label", label: { fr: "Facture", en: "Invoice" } }, { key: "amount", label: { fr: "Montant", en: "Amount" }, num: true }],
+            data.allocations.map((a) => ({ label: a.label, amount: k.money(a.amount, ccy) })), c), c)
+          : data.invoice_ref ? k.section({ fr: "Imputation", en: "Applied to" }, `<div class="box">${k.esc(data.invoice_ref)}</div>`, c) : "",
         k.signatureBlock(c),
         k.footer(entity, c, verify),
       ].join("");
@@ -502,7 +506,13 @@ const REPORT_SPECS = [
 ];
 const TAX_SPECS = [
   ["VAT_RETURN", { fr: "Déclaration TVA", en: "VAT return" }, "finance/tax_declaration", { period: { period_code: "2026-07" }, tva_collectee: 3560000, tva_deductible: 1193000, net_a_payer: 2367000 }],
-  ["DSF", { fr: "Déclaration Statistique et Fiscale", en: "DSF" }, "finance/tax_declaration", { period: { period_code: "2026" }, chiffre_affaires: 19400000, resultat: 9100000, impot_societes: 2502500 }],
+  ["DSF", { fr: "Déclaration Statistique et Fiscale", en: "DSF" }, "finance/tax_declaration", {
+    period: { period_code: "2026" }, chiffre_affaires: 19400000, resultat: 9100000, impot_societes: 3003000,
+    produits: [{ poste: "70 Ventes de services", montant: 18500000 }, { poste: "75 Autres produits", montant: 900000 }],
+    charges: [{ poste: "60 Achats", montant: 6200000 }, { poste: "64 Charges de personnel", montant: 4100000 }],
+    actif: [{ poste: "Immobilisations", montant: 12000000 }, { poste: "Créances clients", montant: 4600000 }, { poste: "Trésorerie", montant: 5200000 }],
+    passif: [{ poste: "Capital", montant: 10000000 }, { poste: "Résultat net", montant: 9100000 }, { poste: "Dettes fournisseurs", montant: 2700000 }],
+  }],
   ["CNPS_DECLARATION", { fr: "Déclaration CNPS (DIPE)", en: "CNPS declaration" }, "finance/tax_declaration", {
     period: { period_code: "2026-07" },
     rows: [
@@ -579,10 +589,55 @@ function cnpsBuild(data, cfg, entity, verify) {
   return k.shell("CNPS declaration", body, cfg);
 }
 
+function dsfBuild(data, cfg, entity, verify) {
+  const ca = firstNum(data.chiffre_affaires, data.revenue, data.turnover);
+  const result = firstNum(data.resultat, data.result, data.net_result);
+  const isRate = data.is_rate !== undefined ? Number(data.is_rate) : 33; // Cameroon IS 30% + 10% CAC.
+  const is = data.impot_societes !== undefined ? Number(data.impot_societes) : Math.round(Math.max(result, 0) * isRate / 100);
+  const period = data.period && (data.period.period_code || data.period.as_of || "");
+  const meta = [
+    entity.legal_name ? [{ fr: "Contribuable", en: "Taxpayer" }, entity.legal_name] : null,
+    entity.niu ? [{ fr: "NIU", en: "Tax ID" }, entity.niu] : null,
+    entity.rccm ? [{ fr: "RCCM", en: "Trade reg." }, entity.rccm] : null,
+    period ? [{ fr: "Exercice", en: "Fiscal year" }, period] : null,
+  ].filter(Boolean);
+  const stmtCols = (labelPair) => [{ key: "poste", label: labelPair }, { key: "montant", label: { fr: "Montant", en: "Amount" }, num: true }];
+  const mapStmt = (arr) => arr.map((r) => ({ poste: r.poste || r.compte || "", montant: k.xaf(firstNum(r.montant, r.amount)) }));
+  const produits = data.produits || [], charges = data.charges || [], actif = data.actif || [], passif = data.passif || [];
+  const sections = [
+    k.head(entity, { fr: "Déclaration Statistique et Fiscale (DSF)", en: "Statistical & tax return (DSF)" }, "", meta, cfg),
+    k.section({ fr: "Cadre A — Identification", en: "Section A — Identification" }, `<div class="box">${k.t({ fr: "Régime du réel — Système comptable OHADA (SYSCOHADA révisé)", en: "Actual regime — OHADA accounting (revised SYSCOHADA)" }, cfg.language)}</div>`, cfg),
+  ];
+  if (produits.length || charges.length) {
+    sections.push(k.section({ fr: "Cadre B — Compte de résultat", en: "Section B — Income statement" }, [
+      produits.length ? k.lineTable(stmtCols({ fr: "Produits", en: "Income" }), mapStmt(produits), cfg) : "",
+      charges.length ? k.lineTable(stmtCols({ fr: "Charges", en: "Expenses" }), mapStmt(charges), cfg) : "",
+    ].join(""), cfg));
+  }
+  if (actif.length || passif.length) {
+    sections.push(k.section({ fr: "Cadre C — Bilan", en: "Section C — Balance sheet" }, [
+      actif.length ? k.lineTable(stmtCols({ fr: "Actif", en: "Assets" }), mapStmt(actif), cfg) : "",
+      passif.length ? k.lineTable(stmtCols({ fr: "Passif", en: "Liabilities & equity" }), mapStmt(passif), cfg) : "",
+    ].join(""), cfg));
+  }
+  sections.push(
+    k.section({ fr: "Cadre D — Détermination de l'impôt", en: "Section D — Tax computation" }, formTable([
+      [k.t({ fr: "Chiffre d'affaires", en: "Turnover" }, cfg.language), ca],
+      [k.t({ fr: "Résultat de l'exercice", en: "Result for the year" }, cfg.language), result],
+      [`${k.t({ fr: "Impôt sur les sociétés", en: "Corporate income tax" }, cfg.language)} (${isRate}%)`, is, true],
+    ], cfg), cfg),
+    `<p class="muted" style="margin-top:8px">${k.t({ fr: "Résumé structuré SYSCOHADA — à compléter sur la liasse officielle DGI.", en: "Structured SYSCOHADA summary — file on the official DGI liasse." }, cfg.language)}</p>`,
+    k.footer(entity, cfg, verify),
+  );
+  return k.shell("DSF", sections.join(""), cfg);
+}
+
 TEMPLATES.VAT_RETURN.build = vatReturnBuild;
 TEMPLATES.VAT_RETURN.fields = ["official TVA layout"];
 TEMPLATES.CNPS_DECLARATION.build = cnpsBuild;
 TEMPLATES.CNPS_DECLARATION.fields = ["official DIPE layout"];
+TEMPLATES.DSF.build = dsfBuild;
+TEMPLATES.DSF.fields = ["SYSCOHADA structured layout"];
 
 const list = () => Object.values(TEMPLATES).map((t) => ({ docType: t.docType, title: t.title, module: t.module, fields: t.fields || [], report: !!t.report }));
 const get = (docType) => TEMPLATES[docType] || null;

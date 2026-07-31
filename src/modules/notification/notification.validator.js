@@ -16,6 +16,13 @@ const schemas = {
       }),
     ).min(1).max(200),
   }),
+  pushSubscribe: z.object({
+    subscription: z.object({
+      endpoint: z.string().url().max(1024),
+      keys: z.object({ p256dh: z.string().min(1).max(256), auth: z.string().min(1).max(256) }),
+    }),
+  }),
+  pushUnsubscribe: z.object({ endpoint: z.string().url().max(1024) }),
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -25,4 +32,10 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { preferences: mw("preferences"), CHANNELS, schemas };
+module.exports = {
+  preferences: mw("preferences"),
+  pushSubscribe: mw("pushSubscribe"),
+  pushUnsubscribe: mw("pushUnsubscribe"),
+  CHANNELS,
+  schemas,
+};

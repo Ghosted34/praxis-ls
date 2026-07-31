@@ -4,6 +4,9 @@ const { insertOne, getById, page } = require("../../../shared/db/query-helpers")
 
 const insertTO = (client, data) => insertOne(client, "transit_order", data);
 const getTO = (client, id) => getById(client, "transit_order", "transit_order_id", id);
+const insertLine = (client, data) => insertOne(client, "transit_order_line", data);
+const listLines = async (client, id) =>
+  (await client.query("SELECT * FROM transit_order_line WHERE transit_order_id = $1 ORDER BY transit_order_line_id", [id])).rows;
 
 async function update(client, id, fields) {
   const keys = Object.keys(fields);
@@ -17,7 +20,7 @@ async function listTO(client, q = {}) {
   const params = [limit, offset];
   const wh = ["1=1"];
   if (q.dossier_id) { params.push(q.dossier_id); wh.push("dossier_id = $" + params.length); }
-  const { rows } = await client.query("SELECT * FROM transit_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
+  const { rows } = await client.query("SELECT *, ot_number AS ref FROM transit_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
-module.exports = { insertTO, getTO, update, listTO };
+module.exports = { insertTO, getTO, update, listTO, insertLine, listLines };

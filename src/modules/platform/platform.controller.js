@@ -12,6 +12,7 @@ const plans = require("../../services/platform/plans.service");
 const roles = require("../../services/platform/roles.service");
 const { CAP_CATALOGUE } = require("../../middleware/platform-auth");
 const platformSettings = require("../../services/platform/settings.service");
+const aiVendors = require("../../services/platform/ai-vendor.service");
 const storage = require("../../services/storage.service");
 const { asyncHandler } = require("../../utils/errors");
 
@@ -222,6 +223,17 @@ const vapidGenerate = asyncHandler(async (req, res) =>
   res.json({ data: await platformSettings.generateVapid({ subject: req.body.subject, actor: actor(req) }) }),
 );
 
+// ── Deploy-wide AI vendor keys (shared across all tenants) ──
+const aiVendorsList = asyncHandler(async (_req, res) => res.json({ data: await aiVendors.list() }));
+const aiVendorSet = asyncHandler(async (req, res) => {
+  const b = req.body || {};
+  const patch = {};
+  for (const k of ["display_name", "endpoint_url", "default_model", "current_model", "is_active"]) if (b[k] !== undefined) patch[k] = b[k];
+  const data = await aiVendors.set({ vendor: req.params.vendor, apiKey: b.api_key || null, patch, actorId: actor(req) });
+  res.json({ data });
+});
+const aiVendorTest = asyncHandler(async (req, res) => res.json({ data: await aiVendors.test(req.params.vendor) }));
+
 module.exports = {
   login,
   refresh,
@@ -267,4 +279,7 @@ module.exports = {
   settingPut,
   settingTest,
   vapidGenerate,
+  aiVendorsList,
+  aiVendorSet,
+  aiVendorTest,
 };

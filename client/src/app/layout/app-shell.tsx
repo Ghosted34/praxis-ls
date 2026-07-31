@@ -17,9 +17,11 @@ import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
+import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
+import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
 
 type NavItem = { to: string; label: string };
@@ -118,25 +120,28 @@ const NAV: NavGroup[] = [
   },
   {
     heading: "Governance",
-    items: [
-      { to: "/audit", label: "Audit ledger" },
-      { to: "/notifications", label: "Notifications" },
-      { to: "/workflows", label: "Workflows" },
-      { to: "/approvals", label: "Approvals" },
-    ],
+    prefix: "/governance",
+    items: [{ to: "/governance", label: "Governance" }],
   },
   {
     heading: "Settings & Admin",
-    items: [
-      { to: "/settings", label: "Settings" },
-      { to: "/ai-control", label: "AI Control" },
-      { to: "/appearance", label: "Appearance" },
-      { to: "/settings/numbering", label: "Numbering schemes" },
-      { to: "/settings/catalogue", label: "Catalogue" },
-      { to: "/portal/access", label: "Portal access" },
-    ],
+    prefix: "/settings",
+    items: [{ to: "/settings", label: "Settings & admin" }],
   },
 ];
+
+/** The grouped nav, minus AI-only destinations when AI is off for the tenant.
+ *  AI Control is a no-op surface without AI provisioned, so it's hidden (and any
+ *  group left empty is dropped). */
+function useVisibleNav(): NavGroup[] {
+  const aiEnabled = useAiEnabled();
+  return React.useMemo(() => {
+    if (aiEnabled) return NAV;
+    return NAV
+      .map((g) => ({ ...g, items: g.items.filter((it) => it.to !== "/ai-control") }))
+      .filter((g) => g.items.length > 0);
+  }, [aiEnabled]);
+}
 
 /** Areas surfaced inline in the top bar (in order). The rest live under More. */
 const TOPBAR = ["Overview", "Operations", "Fleet", "Finance"];
@@ -206,18 +211,143 @@ const OperationsIcon = (p: IP) => (
     <path d="M4 5h6l2 3h8v11H4z" />
   </svg>
 );
-const BellIcon = (p: IP) => (
+const CommercialIcon = (p: IP) => (
   <svg {...sic(p)}>
-    <path d="M6 9a6 6 0 0112 0c0 5 2 6 2 6H4s2-1 2-6" />
-    <path d="M10 20a2 2 0 004 0" />
+    <rect x="3" y="7" width="18" height="12" rx="2" />
+    <path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+  </svg>
+);
+const SalesIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="8" cy="9" r="2.5" />
+    <path d="M3.5 19a4.5 4.5 0 0 1 9 0" />
+    <circle cx="16.5" cy="9" r="2.5" />
+    <path d="M14 19a4.5 4.5 0 0 1 6.5-4" />
+  </svg>
+);
+const ProcurementIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="9" cy="20" r="1.4" />
+    <circle cx="17" cy="20" r="1.4" />
+    <path d="M3 4h2l2.4 12h10L20 8H6" />
+  </svg>
+);
+const CostingIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="5" y="3" width="14" height="18" rx="2" />
+    <path d="M8 7h8M8 11h2M12 11h2M8 15h2M12 15h2" />
+  </svg>
+);
+const HrIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20a7 7 0 0 1 14 0" />
+  </svg>
+);
+const MasterIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <ellipse cx="12" cy="6" rx="7" ry="3" />
+    <path d="M5 6v6c0 1.7 3 3 7 3s7-1.3 7-3V6M5 12v6c0 1.7 3 3 7 3s7-1.3 7-3v-6" />
+  </svg>
+);
+const VaultIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="5" y="10" width="14" height="10" rx="2" />
+    <path d="M8 10V7a4 4 0 0 1 8 0v3" />
+  </svg>
+);
+const CommsIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 5h16v11H8l-4 3z" />
+  </svg>
+);
+const SecurityIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M12 3l7 3v6c0 4.5-3 7.5-7 9-4-1.5-7-4.5-7-9V6z" />
+  </svg>
+);
+const GovernanceIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M10 5h9M10 12h9M10 19h9" />
+    <path d="M4 5l1.4 1.4L8 4M4 12l1.4 1.4L8 11M4 19l1.4 1.4L8 18" />
+  </svg>
+);
+const SettingsIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="3" />
+    <path d="M12 3v2.5M12 18.5V21M4.2 7l2.2 1.3M17.6 15.7 19.8 17M4.2 17l2.2-1.3M17.6 8.3 19.8 7" />
+  </svg>
+);
+const PaletteIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <circle cx="8.5" cy="10" r="1" />
+    <circle cx="15.5" cy="10" r="1" />
+    <circle cx="12" cy="15.5" r="1" />
+  </svg>
+);
+const DownloadIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M12 3v12m0 0 4-4m-4 4-4-4M4 19h16" />
+  </svg>
+);
+const LogoutIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M15 4h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-3" />
+    <path d="M10 17l-5-5 5-5M5 12h11" />
   </svg>
 );
 const AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   Overview: TowerIcon,
+  Commercial: CommercialIcon,
+  "Sales & CRM": SalesIcon,
   Operations: OperationsIcon,
+  Procurement: ProcurementIcon,
+  Costing: CostingIcon,
   Finance: FinanceIcon,
   Warehouse: WarehouseIcon,
   Fleet: FleetIcon,
+  "People & HR": HrIcon,
+  "Master data": MasterIcon,
+  Vault: VaultIcon,
+  Comms: CommsIcon,
+  "Security & Access": SecurityIcon,
+  Governance: GovernanceIcon,
+  "Settings & Admin": SettingsIcon,
+};
+
+// --- per-child icons for the Overview section (side panel + header dropdown) ---
+const WorkspaceIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="4" y="4" width="7" height="7" rx="1" />
+    <rect x="13" y="4" width="7" height="7" rx="1" />
+    <rect x="4" y="13" width="7" height="7" rx="1" />
+    <rect x="13" y="13" width="7" height="7" rx="1" />
+  </svg>
+);
+const SupportIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <circle cx="12" cy="12" r="9" />
+    <path d="M9.5 9a2.5 2.5 0 1 1 3 2.4c-.6.2-1 .8-1 1.6" />
+    <path d="M12 17h.01" />
+  </svg>
+);
+const GodModeIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M13 3 4 14h6l-1 7 9-11h-6z" />
+  </svg>
+);
+const DotIcon = (p: IP) => (
+  <svg {...sic(p)} width={14} height={14}>
+    <circle cx="12" cy="12" r="3.5" />
+  </svg>
+);
+/** Icon per Overview child, keyed by route. Falls back to a small dot. */
+const CHILD_ICON: Record<string, (p: IP) => React.JSX.Element> = {
+  "/": TowerIcon,
+  "/workspace": WorkspaceIcon,
+  "/support": SupportIcon,
+  "/godmode": GodModeIcon,
 };
 
 /** Initials from a name or email local-part. */
@@ -230,8 +360,10 @@ function initialsOf(nameOrEmail?: string | null): string {
 
 /** Unread counts for the messages + notifications badges. Polls gently and
  *  refetches when the data environment flips. Failures (feature off, 403) → 0. */
-function useUnreadCounts(env: string): { messages: number; notifications: number } {
+function useUnreadCounts(env: string): { messages: number; notifications: number; reload: () => void } {
   const [counts, setCounts] = React.useState({ messages: 0, notifications: 0 });
+  const [tick, setTick] = React.useState(0);
+  const reload = React.useCallback(() => setTick((t) => t + 1), []);
   React.useEffect(() => {
     let live = true;
     const num = (v: unknown): number => {
@@ -261,35 +393,17 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
       live = false;
       clearInterval(id);
     };
-  }, [env]);
-  return counts;
+  }, [env, tick]);
+  return { ...counts, reload };
 }
 
-/** Round icon Link (messages / notifications) with an optional unread badge. */
-function IconLink({ to, label, count = 0, children }: { to: string; label: string; count?: number; children: React.ReactNode }) {
-  return (
-    <Link
-      to={to}
-      aria-label={count > 0 ? `${label} (${count} unread)` : label}
-      title={label}
-      className="relative hidden h-9 w-9 place-items-center rounded-xl border text-muted-foreground transition-colors hover:text-foreground sm:grid"
-    >
-      {children}
-      {count > 0 && (
-        <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground">
-          {count > 99 ? "99+" : count}
-        </span>
-      )}
-    </Link>
-  );
-}
-
-/** User avatar + dropdown (email · My security · Sign out). */
-function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string } | null; onLogout: () => void }) {
+/** User avatar + dropdown (role · My HR · My security · Sign out). */
+function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
   const email = user?.email || "";
+  const role = user?.role || "Member";
 
   React.useEffect(() => {
     function onDown(e: MouseEvent) {
@@ -307,12 +421,16 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         aria-expanded={open}
         className="flex items-center gap-2 rounded-xl border p-1 pr-2 transition-colors hover:bg-accent/50"
       >
-        <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
-          {initialsOf(name || email)}
-        </span>
+        {user?.avatar_url ? (
+          <img src={user.avatar_url} alt={name} className="h-8 w-8 rounded-lg object-cover" />
+        ) : (
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
+            {initialsOf(name || email)}
+          </span>
+        )}
         <span className="hidden text-left leading-tight sm:block">
           <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
-          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{email}</span>
+          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{role}</span>
         </span>
         <ChevronIcon className={cn("hidden transition-transform sm:block", open && "rotate-180")} />
       </button>
@@ -324,13 +442,16 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         >
           <div className="border-b px-3 pb-2 pt-1">
             <div className="truncate text-sm font-semibold capitalize">{name}</div>
-            <div className="truncate text-xs text-muted-foreground">{email}</div>
+            <div className="truncate text-xs text-muted-foreground">{role}</div>
           </div>
-          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="mt-1 block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            My security
+          <Link to="/my-hr" role="menuitem" onClick={() => setOpen(false)} className="mt-1 flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <HrIcon /> My HR
           </Link>
-          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="block rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            Appearance
+          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <SecurityIcon /> My security
+          </Link>
+          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
+            <PaletteIcon /> Appearance
           </Link>
           {!isStandalone() && (
             <button
@@ -339,13 +460,13 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
                 setOpen(false);
                 openInstallUi();
               }}
-              className="block w-full rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
             >
-              Install app
+              <DownloadIcon /> Install app
             </button>
           )}
-          <button role="menuitem" onClick={onLogout} className="mt-1 block w-full rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
-            Sign out
+          <button role="menuitem" onClick={onLogout} className="mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
+            <LogoutIcon /> Sign out
           </button>
         </div>
       )}
@@ -372,7 +493,7 @@ function NavArea({
   onHoverClose: () => void;
 }) {
   const Icon = AREA_ICON[group.heading] || MoreIcon;
-  const label = group.heading === "Overview" ? "Control Tower" : group.heading;
+  const label = group.heading;
 
   // Single-item area (Overview) → direct link, no dropdown. Hovering it should
   // still dismiss any open sibling dropdown.
@@ -409,37 +530,61 @@ function NavArea({
           style={{ background: "var(--popover)" }}
           className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-56 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
         >
-          {group.items.map((it) => (
-            <NavLink
-              key={it.to}
-              to={it.to}
-              role="menuitem"
-              onClick={onNavigate}
-              className={({ isActive }) =>
-                cn(
-                  "block rounded-md px-3 py-2 text-sm transition-colors",
-                  isActive
-                    ? "bg-accent font-semibold text-foreground"
-                    : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                )
-              }
-            >
-              {it.label}
-            </NavLink>
-          ))}
+          {group.items.map((it) => {
+            const CIcon = CHILD_ICON[it.to] || DotIcon;
+            return (
+              <NavLink
+                key={it.to}
+                to={it.to}
+                role="menuitem"
+                onClick={onNavigate}
+                className={({ isActive }) =>
+                  cn(
+                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
+                    isActive
+                      ? "bg-accent font-semibold text-foreground"
+                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+                  )
+                }
+              >
+                <CIcon />
+                <span>{it.label}</span>
+              </NavLink>
+            );
+          })}
         </div>
       )}
     </div>
   );
 }
 
-/** The full grouped menu — rendered inside the More overlay sidebar. */
+/** The full grouped menu — rendered inside the More overlay sidebar. Every group
+ *  carries its area icon. Single-screen areas (now hubs) are a single link;
+ *  multi-item areas (Overview) are a collapsible section with a chevron. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
+  const nav = useVisibleNav();
+  const { pathname } = useLocation();
+  // Route-driven expansion: a multi-item section is open only while you're on one
+  // of its screens, and snaps shut the moment you navigate away. `manual` lets you
+  // peek from elsewhere, but it's cleared on every navigation so it can't stick open.
+  const [manual, setManual] = React.useState<Record<string, boolean>>({});
+  React.useEffect(() => setManual({}), [pathname]);
+  const inGroup = (g: NavGroup) =>
+    g.items.some((it) => (it.to === "/" ? pathname === "/" : pathname === it.to || pathname.startsWith(it.to + "/")));
+  const childLink = ({ isActive }: { isActive: boolean }) =>
+    cn(
+      "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+      isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
+    );
+  const activeBorder = ({ isActive }: { isActive: boolean }) =>
+    isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined;
+
   return (
-    <nav className="flex flex-col gap-5 p-3">
-      {NAV.map((g) => {
-        // Single-screen areas (now hubs) collapse to just their caps heading,
-        // which itself is the link — no duplicate row beneath it.
+    <nav className="flex flex-col gap-0.5 p-3">
+      {nav.map((g) => {
+        const Icon = AREA_ICON[g.heading] || MoreIcon;
+
+        // Single-screen areas (hubs) → one icon+label link.
         if (g.items.length === 1) {
           const it = g.items[0];
           return (
@@ -448,42 +593,48 @@ function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
               to={it.to}
               end={it.to === "/"}
               onClick={onNavigate}
-              style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
+              style={activeBorder}
               className={({ isActive }) =>
                 cn(
-                  "micro block rounded-md border-l-[3px] border-transparent px-3 py-2 transition-colors",
-                  isActive ? "bg-accent text-foreground" : "hover:bg-accent/60 hover:text-foreground",
+                  "flex items-center gap-2.5 rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
+                  isActive ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
                 )
               }
             >
-              {g.heading}
+              <Icon />
+              <span>{g.heading}</span>
             </NavLink>
           );
         }
+
+        // Multi-item area (Overview) → collapsible section. Open while you're on
+        // one of its screens (route-driven), collapsed everywhere else.
+        const open = inGroup(g) || !!manual[g.heading];
         return (
           <div key={g.heading}>
-            <p className="micro px-3 pb-2">{g.heading === "Overview" ? "Overview" : g.heading}</p>
-            <div className="flex flex-col gap-0.5">
-              {g.items.map((it) => (
-                <NavLink
-                  key={it.to}
-                  to={it.to}
-                  end={it.to === "/"}
-                  onClick={onNavigate}
-                  style={({ isActive }) => (isActive ? { borderLeftColor: "rgb(var(--brand-orange))" } : undefined)}
-                  className={({ isActive }) =>
-                    cn(
-                      "rounded-md border-l-[3px] border-transparent px-3 py-2 text-sm transition-colors",
-                      isActive
-                        ? "bg-accent font-semibold text-foreground"
-                        : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                    )
-                  }
-                >
-                  {it.label}
-                </NavLink>
-              ))}
-            </div>
+            <button
+              type="button"
+              onClick={() => setManual((m) => ({ ...m, [g.heading]: !open }))}
+              aria-expanded={open}
+              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
+            >
+              <Icon />
+              <span className="flex-1 text-left">{g.heading}</span>
+              <ChevronIcon className={cn("h-3.5 w-3.5 transition-transform", !open && "-rotate-90")} />
+            </button>
+            {open && (
+              <div className="mb-1 mt-0.5 flex flex-col gap-0.5 pl-[26px]">
+                {g.items.map((it) => {
+                  const CIcon = CHILD_ICON[it.to] || DotIcon;
+                  return (
+                    <NavLink key={it.to} to={it.to} end={it.to === "/"} onClick={onNavigate} style={activeBorder} className={childLink}>
+                      <CIcon />
+                      <span>{it.label}</span>
+                    </NavLink>
+                  );
+                })}
+              </div>
+            )}
           </div>
         );
       })}
@@ -624,6 +775,7 @@ export function AppShell() {
   }
 
   const topbarGroups = TOPBAR.map((h) => NAV.find((g) => g.heading === h)!).filter(Boolean);
+  const visibleNav = useVisibleNav();
 
   return (
     <div className="flex h-full flex-col">
@@ -698,7 +850,7 @@ export function AppShell() {
           <ThemeToggle />
           {/* Messages lives on the Smart Comms floating pin, so it's intentionally
               not duplicated here — only Notifications stays in the top bar. */}
-          <IconLink to="/notifications" label="Notifications" count={unread.notifications}><BellIcon /></IconLink>
+          <NotificationBell count={unread.notifications} onChange={unread.reload} />
           <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>
       </header>
@@ -740,7 +892,7 @@ export function AppShell() {
 
       <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
 
-      <CommandPalette open={paletteOpen} groups={NAV} onClose={() => setPaletteOpen(false)} />
+      <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />
     </div>

@@ -9,6 +9,8 @@
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
@@ -183,22 +185,19 @@ export function PortalAccessPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Portal access</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Grant and revoke external read-access — client, investor and auditor portals.</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" onClick={() => setPreview({ title: "Investor portal preview", path: "/portals/investor" })}>
-            Preview investor
-          </Button>
-          <Button variant="outline" onClick={() => setPreview({ title: "Auditor portal preview", path: "/portals/auditor" })}>
-            Preview auditor
-          </Button>
-          <Button onClick={() => setGrantOpen(true)}>Grant access</Button>
-        </div>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Portal" to="/portal/access" />}
+        title="Portal access"
+        description="Grant and revoke external read-access — client, investor and auditor portals."
+        action={(
+          <div className="flex flex-wrap items-center gap-2">
+            <Button variant="outline" onClick={() => setPreview({ title: "Investor portal preview", path: "/portals/investor" })}>Preview investor</Button>
+            <Button variant="outline" onClick={() => setPreview({ title: "Auditor portal preview", path: "/portals/auditor" })}>Preview auditor</Button>
+            <Button onClick={() => setGrantOpen(true)}>Grant access</Button>
+          </div>
+        )}
+      />
 
       {rowError && (
         <div className="mb-3">

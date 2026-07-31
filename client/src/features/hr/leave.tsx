@@ -12,7 +12,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt } from "@/lib/format";
 import { cn } from "@/lib/cn";
@@ -117,8 +117,8 @@ export function LeavePage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="HR" />} title="Leave & allowances" description="Approve or reject leave, salary-advance and mission requests." action={<Button onClick={() => setCreating(true)}>New request</Button>} />
-      <div className="mb-4 inline-flex rounded-lg border p-0.5 text-sm">
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Leave & allowances" description="Approve or reject leave, salary-advance and mission requests." action={<Button onClick={() => setCreating(true)}>New request</Button>} />
+      <HubTabs />      <div className="mb-4 inline-flex rounded-lg border p-0.5 text-sm">
         {[{ k: true, l: "Pending" }, { k: false, l: "All" }].map((t) => (
           <button key={t.l} onClick={() => setPendingOnly(t.k)} className={cn("rounded-md px-3 py-1.5 transition-colors", pendingOnly === t.k ? "bg-accent font-semibold text-foreground" : "text-muted-foreground hover:text-foreground")}>{t.l}</button>
         ))}

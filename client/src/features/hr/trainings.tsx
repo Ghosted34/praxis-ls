@@ -11,7 +11,7 @@ import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -142,8 +142,8 @@ export function TrainingsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Trainings" description="Schedule sessions and track who attended." action={<Button onClick={() => setCreating(true)}>New training</Button>} />
-      <DataList columns={cols} rows={trainings.data} error={trainings.error} loading={trainings.loading} rowKey={(t) => t.training_id} empty={{ title: "No trainings", hint: "Schedule a session to get started." }} />
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Trainings" description="Schedule sessions and track who attended." action={<Button onClick={() => setCreating(true)}>New training</Button>} />
+      <HubTabs />      <DataList columns={cols} rows={trainings.data} error={trainings.error} loading={trainings.loading} rowKey={(t) => t.training_id} empty={{ title: "No trainings", hint: "Schedule a session to get started." }} />
       {creating && <NewTrainingForm onClose={() => setCreating(false)} onSaved={trainings.reload} />}
       {roster && <RosterModal training={roster} onClose={() => setRoster(null)} />}
       <ScreenAi path="hr/trainings" />

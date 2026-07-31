@@ -31,6 +31,10 @@ const MODULE = "MOD-67";
 const usersRouter = express.Router();
 usersRouter.use(authMiddleware);
 usersRouter.get("/", requirePermission(MODULE, "view"), controller.list);
+// Live-schema employees for the user↔employee link picker (before /:id so
+// "employees" isn't captured as an :id). app_user + its FK live in the live
+// schema, so the picker must not offer sandbox employees.
+usersRouter.get("/employees", requirePermission(MODULE, "view"), controller.linkableEmployees);
 usersRouter.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 usersRouter.get("/:id", requirePermission(MODULE, "view"), controller.get);
 usersRouter.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
@@ -53,6 +57,8 @@ authRouter.post("/forgot-password", forgotLimiter, validator.forgotPassword, con
 authRouter.post("/reset-password", resetLimiter, validator.resetPassword, controller.resetPassword);
 authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
+// Self-service profile picture upload (base64 data URL → /media, sets avatar_ref).
+authRouter.post("/avatar", authMiddleware, validator.avatar, controller.setAvatar);
 authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);
 authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);
 authRouter.post("/2fa/enable", authMiddleware, validator.totpCode, controller.enableTotp);

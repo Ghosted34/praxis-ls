@@ -9,11 +9,13 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { money, num, dateFmt, enumLabel, humanizeRef } from "@/lib/format";
 import * as wf from "@/lib/workflow-api";
+import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
 
@@ -325,6 +327,7 @@ export function AuditPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Governance" to="/governance" />}
         title="Audit ledger"
         description="Append-only trail of every create, lock, post, reverse, permission change and AI action. Writes are blocked at the database, not just the API."
         action={tab === "reviews" ? <Button onClick={() => setNewReview(true)}>New review</Button> : undefined}
@@ -397,6 +400,7 @@ type Notification = {
   notification_id: string;
   channel?: string | null;
   event_type_key?: string | null;
+  category?: string | null;
   title: string;
   body?: string | null;
   entity_ref?: string | null;
@@ -412,10 +416,21 @@ const CHANNELS = ["IN_APP", "EMAIL", "SMS", "WHATSAPP"];
  * convention rather than a contract. Categories the user already has a stored
  * preference for are merged in, so nothing saved elsewhere disappears from view.
  */
-const DEFAULT_CATEGORIES = ["approvals", "invoices", "dossiers", "compliance", "security", "campaigns"];
+type Category = { key: string; label: string; security: boolean };
+// Fallback if the catalog endpoint is unavailable — keeps the panel usable.
+const FALLBACK_CATEGORIES: Category[] = [
+  { key: "security", label: "Security", security: true },
+  { key: "approvals", label: "Approvals", security: false },
+  { key: "finance", label: "Finance", security: false },
+  { key: "operations", label: "Operations", security: false },
+  { key: "sales", label: "Sales & CRM", security: false },
+  { key: "compliance", label: "Compliance", security: false },
+  { key: "system", label: "System", security: false },
+];
 
 function PreferencesPanel() {
   const prefs = useResource<Preference[] | { preferences?: Preference[] }>(() => tenant("/notifications/preferences"), []);
+  const catalog = useResource<Category[]>(() => tenant("/notifications/categories"), []);
   const [draft, setDraft] = React.useState<Record<string, boolean> | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [saved, setSaved] = React.useState(false);
@@ -428,16 +443,21 @@ function PreferencesPanel() {
     return [];
   }, [prefs.data]);
 
-  const categories = React.useMemo(
-    () => Array.from(new Set([...DEFAULT_CATEGORIES, ...stored.map((p) => p.category)])),
-    [stored],
+  const catMeta: Category[] = React.useMemo(
+    () => (Array.isArray(catalog.data) && catalog.data.length ? catalog.data : FALLBACK_CATEGORIES),
+    [catalog.data],
   );
+  const categories = React.useMemo(() => catMeta.map((c) => c.key), [catMeta]);
+  const labelOf = React.useCallback((k: string) => catMeta.find((c) => c.key === k)?.label || k, [catMeta]);
+  const isSecurity = React.useCallback((k: string) => !!catMeta.find((c) => c.key === k)?.security, [catMeta]);
 
-  // Absence of a row means enabled (the table stores explicit opt-outs only).
+  // Defaults when the user has set no explicit row: IN_APP on (cheap, in-product),
+  // outbound channels (EMAIL/SMS/WHATSAPP) off — they're opt-in so we never
+  // message someone who didn't ask. Mirrors notification.repo.isChannelEnabled.
   const key = (c: string, ch: string) => `${ch}::${c}`;
   const current = React.useMemo(() => {
     const m: Record<string, boolean> = {};
-    categories.forEach((c) => CHANNELS.forEach((ch) => { m[key(c, ch)] = true; }));
+    categories.forEach((c) => CHANNELS.forEach((ch) => { m[key(c, ch)] = ch === "IN_APP"; }));
     stored.forEach((p) => { m[key(p.category, p.channel)] = p.enabled; });
     return m;
   }, [categories, stored]);
@@ -470,6 +490,7 @@ function PreferencesPanel() {
 
   return (
     <div className="space-y-4">
+      <PushOptIn />
       <p className="text-sm text-muted-foreground">
         Choose how you're told about each kind of event. These are yours alone — no grant needed, and they don't affect anyone else.
       </p>
@@ -484,16 +505,29 @@ function PreferencesPanel() {
             </tr>
           </thead>
           <tbody>
-            {categories.map((c) => (
-              <tr key={c} className="border-t">
-                <td className="px-3 py-2 font-medium capitalize text-foreground">{c}</td>
-                {CHANNELS.map((ch) => (
-                  <td key={ch} className="px-3 py-2 text-center">
-                    <input type="checkbox" className="h-4 w-4 rounded border-input" checked={!!value[key(c, ch)]} onChange={() => toggle(c, ch)} />
+            {categories.map((c) => {
+              const locked = isSecurity(c);
+              return (
+                <tr key={c} className="border-t">
+                  <td className="px-3 py-2 font-medium text-foreground">
+                    {labelOf(c)}
+                    {locked && <span className="ml-2 align-middle text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Always on</span>}
                   </td>
-                ))}
-              </tr>
-            ))}
+                  {CHANNELS.map((ch) => (
+                    <td key={ch} className="px-3 py-2 text-center">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-input"
+                        checked={locked ? true : !!value[key(c, ch)]}
+                        disabled={locked}
+                        title={locked ? "Security alerts can't be turned off" : undefined}
+                        onChange={() => !locked && toggle(c, ch)}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
@@ -540,6 +574,7 @@ export function NotificationsPage() {
       ),
     },
     { key: "priority", label: "Priority", render: (r) => <Pill tone={String(r.priority).toUpperCase() === "HIGH" ? "bad" : "mute"}>{r.priority || "NORMAL"}</Pill> },
+    { key: "category", label: "Category", render: (r) => (r.category ? <Pill tone={r.category === "security" ? "bad" : "blue"}>{r.category}</Pill> : <span className="text-muted-foreground">—</span>) },
     { key: "event_type_key", label: "Event", render: (r) => <span className="text-muted-foreground">{r.event_type_key ? enumLabel(r.event_type_key) : "—"}</span> },
     { key: "created_at", label: "When", render: (r) => <span className="num">{dateFmt(r.created_at)}</span> },
     {
@@ -555,6 +590,7 @@ export function NotificationsPage() {
   return (
     <section className={shell}>
       <PageHeader
+        eyebrow={<HubCrumb area="Governance" to="/governance" />}
         title="Notifications"
         description="Your inbox. System-generated only — Watch-the-Watcher writes HIGH alerts here on security-critical changes."
         action={tab === "inbox" && unread.length > 0 ? <Button variant="outline" onClick={markAll} loading={busy === "__all"}>Mark all read</Button> : undefined}
@@ -755,7 +791,7 @@ export function WorkflowsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader title="Workflows" description="Validate/approve chains bound to approvable events — the org's approval routing." action={<Button onClick={() => setCreating(true)}>New workflow</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Workflows" description="Validate/approve chains bound to approvable events — the org's approval routing." action={<Button onClick={() => setCreating(true)}>New workflow</Button>} />
       <KpiRow>
         <KpiTile label="Workflows" value={num(list.length)} />
         <KpiTile label="Active" value={num(list.filter((w) => w.is_active).length)} />
@@ -832,7 +868,7 @@ export function ApprovalsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <PageHeader title="Approvals" description="Your runtime approval queue — validate or approve/reject items routed to you by workflow." />
+      <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Approvals" description="Your runtime approval queue — validate or approve/reject items routed to you by workflow." />
       <KpiRow>
         <KpiTile label="Pending" value={num(list.length)} />
         <KpiTile label="To validate" value={num(list.filter((r) => r.step_kind === "VALIDATE").length)} />

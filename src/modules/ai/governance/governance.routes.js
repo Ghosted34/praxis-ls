@@ -26,8 +26,8 @@ router.post("/budget", requirePermission(MODULE, "edit"), validator.setBudget, c
 router.get("/can-use", requirePermission(MODULE, "view"), controller.canUse);
 router.get("/usage", requirePermission(MODULE, "view"), controller.usage);
 
-router.get("/vendors", requirePermission(MODULE, "view"), controller.listVendors);
-router.put("/vendors/:vendor", requirePermission(MODULE, "edit"), validator.setVendor, controller.setVendor);
-router.post("/vendors/:vendor/test", requirePermission(MODULE, "edit"), controller.testVendor);
+// Vendor keys are managed deploy-wide from the platform console
+// (/api/platform/ai-vendors) — one shared set for all tenants. The former
+// per-tenant /vendors routes were removed with that migration.
 
 module.exports = { basePath: "/ai/governance", feature: "ai.assistant.backend", router };

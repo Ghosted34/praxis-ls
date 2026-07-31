@@ -56,7 +56,7 @@ export function AiFeaturesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Feature flags" description="Turn AI capabilities on or off per tenant — the switch every Praxis affordance obeys." />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Feature flags" description="Turn AI capabilities on or off per tenant — the switch every Praxis affordance obeys." />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Features" value={num(flags.length)} />
@@ -137,7 +137,7 @@ export function AiGrantsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Access grants" description="Per-user access to AI features (the feature flag must also be on)." action={<Button onClick={() => setOpen(true)}>Grant access</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Access grants" description="Per-user access to AI features (the feature flag must also be on)." action={<Button onClick={() => setOpen(true)}>Grant access</Button>} />
       <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(g) => g.grant_id || g.user_id + g.feature_key} empty={{ title: "No grants", hint: "Grant a user access to an AI feature." }} />
       {open && <GrantForm onClose={() => setOpen(false)} onSaved={reload} />}
@@ -153,7 +153,7 @@ export function AiBudgetPage() {
   const stateTone: Tone = d?.state === "BLOCK" ? "bad" : d?.state === "WARN" ? "warn" : "ok";
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Spend caps" description="Monthly AI budget — soft cap warns, hard cap blocks all AI calls." action={<Button onClick={() => setOpen(true)}>Set budget</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Spend caps" description="Monthly AI budget — soft cap warns, hard cap blocks all AI calls." action={<Button onClick={() => setOpen(true)}>Set budget</Button>} />
       <HubTabs />
       {b.loading ? <div className="py-8 text-center micro">Loading…</div> : b.error ? <ErrorState message={errMsg(b.error)} /> : (
         <KpiRow>
@@ -332,7 +332,7 @@ export function AiVendorsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Vendors & keys" description="LLM/vision/voice providers — model, encrypted API key, and a connection test." action={<Button onClick={() => setAdding(true)}>Add vendor</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Vendors & keys" description="LLM/vision/voice providers — model, encrypted API key, and a connection test." action={<Button onClick={() => setAdding(true)}>Add vendor</Button>} />
       <HubTabs />
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(v) => v.vendor} empty={{ title: "No vendors yet", hint: "Add a provider (e.g. OpenAI for embeddings) and paste its API key." }} />
       {editing && <VendorKeyForm vendor={editing} onClose={() => setEditing(null)} onSaved={reload} />}
@@ -356,7 +356,7 @@ export function AiUsagePage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="AI Control" />} title="Usage" description="Metered AI calls and their cost, per the active budget period." />
+      <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Usage" description="Metered AI calls and their cost, per the active budget period." />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Calls" value={num(list.length)} />

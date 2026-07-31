@@ -118,11 +118,15 @@ async function overview(client, dossierId) {
     "SELECT doc_id, doc_type, status, entity_ref, version_no, created_at " +
       "FROM document_vault WHERE dossier_id = $1 AND status <> 'ARCHIVED' ORDER BY created_at DESC LIMIT 20",
   );
+  const invoiceRows = await q(
+    "SELECT invoice_id, doc_number AS ref, status, total_ttc, type, created_at " +
+      "FROM invoice WHERE dossier_id = $1 ORDER BY created_at DESC LIMIT 20",
+  );
 
   return {
     costing, actual, invoices, outstanding, milestones, procurement, transit, delivery,
     people: { costing: costingPeople || null, invoice: invoicePeople || null },
-    documentRows: { transit: transitRows, delivery: deliveryRows, vault: vaultRows },
+    documentRows: { invoices: invoiceRows, transit: transitRows, delivery: deliveryRows, vault: vaultRows },
   };
 }
 

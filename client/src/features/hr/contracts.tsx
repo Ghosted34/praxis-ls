@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -12,7 +13,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { TransitionButtons } from "@/components/ui/workflow";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -25,14 +26,20 @@ const KIND_LABEL: Record<string, string> = { OFFER_LETTER: "Offer letter", EMPLO
 
 function NewContractForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { rows: employees } = useList<{ employee_id: string; full_name?: string }>("/employees");
-  const [f, setF] = React.useState({ employee_id: "", kind: "EMPLOYMENT", effective_on: "", end_on: "" });
+  const [f, setF] = React.useState({ employee_id: "", kind: "EMPLOYMENT", effective_on: "", end_on: "", email: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null);
+    e.preventDefault(); setBusy(true); setError(null); setNote(null);
     try {
-      await api.createContract({ employee_id: f.employee_id || undefined, kind: f.kind, effective_on: f.effective_on || undefined, end_on: f.end_on || undefined });
+      const created = await api.createContract({ employee_id: f.employee_id || undefined, kind: f.kind, effective_on: f.effective_on || undefined, end_on: f.end_on || undefined });
+      // Draft the contract from the template and email it to the employee.
+      if (f.email.trim() && created.hr_contract_id) {
+        try { await api.sendContract(created.hr_contract_id, f.email.trim()); }
+        catch (sendErr) { setNote(`Contract created, but the email failed: ${errMsg(sendErr)}`); }
+      }
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -57,13 +64,48 @@ function NewContractForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <Field label="Effective on"><Input type="date" value={f.effective_on} onChange={(e) => set("effective_on", e.target.value)} /></Field>
           <Field label="Ends on"><Input type="date" value={f.end_on} onChange={(e) => set("end_on", e.target.value)} /></Field>
         </div>
+        <Field label="Email contract to (optional)">
+          <Input type="email" placeholder="employee@company.cm" value={f.email} onChange={(e) => set("email", e.target.value)} />
+        </Field>
+        {note && <div className="rounded-lg border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn)/0.08)] px-3 py-2 text-sm">{note}</div>}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={!f.employee_id || busy}>Create draft</Button>
+          <Button type="submit" loading={busy} disabled={!f.employee_id || busy}>{f.email.trim() ? "Create & send" : "Create draft"}</Button>
         </div>
       </form>
     </Modal>
+  );
+}
+
+function readAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result));
+    r.onerror = () => reject(new Error("Could not read file"));
+    r.readAsDataURL(file);
+  });
+}
+
+/** Upload an already-signed contract PDF and tie it to the contract row. */
+export function UploadSigned({ contract, onDone }: { contract: api.Contract; onDone: () => void }) {
+  const ref = React.useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = React.useState(false);
+  async function pick(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    setBusy(true);
+    try { await api.uploadContractSigned(contract.hr_contract_id, await readAsDataUrl(file)); onDone(); }
+    catch (err) { window.alert(errMsg(err)); } finally { setBusy(false); }
+  }
+  return (
+    <>
+      <input ref={ref} type="file" accept="application/pdf" className="hidden" onChange={pick} />
+      <Button size="sm" variant="ghost" loading={busy} onClick={() => ref.current?.click()}>
+        {contract.pdf_vault_id ? "Replace signed" : "Upload signed"}
+      </Button>
+    </>
   );
 }
 
@@ -88,18 +130,23 @@ export function ContractsPage() {
     {
       key: "_a", label: "",
       render: (c) => (
-        <TransitionButtons
-          items={(TRANSITIONS[c.status] || []).map((s) => ({ to: s, label: STATUS_LABEL[s] || s, variant: s === "ENDED" ? "outline" : "default", loading: busy === c.hr_contract_id + s }))}
-          onTransition={(s) => toStatus(c, s)}
-        />
+        <div className="flex items-center justify-end gap-2">
+          {c.pdf_vault_id && <Pill tone="ok">Signed on file</Pill>}
+          <DocButton docType="EMPLOYMENT_CONTRACT" id={c.hr_contract_id} title={c.employee_name || `Contract ${c.hr_contract_id.slice(0, 8)}`} label="View" />
+          <UploadSigned contract={c} onDone={rows.reload} />
+          <TransitionButtons
+            items={(TRANSITIONS[c.status] || []).map((s) => ({ to: s, label: STATUS_LABEL[s] || s, variant: s === "ENDED" ? "outline" : "default", loading: busy === c.hr_contract_id + s }))}
+            onTransition={(s) => toStatus(c, s)}
+          />
+        </div>
       ),
     },
   ];
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Contracts" description="Issue and progress employee contracts through their lifecycle." action={<Button onClick={() => setCreating(true)}>New contract</Button>} />
-      {error && <div className="mb-3"><ErrorState message={error} /></div>}
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Contracts" description="Issue and progress employee contracts through their lifecycle." action={<Button onClick={() => setCreating(true)}>New contract</Button>} />
+      <HubTabs />      {error && <div className="mb-3"><ErrorState message={error} /></div>}
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(c) => c.hr_contract_id} empty={{ title: "No contracts", hint: "Draft a contract to get started." }} />
       {creating && <NewContractForm onClose={() => setCreating(false)} onSaved={rows.reload} />}
       <ScreenAi path="hr/contracts" />

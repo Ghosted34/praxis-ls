@@ -5,6 +5,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -57,6 +58,7 @@ function WorkOrderDetail({ order: initial, onClose, onChanged }: { order: api.Wo
         <StepBar steps={["OPEN", "IN_PROGRESS", "DONE"]} current={order.status} />
         <StatusActionBar status={order.status} tone={STATUS_TONE[order.status]} transitions={transitions} onTransition={toState} busyKey={busy}>
           <span className="text-sm text-muted-foreground">Cost <span className="num font-medium text-foreground">{money(order.cost)}</span></span>
+          <DocButton docType="WORK_ORDER" id={order.work_order_id} title={`Work order ${order.registration || order.work_order_id.slice(0, 8)}`} label="View document" />
         </StatusActionBar>
 
         {error && <ErrorState message={error} />}
@@ -141,7 +143,7 @@ export function WorkOrdersPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Work orders" description="Log maintenance jobs, parts and labour; cost rolls up from the parts." action={<Button onClick={() => setCreating(true)}>New work order</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Work orders" description="Log maintenance jobs, parts and labour; cost rolls up from the parts." action={<Button onClick={() => setCreating(true)}>New work order</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={orders.data} error={orders.error} loading={orders.loading} rowKey={(o) => o.work_order_id} empty={{ title: "No work orders", hint: "Open one to start logging maintenance." }} />
       {view && <WorkOrderDetail order={view} onClose={() => setView(null)} onChanged={orders.reload} />}

@@ -38,16 +38,16 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   const go = (key: string) => (inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`));
 
   const tabsNode = (
-    <div aria-label={`${eyebrow} sections`} className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
+    <div aria-label={`${eyebrow} sections`} className="mb-4 flex flex-wrap gap-x-5 border-b">
       {tabs.map((t) => (
         <button
           key={t.key}
           onClick={() => go(t.key)}
           className={cn(
-            "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm transition-colors",
+            "-mb-px whitespace-nowrap border-b-2 px-0.5 pb-2.5 text-sm transition-colors",
             active.key === t.key
-              ? "bg-primary font-semibold text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+              ? "border-primary font-semibold text-foreground"
+              : "border-transparent text-muted-foreground hover:text-foreground",
           )}
         >
           {t.label}
@@ -71,11 +71,13 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   );
 }
 
-/** Breadcrumb "Hub › <area>" where Hub links to the Control Tower (dashboard). */
-export function HubCrumb({ area }: { area: string }) {
+/** Breadcrumb "Hub › <area>". Hub links to the Control Tower; when `to` is given
+ *  the area is a link back to its own hub (e.g. Finance → /finance). */
+export function HubCrumb({ area, to }: { area: string; to?: string }) {
   return (
     <span className="micro">
-      <Link to="/" className="transition-colors hover:text-primary">Hub</Link> › {area}
+      <Link to="/" className="transition-colors hover:text-primary">Hub</Link> ›{" "}
+      {to ? <Link to={to} className="transition-colors hover:text-primary">{area}</Link> : area}
     </span>
   );
 }

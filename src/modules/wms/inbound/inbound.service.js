@@ -11,6 +11,17 @@ const base = makeService({ repo, moduleKey: events.MODULE, entity: "inbound", ev
 
 module.exports = {
   ...base,
+  // Header + optional received-lines. `lines` isn't a grn_inbound column, so it's
+  // split off before the header insert, then written to grn_line.
+  async create(client, { data, actor }) {
+    const { lines, ...header } = data || {};
+    const row = await base.create(client, { data: header, actor });
+    for (const l of lines || []) {
+      if (!l || !l.inventory_item_id) continue;
+      await repo.insertLine(client, { grn_inbound_id: row.grn_inbound_id, inventory_item_id: l.inventory_item_id, item: l.item || null, ordered: Number(l.ordered) || 0, received: Number(l.received) || 0, condition: l.condition || null });
+    }
+    return row;
+  },
   async setQa(client, { id, qa_status, putaway_location, actor }) {
     const before = await repo.findById(client, id);
     if (!before) return null;

@@ -111,7 +111,7 @@ export function DriversPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Fleet" />} title="Driver licences" description="Licences and certifications per driver — renew before they expire." action={<Button onClick={() => setCreating(true)}>New licence</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Fleet" to="/fleet" />} title="Driver licences" description="Licences and certifications per driver — renew before they expire." action={<Button onClick={() => setCreating(true)}>New licence</Button>} />
       <HubTabs />
       <DataList columns={cols} rows={rows.data} error={rows.error} loading={rows.loading} rowKey={(r) => r.driver_license_id} empty={{ title: "No licences", hint: "Record driver licences to track expiry." }} />
       {creating && <NewLicenceForm onClose={() => setCreating(false)} onSaved={rows.reload} />}

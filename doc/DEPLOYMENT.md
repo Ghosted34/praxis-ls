@@ -224,6 +224,12 @@ live** — so `scripts/tenant/create-admin.js` is optional (the console's **Crea
 button does the same Argon2id write into the tenant LIVE schema). Provisioning also seeds
 the tenant's brand display name from the provisioning name.
 
+**AI vendor keys (session 16).** AI provider keys are now **one shared, deploy-wide set** managed only from the
+console under **Integrations → AI providers** (the former per-tenant Vendors tab is gone). They live on the
+platform DB (`platform/0060_ai_vendor`), are AES-256-GCM encrypted with the deployment's `ENCRYPTION_KEY`, and
+the AI runtime reads them for every tenant (`.env` provider keys remain the fallback). After deploy, set each
+provider's key + run its **Test**. Full rollout steps: **`doc/PLATFORM_CONSOLE_DEPLOY.md`**.
+
 ## 6. Updating a running deployment
 
 **Automatic (CI/CD):** every push to `main` runs CI (lint / tests / image

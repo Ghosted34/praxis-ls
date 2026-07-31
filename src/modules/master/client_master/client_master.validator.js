@@ -7,6 +7,7 @@ const base = {
   client_type_id: z.string().uuid().optional(),
   niu: z.string().optional(),
   rccm: z.string().optional(),
+  email: z.string().email().optional().or(z.literal("")),
   payment_terms_days: z.number().int().min(0).optional(),
   credit_limit: z.number().nonnegative().optional(),
   kyc_docs: z.array(z.any()).optional(),

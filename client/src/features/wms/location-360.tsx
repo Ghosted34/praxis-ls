@@ -158,7 +158,7 @@ export function LocationsPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Locations" description="Warehouse slotting with a per-location 360 — stock, equipment, counts and capacity." action={<Button onClick={() => setCreating(true)}>New location</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Locations" description="Warehouse slotting with a per-location 360 — stock, equipment, counts and capacity." action={<Button onClick={() => setCreating(true)}>New location</Button>} />
       <HubTabs />
       {locs.error ? <ErrorState message={locs.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[260px_1fr]">

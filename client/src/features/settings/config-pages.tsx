@@ -7,12 +7,13 @@
  *  - NumberingPage       → /numbering-schemes/:moduleKey (static doc-type list)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import * as React from "react";
-import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable, PageSkeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { SearchSelect } from "@/features/sales/ui";
@@ -223,13 +224,8 @@ export function BankAccountsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Bank accounts</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code.</p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>New account</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Bank accounts" description="Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code." action={<Button onClick={() => setCreateOpen(true)}>New account</Button>} />
+      <HubTabs />
 
       <PageError message={rowError} />
 
@@ -416,13 +412,7 @@ export function PaymentGatewaysPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Payment gateways</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Per-tenant gateway providers and their encrypted credentials. Keys are write-only and never returned.</p>
-        </div>
-        <Button onClick={openNew}>Add gateway</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Payment gateways" description="Per-tenant gateway providers and their encrypted credentials. Keys are write-only and never returned." action={<Button onClick={openNew}>Add gateway</Button>} />
 
       <PageError message={rowError} />
 
@@ -643,13 +633,7 @@ export function ScheduledReportsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Scheduled reports</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Automated report delivery — pick a report, a cadence and recipients.</p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>Schedule report</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Scheduled reports" description="Automated report delivery — pick a report, a cadence and recipients." action={<Button onClick={() => setCreateOpen(true)}>Schedule report</Button>} />
 
       <PageError message={rowError} />
 
@@ -852,16 +836,12 @@ export function ApiKeysPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">API keys &amp; secrets</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Encrypted, write-only third-party integration keys (FX &amp; more). Keys are never returned — only their last 4 characters. AI provider keys are managed in{" "}
-            <Link to="/ai-control" className="underline underline-offset-2 hover:text-foreground">AI Control → Vendors</Link>.
-          </p>
-        </div>
-        <Button onClick={openAdd}>Add key</Button>
-      </header>
+      <PageHeader
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        title="API keys & secrets"
+        description={<>Encrypted, write-only third-party integration keys (FX &amp; more). Keys are never returned — only their last 4 characters. AI provider keys are managed in the platform console.</>}
+        action={<Button onClick={openAdd}>Add key</Button>}
+      />
 
       {testResult && (
         <div className={`mb-3 rounded-lg border px-4 py-3 text-sm ${testResult.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
@@ -931,10 +911,7 @@ export function PipelineStagesPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Pipeline stages</h1>
-        <p className="mt-1 text-sm text-muted-foreground">The CRM opportunity pipeline stages. Read-only — stage editing is not yet exposed by the backend.</p>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Pipeline stages" description="The CRM opportunity pipeline stages. Read-only — stage editing is not yet exposed by the backend." />
 
       {error ? (
         <ErrorState message={error} />
@@ -1133,10 +1110,7 @@ export function NumberingPage() {
 
   return (
     <section className="mx-auto max-w-4xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="text-2xl font-semibold tracking-tight">Document numbering</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Per-document numbering schemes — prefix, padding, reset cadence and separator.</p>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document numbering" description="Per-document numbering schemes — prefix, padding, reset cadence and separator." />
 
       <div className="space-y-4">
         <Field label="Document type">

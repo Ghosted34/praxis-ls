@@ -6,6 +6,8 @@ import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
+import { DictionaryItemSelect } from "@/components/catalogue-select";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -40,21 +42,41 @@ function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; d
 
 /* ═══════════════════ Purchase requests ═══════════════════ */
 
+type PrLine = { dictionary_item_id: string; label: string; qty: string; unit_price: string };
+const blankPrLine = (): PrLine => ({ dictionary_item_id: "", label: "", qty: "1", unit_price: "" });
+
 function PrForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [department, setDepartment] = React.useState("");
   const [justification, setJustification] = React.useState("");
+  const [lines, setLines] = React.useState<PrLine[]>([blankPrLine()]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const setLine = (i: number, patch: Partial<PrLine>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
-    try { await api.createPurchaseRequest({ department: department || undefined, justification: justification || undefined }); onSaved(); onClose(); }
-    catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    try {
+      const cleaned = lines.filter((l) => l.dictionary_item_id).map((l) => ({ dictionary_item_id: l.dictionary_item_id, label: l.label, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 }));
+      await api.createPurchaseRequest({ department: department || undefined, justification: justification || undefined, lines: cleaned.length ? cleaned : undefined });
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
   return (
     <Modal open onClose={onClose} title="New purchase request" description="Ask for a purchase to be raised.">
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Department"><Input value={department} onChange={(e) => setDepartment(e.target.value)} /></Field>
         <Field label="Justification"><Input value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Why this is needed" /></Field>
+        <div className="space-y-2">
+          <div className="micro">Items</div>
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_70px_110px_auto] items-center gap-2">
+              <DictionaryItemSelect value={l.dictionary_item_id} onPick={(id, label) => setLine(i, { dictionary_item_id: id, label })} />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="Qty" />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="Unit (XAF)" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, blankPrLine()])}>Add item</Button>
+        </div>
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={busy} onCancel={onClose} saveLabel="Create request" />
       </form>
@@ -78,7 +100,8 @@ export function PurchaseRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="PURCHASE_REQUEST" id={r.pr_id} title={r.ref || `Request ${r.pr_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.pr_id} onClick={() => submitPr(r)}>Submit</Button>}
         </div>
       ),
@@ -86,7 +109,7 @@ export function PurchaseRequestsPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Procurement" />} title="Purchase requests" description="Requests to buy, before a PO is raised." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Procurement" to="/procurement" />} title="Purchase requests" description="Requests to buy, before a PO is raised." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Requests" value={num(list.length)} />
@@ -118,7 +141,7 @@ function PoForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
       await api.createPurchaseOrder({
         supplier_id: f.supplier_id || undefined, dossier_id: f.dossier_id || undefined,
         expense_category: f.expense_category as api.PurchaseOrderInput["expense_category"],
-        items: items.filter((it) => it.label).map((it) => ({ label: it.label, qty: Number(it.qty) || 1, unit_price: Number(it.unit_price) || 0 })),
+        items: items.filter((it) => it.dictionary_item_id).map((it) => ({ dictionary_item_id: it.dictionary_item_id, label: it.label, qty: Number(it.qty) || 1, unit_price: Number(it.unit_price) || 0 })),
       });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
@@ -155,7 +178,7 @@ function PoForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
           <div className="space-y-2">
             {items.map((it, i) => (
               <div key={i} className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2">
-                <Field label="Label"><Input value={it.label ?? ""} onChange={(e) => setItem(i, { label: e.target.value })} /></Field>
+                <Field label="Item"><DictionaryItemSelect value={it.dictionary_item_id} onPick={(id, label) => setItem(i, { dictionary_item_id: id, label })} /></Field>
                 <Field label="Qty"><Input type="number" className="num text-right" value={String(it.qty ?? "")} onChange={(e) => setItem(i, { qty: Number(e.target.value) })} /></Field>
                 <Field label="Unit price"><Input type="number" className="num text-right" value={String(it.unit_price ?? "")} onChange={(e) => setItem(i, { unit_price: Number(e.target.value) })} /></Field>
                 <Button type="button" size="sm" variant="outline" disabled={items.length === 1} onClick={() => setItems((its) => its.filter((_, j) => j !== i))}>✕</Button>
@@ -189,7 +212,8 @@ export function PurchaseOrdersPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="PURCHASE_ORDER" id={r.po_id} title={r.ref || `PO ${r.po_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => approve(r)}>Approve</Button>}
         </div>
       ),
@@ -197,7 +221,7 @@ export function PurchaseOrdersPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Procurement" />} title="Purchase orders" description="Orders raised to suppliers." action={<Button onClick={() => setOpen(true)}>New PO</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Procurement" to="/procurement" />} title="Purchase orders" description="Orders raised to suppliers." action={<Button onClick={() => setOpen(true)}>New PO</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="POs" value={num(list.length)} />
@@ -264,7 +288,7 @@ export function GoodsReceivedPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Procurement" />} title="Goods received" description="Receipt notes (GRN) against purchase orders." action={<Button onClick={() => setOpen(true)}>New GRN</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Procurement" to="/procurement" />} title="Goods received" description="Receipt notes (GRN) against purchase orders." action={<Button onClick={() => setOpen(true)}>New GRN</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Receipts" value={num((rows || []).length)} />
@@ -364,7 +388,8 @@ export function SupplierInvoicesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="SUPPLIER_INVOICE" id={r.supplier_invoice_id} title={r.ref || `Invoice ${r.supplier_invoice_id.slice(0, 8)}`} label="View" />
           {!String(r.status).includes("POSTED") && <Button size="sm" variant="outline" loading={busyId === r.supplier_invoice_id} onClick={() => post(r)}>Post</Button>}
         </div>
       ),
@@ -372,7 +397,7 @@ export function SupplierInvoicesPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Procurement" />} title="Supplier invoices" description="Vendor invoices — capture, match, post to the GL." action={<Button onClick={() => setOpen(true)}>New invoice</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Procurement" to="/procurement" />} title="Supplier invoices" description="Vendor invoices — capture, match, post to the GL." action={<Button onClick={() => setOpen(true)}>New invoice</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Invoices" value={num(list.length)} />

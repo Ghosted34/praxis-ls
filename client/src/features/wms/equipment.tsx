@@ -120,7 +120,7 @@ export function EquipmentPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Warehouse" />} title="Equipment" description="Handling equipment allocation — check out, return, maintain." action={<Button onClick={() => setCreating(true)}>New equipment</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Equipment" description="Handling equipment allocation — check out, return, maintain." action={<Button onClick={() => setCreating(true)}>New equipment</Button>} />
       <HubTabs />
       {equipment.error ? <ErrorState message={equipment.error} /> : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

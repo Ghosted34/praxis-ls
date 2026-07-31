@@ -9,7 +9,7 @@ import { ErrorState, EmptyState } from "@/components/ui/states";
 import { ActivePill, Pill, type Tone } from "@/components/ui/pill";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt } from "@/lib/format";
@@ -22,11 +22,13 @@ const READINESS: { value: string; label: string; tone: Tone }[] = [
 ];
 const readinessMeta = (v?: string | null) => READINESS.find((r) => r.value === v);
 
-const eyebrow = <HubCrumb area="Human capital" />;
+const eyebrow = <HubCrumb area="Human capital" to="/hr" />;
 const shell = "mx-auto max-w-6xl animate-fade-in";
 
 // Employees is now a profile 360 (record + HR history + suspend/activate).
 export { EmployeesPage } from "./employee-360";
+// HR discipline (MOD-71) — manager screens for queries + sanctions.
+export { QueriesPage, SanctionsPage } from "./discipline";
 // Payroll is now a run workstation (compute → approve → post → disburse).
 export { PayrollPage } from "./payroll";
 // Vacancies is now a recruitment kanban (applicant pipeline across stages).
@@ -251,7 +253,7 @@ export function SopsPage() {
   return (
     <section className={shell}>
       <PageHeader eyebrow={eyebrow} title="SOPs & onboarding" description="Standard operating procedures, plus per-new-hire onboarding checklists." />
-      <div className="chips mb-4">
+      <HubTabs />      <div className="chips mb-4">
         <button className={`chip ${view === "procedures" ? "on" : ""}`} onClick={() => setView("procedures")}>Procedures</button>
         <button className={`chip ${view === "onboarding" ? "on" : ""}`} onClick={() => setView("onboarding")}>Onboarding</button>
       </div>
@@ -378,7 +380,7 @@ export function TalentPoolPage() {
   return (
     <section className={shell}>
       <PageHeader eyebrow={eyebrow} title="Talent & succession" description="Successors for key roles, plus the candidate bench for future hiring." action={<Button onClick={() => setPlanning(true)}>New plan</Button>} />
-      <KpiRow>
+      <HubTabs />      <KpiRow>
         <KpiTile label="Succession plans" value={num(planList.length)} />
         <KpiTile label="Ready-now successors" value={num(readyNow)} />
         <KpiTile label="Bench candidates" value={num(list.length)} />

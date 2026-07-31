@@ -5,7 +5,8 @@
  * All fields persist.
  */
 import * as React from "react";
-import { Link } from "react-router-dom";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import {
   fetchLogin,
   saveLogin,
@@ -75,13 +76,7 @@ export function LoginEditor() {
 
   return (
     <section className="mx-auto max-w-2xl animate-fade-in pb-24">
-      <Link to="/settings" className="text-xs text-muted-foreground hover:text-foreground">
-        ← Settings
-      </Link>
-      <h1 className="mt-2 font-display text-2xl tracking-tight">Login screen</h1>
-      <p className="mt-1 text-sm text-muted-foreground">
-        Configure the signed-out door — no code, no redeploy.
-      </p>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Login screen" description="Configure the signed-out door — no code, no redeploy." />
 
       {!loaded ? (
         <p className="mt-6 text-sm text-muted-foreground">Loading…</p>

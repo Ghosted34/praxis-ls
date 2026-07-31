@@ -6,6 +6,7 @@ const create = z.object({
   dossier_id: z.string().uuid().optional(),
   qa_status: z.enum(["HOLD", "PASSED", "REJECTED"]).optional(),
   putaway_location: z.string().uuid().optional(),
+  lines: z.array(z.object({ inventory_item_id: z.string().uuid().optional().nullable(), item: z.string().optional(), ordered: z.number().nonnegative().optional(), received: z.number().nonnegative().optional(), condition: z.string().optional() })).optional(),
 });
 const qa = z.object({
   qa_status: z.enum(["PASSED", "REJECTED"]),

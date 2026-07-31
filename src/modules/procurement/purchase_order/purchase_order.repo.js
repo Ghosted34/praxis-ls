@@ -24,7 +24,7 @@ async function listPO(client, q = {}) {
   const wh = ["1=1"];
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   if (q.supplier_id) { params.push(q.supplier_id); wh.push("supplier_id = $" + params.length); }
-  const { rows } = await client.query("SELECT * FROM purchase_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
+  const { rows } = await client.query("SELECT *, doc_number AS ref FROM purchase_order WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
 module.exports = { insertPO, getPO, insertItem, deleteItems, listItems, update, listPO };

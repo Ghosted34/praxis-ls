@@ -8,7 +8,6 @@ export function SalesHub() {
     <TabbedHub
       eyebrow="Sales & CRM"
       basePath="/sales"
-      inlineTabs
       tabs={[
         { key: "leads", label: "Leads & intake", Component: LeadsPage },
         { key: "opportunities", label: "Opportunities", Component: OpportunitiesPage },

@@ -7,6 +7,8 @@ import { HelpPage } from "@/features/help/help-page";
 import { DashboardPage } from "@/features/dashboard";
 import { SecurityHub } from "@/features/security/hub";
 import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
+import { GovernanceHub } from "@/features/governance/hub";
+import { MyHrPage } from "@/features/hr/my-hr";
 import { AppearancePage } from "@/features/settings/appearance-page";
 import { SettingsHub } from "@/features/settings/settings-hub";
 import { LoginEditor } from "@/features/settings/login-editor";
@@ -19,6 +21,7 @@ import {
 } from "@/features/settings/config-pages";
 import { CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
 import { TemplateStudioPage } from "@/features/settings/document-templates-page";
+import { DocumentPage } from "@/components/document-view";
 import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
 import { FleetHub } from "@/features/fleet/hub";
 import { WarehouseHub } from "@/features/wms/hub";
@@ -73,6 +76,8 @@ export function App() {
         {/* Finance — one hub, deep-linkable tabs (per-section routes still resolve) */}
         <Route path="finance" element={<FinanceHub />} />
         <Route path="finance/:section" element={<FinanceHub />} />
+        <Route path="governance" element={<GovernanceHub />} />
+        <Route path="my-hr" element={<MyHrPage />} />
         <Route path="audit" element={<AuditPage />} />
         <Route path="notifications" element={<NotificationsPage />} />
         <Route path="workflows" element={<WorkflowsPage />} />
@@ -136,6 +141,7 @@ export function App() {
         <Route path="settings/api-keys" element={<ApiKeysPage />} />
         <Route path="settings/factory-languages" element={<Planned />} />
         <Route path="settings/document-templates" element={<TemplateStudioPage />} />
+        <Route path="documents/:docType/:id" element={<DocumentPage />} />
         <Route path="settings/email-signatures" element={<EmailSignaturesPage />} />
         {/* No BE yet — scaffolded like factory-languages. The Settings hub still
             links here (settings-hub.tsx), so without this route the card dead-ends

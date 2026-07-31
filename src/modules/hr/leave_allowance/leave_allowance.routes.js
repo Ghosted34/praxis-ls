@@ -11,6 +11,9 @@ const M = "MOD-15";
 const router = express.Router();
 router.use(authMiddleware);
 
+// Self-service — the caller's own leave/allowance requests (My HR). No MOD grant.
+router.get("/mine", controller.mine);
+
 router.get("/", requirePermission(M, "view"), controller.list);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(M, "view"), controller.get);

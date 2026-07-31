@@ -36,7 +36,7 @@ export const transitionCashRequest = (id: string, to: "SUBMITTED" | "APPROVED" |
   tenant<CashRequest>(`/cash-requests/${id}/transition`, { method: "POST", body: { to, ...extra } });
 
 /* ── Régie d'avance(/regie) ── */
-export type Regie = { regie_advance_id: string; ref?: string | null; doc_number?: string | null; holder_user_id?: string | null; amount?: number | null; state?: string | null; status?: string | null; created_at?: string };
+export type Regie = { regie_advance_id: string; ref?: string | null; doc_number?: string | null; holder_user_id?: string | null; amount?: number | null; state?: string | null; status?: string | null; issued_on?: string | null; created_at?: string };
 export type RegieIssueInput = { holder_user_id?: string; amount: number; entity_id: string; entry_date: string; source_doc_ref: string; policy_window_days?: number };
 export const listRegie = () => tenant<Regie[]>("/regie");
 export const issueRegie = (body: RegieIssueInput) => tenant<Regie>("/regie/issue", { method: "POST", body });

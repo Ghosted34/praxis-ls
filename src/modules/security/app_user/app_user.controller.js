@@ -5,6 +5,7 @@ const service = require("./app_user.service");
 const actor = (req) => req.user || { user_id: null };
 const list = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listUsers(c, req.query)) }));
 const get = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getUser(c, req.params.id)) }));
+const linkableEmployees = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listLinkableEmployees(c)) }));
 const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req) })) }));
 const update = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateUser(c, { id: req.params.id, patch: req.body, actor: actor(req) })) }));
 const setPassword = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setPassword(c, { id: req.params.id, newPassword: req.body.new_password, actor: actor(req) })) }));
@@ -44,6 +45,13 @@ const me = asyncHandler(async (req, res) =>
 const logout = asyncHandler(async (req, res) => {
   const result = await req.identityDb((client) =>
     service.logout(client, { actor: req.user, sessionId: req.body.session_id || null }),
+  );
+  res.json({ data: result });
+});
+
+const setAvatar = asyncHandler(async (req, res) => {
+  const result = await req.identityDb((client) =>
+    service.setAvatar(client, { userId: req.user.user_id, dataUrl: req.body.data_url, slug: req.tenant && req.tenant.slug }),
   );
   res.json({ data: result });
 });
@@ -96,9 +104,10 @@ const disableTotp = asyncHandler(async (req, res) => {
 });
 
 module.exports = {
-  list, get, create, update, setPassword, setStatus, getSignature, setSignature,
+  list, get, linkableEmployees, create, update, setPassword, setStatus, getSignature, setSignature,
   pinRegister, pinLogin, pinDevices, pinRevoke,
   login,
+  setAvatar,
   forgotPassword,
   resetPassword,
   verifyTotp,

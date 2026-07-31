@@ -10,6 +10,7 @@ const registry = require("../../services/tenant/registry.service");
 const vision = require("../../services/ai/vision.service");
 const orchestrator = require("../../services/ai/orchestrator.service");
 const governance = require("../../modules/ai/governance/governance.service");
+const platformVendors = require("../../services/platform/ai-vendor.service");
 
 module.exports = async function aiVision(job) {
   const { tenantMeta, env = "live", user, imageBase64, mimeType, prompt, conversationId } = job.data || {};
@@ -19,7 +20,7 @@ module.exports = async function aiVision(job) {
     const gate = await governance.canUseFeature(c, { userId: user.user_id, featureKey: "doc_vision" });
     if (!gate.allowed) return { blocked: true, reason: gate.reason };
 
-    const vendor = await governance.getVendorConfig(c, "gemini");
+    const vendor = await platformVendors.getConfig("gemini");
     const image = Buffer.from(imageBase64, "base64");
     const { fields, provider } = await vision.extract({ image, mimeType, prompt, vendor });
     await governance.recordUsage(c, { userId: user.user_id, featureKey: "doc_vision", conversationId, provider, callType: "vision" });

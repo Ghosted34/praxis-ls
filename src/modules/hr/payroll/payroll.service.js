@@ -176,6 +176,7 @@ async function get(client, id) {
   return { ...run, items };
 }
 const list = (client, q) => repo.listRuns(client, q);
+const myPayslips = (client, employeeId) => (employeeId ? repo.payslipsForEmployee(client, employeeId) : Promise.resolve([]));
 
 function periodEnd(periodCode) {
   const [y, m] = String(periodCode).split("-").map(Number);
@@ -185,4 +186,4 @@ function periodEnd(periodCode) {
 // A cleared approval chain advances the run SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
 onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {} }));
 
-module.exports = { createRun, compute, setStatus, get, list };
+module.exports = { createRun, compute, setStatus, get, list, myPayslips };

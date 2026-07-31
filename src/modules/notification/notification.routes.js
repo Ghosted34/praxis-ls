@@ -12,8 +12,15 @@ router.get("/", controller.mine);
 router.get("/unread-count", controller.unreadCount);
 // Self-service preferences (no MOD grant — you manage your own). Literal path,
 // registered before the /:id route so it can't be captured as an :id.
+router.get("/categories", controller.categories);
 router.get("/preferences", controller.getPreferences);
 router.put("/preferences", validator.preferences, controller.setPreferences);
+// Web-Push opt-in. Literal /push/* paths, registered before the /:id route so
+// they can't be captured as an :id. public-key is a read; subscribe/unsubscribe
+// persist (or remove) this browser's PushSubscription for the caller.
+router.get("/push/public-key", controller.pushPublicKey);
+router.post("/push/subscribe", validator.pushSubscribe, controller.subscribePush);
+router.delete("/push/subscribe", validator.pushUnsubscribe, controller.unsubscribePush);
 router.post("/read-all", controller.markAllRead);
 router.post("/:id/read", controller.markRead);
 

@@ -5,6 +5,7 @@
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -117,7 +118,7 @@ export function CostingPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Costing" description="Planned cost sheets and margin per dossier." action={<Button onClick={() => setOpen(true)}>New costing</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Costing" description="Planned cost sheets and margin per dossier." action={<Button onClick={() => setOpen(true)}>New costing</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Costings" value={num(list.length)} />
@@ -148,7 +149,7 @@ export function CostTrackingPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Cost tracking" description="Actual costs booked against a dossier, vs the plan." />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Cost tracking" description="Actual costs booked against a dossier, vs the plan." />
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>
@@ -256,7 +257,8 @@ export function CashRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <DocButton docType="CASH_REQUEST" id={r.cash_request_id} title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.cash_request_id} onClick={() => submitCr(r)}>Submit</Button>}
         </div>
       ),
@@ -264,7 +266,7 @@ export function CashRequestsPage() {
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Cash requests" description="Advances requested against dossier budgets." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Cash requests" description="Advances requested against dossier budgets." action={<Button onClick={() => setOpen(true)}>New request</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Requests" value={num(list.length)} />
@@ -323,11 +325,12 @@ export function RegiePage() {
     { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.doc_number || r.ref || r.regie_advance_id?.slice(0, 8) || "—"}</span> },
     { key: "amount", label: "Amount", className: "num text-right", render: (r) => money(r.amount) },
     { key: "status", label: "Status", render: (r) => { const st = r.state ?? r.status; return st ? <Pill tone={tone(st)}>{st}</Pill> : "—"; } },
-    { key: "created_at", label: "Issued", render: (r) => dateFmt(r.created_at) },
+    { key: "issued_on", label: "Issued", render: (r) => dateFmt(r.issued_on || r.created_at) },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="REGIE_ADVANCE" id={r.regie_advance_id} title={`Régie ${r.regie_advance_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Costing" />} title="Régie d'avance" description="Cash advances (floats) and their ageing." action={<Button onClick={() => setOpen(true)}>Issue advance</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Costing" to="/costing" />} title="Régie d'avance" description="Cash advances (floats) and their ageing." action={<Button onClick={() => setOpen(true)}>Issue advance</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Advances" value={num(list.length)} />

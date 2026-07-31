@@ -6,6 +6,7 @@ const actor = (req) => req.user || { user_id: null };
 
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  mine: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.myPayslips(c, req.user.employee_id)) })),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Payroll run not found", 404);

@@ -2,6 +2,29 @@
 
 Derived from the PRD (Master Functional Spec v2) and the kickoff meeting. Organised by delivery phase, per the accounting-first roadmap (no big-bang cutover). Update statuses as work lands; this file is the running backlog, not a historical record — the transcript/PRD stay unchanged as source of truth.
 
+## Session 16 status — 2026-07-29
+
+**Landed** (detail in `doc/WORK_DONE.md` / `doc/SESSION_HANDOFF.md`): document-UI overhaul finished (native
+`DocumentPage` + `<DocButton>` across all doc types with real loaders); logo fix (base64 inline + branding
+fallback); contract signed-copy flow (send-on-create + upload/replace signed → `pdf_vault_id`); Send PDF
+attachment + recipient resolution (master emails, `0475`); document line items (`0476`); DSF SYSCOHADA build;
+AI vendor keys migrated to the platform (shared, deploy-wide — `platform/0060`, console **Integrations → AI
+providers**, tenant Vendors tab removed); AI Control menu hidden for AI-off tenants; clock-in/favicon/nav fixes.
+
+**Also landed (late):** doc-numbering display fix (lists read the real `doc_number`/`ot_number`, not the
+unpopulated `ref`); line items locked to catalogue selects (PO/PR → financial dictionary, GRN/delivery/transit
+→ inventory) via `catalogue-select.tsx` + `0477_line_item_refs` FK columns.
+
+**Remaining / owed:**
+
+- Run migrations: platform `0060_ai_vendor`, tenant `0475_master_email` + `0476_document_lines` +
+  `0477_line_item_refs`.
+- Full `tsc` / `vite build` / `jest` on a real machine (native bundlers can't run in-sandbox).
+- Set the shared AI provider keys in the console and verify a live AI chat/embedding on a tenant.
+- Seed the **financial-dictionary** + **inventory** masters so the new line-item selects have options.
+- **DSF pixel-exact** — still a structured summary; needs the official DGI liasse PDF to match exactly.
+
+
 ## Frontend build status — 2026-07-17 (session 6)
 
 This stream's FE lane (master data / sales-CRM / vault / portal / dashboard) is **substantially

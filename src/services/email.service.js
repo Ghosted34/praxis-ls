@@ -60,12 +60,15 @@ function transportFrom(cfg) {
  * tenant connection; `purpose` selects the sender; `from`/`replyTo` override;
  * `tx` is an injectable transport for tests.
  */
-async function send(client, { to, subject, html, text, from, replyTo, purpose = "NOTIFICATIONS", moduleKey = null }, tx = null) {
+async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
   const cfg = await resolveMail(client, { purpose, moduleKey });
   if (!tx && !cfg.smtp_host) throw new Error("email: no sender configured (add an email_identity or SMTP settings)");
   const mailer = tx || transportFrom(cfg);
-  return mailer.sendMail({ from: from || cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text });
+  return mailer.sendMail({
+    from: from || cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text,
+    ...(attachments && attachments.length ? { attachments } : {}),
+  });
 }
 
 /**

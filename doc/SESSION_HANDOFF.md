@@ -3,7 +3,38 @@
 Paste-in context for a fresh session, plus a running record of the FE reskin work.
 Companion to `doc/WORK_DONE.md` (full history) and `doc/WORK_TO_BE_DONE.md` (backlog).
 
-_Last updated: 2026-07-27 (session 15). **Session 15 = the Lovable kit-fidelity restyle finished; the
+_Last updated: 2026-07-29 (session 16). **Session 16 = the document-UI overhaul finished + the AI vendor
+keys migrated to the platform.** Native `DocumentPage` detail views wired across every doc type (`<DocButton>`
+on Finance/Commercial/Sales/Procurement/Costing/HR/Fleet/WMS/Operations) with real `loadRecord` loaders —
+incl. proforma (reads the `advance` table, not `invoice`), credit note (invoice `type='CREDIT_NOTE'`),
+**receipts now show what is paid for** (payment_allocation → invoices), work order (parts/cost), contract,
+payslip, PR, delivery/transit/GRN/cycle-count/trip-sheet. **Logo fix (was blank on every document):**
+`resolveEntity` double-wrapped `/media//media`, and templates only read the per-entity logo — it now inlines
+the logo as a **base64 data URI** with a **tenant-branding fallback**, so it renders in the preview, the
+Puppeteer PDF, and emailed HTML. **Contract signed-copy flow:** send-on-create (optional email in the new-
+contract form emails the drafted contract), upload/replace a **signed** PDF (vaulted → `pdf_vault_id`),
+View/Download prefers the signed copy — on the Contracts screen + employee-360. **Send now attaches the PDF**
+(`email.service` `attachments`) and **resolves the recipient** from party-master emails (new
+**`0475_master_email`** adds `email` to client/supplier/employee + forms): proposal→lead, invoice/receipt/
+quote/proforma/credit→client, PO/supplier-invoice→supplier, payslip/contract→employee, delivery/transit→
+dossier client. **Document line items** (**`0476_document_lines`**: purchase_request_line / delivery_note_line
+/ transit_order_line / grn_line) with backend inserts + template loaders + create-form line editors, so those
+four docs are no longer header-only. **DSF** got a bespoke SYSCOHADA structured build (identification /
+income statement / balance sheet / IS 33%). **AI vendor keys are now ONE shared, deploy-wide set on the
+platform:** new **`platform/0060_ai_vendor`** table + platform ai-vendor service/routes
+(`/api/platform/ai-vendors`, encrypted, live Test); the AI runtime (`llm`/`embeddings`/`ai-transcribe`/
+`ai-vision`) reads the shared keys (env fallback kept); the **tenant Vendors tab + `/ai/governance/vendors`
+routes were removed**; keys are managed in the console under **Integrations → AI providers**; console nav
+slimmed to 5 primary tabs + a **More** dropdown. **AI Control menu hidden** for tenants without AI
+(`useVisibleNav` + a route guard); `ai_enabled` confirmed to derive from the tenant feature flag
+`ai.assistant.backend`. UI fixes: clock-in moved **inside** the floating cluster (not deleted), the **favicon**
+is now applied from branding (was stored, never used), and the vendor-card status control was fixed. New doc
+**`PLATFORM_CONSOLE_DEPLOY.md`** (rollout runbook for `admin.praxisls.com`); `DOC_UI_OVERHAUL_STEP1.md`
+updated. **Migrations to run:** platform **`0060`** + tenant **`0475`/`0476`** (`db:migrate:platform` /
+`db:migrate:tenants` — `deploy.sh` runs both). **Owed (unchanged pattern):** full `tsc` / `vite build` /
+`jest` on a real machine (native bundlers segfault in-sandbox, so only per-file TS syntax checks + backend
+ESLint ran — both clean), set the shared AI keys in the console, and verify a live AI chat/embedding call on
+a tenant since this reroutes the credential path. Full detail: the session-16 log below. Prior: **Session 15 = the Lovable kit-fidelity restyle finished; the
 per-screen AI gate restored across all 21 HR/Fleet/WMS screens AND the AI-action cards made clickable
 (open the copilot + auto-ask, writes still human-confirmed); shared workflow blocks extracted
 (`components/ui/workflow.tsx` — StepBar / StatusActionBar / TransitionButtons / LineTable) and adopted in
@@ -358,6 +389,101 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
+## Session log — 2026-07-29 (session 16: document-UI overhaul finished, master emails + doc line items, logo fix, contract signed-copy, AI vendors → platform)
+
+**Context.** Continuation of the document-template work: the 34 templates existed and the Studio/preview/
+generate/send pipeline was built (session 15 tail). This session finished the **click-through document UI**,
+fixed real rendering gaps, added **line items** and **master emails**, moved **AI vendor keys to the
+platform**, and cleared a run of UI bugs. Backend ESLint clean; per-file TS syntax checks clean (native
+bundlers segfault in-sandbox, so no full `vite build` here).
+
+1. **Native document detail rollout.** `DocumentPage` (`client/src/components/document-view.tsx`, route
+   `/documents/:docType/:id`) renders a record in the dark app theme (not the white sheet). A drop-in
+   `<DocButton docType id title/>` (`components/doc-button.tsx`) opens it. Wired across Finance (invoices,
+   proformas, credit notes, receipts), Commercial (quotations), Sales (proposals), Procurement (PO, supplier
+   invoice, PR), Costing (cash request, régie), HR (contracts, payslips), Fleet (work orders, trip sheets),
+   WMS (GRN, cycle counts), Operations (delivery notes, transit orders + the 360° Documents tab now lists
+   **invoices** with View — the "download invoices from operations" ask).
+
+2. **Real `loadRecord` loaders** in `src/modules/documents/template/template.service.js` for the whole set.
+   Gotchas resolved: **proforma** reads the `advance` table (not `invoice`); **credit note** is an `invoice`
+   row `type='CREDIT_NOTE'` (no separate table); **receipts** now load `payment_allocation → invoice` so the
+   doc shows *what is being paid for* (native + PDF template); **régie** page was crashing (`SELECT *` returns
+   `regie_advance_id`/`state`, the client read `regie_id`/`status`) — reconciled the client type + wired View.
+
+3. **Native renderer fixes.** Work orders (`parts`/`cost` tables), contracts (employee party + type/effective/
+   ends + articles), proposals (real `proposal_narrative` sections + `proposal_line` items), cycle-count
+   (resolve `inventory_item_id` → sku/description), trip sheet (odometer/route). Second-party label map per
+   docType. **"From" was blank on every doc** — preview returns the entity as `{legal_name,niu,rccm}` but
+   `PartyCol` read `name`/`lines`; added a `fromParty()` mapper.
+
+4. **Logo fix (blank on every document).** `uploadLogo` stores the already-public `/media/...` URL, but
+   `resolveEntity` called `storage.publicUrl()` on it again → `/media//media/...` (404). And templates only
+   read the per-entity logo, while most tenants set only the **branding** logo (`appearance.logo_url`). Now:
+   `resolveLogo()` inlines the bytes as a **base64 data URI** (renders in preview iframe + Puppeteer PDF +
+   email — a relative `/media` URL never loads in Puppeteer), with a **branding-logo fallback** when the
+   entity has none.
+
+5. **Contract signed-copy flow.** New-contract form has an optional **email** → on create the drafted
+   contract is rendered + emailed (`sendContract`). Each contract row has **Upload/Replace signed** (vaults a
+   PDF via `POST /documents`, ties it via `hr_contract.pdf_vault_id`) + a "Signed on file" pill. `DocumentPage`
+   Download **prefers the signed vault copy** (auth-gated blob) over regenerating. Surfaced on the Contracts
+   screen **and** the employee-360 Contracts tab (shared `UploadSigned`).
+
+6. **Send: PDF attachment + recipient resolution.** `email.service.send` takes `attachments`; the document
+   `send` renders the PDF (Puppeteer) and attaches it (inline-HTML fallback). `resolveRecipient(docType, id)`
+   returns the address from the party master or CRM lead. **`0475_master_email.sql`** adds `email` (citext) to
+   client_master / supplier_master / employee; validators + the client/supplier/employee forms capture it;
+   the Send prompt pre-fills the resolved recipient.
+
+7. **Document line items — `0476_document_lines.sql`.** New child tables purchase_request_line /
+   delivery_note_line / transit_order_line / grn_line (FK + cascade). Backend: repo insert/list + service
+   create accepts `lines` (GRN overrides the generic `makeService.create` to split lines off the header);
+   validators; template loaders read them; create forms got inline line editors. Those four docs no longer
+   render header-only.
+
+8. **DSF** — bespoke `dsfBuild` (SYSCOHADA structured: identification / income statement / balance sheet / IS
+   at 33%) replaced the generic report renderer; sample enriched. Honest: still a structured summary, not the
+   pixel-exact DGI liasse (needs the official master PDF).
+
+9. **AI vendor keys → platform (shared, deploy-wide).** New **`platform/0060_ai_vendor.sql`** (shared
+   `ai_vendor_credential` on the platform DB, seeds the 4 vendors). New `services/platform/ai-vendor.service.js`
+   (list/set/getConfig/test via `platformDb` + `encryption`) + platform routes `GET/PUT/POST
+   /api/platform/ai-vendors[/:vendor[/test]]`. **Runtime swap:** `llm.service`, `embeddings.service`,
+   `ai-transcribe`, `ai-vision` now read the shared keys via `platformVendors.getConfig()` (env fallback kept)
+   instead of the per-tenant governance store. **Tenant side removed:** Vendors tab dropped from `AiControlHub`;
+   `/ai/governance/vendors` routes removed. **Console:** managed under **Integrations → AI providers**
+   (`AiVendorsSection`); `/ai-vendors` redirects there; nav slimmed to 5 primary + a **More** dropdown.
+
+10. **AI Control menu gating.** `useVisibleNav()` (reuses `useAiEnabled`) hides "AI Control" from the sidebar +
+    ⌘K palette when the tenant has AI off, and `AiControlHub` redirects a direct URL home. Verified
+    `ai_enabled` = tenant feature flag `ai.assistant.backend` (same source as the backend gate).
+
+11. **UI fixes.** Clock-in FAB moved **inside** the hover-expanded floating cluster (was briefly removed, then
+    corrected per feedback). **Favicon** now applied from branding in `paint()` (`branding-context.tsx`) — it
+    was stored but never written to `<link rel=icon>`. Vendor-card status control constrained (global input
+    width was stretching the checkbox).
+
+12. **Docs.** New **`doc/PLATFORM_CONSOLE_DEPLOY.md`** (rollout runbook for `admin.praxisls.com`: verify
+    host-gating, run migrations, set shared AI keys, verify runtime, rollback). `doc/DOC_UI_OVERHAUL_STEP1.md`
+    kept current.
+
+13. **Numbering display + line-item integrity.** (a) Issued/posted docs had real numbers but the lists showed
+    UUIDs because they read `r.ref`, which the list repos never populated (DB column is `doc_number`/`ot_number`).
+    Aliased the number `AS ref` in the PR/PO/supplier-invoice/transit/delivery list queries. Draft docs are
+    still numberless by design (numbered at Submit/Issue/Post). (b) Line items were **free-text** → data could
+    drift; now they reference a real catalogue row via a shared `catalogue-select.tsx`
+    (`DictionaryItemSelect`/`InventoryItemSelect`): PO + PR → financial dictionary, GRN + delivery note +
+    transit order → inventory. **`0477_line_item_refs.sql`** adds the FK columns (`dictionary_item_id` /
+    `inventory_item_id`); the row's `label` stays as a display snapshot (like `po_item`). NB the selects are
+    empty until the dictionary/inventory masters have rows.
+
+**Migrations to run:** platform **`0060_ai_vendor`** + tenant **`0475_master_email`** + **`0476_document_lines`**
++ **`0477_line_item_refs`** (`deploy.sh`'s migrate service runs both sets). **Owed:** full `tsc` / `vite build`
+/ `jest` on a real machine; set the shared AI keys in the console; verify a live AI chat/embedding on a tenant
+(credential path changed); ensure the financial-dictionary + inventory masters are seeded so the line selects
+have options.
 
 ## Session log — 2026-07-27 (session 15: Lovable kit fidelity, AI gate + clickable actions, workflow blocks, SOPs/Talent build-out, fixes)
 

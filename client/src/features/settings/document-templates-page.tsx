@@ -107,7 +107,7 @@ export function TemplateStudioPage() {
   return (
     <section className={shell}>
       <PageHeader
-        eyebrow={<HubCrumb area="Settings" />}
+        eyebrow={<HubCrumb area="Settings" to="/settings" />}
         title="Document templates"
         description="Beautify and live-preview every generated document — per corporate entity."
         action={<div className="flex gap-2"><Button variant="outline" loading={busy === "gen"} onClick={generate} disabled={!docType}>Generate PDF</Button><Button loading={busy === "save"} onClick={save} disabled={!docType || !dirty}>{dirty ? "Save" : "Saved"}</Button></div>}

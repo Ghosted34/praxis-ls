@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
@@ -183,7 +184,7 @@ export function DebtPage() {
 
   return (
     <section className={shell}>
-      <PageHeader title="Financing" description="Loan facilities — drawdowns, repayments and outstanding principal." action={<Button onClick={() => setEditing("new")}>New facility</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title="Financing" description="Loan facilities — drawdowns, repayments and outstanding principal." action={<Button onClick={() => setEditing("new")}>New facility</Button>} />
       <KpiRow>
         <KpiTile label="Facilities" value={num(list.length)} />
         <KpiTile label="Active" value={num(activeCount)} />

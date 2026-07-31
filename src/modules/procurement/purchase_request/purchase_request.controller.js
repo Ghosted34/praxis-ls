@@ -11,7 +11,7 @@ module.exports = {
   }),
   create: asyncHandler(async (req, res) => {
     const b = req.body;
-    const data = await req.tenantDb((c) => service.createDraft(c, { requestedBy: b.requested_by, department: b.department, justification: b.justification, actor: actor(req) }));
+    const data = await req.tenantDb((c) => service.createDraft(c, { requestedBy: b.requested_by, department: b.department, justification: b.justification, lines: b.lines, actor: actor(req) }));
     res.status(201).json({ data });
   }),
   transition: asyncHandler(async (req, res) => {

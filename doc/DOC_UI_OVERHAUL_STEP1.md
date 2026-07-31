@@ -107,9 +107,78 @@ sheet: record rendered in its template layout (iframe) + **Download PDF** (`/gen
 ✅ **Finance invoices exemplar** — `finance/hub.tsx` invoice rows now open `DocumentView`
 (FINAL_INVOICE, sendable). The proven pattern.
 
-**Rollout ("then all") — remaining wiring**, per the map above, each = `onRowClick →
-DocumentView docType=… recordId=…`, plus a per-doc real-record `load()` where the record
-id isn't the invoice table (proforma/receipt/quotation/proposal loaders exist; the Phase
-2/4 docs need their `loadRecord` branch added, mirroring the invoice one). Order: Finance
-(proforma, credit note, receipt, dunning) → Commercial → Sales → Procurement → Operations
-(+ dossier-360 related docs) → Costing → HR → Fleet → WMS → Vault/Reports → Comms.
+**Native detail (session 15 revision).** The doc page is now `DocumentPage` at route
+`/documents/:docType/:id`, rendered **natively in the app theme** (dark cards, status
+Pill), NOT the white sheet — the sheet is only what Download/Send produce. Preview endpoint
+returns `data` (+ status) for the native render; reports keep the paper preview. A tiny
+`<DocButton docType id title/>` (`components/doc-button.tsx`) is the drop-in.
+
+**Wired so far:** Finance **Invoices** (View per row) + **Receipts** (drawer), **Commercial
+Quotations** (detail), **Sales Proposals** (detail), **Procurement** POs + supplier invoices
+(View per row), **Costing** cash requests (View per row), **HR** contracts (View) + payslips
+(Payslip per run-detail row), **Fleet** work orders (View in the detail modal). Real
+`loadRecord` branches now exist for FINAL/PROFORMA/CREDIT invoice-family, QUOTATION,
+PAYMENT_RECEIPT, PROPOSAL, SUPPLIER_INVOICE, PURCHASE_ORDER, CASH_REQUEST, REGIE_ADVANCE,
+WORK_ORDER, EMPLOYMENT_CONTRACT, PAYSLIP.
+
+**Now also wired (session 15, full rollout):**
+- **Credit note** — `CreditNotesPage` (finance/pages.tsx) View button. No `credit_note`
+  table exists; credit notes are `invoice` rows with `type='CREDIT_NOTE'`, and the list
+  returns `invoice_id`, so the button passes `String(r.invoice_id ?? r.credit_note_id)` into
+  the invoice-family loader.
+- **Delivery note** + **transit order** — View column on both operations lists.
+- **GRN** — View in the inbound list actions.
+- **Cycle-count sheet** — View column on the cycle-count list (lines pulled from the
+  `discrepancy` jsonb).
+- **Trip sheet** — View in the dispatch list actions (vehicle reg + driver + odometer).
+
+Sparse docs (delivery/transit/GRN carry few fields; their line data isn't modelled) render
+their heads + whatever the table holds; the template line tables show empty where there's no
+source data.
+
+**Also wired since:**
+- **Proforma / advance** — View on `ProformasPage`; loader reads the `advance` table (not
+  `invoice`), renders client + amount + applied.
+- **Receipts** — now show *what is paid for* (payment_allocation → invoices) natively and in
+  the PDF template.
+- **"From" fix** — every view page now renders the issuing entity (was blank vs the template
+  because preview returns `legal_name`, PartyCol read `name`).
+- **Contracts** — send-on-create (optional email in the new-contract form → renders + emails
+  the drafted contract), upload/replace a **signed** PDF (vaulted, tied via `pdf_vault_id`),
+  View/Download prefers the signed copy; surfaced on both the Contracts screen and the
+  employee-360 Contracts tab.
+- Render fixes for work orders (parts/cost), contracts (party + type/effective + articles),
+  proposals (narratives + line items), cycle-count (item names), trip sheet (odometer/route).
+
+**Now closed:**
+- **Régie advance** — reconciled the client field (`regie_advance_id` + `state` + `issued_on`;
+  the old `regie_id`/`status` were undefined and crashed the ref cell) and wired the View.
+- **Purchase request** — real loader (purchase_request + requester name via app_user;
+  department + justification; header-only, no lines) and View on the PR list.
+- **Operations dossier-360** — the 360° Documents tab now has an **Invoices** group with a
+  View per invoice (backend overview returns `document_rows.invoices`), and View buttons on
+  the transit-order and delivery-note rows there.
+
+**Send follow-ups (done):**
+- **PDF attachment** — `email.service.send` now takes `attachments`; the document `send`
+  renders the PDF (Puppeteer) and attaches it, falling back to inline HTML if the render
+  fails. Vault copy + audit unchanged.
+- **Recipient resolution** — `resolveRecipient(docType, recordId)` returns an address where
+  one genuinely exists (proposal → `lead.email`; masters store no email otherwise). Preview
+  returns `suggested_to`; the Send prompt pre-fills it. `send` uses it when `to` is omitted.
+- **DSF** — bespoke `dsfBuild` (SYSCOHADA-structured: identification, income statement,
+  balance sheet, IS computation at 33%) replaces the generic report renderer. Reads live
+  producer output or the enriched sample. Still a structured summary, not the official DGI
+  liasse (needs the master PDF for pixel parity — noted in-doc footer).
+
+**Recipient coverage (done):**
+- Migration `0475_master_email.sql` adds `email` (citext) to `client_master`, `supplier_master`
+  and `employee`. Validators + the client/supplier/employee forms now capture it.
+- `resolveRecipient` covers all the party-linked sendables: invoices, credit notes, quotations,
+  receipts, proforma/advances, proposals (client or lead), POs, supplier invoices, payslips
+  and contracts → the stored master email, falling back to a typed address when blank.
+- **Run `db:migrate:tenants`** to apply 0475 before the resolved-recipient send works.
+
+**Remaining:**
+- **Verification** — full `tsc` / `vite build` / `jest` on a real machine (native bundlers
+  segfault in-sandbox; only per-file syntax checks + backend eslint ran here).

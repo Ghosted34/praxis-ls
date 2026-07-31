@@ -34,6 +34,10 @@ export default defineConfig({
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/, /^\/media/, /^\/manifest\.webmanifest$/, /^\/icons\//],
         globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+        // Add web-push display handlers (push + notificationclick) to the
+        // generated SW without switching to a fully custom injectManifest SW.
+        // push-handler.js lives in client/public/ so it's served at the root.
+        importScripts: ["/push-handler.js"],
       },
     }),
   ],

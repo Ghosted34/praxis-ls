@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
@@ -259,22 +261,24 @@ export function ReportsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Reports</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Run finance, receivables and cross-module reports; save the ones you use.</p>
-        </div>
-        <Segmented
-          value={tab}
-          onChange={setTab}
-          options={[
-            { value: "catalogue", label: "Catalogue" },
-            { value: "saved", label: "Saved" },
-            { value: "tiles", label: "Dashboard tiles" },
-          ]}
-        />
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
+        title="Reports"
+        description="Run finance, receivables and cross-module reports; save the ones you use."
+        action={(
+          <Segmented
+            value={tab}
+            onChange={setTab}
+            options={[
+              { value: "catalogue", label: "Catalogue" },
+              { value: "saved", label: "Saved" },
+              { value: "tiles", label: "Dashboard tiles" },
+            ]}
+          />
+        )}
+      />
+      <HubTabs />
 
       {error ? (
         isGated(error) ? (
@@ -446,28 +450,26 @@ export function ComplianceFlagsPage() {
   const filtered = React.useMemo(() => (flags || []).filter((f) => !severity || String(f.severity) === severity), [flags, severity]);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Compliance flags</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Run the rule scans and clear the flags they raise.</p>
-        </div>
-        <div className="flex items-center gap-3">
-          <Segmented
-            value={tab}
-            onChange={setTab}
-            options={[
-              { value: "flags", label: "Flags" },
-              { value: "rules", label: "Rules" },
-            ]}
-          />
-          {tab === "flags" && (
-            <Button onClick={runChecks} loading={running}>
-              Run checks
-            </Button>
-          )}
-        </div>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
+        title="Compliance flags"
+        description="Run the rule scans and clear the flags they raise."
+        action={(
+          <div className="flex items-center gap-3">
+            <Segmented
+              value={tab}
+              onChange={setTab}
+              options={[
+                { value: "flags", label: "Flags" },
+                { value: "rules", label: "Rules" },
+              ]}
+            />
+            {tab === "flags" && <Button onClick={runChecks} loading={running}>Run checks</Button>}
+          </div>
+        )}
+      />
+      <HubTabs />
 
       {summary && <div className="mb-4 rounded-lg border border-primary/30 bg-primary/5 p-3 text-sm text-foreground">Last run: {summary}</div>}
       {error && (
@@ -708,13 +710,13 @@ export function DocumentsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Documents</h1>
-          <p className="mt-1 text-sm text-muted-foreground">The confidential document vault — uploaded evidence with tamper-evident fingerprints.</p>
-        </div>
-        <Button onClick={() => setUploadOpen(true)}>Upload document</Button>
-      </header>
+      <PageHeader
+        eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
+        title="Documents"
+        description="The confidential document vault — uploaded evidence with tamper-evident fingerprints."
+        action={<Button onClick={() => setUploadOpen(true)}>Upload document</Button>}
+      />
+      <HubTabs />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <Chips value={filter} options={DOC_FILTERS} onChange={setFilter} />
@@ -865,12 +867,9 @@ export function SignaturesPage() {
   const gated = isGated(error);
 
   return (
-    <section className="mx-auto max-w-4xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="font-display text-2xl tracking-tight">Signatures</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Signatures are bound to a document's fingerprint. Look one up by its reference, then sign.</p>
-      </header>
-
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />} title="Signatures" description="Signatures are bound to a document's fingerprint. Look one up by its reference, then sign." />
+      <HubTabs />
       <form
         className="mb-5 flex flex-wrap items-end gap-2"
         onSubmit={(e) => {
@@ -971,11 +970,8 @@ export function VerificationPage() {
 
   return (
     <section className="mx-auto max-w-2xl animate-fade-in">
-      <header className="mb-5">
-        <h1 className="font-display text-2xl tracking-tight">Document verification</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Check a document's fingerprint against the vault — confirms it hasn't been tampered with.</p>
-      </header>
-
+      <PageHeader eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />} title="Document verification" description="Check a document's fingerprint against the vault — confirms it hasn't been tampered with." />
+      <HubTabs />
       <form
         className="lux-card space-y-4 p-4"
         onSubmit={(e) => {

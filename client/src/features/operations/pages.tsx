@@ -5,6 +5,8 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
+import { InventoryItemSelect } from "@/components/catalogue-select";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -354,6 +356,22 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                 <Stat label="Delivery notes" value={num(d.documents.delivery_notes)} />
               </div>
               <DocGroup
+                title="Invoices"
+                rows={docs?.invoices || []}
+                empty="No invoices on this file."
+                keyOf={(r) => r.invoice_id}
+                render={(r) => (
+                  <div className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
+                    <span className="num text-sm text-foreground">{r.ref || r.invoice_id.slice(0, 8)}</span>
+                    <div className="flex items-center gap-3">
+                      {r.status && <Pill tone={tone(r.status)}>{r.status}</Pill>}
+                      <span className="num micro">{money(r.total_ttc)}</span>
+                      <DocButton docType={r.type === "CREDIT_NOTE" ? "CREDIT_NOTE" : "FINAL_INVOICE"} id={r.invoice_id} title={r.ref || `Invoice ${r.invoice_id.slice(0, 8)}`} label="View" />
+                    </div>
+                  </div>
+                )}
+              />
+              <DocGroup
                 title="Vault documents"
                 rows={docs?.vault || []}
                 empty="No documents in the vault for this file."
@@ -380,6 +398,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                       {r.customs_regime && <Pill tone="mute">{r.customs_regime}</Pill>}
                       <span className="micro">{r.service_direction || "—"}</span>
                       <span className="num micro">{money(r.declared_value)}</span>
+                      <DocButton docType="TRANSIT_ORDER" id={r.transit_order_id} title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`} label="View" />
                     </div>
                   </div>
                 )}
@@ -395,6 +414,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
                     <div className="flex items-center gap-3">
                       <span className="text-sm text-muted-foreground">{r.consignee || "—"}</span>
                       <span className="micro">{dateFmt(r.created_at)}</span>
+                      <DocButton docType="DELIVERY_NOTE" id={r.delivery_note_id} title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`} label="View" />
                     </div>
                   </div>
                 )}
@@ -497,7 +517,7 @@ export function OperationsFilesPage() {
   return (
     <section className={shell}>
       <PageHeader
-        eyebrow={<HubCrumb area="Operations" />}
+        eyebrow={<HubCrumb area="Operations" to="/operations" />}
         title="Operation files"
         description="The dossier is the centre of gravity — route, milestones, costing, money and documents in one 360° view."
         action={<Button onClick={() => setEditing("new")}>New file</Button>}
@@ -543,14 +563,18 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
     service_direction: row?.service_direction ?? "", declared_value: row?.declared_value != null ? String(row.declared_value) : "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [lines, setLines] = React.useState<{ inventory_item_id: string; label: string; packages: string; weight: string }[]>([{ inventory_item_id: "", label: "", packages: "1", weight: "" }]);
+  const setLine = (i: number, patch: Partial<{ inventory_item_id: string; label: string; packages: string; weight: string }>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
+    const cargo = lines.filter((l) => l.inventory_item_id).map((l) => ({ inventory_item_id: l.inventory_item_id, label: l.label, packages: Number(l.packages) || 1, weight: l.weight || undefined }));
     const body: api.TransitOrderInput = {
       entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, customs_regime: f.customs_regime || undefined,
       service_direction: f.service_direction || undefined, declared_value: f.declared_value === "" ? undefined : Number(f.declared_value),
+      ...(isNew && cargo.length ? { lines: cargo } : {}),
     };
     try {
       if (isNew) await api.createTransitOrder(body);
@@ -590,6 +614,20 @@ function TransitForm({ row, onClose, onSaved }: { row: api.TransitOrder | null; 
           </Field>
           <Field label="Declared value" className="sm:col-span-2"><Input type="number" min="0" step="0.01" className="num text-right" value={f.declared_value} onChange={(e) => set("declared_value", e.target.value)} /></Field>
         </div>
+        {isNew && (
+          <div className="space-y-2">
+            <div className="micro">Cargo</div>
+            {lines.map((l, i) => (
+              <div key={i} className="grid grid-cols-[1fr_80px_90px_auto] items-center gap-2">
+                <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, label })} />
+                <Input type="number" min="0" step="any" className="num text-right" value={l.packages} onChange={(e) => setLine(i, { packages: e.target.value })} placeholder="Pkgs" />
+                <Input value={l.weight} onChange={(e) => setLine(i, { weight: e.target.value })} placeholder="Weight" />
+                <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+              </div>
+            ))}
+            <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { inventory_item_id: "", label: "", packages: "1", weight: "" }])}>Add cargo</Button>
+          </div>
+        )}
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel={isNew ? "Create order" : "Save changes"} />
       </form>
@@ -610,10 +648,11 @@ export function TransitOrdersPage() {
     { key: "service_direction", label: "Direction" },
     { key: "declared_value", label: "Declared value", className: "num text-right", render: (r) => money(r.declared_value) },
     { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="TRANSIT_ORDER" id={r.transit_order_id} title={r.ref || `Transit order ${r.transit_order_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Transit orders" description="Customs transit declarations." action={<Button onClick={() => setEditing("new")}>New order</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Transit orders" description="Customs transit declarations." action={<Button onClick={() => setEditing("new")}>New order</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Orders" value={num(list.length)} />
@@ -634,13 +673,16 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
   const { rows: dossiers } = useList<api.Dossier>("/operations");
   const [f, setF] = React.useState({ entity_id: "", dossier_id: "", consignee: "", city_zone: "", contact_person: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  const [lines, setLines] = React.useState<{ inventory_item_id: string; label: string; qty: string }[]>([{ inventory_item_id: "", label: "", qty: "1" }]);
+  const setLine = (i: number, patch: Partial<{ inventory_item_id: string; label: string; qty: string }>) => setLines((s) => s.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      await api.createDeliveryNote({ entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, consignee: f.consignee || undefined, city_zone: f.city_zone || undefined, contact_person: f.contact_person || undefined });
+      const goods = lines.filter((l) => l.inventory_item_id).map((l) => ({ inventory_item_id: l.inventory_item_id, label: l.label, qty: Number(l.qty) || 1 }));
+      await api.createDeliveryNote({ entity_id: f.entity_id, dossier_id: f.dossier_id || undefined, consignee: f.consignee || undefined, city_zone: f.city_zone || undefined, contact_person: f.contact_person || undefined, lines: goods.length ? goods : undefined });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -665,6 +707,17 @@ function DeliveryForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =
           <Field label="City / zone"><Input value={f.city_zone} onChange={(e) => set("city_zone", e.target.value)} /></Field>
           <Field label="Contact person"><Input value={f.contact_person} onChange={(e) => set("contact_person", e.target.value)} /></Field>
         </div>
+        <div className="space-y-2">
+          <div className="micro">Goods delivered</div>
+          {lines.map((l, i) => (
+            <div key={i} className="grid grid-cols-[1fr_80px_auto] items-center gap-2">
+              <InventoryItemSelect value={l.inventory_item_id} onPick={(id, label) => setLine(i, { inventory_item_id: id, label })} />
+              <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="Qty" />
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>
+            </div>
+          ))}
+          <Button type="button" variant="outline" size="sm" onClick={() => setLines((s) => [...s, { inventory_item_id: "", label: "", qty: "1" }])}>Add item</Button>
+        </div>
         {error && <ErrorState message={error} />}
         <FormButtons busy={busy} disabled={!f.entity_id || busy} onCancel={onClose} saveLabel="Create note" />
       </form>
@@ -684,10 +737,11 @@ export function DeliveryNotesPage() {
     { key: "city_zone", label: "City / zone" },
     { key: "contact_person", label: "Contact" },
     { key: "status", label: "Status", render: (r) => (r.status ? <Pill tone={tone(r.status)}>{r.status}</Pill> : "—") },
+    { key: "_a", label: "", render: (r) => <div className="flex justify-end"><DocButton docType="DELIVERY_NOTE" id={r.delivery_note_id} title={r.ref || `Delivery note ${r.delivery_note_id.slice(0, 8)}`} label="View" /></div> },
   ];
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Delivery notes" description="Proof-of-delivery documents." action={<Button onClick={() => setOpen(true)}>New note</Button>} />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Delivery notes" description="Proof-of-delivery documents." action={<Button onClick={() => setOpen(true)}>New note</Button>} />
       <HubTabs />
       <KpiRow>
         <KpiTile label="Notes" value={num((rows || []).length)} />
@@ -736,7 +790,7 @@ export function MilestonesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Operations" />} title="Milestones" description="Track a dossier's milestone chain; manage the templates that seed them." />
+      <PageHeader eyebrow={<HubCrumb area="Operations" to="/operations" />} title="Milestones" description="Track a dossier's milestone chain; manage the templates that seed them." />
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>

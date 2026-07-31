@@ -8,6 +8,8 @@ import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { smartCell } from "@/lib/format";
@@ -209,15 +211,8 @@ export function CurrenciesPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Currencies & FX</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Active currencies and exchange rates. Manual overrides are as-of dated.</p>
-        </div>
-        <Button onClick={() => setRateOpen(true)} disabled={codes.length < 2}>
-          Set rate
-        </Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Currencies & FX" description="Active currencies and exchange rates. Manual overrides are as-of dated." action={<Button onClick={() => setRateOpen(true)} disabled={codes.length < 2}>Set rate</Button>} />
+      <HubTabs />
 
       <h2 className="mb-2 text-sm font-semibold text-muted-foreground">Currencies</h2>
       {curErr ? (
@@ -530,13 +525,8 @@ export function TaxJurisdictionsPage() {
 
   return (
     <section className="mx-auto max-w-6xl animate-fade-in">
-      <header className="mb-5 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Tax rates & jurisdictions</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Jurisdictions and their effective-dated tax codes (TVA/WHT/IS…) read by account determination.</p>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>New jurisdiction</Button>
-      </header>
+      <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Tax rates & jurisdictions" description="Jurisdictions and their effective-dated tax codes (TVA/WHT/IS…) read by account determination." action={<Button onClick={() => setCreateOpen(true)}>New jurisdiction</Button>} />
+      <HubTabs />
 
       {rowError && (
         <div className="mb-3">

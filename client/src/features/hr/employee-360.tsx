@@ -6,13 +6,15 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { DocButton } from "@/components/doc-button";
+import { UploadSigned } from "@/features/hr/contracts";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
-import { HubCrumb } from "@/components/tabbed-hub";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -40,14 +42,14 @@ const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <td
 
 function NewEmployeeForm({ onClose, onSaved }: { onClose: () => void; onSaved: (e: api.Employee) => void }) {
   const { rows: entities } = useList<{ entity_id: string; legal_name?: string }>("/entities");
-  const [f, setF] = React.useState({ full_name: "", entity_id: "", department: "", job_title: "", employment_type: "CDI" });
+  const [f, setF] = React.useState({ full_name: "", entity_id: "", department: "", job_title: "", email: "", employment_type: "CDI" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      const created = await api.createEmployee({ full_name: f.full_name, entity_id: f.entity_id || undefined, department: f.department || undefined, job_title: f.job_title || undefined, employment_type: f.employment_type });
+      const created = await api.createEmployee({ full_name: f.full_name, entity_id: f.entity_id || undefined, department: f.department || undefined, job_title: f.job_title || undefined, email: f.email || undefined, employment_type: f.employment_type });
       onSaved(created); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -65,6 +67,7 @@ function NewEmployeeForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
           <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
           <Field label="Job title"><Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} /></Field>
         </div>
+        <Field label="Email" hint="Used to send payslips & contracts"><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="name@company.cm" /></Field>
         <Field label="Employment type">
           <Select value={f.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
             {["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPORARY"].map((t) => <option key={t} value={t}>{t}</option>)}
@@ -87,6 +90,7 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
     entity_id: employee.entity_id || "",
     department: employee.department || "",
     job_title: employee.job_title || "",
+    email: employee.email || "",
     employment_type: employee.employment_type || "CDI",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -100,6 +104,7 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
         entity_id: f.entity_id || undefined,
         department: f.department || undefined,
         job_title: f.job_title || undefined,
+        email: f.email || undefined,
         employment_type: f.employment_type || undefined,
       });
       onSaved(updated); onClose();
@@ -119,6 +124,7 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
           <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
           <Field label="Job title"><Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="Accountant" /></Field>
         </div>
+        <Field label="Email" hint="Used to send payslips & contracts"><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="name@company.cm" /></Field>
         <Field label="Employment type">
           <Select value={f.employment_type} onChange={(e) => set("employment_type", e.target.value)}>
             {["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPORARY"].map((t) => <option key={t} value={t}>{t}</option>)}
@@ -189,9 +195,21 @@ function EmployeeDetail({ employee: initial, onChanged }: { employee: api.Employ
       </div>
 
       {tab === "Contracts" && (
-        <MiniTable empty={cRows.length === 0} head={<><Th>Kind</Th><Th>Status</Th><Th>Effective</Th><Th>Ends</Th></>}>
+        <MiniTable empty={cRows.length === 0} head={<><Th>Kind</Th><Th>Status</Th><Th>Effective</Th><Th>Ends</Th><Th></Th></>}>
           {cRows.map((c) => (
-            <tr key={c.hr_contract_id}><Td>{enumLabel(c.kind)}</Td><Td><Pill tone={CONTRACT_TONE[c.status] || "mute"}>{enumLabel(c.status)}</Pill></Td><Td>{dateFmt(c.effective_on)}</Td><Td>{dateFmt(c.end_on)}</Td></tr>
+            <tr key={c.hr_contract_id}>
+              <Td>{enumLabel(c.kind)}</Td>
+              <Td><Pill tone={CONTRACT_TONE[c.status] || "mute"}>{enumLabel(c.status)}</Pill></Td>
+              <Td>{dateFmt(c.effective_on)}</Td>
+              <Td>{dateFmt(c.end_on)}</Td>
+              <Td>
+                <div className="flex items-center justify-end gap-2">
+                  {c.pdf_vault_id && <Pill tone="ok">Signed</Pill>}
+                  <DocButton docType="EMPLOYMENT_CONTRACT" id={c.hr_contract_id} title={`Contract ${enumLabel(c.kind)}`} label="View" />
+                  <UploadSigned contract={c} onDone={contracts.reload} />
+                </div>
+              </Td>
+            </tr>
           ))}
         </MiniTable>
       )}
@@ -233,8 +251,8 @@ export function EmployeesPage() {
 
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Human capital" />} title="Employees" description="The staff master — pick a person for their full HR record and history." action={<Button onClick={() => setCreating(true)}>New employee</Button>} />
-      {employees.error ? <ErrorState message={employees.error} /> : (
+      <PageHeader eyebrow={<HubCrumb area="Human capital" to="/hr" />} title="Employees" description="The staff master — pick a person for their full HR record and history." action={<Button onClick={() => setCreating(true)}>New employee</Button>} />
+      <HubTabs />      {employees.error ? <ErrorState message={employees.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[280px_1fr]">
           <div className="space-y-2">
             <Input placeholder="Search name…" value={q} onChange={(e) => setQ(e.target.value)} />

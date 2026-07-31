@@ -12,6 +12,8 @@
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { PageHeader } from "@/components/data-list";
+import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
@@ -19,6 +21,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile, SearchSelect } from "@/features/sales/ui";
+import { DocButton } from "@/components/doc-button";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
 /* ═══════════════════════════════════ QUOTATIONS ═══════════════════════════════════ */
@@ -311,6 +314,7 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
               <Badge label={status || "DRAFT"} />
               {data?.client_id ? <span className="text-xs text-muted-foreground">{clientName.get(String(data.client_id)) ?? "Client"}</span> : null}
               {data?.valid_until ? <span className="text-xs text-muted-foreground">valid until {when(data.valid_until)}</span> : null}
+              <span className="ml-auto"><DocButton docType="QUOTATION" id={id} title={quotation?.doc_number ? String(quotation.doc_number) : "Quotation"} /></span>
             </div>
 
             {lines.length > 0 && (
@@ -434,21 +438,14 @@ export function QuotationsPage() {
   const gated = error && /feature|not enabled|disabled/i.test(error);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Quotations</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Priced offers between opportunity and invoice — draft, send, accept.</p>
-        </div>
-        <Button
-          onClick={() => {
-            setEditing(null);
-            setFormOpen(true);
-          }}
-        >
-          New quotation
-        </Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
+        title="Quotations"
+        description="Priced offers between opportunity and invoice — draft, send, accept."
+        action={<Button onClick={() => { setEditing(null); setFormOpen(true); }}>New quotation</Button>}
+      />
+      <HubTabs />
 
       <div className="mb-4">
         <Chips value={filter} options={QUOTE_FILTERS} onChange={setFilter} />
@@ -626,14 +623,14 @@ export function MarginSimulationsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Margin simulation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">What-if quote maths — margin on services only, no accounting entries.</p>
-        </div>
-        <Button onClick={() => setFormOpen(true)}>New simulation</Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
+        title="Margin simulation"
+        description="What-if quote maths — margin on services only, no accounting entries."
+        action={<Button onClick={() => setFormOpen(true)}>New simulation</Button>}
+      />
+      <HubTabs />
 
       {error ? (
         <ErrorState message={error} />
@@ -829,14 +826,14 @@ export function ExtraChargeSimulationsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Extra-charge simulation</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Demurrage / detention estimates from a tiered tariff — no accounting entries.</p>
-        </div>
-        <Button onClick={() => setFormOpen(true)}>New simulation</Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
+        title="Extra-charge simulation"
+        description="Demurrage / detention estimates from a tiered tariff — no accounting entries."
+        action={<Button onClick={() => setFormOpen(true)}>New simulation</Button>}
+      />
+      <HubTabs />
 
       {error ? (
         <ErrorState message={error} />
@@ -992,14 +989,14 @@ export function PricingVariancePage() {
   const dossierRef = React.useMemo(() => new Map((dossiers || []).map((d) => [String(d.dossier_id), cell(d.reference ?? d.title ?? d.dossier_id)])), [dossiers]);
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
-      <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight">Pricing variance</h1>
-          <p className="mt-1 text-sm text-muted-foreground">Quote vs actual cost as a red/yellow/green flag. Raw cost stays finance-only.</p>
-        </div>
-        <Button onClick={() => setComputeOpen(true)}>Compute variance</Button>
-      </header>
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
+        title="Pricing variance"
+        description="Quote vs actual cost as a red/yellow/green flag. Raw cost stays finance-only."
+        action={<Button onClick={() => setComputeOpen(true)}>Compute variance</Button>}
+      />
+      <HubTabs />
 
       <div className="mb-4">
         <Chips value={filter} options={PV_FILTERS} onChange={setFilter} />

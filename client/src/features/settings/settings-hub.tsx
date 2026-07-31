@@ -55,6 +55,14 @@ const SECTIONS: Section[] = [
       { to: "/settings/help-center", label: "Help Center", desc: "Guides & FAQs", icon: "help" },
     ],
   },
+  {
+    heading: "Administration",
+    cards: [
+      { to: "/ai-control", label: "AI Control", desc: "AI features, per-user access & spend caps", icon: "shield" },
+      { to: "/settings/catalogue", label: "Module Catalogue", desc: "Modules & features enabled per plan", icon: "doc" },
+      { to: "/portal/access", label: "Portal Access", desc: "External client, investor & auditor users", icon: "id" },
+    ],
+  },
 ];
 
 type IconKey = "id" | "palette" | "login" | "doc" | "money" | "ops" | "comms" | "key" | "shield" | "help";

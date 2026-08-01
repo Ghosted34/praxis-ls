@@ -11,7 +11,42 @@ const llm = require("./llm.service");
 const { retrieve, toContextBlock } = require("./retrieval.service");
 const { redact } = require("./redact");
 const governance = require("../../modules/ai/governance/governance.service");
+const convo = require("../../modules/ai/assistant/assistant.repo");
 const { logger } = require("../../config/logger");
+
+/**
+ * How many past turns are replayed to the model. Stored history is unbounded —
+ * this only caps what is re-sent, so cost per call stays flat however long the
+ * thread grows. 20 messages ≈ 10 question/answer exchanges.
+ */
+const HISTORY_TURNS = 20;
+
+/**
+ * Conversation memory, isolated here so a failure in it can never take down an
+ * answer. History is an enhancement: if the tables are unreachable the assistant
+ * must still respond, just without recall — the same best-effort contract the
+ * geocoding and milestone-seeding paths follow.
+ */
+const history_ = {
+  async load(client, { user, conversationId }) {
+    try {
+      const id = conversationId || (await convo.currentConversation(client, user.user_id));
+      return { conversationId: id, turns: await convo.recentMessages(client, id, HISTORY_TURNS) };
+    } catch (err) {
+      logger.warn({ err: err.message }, "[ai] conversation history unavailable");
+      return { conversationId: conversationId || null, turns: [] };
+    }
+  },
+  async save(client, { conversationId, question, answer }) {
+    if (!conversationId) return;
+    try {
+      await convo.addMessage(client, { conversationId, role: "user", content: question });
+      if (answer) await convo.addMessage(client, { conversationId, role: "assistant", content: answer });
+    } catch (err) {
+      logger.warn({ err: err.message }, "[ai] conversation turn not persisted");
+    }
+  },
+};
 
 // Actions the AI may propose come from ai_action_catalogue (ai_enabled=true).
 async function loadTools(client) {
@@ -66,13 +101,36 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
     "You act with the user's permissions and cannot exceed them.\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
+  // ── Conversation memory ──────────────────────────────────────────────────
+  // Until 2026-08-01 this array was just [system, user] on every call, so the
+  // assistant could not answer "and what about last month?" — it had never seen
+  // the previous turn. ai_conversation / ai_message have existed since 0400_ai
+  // and were simply never written to.
+  //
+  // HISTORY_TURNS caps what is REPLAYED, not what is stored: everything is kept,
+  // but only the last few turns are re-sent. That keeps per-call token cost flat
+  // and predictable, which matters because AI spend is budget-capped per tenant
+  // (governance.canUseFeature hard-blocks on the cap) — an unbounded transcript
+  // would make each successive question in a long thread cost more than the last.
+  //
+  // Redaction applies to history too: PII/financial scrubbing has to hold for
+  // replayed turns exactly as it does for the live question.
+  const history = await history_.load(client, { user, conversationId });
   const messages = [
     { role: "system", content: system },
+    ...history.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
     { role: "user", content: redact(message) },
   ];
 
   const res = await llm.chat({ client, messages, tools: tools.map(toOpenAiTool) });
-  await recordUsage(client, { user, conversationId, res, feature });
+  await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
+  // Persist the exchange AFTER the model call: a failed call leaves no orphan
+  // user turn that would be replayed forever with no answer beside it.
+  await history_.save(client, {
+    conversationId: history.conversationId,
+    question: message,
+    answer: res.text || null,
+  });
 
   const actions = [];
   const batchId = res.toolCalls.length ? crypto.randomUUID() : null;
@@ -90,7 +148,11 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
     const run = await client.query(
       `INSERT INTO ai_action_run (conversation_id, user_id, action_key, proposed_payload, status, validation_error, batch_id)
        VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING action_run_id`,
-      [conversationId || null, user.user_id, def.action_key, payload, status, errs.join("; ") || null, batchId],
+      // history.conversationId, not the raw parameter: the thread is resolved
+      // server-side now, so an action proposed by a client that sent no
+      // conversation_id still attaches to the user's real thread instead of
+      // being orphaned with a null reference.
+      [history.conversationId || null, user.user_id, def.action_key, payload, status, errs.join("; ") || null, batchId],
     );
     actions.push({
       action_run_id: run.rows[0].action_run_id,
@@ -102,7 +164,9 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
   }
 
   const batchable = actions.filter((x) => x.requires_confirmation && (!x.validation_errors || x.validation_errors.length === 0));
-  return { answer: res.text, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider };
+  // conversation_id is returned so the client can keep sending the same thread
+  // (and so a future multi-thread UI has the handle it would need).
+  return { answer: res.text, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider, conversation_id: history.conversationId };
 }
 
 /**
@@ -136,6 +200,31 @@ async function confirmAction({ client, user, actionRunId, registry }) {
      VALUES ($1,$2,'MOD-67',$3,$4)`,
     [user.user_id, `ai.action.${run.action_key}`, result && result.entity_ref, run.proposed_payload],
   );
+
+  // Record the execution in the conversation itself.
+  //
+  // Replayed history is user/assistant only — `tool` rows are execution detail
+  // and confuse the model more than they inform it. But that left the assistant
+  // blind to its own effects: it remembered PROPOSING "create this proforma",
+  // never that you confirmed it. Asked "did you create that?", it would guess.
+  //
+  // A short factual assistant note lands in the replay window like any other
+  // turn, so the next question is answered knowing the work actually happened.
+  // Best-effort: an action that executed must never be reported as failed
+  // because a note couldn't be written.
+  try {
+    if (run.conversation_id) {
+      const ref = result && result.entity_ref ? ` (${result.entity_ref})` : "";
+      await convo.addMessage(client, {
+        conversationId: run.conversation_id,
+        role: "assistant",
+        content: `✓ Executed ${run.action_key}${ref}.`,
+      });
+    }
+  } catch (err) {
+    logger.warn({ err: err.message, actionRunId }, "[ai] execution note not recorded in conversation");
+  }
+
   return { ok: true, result };
 }
 

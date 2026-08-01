@@ -85,8 +85,19 @@ function makeService(opts) {
       const before = await repo.findById(client, id);
       if (!before) return null;
       if (repo.cfg.activeColumn) await repo.setActive(client, id, false);
+      // deleted_by is `REFERENCES app_user(user_id)` in the schema being written
+      // to. Under TEST that's the SANDBOX schema, while the user's row lives in
+      // LIVE (identity pinned, session 3) — so a raw id raises 23503 and kills
+      // the archive. Same guard as shared/events/emit.js: record the deletion,
+      // drop the attribution when it can't be validated.
+      //
+      // NOTE this weakens maker-checker in that case: the CHECK
+      // (restored_by <> deleted_by) can't catch a self-restore when deleted_by
+      // is NULL. Acceptable in sandbox, where there are no real users to check
+      // between; in LIVE the id always resolves and the guarantee is unchanged.
       await client.query(
-        "INSERT INTO soft_delete (entity_ref, payload_json, deleted_by) VALUES ($1,$2,$3)",
+        "INSERT INTO soft_delete (entity_ref, payload_json, deleted_by) " +
+          "SELECT $1,$2,(SELECT user_id FROM app_user WHERE user_id = $3)",
         [ref(before), before, actor.user_id],
       );
       await emitEvent(client, { eventTypeKey: events.ARCHIVED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });

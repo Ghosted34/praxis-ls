@@ -14,6 +14,11 @@ export type Client = {
   niu?: string | null;
   rccm?: string | null;
   email?: string | null;
+  // 0480 — bill-to address. Neither master had one before, so the counterparty
+  // side of an invoice could only carry a name and a tax number.
+  address?: string | null;
+  city?: string | null;
+  country_code?: string | null;
   payment_terms_days?: number | null;
   credit_limit?: number | null;
   is_withholding_agent?: boolean;
@@ -26,6 +31,9 @@ export type ClientInput = {
   niu?: string;
   rccm?: string;
   email?: string;
+  address?: string;
+  city?: string;
+  country_code?: string;
   payment_terms_days?: number;
   credit_limit?: number;
   is_withholding_agent?: boolean;
@@ -54,6 +62,9 @@ export type Supplier = {
   niu?: string | null;
   rccm?: string | null;
   email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  country_code?: string | null;
   payment_method?: string | null;
   momo_network?: string | null;
   momo_number?: string | null;
@@ -68,6 +79,9 @@ export type SupplierInput = {
   niu?: string;
   rccm?: string;
   email?: string;
+  address?: string;
+  city?: string;
+  country_code?: string;
   payment_method?: "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE";
   momo_network?: string;
   momo_number?: string;

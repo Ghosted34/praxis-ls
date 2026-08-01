@@ -7,6 +7,11 @@ const base = {
   supplier_type: z.string().optional(),
   niu: z.string().optional(), rccm: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  // 0480 — supplier address. Needed on a purchase order (where goods are
+  // collected from / the supplier's legal address on a matched invoice).
+  address: z.string().optional().or(z.literal("")),
+  city: z.string().optional().or(z.literal("")),
+  country_code: z.string().length(2).optional().or(z.literal("")),
   payment_method: z.enum(["BANK", "CASH", "MOBILE_MONEY", "CHEQUE"]).optional(),
   momo_network: z.string().optional(), momo_number: z.string().optional(),
   is_non_resident: z.boolean().optional(),

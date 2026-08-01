@@ -13,6 +13,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { CountrySelect } from "@/components/country-select";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, ActivePill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
@@ -45,6 +46,12 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
   const [niu, setNiu] = React.useState(row?.niu ?? "");
   const [rccm, setRccm] = React.useState(row?.rccm ?? "");
   const [email, setEmail] = React.useState(row?.email ?? "");
+  // 0480 — the bill-to address. There was no column and no field until then, so
+  // an invoice could only identify the client by name and NIU, which is short of
+  // what an OHADA-compliant invoice needs.
+  const [address, setAddress] = React.useState(row?.address ?? "");
+  const [city, setCity] = React.useState(row?.city ?? "");
+  const [countryCode, setCountryCode] = React.useState(row?.country_code ?? "CM");
   const [terms, setTerms] = React.useState(row?.payment_terms_days != null ? String(row.payment_terms_days) : "");
   const [credit, setCredit] = React.useState(row?.credit_limit != null ? String(row.credit_limit) : "");
   const [wht, setWht] = React.useState(row?.is_withholding_agent ?? false);
@@ -62,6 +69,9 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
       niu: niu || undefined,
       rccm: rccm || undefined,
       email: email || undefined,
+      address: address || undefined,
+      city: city || undefined,
+      country_code: countryCode || undefined,
       payment_terms_days: terms === "" ? undefined : Number(terms),
       credit_limit: credit === "" ? undefined : Number(credit),
       is_withholding_agent: wht,
@@ -101,6 +111,13 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
           <Field label="Email" hint="Used to send invoices & receipts"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="billing@client.cm" /></Field>
           <Field label="Credit limit (XAF)">
             <Input type="number" min="0" step="0.01" className="num text-right" value={credit} onChange={(e) => setCredit(e.target.value)} />
+          </Field>
+          <Field label="Address" className="sm:col-span-2" hint="Printed as the bill-to on invoices">
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Akwa, Douala" />
+          </Field>
+          <Field label="City"><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Douala" /></Field>
+          <Field label="Country">
+            <CountrySelect value={countryCode} onChange={setCountryCode} />
           </Field>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={wht} onChange={(e) => setWht(e.target.checked)} /> Withholding agent
@@ -158,6 +175,10 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
   const [niu, setNiu] = React.useState(row?.niu ?? "");
   const [rccm, setRccm] = React.useState(row?.rccm ?? "");
   const [email, setEmail] = React.useState(row?.email ?? "");
+  // 0480 — supplier address, for POs and matched supplier invoices.
+  const [address, setAddress] = React.useState(row?.address ?? "");
+  const [city, setCity] = React.useState(row?.city ?? "");
+  const [countryCode, setCountryCode] = React.useState(row?.country_code ?? "CM");
   const [method, setMethod] = React.useState(row?.payment_method ?? "");
   const [rating, setRating] = React.useState(row?.rating != null ? String(row.rating) : "");
   const [nonResident, setNonResident] = React.useState(row?.is_non_resident ?? false);
@@ -175,6 +196,9 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
       niu: niu || undefined,
       rccm: rccm || undefined,
       email: email || undefined,
+      address: address || undefined,
+      city: city || undefined,
+      country_code: countryCode || undefined,
       payment_method: (method || undefined) as api.SupplierInput["payment_method"],
       rating: rating === "" ? undefined : Number(rating),
       is_non_resident: nonResident,
@@ -207,6 +231,13 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
           <Field label="RCCM"><Input value={rccm} onChange={(e) => setRccm(e.target.value)} /></Field>
           <Field label="Email" hint="Used to send purchase orders"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ap@supplier.cm" /></Field>
           <Field label="Rating (1–5)"><Input type="number" min="1" max="5" className="num" value={rating} onChange={(e) => setRating(e.target.value)} /></Field>
+          <Field label="Address" className="sm:col-span-2" hint="Shown on purchase orders">
+            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Zone industrielle, Bonabéri" />
+          </Field>
+          <Field label="City"><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Douala" /></Field>
+          <Field label="Country">
+            <CountrySelect value={countryCode} onChange={setCountryCode} />
+          </Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={nonResident} onChange={(e) => setNonResident(e.target.checked)} /> Non-resident (WHT)</label>
           {!isNew && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>}
         </div>
@@ -324,7 +355,7 @@ function EntityForm({ row, onClose, onSaved }: { row: api.Entity | null; onClose
           <Field label="Legal name" required><Input value={legalName} onChange={(e) => setLegalName(e.target.value)} /></Field>
           <Field label="NIU"><Input value={niu} onChange={(e) => setNiu(e.target.value)} /></Field>
           <Field label="RCCM"><Input value={rccm} onChange={(e) => setRccm(e.target.value)} /></Field>
-          <Field label="Country"><Input value={country} onChange={(e) => setCountry(e.target.value)} placeholder="CM" /></Field>
+          <Field label="Country"><CountrySelect value={country} onChange={setCountry} allowEmpty={false} /></Field>
           <Field label="Document prefix"><Input value={docPrefix} onChange={(e) => setDocPrefix(e.target.value)} placeholder="SLAS" /></Field>
           <Field label="Default language">
             <Select value={lang} onChange={(e) => setLang(e.target.value)}>

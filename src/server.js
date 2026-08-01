@@ -20,6 +20,7 @@ const { initRedis } = require("./config/redis");
 const routes = require("./routes");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
+const { isPublicMediaPath } = require("./shared/http/media-guard");
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
 /**
@@ -92,11 +93,32 @@ function buildApp() {
   // paths aren't swallowed by index.html fallback. See src/routes/pwa.js.
   app.use(pwaRouter);
 
-  // Local storage driver serves stored files at /media/<key>. Flat static mount
-  // — fine for public assets (tenant logos); sensitive documents need an
-  // auth-gated download route instead (tracked for Phase 1).
+  // Local storage driver serves stored files at /media/<key>.
+  //
+  // ALLOW-LISTED (2026-08-01). This used to be a flat static mount over the whole
+  // storage root — but that root also holds `tenant_<slug>/vault/…`, so the
+  // gated download route (GET /documents/:id/download, requirePermission) could
+  // be bypassed by anyone who knew a vault key. Only the public prefixes are
+  // served here now; everything else 404s and must go through its module.
+  // Public assets stay unauthenticated on purpose: the logo and login background
+  // have to render before the user has a token.
   if (config.STORAGE_DRIVER === "local") {
-    app.use("/media", express.static(path.resolve(config.STORAGE_LOCAL_PATH), { maxAge: "1h" }));
+    const mediaStatic = express.static(path.resolve(config.STORAGE_LOCAL_PATH), {
+      maxAge: "1h",
+      index: false,
+      dotfiles: "deny",
+      // Don't fall through to the SPA catch-all on a miss — a missing image
+      // should be a 404, not an HTML page with a 200.
+      fallthrough: false,
+    });
+    app.use("/media", (req, res, next) => {
+      if (!isPublicMediaPath(req.path)) {
+        // Deliberately 404, not 403: a probe shouldn't be able to tell a
+        // protected key from a nonexistent one.
+        return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
+      }
+      return mediaStatic(req, res, next);
+    });
   }
 
   // Praxis-side Platform Console — a standalone React/Vite app that only ever

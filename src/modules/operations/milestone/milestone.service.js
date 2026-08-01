@@ -7,7 +7,7 @@
 const repo = require("./milestone.repo");
 const events = require("./milestone.events");
 const { computeDue, canAdvance } = require("./milestone.rules");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 /** Publish a NEW active version of a template for a service_type (supersedes older). */
@@ -60,7 +60,15 @@ async function advance(client, { instanceId, to, evidenceVaultId = null, actor =
   if (!inst) throw new AppError("NOT_FOUND", "Milestone not found", 404);
   if (!canAdvance(inst.status, to)) throw new AppError("BAD_TRANSITION", "Cannot move milestone from " + inst.status + " to " + to, 422);
   const fields = { status: to };
-  if (to === "DONE") { fields.completed_at = new Date().toISOString(); fields.completed_by = actor.user_id || null; }
+  if (to === "DONE") {
+    fields.completed_at = new Date().toISOString();
+    // completed_by is REFERENCES app_user(user_id) in the schema being written
+    // to. Under TEST that's the sandbox schema while the user lives in LIVE, so
+    // a raw id raises 23503 and the milestone can never be completed — Start
+    // worked (no actor column) and Complete didn't. Record the completion even
+    // when the actor can't be validated here.
+    fields.completed_by = await resolveActorId(client, actor.user_id);
+  }
   if (evidenceVaultId) fields.evidence_vault_id = evidenceVaultId;
   const row = await repo.updateInstance(client, instanceId, fields);
   // Emit on the DOSSIER ref so orchestration can react (e.g. all-milestones-done

@@ -220,11 +220,54 @@ async function wipeSandbox(input) {
       searchPath: "sandbox,public",
       scope: "sandbox-seed",
     });
+    await mirrorUsersIntoSandbox(cli);
   } finally {
     await cli.end();
   }
   await projectFeatures(slug);
   return { slug };
+}
+
+/**
+ * Copy `live.app_user` into the freshly rebuilt sandbox schema.
+ *
+ * WHY (2026-08-01). Identity is pinned to the LIVE schema (session 3), but
+ * business writes go through `req.tenantDb` → the SANDBOX schema. **60+ columns
+ * across the tenant schema are typed `REFERENCES app_user(user_id)`** —
+ * issued_by, validated_by, approved_by, requested_by, received_by, counted_by,
+ * moved_by, rated_by, owner_user_id, completed_by, and so on. Every one of them
+ * raises 23503 when a valid live user id is stored beside sandbox business data,
+ * because the rebuilt sandbox has no users at all (no `90*` seed creates any).
+ *
+ * That made TEST mode quietly unusable for writes: an action would half-succeed
+ * (the row committed, the actor column didn't) and surface as "Referenced record
+ * not found". It stayed hidden until the first wipe, because before that the
+ * sandbox still held the users from original provisioning.
+ *
+ * Guarding each call site was the alternative and it does not scale — the tail is
+ * dozens of columns long and every new module reintroduces it. Mirroring fixes
+ * all of them at once and keeps attribution REAL rather than silently NULL, so
+ * maker-checker (`soft_delete.restored_by <> deleted_by`) still means something.
+ *
+ * NOT a security widening: these rows are FK targets, not credentials in play.
+ * Auth, sessions and RBAC all resolve against `req.identityDb` (live), so nothing
+ * signs in "as" a sandbox row. `password_hash` comes along because the column is
+ * NOT NULL — it is never read from this schema.
+ *
+ * Runs AFTER the schema+seed passes, so `sandbox.app_user` exists and is empty.
+ */
+async function mirrorUsersIntoSandbox(cli) {
+  await cli.query(
+    "INSERT INTO sandbox.app_user (user_id, username, email, full_name, password_hash, " +
+      "is_2fa_enabled, status, created_at, updated_at) " +
+      "SELECT user_id, username, email, full_name, password_hash, " +
+      "is_2fa_enabled, status, created_at, updated_at FROM live.app_user " +
+      "ON CONFLICT (user_id) DO NOTHING",
+  );
+  // employee_id is deliberately NOT copied: it references sandbox.employee, which
+  // the wipe emptied, so carrying it over would trade one 23503 for another.
+  // totp_secret_enc and godmode_pin_hash are omitted for the same reason they are
+  // never read here — this schema authenticates nobody.
 }
 
 /**

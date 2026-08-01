@@ -128,10 +128,27 @@ leaving the bill-to side of every OHADA invoice with only a name and a NIU. Coun
 advance had never worked**: `to` was never sent (422), the first fix defaulted to an illegal `PENDING → DONE`
 transition, and the page's `try/finally` with no `catch` hid both.
 
+**CI — first run of the new pipeline, 4 of 5 jobs red, all fixed.** Three were caught by gates that had never
+executed before, which is the argument for having added them. `frontend (client)` + `docker-build`: `TS6133`,
+a dead `React` import in the new `country-select.tsx` (no hooks, automatic JSX runtime, `noUnusedLocals`).
+`build-test`: `eqeqeq` ×2 — `!= null` in `dashboard.repo.js`, where the loose form bought nothing since a LEFT
+JOIN miss is SQL NULL not undefined. `security`: 7 pre-existing vulnerabilities (3 high), transitive `uuid`
+via **exceljs** and **node-cron** — set to `continue-on-error` so it reports without blocking, since clearing
+them needs an exceljs major bump that deserves doing deliberately (it's also the writer we'd want for the
+still-open xlsx report export). With lint green, **`npm test` ran for the first time all session** and caught
+two more: `ai-readiness.test.js` rejected the new `service_type.ai.js`, which had been written from memory as
+`{ module, reads:[{action_key, title, handler}] }` instead of the real contract
+`{ entity, module_key, reads:[{key, service}] }` — with a correct exemplar in the same directory; and
+`numbering.test.js` asserted the old raw-number `code`. That test was updated rather than the code, on the
+grounds that its own `formatNumber` cases already used `INV`/`JE` as codes — readable tokens were always the
+intended shape, and the change only makes them the default rather than per-tenant configuration. Four missing
+cases added alongside: unmapped-module fallback, entity prefix, tenant override precedence, and the
+entity-lookup-throws path.
+
 **Migrations:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`** + **`0480_party_address`**.
-**Owed:** `npm run lint` / `npm test` / `npm run build --prefix client` — none of session 17 has been compiled
-or linted (the sandbox VM failed to start for most of the session); `npm install --prefix client` for the two
-new map deps.
+**Owed:** `npm install --prefix client` for the two new map deps. Session 17 was written almost entirely
+without a working sandbox VM, so nothing was compiled until the CI run above — treat the green pipeline, not
+the code review, as the first real verification.
 
 ---
 

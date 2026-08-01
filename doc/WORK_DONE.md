@@ -8,6 +8,94 @@ later without re-reading every diff.
 
 ---
 
+## 2026-08-01 — Session 17: Control Tower map made real (geo_place + Geoapify forward geocoding), `/media` bypass closed, milestone auto-seeding, AI conversation memory, doc-truth audit
+
+**Repo audit first — several backlog statuses had rotted.** Verified against source, not against the docs.
+Found **already built** and marked `[ ]`/"deferred": payroll compute + auto-posted journal
+(`hr/payroll/payroll.service.js`, posts 661/664 ⇄ 431/447/422), asset acquisition→depreciation→disposal
+(`finance/asset/`, full 7-file module), `approval_task` auto-creation (`shared/events/emit.js:79` →
+`services/workflow/executor.start()`), `notification.list()` self-scoping, the auth-gated vault download,
+the AI spend dashboard, the Help centre, HR onboarding/succession, the LIVE/TEST toggle, the platform
+console. All flipped in `WORK_TO_BE_DONE.md` with file-level evidence. **Confirmed still open:**
+`scopeColumn` has no adopters (no business table has a scope column), `requireCapability` has zero call
+sites, `depends_on` is never consulted by `projectFeatures()`, the Live self-grant block, xlsx/csv report
+export (validator accepts them, only `pdf-render.js` exists), factory languages, external portal FE.
+
+**Control Tower — the live-shipments panel was showing less than the backend already sent.** `toLiveShipment`
+read `s.route ?? s.lane`; the payload has always carried `origin`/`destination` (`dossier.pol`/`pod`), so
+`from`/`to` were empty on every row and the list rendered a bare "→". ETA went in raw
+(`2026-07-16T23:00:00.000Z`) — now `dateFmt`. `prog` fell through `|| 45` to a literal 45 for every row
+because no progress field was ever sent — the repo now derives it from `milestone_instance` using the SAME
+correlated subqueries as `operations_file.repo.js:32-34`, so the bar and the Operations list can't disagree,
+and sends **null** (bar hides) when a dossier has no chain: "not tracked" ≠ "not started". Status pill
+`enumLabel`'d. Mode now comes from `service_type.key`, not text sniffing — `HINTERLAND_TRANSIT` has no
+vessel and two ordinary city names, so the road corridor was drawing as a shipping lane.
+
+**The map is real.** It was hand-drawn artwork: a stylised Cameroon+Chad landmass, three hardcoded lanes,
+edge tags reading "ANTWERP"/"PARIS CDG" pointing at nothing. Nothing in the schema mapped a place name to a
+coordinate — the only lat/long columns were the HR geofence ones (`0465`), which hold the tenant's own
+offices, not ports. New **`0478_geo_place.sql`**: `query_key` (normalised: case/accents/apostrophes folded,
+so `N'Djamena`/`Ndjamena`/`NDJAMENA` collapse to one row) + name/country/kind/lat/long/`source`, seeded with
+24 places. New `operations/geo_place/` module (repo+service+controller+routes+validator+events, rides
+**MOD-29** — a module_key absent from the catalogue has no grants, so a new key would deny every non-CEO).
+`geoapify.service` gained **`forwardGeocode`** (`/v1/geocode/search`) mirroring the existing reverse call —
+the integration was reverse-only and consumed solely by HR clock-in. Resolution is cache-first, writes misses
+back, sequential (a burst trips the 3,000/day free tier). FE rebuilt onto **Natural Earth 110m**
+(`world-atlas` + `topojson-client`, new client deps) projected equirectangular in the PARENT and handed to
+the iframe as SVG path strings — the iframe can't import modules, and doing the fit once means land /
+graticule / lanes / nodes can't drift onto different projections. Auto-fits the viewport, fans clustered
+lanes to alternate sides, nudges colliding labels with leader lines. **`0479_dossier_place_refs.sql`** adds
+`pol_place_id`/`pod_place_id`; the form's two bare `<Input>`s became `SearchSelect` pickers (free-text
+fallback kept), and ports now resolve **at dossier save** — previously resolution only ran when the map
+rendered, so a port on a dossier nobody viewed was never catalogued, and the dossier was never linked to the
+row its own text had just created.
+
+**`/media` bypass closed.** `express.static` was mounted over the whole storage root — which also holds
+`tenant_<slug>/vault/…`, so the gated `GET /documents/:id/download` could be walked around by anyone who
+knew a key. New `shared/http/media-guard.js`: deny-by-default allow-list (`branding`/`login`/`entity`/
+`avatars` stay public — the logo and login background must load pre-auth), traversal rejected explicitly
+(`tenant_x/branding/../vault/doc.pdf` never leaves the root, so a second-segment check alone would pass it),
+404 not 403 so a probe can't distinguish protected from absent. `tests/unit/media-guard.test.js`.
+
+**Branding stopped being per-environment.** It read through the env-scoped `req.tenantDb`, so appearance was
+stored twice and `DROP SCHEMA sandbox CASCADE` destroyed the TEST copy on every wipe — while a LIVE copy was
+invisible in TEST. Now **live is the base, sandbox may override**: reads take live and overlay only values
+sandbox explicitly sets; writes go to the current env. Keeps palette experiments possible, makes the wipe
+discard only a deliberate experiment. Also: the appearance editor rendered every unset token as `#000000`,
+and Save posts what the inputs hold — one click would have written black as the brand palette. Fallbacks are
+now the real `index.css` values.
+
+**Milestones.** Instantiation was manual and, in practice, never done — the sandbox seed did it for one
+dossier in five and no screen ever called `POST /milestones/instantiate`. Now auto-seeded on dossier create,
+after the transaction commits (`milestone.instantiate` opens its own `BEGIN/COMMIT`; nesting would close
+ours) and best-effort, so no template never blocks a create. `instantiateMilestones()` added as the escape
+hatch for dossiers predating their template. Seed extended: templates for the **air** and **hinterland
+transit** service types (only sea had one, so those dossiers couldn't be instantiated at all) and chains on
+all five dossiers at 40/100/20/60/0% — 0% deliberately proves a real zero renders a bar where a missing
+chain renders none. **Found:** `advanceMilestone` never sent the required `to`, so every advance from the UI
+had been returning 422.
+
+**AI conversation memory.** `ai_conversation`/`ai_message` have existed since `0400_ai.sql` and nothing ever
+wrote to them — `orchestrator.ask` built `[system, user]` every call, so each question was the model's first.
+Now: one rolling thread per user (resolved server-side), last 20 messages replayed, everything stored
+indefinitely. History is redacted on replay like live input, saved *after* the model call (no orphan question
+with no answer), and best-effort throughout. `GET /ai/history` + `POST /ai/history/clear` (clear starts a new
+thread rather than deleting — `ai_action_run` references `conversation_id`). Executed actions now append a
+factual assistant note, so the assistant knows what it *did*, not only what it proposed. Also fixed: action
+runs recorded `conversation_id` from a request field the copilot never sent, so every one was orphaned.
+
+**CI.** `npm audit --audit-level=high`, a secret scan, a **duplicate-migration-number guard**
+(`scripts/db/check-migration-numbers.js` — `0470` and `0475` collide today; both are grandfathered because
+renaming an APPLIED migration makes the filename-keyed migrator re-run it, and 23 tenant files use a bare
+`CREATE TRIGGER` that fails `42710` on a second run), and a **frontend job** building `client` +
+`platform-console`, neither of which CI had ever built.
+
+**Migrations:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`**. **Owed:** `npm run lint` /
+`npm test` / `npm run build --prefix client` — none of session 17 has been compiled or linted (the sandbox
+VM failed to start for most of the session); `npm install --prefix client` for the two new map deps.
+
+---
+
 ## 2026-07-29 — Session 16: document-UI overhaul finished + master emails + doc line items + logo fix + contract signed-copy + AI vendors → platform
 
 **Documents.** Native `DocumentPage` detail (route `/documents/:docType/:id`) + drop-in `<DocButton>` wired

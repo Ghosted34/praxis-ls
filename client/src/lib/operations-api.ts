@@ -15,8 +15,12 @@ export type Dossier = {
   incoterm?: string | null;
   bl_mawb?: string | null;
   vessel_flight?: string | null;
+  // Free text = display snapshot; *_place_id = the geo_place reference (0479),
+  // which is what gives the Control Tower map exact coordinates.
   pol?: string | null;
   pod?: string | null;
+  pol_place_id?: string | null;
+  pod_place_id?: string | null;
   customs_regime?: string | null;
   eta?: string | null;
   ata?: string | null;
@@ -40,6 +44,10 @@ export type DossierInput = {
   bl_mawb?: string;
   pol?: string;
   pod?: string;
+  // Nullable, not just optional: clearing a picked port must send an explicit
+  // null so the stale reference is dropped rather than silently retained.
+  pol_place_id?: string | null;
+  pod_place_id?: string | null;
   customs_regime?: string;
 };
 export const listDossiers = () => tenant<Dossier[]>("/operations");
@@ -100,6 +108,26 @@ export type DeliveryNoteInput = {
 export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");
 export const createDeliveryNote = (body: DeliveryNoteInput) => tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
 
+/* ── Places (/geo-places) — POL/POD reference data for the route pickers ── */
+export type GeoPlace = {
+  geo_place_id: string;
+  name: string;
+  country?: string | null;
+  kind?: string | null;
+  latitude: string | number;
+  longitude: string | number;
+  source?: string | null;
+};
+export const listGeoPlaces = (q?: string) =>
+  tenant<GeoPlace[]>(`/geo-places${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+export const createGeoPlace = (body: {
+  name: string;
+  latitude: number;
+  longitude: number;
+  country?: string;
+  kind?: string;
+}) => tenant<GeoPlace>("/geo-places", { method: "POST", body });
+
 /* ── Milestones(/milestones) — templates + per-dossier instances ── */
 export type MilestoneTemplate = {
   milestone_template_id?: string;
@@ -121,8 +149,50 @@ export type MilestoneInstance = {
 };
 export const listMilestoneTemplates = () => tenant<MilestoneTemplate[]>("/milestones/templates");
 export const milestonesByDossier = (dossierId: string) => tenant<MilestoneInstance[]>(`/milestones/dossier/${dossierId}`);
-export const advanceMilestone = (id: string, body: { evidence_vault_id?: string } = {}) =>
-  tenant<MilestoneInstance>(`/milestones/${id}/advance`, { method: "POST", body });
+export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "BLOCKED";
+
+/**
+ * Move a milestone to a new status.
+ *
+ * `to` is REQUIRED by the validator (`milestone.validator.js:7`) but this helper
+ * never sent it — so every advance from the UI returned 422 VALIDATION_ERROR.
+ * Defaults to DONE, which is what the single "advance" button in the milestones
+ * screen means; pass `to` explicitly for the IN_PROGRESS / BLOCKED transitions.
+ */
+export const advanceMilestone = (
+  id: string,
+  body: { to?: MilestoneStatus; evidence_vault_id?: string } = {},
+) =>
+  tenant<MilestoneInstance>(`/milestones/${id}/advance`, {
+    method: "POST",
+    body: { to: body.to || "DONE", ...(body.evidence_vault_id ? { evidence_vault_id: body.evidence_vault_id } : {}) },
+  });
+
+/**
+ * Seed a dossier's milestone chain from its service type's active template.
+ *
+ * New dossiers get this automatically on create (operations_file.service
+ * seedMilestones), so this is the ESCAPE HATCH, not the main path: dossiers
+ * created before their service type had a template, or before auto-seeding
+ * existed, have no chain and no other way to get one.
+ *
+ * Throws 409 ALREADY_INSTANTIATED if a chain exists (safe to offer blindly —
+ * the backend refuses to duplicate) and 422 NO_TEMPLATE when the service type
+ * has no active template, which is the case worth surfacing to the user: the
+ * fix is to publish a template, not to retry.
+ */
+export const instantiateMilestones = (body: { dossierId: string; serviceTypeId: string; baseDate?: string | null }) =>
+  tenant<MilestoneInstance[]>("/milestones/instantiate", {
+    method: "POST",
+    // base_date is `.optional()` and NOT `.nullable()` in the validator, so an
+    // explicit null is a 422. Omit the key entirely when absent — the service
+    // then defaults the base to today.
+    body: {
+      dossier_id: body.dossierId,
+      service_type_id: body.serviceTypeId,
+      ...(body.baseDate ? { base_date: body.baseDate } : {}),
+    },
+  });
 
 export type OverviewPerson = { user_id: string; name?: string | null } | null;
 export type DossierOverview = {

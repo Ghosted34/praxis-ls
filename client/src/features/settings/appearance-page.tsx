@@ -15,17 +15,25 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, Field, Segmented, ColorRow, ImageField } from "@/components/settings/controls";
 
-const COLORS: { key: keyof Branding; token: string }[] = [
-  { key: "primary", token: "primary" },
-  { key: "primaryForeground", token: "primary-fg" },
-  { key: "secondary", token: "secondary" },
-  { key: "accent", token: "accent" },
-  { key: "accentDeep", token: "accent-deep" },
-  { key: "accentGlow", token: "accent-glow" },
-  { key: "info", token: "info" },
-  { key: "success", token: "success" },
-  { key: "warn", token: "warn" },
-  { key: "danger", token: "danger" },
+/**
+ * `fallback` is what the app ACTUALLY renders when a token is unset — the values
+ * in index.css. The editor used to show `#000000` for any unset token, which was
+ * wrong twice over: it misrepresented the live appearance (nothing was black),
+ * and because Save posts whatever the inputs hold, one click would persist black
+ * as the tenant's brand palette without anyone having chosen it. Showing the real
+ * default makes the form honest and makes an accidental Save a no-op.
+ */
+const COLORS: { key: keyof Branding; token: string; fallback: string }[] = [
+  { key: "primary", token: "primary", fallback: "#F5821F" },
+  { key: "primaryForeground", token: "primary-fg", fallback: "#FFFFFF" },
+  { key: "secondary", token: "secondary", fallback: "#1C9BD7" },
+  { key: "accent", token: "accent", fallback: "#1C9BD7" },
+  { key: "accentDeep", token: "accent-deep", fallback: "#0C4A7A" },
+  { key: "accentGlow", token: "accent-glow", fallback: "#34AAE2" },
+  { key: "info", token: "info", fallback: "#1884C4" },
+  { key: "success", token: "success", fallback: "#2E9B5B" },
+  { key: "warn", token: "warn", fallback: "#B08018" },
+  { key: "danger", token: "danger", fallback: "#C0392B" },
 ];
 
 export function AppearancePage() {
@@ -135,8 +143,8 @@ export function AppearancePage() {
 
         <SettingsCard title="Colours" desc="The brand token set. Primary re-tints the app immediately on save.">
           <div className="grid gap-2 sm:grid-cols-2">
-            {COLORS.map(({ key, token }) => (
-              <ColorRow key={key} token={token} value={colors[key] || "#000000"} onChange={(v) => setColor(key, v)} />
+            {COLORS.map(({ key, token, fallback }) => (
+              <ColorRow key={key} token={token} value={colors[key] || fallback} onChange={(v) => setColor(key, v)} />
             ))}
           </div>
         </SettingsCard>

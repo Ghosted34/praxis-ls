@@ -6,7 +6,11 @@ const create = z.object({
   client_id: z.string().uuid().optional(),
   service_type_id: z.string().uuid().optional(),
   incoterm: z.string().optional(), bl_mawb: z.string().optional(),
+  // pol/pod stay free text (display snapshot + the path old dossiers use);
+  // *_place_id is the real reference into geo_place when the user picked one.
   pol: z.string().optional(), pod: z.string().optional(),
+  pol_place_id: z.string().uuid().nullable().optional(),
+  pod_place_id: z.string().uuid().nullable().optional(),
   customs_regime: z.string().optional(),
   owner_ops_id: z.string().uuid().optional(), owner_sales_id: z.string().uuid().optional(),
 });

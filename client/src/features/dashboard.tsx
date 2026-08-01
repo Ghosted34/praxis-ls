@@ -17,6 +17,12 @@ import { tenant } from "@/lib/api-client";
 import { ErrorState } from "@/components/ui/states";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { errMsg } from "@/features/sales/ui";
+import { dateFmt, enumLabel } from "@/lib/format";
+import { tokenStore } from "@/lib/token-store";
+// Natural Earth 110m land, ~100 kB. Imported (not fetched) so the map works
+// offline and inside the srcDoc iframe, which can't require modules itself.
+import { feature as topoFeature } from "topojson-client";
+import landTopo from "world-atlas/land-110m.json";
 import mockBody from "./dashboard-mock/body.html.txt?raw";
 import mockStyle from "./dashboard-mock/style.css.txt?raw";
 import mockScript from "./dashboard-mock/script.js.txt?raw";
@@ -53,27 +59,70 @@ function statusClass(status: string): string {
   return "st-mute";
 }
 
-/** Map a live control-tower shipment to the shape the mock's liverow expects. */
+/**
+ * Map a live control-tower shipment to the shape the mock's liverow expects.
+ *
+ * Three defects fixed here (2026-08-01), all of which made the panel show less
+ * than the backend was already sending:
+ *
+ *  1. ROUTE WAS ALWAYS EMPTY. This read `s.route ?? s.lane`, but the payload has
+ *     never carried either key — `dashboard.repo.js` returns `origin`/`destination`
+ *     (dossier.pol/pod). So `from`/`to` resolved to "" on every row and the list
+ *     rendered a bare "→". Read the real keys first; the route/lane split is kept
+ *     only as a fallback for a pre-formatted "A → B" string.
+ *  2. RAW ISO TIMESTAMPS. `s.eta` went straight into the meta line, printing
+ *     "2026-07-16T23:00:00.000Z". Now goes through dateFmt (FE_DESIGN_RULES §5).
+ *  3. EVERY BAR SAT AT 45%. `Number(s.progress ?? s.prog ?? 0) || 45` fell through
+ *     to the literal 45 because no progress field was sent — an OPEN dossier looked
+ *     as advanced as one nearly delivered. The repo now derives progress from the
+ *     milestone engine and sends null when a dossier has no milestones, which we
+ *     pass through as null so the bar hides rather than inventing a number.
+ */
 function toLiveShipment(s: Row) {
+  const origin = str(s.origin ?? s.pol ?? "");
+  const destination = str(s.destination ?? s.pod ?? "");
+  // Fallback only: some callers may pass a pre-joined "Douala → N'Djamena".
   const route = str(s.route ?? s.lane ?? "");
   const parts = route.split(/→|->|—|-|to/i).map((p) => p.trim()).filter(Boolean);
+  const from = origin || parts[0] || "";
+  const to = destination || parts[1] || "";
   const vessel = str(s.vessel ?? s.vessel_flight ?? "");
-  const mode = /air|flight|mawb/i.test(vessel + " " + route)
+  const lane = [from, to, route].filter(Boolean).join(" ");
+  // Mode comes from the dossier's service_type key when we have one — that's the
+  // authoritative answer. Text sniffing is only a fallback for rows without a
+  // service type, and it gets HINTERLAND_TRANSIT wrong (no vessel, two ordinary
+  // city names → falls through to "sea"), which is why the map drew the
+  // Douala→Ndjamena corridor as a shipping lane.
+  const serviceKey = str(s.service_key ?? "").toUpperCase();
+  const mode = /AIR/.test(serviceKey)
     ? "air"
-    : /road|truck|corridor|transit/i.test(str(s.service ?? s.mode ?? "") + " " + route)
+    : /ROAD|TRANSIT|HINTERLAND|TRUCK|INLAND/.test(serviceKey)
       ? "road"
-      : "sea";
-  const status = str(s.status ?? s.state ?? "Active");
-  const metaBits = [str(s.client ?? s.client_name ?? vessel), str(s.eta ?? s.eta_label ?? "")].filter(Boolean);
+      : /SEA|OCEAN|MARITIME/.test(serviceKey)
+        ? "sea"
+        : // No service type on the dossier — fall back to the old heuristic.
+          /air|flight|mawb|cdg|airport/i.test(vessel + " " + lane)
+          ? "air"
+          : /road|truck|corridor|transit/i.test(str(s.service ?? s.mode ?? "") + " " + lane)
+            ? "road"
+            : "sea";
+  const rawStatus = str(s.status ?? s.state ?? "Active");
+  // ETA is a DATE column — dateFmt, not dateTimeFmt: the midnight-UTC time
+  // component is an artefact of serialisation, not information.
+  const eta = s.eta ? dateFmt(str(s.eta)) : str(s.eta_label ?? "");
+  const metaBits = [str(s.client ?? s.client_name ?? vessel), eta].filter(Boolean);
+  const progress = s.progress === null || s.progress === undefined ? null : Number(s.progress);
   return {
     ref: str(s.ref ?? s.dossier_ref ?? s.reference ?? "—"),
     mode,
-    from: parts[0] ?? route,
-    to: parts[1] ?? "",
-    st: status,
-    stc: statusClass(status),
+    from,
+    to,
+    // "IN_PROGRESS" → "In progress". The pill sat next to a formatted date while
+    // still showing a raw enum token; same human-readable rule, same line of sight.
+    st: enumLabel(rawStatus),
+    stc: statusClass(rawStatus),
     meta: metaBits.join(" · "),
-    prog: Number(s.progress ?? s.prog ?? 0) || 45,
+    prog: progress !== null && Number.isFinite(progress) ? progress : null,
   };
 }
 
@@ -284,13 +333,284 @@ function buildFleetDrill(vehicles: Row[] | null): Drill {
   };
 }
 
+/**
+ * A plottable lane: both endpoints resolved to real coordinates by the backend
+ * (`geo_place` cache → Geoapify on a miss). Shipments whose POL/POD can't be
+ * resolved simply don't produce a lane — they still appear in the list.
+ */
+type Lane = {
+  ref: string;
+  mode: string;
+  status: string;
+  from: { name: string; lat: number; lng: number };
+  to: { name: string; lat: number; lng: number };
+};
+
+/** Build map lanes from the raw control-tower payload (needs `coords`, which
+ *  toLiveShipment drops — that shape is for the list rows). */
+function toLanes(rawShips: Row[]): Lane[] {
+  const out: Lane[] = [];
+  rawShips.forEach((s) => {
+    const c = s.coords as { from?: Row; to?: Row } | null | undefined;
+    if (!c || !c.from || !c.to) return;
+    const fLat = Number(c.from.latitude);
+    const fLng = Number(c.from.longitude);
+    const tLat = Number(c.to.latitude);
+    const tLng = Number(c.to.longitude);
+    if (![fLat, fLng, tLat, tLng].every(Number.isFinite)) return;
+    const mapped = toLiveShipment(s);
+    out.push({
+      ref: mapped.ref,
+      mode: mapped.mode,
+      status: mapped.st,
+      from: { name: str(c.from.name) || str(s.origin), lat: fLat, lng: fLng },
+      to: { name: str(c.to.name) || str(s.destination), lat: tLat, lng: tLng },
+    });
+  });
+  return out;
+}
+
+/* ───────────────────────────── Map model ──────────────────────────────────
+ * Everything the map needs is computed HERE, in the parent, and handed to the
+ * iframe as ready-to-draw SVG strings. The iframe is a dumb renderer.
+ *
+ * Why: the land geometry comes from `world-atlas` (Natural Earth 110m), which is
+ * a module import — not something the injected script can require. Projecting in
+ * the parent also keeps ONE copy of the fit maths, so land, graticule, lanes and
+ * nodes are guaranteed to share a projection instead of drifting apart.
+ *
+ * Projection is plain equirectangular (lon→x, lat→y, one shared scale). It is
+ * NOT area-accurate at high latitude, which is fine for an origin-destination
+ * view of tropical-to-European trade lanes and keeps the maths inspectable.
+ * KNOWN LIMIT: a viewport crossing the antimeridian (±180°) would tear. No lane
+ * in a Douala-centred network does; revisit if one ever routes via the Pacific.
+ */
+
+const MAP_W = 760;
+const MAP_H = 470;
+const MAP_PAD = 54;
+
+type MapModel = {
+  w: number;
+  h: number;
+  land: string[];
+  grid: string;
+  gridLabels: { x: number; y: number; t: string }[];
+  equatorY: number | null;
+  lanes: { id: string; d: string; cls: string; title: string; dur: number; marker: string }[];
+  nodes: { x: number; y: number; name: string; emphasis: boolean; dy: number }[];
+  counts: { sea: number; road: number; air: number };
+};
+
+type Ring = [number, number][];
+
+/**
+ * Natural Earth land as flat rings, decoded once at module load.
+ *
+ * Defensive about the object key: world-atlas ships `objects.land` in
+ * land-110m.json, but `countries-110m.json` carries both `countries` and `land`,
+ * and a version bump could rename either. Falls back to the first object rather
+ * than silently rendering an oceans-only map — and warns, because a swallowed
+ * failure here looks exactly like "the map just has no land", which is very
+ * hard to tell from a styling problem.
+ */
+let LAND_RINGS: Ring[] | null = null;
+function landRings(): Ring[] {
+  if (LAND_RINGS) return LAND_RINGS;
+  const rings: Ring[] = [];
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const topo = landTopo as any;
+    const objects = topo && topo.objects;
+    if (!objects) throw new Error("topology has no `objects`");
+    const key = objects.land ? "land" : Object.keys(objects)[0];
+    if (!key) throw new Error("topology has no geometry objects");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const geo = topoFeature(topo, objects[key]) as any;
+    // feature() yields either a Feature or a FeatureCollection depending on the
+    // object type — normalise to a list of geometries before walking.
+    const geoms: unknown[] = geo.type === "FeatureCollection"
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      ? geo.features.map((f: any) => f.geometry)
+      : [geo.geometry];
+    geoms.forEach((g) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const geom = g as any;
+      if (!geom || !geom.coordinates) return;
+      const polys = geom.type === "Polygon" ? [geom.coordinates] : geom.coordinates;
+      (polys as Ring[][]).forEach((poly) => poly.forEach((r) => rings.push(r)));
+    });
+    if (!rings.length) throw new Error("decoded 0 rings");
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn("[control-tower] land basemap unavailable:", err);
+  }
+  LAND_RINGS = rings;
+  return LAND_RINGS;
+}
+
+function buildMapModel(lanes: Lane[]): MapModel | null {
+  if (!lanes.length) return null;
+
+  const lons: number[] = [];
+  const lats: number[] = [];
+  lanes.forEach((l) => {
+    lons.push(l.from.lng, l.to.lng);
+    lats.push(l.from.lat, l.to.lat);
+  });
+  const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
+  const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  // Floor the span so one short corridor doesn't zoom to street level, where a
+  // 110m coastline is a blocky mess. 18% headroom keeps node labels off the edge.
+  const spanLon = Math.max(Math.max(...lons) - Math.min(...lons), 12) * 1.18;
+  const spanLat = Math.max(Math.max(...lats) - Math.min(...lats), 12) * 1.18;
+  // One scale for both axes: true proportions. With real coastline drawn behind,
+  // the "dead space" a tall narrow lane set leaves is filled by actual geography,
+  // so stretching to fill (which would skew every landmass) buys nothing.
+  const scale = Math.min((MAP_W - MAP_PAD * 2) / spanLon, (MAP_H - MAP_PAD * 2) / spanLat);
+  const px = (lon: number) => MAP_W / 2 + (lon - cLon) * scale;
+  const py = (lat: number) => MAP_H / 2 - (lat - cLat) * scale;
+
+  // ── land ──
+  // Cull rings fully outside the viewport, and clamp the rest: at high zoom an
+  // unclamped Siberia projects to coordinates in the millions and bloats the
+  // path string for pixels nobody sees.
+  const CLAMP = 4000;
+  const clamp = (v: number) => (v < -CLAMP ? -CLAMP : v > CLAMP ? CLAMP : v);
+  const land: string[] = [];
+  landRings().forEach((ring) => {
+    if (ring.length < 3) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    for (const [lon, lat] of ring) {
+      const x = px(lon), y = py(lat);
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+    if (maxX < 0 || minX > MAP_W || maxY < 0 || minY > MAP_H) return; // off-screen
+    let d = "";
+    for (let i = 0; i < ring.length; i += 1) {
+      const x = clamp(px(ring[i][0])).toFixed(1);
+      const y = clamp(py(ring[i][1])).toFixed(1);
+      d += (i === 0 ? "M" : "L") + x + "," + y;
+    }
+    land.push(d + "Z");
+  });
+
+  // ── graticule ──
+  // Computed over the VISIBLE viewport, not the lane bounding box. Those differ
+  // a lot: one axis always wins the `min()` above, so with tall narrow lanes
+  // (Antwerp→Douala is 47° of latitude but 15° of longitude) the visible world
+  // is far wider than the lanes. Keying the grid to the lanes drew it as a
+  // narrow band down the middle with bare space either side.
+  const halfLon = MAP_W / 2 / scale;
+  const halfLat = MAP_H / 2 / scale;
+  const lonMin = cLon - halfLon, lonMax = cLon + halfLon;
+  const latMin = cLat - halfLat, latMax = cLat + halfLat;
+  const visSpan = lonMax - lonMin;
+  const step = visSpan > 120 ? 30 : visSpan > 60 ? 20 : visSpan > 24 ? 10 : 5;
+  const snap = (v: number) => Math.ceil(v / step) * step;
+  let grid = "";
+  const gridLabels: { x: number; y: number; t: string }[] = [];
+  for (let lon = snap(lonMin); lon <= lonMax; lon += step) {
+    const x = px(lon);
+    grid += `M${x.toFixed(1)},0 V${MAP_H}`;
+    gridLabels.push({ x: x + 3, y: MAP_H - 10, t: `${Math.round(lon)}°` });
+  }
+  // Clamp to the poles — equirectangular has no geometry beyond ±90, and a
+  // "100°" gridline would be nonsense.
+  for (let lat = snap(Math.max(latMin, -85)); lat <= Math.min(latMax, 85); lat += step) {
+    const y = py(lat);
+    if (y < 12 || y > MAP_H - 22) continue; // clear of the top and the lon labels
+    grid += `M0,${y.toFixed(1)} H${MAP_W}`;
+    gridLabels.push({ x: 6, y: y - 4, t: `${Math.round(lat)}°` });
+  }
+  const eqY = py(0);
+  const equatorY = eqY > 0 && eqY < MAP_H ? eqY : null;
+
+  // ── lanes + nodes ──
+  const outLanes: MapModel["lanes"] = [];
+  const nodes: MapModel["nodes"] = [];
+  const seen = new Set<string>();
+  const counts = { sea: 0, road: 0, air: 0 };
+
+  // Lanes that share a corridor (Antwerp→Douala and Paris CDG→Douala start ~500km
+  // apart but converge on the same port) project almost on top of each other. Bow
+  // them alternately to either side, fanning wider as the cluster grows, so each
+  // stays separately traceable and hoverable.
+  const cluster = new Map<string, number>();
+  const clusterIndex = (l: Lane) => {
+    // 5° buckets: close enough to overlap on screen, coarse enough not to split
+    // two genuinely-adjacent ports into different clusters.
+    const k = `${Math.round(l.from.lat / 5)},${Math.round(l.from.lng / 5)}>${Math.round(l.to.lat / 5)},${Math.round(l.to.lng / 5)}`;
+    const n = cluster.get(k) ?? 0;
+    cluster.set(k, n + 1);
+    return n;
+  };
+
+  lanes.forEach((l, i) => {
+    const x1 = px(l.from.lng), y1 = py(l.from.lat);
+    const x2 = px(l.to.lng), y2 = py(l.to.lat);
+    const dx = x2 - x1, dy = y2 - y1;
+    const len = Math.hypot(dx, dy) || 1;
+    // Bow ∝ length: long hauls arc, a short corridor stays near-straight so it
+    // doesn't read as a detour. Convention only — not the sailed track.
+    const ci = clusterIndex(l);
+    const side = ci % 2 === 0 ? 1 : -1;
+    const spread = 1 + Math.floor(ci / 2) * 0.6;
+    const bow = Math.min(len * 0.16, 70) * spread * side;
+    const mx = (x1 + x2) / 2 + (-dy / len) * bow;
+    const my = (y1 + y2) / 2 + (dx / len) * bow;
+    const mode = l.mode === "road" || l.mode === "air" ? l.mode : "sea";
+    counts[mode as "sea" | "road" | "air"] += 1;
+    outLanes.push({
+      id: `lane${i}`,
+      d: `M${x1.toFixed(1)},${y1.toFixed(1)} Q${mx.toFixed(1)},${my.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`,
+      cls: mode === "road" ? "route-road" : mode === "air" ? "route-air" : "route-sea",
+      title: `${l.ref} · ${l.from.name} → ${l.to.name} · ${l.status}`,
+      dur: mode === "air" ? 9 : mode === "road" ? 11 : 15,
+      marker: mode === "road" ? "rgb(var(--orange))" : "rgb(var(--blue-bright))",
+    });
+  });
+  const mark = (p: Lane["from"], emphasis: boolean) => {
+    const k = `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
+    if (seen.has(k)) return;
+    seen.add(k);
+    const x = px(p.lng);
+    const y = py(p.lat);
+    // Nudge a label off any already-placed one it would sit on top of. Ports
+    // cluster (Antwerp and Paris CDG are ~5° apart and collide at this zoom), and
+    // two overlapping names are less useful than one moved 12px. Alternates up
+    // and down so a run of near-coincident nodes fans out rather than drifting.
+    let dy = 0;
+    for (let guard = 0; guard < 6; guard += 1) {
+      const clash = nodes.some(
+        (n) => Math.abs(n.x - x) < 84 && Math.abs(n.y + n.dy - (y + dy)) < 13,
+      );
+      if (!clash) break;
+      dy = dy <= 0 ? -dy + 13 : -dy;
+    }
+    nodes.push({ x, y, name: p.name, emphasis, dy });
+  };
+  lanes.forEach((l) => mark(l.to, true));
+  lanes.forEach((l) => mark(l.from, false));
+
+  return { w: MAP_W, h: MAP_H, land, grid, gridLabels, equatorY, lanes: outLanes, nodes, counts };
+}
+
 type LiveData = {
   shipments: ReturnType<typeof toLiveShipment>[];
+  lanes: Lane[];
+  map: MapModel | null;
   activeCount: number;
   heroSub: string;
   briefing: string;
   /** Signed-in user's first name — the mock hardcodes "Amara" in greet(). */
   firstName: string;
+  /** Current data environment, mirrored into the hero headline. See envWord. */
+  envWord: string;
+  isTest: boolean;
   kpi: {
     revenue: number | null;
     revenueCur: string;
@@ -315,13 +635,25 @@ function liveInjectionScript(live: LiveData): string {
     return '<svg viewBox="0 0 24 24"><path d="M3 7h11l4 4v4h-2"/><circle cx="7" cy="16" r="2"/><circle cx="16" cy="16" r="2"/></svg>';
   }
   function liveRow(d){
+    // Route line: hide the whole row when neither end is known, rather than
+    // drawing a lone arrow pointing at nothing (which is what shipped before).
+    var routeLine = '';
+    if(d.from || d.to){
+      var label = d.from && d.to ? (esc(d.from) + ' &rarr; ' + esc(d.to)) : esc(d.from || d.to);
+      routeLine = '<div class="rt"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'+label+'</div>';
+    }
+    // Progress is null when the dossier has no milestones instantiated — no bar,
+    // because a 0%-width bar reads as "not started" and a default width lies.
+    var bar = (d.prog === null || d.prog === undefined)
+      ? ''
+      : '<div class="bar" title="'+esc(d.prog)+'% of milestones complete"><i style="width:'+d.prog+'%"></i></div>';
     return '<div class="liverow">'
       + '<div class="ck '+d.mode+'">'+icon(d.mode)+'</div>'
       + '<div class="lb">'
       + '<div class="r1"><span class="ref">'+esc(d.ref)+'</span><span class="status '+d.stc+'" style="padding:2px 7px">'+esc(d.st)+'</span></div>'
-      + '<div class="rt"><svg viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></svg>'+esc(d.from)+(d.to?(' &rarr; '+esc(d.to)):'')+'</div>'
+      + routeLine
       + '<div class="meta">'+esc(d.meta)+'</div>'
-      + '<div class="bar"><i style="width:'+(d.prog||40)+'%"></i></div>'
+      + bar
       + '</div></div>';
   }
   try {
@@ -349,6 +681,20 @@ function liveInjectionScript(live: LiveData): string {
     if(K.overdue == null) hideKpi(2); else setKpi(2, fmtM(K.overdue) + '<small> M ' + esc(K.revenueCur || 'XAF') + '</small>', 'Past due (1–90+ days)');
     if(K.fleetTotal == null || Number(K.fleetTotal) === 0) hideKpi(3); else setKpi(3, esc(K.fleetActive || 0) + '<small> / ' + esc(K.fleetTotal) + ' vehicles</small>', 'Active now');
   } catch(e){ /* keep the mock visible even if injection fails */ }
+
+  // ── Hero headline mirrors the data environment ──
+  // The mock hardcodes "Your network, <em>live</em>." — which is a lie in TEST
+  // mode, where every figure on this page comes from the sandbox schema. The <em>
+  // is the orange accent word, so swapping its text keeps the typography intact.
+  // In TEST we also tint it with the warning colour so the page reads differently
+  // at a glance, matching the app shell's TEST banner.
+  try {
+    var titleEm = document.querySelector('#v-home .htitle em');
+    if (titleEm && LIVE.envWord) {
+      titleEm.textContent = LIVE.envWord;
+      if (LIVE.isTest) titleEm.style.color = 'rgb(var(--warn, 234 179 8))';
+    }
+  } catch(e){}
 
   // ── Greeting ──
   // The mock's greet() computes the time of day but hardcodes the name, so every
@@ -451,22 +797,119 @@ function liveInjectionScript(live: LiveData): string {
     }
   } catch(e){}
 
-  // ── Map: label it as illustrative ──
-  // Fixed geography and three hardcoded lanes. Kept for now (it's the visual
-  // anchor of the page) but badged so nobody reads it as live vessel positions.
+  // ── Map: real geography, plotted from real dossiers ──
+  //
+  // Replaces the mock's hand-drawn artwork (a stylised Cameroon+Chad landmass,
+  // three hardcoded lanes, edge tags reading "ANTWERP" and "PARIS CDG" that
+  // pointed at nothing) with an equirectangular projection of the actual POL→POD
+  // pairs on open dossiers, resolved to coordinates server-side.
+  //
+  // COASTLINE is real: Natural Earth 110m via world-atlas, projected in the
+  // parent (buildMapModel) and handed down as SVG path strings — the iframe
+  // can't import modules. The mock's original stylised Cameroon+Chad blob had to
+  // go regardless: it would be actively wrong once the viewport spans Antwerp to
+  // Shanghai.
+  //
+  // This block is now a DUMB RENDERER. All projection, fitting and geometry lives
+  // in buildMapModel() above, so land / graticule / lanes / nodes cannot drift
+  // onto different projections.
+  //
+  // ARCS. Lanes bow slightly. That's the usual origin-destination convention and
+  // keeps overlapping lanes legible; it is NOT a claim about the sailed track.
   try {
-    var mapWrap = document.querySelector('.mapsvg');
-    var host = mapWrap && mapWrap.parentNode;
-    if (host && !host.querySelector('[data-sample-badge]')) {
-      if (getComputedStyle(host).position === 'static') host.style.position = 'relative';
-      var badge = document.createElement('span');
-      badge.setAttribute('data-sample-badge', '1');
-      badge.className = 'status st-mute';
-      badge.textContent = 'Sample view · not live';
-      badge.style.cssText = 'position:absolute;top:10px;right:10px;z-index:2;padding:3px 8px;font-size:10px;letter-spacing:.08em;text-transform:uppercase;';
-      host.appendChild(badge);
+    var M = LIVE.map;
+    var svg = document.querySelector('.mapsvg');
+    var laneCount = M ? M.lanes.length : 0;
+    // We replace the SVG's innerHTML, which would drop the mock's <defs> and
+    // leave url(#ocean) resolving to nothing (transparent). Re-declare them.
+    var DEFS = '<defs>'
+      + '<linearGradient id="ocean" x1="0" y1="0" x2="1" y2="1">'
+      + '<stop offset="0" stop-color="rgb(var(--blue-bright))" stop-opacity="0.12"/>'
+      + '<stop offset="1" stop-color="rgb(var(--blue-deep))" stop-opacity="0.05"/>'
+      + '</linearGradient>'
+      // Same two stops the mock used for its stylised landmass, so the restored
+      // look matches the original even though the shapes are now real.
+      + '<linearGradient id="land" x1="0" y1="0" x2="1" y2="1">'
+      + '<stop offset="0" stop-color="rgb(var(--ink))" stop-opacity="0.05"/>'
+      + '<stop offset="1" stop-color="rgb(var(--ink))" stop-opacity="0.02"/>'
+      + '</linearGradient></defs>';
+
+    // Always drop the "sample view" badge — the map is no longer a sample.
+    var stale = document.querySelector('[data-sample-badge]');
+    if (stale && stale.parentNode) stale.parentNode.removeChild(stale);
+
+    if (svg) {
+      if (!M || !laneCount) {
+        svg.innerHTML = DEFS
+          + '<rect x="0" y="0" width="760" height="470" fill="url(#ocean)"/>'
+          + '<text x="380" y="235" text-anchor="middle" class="node-sub">'
+          + 'No plottable routes — open dossiers need a port of loading and discharge.</text>';
+      } else {
+        var landPath = M.land.length
+          ? '<g fill="url(#land)" stroke="rgb(var(--ink) / 0.18)" stroke-width="0.8" stroke-linejoin="round">'
+            + '<path d="' + M.land.join('') + '"/></g>'
+          : '';
+        var grid = '<path d="' + M.grid + '"/>';
+        var labels = M.gridLabels.map(function(l){
+          return '<text x="'+l.x.toFixed(1)+'" y="'+l.y.toFixed(1)+'" class="node-sub">'+esc(l.t)+'</text>';
+        }).join('');
+        var equator = M.equatorY === null ? ''
+          : '<path d="M0,'+M.equatorY.toFixed(1)+' H760" stroke="rgb(var(--ink) / 0.16)" stroke-width="1.2" stroke-dasharray="6 5"/>';
+        var routes = M.lanes.map(function(l){
+          return '<path id="'+l.id+'" class="'+l.cls+'" fill="none" d="'+l.d+'">'
+            + '<title>'+esc(l.title)+'</title></path>'
+            + '<circle r="4" fill="'+l.marker+'" stroke="#fff" stroke-width="1.4">'
+            + '<animateMotion dur="'+l.dur+'s" repeatCount="indefinite" rotate="auto">'
+            + '<mpath href="#'+l.id+'"/></animateMotion></circle>';
+        }).join('');
+        var nodes = M.nodes.map(function(n){
+          var col = n.emphasis ? 'rgb(var(--orange))' : 'rgb(var(--blue))';
+          // Flip the label to the left near the right edge so it can't run off.
+          var right = n.x > 640;
+          var lx = right ? n.x - 9 : n.x + 9;
+          var ly = n.y + 4 + (n.dy || 0);
+          // When a label was nudged clear of a neighbour, tie it back to its dot
+          // with a hairline so it's obvious which port it belongs to.
+          var leader = (n.dy || 0) === 0 ? ''
+            : '<path d="M'+n.x.toFixed(1)+','+n.y.toFixed(1)+' L'+lx.toFixed(1)+','+(ly-3.5).toFixed(1)+'" '
+              + 'stroke="'+col+'" stroke-width="0.9" opacity="0.5" fill="none"/>';
+          return leader
+            + '<circle cx="'+n.x.toFixed(1)+'" cy="'+n.y.toFixed(1)+'" r="'+(n.emphasis?6:4.5)+'" fill="'+col+'" stroke="#fff" stroke-width="'+(n.emphasis?2:1.5)+'"/>'
+            + '<text x="'+lx.toFixed(1)+'" y="'+ly.toFixed(1)+'" class="node-label"'
+            + (right ? ' text-anchor="end"' : '') + '>'+esc(n.name)+'</text>';
+        }).join('');
+        // Draw order matters: ocean → land → graticule over land → equator →
+        // degree labels → routes → nodes on top.
+        svg.innerHTML = DEFS
+          + '<rect x="0" y="0" width="760" height="470" fill="url(#ocean)"/>'
+          + landPath
+          + '<g stroke="rgb(var(--ink) / 0.06)" stroke-width="1" fill="none">'+grid+'</g>'
+          + equator
+          + '<g opacity="0.5">'+labels+'</g>'
+          + routes + nodes;
+      }
     }
-  } catch(e){}
+
+    // Subtitle + footer counts, both hardcoded in the mock ("Douala gateway ·
+    // West/Central Africa theatre", "3 vessels / 4 trucks / 1 flight", a frozen
+    // "Updated live · 18:42").
+    var sub = document.querySelector('.maphead p');
+    if (sub) {
+      sub.textContent = laneCount
+        ? laneCount + ' route' + (laneCount === 1 ? '' : 's') + ' plotted from open operation files'
+        : 'No routes to plot';
+    }
+    var foot = document.querySelector('.mapfoot');
+    if (foot) {
+      var n = M ? M.counts : { sea: 0, road: 0, air: 0 };
+      var when = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      foot.innerHTML =
+          '<span class="mf sea"><svg viewBox="0 0 24 24"><path d="M3 14l9-4 9 4-9 5z"/><path d="M12 10V4"/></svg>'+n.sea+' sea</span>'
+        + '<span class="mf road"><svg viewBox="0 0 24 24"><path d="M3 7h11l4 4v4h-2"/><circle cx="7" cy="16" r="2"/><circle cx="16" cy="16" r="2"/></svg>'+n.road+' road</span>'
+        + '<span class="mf air"><svg viewBox="0 0 24 24"><path d="M2 12l20-7-7 20-3-8z"/></svg>'+n.air+' air</span>'
+        + '<span class="live">Updated '+when+'</span>';
+    }
+  } catch(e){ /* map is additive — never block the tower */ }
 
   // ── KPI drill-downs ──
   // The mock's openKpi renders its own sample rows and simulates an ~18% random
@@ -685,22 +1128,33 @@ export function DashboardPage() {
         const heroSub =
           `${active} operation file${active === 1 ? "" : "s"} in motion` +
           (approvals ? ` — ${approvals} awaiting your approval.` : ".");
+        // tokenStore.getEnv() is the same value api-client sends as X-Praxis-Env,
+        // so anything keyed off it can never disagree with the schema the data
+        // came from. It returns 'live' | 'sandbox'; the UI calls the latter TEST
+        // everywhere (segmented control, banner), so we say "test", not "sandbox".
+        const isTest = tokenStore.getEnv() !== "live";
         const briefing =
           `<b>${active}</b> active operation file${active === 1 ? "" : "s"}` +
           (approvals ? `, <b>${approvals}</b> awaiting approval` : "") +
           (flags ? `, <b>${flags}</b> open compliance flag${flags === 1 ? "" : "s"}` : "") +
           (unposted ? `, <b>${unposted}</b> unposted journal${unposted === 1 ? "" : "s"}` : "") +
-          ". Live from the Control Tower.";
+          (isTest ? ". Sandbox data — Control Tower in TEST." : ". Live from the Control Tower.");
         const cur = str(kpis.revenue_currency || "XAF");
         const clientName: Record<string, string> = {};
         (clients || []).forEach((c) => { clientName[str(c.client_id)] = str(c.name); });
 
+        const lanes = toLanes(rawShips);
+
         setLive({
           shipments,
+          lanes,
+          map: buildMapModel(lanes),
           activeCount: active,
           heroSub,
           briefing,
           firstName,
+          envWord: isTest ? "test" : "live",
+          isTest,
           kpi: {
             revenue: numOrNull(kpis.revenue_final_ttc),
             revenueCur: cur,

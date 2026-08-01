@@ -26,4 +26,15 @@ const confirmBatch = asyncHandler(async (req, res) => {
   );
   res.json({ data: out });
 });
-module.exports = { ask, confirm, confirmBatch };
+const history = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.history(client, { user: user(req), limit: Math.min(Number(req.query.limit) || 200, 500) }),
+  );
+  res.json({ data: out });
+});
+const clearHistory = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) => service.clearHistory(client, { user: user(req) }));
+  res.json({ data: out });
+});
+
+module.exports = { ask, confirm, confirmBatch, history, clearHistory };

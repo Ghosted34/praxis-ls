@@ -77,7 +77,7 @@ DECLARE
   v_tr_bank uuid; v_tr_cash uuid; v_tr_momo uuid;
   -- service types + milestone template
   v_st_sea uuid; v_st_air uuid; v_st_transit uuid;
-  v_mt uuid;
+  v_mt uuid; v_mt_air uuid; v_mt_transit uuid;
   -- pipeline stages (looked up from 9030)
   v_ps_new uuid; v_ps_qual uuid; v_ps_prop uuid; v_ps_neg uuid; v_ps_won uuid; v_ps_lost uuid;
   -- dossiers
@@ -254,6 +254,27 @@ BEGIN
     (v_mt,4,'CUSTOMS','Dédouanement','Customs clearance',33),
     (v_mt,5,'DELIVERY','Livraison finale','Final delivery',37);
 
+  -- Air + hinterland templates. Only SEA had one, so an air or transit dossier
+  -- could not be instantiated at all (milestone.service throws 422 NO_TEMPLATE)
+  -- and its 360 tab read "no milestone chain seeded for this file yet" with no
+  -- way to fix it from the UI. Offsets are shorter than sea for air, longer for
+  -- the N'Djamena corridor, so due-date behaviour differs visibly between modes.
+  INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_air,1) RETURNING milestone_template_id INTO v_mt_air;
+  INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
+    (v_mt_air,1,'BOOKING','Réservation','Booking',0),
+    (v_mt_air,2,'DEPARTURE','Départ vol','Flight departure',2),
+    (v_mt_air,3,'ARRIVAL','Arrivée aéroport','Airport arrival',4),
+    (v_mt_air,4,'CUSTOMS','Dédouanement','Customs clearance',6),
+    (v_mt_air,5,'DELIVERY','Livraison finale','Final delivery',8);
+
+  INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_transit,1) RETURNING milestone_template_id INTO v_mt_transit;
+  INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
+    (v_mt_transit,1,'T1_LODGED','Déclaration T1 déposée','T1 declaration lodged',0),
+    (v_mt_transit,2,'ESCORT','Escorte douanière','Customs escort',2),
+    (v_mt_transit,3,'BORDER','Passage frontière','Border crossing',5),
+    (v_mt_transit,4,'ARRIVAL','Arrivée destination','Destination arrival',8),
+    (v_mt_transit,5,'DISCHARGE','Déchargement','Discharge',9);
+
   INSERT INTO dossier (ref,entity_id,client_id,service_type_id,status,incoterm,bl_mawb,vessel_flight,pol,pod,customs_regime,eta,ata)
     VALUES ('SBX-2026-0001',v_ent1,v_cl1,v_st_sea,'IN_PROGRESS','CIF','MAEU12345678','MSC LUCIA','Antwerp','Douala','IM4',CURRENT_DATE-5,NULL) RETURNING dossier_id INTO v_do1;
   INSERT INTO dossier (ref,entity_id,client_id,service_type_id,status,incoterm,bl_mawb,vessel_flight,pol,pod,customs_regime,eta,ata)
@@ -265,12 +286,46 @@ BEGIN
   INSERT INTO dossier (ref,entity_id,client_id,service_type_id,status,incoterm,pol,pod)
     VALUES ('SBX-2026-0005',v_ent2,v_cl5,v_st_sea,'OPEN','CFR','Tema','Douala') RETURNING dossier_id INTO v_do5;
 
-  INSERT INTO milestone_instance (dossier_id,stage_seq,code,label,due_date,status) VALUES
-    (v_do1,1,'BOOKING','Réservation',CURRENT_DATE-10,'DONE'),
-    (v_do1,2,'DEPARTURE','Départ navire',CURRENT_DATE-5,'DONE'),
-    (v_do1,3,'ARRIVAL','Arrivée port',CURRENT_DATE+2,'IN_PROGRESS'),
-    (v_do1,4,'CUSTOMS','Dédouanement',CURRENT_DATE+5,'PENDING'),
-    (v_do1,5,'DELIVERY','Livraison finale',CURRENT_DATE+9,'PENDING');
+  -- Milestone chains. Previously ONLY v_do1 got one, so four of five dossiers
+  -- showed an empty 360 Milestones tab and no Control Tower progress bar (the bar
+  -- hides on a null progress — "not tracked" is not "not started"). Each chain
+  -- below sits at a deliberately different completion so the bars, the SLA card
+  -- and the milestone list all have something distinguishable to render:
+  --   v_do1  2/5 DONE = 40%   (sea, in progress)
+  --   v_do2  5/5 DONE = 100%  (sea, completed — has an ATA, feeds on-time SLA)
+  --   v_do3  1/5 DONE = 20%   (transit corridor, just lodged)
+  --   v_do4  3/5 DONE = 60%   (air, cleared customs)
+  --   v_do5  0/5 DONE = 0%    (sea, open — proves 0% renders a bar, unlike null)
+  INSERT INTO milestone_instance (dossier_id,stage_seq,code,label,due_date,status,completed_at) VALUES
+    (v_do1,1,'BOOKING','Réservation',CURRENT_DATE-10,'DONE',now()-interval '10 days'),
+    (v_do1,2,'DEPARTURE','Départ navire',CURRENT_DATE-5,'DONE',now()-interval '5 days'),
+    (v_do1,3,'ARRIVAL','Arrivée port',CURRENT_DATE+2,'IN_PROGRESS',NULL),
+    (v_do1,4,'CUSTOMS','Dédouanement',CURRENT_DATE+5,'PENDING',NULL),
+    (v_do1,5,'DELIVERY','Livraison finale',CURRENT_DATE+9,'PENDING',NULL),
+
+    (v_do2,1,'BOOKING','Réservation',CURRENT_DATE-50,'DONE',now()-interval '50 days'),
+    (v_do2,2,'DEPARTURE','Départ navire',CURRENT_DATE-45,'DONE',now()-interval '45 days'),
+    (v_do2,3,'ARRIVAL','Arrivée port',CURRENT_DATE-20,'DONE',now()-interval '20 days'),
+    (v_do2,4,'CUSTOMS','Dédouanement',CURRENT_DATE-19,'DONE',now()-interval '19 days'),
+    (v_do2,5,'DELIVERY','Livraison finale',CURRENT_DATE-18,'DONE',now()-interval '18 days'),
+
+    (v_do3,1,'T1_LODGED','Déclaration T1 déposée',CURRENT_DATE-1,'DONE',now()-interval '1 day'),
+    (v_do3,2,'ESCORT','Escorte douanière',CURRENT_DATE+1,'IN_PROGRESS',NULL),
+    (v_do3,3,'BORDER','Passage frontière',CURRENT_DATE+4,'PENDING',NULL),
+    (v_do3,4,'ARRIVAL','Arrivée destination',CURRENT_DATE+7,'PENDING',NULL),
+    (v_do3,5,'DISCHARGE','Déchargement',CURRENT_DATE+8,'PENDING',NULL),
+
+    (v_do4,1,'BOOKING','Réservation',CURRENT_DATE-6,'DONE',now()-interval '6 days'),
+    (v_do4,2,'DEPARTURE','Départ vol',CURRENT_DATE-4,'DONE',now()-interval '4 days'),
+    (v_do4,3,'ARRIVAL','Arrivée aéroport',CURRENT_DATE-2,'DONE',now()-interval '2 days'),
+    (v_do4,4,'CUSTOMS','Dédouanement',CURRENT_DATE+1,'IN_PROGRESS',NULL),
+    (v_do4,5,'DELIVERY','Livraison finale',CURRENT_DATE+3,'PENDING',NULL),
+
+    (v_do5,1,'BOOKING','Réservation',CURRENT_DATE+2,'PENDING',NULL),
+    (v_do5,2,'DEPARTURE','Départ navire',CURRENT_DATE+7,'PENDING',NULL),
+    (v_do5,3,'ARRIVAL','Arrivée port',CURRENT_DATE+32,'PENDING',NULL),
+    (v_do5,4,'CUSTOMS','Dédouanement',CURRENT_DATE+35,'PENDING',NULL),
+    (v_do5,5,'DELIVERY','Livraison finale',CURRENT_DATE+39,'PENDING',NULL);
   INSERT INTO q_ticket (dossier_id,raised_by,subject,body,status)
     VALUES (v_do1,'Brasseries — M. Eyoum','ETA update?','Please confirm the revised arrival date.','OPEN');
 

@@ -15,14 +15,86 @@ providers**, tenant Vendors tab removed); AI Control menu hidden for AI-off tena
 unpopulated `ref`); line items locked to catalogue selects (PO/PR → financial dictionary, GRN/delivery/transit
 → inventory) via `catalogue-select.tsx` + `0477_line_item_refs` FK columns.
 
+**Cleared 2026-08-01 (user-run on Windows):** migrations applied (platform `0060_ai_vendor`, tenant
+`0475_master_email` + `0476_document_lines` + `0477_line_item_refs`) and **`npm run lint` / `npm test` /
+`npm run build` all pass clean**. Those four lines are done; do not re-raise them.
+
 **Remaining / owed:**
 
-- Run migrations: platform `0060_ai_vendor`, tenant `0475_master_email` + `0476_document_lines` +
-  `0477_line_item_refs`.
-- Full `tsc` / `vite build` / `jest` on a real machine (native bundlers can't run in-sandbox).
-- Set the shared AI provider keys in the console and verify a live AI chat/embedding on a tenant.
 - Seed the **financial-dictionary** + **inventory** masters so the new line-item selects have options.
 - **DSF pixel-exact** — still a structured summary; needs the official DGI liasse PDF to match exactly.
+
+## Session 17 status — 2026-08-01
+
+**Landed** (detail in `doc/WORK_DONE.md`): the Control Tower map made real (`0478_geo_place` +
+`0479_dossier_place_refs`, Geoapify forward geocoding, Natural Earth basemap, POL/POD pickers, save-time
+resolution); the live-shipments panel fixed (route keys, ISO dates, hardcoded 45% progress bars, enum casing,
+service-type-driven mode); the **`/media` auth bypass** closed; branding moved to live-base/sandbox-override;
+milestone **auto-seeding** on dossier create + air/transit templates + chains on all seed dossiers; **AI
+conversation memory**; CI gained dependency/secret scanning, a migration-number guard and a frontend build job.
+
+**Bugs found and fixed in passing:** `advanceMilestone` never sent the required `to` (every UI advance was
+422ing); AI action runs recorded a `conversation_id` the copilot never sent (all orphaned); the appearance
+editor showed unset colour tokens as `#000000`, which one Save would have written as the brand palette;
+Geoapify's cached key was never invalidated after a console save, so a newly saved key did nothing until an
+API restart.
+
+**Remaining / owed:**
+
+- `npm install --prefix client` (**world-atlas**, **topojson-client** — the map will not build without them),
+  then `npm run lint` / `npm test` / `npm run build --prefix client`. **Nothing in session 17 has been
+  compiled, linted or tested** — the sandbox VM was unavailable for most of it.
+- Verify the three things that were broken and are hard to spot: **milestone advance** (that button has never
+  worked), **`/media`** (logo + login background must still load pre-auth; a vault PDF must NOT open from a
+  pasted URL), and an **AI follow-up question across a page reload**.
+- **AI history has no summarisation** — turn 21 doesn't fade, it vanishes from the model's view. Costs an
+  extra model call per compaction, so it's a spend decision.
+- **POL/POD picker is opt-in.** Old dossiers keep the free-text path; no backfill was attempted, because
+  guessing which `geo_place` a legacy string meant is exactly the ambiguity `0479` removes. They upgrade
+  incrementally as anyone edits and saves them.
+- `geo_place` is **per-tenant**, so the seed duplicates into every tenant DB. Port coordinates are arguably
+  universal reference data, but the dashboard query runs on a tenant client and can't join across databases.
+
+## Repo audit — 2026-08-01 (verified against code, not against this file)
+
+Every line below was checked by reading the source, because several statuses in this document had rotted.
+**Corrections applied inline in the phase sections; the summary is here.**
+
+**Found already built (this file said otherwise):** payroll compute + auto-posted journal
+(`hr/payroll/payroll.service.js` — CNPS/IRPP/CAC/CFC, posts 661/664 ⇄ 431/447/422 through
+`journal_entry.service`); asset acquisition→depreciation→disposal (`finance/asset/`, full 7-file module);
+`approval_task` auto-creation on approvable events (`shared/events/emit.js:79` → `services/workflow/
+executor.start()`); `notification.list()` self-scoping (`notification.repo.js:8`); the auth-gated vault
+download (`document_vault.routes.js:15`); the per-tenant AI spend dashboard (`features/ai-control/pages.tsx`
+— Spend caps + Usage); the Help center page (`features/help/help-page.tsx`).
+
+**Confirmed still open:** record-level scope adoption (`scopeColumn` exists in `shared/crud/resource.js:35`,
+**no module declares it** — still blocked on no business table having a scope column); `requireCapability`
+has **zero call sites** outside its own docstring; `depends_on` is never consulted by `projectFeatures()`
+(only by `scripts/tenant/feature-report.js`); the Live self-grant block (`permission.service.js:9` TODO);
+report export renders **pdf only** (`report.validator.js:5` accepts pdf|csv|xlsx, nothing emits xlsx);
+factory languages has no endpoint; external-facing portal FE (only staff-side `portal/access` is routed).
+
+**Two hazards found:**
+
+1. **`/media` is an unauthenticated static mount** (`src/server.js:99`) rooted at the storage path, and the
+   vault writes confidential PDFs under that same root. The gated route (`GET /documents/:id/download`)
+   exists and is correct — the flat mount just needs narrowing to public prefixes (branding/entity logos).
+2. **Duplicate migration numbers** — `0470_regie_doc_number` + `0470_seed_ai_vendors`, and
+   `0475_hr_discipline_and_avatar` + `0475_master_email`. **Do NOT renumber these.** The migrator
+   (`services/platform/migrator.js`) tracks applied files **by filename** and sorts alphabetically, so a
+   rename re-applies the file under its new name — and tenant migrations are **not** written to be
+   idempotent (plain `CREATE TRIGGER`, no guard, in 23 files including `0475_hr_discipline_and_avatar`
+   lines 44–45, which would fail with `42710 duplicate_object`). Both collisions are harmless as they
+   stand: each pair touches different objects and alphabetical order within a number is stable. The fix is
+   **prevention, not repair** — see the CI guard below.
+
+**Dead files still on disk** (flagged since session 9, `git rm` still owed — the sandbox mount blocks
+unlink, do it on Windows): `client/src/features/master/pages.tsx` (zero importers, re-verified by grep)
+and `client/vite.config.js` (shadows `vite.config.ts`).
+
+**CI gaps:** `.github/workflows/ci.yaml` runs `node --check` → lint → jest → docker build. It has **no**
+dependency/secret scanning and **no client or platform-console build job**, so a FE break never fails CI.
 
 
 ## Frontend build status — 2026-07-17 (session 6)
@@ -86,13 +158,13 @@ vault Documents/Signatures/Verification (BE gaps). Not this stream: finance + op
 - [~] `Line Manager` as a capability layered on any role — **mechanism built 2026-07-09, application pending**: `identity-cache.getUserCapabilities()` resolves `user_capability` + `role.is_line_manager` (`is_line_manager` = any role flags it OR the user holds `LINE_MANAGER`), and `middleware/rbac.requireCapability('LINE_MANAGER'|'APPROVER'|…)` gates on it (CEO bypass; attaches `req.capabilities`/`req.is_line_manager`). No Phase 0 route uses it — the actions it gates (leave approvals, appraisals, disbursal routing) are Phase 2/3, which opt in per route. See `doc/WORK_DONE.md`.
 - [x] Multi-tenancy — one Postgres DB per tenant, `platform` registry DB, per-tenant connection pool (`registry.service.js`), subdomain resolution (`host-tenent-resolver.js`), tenant-context guard (`tenant-context.js`). Verified working end-to-end via the login smoke test in `RBAC_SECURITY_KICKOFF.md`.
 - [x] Tenant provisioning tooling — `npm run db:provision` / `provisioning.service.js`: creates the DB, migrates live+sandbox, seeds COA/tax/RBAC/events, registers + projects features. Gap: seeds no users (see `scripts/tenant/create-admin.js` above).
-- [ ] Platform console — backend API is done (`/api/platform/*` in `tenants.service.js`: list/create/suspend/resume/go-live/capacity/sandbox/feature-toggle, all audited). **UI proposed, not built** (2026-07-09): the tenant `client/` now exists but the platform console does not — see the platform-console proposal at the bottom of `client/FRONTEND_PLAN.md`. Blocked on a tech-lead decision: same `client/` build served on the `admin.` host vs a separate console app, and first-cut scope (tenants list + provision + go-live, vs the full set).
+- [x] Platform console — backend API done (`/api/platform/*`), **and the UI shipped in session 13**: a standalone React 18 + Vite + TS app in `platform-console/` (Overview / Tenants / Tenant detail / Plans / Catalogue / Audit / Support / Integrations→AI providers). The decision that blocked this resolved as **separate app**, served **host-gated**: `server.js` serves `platform-console/dist` only when `Host === PLATFORM_CONSOLE_HOST`, at that host's root — there is deliberately **no `/console` path**, so a tenant host can never reach it. Rollout runbook: `doc/PLATFORM_CONSOLE_DEPLOY.md`.
 - [x] White-label theming — **built & working end-to-end 2026-07-09**. FE applies tenant colour/logo/name through CSS variables (`client/src/lib/theme.ts` `applyBrand()` sets `--primary`/`--ring` on `:root`; every `bg-primary`/`ring` utility re-tints live), fed by a new **public** `GET /api/tenant/branding` (Host-resolved, pre-auth so the _login itself_ is branded) and a **gated** `PUT /api/tenant/branding` (MOD-70) that upserts `setting` section='appearance' (`src/modules/branding/`). In-app **Appearance** screen (`client/src/features/settings/appearance-page.tsx`): colour picker + presets, display name, and logo (drag-drop/click upload) with a live preview; a save re-tints the whole app instantly and shows on the logged-out login. **Still TODO:** per-tenant PWA manifest (icons/name still static in `vite.config.ts`). Logo upload is now **storage-backed** (2026-07-09): drag-drop → `POST /branding/logo` → the `local` storage driver writes to `./data/vault/tenant_<slug>/branding/…` and it's served at `/media/<key>` (the earlier `storage.service` config bugs were fixed — see Phase 1 PDF/vault line).
-- [ ] Test/Live sandbox — backend mechanics are done (separate `live`/`sandbox` schemas, `X-Praxis-Env` header switch in `tenant-context.js`, `npm run db:sandbox:wipe`). Frontend now **partial** (2026-07-09): the app shell shows a LIVE / TEST MODE badge driven by the `X-Praxis-Env` value (`client/src/app/layout/app-shell.tsx` + `token-store` env). Still missing: the actual top-bar **toggle** to switch env and persist it (the badge only reflects state, it doesn't change it yet).
+- [x] Test/Live sandbox — backend mechanics done (separate `live`/`sandbox` schemas, `X-Praxis-Env` switch in `tenant-context.js`, `npm run db:sandbox:wipe`) **and the FE toggle shipped in session 3**: segmented Live|Test control + TEST banner in `app-shell.tsx`, persisted via `tokenStore.setEnv`, with `key={env}` on `<main>` (`app-shell.tsx:889`) remounting the routed screen so every effect re-fetches under the new env — no reload, no logout (identity is pinned to the live schema via `req.identityDb`). **2026-08-01:** the Control Tower hero now mirrors the env too ("Your network, **test**." + warn tint + a sandbox briefing line) so the headline can't claim "live" while showing sandbox data.
 - [x] ~~Oso RBAC integration~~ — **superseded by explicit decision**: no Oso anywhere in `src/`; RBAC is our own role×capability×scope×permission×field_visibility model instead (see `RBAC_SECURITY_KICKOFF.md`). Leaving this line struck-through rather than deleted so nobody re-adds Oso thinking it was never decided.
 - [x] Immutable ledger service — `immutable_ledger` table is genuinely append-only (`trg_ledger_ro` blocks UPDATE/DELETE at the DB level), `audit()` helper writes to it, `audit_ledger` module reads it. The "still exposes a generic DELETE via `makeRouter()`'s default" line that used to be here was stale — checked 2026-07-08, `audit_ledger.routes.js` has been a custom GET-only router (no `makeRouter()`, no DELETE) since before this session touched it; correcting the record.
-- [x] Universal Event Engine — **admin API built 2026-07-09**: new `src/modules/workflow/` (gated MOD-67) exposes event-type registration (`GET/POST /event-types`, upsert-idempotent), workflow CRUD (`GET/POST /workflows`, `GET/PATCH /workflows/:id` — bind to an _approvable_ event only), step design (`GET/POST /workflows/:id/steps`, `DELETE …/steps/:stepId`), and the read-only runtime queue (`GET /approvals`). Schema + emit side were already there; this is the missing designer surface. **Still backend-only** (no config UI — no `client/`), and the _runtime_ side is minimal: `emitEvent` doesn't yet auto-create `approval_task` rows when an approvable event fires — that's the execution engine, next.
-- [x] Watch-the-Watcher — **consumer built 2026-07-09**: `shared/events/emit.js` now forces `event_log.priority=HIGH` for any `is_security_critical` event and fans out a HIGH in-app `notification` to every active CEO/MANAGEMENT user, atomically in the caller's transaction (single `INSERT…SELECT` guarded by `EXISTS(is_security_critical)` — a no-op for NORMAL events). Fixed a real gap while here: `iam_role` emitted `iam_role.*`, not the seeded `role.changed`, so role edits never notified — repointed to `role.changed`. Also fixed the `notification` module's broken require paths (it wasn't loading at all). **Still open:** the Live-mode self-grant block (`permission.service.js` TODO — needs `req.env`/`req.user` at the service layer), and `notification.list()` isn't self-scoped yet (returns all tenant rows — Phase 2 follow-up before non-admin exposure).
+- [x] Universal Event Engine — **admin API built 2026-07-09**: new `src/modules/workflow/` (gated MOD-67) exposes event-type registration (`GET/POST /event-types`, upsert-idempotent), workflow CRUD (`GET/POST /workflows`, `GET/PATCH /workflows/:id` — bind to an _approvable_ event only), step design (`GET/POST /workflows/:id/steps`, `DELETE …/steps/:stepId`), and the read-only runtime queue (`GET /approvals`). Schema + emit side were already there; this is the missing designer surface. ~~**Still backend-only** (no config UI — no `client/`), and the _runtime_ side is minimal: `emitEvent` doesn't yet auto-create `approval_task` rows when an approvable event fires — that's the execution engine, next.~~ **BOTH CLOSED (verified 2026-08-01).** The execution engine exists — `shared/events/emit.js:79` calls `services/workflow/executor.start()` inside the caller's transaction, idempotently, and no-ops when no active workflow is bound. The config UI exists too: `client/src/features/governance/pages.tsx` (Workflows + Approvals). Retrofit migrations `0467_approvals_retrofit` / `0468_leave_approval_backfill` / `0469_default_workflows` landed with it.
+- [x] Watch-the-Watcher — **consumer built 2026-07-09**: `shared/events/emit.js` now forces `event_log.priority=HIGH` for any `is_security_critical` event and fans out a HIGH in-app `notification` to every active CEO/MANAGEMENT user, atomically in the caller's transaction (single `INSERT…SELECT` guarded by `EXISTS(is_security_critical)` — a no-op for NORMAL events). Fixed a real gap while here: `iam_role` emitted `iam_role.*`, not the seeded `role.changed`, so role edits never notified — repointed to `role.changed`. Also fixed the `notification` module's broken require paths (it wasn't loading at all). **Still open:** the Live-mode self-grant block (`permission.service.js:9` TODO — needs `req.env`/`req.user` at the service layer). **`notification.list()` self-scoping is DONE** (verified 2026-08-01): every query in `notification.repo.js` filters on `user_id = $1`, including the unread count, mark-read and preference reads.
 - [x] Two-tier deletion model — soft-delete write path is done and DB-enforced (`soft_delete` table, `CHECK (restored_by <> deleted_by)` for maker-checker); God Mode hard purge is done (`godmode.service.js`: PIN-gated, refuses ledger-connected records). **Restore added 2026-07-08**: `audit_ledger` module gained `GET /audit/soft-deletes`, `POST /audit/soft-deletes/:id/request-restore`, `POST /audit/soft-deletes/:id/restore` (maker-checker enforced in the service layer too, not just the DB CHECK). Restoring a record whose table has no `activeColumn` just marks the `soft_delete` row restored (nothing was ever actually hidden in that case — see `doc/WORK_DONE.md` for why). A new `shared/crud/entity-registry.js` resolves `entity_ref` prefixes to real tables (they don't reliably match — `iam_role`'s entity string is `"iam_role"` but its table is `role`).
 
 **Frontend note (updated 2026-07-09):** `client/` now exists — a Vite + React 18 + TS **PWA** (see `client/FRONTEND_PLAN.md`). Built: api-client (Bearer + refresh-on-401 + `X-Praxis-Env`), auth context (login / 2FA / logout / reload-restore), route guard, white-label app shell (LIVE/TEST badge, mobile slide-over), a **production-quality white-label login** (field icons, password reveal, segmented 2FA code), working **white-label theming** (colour/logo/name — see that line above), and an **Appearance** settings screen. Also **skeletal** (read-only lists wired to the real endpoints, build editors on top): Security — users, roles, permission matrix, capabilities, scopes, field-visibility, sessions; Governance — audit, notifications, workflows, approvals, settings. Single-origin prod serving (Express serves `client/dist`) is wired in `src/server.js`.
@@ -139,7 +211,7 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 - [x] Statements: Bilan, Compte de résultat, TAFIRE, Notes annexes — `finance/financial_statement/` (`statements.test.js`)
 - [x] Tax Center outputs (TVA, IS, WHT, DSF, CNPS) — `finance/tax_declaration/` (`tax-center.test.js`)
 - [x] PDF worker + document vault storage + QR verification — `jobs/handlers/pdf-render.js`, `vault/document_vault`, `vault/document_verification`; storage driver fixes carried from Phase 0 (`pdf-email.test.js`)
-  - **Storage bugs found & FIXED 2026-07-09:** `storage.service.js` read `config.STORAGE_LOCAL_ROOT` (nonexistent) → now `STORAGE_LOCAL_PATH`; `CDN_BASE_URL` added to `env.js`. `/media/<key>` is now served by Express for the `local` driver (`server.js`, guarded by `STORAGE_DRIVER==='local'`, excluded from the SPA fallback; Vite proxies `/media` in dev). Proven by the white-label logo upload (`POST /api/tenant/branding/logo` → `storage.put` → tenant-namespaced key under `./data/vault/tenant_<slug>/branding/…`). **Still TODO for the vault:** an **auth-gated** download route for _sensitive_ documents — the flat `/media` static mount is fine for public assets (logos) but must not serve confidential files.
+  - **Storage bugs found & FIXED 2026-07-09:** `storage.service.js` read `config.STORAGE_LOCAL_ROOT` (nonexistent) → now `STORAGE_LOCAL_PATH`; `CDN_BASE_URL` added to `env.js`. `/media/<key>` is now served by Express for the `local` driver (`server.js`, guarded by `STORAGE_DRIVER==='local'`, excluded from the SPA fallback; Vite proxies `/media` in dev). Proven by the white-label logo upload (`POST /api/tenant/branding/logo` → `storage.put` → tenant-namespaced key under `./data/vault/tenant_<slug>/branding/…`). ~~**Still TODO for the vault:** an **auth-gated** download route for _sensitive_ documents~~ — **the route now exists**: `GET /documents/:id/download` behind `requirePermission(MODULE,"view")` (`document_vault.routes.js:15`). **But the hole it was meant to close is still open** (2026-08-01): `src/server.js:99` still mounts `express.static` on `/media` over the whole `STORAGE_LOCAL_PATH` root, and the vault writes confidential PDFs under that same root — so anyone who knows or guesses a key bypasses the gate. Narrow the mount to public prefixes (branding / entity logos) or move the vault outside it.
   - **S3 driver — IMPLEMENTED 2026-07-22:** `storage.service.js` now ships two interchangeable drivers behind `STORAGE_DRIVER` (`local` | `s3`). The `s3` driver targets any S3-compatible store (AWS S3, MinIO, Wasabi, B2, Cloudflare R2) via `S3_ENDPOINT` / `S3_BUCKET` / `S3_REGION` / `S3_ACCESS_KEY` / `S3_SECRET_KEY` / `S3_FORCE_PATH_STYLE` (all in `env.js`), with an optional `CDN_BASE_URL` for public URLs and a `signedUrl(key, ttl)` for temporary access (presigned GET). The AWS SDK (`@aws-sdk/client-s3`, `@aws-sdk/s3-request-presigner`) is **lazily required** so `local` deployments don't need it installed — run `npm install` (both are now in `package.json`) before setting `STORAGE_DRIVER=s3`. Interface (`put`/`get`/`delete`/`publicUrl`/`signedUrl`) is unchanged, so no module edits were needed. NB this supersedes the PRD §8 "self-hosted, no S3" line — S3 is now an opt-in deployment choice, local stays the default.
 - [x] Email/SMTP service — per-tenant SMTP from tenant `setting` (refactored 2026 by colleague), queued sends via jobs; SPF/DKIM/DMARC domain setup stays an ops/DNS open item (see open questions)
 
@@ -165,11 +237,11 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 
 ## Phase 3 — People & assets
 
-- [x] HR (ledger-independent): vacancies+applicants (MOD-11), contracts (MOD-12), KPI appraisals (MOD-13), attendance (MOD-14), leave/allowances (MOD-15), SOPs (MOD-16), trainings+roster (MOD-18), talent pool (MOD-19) — *remaining:* onboarding checklists, succession, employee self-service portal
-- [ ] Payroll: CNPS + IRPP/CAC/CFC/RAV auto-compute, payslip generation, auto-posted payroll journal, SoD via run states — **deferred: needs Phase 1 ledger posting**
+- [x] HR (ledger-independent): vacancies+applicants (MOD-11), contracts (MOD-12), KPI appraisals (MOD-13), attendance (MOD-14), leave/allowances (MOD-15), SOPs (MOD-16), trainings+roster (MOD-18), talent pool (MOD-19) — **the "remaining" three are now built too** (2026-08-01 audit): onboarding checklists = `src/modules/hr/onboarding/` (MOD-16), succession = `src/modules/hr/succession/` (MOD-19), both added session 15; employee self-service = `client/src/features/hr/my-hr.tsx`. Also since: `hr/hr_query` + `hr/hr_sanction` (discipline, `0475_hr_discipline_and_avatar`).
+- [x] Payroll: CNPS + IRPP/CAC/CFC/RAV auto-compute, payslip generation, auto-posted payroll journal, SoD via run states — **BUILT (verified 2026-08-01, this line said "deferred" for weeks).** `src/modules/hr/payroll/payroll.service.js` computes via `payroll.rules.computePayslip` and posts a balanced journal on validation (661/664 debit; 431/447/422 credit) through `journal_entry.service`. If the ledger isn't configured (no journal/period/accounts) the run records without posting rather than failing. FE at `client/src/features/hr/payroll.tsx`.
 - [x] Fleet: vehicle registry (MOD-39), compliance & renewal alerts (MOD-40), maintenance/work orders (MOD-41), dispatch (MOD-42), fuel tracking (MOD-43), driver management (MOD-44), incident/claim tracking (MOD-45) — *fuel/work-order GL posting deferred to Phase 1*
 - [x] Warehouse (WMS): inbound/GRN + QA hold + putaway (MOD-33), location management (MOD-34), inventory control + stock-movement journal (MOD-35), outbound pick/pack/dispatch (MOD-36), equipment handling (MOD-37), cycle counting (MOD-38)
-- [ ] Asset management: acquisition → depreciation (auto-posting) → disposal — **deferred: needs Phase 1 ledger posting**
+- [x] Asset management: acquisition → depreciation (auto-posting) → disposal — **BUILT (verified 2026-08-01).** Full 7-file module at `src/modules/finance/asset/` (repo/service/controller/routes/validator/events/ai + `asset.rules.js` for the depreciation schedule). Same correction as payroll: this said "deferred" long after it landed.
 
 ## Phase 4 — Intelligence & reach
 
@@ -178,19 +250,19 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 > resolution + env fallback). AI spine and governance exist; portals/comms/reporting
 > are backend-scaffold or pending FE.
 
-- [x] AI service layer — DB-first vendor resolution + env fallback, transcribe (Groq) + vision (Gemini) jobs, batch action processing (`ai/`, `src/services/ai/*`, `jobs/handlers/ai-*`); per-tenant AI toggle in settings. *Pending:* per-tenant spend dashboard (FE)
+- [x] AI service layer — DB-first vendor resolution + env fallback, transcribe (Groq) + vision (Gemini) jobs, batch action processing (`ai/`, `src/services/ai/*`, `jobs/handlers/ai-*`); per-tenant AI toggle in settings. **Spend dashboard is built** (verified 2026-08-01): `client/src/features/ai-control/pages.tsx` has both a Spend caps editor (soft warn / hard block) and a Usage table off `/ai/governance/usage`. **Vendor keys moved to the platform in session 16** — they are now one shared deploy-wide set (`platform/0060_ai_vendor`), managed in the console under Integrations → AI providers; the tenant Vendors tab was removed.
 - [x] Zod validation gate for AI actions + action-card confirmation flow — `src/services/ai/action-registrar.js` + batch confirm (`action-registrar.test.js`, batch-confirm tests)
 - [x] AI governance: usage caps, PII/financial redaction, full AI-call logging — `ai/governance/` (148 ln)
 - [x] Pricing Variance Index (R/Y/G, no raw cost exposure) — `commercial/pricing_variance/` (52 ln)
 - [~] Portals: Client / Investor / Audit Terminal — `portal/` backend (staff grant + scoped views) **plus external-user auth (2026-07-22, new `portal_auth/` module + migration `0460_portal_user.sql`)**: public `POST /portal/auth/login` issues a portal-scoped JWT (`typ:"portal"`, off the RBAC path); `portalAuth(type)` re-checks the `portal_access` grant per request (revoke takes effect immediately) and injects the scope; `GET /portal/{me,client,investor,auditor}` reuse `portal.service`'s scoped views; staff invite/manage external users via `MOD-67`-gated `/portal/users`. **Apply migration 0460 to each tenant (live+sandbox) before use.** **FE portals (the external-facing pages) still pending.**
 - [~] Support & Feedback dashboard (ticket lifecycle, PRD §11.2) — **BE + platform-console triage built (2026-07-23)**. Central `platform.support_ticket` (already in `0030_platform_ops.sql`) is the store — no cross-tenant fan-out. Tenant-side API: new `src/modules/dashboard/support/` (ungated, `authMiddleware`) — `POST/GET /api/tenant/support/tickets`, `GET /tickets/:id`, `POST /tickets/:id/csat` (CSAT only on SHIPPED/DECLINED), scoped to `req.tenant.tenant_id`, stamped with `req.user.email`, written to the platform DB via `services/platform/db`. Platform-side: `services/platform/support.service.js` + `GET /api/platform/support/tickets` (aggregate across tenants + `?status/kind/tenant` filters), `GET /tickets/:id`, `PATCH /tickets/:id` status transition (audited `support.status_changed`). Console **Support** tab is now a live triage board (lanes by status, filters, per-ticket detail + transitions). **Tenant-app FE built too** — `client/src/features/support/support-page.tsx` (route `/support`, nav under Overview): raise a ticket (kind/title/body), track status, and rate resolved tickets (CSAT). Full loop is complete. **Not yet run against a live API** (Windows `npm run lint`/`test`/`build` + a click-through owed, per the usual rule).
 - [~] Smart Comms Portal — `smartcomm/` scaffold only (thin service); WebSocket/threads/certified-export pending
-- [~] Reporting & Insights dashboards — `vault/report/` scaffold; per-role Excel/PDF export pending
-- [~] Settings module (MOD-70): configuration hub — partial: `security/setting`, `security/numbering_setting`, `branding/` (appearance) exist; unified hub + remaining sections pending
+- [~] Reporting & Insights dashboards — `vault/report/` is real (saved reports, dashboard tiles, schedules) and the FE ships at `/vault/reports`. **Export is still PDF-only**: `report.validator.js:5` accepts `pdf|csv|xlsx` and `jobs/handlers/scheduled-report.js` honours the schedule, but only `jobs/handlers/pdf-render.js` exists — nothing emits xlsx or csv. Picking a writer (SheetJS/exceljs) is the open call.
+- [x] Settings module (MOD-70): configuration hub — **effectively done.** `security/setting`, `security/numbering_setting`, `branding/`, the generic `/settings/:section/:key` store and the tile screens (`config-pages.tsx`, `store-pages.tsx`, `master-data-pages.tsx`, `catalogue-page.tsx`, `document-templates-page.tsx`) all ship under `settings-hub.tsx`. **Only `factory languages` remains** — it is the single tile with no backing endpoint. (Help center, long listed alongside it, is built: `client/src/features/help/help-page.tsx`.)
 
 ## Phase 5 — Hardening & migration
 
-- [ ] Security: dependency + secret scanning in CI, penetration test, OWASP ASVS L2 pass
+- [~] Security: dependency + secret scanning in CI, penetration test, OWASP ASVS L2 pass — **CI scanning added 2026-08-01** (`.github/workflows/ci.yaml`: `npm audit` at high severity, a secret scan, and a duplicate-migration-number guard; plus the client + platform-console builds, which CI never ran before, so a FE break could not fail the pipeline). Pen test and ASVS L2 still not started.
 - [ ] Performance: load-test to target concurrency (confirm real user counts with client), p95 API < 400ms on standard reads
 - [ ] Backup/DR: automated daily encrypted backups of every tenant's full Postgres database + the platform database, shipped to Google Drive/OneDrive initially (path to S3 later), monthly restore-test drills, WAL-based PITR for finance data
 - [ ] Data migration tooling: MySQL → PostgreSQL, core financial/master data re-modelled and de-duplicated, staging reconciliation, client sign-off before cutover (client-owned, post-build)

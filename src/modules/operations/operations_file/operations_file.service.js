@@ -8,11 +8,101 @@ const repo = require("./operations_file.repo");
 const events = require("./operations_file.events");
 const { canTransition, isTerminal } = require("./operations_file.rules");
 const numbering = require("../../../services/documents/numbering.service");
+const milestones = require("../milestone/milestone.service");
+const geoPlace = require("../geo_place/geo_place.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
+
+/**
+ * Seed the dossier's milestone chain from its service type's active template.
+ *
+ * WHY THIS IS AUTOMATIC (2026-08-01). Instantiating milestones was a separate
+ * manual call that, in practice, nobody made: the sandbox seed did it for one
+ * dossier in five, and no screen ever wired `POST /milestones/instantiate` at
+ * all. The result was dossiers with no chain, an empty 360° Milestones tab, and
+ * a Control Tower with nothing to show progress from. A step that reliably
+ * doesn't happen shouldn't be a step — the dossier is the centre of gravity and
+ * milestones are its spine.
+ *
+ * BEST-EFFORT, AND DELIBERATELY SO. Called AFTER the dossier's transaction has
+ * committed, in its own, and every failure is swallowed with a warning:
+ *
+ *   - no service_type_id on the dossier        → nothing to template from
+ *   - no active template for that service type → instantiate throws 422
+ *   - anything else                            → logged, not raised
+ *
+ * A dossier that exists without milestones is a normal, recoverable state (add
+ * the template, instantiate later). A dossier that FAILED TO BE CREATED because
+ * its milestones couldn't be seeded is not. Never let the tail wag the dog.
+ */
+async function seedMilestones(client, dossier, actor) {
+  if (!dossier || !dossier.service_type_id) return;
+  try {
+    await milestones.instantiate(client, {
+      dossierId: dossier.dossier_id,
+      serviceTypeId: dossier.service_type_id,
+      // Offsets run from today, not from the ETA: the template describes a
+      // schedule from booking onward, and a dossier is booked when it's created.
+      baseDate: null,
+      actor,
+    });
+  } catch (err) {
+    logger.warn(
+      { dossier: dossier.ref, err: err.message },
+      "[operations] milestone chain not seeded (dossier created regardless)",
+    );
+  }
+}
+
+/**
+ * Turn free-text POL/POD into real geo_place references, at SAVE time.
+ *
+ * WHY HERE. Resolution used to happen only when the Control Tower map rendered,
+ * which was the wrong trigger twice over: a port typed on a dossier nobody
+ * looked at on the dashboard was never added to the catalogue at all, and even
+ * when it was, nothing went back to link the dossier to the row it had just
+ * created — so that dossier kept matching by name forever despite an exact row
+ * now existing. Resolving on save fixes both: the port enters the catalogue the
+ * first time anyone types it, and the dossier is linked immediately.
+ *
+ * Only fills a GAP: a dossier that already carries an id (the user picked from
+ * the list) is left alone, and so is one with no port text to resolve.
+ *
+ * BEST-EFFORT, and outside any transaction — resolveMany may call Geoapify over
+ * HTTP on a cache miss, and geoapify.service explicitly requires callers not to
+ * hold a DB transaction across that wait. A failure leaves the dossier exactly
+ * as the user saved it: the text is intact, the map falls back to name matching,
+ * and the next save can try again. Never block a save on a geocoder.
+ */
+async function resolvePlaces(client, dossier) {
+  if (!dossier) return dossier;
+  const wanted = [];
+  if (dossier.pol && !dossier.pol_place_id) wanted.push(dossier.pol);
+  if (dossier.pod && !dossier.pod_place_id) wanted.push(dossier.pod);
+  if (!wanted.length) return dossier;
+
+  try {
+    const found = await geoPlace.resolveMany(client, wanted);
+    const patch = {};
+    const polHit = dossier.pol ? found.get(dossier.pol) : null;
+    const podHit = dossier.pod ? found.get(dossier.pod) : null;
+    if (!dossier.pol_place_id && polHit && polHit.geo_place_id) patch.pol_place_id = polHit.geo_place_id;
+    if (!dossier.pod_place_id && podHit && podHit.geo_place_id) patch.pod_place_id = podHit.geo_place_id;
+    if (!Object.keys(patch).length) return dossier;
+    return await repo.update(client, dossier.dossier_id, patch);
+  } catch (err) {
+    logger.warn(
+      { dossier: dossier.ref, err: err.message },
+      "[operations] port references unresolved (dossier saved regardless)",
+    );
+    return dossier;
+  }
+}
 
 async function create(client, { data, actor = {} }) {
   await client.query("BEGIN");
+  let row;
   try {
     let ref = data.ref || null;
     if (!ref && data.entity_id) {
@@ -20,12 +110,17 @@ async function create(client, { data, actor = {} }) {
       ref = alloc.number;
     }
     if (!ref) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
-    const row = await repo.insert(client, { ...data, ref, status: "OPEN" });
+    row = await repo.insert(client, { ...data, ref, status: "OPEN" });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: row });
     await client.query("COMMIT");
-    return row;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  // Both of these run outside the transaction above on purpose:
+  // milestone.instantiate opens its own BEGIN/COMMIT (nesting would make its
+  // COMMIT close ours), and resolvePlaces may wait on an HTTP geocode.
+  await seedMilestones(client, row, actor);
+  return await resolvePlaces(client, row);
 }
 
 async function update(client, { id, patch, actor = {} }) {
@@ -35,7 +130,10 @@ async function update(client, { id, patch, actor = {} }) {
   const { status, ...fields } = patch;
   const row = await repo.update(client, id, fields);
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
-  return row;
+  // Edits change ports too — retyping POL clears its id client-side, so this is
+  // what re-links it. Safe to call unconditionally: it no-ops when both ids are
+  // already set, which is the common case.
+  return await resolvePlaces(client, row);
 }
 
 async function transition(client, { id, to, actor = {} }) {

@@ -14,6 +14,7 @@ const { CAP_CATALOGUE } = require("../../middleware/platform-auth");
 const platformSettings = require("../../services/platform/settings.service");
 const aiVendors = require("../../services/platform/ai-vendor.service");
 const storage = require("../../services/storage.service");
+const geoapify = require("../../services/geoapify.service");
 const { asyncHandler } = require("../../utils/errors");
 
 const actor = (req) =>
@@ -211,9 +212,15 @@ const settingPut = asyncHandler(async (req, res) => {
     secret: req.body.secret,
     actor: actor(req),
   });
-  // Storage creds are cached in the storage singleton — drop it so the new
-  // values take effect without a restart.
+  // Deploy-wide creds are cached in their service singletons — drop the cache so
+  // a newly saved key takes effect without an API restart.
+  //
+  // Geoapify was MISSING here (fixed 2026-08-01) while storage was handled. Its
+  // service memoises the resolved key in a module-level `_key`, and caches the
+  // *absence* of one as null — so on a deploy that had never had a key, saving
+  // one in the console appeared to do nothing until someone restarted the API.
   if (req.params.section === "storage" && typeof storage.resetCache === "function") storage.resetCache();
+  if (req.params.section === "geocoding" && typeof geoapify.resetCache === "function") geoapify.resetCache();
   res.json({ data });
 });
 const settingTest = asyncHandler(async (req, res) =>

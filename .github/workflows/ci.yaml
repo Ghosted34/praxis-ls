@@ -41,6 +41,78 @@ jobs:
         # Real specs now live under tests/unit; the empty-suite flag is gone.
         run: npx jest --runInBand
 
+      - name: Migration numbering
+        # Two streams work this repo in parallel and have already collided on
+        # 0470 and 0475. Those two are grandfathered (renaming an APPLIED
+        # migration is unsafe — the migrator keys on filename and would re-run
+        # it); this fails the build on any NEW collision, while it's still cheap
+        # to renumber. See scripts/db/check-migration-numbers.js.
+        run: node scripts/db/check-migration-numbers.js
+
+  security:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+
+      - name: Dependency audit
+        # High and above only. Moderate/low on a transitive dev dep would make
+        # this permanently red and the team would learn to ignore it, which is
+        # worse than not running it. Tighten once the tree is clean.
+        run: npm audit --audit-level=high
+
+      - name: Secret scan
+        # Catches a key pasted into a commit. The repo has real history here: the
+        # kickoff shared provider keys in plaintext (Gemini/DeepSeek/Groq/
+        # exchangerate) and they had to be rotated. `.env` ships placeholders like
+        # __rotate_me__, which are deliberately NOT matched below.
+        run: |
+          set -euo pipefail
+          PATTERN='(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|gsk_[A-Za-z0-9]{40,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})'
+          if git grep -nIE "$PATTERN" -- . ':!doc/reference' ':!*.lock' ':!package-lock.json'; then
+            echo "::error::Possible secret committed — rotate it and purge from history."
+            exit 1
+          fi
+          echo "No secret patterns found."
+
+  frontend:
+    # The client and platform-console were never built in CI, so a FE type error
+    # or broken import could merge green. Both have their own toolchain (and, as
+    # of session 15, their own ESLint flat config), hence a separate job.
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: [client, platform-console]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        # npm install, not ci: the lockfiles are Windows-generated, so `ci` on a
+        # Linux runner omits the platform rollup binary and vite build dies with
+        # "Cannot find module @rollup/rollup-linux-x64-gnu". Documented in
+        # doc/SESSION_HANDOFF.md "Sandbox gotcha".
+        run: npm install --no-audit --no-fund --prefix ${{ matrix.app }}
+
+      - name: Lint
+        run: npm run lint --prefix ${{ matrix.app }}
+
+      - name: Build
+        run: npm run build --prefix ${{ matrix.app }}
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

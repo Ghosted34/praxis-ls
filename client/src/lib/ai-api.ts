@@ -21,7 +21,27 @@ export type AskResult = {
   batch_size?: number;
   blocked?: boolean;
   gate?: { reason?: string };
+  /** Thread the turn was recorded against — resolved server-side. */
+  conversation_id?: string | null;
 };
+
+/**
+ * Stored conversation. One rolling thread per user: the assistant continues
+ * where you left off, across reloads and devices, because the transcript lives
+ * in `ai_message` rather than in component state.
+ */
+export type AiHistoryMessage = {
+  ai_message_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
+export type AiHistory = { conversation_id: string; messages: AiHistoryMessage[] };
+
+export const fetchAiHistory = () => tenant<AiHistory>("/ai/history");
+
+/** Start a fresh thread. The old one is retained, just no longer current. */
+export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { method: "POST" });
 
 export const askPraxis = (message: string, conversationId?: string) =>
   tenant<AskResult>("/ai/ask", { method: "POST", body: { message, conversation_id: conversationId } });

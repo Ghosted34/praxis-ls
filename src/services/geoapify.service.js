@@ -21,6 +21,7 @@ const axios = require("axios");
 const { logger } = require("../config/logger");
 
 const REVERSE_URL = "https://api.geoapify.com/v1/geocode/reverse";
+const SEARCH_URL = "https://api.geoapify.com/v1/geocode/search";
 const TIMEOUT_MS = 3000;
 
 let _key; // undefined = unresolved; null/string = resolved
@@ -71,4 +72,50 @@ async function reverseGeocode(lat, lng) {
   }
 }
 
-module.exports = { reverseGeocode, resetCache };
+/**
+ * Forward geocode a place name → { latitude, longitude, formatted, country }.
+ *
+ * Added 2026-08-01 for the Control Tower shipment map: dossier.pol / dossier.pod
+ * are free text ("Douala", "Paris CDG"), and plotting them needs coordinates.
+ * The reverse direction above has existed since the HR geofence work; this is its
+ * mirror, sharing the same key resolution, timeout and never-throw contract.
+ *
+ * NOT called per render. Callers resolve through the `geo_place` cache
+ * (migration 0478) and only reach this on a miss, writing the result back — so
+ * the free tier is spent once per new place, not once per dashboard load.
+ *
+ * `bias` is an optional "lon,lat" to prefer nearby matches; the caller passes the
+ * tenant's home port so a bare "Kribi" resolves in Cameroon rather than to a
+ * same-named place elsewhere. Returns null on missing key, empty query, timeout
+ * or any upstream error — same as reverseGeocode, and for the same reason: a map
+ * that can't plot one lane must still render the rest.
+ */
+async function forwardGeocode(place, { bias = null, countryCodes = null } = {}) {
+  const apiKey = await resolveKey();
+  if (!apiKey) return null;
+  const text = String(place || "").trim();
+  if (!text) return null;
+  try {
+    const params = { text, format: "json", limit: 1, apiKey };
+    if (bias) params.bias = `proximity:${bias}`;
+    // e.g. ["cm","td"] — narrows a corridor city to the countries served.
+    if (Array.isArray(countryCodes) && countryCodes.length) {
+      params.filter = `countrycode:${countryCodes.join(",").toLowerCase()}`;
+    }
+    const { data } = await axios.get(SEARCH_URL, { params, timeout: TIMEOUT_MS });
+    // format=json returns `results`; without it, GeoJSON `features[].properties`.
+    const hit = data?.results?.[0] || data?.features?.[0]?.properties || null;
+    if (!hit || typeof hit.lat !== "number" || typeof hit.lon !== "number") return null;
+    return {
+      latitude: hit.lat,
+      longitude: hit.lon,
+      formatted: hit.formatted || null,
+      country: hit.country_code ? String(hit.country_code).toUpperCase() : null,
+    };
+  } catch (err) {
+    logger.warn({ err: err.message, place: text }, "[geoapify] forward geocode failed");
+    return null;
+  }
+}
+
+module.exports = { reverseGeocode, forwardGeocode, resetCache };

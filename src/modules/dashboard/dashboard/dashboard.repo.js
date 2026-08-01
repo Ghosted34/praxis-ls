@@ -50,20 +50,62 @@ async function controlTower(client) {
       "COUNT(*) FILTER (WHERE status='IN_PROGRESS')::int AS in_progress " +
       "FROM dossier",
   );
+  // Progress comes from the milestone engine (milestone_instance, 0310) — done
+  // stages over total stages for the dossier. Dossiers with no milestone template
+  // instantiated yield total=0, which maps to a NULL progress below rather than
+  // to 0%: "not tracked" and "not started" are different things, and the UI hides
+  // the bar for the former instead of drawing a misleading empty one.
+  // Same three correlated subqueries `operations_file.repo.js:32-34` already uses
+  // for the dossier list — deliberately identical so the Control Tower bar and the
+  // Operations screen can never disagree about how far along a dossier is.
   const shipments = await rows(
-    "SELECT ref, status, pol AS origin, pod AS destination, vessel_flight, eta " +
-      "FROM dossier WHERE status IN ('OPEN','IN_PROGRESS') " +
-      "ORDER BY eta NULLS LAST, created_at DESC LIMIT 10",
+    // service_key drives the map's sea/air/road styling. Without it the client
+    // sniffed the mode out of the vessel string and the port names, which got
+    // HINTERLAND_TRANSIT (a road corridor) wrong — it has no vessel and two
+    // ordinary city names, so it fell through to the "sea" default.
+    // Coordinates come from the FK when the dossier used the port picker (0479),
+    // which is exact. The free-text pol/pod still ride along: they're the display
+    // label, and they remain the only route info on dossiers created before the
+    // picker existed — those still resolve by name in the service layer.
+    "SELECT d.ref, d.status, d.pol AS origin, d.pod AS destination, d.vessel_flight, d.eta, " +
+      "st.key AS service_key, " +
+      "gp_o.latitude AS origin_lat, gp_o.longitude AS origin_lng, gp_o.name AS origin_name, " +
+      "gp_d.latitude AS dest_lat, gp_d.longitude AS dest_lng, gp_d.name AS dest_name, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
+      "AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
+      "FROM dossier d " +
+      "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "LEFT JOIN geo_place gp_o ON gp_o.geo_place_id = d.pol_place_id " +
+      "LEFT JOIN geo_place gp_d ON gp_d.geo_place_id = d.pod_place_id " +
+      "WHERE d.status IN ('OPEN','IN_PROGRESS') " +
+      "ORDER BY d.eta NULLS LAST, d.created_at DESC LIMIT 10",
   );
   const appr = await one("SELECT COUNT(*)::int AS awaiting FROM approval_task WHERE status = 'PENDING'");
 
   return {
     operation_files: { active: ops.active || 0, open: ops.open || 0, in_progress: ops.in_progress || 0 },
     approvals_awaiting: appr.awaiting || 0,
-    live_shipments: shipments.map((s) => ({
-      ref: s.ref, status: s.status, origin: s.origin || null, destination: s.destination || null,
-      vessel_flight: s.vessel_flight || null, eta: s.eta || null,
-    })),
+    live_shipments: shipments.map((s) => {
+      const total = Number(s.milestone_total) || 0;
+      const done = Number(s.milestone_done) || 0;
+      return {
+        ref: s.ref, status: s.status, origin: s.origin || null, destination: s.destination || null,
+        vessel_flight: s.vessel_flight || null, eta: s.eta || null, service_key: s.service_key || null,
+        milestone_total: total, milestone_done: done,
+        current_milestone: s.current_milestone || null,
+        progress: total > 0 ? Math.round((done / total) * 100) : null,
+        // Pre-resolved coordinates when the dossier referenced a real place.
+        // The service layer fills the gaps by name for everything else.
+        coords: s.origin_lat != null && s.dest_lat != null
+          ? {
+              from: { name: s.origin_name || s.origin, latitude: Number(s.origin_lat), longitude: Number(s.origin_lng) },
+              to: { name: s.dest_name || s.destination, latitude: Number(s.dest_lat), longitude: Number(s.dest_lng) },
+            }
+          : null,
+      };
+    }),
   };
 }
 

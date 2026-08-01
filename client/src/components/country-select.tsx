@@ -15,7 +15,10 @@
  * touches, not all 249. `allowUnknown` keeps an existing out-of-list value
  * selectable so editing an old record can never silently change its country.
  */
-import * as React from "react";
+// No React import: this file has no hooks and the project uses the automatic
+// JSX runtime, so importing it trips TS6133 ("declared but never read") under
+// noUnusedLocals — which is what broke the client build and, downstream, the
+// Docker image. Other components here import React because they use hooks.
 import { Select } from "@/components/ui/modal";
 
 /** OHADA member states — the product's home region. */

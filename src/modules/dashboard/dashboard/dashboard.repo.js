@@ -98,7 +98,10 @@ async function controlTower(client) {
         progress: total > 0 ? Math.round((done / total) * 100) : null,
         // Pre-resolved coordinates when the dossier referenced a real place.
         // The service layer fills the gaps by name for everything else.
-        coords: s.origin_lat != null && s.dest_lat != null
+        // `!== null` not `!= null`: eqeqeq is an ERROR in eslint.config.js, and a
+        // LEFT JOIN miss yields SQL NULL, never undefined, so the loose form buys
+        // nothing here anyway.
+        coords: s.origin_lat !== null && s.dest_lat !== null
           ? {
               from: { name: s.origin_name || s.origin, latitude: Number(s.origin_lat), longitude: Number(s.origin_lng) },
               to: { name: s.dest_name || s.destination, latitude: Number(s.dest_lat), longitude: Number(s.dest_lng) },

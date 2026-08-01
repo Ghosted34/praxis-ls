@@ -24,6 +24,101 @@ unpopulated `ref`); line items locked to catalogue selects (PO/PR → financial 
 - Seed the **financial-dictionary** + **inventory** masters so the new line-item selects have options.
 - **DSF pixel-exact** — still a structured summary; needs the official DGI liasse PDF to match exactly.
 
+## ⚠️ TEST-MODE WRITES WERE BROKEN SINCE SESSION 3 — fixed 2026-08-01, one gap left
+
+**The single most important finding of session 17.** Read this before touching anything that writes an
+actor id.
+
+**The collision.** Session 3 pinned identity to the LIVE schema (`req.identityDb`) so the LIVE/TEST toggle
+would stop logging people out. Business data still writes through `req.tenantDb`, which under TEST is the
+**sandbox** schema. But **60+ columns across the tenant schema are typed `REFERENCES app_user(user_id)`** —
+`issued_by`, `validated_by`, `approved_by`, `requested_by`, `received_by`, `counted_by`, `moved_by`,
+`rated_by`, `owner_user_id`, `holder_user_id`, `attested_by`, `completed_by`, `actor_user_id`, `deleted_by`…
+
+So a perfectly valid live user id, stored beside sandbox business data, raises **23503** — surfacing as
+*"Referenced record not found"*, usually AFTER the business row had already committed (most services have no
+surrounding transaction). The user sees a record that exists and an error saying it doesn't, then a
+duplicate-key error if they retry.
+
+**Why nobody noticed for fourteen sessions.** `sandbox.app_user` still held the rows copied at original
+provisioning. The bug only appears once a sandbox has been **wiped** — `wipeSandbox` does
+`DROP SCHEMA sandbox CASCADE` and no `90*` seed creates users. The first wipe made every TEST-mode write fail.
+
+**Fixed** by mirroring `live.app_user` into the rebuilt sandbox at the end of `wipeSandbox`
+(`provisioning.service.js`). One change, all 60+ columns, and attribution stays REAL rather than silently
+NULL — so maker-checker (`soft_delete.restored_by <> deleted_by`) still means something. Not a security
+widening: auth, sessions and RBAC all resolve against `req.identityDb`, so these rows are FK targets, not
+credentials. Guarding each call site was tried first and abandoned — the tail is dozens of columns long and
+**every new module reintroduces it**.
+
+Kept alongside, because they're correct independently: `emitEvent` / `audit` / `soft_delete.deleted_by` now
+write the actor via a guarded sub-select, and `shared/events/emit.js` exports **`resolveActorId(client, id)`**
+for per-module actor columns. An audit write should never fail over attribution.
+
+**⚠️ STILL OPEN — newly provisioned tenants.** Provisioning creates the schemas *before* `create-admin.js`
+makes any user, so the mirror is a no-op at that point and a brand-new tenant's sandbox starts empty. **Their
+first TEST-mode write will fail exactly as described above**, and the remedy (wipe the sandbox) is deeply
+unintuitive for something that reads like a permissions error. Fix by mirroring on user creation too —
+`create-admin.js` or `app_user.service.create`. **Do this before provisioning another tenant.**
+
+## ✅ ONBOARDING GAP — CLOSED 2026-08-01 (kept for the reasoning)
+
+Surfaced while planning a fresh end-to-end walkthrough (create prerequisites → create a dossier) against a
+clean environment. **It could not be completed**, and not because of anything recent — three pieces have no
+create path in the application at all:
+
+| Thing | Backend | UI |
+|---|---|---|
+| Corporate entity | ✅ | ✅ |
+| Client | ✅ | ✅ |
+| **Service type** | ❌ **no module exists** | ❌ |
+| **Milestone template** | ✅ `POST /milestones/templates` | ❌ read-only list only |
+| **Service type on the dossier form** | ✅ validator + `DossierInput` accept it | ❌ never sent |
+| Dossier | ✅ | ✅ |
+
+`service_type` is referenced by ten modules but **has no module of its own** — no repo/service/controller/
+routes, so there is no `/service-types` endpoint. The only thing that has ever created one is
+`scripts/tenant/seed-sandbox.sql`. No `9xxx` seed creates service types, milestone templates or corporate
+entities, so a freshly provisioned tenant has none of them.
+
+**This contradicts a stated design intent.** `0310_operations.sql:7`:
+
+```sql
+-- Services as DATA, not code (transcript §11.3). User-creatable, with applicability.
+```
+
+**Why it matters more than it looks.** Service types are load-bearing: milestone templates hang off them,
+`dictionary_item.service_type_key` references them, and they drive the operations taxonomy and the Control
+Tower map's transport mode. And a forwarder's milestone chain **is** their operating procedure — shipping the
+sandbox seed's five sea-freight stages to every tenant means shipping one company's process as everyone's.
+
+**Consequences today:** onboarding a tenant requires an engineer with database access to insert rows, every
+time — which does not scale, makes trials expensive, and grows support load linearly with sales. Phase 5's
+"Root Admin marks tenant Live" quietly assumes the tenant can be configured first; it cannot. Because
+milestone auto-seeding (session 17) reads the service type's active template, a dossier created through the UI
+also comes out with no milestone chain — the two gaps compound.
+
+**CLOSED — built 2026-08-01** after the operations lane agreed to do it properly rather than work around it:
+
+- `src/modules/operations/service_type/` — full module on the shared CRUD kit, `GET/POST/PATCH/DELETE
+  /service-types`, feature-gated `operations`, riding **MOD-29** (a module_key absent from the catalogue has
+  grants for nobody and would 403 every non-CEO user). `key` is immutable after creation —
+  `dictionary_item.service_type_key` references it, so a rename would orphan silently. DELETE **archives**;
+  `dossier.service_type_id` is a plain FK with no ON DELETE, so a real delete would either fail the
+  constraint or strip the classification off historical dossiers.
+- `client/src/features/operations/service-types.tsx` — the screen, **with the milestone-template editor on
+  it**. `POST /milestones/templates` had existed with nothing calling it. The two are together on purpose: a
+  service type with no active template silently yields dossiers with no chain, so the list shows a warn pill
+  for that state and the fix is one click away. Sea/Air/Transit presets are a starting point, not a default —
+  every stage stays editable, because a forwarder's milestone chain IS their operating procedure.
+- **Service-type field added to the dossier form.** Without it none of the above reached a dossier: every
+  UI-created dossier had `service_type_id = null`, so milestones could never auto-seed and the map fell back
+  to guessing transport mode from text.
+
+Verified end to end on a wiped sandbox: service type → milestone template → corporate entity → client →
+dossier, with the dossier arriving with a live milestone chain, a progress bar and a plotted map lane, and
+nothing touching the database directly.
+
 ## Session 17 status — 2026-08-01
 
 **Landed** (detail in `doc/WORK_DONE.md`): the Control Tower map made real (`0478_geo_place` +
@@ -54,6 +149,42 @@ API restart.
   incrementally as anyone edits and saves them.
 - `geo_place` is **per-tenant**, so the seed duplicates into every tenant DB. Port coordinates are arguably
   universal reference data, but the dashboard query runs on a tenant client and can't join across databases.
+
+### Session 17 — second half (the fresh-tenant walkthrough and what it found)
+
+A full walkthrough was run against a **wiped sandbox**, deliberately empty, to test whether a brand-new tenant
+can configure itself through the app. It could not — and everything below came out of that one exercise.
+
+**Built:** the `service_type` module + screen + milestone-template editor + the dossier form field (see the
+CLOSED section above); `mirrorUsersIntoSandbox` (see the TEST-MODE section above).
+
+**Fixed:**
+
+- **`corporate_entity.doc_prefix` was stored and never read.** Numbering merged `DEFAULTS` with the per-module
+  `setting` and ignored the entity entirely, so every document came out `DOC-29-2026-0001`. `schemeFor` now
+  takes `entityId`; precedence is DEFAULTS → module token → entity prefix → tenant setting. Added a
+  `MODULE_TOKENS` map so the token reads `OPS`/`INV`/`PRO` rather than a raw module number, giving
+  `SLAS-OPS-2026-0001` — matching the reference material. **The token is load-bearing:** `doc_sequence` is
+  keyed `(module, year, entity)` and restarts per module, so without it a dossier and an invoice would both be
+  `SLAS-2026-0001`. Existing documents keep their old numbers; only new allocations change.
+- **`0480_party_address.sql`** — `client_master` and `supplier_master` had **no address column at all**, so
+  the "bill to" side of every document could show only a name and a NIU. Under OHADA a compliant invoice
+  identifies the counterparty including address. Added `address`/`city`/`country_code` to both, + validators
+  + both forms.
+- **Country was free text** on three forms against a `char(2)` column — "Cameroun" silently truncates to
+  "Ca". New shared `components/country-select.tsx`, OHADA states first then trading partners; an existing
+  out-of-list value stays selectable so editing an old record can't rewrite its country.
+- **Milestone advance had never worked** — `advanceMilestone` never sent the required `to`
+  (`milestone.validator.js:7`), so every click 422'd. Compounded by two more: the first fix defaulted to
+  `DONE`, which isn't reachable from `PENDING` (`ALLOWED` in `milestone.rules.js`), and **the page swallowed
+  both** — `try/finally` with no `catch`, so the button silently did nothing. Now sends the correct next
+  state, labels itself Start/Complete, and surfaces errors.
+- **Milestones empty states** now name the cause (no service type / no published template) and point at the
+  Service types tab, instead of describing templates with no way to create one.
+
+**Notes for whoever picks this up:** grep output mangles forward slashes in string literals — a path that
+looks like `"\ai\ask"` in a `grep -A` result is `/ai/ask` in the file. Verified three times this session;
+don't "fix" one.
 
 ## Repo audit — 2026-08-01 (verified against code, not against this file)
 

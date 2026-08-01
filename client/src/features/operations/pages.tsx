@@ -67,8 +67,16 @@ function DossierForm({ row, onClose, onSaved }: { row: api.Dossier | null; onClo
   const isNew = row === null;
   const { rows: entities } = useList<Entity>("/entities");
   const { rows: clients } = useList<Client>("/clients");
+  // Service types drive the milestone chain (templates version per service type)
+  // and the Control Tower map's transport mode. The form never collected this,
+  // so every dossier created through the UI had service_type_id = null — which
+  // meant milestones could never auto-seed and the map fell back to guessing the
+  // mode from text. Active types only: archived ones stay valid on old dossiers
+  // but must not be selectable for new ones.
+  const { rows: serviceTypes } = useList<api.ServiceType>("/service-types");
   const [f, setF] = React.useState({
     entity_id: row?.entity_id ?? "", client_id: row?.client_id ?? "", incoterm: row?.incoterm ?? "",
+    service_type_id: row?.service_type_id ?? "",
     pol: row?.pol ?? "", pod: row?.pod ?? "", customs_regime: row?.customs_regime ?? "", bl_mawb: row?.bl_mawb ?? "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
@@ -93,6 +101,7 @@ function DossierForm({ row, onClose, onSaved }: { row: api.Dossier | null; onClo
     e.preventDefault(); setBusy(true); setError(null);
     const body: api.DossierInput = {
       entity_id: f.entity_id, client_id: f.client_id || undefined, incoterm: f.incoterm || undefined,
+      service_type_id: f.service_type_id || undefined,
       pol: f.pol || undefined, pod: f.pod || undefined, customs_regime: f.customs_regime || undefined, bl_mawb: f.bl_mawb || undefined,
       // null (not undefined) when cleared: undefined is dropped from the body and
       // would leave a stale reference pointing at the previously chosen port.
@@ -121,6 +130,22 @@ function DossierForm({ row, onClose, onSaved }: { row: api.Dossier | null; onClo
               <option value="">—</option>
               {(clients || []).map((c) => <option key={c.client_id} value={c.client_id}>{c.name}</option>)}
             </Select>
+          </Field>
+          <Field label="Service type" className="sm:col-span-2">
+            <Select value={f.service_type_id} onChange={(e) => set("service_type_id", e.target.value)}>
+              <option value="">—</option>
+              {(serviceTypes || []).map((s) => (
+                <option key={s.service_type_id} value={s.service_type_id}>
+                  {s.name_en || s.name_fr}
+                  {s.has_active_template === false ? " (no milestone template)" : ""}
+                </option>
+              ))}
+            </Select>
+            {!(serviceTypes || []).length && (
+              <p className="micro mt-1">
+                No service types yet — add them under Operations → Service types. Without one, a dossier gets no milestone chain.
+              </p>
+            )}
           </Field>
           {/* allowFreeText keeps this non-blocking: an unlisted port can still be
               typed and will be geocoded on demand server-side. Picking from the
@@ -805,9 +830,25 @@ export function MilestonesPage() {
   const templates = useList<api.MilestoneTemplate>("/milestones/templates");
   const [busyId, setBusyId] = React.useState<string | null>(null);
 
+  // Errors were swallowed here: try/finally with no catch means a rejected
+  // request just disappears and the button looks inert. That hid a 422 for as
+  // long as this screen has existed — first because `to` was never sent at all,
+  // then because PENDING → DONE isn't a legal transition. Surface it.
+  const [advErr, setAdvErr] = React.useState<string | null>(null);
+
   async function advance(m: api.MilestoneInstance) {
+    const to = api.nextMilestoneStatus(m.status);
+    if (!to) return;
     setBusyId(m.milestone_instance_id);
-    try { await api.advanceMilestone(m.milestone_instance_id); inst.reload(); } finally { setBusyId(null); }
+    setAdvErr(null);
+    try {
+      await api.advanceMilestone(m.milestone_instance_id, { to });
+      inst.reload();
+    } catch (e) {
+      setAdvErr(errMsg(e));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const instCols: Column<api.MilestoneInstance>[] = [
@@ -817,8 +858,13 @@ export function MilestonesPage() {
     {
       key: "_a", label: "", render: (r) => (
         <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {r.status !== "DONE" && r.status !== "COMPLETED" && (
-            <Button size="sm" variant="outline" loading={busyId === r.milestone_instance_id} onClick={() => advance(r)}>Advance</Button>
+          {/* Label names the actual next step (Start / Complete) rather than a
+              generic "Advance" — a milestone goes PENDING → IN_PROGRESS → DONE,
+              so one button meant two different things depending on the row. */}
+          {api.nextMilestoneStatus(r.status) && (
+            <Button size="sm" variant="outline" loading={busyId === r.milestone_instance_id} onClick={() => advance(r)}>
+              {api.milestoneAdvanceLabel(r.status)}
+            </Button>
           )}
         </div>
       ),
@@ -842,13 +888,41 @@ export function MilestonesPage() {
           {(dossiers || []).map((d) => <option key={d.dossier_id} value={d.dossier_id}>{d.ref}</option>)}
         </Select>
       </div>
+      {advErr && <p className="mb-3 text-sm text-[rgb(var(--bad))]">{advErr}</p>}
       {dossierId ? (
         <div className="mb-8">
-          <DataList columns={instCols} rows={inst.data} error={inst.error} loading={inst.loading} rowKey={(r) => r.milestone_instance_id} empty={{ title: "No milestones", hint: "This dossier has no milestone chain yet." }} />
+          <DataList
+            columns={instCols}
+            rows={inst.data}
+            error={inst.error}
+            loading={inst.loading}
+            rowKey={(r) => r.milestone_instance_id}
+            empty={{
+              title: "No milestones",
+              // Points at the cause rather than restating the symptom: a chain is
+              // seeded from the service type's active template, so an empty one
+              // almost always means the dossier has no service type, or that type
+              // has no published template.
+              hint: "New dossiers seed their chain from the service type's template. Check the dossier has a service type, and that it has a published template under Service types.",
+            }}
+          />
         </div>
       ) : null}
       <div className="micro mb-2">Templates</div>
-      <DataList columns={tplCols} rows={templates.rows} error={templates.error} loading={templates.loading} rowKey={(r, i) => r.milestone_template_id || String(i)} empty={{ title: "No templates", hint: "Milestone templates seed each dossier's chain." }} />
+      <DataList
+        columns={tplCols}
+        rows={templates.rows}
+        error={templates.error}
+        loading={templates.loading}
+        rowKey={(r, i) => r.milestone_template_id || String(i)}
+        empty={{
+          title: "No templates",
+          // This screen is read-only; templates are published per service type.
+          // The old copy explained what templates are for and gave no way to make
+          // one, which is the dead end that hid the whole onboarding gap.
+          hint: "Templates are published per service type — open the Service types tab and use “Add milestones”.",
+        }}
+      />
       <ScreenAi path="operations/milestones" />
     </section>
   );

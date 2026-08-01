@@ -8,6 +8,11 @@ const base = {
   niu: z.string().optional(),
   rccm: z.string().optional(),
   email: z.string().email().optional().or(z.literal("")),
+  // 0480 — the bill-to address. Required on an OHADA-compliant invoice, and
+  // absent from this master until then.
+  address: z.string().optional().or(z.literal("")),
+  city: z.string().optional().or(z.literal("")),
+  country_code: z.string().length(2).optional().or(z.literal("")),
   payment_terms_days: z.number().int().min(0).optional(),
   credit_limit: z.number().nonnegative().optional(),
   kyc_docs: z.array(z.any()).optional(),

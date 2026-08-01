@@ -264,6 +264,24 @@ export const SPECS: ScreenSpec[] = [
     actions: ["Add milestone", "Complete"],
   },
   {
+    path: "operations/service-types",
+    area: "Operations",
+    title: "Service types",
+    purpose:
+      "The tenant's own service taxonomy (services as DATA, not code) plus the milestone template each one seeds onto a new dossier. Without a service type carrying an active template, dossiers are created with no milestone chain.",
+    module: "operations/service_type",
+    status: "ready",
+    columns: ["Service", "Territory", "Milestones", "Status"],
+    actions: ["New service type", "Publish milestone template", "Archive"],
+    ai: [
+      {
+        label: "List service types",
+        kind: "read",
+        describe: "List the service taxonomy and which service types have an active milestone template.",
+      },
+    ],
+  },
+  {
     path: "operations/transit-orders",
     area: "Operations",
     title: "Transit orders",

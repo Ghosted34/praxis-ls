@@ -42,7 +42,30 @@ assistant note on executed actions so it knows what it *did*, not only what it p
 `npm audit`, a secret scan, a **duplicate-migration-number guard** (`0470`/`0475` collide but are
 grandfathered — renaming an APPLIED migration makes the filename-keyed migrator re-run it, and 23 tenant
 files use a bare `CREATE TRIGGER` that fails `42710`), and a **frontend build job** for `client` +
-`platform-console`, which CI had never built. **Migrations: `0478` + `0479`. ⚠️ NOTHING in session 17 has been
+`platform-console`, which CI had never built. **Second half — a fresh-tenant walkthrough against a WIPED sandbox, which found the session's biggest bug:
+TEST-MODE WRITES HAVE BEEN BROKEN SINCE SESSION 3.** Identity is pinned to LIVE (`req.identityDb`) but
+business data writes through `req.tenantDb` → the sandbox schema, and **60+ tenant columns are
+`REFERENCES app_user(user_id)`** — so a valid live user id stored beside sandbox data raises **23503**
+("Referenced record not found"), usually *after* the business row has already committed. Invisible for
+fourteen sessions because `sandbox.app_user` still held rows from original provisioning; the first
+`DROP SCHEMA sandbox CASCADE` exposed it. Fixed by **mirroring `live.app_user` into the rebuilt sandbox** in
+`wipeSandbox` — per-site guards were tried first and abandoned (dozens of columns, and every new module
+reintroduces it), though `emitEvent`/`audit`/`soft_delete` keep theirs plus a new `resolveActorId()`.
+**⚠️ STILL OPEN: a newly provisioned tenant's sandbox is empty (provisioning runs before `create-admin.js`),
+so its first TEST write fails the same way — fix before provisioning another tenant.** The walkthrough also
+**closed the onboarding gap**: `service_type` was referenced by ten modules and had **no module of its own**
+(created only by `seed-sandbox.sql`, contradicting `0310_operations.sql:7` "User-creatable"), and
+`POST /milestones/templates` existed with nothing calling it — so a new tenant could define neither its
+services nor its milestone chains. Built the module + a **Service types screen with the template editor on
+it** + the **service-type field on the dossier form** (without which every UI-created dossier had
+`service_type_id = null` and could never auto-seed milestones). Also: **`doc_prefix` was stored and never
+read** (refs came out `DOC-29-2026-0001`; now `SLAS-OPS-2026-0001` via entity prefix + a `MODULE_TOKENS`
+map — the token is load-bearing, `doc_sequence` restarts per module); **`0480_party_address`** because
+`client_master`/`supplier_master` had **no address column at all**, leaving the bill-to side of every OHADA
+invoice with just a name and a NIU; a shared **`CountrySelect`** (country was free text against `char(2)`, so
+"Cameroun" truncated to "Ca"); and **milestone advance, which had never worked** — `to` was never sent, my
+first fix defaulted to an illegal `PENDING → DONE`, and the page's `try/finally` with no `catch` hid both.
+**Migrations: `0478` + `0479` + `0480`. ⚠️ NOTHING in session 17 has been
 compiled, linted or tested — the sandbox VM failed to start for most of it; `dashboard.tsx` took by far the
 most churn.** Full detail: the session-17 log below. Prior: **Session 16 = the document-UI overhaul finished + the AI vendor
 keys migrated to the platform.** Native `DocumentPage` detail views wired across every doc type (`<DocButton>`
@@ -535,11 +558,50 @@ Windows validators are the gate. `npm install --prefix client` is REQUIRED first
    be idempotent (23 files use a bare `CREATE TRIGGER`, which fails `42710` on a second run). **Never renumber
    an applied migration.** The guard fails only on NEW collisions.
 
-**Migrations to run:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`**.
+9. **Fresh-tenant walkthrough (second half of the session) — run against a WIPED sandbox.** Everything below
+   came out of trying to get from an empty environment to a working dossier without touching the database.
+   **It succeeded in the end**: service type → milestone template → corporate entity → client → dossier, with
+   the dossier arriving with a live milestone chain, a progress bar and a plotted map lane.
+   - **⚠️ TEST-MODE WRITES BROKEN SINCE SESSION 3 — the most important finding here.** Identity pinned to LIVE
+     (`req.identityDb`) vs business writes on `req.tenantDb` (sandbox), and **60+ columns typed
+     `REFERENCES app_user(user_id)`** between them → **23503** on any actor column, *after* the business row
+     had already committed. Hidden for fourteen sessions because `sandbox.app_user` kept its provisioning
+     rows; the first `DROP SCHEMA sandbox CASCADE` exposed it. **Fixed by mirroring `live.app_user` into the
+     rebuilt sandbox** (`provisioning.service.js` `mirrorUsersIntoSandbox`). Per-site guards were tried and
+     abandoned — dozens of columns, and every new module reintroduces the bug. `emitEvent`/`audit`/
+     `soft_delete` keep their guarded sub-selects regardless (an audit must not fail over attribution), and
+     `shared/events/emit.js` now exports **`resolveActorId(client, id)`** for per-module actor columns.
+     **STILL OPEN:** provisioning creates schemas before `create-admin.js` makes a user, so a NEW tenant's
+     sandbox is empty and its first TEST write fails identically. Fix before provisioning another tenant.
+   - **Onboarding gap closed.** `service_type` had **no module** (ten modules referenced it; only
+     `seed-sandbox.sql` ever created one) and `POST /milestones/templates` had no caller. Built
+     `operations/service_type/` (shared kit, MOD-29, immutable `key`, DELETE archives — `dossier.
+     service_type_id` is a plain FK), `features/operations/service-types.tsx` **with the template editor on
+     the same screen** (a service type with no active template silently produces chainless dossiers, so the
+     list warns), and the **service-type field on the dossier form** — every UI-created dossier previously had
+     `service_type_id = null`.
+   - **`doc_prefix` stored and never read** → refs were `DOC-29-2026-0001`. `schemeFor` now takes `entityId`;
+     precedence DEFAULTS → module token → entity prefix → tenant setting, with a `MODULE_TOKENS` map giving
+     `SLAS-OPS-2026-0001`. **The token is load-bearing** — `doc_sequence` is keyed `(module, year, entity)`
+     and restarts per module, so without it a dossier and an invoice would both be `SLAS-2026-0001`. Existing
+     documents keep their numbers.
+   - **`0480_party_address`** — `client_master`/`supplier_master` had **no address column at all**, so the
+     bill-to side of an OHADA invoice carried only a name and a NIU. + validators + both forms.
+   - **`components/country-select.tsx`** — country was free text against `char(2)` ("Cameroun" → "Ca"). OHADA
+     states first; an out-of-list existing value stays selectable so an edit can't rewrite it.
+   - **Milestone advance had NEVER worked.** `to` was never sent (`milestone.validator.js:7` requires it) →
+     422 on every click; the first fix defaulted to `DONE`, illegal from `PENDING` (`milestone.rules.js`
+     `ALLOWED`); and the page's `try/finally` with no `catch` hid both. Now sends the correct next state,
+     labels itself Start/Complete, and surfaces errors.
+
+**Migrations to run:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`** + **`0480_party_address`**.
 **Owed:** `npm install --prefix client` (world-atlas, topojson-client), then `npm run lint` / `npm test` /
-`npm run build --prefix client` — nothing here has been compiled. Verify: milestone advance (never worked),
+`npm run build --prefix client` — nothing here has been compiled. Verify:
 `/media` (logo + login background must still load pre-auth; a vault PDF must NOT open from a pasted URL), and
 an AI follow-up question across a page reload.
+
+**Gotcha for the next session:** `grep -A` mangles forward slashes inside string literals — a path that reads
+`"\ai\ask"` in grep output is `/ai/ask` in the file. Confirmed three times this session; don't "fix" one.
 
 ## Session log — 2026-07-29 (session 16: document-UI overhaul finished, master emails + doc line items, logo fix, contract signed-copy, AI vendors → platform)
 

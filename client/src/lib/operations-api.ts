@@ -108,6 +108,67 @@ export type DeliveryNoteInput = {
 export const listDeliveryNotes = () => tenant<DeliveryNote[]>("/delivery-notes");
 export const createDeliveryNote = (body: DeliveryNoteInput) => tenant<DeliveryNote>("/delivery-notes", { method: "POST", body });
 
+/* ── Service taxonomy (/service-types) ────────────────────────────────────────
+ * "Services as DATA, not code" (0310_operations.sql:7). Had no module until
+ * 2026-08-01, so a fresh tenant could not define its own services — and because
+ * milestone templates hang off a service type, could not have milestone chains
+ * either. `has_active_template` is surfaced because a service type without one
+ * silently yields dossiers with no milestones.
+ */
+export type ServiceType = {
+  service_type_id: string;
+  key: string;
+  name_fr: string;
+  name_en?: string | null;
+  territory?: string | null;
+  is_system?: boolean;
+  is_active?: boolean;
+  template_versions?: number;
+  has_active_template?: boolean;
+};
+export type ServiceTypeInput = {
+  key?: string;
+  name_fr?: string;
+  name_en?: string | null;
+  territory?: string | null;
+  is_active?: boolean;
+};
+export const TERRITORIES = [
+  "INTERNATIONAL_IMPORT",
+  "INTERNATIONAL_EXPORT",
+  "DOMESTIC_INLAND",
+  "CROSS_BORDER",
+  "OTHER",
+] as const;
+
+export const listServiceTypes = (opts: { q?: string; includeInactive?: boolean } = {}) => {
+  const p = new URLSearchParams();
+  if (opts.q) p.set("q", opts.q);
+  if (opts.includeInactive) p.set("includeInactive", "1");
+  const qs = p.toString();
+  return tenant<ServiceType[]>(`/service-types${qs ? `?${qs}` : ""}`);
+};
+export const createServiceType = (body: ServiceTypeInput) =>
+  tenant<ServiceType>("/service-types", { method: "POST", body });
+export const updateServiceType = (id: string, body: ServiceTypeInput) =>
+  tenant<ServiceType>(`/service-types/${id}`, { method: "PATCH", body });
+/** Deactivates, not deletes — dossiers reference service types by FK. */
+export const archiveServiceType = (id: string) =>
+  tenant<ServiceType>(`/service-types/${id}`, { method: "DELETE" });
+
+/**
+ * Publish a NEW active milestone-template version for a service type.
+ *
+ * The endpoint has existed since the milestone module was written; nothing in
+ * the client ever called it, so templates could only be created by the sandbox
+ * seed. Publishing supersedes the previous version (`deactivateOthers`) — it
+ * does not edit in place, so dossiers already instantiated keep their stages.
+ */
+export const publishMilestoneTemplate = (body: {
+  service_type_id: string;
+  stages: { code: string; label_fr: string; label_en?: string; default_offset_days?: number; stage_seq?: number }[];
+}) => tenant<MilestoneTemplate[]>("/milestones/templates", { method: "POST", body });
+
 /* ── Places (/geo-places) — POL/POD reference data for the route pickers ── */
 export type GeoPlace = {
   geo_place_id: string;
@@ -152,20 +213,45 @@ export const milestonesByDossier = (dossierId: string) => tenant<MilestoneInstan
 export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "BLOCKED";
 
 /**
+ * Legal transitions — mirrors `milestone.rules.js` ALLOWED. Kept in step with the
+ * backend deliberately: the server rejects anything else with 422 BAD_TRANSITION,
+ * so guessing here (an earlier version defaulted straight to DONE) produces a
+ * button that silently does nothing.
+ */
+export const MILESTONE_TRANSITIONS: Record<string, MilestoneStatus[]> = {
+  PENDING: ["IN_PROGRESS", "BLOCKED"],
+  IN_PROGRESS: ["DONE", "BLOCKED"],
+  BLOCKED: ["IN_PROGRESS", "PENDING"],
+  DONE: [],
+};
+
+/** The forward step for a status — PENDING → IN_PROGRESS → DONE. Null when done. */
+export const nextMilestoneStatus = (status?: string | null): MilestoneStatus | null => {
+  const s = String(status || "PENDING").toUpperCase();
+  if (s === "PENDING" || s === "BLOCKED") return "IN_PROGRESS";
+  if (s === "IN_PROGRESS") return "DONE";
+  return null;
+};
+
+/** Verb for the forward step, so the button says what it will actually do. */
+export const milestoneAdvanceLabel = (status?: string | null): string =>
+  nextMilestoneStatus(status) === "DONE" ? "Complete" : "Start";
+
+/**
  * Move a milestone to a new status.
  *
- * `to` is REQUIRED by the validator (`milestone.validator.js:7`) but this helper
- * never sent it — so every advance from the UI returned 422 VALIDATION_ERROR.
- * Defaults to DONE, which is what the single "advance" button in the milestones
- * screen means; pass `to` explicitly for the IN_PROGRESS / BLOCKED transitions.
+ * `to` is REQUIRED by the validator (`milestone.validator.js:7`) and this helper
+ * never sent it, so every advance from the UI returned 422 VALIDATION_ERROR — the
+ * button had never worked. It is now explicit: callers pass the target state,
+ * which must be legal for the current one (see MILESTONE_TRANSITIONS).
  */
 export const advanceMilestone = (
   id: string,
-  body: { to?: MilestoneStatus; evidence_vault_id?: string } = {},
+  body: { to: MilestoneStatus; evidence_vault_id?: string },
 ) =>
   tenant<MilestoneInstance>(`/milestones/${id}/advance`, {
     method: "POST",
-    body: { to: body.to || "DONE", ...(body.evidence_vault_id ? { evidence_vault_id: body.evidence_vault_id } : {}) },
+    body: { to: body.to, ...(body.evidence_vault_id ? { evidence_vault_id: body.evidence_vault_id } : {}) },
   });
 
 /**

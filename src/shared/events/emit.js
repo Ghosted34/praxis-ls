@@ -63,9 +63,15 @@ async function emitEvent(client, e) {
   // priority: caller override wins; else HIGH for security-critical, else NORMAL.
   const priority = e.priority || (isCritical ? "HIGH" : "NORMAL");
 
+  // actor_user_id is guarded for the same reason as in audit() below: it is
+  // `REFERENCES app_user(user_id)` in the schema being written to, and under TEST
+  // that's the SANDBOX schema while the user's row lives in LIVE (identity was
+  // pinned there in session 3). A freshly wiped sandbox has no users at all, so
+  // the raw value raised 23503 and took the whole business operation with it.
+  // Degrade to a NULL actor rather than lose the event.
   await client.query(
     `INSERT INTO event_log (event_type_key, module_key, entity_ref, actor_user_id, priority, payload)
-     VALUES ($1,$2,$3,$4,$5,$6)`,
+     SELECT $1,$2,$3,(SELECT user_id FROM app_user WHERE user_id = $4),$5,$6`,
     [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority, e.payload || {}],
   );
 
@@ -136,10 +142,34 @@ async function emitEvent(client, e) {
   });
 }
 
+/**
+ * Append to the immutable ledger.
+ *
+ * `actor_user_id` is written via a guarded sub-select rather than the raw value
+ * (fix 2026-08-01). It is `uuid REFERENCES app_user(user_id)` in whichever schema
+ * is being written to — and since session 3 pinned identity to the LIVE schema,
+ * those two are not the same place under TEST:
+ *
+ *   - the user's row lives in `live.app_user` (auth, RBAC, sessions),
+ *   - but business writes go through `req.tenantDb` → the SANDBOX schema,
+ *   - so the audit row lands in `sandbox.immutable_ledger` carrying a user id
+ *     that `sandbox.app_user` has never heard of → 23503.
+ *
+ * That surfaced as "Referenced record not found" on the FIRST create in a freshly
+ * wiped sandbox (no `90*` seed creates users), AFTER the business row had already
+ * committed — so the record existed but the request 409'd, and a retry then hit a
+ * duplicate-key error. It affected every module on the shared CRUD kit, not one.
+ *
+ * `WHERE EXISTS` degrades that to a NULL actor: the audit row is still written —
+ * which matters, because the ledger's job is to record that the action happened —
+ * and the attribution is simply absent where it cannot be validated. Losing an
+ * actor id on a sandbox row is a far smaller harm than losing the row, or than
+ * dropping the FK and letting a real ledger reference a user who never existed.
+ */
 async function audit(client, a) {
   await client.query(
     `INSERT INTO immutable_ledger (actor_user_id, actor_role, action, module_key, entity_ref, before_json, after_json, ip)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+     SELECT (SELECT user_id FROM app_user WHERE user_id = $1), $2,$3,$4,$5,$6,$7,$8`,
     [
       a.actorUserId || null,
       a.actorRole || null,
@@ -153,4 +183,27 @@ async function audit(client, a) {
   );
 }
 
-module.exports = { emitEvent, audit, WATCHER_ROLE_CODES };
+/**
+ * Resolve an actor id to one that actually exists in the schema being written to,
+ * or null.
+ *
+ * Any column typed `REFERENCES app_user(user_id)` is a landmine under TEST:
+ * identity is pinned to the LIVE schema (session 3), but business writes go
+ * through `req.tenantDb` → the SANDBOX schema, and a freshly wiped sandbox has no
+ * users at all (no `90*` seed creates them). So a perfectly valid live user id
+ * raises 23503 the moment it's stored beside sandbox business data.
+ *
+ * `emitEvent`/`audit`/`soft_delete` inline this guard. Use THIS helper for the
+ * per-module columns that have the same FK — `milestone_instance.completed_by`,
+ * and anything similar added later — rather than writing the sub-select again.
+ *
+ * Returns null rather than throwing: losing an attribution is a much smaller harm
+ * than failing the business operation it describes.
+ */
+async function resolveActorId(client, userId) {
+  if (!userId) return null;
+  const { rows } = await client.query("SELECT user_id FROM app_user WHERE user_id = $1", [userId]);
+  return rows[0] ? rows[0].user_id : null;
+}
+
+module.exports = { emitEvent, audit, resolveActorId, WATCHER_ROLE_CODES };

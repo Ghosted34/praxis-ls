@@ -90,9 +90,48 @@ renaming an APPLIED migration makes the filename-keyed migrator re-run it, and 2
 `CREATE TRIGGER` that fails `42710` on a second run), and a **frontend job** building `client` +
 `platform-console`, neither of which CI had ever built.
 
-**Migrations:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`**. **Owed:** `npm run lint` /
-`npm test` / `npm run build --prefix client` — none of session 17 has been compiled or linted (the sandbox
-VM failed to start for most of the session); `npm install --prefix client` for the two new map deps.
+**Second half — the fresh-tenant walkthrough.** Ran the full sequence against a deliberately **wiped**
+sandbox to test whether a new tenant can configure itself through the app. It could not, and the attempt
+produced most of what follows.
+
+**TEST-mode writes had been broken since session 3 — the session's biggest finding.** Identity is pinned to
+the LIVE schema (`req.identityDb`); business data writes through `req.tenantDb`, which under TEST is the
+sandbox schema. **60+ tenant columns are typed `REFERENCES app_user(user_id)`** — `issued_by`, `approved_by`,
+`requested_by`, `counted_by`, `moved_by`, `completed_by`, `actor_user_id`, `deleted_by`… so a valid live user
+id stored beside sandbox business data raises **23503**, usually AFTER the business row committed (most
+services have no surrounding transaction). The user sees a record that exists and an error saying it doesn't.
+Invisible for fourteen sessions because `sandbox.app_user` still held rows from original provisioning — the
+first `DROP SCHEMA sandbox CASCADE` exposed it. Fixed by mirroring `live.app_user` into the rebuilt sandbox in
+`wipeSandbox`: one change, all 60+ columns, and attribution stays real rather than silently NULL so
+maker-checker still means something. Per-site guards were tried first and abandoned — the tail is dozens long
+and every new module reintroduces it. Kept anyway, because they're right on their own terms: `emitEvent` /
+`audit` / `soft_delete.deleted_by` write the actor through a guarded sub-select, plus a new exported
+`resolveActorId()`. **Still open:** provisioning creates schemas before `create-admin.js` makes any user, so a
+brand-new tenant's sandbox is empty and its first TEST write fails the same way.
+
+**Onboarding gap closed.** `service_type` was referenced by ten modules and **had no module of its own** — no
+routes, no UI, created only by `seed-sandbox.sql`, contradicting `0310_operations.sql:7` ("Services as DATA,
+not code… User-creatable"). And `POST /milestones/templates` existed with nothing calling it. So a fresh
+tenant could define neither its services nor its milestone chains, and onboarding needed an engineer with
+database access. Built the module (shared CRUD kit, MOD-29, immutable `key`, DELETE archives because
+`dossier.service_type_id` is a plain FK), the Service types screen **with the template editor on it** (a
+service type without an active template silently yields dossiers with no chain, so the list warns and the fix
+is one click away), and **the service-type field on the dossier form** — without which none of it reached a
+dossier, since every UI-created dossier had `service_type_id = null`.
+
+**Also fixed in the walkthrough.** `corporate_entity.doc_prefix` was stored and never read, so refs came out
+`DOC-29-2026-0001`; `schemeFor` now takes the entity and a `MODULE_TOKENS` map gives `SLAS-OPS-2026-0001`
+(the token is load-bearing — `doc_sequence` restarts per module, so without it a dossier and an invoice would
+collide). **`0480_party_address`** — `client_master`/`supplier_master` had **no address column at all**,
+leaving the bill-to side of every OHADA invoice with only a name and a NIU. Country was free text against a
+`char(2)` column ("Cameroun" → "Ca"); now a shared `CountrySelect`, OHADA states first. And **milestone
+advance had never worked**: `to` was never sent (422), the first fix defaulted to an illegal `PENDING → DONE`
+transition, and the page's `try/finally` with no `catch` hid both.
+
+**Migrations:** tenant **`0478_geo_place`** + **`0479_dossier_place_refs`** + **`0480_party_address`**.
+**Owed:** `npm run lint` / `npm test` / `npm run build --prefix client` — none of session 17 has been compiled
+or linted (the sandbox VM failed to start for most of the session); `npm install --prefix client` for the two
+new map deps.
 
 ---
 

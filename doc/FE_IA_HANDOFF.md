@@ -169,7 +169,7 @@ real surface and needs a home. Proposed placement:
 | `workflow` | Workflows **+** Approvals | Governance | Event-engine admin (event types / workflows / steps) **and** the runtime approval queue. Two screens; both already in registry. |
 | `smartcomm` | Smart Comms (Messages) | Top-level surface (top-bar icon) | Corporate WhatsApp-style messaging: channels, DMs, presence, drafts, certified export. Rich module. |
 | `platform` | Platform Console | Separate **superadmin** area | Cross-tenant admin: tenants, plans, catalogue, go-live/suspend, capacity. Not a tenant-facing screen. |
-| `portal` | Portal Access (internal) **+** external Client/Investor/Auditor views | Split | Internal grant-management screen belongs under Settings/Security; the external read surfaces are a separate external app (magic-link auth). |
+| `portal` | Portal Access (internal) **+** external Client/Investor/Auditor views | Split — **BUILT 2026-08-02** | Internal grant-management screen at `/portal/access`. The external surfaces are **`/client-portal/*`** in this same bundle (`features/portal/portal-app.tsx`), outside `RequireAuth`/`AppShell`, with their own token store — not a separate app, and **not** under `/portal`, which the staff screen owns. Auth is email + password with a one-time invite/reset link (`0482`), not magic-link. Client + Investor views are live; the Auditor room is still a backend placeholder. |
 
 ---
 

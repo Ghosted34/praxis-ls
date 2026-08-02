@@ -21,9 +21,13 @@
  * chars of entropy, but this IS a judgement call, not a non-issue — revisit if
  * profile photos are ever considered personal data under a tenant's policy.
  *
- * NOTE ON S3. This guard is local-driver only. Under STORAGE_DRIVER=s3 the same
- * separation must be enforced by bucket policy — the vault prefix must not be
- * public-read, and vault objects should be handed out via `storage.signedUrl`.
+ * S3 (2026-08-02). This is no longer local-only. `/media` is mounted under BOTH
+ * drivers and applies the same allow-list; under s3 a permitted key is answered
+ * with a 302 to a short-TTL presigned URL instead of a static file. That means
+ * **the bucket can be fully private** — nothing depends on public-read, and the
+ * rule lives in code rather than in a bucket policy someone has to remember to
+ * apply per environment. `storage.publicUrl` correspondingly never mints a direct
+ * object URL for a private key (see storage.service.js).
  */
 "use strict";
 
@@ -68,4 +72,20 @@ function isPublicMediaPath(urlPath) {
   return PUBLIC_SEGMENTS.has(parts[1]);
 }
 
-module.exports = { isPublicMediaPath, PUBLIC_SEGMENTS };
+/**
+ * Same rule, applied to a STORAGE KEY rather than a URL path.
+ *
+ * Keys have no leading slash (`tenant_acme/vault/doc.pdf`), so this is just the
+ * path form with one prepended. Deliberately one implementation and not two:
+ * a storage key and its `/media` URL must never disagree about whether the thing
+ * is public, or an artefact could be linked publicly while the mount refuses it
+ * (or worse, the reverse).
+ *
+ * @param {string} key storage key as written by storage.service
+ */
+function isPublicStorageKey(key) {
+  if (typeof key !== "string" || !key) return false;
+  return isPublicMediaPath("/" + key.replace(/^\/+/, ""));
+}
+
+module.exports = { isPublicMediaPath, isPublicStorageKey, PUBLIC_SEGMENTS };

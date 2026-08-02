@@ -21,6 +21,15 @@ const routes = require("./routes");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
+const storage = require("./services/storage.service");
+
+/**
+ * Lifetime of a presigned /media URL (s3 driver). Short on purpose: these are
+ * public-by-policy assets (logo, login background, avatars), so the signature is
+ * a delivery mechanism, not the access control — the allow-list is. Five minutes
+ * is long enough for a page load and short enough that a copied URL is useless.
+ */
+const MEDIA_SIGNED_TTL_SECONDS = 300;
 const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
 
 /**
@@ -93,7 +102,7 @@ function buildApp() {
   // paths aren't swallowed by index.html fallback. See src/routes/pwa.js.
   app.use(pwaRouter);
 
-  // Local storage driver serves stored files at /media/<key>.
+  // Stored files are served at /media/<key>, under either storage driver.
   //
   // ALLOW-LISTED (2026-08-01). This used to be a flat static mount over the whole
   // storage root — but that root also holds `tenant_<slug>/vault/…`, so the
@@ -102,22 +111,52 @@ function buildApp() {
   // served here now; everything else 404s and must go through its module.
   // Public assets stay unauthenticated on purpose: the logo and login background
   // have to render before the user has a token.
-  if (config.STORAGE_DRIVER === "local") {
-    const mediaStatic = express.static(path.resolve(config.STORAGE_LOCAL_PATH), {
-      maxAge: "1h",
-      index: false,
-      dotfiles: "deny",
-      // Don't fall through to the SPA catch-all on a miss — a missing image
-      // should be a 404, not an HTML page with a 200.
-      fallthrough: false,
-    });
+  //
+  // S3 (2026-08-02): mounted under BOTH drivers now. The allow-list is the same;
+  // only the delivery differs — a permitted key is answered with a 302 to a
+  // short-TTL presigned URL rather than a file off disk. So the bucket needs no
+  // public-read: the app is the only way in, under either driver, and the rule
+  // lives in code instead of a bucket policy that has to be re-applied per
+  // environment. Private artefacts continue to go through their module's gated
+  // route (`GET /documents/:id/download` streams via storage.get, which was
+  // already correct for s3 — the hole was in URL minting, see storage.service).
+  {
+    const mediaStatic =
+      config.STORAGE_DRIVER === "local"
+        ? express.static(path.resolve(config.STORAGE_LOCAL_PATH), {
+            maxAge: "1h",
+            index: false,
+            dotfiles: "deny",
+            // Don't fall through to the SPA catch-all on a miss — a missing image
+            // should be a 404, not an HTML page with a 200.
+            fallthrough: false,
+          })
+        : null;
+
     app.use("/media", (req, res, next) => {
       if (!isPublicMediaPath(req.path)) {
         // Deliberately 404, not 403: a probe shouldn't be able to tell a
         // protected key from a nonexistent one.
         return res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
       }
-      return mediaStatic(req, res, next);
+      if (mediaStatic) return mediaStatic(req, res, next);
+
+      // s3: hand back a presigned URL for the ALLOW-LISTED key only. Redirecting
+      // rather than proxying keeps image bytes off the Node process. The TTL is
+      // short because these are embedded in pages that reload often; the browser
+      // cache header is deliberately shorter than the signature's lifetime so a
+      // cached page never holds a URL that has already expired.
+      const key = decodeURIComponent(req.path).replace(/^\/+/, "");
+      return storage
+        .signedUrl(key, MEDIA_SIGNED_TTL_SECONDS)
+        .then((url) => {
+          res.set("Cache-Control", `private, max-age=${Math.floor(MEDIA_SIGNED_TTL_SECONDS / 2)}`);
+          res.redirect(302, url);
+        })
+        .catch((err) => {
+          logger.warn({ err: err.message, key }, "media presign failed");
+          res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
+        });
     });
   }
 

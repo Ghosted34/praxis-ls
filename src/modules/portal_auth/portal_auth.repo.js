@@ -43,4 +43,56 @@ async function list(client) {
   return rows;
 }
 
-module.exports = { findByEmail, findById, insert, setPassword, setStatus, touchLogin, bumpFailed, list };
+// ── Invitations / password recovery (0482) ──────────────────────────────────
+// Only the SHA-256 hash of a token is ever stored, so a database read cannot be
+// turned into a working link. Mirrors password_reset (0471) for staff.
+
+async function createInvite(client, { portalUserId, tokenHash, purpose, expiresAt, ip }) {
+  const { rows } = await client.query(
+    `INSERT INTO portal_invite (portal_user_id, token_hash, purpose, expires_at, requested_ip)
+     VALUES ($1,$2,$3,$4,$5) RETURNING invite_id`,
+    [portalUserId, tokenHash, purpose, expiresAt, ip || null],
+  );
+  return rows[0];
+}
+
+/** One live link at a time — issuing a new token kills any outstanding ones. */
+async function invalidateInvites(client, portalUserId) {
+  await client.query(
+    "UPDATE portal_invite SET used_at = now() WHERE portal_user_id = $1 AND used_at IS NULL",
+    [portalUserId],
+  );
+}
+
+async function findInviteByHash(client, tokenHash) {
+  const { rows } = await client.query(
+    "SELECT * FROM portal_invite WHERE token_hash = $1",
+    [tokenHash],
+  );
+  return rows[0] || null;
+}
+
+async function markInviteUsed(client, inviteId) {
+  await client.query("UPDATE portal_invite SET used_at = now() WHERE invite_id = $1", [inviteId]);
+}
+
+/**
+ * Outstanding-invite state per user, for the staff screen.
+ *
+ * Lets the grant list say "invited, not yet accepted" instead of leaving staff to
+ * guess whether the person ever got in — the whole reason this table exists.
+ */
+async function inviteStatus(client, portalUserId) {
+  const { rows } = await client.query(
+    `SELECT purpose, expires_at, used_at, created_at
+       FROM portal_invite WHERE portal_user_id = $1
+      ORDER BY created_at DESC LIMIT 1`,
+    [portalUserId],
+  );
+  return rows[0] || null;
+}
+
+module.exports = {
+  findByEmail, findById, insert, setPassword, setStatus, touchLogin, bumpFailed, list,
+  createInvite, invalidateInvites, findInviteByHash, markInviteUsed, inviteStatus,
+};

@@ -32,6 +32,7 @@ import { SalesHub } from "@/features/sales/hub";
 import { CommercialHub } from "@/features/commercial/hub";
 import { VaultHub } from "@/features/vault/hub";
 import { PortalAccessPage } from "@/features/portal/pages";
+import { PortalApp } from "@/features/portal/portal-app";
 import { WorkspacePage } from "@/features/workspace/workspace-page";
 import { MasterDataPage } from "@/features/masterdata/master-data-page";
 import { OperationsHub } from "@/features/operations/hub";
@@ -51,6 +52,21 @@ export function App() {
       <Routes>
         <Route path="/login" element={<LandingPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
+
+        {/* External client portal. OUTSIDE RequireAuth and AppShell on purpose:
+            a portal user has no app_user row, no role and no refresh token, so
+            it authenticates against its own token store (lib/portal-api.ts) and
+            never renders staff navigation. The wildcard keeps every path inside
+            the portal — an external user should never fall through to a staff
+            screen or a staff 404.
+
+            NOT `/portal/*`: the STAFF grant-management screen already owns
+            `/portal/access` (below). React Router would rank the static path
+            above the splat and probably keep them apart, but an authentication
+            boundary should not depend on route-scoring subtleties — one nested
+            route added later and an external user is looking at a staff screen.
+            Separate prefix, no overlap, and it reads better in an invite email. */}
+        <Route path="/client-portal/*" element={<PortalApp />} />
 
       <Route
         element={

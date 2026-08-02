@@ -30,6 +30,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const crypto = require("crypto");
 const { config } = require("../config/env");
+const { isPublicStorageKey } = require("../shared/http/media-guard");
 
 const DRIVER = config.STORAGE_DRIVER || "local";
 
@@ -81,15 +82,31 @@ async function resolveS3() {
   return _s3cfg;
 }
 
+/**
+ * The URL to persist for a stored object.
+ *
+ * REWRITTEN 2026-08-02. This used to return a direct path-style bucket URL under
+ * `s3` for ANY key — including vault artefacts, since `pdf.service.renderAndStore`
+ * passes every rendered PDF through here. Persisting that URL is precisely how a
+ * confidential document acquires a shareable link that bypasses
+ * `GET /documents/:id/download` and its `requirePermission`. It was the same hole
+ * the flat `/media` mount had, one layer along, and it would have opened the day
+ * the S3 driver was switched on.
+ *
+ * Now: **a private key never gets a direct object URL.** Everything resolves to
+ * the app's own `/media/<key>`, which applies the allow-list (see
+ * shared/http/media-guard.js) and, under s3, redirects a PERMITTED key to a
+ * short-TTL presigned URL. Two consequences worth having:
+ *   - the value is driver-independent, so a stored URL keeps working across a
+ *     local→s3 migration (a bucket URL in the database would not), and
+ *   - the bucket needs no public-read at all.
+ *
+ * CDN_BASE_URL is honoured only for public keys — caching a private artefact at
+ * an edge would put it back outside the app's control.
+ */
 function publicUrl(key) {
   const v = s3View();
-  if (v.cdnBaseUrl) return `${v.cdnBaseUrl}/${key}`;
-  if (DRIVER === "s3") {
-    // Path-style object URL against the configured endpoint. Only resolvable if
-    // the bucket/object is publicly readable; prefer CDN_BASE_URL or signedUrl.
-    const base = (v.endpoint || "").replace(/\/+$/, "");
-    return base ? `${base}/${v.bucket}/${key}` : `/media/${key}`;
-  }
+  if (v.cdnBaseUrl && isPublicStorageKey(key)) return `${v.cdnBaseUrl}/${key}`;
   return `/media/${key}`;
 }
 

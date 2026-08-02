@@ -8,6 +8,7 @@ const argon2 = require("argon2");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
+const { mirrorUsersIntoSandbox } = require("../../shared/db/sandbox-user-mirror");
 
 async function migratePlatform() {
   logger.info("[praxis-db] migrating platform database...");
@@ -192,7 +193,38 @@ async function projectFeatures(slug) {
 async function migrateTenant(slug) {
   const applied = await migrateTenantDb(m.tenantDbName(slug));
   await projectFeatures(slug);
+  await mirrorUsersOnMigrate(slug);
   return { slug, applied };
+}
+
+/**
+ * Self-heal `sandbox.app_user` on every tenant migration pass.
+ *
+ * `scripts/deploy.sh` runs the migrate service (platform + all tenants) on every
+ * deploy, which makes this the one place guaranteed to touch every tenant on every
+ * environment — so drift can never silently accumulate the way it did before
+ * 2026-08-02 (a wipe-time-only mirror left every user created afterwards missing,
+ * and their first TEST-mode write failed with 23503). The mirror is idempotent and
+ * inserts nothing on a healthy tenant, so the cost is one INSERT…SELECT per deploy.
+ *
+ * Best-effort by design: a deploy must not fail over sandbox convenience data. A
+ * failure is logged at error level and `scripts/tenant/mirror-users.js` re-runs it
+ * on demand.
+ */
+async function mirrorUsersOnMigrate(slug) {
+  const cli = m.client(m.tenantDbName(slug), { superuser: true });
+  await cli.connect();
+  try {
+    const { mirrored } = await mirrorUsersIntoSandbox(cli);
+    if (mirrored) logger.info({ slug, mirrored }, "mirrored users into sandbox");
+  } catch (err) {
+    logger.error(
+      { slug, err: err.message },
+      "sandbox user mirror failed — TEST-mode writes may fail for unmirrored users; run scripts/tenant/mirror-users.js",
+    );
+  } finally {
+    await cli.end();
+  }
 }
 
 async function migrateAllTenants() {
@@ -220,54 +252,15 @@ async function wipeSandbox(input) {
       searchPath: "sandbox,public",
       scope: "sandbox-seed",
     });
+    // Repopulate sandbox.app_user — the rebuilt schema has no users, and 60+
+    // tenant columns are `REFERENCES app_user(user_id)`. See
+    // shared/db/sandbox-user-mirror.js for the full why.
     await mirrorUsersIntoSandbox(cli);
   } finally {
     await cli.end();
   }
   await projectFeatures(slug);
   return { slug };
-}
-
-/**
- * Copy `live.app_user` into the freshly rebuilt sandbox schema.
- *
- * WHY (2026-08-01). Identity is pinned to the LIVE schema (session 3), but
- * business writes go through `req.tenantDb` → the SANDBOX schema. **60+ columns
- * across the tenant schema are typed `REFERENCES app_user(user_id)`** —
- * issued_by, validated_by, approved_by, requested_by, received_by, counted_by,
- * moved_by, rated_by, owner_user_id, completed_by, and so on. Every one of them
- * raises 23503 when a valid live user id is stored beside sandbox business data,
- * because the rebuilt sandbox has no users at all (no `90*` seed creates any).
- *
- * That made TEST mode quietly unusable for writes: an action would half-succeed
- * (the row committed, the actor column didn't) and surface as "Referenced record
- * not found". It stayed hidden until the first wipe, because before that the
- * sandbox still held the users from original provisioning.
- *
- * Guarding each call site was the alternative and it does not scale — the tail is
- * dozens of columns long and every new module reintroduces it. Mirroring fixes
- * all of them at once and keeps attribution REAL rather than silently NULL, so
- * maker-checker (`soft_delete.restored_by <> deleted_by`) still means something.
- *
- * NOT a security widening: these rows are FK targets, not credentials in play.
- * Auth, sessions and RBAC all resolve against `req.identityDb` (live), so nothing
- * signs in "as" a sandbox row. `password_hash` comes along because the column is
- * NOT NULL — it is never read from this schema.
- *
- * Runs AFTER the schema+seed passes, so `sandbox.app_user` exists and is empty.
- */
-async function mirrorUsersIntoSandbox(cli) {
-  await cli.query(
-    "INSERT INTO sandbox.app_user (user_id, username, email, full_name, password_hash, " +
-      "is_2fa_enabled, status, created_at, updated_at) " +
-      "SELECT user_id, username, email, full_name, password_hash, " +
-      "is_2fa_enabled, status, created_at, updated_at FROM live.app_user " +
-      "ON CONFLICT (user_id) DO NOTHING",
-  );
-  // employee_id is deliberately NOT copied: it references sandbox.employee, which
-  // the wipe emptied, so carrying it over would trade one 23503 for another.
-  // totp_secret_enc and godmode_pin_hash are omitted for the same reason they are
-  // never read here — this schema authenticates nobody.
 }
 
 /**
@@ -318,6 +311,11 @@ async function createAdmin(input) {
       "INSERT INTO user_role (user_id, role_id) VALUES ($1,$2) ON CONFLICT DO NOTHING",
       [userId, roleRows[0].role_id],
     );
+    // Mirror the new admin into sandbox. THIS is the moment that closes the
+    // fresh-tenant hole: provisioning cannot mirror (it runs before any user
+    // exists), so without this the tenant's very first TEST-mode write fails its
+    // actor FK with 23503. Same reason the app_user service mirrors on create.
+    await mirrorUsersIntoSandbox(cli, { userId });
   } finally {
     await cli.end();
   }

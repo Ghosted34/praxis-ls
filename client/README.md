@@ -1,73 +1,66 @@
-# Praxis LS — Frontend (kickoff outline, not yet started)
+# Praxis LS — Frontend
 
-There is no working frontend in this repo yet — this file is a placeholder
-marking where it starts, once the backend Security/IAM slice in
-`doc/RBAC_SECURITY_KICKOFF.md` is in and testable end-to-end (you need a
-working `/auth/login` to build a login screen against).
+Vite + React 18 + TypeScript SPA. Served single-origin by the Node API in
+production (`src/server.js` mounts `client/dist`), proxied in development.
 
-## Two references — know which is which
+> Rewritten 2026-08-02. This file used to say "there is no working frontend in
+> this repo yet" and presented the router choice as an open decision. Both had
+> been untrue for roughly fifteen sessions — the app is built and shipping. It is
+> kept short on purpose: `doc/SESSION_HANDOFF.md` is the living document, and a
+> second one that drifts is worse than none.
 
-- `doc/reference/reference-mock-lovable/` — a Lovable-generated React +
-  Vite + **TanStack Router** + **shadcn/ui** scaffold. Only `src/routes/index.tsx`
-  and `__root.tsx` are real routes; the rest is the shadcn component library
-  (`src/components/ui/*.tsx`) and Lovable boilerplate. Use it for **UI
-  patterns and component primitives** (it's already wired for the visual
-  language), not for app structure — it has no auth, no API client, no
-  data model tied to this backend.
-- `doc/reference/legacy_codebase/` — the old PHP/Bootstrap system
-  (`administration/`, duplicated once more nested under
-  `public_html/smart-logistics/administration/` — same code, two copies).
-  Use it for **behavior**: what a screen needs to do, what fields matter,
-  how a flow like `user-role-management.php` or `role_guard.php` worked.
-  Its actual auth model (one flat `$_SESSION['auth']['role']`) is exactly
-  what the new RBAC schema (role x capability x scope x permission) replaces
-  — don't port the model, just the behavior.
+## Stack — decided
 
-## Stack — one open decision
+**react-router-dom** + hand-rolled UI primitives on Lovable design tokens.
 
-Root `README.md` §2 specifies plain **React 18 + Vite + TypeScript**. The
-Lovable mock is built on **TanStack Router** + shadcn/ui instead. Pick one
-before scaffolding for real:
-- Plain Vite + React Router: matches the README as written, less to inherit.
-- Keep TanStack Router + shadcn/ui: reuses the mock's routing/component
-  setup directly, less rework translating components.
+The `doc/reference/reference-mock-lovable` scaffold uses TanStack Router +
+TanStack Query + the full shadcn set, and `doc/FRONTEND_REVIEW_2026-07-12.md`
+recommended migrating to match it. **That recommendation is stale**, and it is
+worth knowing why rather than rediscovering the argument: it was made to close a
+*design-fidelity* gap, and the gap was closed another way — the Lovable tokens
+were mapped onto the existing semantic tokens in `src/index.css` (session 6) and
+the kit-fidelity pass finished in session 15. Migrating now would mean rewriting
+routing across ~50 screens to arrive at a look the app already has.
 
-## Planned structure (mirrors `src/modules/<group>/<module>` on the backend)
+The one thing TanStack Query would still buy is caching and refetch behaviour. If
+that becomes the itch, adopt it incrementally behind the existing `useList`
+helper and leave the router alone.
+
+## Layout
 
 ```
-client/
-  src/
-    app/            # router setup, layout shell, auth guard
-    features/
-      security/     # login, role/permission/scope/capability admin, sessions, audit ledger
-      <group>/<module>/   # one folder per backend module, same group names
-    lib/
-      api-client.ts # fetch wrapper, attaches Bearer token, refresh-on-401
-      auth-context.tsx # holds access token + user, calls POST /auth/refresh
-    components/     # shared UI (start from the shadcn set in the mock)
+client/src/
+  app/            router, layout shell, auth context, branding, boot gate
+  features/<group>/   one folder per backend module group
+  components/     shared UI primitives + document viewer
+  lib/            api-client, token-store, branding, formatters
 ```
 
-## Login page — no spec conflict after all
+## Two apps in one bundle
 
-Corrected: the tech lead's "ad for JBS Praxis" comment meant execution
-quality, not a literal marketing panel — "do so good a job that people ask
-who did this," attribution carried entirely by the existing "Powered by
-JBS Praxis LLC" footer line (README §3). No split-screen, no separate
-showcase panel. Pure white-label login as originally specced: tenant logo,
-tenant colour tokens (from `setting`/`corporate_entity`), the footer line,
-nothing else competing for attention.
+- **Staff app** — everything under `RequireAuth` + `AppShell`.
+- **External client portal** — `/client-portal/*` (`features/portal/portal-app.tsx`),
+  outside both. It has its own token store and fetch client
+  (`lib/portal-api.ts`), because a portal user has no `app_user` row, no role and
+  no refresh token. **Do not route it under `/portal`**: the staff grant screen
+  owns `/portal/access`, and an authentication boundary should not depend on
+  React Router's route ranking.
 
-What this actually means for the build: the bar is on craft, not on adding
-surface area — smooth transitions, no layout jank, real loading/error
-states (not blank spinners), correct on mobile, fast. The login screen is
-the first thing anyone sees, tenant staff and any onlooker alike, so it's
-worth the extra polish pass precisely because it stays simple.
+## Commands
 
-## First screen to build (once backend auth lands)
+```
+npm run dev                  # Vite dev server (proxies /api and /media)
+npm run build                # tsc -b && vite build
+npx tsc -b --force           # type-check only
+```
 
-Login → protected shell → Security group: role list (already has a working
-API via `iam_role`), then the four new admin screens this kickoff added
-(`capability`, `scope`, `permission` grant-matrix, `field_visibility`) —
-these are the most useful first screens because they let a Super Admin
-actually configure access without touching SQL, and they exercise the
-full auth + RBAC round-trip the rest of the frontend will depend on.
+Set `VITE_TENANT_HOST` to a provisioned tenant (e.g. `smartls.praxisls.com`) so
+the dev proxy sends the right Host header — the tenant is resolved server-side
+from it, and the browser never needs to know the subdomain.
+
+## Conventions
+
+`doc/FE_DESIGN_RULES.md` (incl. §5 human-readable data), `doc/CONVENTIONS.md`.
+New wired screens use `DataList`/`PageHeader`; `ResourceList` is the quick
+read-only path. Anything a user reads — enums, dates, booleans, FK ids — goes
+through `lib/format.ts` rather than being rendered raw.

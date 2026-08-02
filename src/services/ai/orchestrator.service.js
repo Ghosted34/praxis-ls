@@ -12,6 +12,7 @@ const { retrieve, toContextBlock } = require("./retrieval.service");
 const { redact } = require("./redact");
 const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
+const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
 
 /**
@@ -239,6 +240,9 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // action cards that a human confirms. `writeCalls` collects both the writes from
   // this turn and any write the follow-up proposes after seeing the read data.
   const defFor = (call) => tools.find((t) => t.action_key === call.function.name);
+  // Reads available to this caller — the set a reference field's picker may draw
+  // from (buildFieldMeta only offers a picker whose read is in here).
+  const availableReads = new Set(tools.filter((t) => !t.is_write).map((t) => t.action_key));
   const writeCalls = [];
   const readCalls = [];
   for (const call of res.toolCalls) {
@@ -316,6 +320,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       payload,
       requires_confirmation: def.requires_confirmation,
       validation_errors: errs,
+      // Drives the interactive form: schema types each field, field_meta says
+      // which render as dropdowns (enum inline, or a `ref` list-read to fetch).
+      schema: def.payload_schema,
+      field_meta: buildFieldMeta(def.payload_schema, availableReads),
     });
   }
 
@@ -329,7 +337,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
  * Execute a confirmed action via the whitelisted registry, with the user's
  * permissions. Logs to the immutable ledger. Registry maps action_key → fn.
  */
-async function confirmAction({ client, user, actionRunId, registry }) {
+async function confirmAction({ client, user, actionRunId, registry, payload: edited }) {
   const { rows } = await client.query(
     "SELECT * FROM ai_action_run WHERE action_run_id=$1 AND user_id=$2",
     [actionRunId, user.user_id],
@@ -346,7 +354,23 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   const fn = registry && registry[run.action_key];
   if (!fn) throw new Error(`no executor registered for ${run.action_key}`);
 
-  const result = await fn({ client, user, payload: run.proposed_payload });
+  // The interactive form can submit an edited payload (user picked selects /
+  // filled fields). Re-validate against the SAME catalogue schema the propose
+  // step used, then persist it, so what executes is exactly what was confirmed
+  // and the ledger reflects the final values — never the model's first guess.
+  let payload = run.proposed_payload;
+  if (edited && typeof edited === "object") {
+    const { rows: cat } = await client.query(
+      "SELECT payload_schema FROM ai_action_catalogue WHERE action_key=$1",
+      [run.action_key],
+    );
+    const errs = validatePayload(cat[0] && cat[0].payload_schema, edited);
+    if (errs.length) throw new Error(`invalid payload: ${errs.join("; ")}`);
+    payload = edited;
+    await client.query("UPDATE ai_action_run SET proposed_payload=$2 WHERE action_run_id=$1", [actionRunId, payload]);
+  }
+
+  const result = await fn({ client, user, payload });
   await client.query(
     "UPDATE ai_action_run SET status='EXECUTED', executed_entity_ref=$2 WHERE action_run_id=$1",
     [actionRunId, result && result.entity_ref ? result.entity_ref : null],
@@ -354,7 +378,7 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   await client.query(
     `INSERT INTO immutable_ledger (actor_user_id, action, module_key, entity_ref, after_json)
      VALUES ($1,$2,'MOD-67',$3,$4)`,
-    [user.user_id, `ai.action.${run.action_key}`, result && result.entity_ref, run.proposed_payload],
+    [user.user_id, `ai.action.${run.action_key}`, result && result.entity_ref, payload],
   );
 
   // Record the execution in the conversation itself.

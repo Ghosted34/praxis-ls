@@ -8,11 +8,9 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { Pill } from "@/components/ui/pill";
 import {
   askPraxis,
   confirmAiAction,
-  confirmAiBatch,
   fetchAiHistory,
   clearAiHistory,
   listAiConversations,
@@ -22,6 +20,7 @@ import {
 import { errMsg } from "@/lib/use-resource";
 import { useAiEnabled } from "@/components/ai-actions";
 import { Markdown } from "@/components/markdown";
+import { ActionForm } from "@/components/action-form";
 
 type Msg = {
   role: "user" | "praxis";
@@ -44,6 +43,7 @@ export function PraxisCopilot() {
   const [input, setInput] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [confirming, setConfirming] = React.useState<string | null>(null);
+  const [doneActions, setDoneActions] = React.useState<Record<string, boolean>>({});
   const [loadingHistory, setLoadingHistory] = React.useState(false);
   const [convId, setConvId] = React.useState<string | null>(null);
   const [showHistory, setShowHistory] = React.useState(false);
@@ -170,23 +170,14 @@ export function PraxisCopilot() {
   }
   sendRef.current = send;
 
-  async function runAction(mi: number, run: AiActionRun) {
+  // Confirm one proposed action with the payload the user filled in the form.
+  // Per-action done state (not per-message) so a message proposing several
+  // actions collapses them one at a time as each is confirmed.
+  async function runAction(run: AiActionRun, payload: Record<string, unknown>) {
     setConfirming(run.action_run_id);
     try {
-      await confirmAiAction(run.action_run_id);
-      setMsgs((m) => m.map((mm, i) => (i === mi ? { ...mm, done: true } : mm)));
-    } catch (e) {
-      setMsgs((m) => [...m, { role: "praxis", text: errMsg(e) }]);
-    } finally {
-      setConfirming(null);
-    }
-  }
-
-  async function runBatch(mi: number, batchId: string) {
-    setConfirming(batchId);
-    try {
-      await confirmAiBatch(batchId);
-      setMsgs((m) => m.map((mm, i) => (i === mi ? { ...mm, done: true } : mm)));
+      await confirmAiAction(run.action_run_id, payload);
+      setDoneActions((s) => ({ ...s, [run.action_run_id]: true }));
     } catch (e) {
       setMsgs((m) => [...m, { role: "praxis", text: errMsg(e) }]);
     } finally {
@@ -290,24 +281,22 @@ export function PraxisCopilot() {
                 <div key={i} className={m.role === "user" ? "flex justify-end" : "flex justify-start"}>
                   <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${m.role === "user" ? "bg-primary text-primary-foreground" : "border border-border bg-card"}`}>
                     {m.role === "praxis" ? <Markdown text={m.text} /> : <div className="whitespace-pre-wrap">{m.text}</div>}
-                    {m.actions && m.actions.length > 0 && !m.done && (
-                      <div className="mt-2 space-y-1.5 border-t border-border pt-2">
-                        {m.batchId ? (
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="micro">{m.actions.length} actions proposed</span>
-                            <Button size="sm" loading={confirming === m.batchId} onClick={() => runBatch(i, m.batchId!)}>Confirm all</Button>
-                          </div>
-                        ) : (
-                          m.actions.map((a) => (
-                            <div key={a.action_run_id} className="flex items-center justify-between gap-2">
-                              <span className="flex items-center gap-1.5"><Pill tone="warn">action</Pill><span className="micro">{a.action_key}</span></span>
-                              <Button size="sm" loading={confirming === a.action_run_id} onClick={() => runAction(i, a)}>Confirm</Button>
-                            </div>
-                          ))
+                    {m.actions && m.actions.length > 0 && (
+                      <div className="mt-1 space-y-2">
+                        {m.actions.map((a) =>
+                          doneActions[a.action_run_id] ? (
+                            <div key={a.action_run_id} className="mt-1 micro text-[rgb(var(--ok))]">✓ {a.action_key.replace(/_/g, " ")} done</div>
+                          ) : (
+                            <ActionForm
+                              key={a.action_run_id}
+                              action={a}
+                              busy={confirming === a.action_run_id}
+                              onConfirm={(payload) => runAction(a, payload)}
+                            />
+                          ),
                         )}
                       </div>
                     )}
-                    {m.done && <div className="mt-1 micro text-[rgb(var(--ok))]">✓ Done</div>}
                   </div>
                 </div>
               ))

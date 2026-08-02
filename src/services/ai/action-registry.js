@@ -33,13 +33,13 @@ const registry = {
     return { entity_ref: `dossier:${r.ref}` };
   },
   update_dossier: async ({ client, user, payload }) => {
-    const { id, ...patch } = payload;
-    await opsFile.update(client, { id, patch, actor: user });
-    return { entity_ref: `dossier:${id}` };
+    const { dossier_id, ...patch } = payload;
+    await opsFile.update(client, { id: dossier_id, patch, actor: user });
+    return { entity_ref: `dossier:${dossier_id}` };
   },
   transition_dossier: async ({ client, user, payload }) => {
-    await opsFile.transition(client, { id: payload.id, to: payload.to, actor: user });
-    return { entity_ref: `dossier:${payload.id}` };
+    await opsFile.transition(client, { id: payload.dossier_id, to: payload.to, actor: user });
+    return { entity_ref: `dossier:${payload.dossier_id}` };
   },
 
   // ── Commercial / costing (services take { data, actor }) ──

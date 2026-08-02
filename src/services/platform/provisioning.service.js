@@ -168,6 +168,31 @@ async function seedDisplayName(slug, name) {
  * `source` is preserved (the tenant `feature_state.source` CHECK only allows
  * plan|override|default) while `state` becomes 'off'.
  */
+/**
+ * Normalise a feature's `depends_on` to a string[] of feature keys.
+ *
+ * `depends_on` is a `citext[]`. citext is an extension type with no array parser
+ * registered in node-postgres, so the driver returns the raw Postgres array
+ * literal as a STRING ("{}", "{ai.assistant}", "{a,b}") rather than a JS array —
+ * iterating that string character-by-character (what a naive `for..of` does) once
+ * turned EVERY feature off, including no-dependency ones, because "{" is not a
+ * key. The query now casts to text[] (which the driver DOES parse), and this
+ * parser is the belt-and-braces fallback so the function is correct whether it is
+ * handed an array or a literal string.
+ */
+function toDepsArray(v) {
+  if (Array.isArray(v)) return v.map((s) => String(s));
+  if (typeof v === "string") {
+    const inner = v.replace(/^\{/, "").replace(/\}$/, "").trim();
+    if (!inner) return [];
+    return inner
+      .split(",")
+      .map((s) => s.replace(/^"(.*)"$/, "$1").trim())
+      .filter(Boolean);
+  }
+  return [];
+}
+
 function enforceDependencies(features) {
   const byKey = new Map(features.map((f) => [String(f.feature_key), f]));
   let changed = true;
@@ -175,7 +200,7 @@ function enforceDependencies(features) {
     changed = false;
     for (const f of features) {
       if (f.state !== "on") continue;
-      const deps = f.depends_on || [];
+      const deps = toDepsArray(f.depends_on);
       for (const dep of deps) {
         const parent = byKey.get(String(dep));
         if (!parent || parent.state !== "on") {
@@ -195,7 +220,11 @@ async function projectFeatures(slug) {
   let features;
   try {
     const { rows } = await pf.query(
-      "SELECT fc.feature_key, fc.depends_on, " +
+      // depends_on::text[] — the column is citext[], which node-postgres returns
+      // as a RAW STRING (no parser for the extension type). Casting to text[] makes
+      // the driver hand back a real JS array; enforceDependencies also self-defends
+      // via toDepsArray in case a caller passes the unparsed form.
+      "SELECT fc.feature_key, fc.depends_on::text[] AS depends_on, " +
         "CASE WHEN ov.state IS NOT NULL THEN ov.state WHEN pf.included THEN fc.default_state ELSE 'off' END AS state, " +
         "CASE WHEN ov.state IS NOT NULL THEN 'override' WHEN pf.included THEN 'plan' ELSE 'default' END AS source " +
         "FROM platform.tenant t JOIN platform.feature_catalogue fc ON true " +
@@ -406,6 +435,7 @@ module.exports = {
   wipeSandbox,
   projectFeatures,
   enforceDependencies,
+  toDepsArray,
   createAdmin,
   listTenantSlugs,
 };

@@ -11,7 +11,7 @@
  */
 "use strict";
 
-const { enforceDependencies } = require("../../src/services/platform/provisioning.service");
+const { enforceDependencies, toDepsArray } = require("../../src/services/platform/provisioning.service");
 
 /** Build the row shape projectFeatures hands the resolver. */
 const f = (feature_key, state, depends_on = []) => ({
@@ -83,5 +83,43 @@ describe("enforceDependencies", () => {
   it("tolerates a null/absent depends_on", () => {
     const rows = [{ feature_key: "fleet", state: "on", source: "plan", depends_on: null }];
     expect(states(enforceDependencies(rows))["fleet"]).toBe("on");
+  });
+
+  // Regression: citext[] comes back from node-postgres as a RAW STRING literal,
+  // not a JS array. Iterating the string forced every feature off (prod outage).
+  it("does NOT force a no-dependency feature off when depends_on is the string '{}'", () => {
+    const rows = [{ feature_key: "accounting.core", state: "on", source: "plan", depends_on: "{}" }];
+    expect(states(enforceDependencies(rows))["accounting.core"]).toBe("on");
+  });
+
+  it("honours a string-literal depends_on the same as an array", () => {
+    const rows = [
+      { feature_key: "accounting.core", state: "on", source: "plan", depends_on: "{}" },
+      { feature_key: "accounting.statements", state: "on", source: "plan", depends_on: "{accounting.core}" },
+      { feature_key: "costing", state: "on", source: "plan", depends_on: "{operations}" }, // operations absent → off
+    ];
+    const s = states(enforceDependencies(rows));
+    expect(s["accounting.core"]).toBe("on");
+    expect(s["accounting.statements"]).toBe("on");
+    expect(s["costing"]).toBe("off");
+  });
+});
+
+describe("toDepsArray", () => {
+  it("passes a JS array through as strings", () => {
+    expect(toDepsArray(["a", "b"])).toEqual(["a", "b"]);
+  });
+  it("parses an empty Postgres literal to []", () => {
+    expect(toDepsArray("{}")).toEqual([]);
+  });
+  it("parses a single-element literal", () => {
+    expect(toDepsArray("{ai.assistant}")).toEqual(["ai.assistant"]);
+  });
+  it("parses a multi-element literal and strips quotes", () => {
+    expect(toDepsArray('{a,"b.c"}')).toEqual(["a", "b.c"]);
+  });
+  it("treats null/undefined as []", () => {
+    expect(toDepsArray(null)).toEqual([]);
+    expect(toDepsArray(undefined)).toEqual([]);
   });
 });

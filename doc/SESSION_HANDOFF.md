@@ -164,6 +164,17 @@ audit banners in `WORK_TO_BE_DONE.md` are the correction).
 ran. Windows validators are the gate. Backend changes are plain CommonJS; the FE touch is `finance/pages.tsx`
 + `finance-api.ts` + `security/pages.tsx`. New tenant migration **`0487`** to run.
 
+0. **⚠️ POSTMORTEM — the first cut of point 1 caused a production outage; fixed.** `depends_on` is a
+   **`citext[]`**, and node-postgres has no array parser for the extension type, so it returns the raw literal
+   **string** (`"{}"`, `"{accounting.core}"`) not a JS array. The initial `enforceDependencies` did
+   `for (const dep of f.depends_on)`, which iterated that string character-by-character — `"{"` is not a feature
+   key, so **every** feature, including no-dependency anchors, was forced off, and the deploy's re-projection
+   turned all gated modules dark for every tenant (403 FEATURE_DISABLED everywhere). Fix: the query now casts
+   `fc.depends_on::text[]` (which the driver parses) and a `toDepsArray()` normaliser makes the function correct
+   whether handed an array or the raw literal. Regression tests added for the string form. The unit tests missed
+   it originally because they passed JS arrays, not the driver's actual return shape. **Recovery = redeploy the
+   fix; the migrate service re-projects all tenants correctly.**
+
 1. **`depends_on` is now enforced at projection time.** `projectFeatures()` resolved each feature's state
    (override → plan default → off) and wrote it verbatim, never consulting `feature_catalogue.depends_on` — so a
    child could be entitled with its parent off (the session-10 "19 modules dark" bug one layer up;

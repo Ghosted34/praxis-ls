@@ -23,6 +23,7 @@
 const { Client } = require("pg");
 const argon2 = require("argon2");
 const { config } = require("../../src/config/env");
+const { mirrorUsersIntoSandbox } = require("../../src/shared/db/sandbox-user-mirror");
 
 const a = Object.fromEntries(
   process.argv.slice(2).map((s) => {
@@ -84,6 +85,12 @@ async function main() {
     `INSERT INTO user_role (user_id, role_id) VALUES ($1,$2) ON CONFLICT DO NOTHING`,
     [userId, roleRows[0].role_id],
   );
+
+  // Mirror into sandbox (live-created users only — a --env=sandbox run is already
+  // writing there). Provisioning runs BEFORE this script, so it has no user to
+  // copy; without this the tenant's first TEST-mode write fails its actor FK with
+  // 23503. See src/shared/db/sandbox-user-mirror.js.
+  if (env === "live") await mirrorUsersIntoSandbox(tenant, { userId });
 
   await tenant.end();
   console.warn(`[praxis] tenant '${a.slug}' (${env}): ${a.email} ready with role ${role}`);

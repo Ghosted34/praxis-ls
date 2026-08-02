@@ -36,6 +36,7 @@ const { config } = require("../../../config/env");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { mirrorUserBestEffort } = require("../../../shared/db/sandbox-user-mirror");
 const identityCache = require("../../../shared/cache/identity-cache");
 const sessionStore = require("../../../shared/cache/session-store");
 const encryption = require("../../../services/encryption.service");
@@ -558,6 +559,12 @@ async function createUser(client, { data, actor = {} }) {
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "app_user:" + user.user_id, after: user });
     await client.query("COMMIT");
+    // Mirror into the sandbox schema so this user's TEST-mode writes can satisfy
+    // the 60+ `REFERENCES app_user(user_id)` actor columns over there (identity is
+    // pinned to LIVE, business data is not — see shared/db/sandbox-user-mirror.js).
+    // AFTER the commit and best-effort on purpose: a sandbox problem must never
+    // roll back or fail a live user create.
+    await mirrorUserBestEffort(client, user.user_id);
     return getUser(client, user.user_id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
@@ -597,6 +604,12 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
     await identityCache.invalidateUser(id);
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "app_user:" + id, before, after: fields });
     await client.query("COMMIT");
+    // Self-heal, not a sync: this is a no-op when the user is already mirrored
+    // (the insert conflicts and does nothing, so a renamed user keeps the old
+    // display name in sandbox — cosmetic, nothing reads it as authoritative). Its
+    // job is to catch users created BEFORE mirroring existed, whose first TEST
+    // write would otherwise 23503; editing them now quietly fixes it.
+    await mirrorUserBestEffort(client, id);
     return getUser(client, id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }

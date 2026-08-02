@@ -8,6 +8,200 @@ later without re-reading every diff.
 
 ---
 
+## 2026-08-02 — Session 18: TEST-mode writes fully fixed (sandbox user mirroring moved to user create, not just wipe)
+
+**Closes the one item session 17 left open — and a second hole nobody had spotted.**
+
+**Recap of the collision** (full reasoning in `WORK_TO_BE_DONE.md`): identity is pinned to the LIVE schema
+(`req.identityDb`, session 3) so the LIVE/TEST toggle stops logging people out, but business data writes
+through `req.tenantDb` → the **sandbox** schema under TEST, and **60+ tenant columns are typed
+`REFERENCES app_user(user_id)`**. A valid live user id stored beside sandbox business data raises **23503**,
+usually AFTER the business row has committed — the user sees a record that exists and an error saying it
+doesn't, then a duplicate-key error if they retry.
+
+Session 17 fixed it by copying `live.app_user` into the rebuilt sandbox at the end of `wipeSandbox`. That is
+correct but insufficient, because it mirrors at **one moment**:
+
+1. **Fresh tenants** (known, flagged). Provisioning creates both schemas *before* `create-admin.js` makes any
+   user, so the mirror has nothing to copy and the sandbox starts empty. The tenant's first TEST-mode write
+   fails, and the remedy — wipe the sandbox — is deeply unintuitive for something that reads like a
+   permissions error.
+2. **Drift on established tenants** (NOT previously identified). The wipe mirror is a point-in-time snapshot,
+   so **every user created afterwards was equally missing**: a hire onboarded months after the last wipe hits
+   the identical 23503 on a system that has worked fine for everyone else. This was not hypothetical — the
+   backfill found **2 such users on smartls**, i.e. the deployment was already in the broken state by a route
+   the docs didn't describe.
+
+**Fix — mirror at the source, on user create/update, not only on wipe.**
+
+- **`src/shared/db/sandbox-user-mirror.js`** (new). `mirrorUsersIntoSandbox(client, {userId})` — one user or
+  all — and `mirrorUserBestEffort(client, userId)` for the request path. Three decisions worth keeping:
+  - **Schemas named explicitly** (`live.app_user` → `sandbox.app_user`) rather than relying on `search_path`,
+    because callers arrive with it set to whatever they were already working in (live for the identity client,
+    sandbox mid-wipe).
+  - **`ON CONFLICT DO NOTHING` with no target**, deliberately: it must absorb a `user_id` clash (already
+    mirrored) *and* an `email` clash (a stale sandbox row under a different id). The single-user path then
+    verifies presence and **warns** — an email collision is the one case where "nothing inserted" still leaves
+    the FK unsatisfied, and silent success there would be the worst outcome.
+  - **`to_regclass` guard** so the mirror is a no-op mid-wipe or on an unmigrated database instead of erroring
+    inside somebody's user-create request.
+  - Carries the same column set as before: **no `employee_id`** (references `sandbox.employee`, which a wipe
+    empties — would trade one 23503 for another), no `totp_secret_enc`, no `godmode_pin_hash`. Not a security
+    widening: auth/sessions/RBAC all resolve against `req.identityDb`, so these rows are FK targets, not
+    credentials.
+- **Call sites:** `provisioning.wipeSandbox` (unchanged behaviour, now delegating), `provisioning.createAdmin`
+  and `scripts/tenant/create-admin.js` (**this is what closes the fresh-tenant hole** — provisioning itself
+  cannot, since no user exists yet), and `app_user.service` — `createUser` after COMMIT and best-effort (a
+  sandbox problem must never roll back or fail a live user create), `updateUser` as a **self-heal** for
+  pre-fix users, explicitly not a sync (the untargeted conflict means a renamed user keeps the old display
+  name in sandbox; cosmetic, nothing reads it as authoritative).
+- **`scripts/tenant/mirror-users.js`** (new) — `--slug=<x> | --all [--dry-run]` backfill for tenants
+  provisioned before this existed. Idempotent, read-only against LIVE, counts what is missing before and after
+  and names anything it could not mirror rather than reporting success.
+- **Wired into the deploy path.** `migrateTenant()` now mirrors after `projectFeatures()`, so
+  `scripts/deploy.sh`'s migrate service (platform + all tenants, every deploy) self-heals drift on **every
+  environment** rather than depending on someone remembering the script. Idempotent — inserts nothing on a
+  healthy tenant. **Best-effort:** a deploy must not fail over sandbox convenience data, so a failure logs at
+  error level and the script re-runs it on demand.
+- **`tests/unit/sandbox-user-mirror.test.js`** — nine cases, guarding the three decisions above plus "the
+  best-effort wrapper never throws".
+
+**Verified 2026-08-02 (user-run on Windows — the sandbox VM again failed to start, so nothing ran in-session):**
+`npm run lint` + `npm test` clean; `mirror-users.js --all` reported `smartls: mirrored 2 of 2 missing user(s)`
+with no collisions; and a TEST-mode write with a real actor confirmed working in the UI — **the first time
+TEST mode has been writable since session 3.**
+
+**Docs:** the "⚠️ STILL OPEN" banners in `WORK_TO_BE_DONE.md` and `SESSION_HANDOFF.md` are now closed, with the
+drift hole written up since it was never recorded.
+
+### Also session 18 — AI conversation memory no longer forgets, and /media is safe under S3
+
+**1. Rolling conversation summary (`0481_ai_conversation_summary.sql`).** Session 17's memory capped replay at
+`HISTORY_TURNS = 20` to keep per-call cost flat against a hard-capped AI budget. The flagged consequence:
+turn 21 didn't fade, it **vanished** — worse than no memory, because the assistant had already taught the
+user to expect recall. Now everything that scrolls out of the window is folded into one rolling summary on
+`ai_conversation` (`summary`, `summary_through`, `summary_at`):
+
+- **Replaced, never appended** — an appended summary grows without bound and recreates the cost problem the
+  window exists to solve. Capped at ~200 words, regenerated from the previous summary plus the new batch.
+- **Batched at 10** (`SUMMARY_BATCH`). Regenerating every turn would mean a second model call per question,
+  roughly doubling the cost of a long thread. The price is a bounded **gap**: up to nine messages can sit
+  outside both the window and the summary until the next batch absorbs them. Written down rather than
+  discovered.
+- **Runs before the model call**, so the current answer benefits from the summary just written.
+- `summary_through` advances only after a successful write, so a failed batch retries cleanly and cannot skip
+  or double-count. Redacted on the way in like every other egress path. Recorded against the tenant's AI
+  budget with `call_type = 'summary'` — it is real spend, and hiding it would make the cap lie.
+- Rides as a **system** message ("EARLIER IN THIS CONVERSATION…"), not a fake assistant turn, so the model
+  doesn't quote it back as its own words.
+
+**2. `/media` under S3 — a hole that would have opened on switch-over day.** The 08-01 guard was local-driver
+only. Two findings on inspection:
+
+- The gated download route was **already correct** for s3 — `document_vault.service:71` streams via
+  `storage.get`, so permission is checked server-side either way. The exposure was elsewhere.
+- **`storage.publicUrl` minted a direct path-style bucket URL for ANY key**, including vault artefacts —
+  `pdf.service.renderAndStore` passes every rendered PDF through it. Persisting that value is exactly how a
+  confidential document acquires a shareable link that bypasses `requirePermission`. Same hole as the flat
+  mount, one layer along.
+
+Fixed in code rather than by bucket policy: `publicUrl` now returns `/media/<key>` for everything (CDN only
+for public keys), so no direct object URL is ever minted or stored; `/media` is mounted under **both** drivers
+with the same allow-list, answering a permitted key under s3 with a **302 to a 5-minute presigned URL**
+instead of a file. Net effect: **the bucket needs no public-read at all**, the rule lives in code instead of
+in a policy someone must re-apply per environment, and a stored URL survives a local→s3 migration (a bucket
+URL in the database would not). New `isPublicStorageKey()` shares one implementation with the URL form, so a
+key and its `/media` path can never disagree about whether something is public.
+
+**Tests:** `tests/unit/ai-conversation-summary.test.js` (batch boundaries, resume watermark, replace-not-append)
+and new cases in `media-guard.test.js` (key/path agreement, and a regression guard that `publicUrl` never
+returns an absolute URL for a private key). **`0481` applied and Windows validators green (user-run).**
+
+### Also session 18 — the external CLIENT PORTAL, first external user who can actually sign in
+
+**The gap.** `portal_access` (0340) grants by **email**; `portal_user` (0460) holds the credentials; and
+nothing ever connected them. `POST /portal/users` existed with **no caller**, so every grant ever issued
+pointed at somebody with no password — access granted, nobody able to use it. Third instance of this exact
+shape after service types (session 17) and milestone templates: a complete backend with no route in.
+
+**`0482_portal_invite.sql`** — one-time tokens for external users, mirroring `password_reset` (0471):
+SHA-256 hash only (a database read cannot mint a working link), single-use via `used_at`, one live token per
+user. `purpose` splits INVITE from RESET because they need **different lifetimes** — an invite goes to someone
+who has never heard of the system and may open it days later (7 days), a reset is requested by someone at the
+screen (30 minutes). A 30-minute invite would expire on most recipients and land as support load on the tenant.
+
+**Backend** (`portal_auth`): `inviteUser` (create-or-find + email the link), `requestReset` (public, always
+200 — no account enumeration), `acceptInvite` (consumes the token and **signs them straight in**: they have
+just proved control of the mailbox, so bouncing them to a login form is friction for no security gain).
+New routes `POST /portal/auth/forgot`, `POST /portal/auth/accept`, `POST /portal/users/invite`. A new login
+gets a **random unusable password** — `password_hash` is NOT NULL and nobody, staff included, should know a
+value that lets them sign in as an external party. Invite emails carry the **tenant's** name, resolved from
+branding: an external contact has no idea what "Praxis LS" is, and an unattributed mail reads as phishing.
+
+**Frontend** — `features/portal/portal-app.tsx` + `lib/portal-api.ts`:
+- Mounted at **`/client-portal`, NOT `/portal`** — the staff grant screen already owns `/portal/access`.
+  React Router would likely rank the static path above a splat and keep them apart, but an authentication
+  boundary should not depend on route-scoring subtleties; one nested route added later and an external user
+  is looking at a staff screen.
+- Outside `RequireAuth` and `AppShell`. Its **own** token store and fetch client, deliberately not a flag on
+  `api-client.ts`: sharing would mean sharing the staff refresh-on-401 path, and the first bug in that seam is
+  a portal token reaching a staff endpoint or a staff session being clobbered by a client contact on the same
+  browser. **sessionStorage, no "remember me"** — these sessions are opened on borrowed machines and the data
+  behind them is somebody's commercial position.
+- Screens: sign in, forgot-password, set-password (invite + reset both land here), and a home showing
+  shipments and invoices from `GET /portal/client`. A login with no usable grant gets an explicit "no active
+  access" rather than empty tables, which would read as "you have no shipments".
+
+**Staff side** — the grant modal now creates the login too (on by default, with the reason stated in the UI),
+sent as a **separate non-fatal step** so an SMTP outage can't roll back the grant; a partial failure holds the
+modal open and says so. Grant rows show **"no sign-in"** or **"invited"** badges, last-sign-in date, and a
+Create-sign-in / Resend action. Logins are matched to grants **client-side**: `portal_access` is
+per-environment business data while `portal_user` is identity (live) data, and a cross-schema join is exactly
+the trap that broke TEST-mode writes for fourteen sessions.
+
+**Investor terminal — built the same session (PRD §5.2).** `investorView` was two reports; the catalogue
+already held the rest, so it now returns **income statement + bilan + cash position + TAFIRE cash-flow** plus
+a KPI block (revenue, net result, cash on hand, balance-sheet total). Three decisions worth keeping:
+
+- **A default period was mandatory, not a nicety.** The statement producers take optional `from`/`to` and,
+  given neither, sum the ENTIRE validated ledger — inception-to-date. That is a defensible trial balance and a
+  meaningless income statement, where "revenue" is every franc ever billed, growing forever, comparable to
+  nothing. Defaults to the current calendar year; explicit `?from`/`?to` still wins.
+- **KPIs are derived from the statements already fetched** — no extra query and, more importantly, no second
+  definition of "revenue" that could drift from the Compte de résultat sitting beside it on the same screen.
+- **No operational detail** (no dossiers, no clients, no per-shipment margin) — that boundary is the point of
+  the tier, so it is enforced by what the service fetches rather than by what the UI renders. Payload carries
+  `basis: "OHADA"` because PRD open question 4 (true IFRS view vs KPIs) is still unanswered, and nothing
+  downstream should assume otherwise.
+
+FE: a KPI strip plus Compte de résultat / Bilan / Cash position panels. An **unbalanced bilan is shown, not
+hidden** — it means the books need attention, and rendering it as final would be the worse failure. A login
+holding both grants gets a Shipments/Financials switch rather than a guess.
+
+**Still not built: the auditor room.** `auditorView` returns procurement spend plus a literal note that it
+"reuses vault + audit ledger + reporting". The pieces exist (`security/audit_ledger` over the immutable
+ledger, vault download + verification, time-boxing via `portal_access.expires_at`), but the blocker is a
+**policy** decision, not code: the ledger carries staff names, HR events and every permission change, and
+composing that for an external party needs someone to define scope first. A portal login holding only an
+auditor grant is told the room isn't open rather than shown one report dressed up as a portal.
+
+**Verified in-sandbox** (the VM came back mid-session): all touched backend files `node --check` clean,
+`eslint` **0 errors** (two pre-existing warnings untouched), client `tsc -b --force` **clean**. `jest` still
+would not run in-sandbox. **`0482` applied and Windows validators green (user-run).**
+
+**Owed before this is usable by a real external party** — none of it is code:
+1. **SMTP must be configured for the tenant**, or invites fail silently from the recipient's point of view.
+   The UI reports it ("Login ready … but the email could not be sent") and Resend exists, but nobody sees that
+   message unless staff read it.
+2. **A click-through**: grant access to a real address → invite arrives → set a password → confirm the portal
+   shows that client's dossiers **and nobody else's**. The scoping is `portal_access.client_id`, enforced
+   server-side in `portalAuth("CLIENT")`, and it is the one thing worth proving by hand.
+3. The three `portal.*` feature flags gate the data views (`portal.client` / `portal.investor` /
+   `portal.audit`) on the STAFF preview path. Confirm they are on for the tenant, or previews 403 while the
+   external view works — a confusing split to debug later.
+
+---
+
 ## 2026-08-01 — Session 17: Control Tower map made real (geo_place + Geoapify forward geocoding), `/media` bypass closed, milestone auto-seeding, AI conversation memory, doc-truth audit
 
 **Repo audit first — several backlog statuses had rotted.** Verified against source, not against the docs.

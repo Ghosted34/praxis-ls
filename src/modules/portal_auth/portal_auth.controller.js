@@ -1,9 +1,30 @@
 "use strict";
 const service = require("./portal_auth.service");
 const portal = require("../portal/portal.service");
+const branding = require("../branding/branding.service");
 const { asyncHandler } = require("../../utils/errors");
 
 const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"];
+
+/**
+ * The tenant's own name, for invite emails.
+ *
+ * An external contact has no idea what "Praxis LS" is — the mail has to say who
+ * is giving them access, or it reads like phishing and gets deleted. Branding is
+ * live-based (session 17), so this is the same name they see on the portal.
+ * Best-effort: a missing display name must not stop an invite going out.
+ */
+async function tenantName(req) {
+  try {
+    const b = await req.identityDb((c) => branding.getBranding(c));
+    return (b && b.name) || (req.tenant && req.tenant.slug) || "your logistics provider";
+  } catch {
+    return (req.tenant && req.tenant.slug) || "your logistics provider";
+  }
+}
+
+/** Absolute origin of the request, so the emailed link points at the right host. */
+const originOf = (req) => `${req.protocol}://${req.get("host")}`;
 
 module.exports = {
   // ── Public login ──
@@ -37,4 +58,39 @@ module.exports = {
   }),
   setPassword: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setPassword(c, { id: req.params.id, password: req.body.password })) })),
   setStatus: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setStatus(c, { id: req.params.id, status: req.body.status })) })),
+
+  // ── Invitations + recovery (0482) ──
+  /**
+   * Create-or-find the login for an email and send the set-password link. This is
+   * the step that was missing: `portal_access` grants by email, and until now
+   * nothing ever created the account that email would sign in with.
+   */
+  invite: asyncHandler(async (req, res) => {
+    const name = await tenantName(req);
+    const data = await req.identityDb((c) =>
+      service.inviteUser(c, {
+        email: req.body.email,
+        fullName: req.body.full_name,
+        ip: req.ip,
+        origin: originOf(req),
+        tenantName: name,
+      }),
+    );
+    res.status(data.created ? 201 : 200).json({ data });
+  }),
+
+  /** Public. Always 200 — never reveals whether an email is registered. */
+  forgot: asyncHandler(async (req, res) => {
+    const name = await tenantName(req);
+    const data = await req.identityDb((c) =>
+      service.requestReset(c, { email: req.body.email, ip: req.ip, origin: originOf(req), tenantName: name }),
+    );
+    res.json({ data });
+  }),
+
+  /** Public. Consumes the one-time token and signs the user straight in. */
+  accept: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => service.acceptInvite(c, { token: req.body.token, password: req.body.password }));
+    res.json({ data });
+  }),
 };

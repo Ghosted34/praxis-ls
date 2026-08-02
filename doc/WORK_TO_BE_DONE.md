@@ -24,7 +24,7 @@ unpopulated `ref`); line items locked to catalogue selects (PO/PR → financial 
 - Seed the **financial-dictionary** + **inventory** masters so the new line-item selects have options.
 - **DSF pixel-exact** — still a structured summary; needs the official DGI liasse PDF to match exactly.
 
-## ⚠️ TEST-MODE WRITES WERE BROKEN SINCE SESSION 3 — fixed 2026-08-01, one gap left
+## ✅ TEST-MODE WRITES WERE BROKEN SINCE SESSION 3 — fully closed 2026-08-02 (kept for the reasoning)
 
 **The single most important finding of session 17.** Read this before touching anything that writes an
 actor id.
@@ -55,11 +55,38 @@ Kept alongside, because they're correct independently: `emitEvent` / `audit` / `
 write the actor via a guarded sub-select, and `shared/events/emit.js` exports **`resolveActorId(client, id)`**
 for per-module actor columns. An audit write should never fail over attribution.
 
-**⚠️ STILL OPEN — newly provisioned tenants.** Provisioning creates the schemas *before* `create-admin.js`
-makes any user, so the mirror is a no-op at that point and a brand-new tenant's sandbox starts empty. **Their
-first TEST-mode write will fail exactly as described above**, and the remedy (wipe the sandbox) is deeply
-unintuitive for something that reads like a permissions error. Fix by mirroring on user creation too —
-`create-admin.js` or `app_user.service.create`. **Do this before provisioning another tenant.**
+**✅ CLOSED 2026-08-02 (session 18) — and it was two holes, not one.**
+
+The session-17 fix mirrored at **wipe time only**, which left:
+
+1. **Newly provisioned tenants.** Provisioning creates the schemas *before* `create-admin.js` makes any user,
+   so there is nothing to copy at that point and a brand-new tenant's sandbox starts empty. Their first
+   TEST-mode write failed exactly as described above — and the remedy (wipe the sandbox) is deeply
+   unintuitive for something that reads like a permissions error.
+2. **Drift on an established tenant** — *not previously identified*. The wipe mirror is a point-in-time
+   snapshot, so **every user created after the last wipe was equally missing**. A hire onboarded months later
+   would hit the identical 23503 on a system that had worked fine for everyone else. Confirmed real: the
+   backfill found **2 such users on smartls**.
+
+Both close at the source — mirroring now runs on user **create/update**, not only on wipe:
+
+- `src/shared/db/sandbox-user-mirror.js` — `mirrorUsersIntoSandbox(client, {userId})` (throws) and
+  `mirrorUserBestEffort(client, userId)` (swallows + warns, for the request path). Schemas named explicitly
+  rather than trusting `search_path`; `ON CONFLICT DO NOTHING` deliberately **untargeted**, so it absorbs an
+  `email` clash as well as a `user_id` one; the single-user path verifies afterwards and warns, since an email
+  collision is the one case where "nothing inserted" still leaves the FK unsatisfied.
+- Called from `provisioning.wipeSandbox` (as before), `provisioning.createAdmin`,
+  `scripts/tenant/create-admin.js`, and `app_user.service` `createUser` (after COMMIT, best-effort — a sandbox
+  problem must never fail a live user create) + `updateUser` (self-heal for pre-fix users, not a sync).
+- `scripts/tenant/mirror-users.js --slug=<x> | --all [--dry-run]` backfills existing tenants. Idempotent.
+  Reports anything it could not mirror rather than claiming success.
+- **Runs on deploy** — `migrateTenant()` mirrors after `projectFeatures()`, and `scripts/deploy.sh`'s migrate
+  service covers platform + all tenants on every deploy, so no environment depends on someone remembering the
+  script. Best-effort (a deploy must not fail over this); failures log at error level.
+- `tests/unit/sandbox-user-mirror.test.js`.
+
+**Verified 2026-08-02 (user-run on Windows):** lint/test clean; `--all` reported `smartls: mirrored 2 of 2
+missing user(s)`; a TEST-mode write with a real actor confirmed working in the UI.
 
 ## ✅ ONBOARDING GAP — CLOSED 2026-08-01 (kept for the reasoning)
 
@@ -211,6 +238,75 @@ were caught by gates that had never run before:
 looks like `"\ai\ask"` in a `grep -A` result is `/ai/ask` in the file. Verified three times this session;
 don't "fix" one.
 
+## Repo audit — 2026-08-02 (session 18: re-checked the "still open" list against source)
+
+The 2026-08-01 audit below is sound apart from four entries. Same method — read the source, cite the line.
+
+1. **The xlsx/csv export is HALF-BUILT, not unbuilt.** "Nothing emits xlsx" is wrong about the codebase:
+   **`src/services/spreadsheet.service.js`** (ExcelJS — `buildWorkbook` / `parseWorkbook` / `buildCsv`, CSV
+   emitted UTF-8-with-BOM so Excel renders accents, imports auto-detected by magic bytes) and
+   **`src/services/excel/workbook.js`** (the house-styled workbook — deep-red `#690909` header, cream text,
+   frozen panes) both exist and are substantial. **Neither has a single consumer** — nothing in `src/`
+   requires either file. So the real gap is *wiring*, not authorship: `report.validator.js:5` accepts
+   `pdf|csv|xlsx`, `scheduled_report.formats` defaults to `["pdf"]` (`report.service.js:93`), and
+   `jobs/workers.js:25` registers a **`pdf` handler only**. Two orphaned service files also deserve a
+   decision on their own terms — finish them or delete them; leaving a house-styled exporter nobody calls is
+   how it gets written a second time.
+2. **Help center is built AND routed** — `features/help/help-page.tsx`, mounted at `/help`
+   (`app.tsx:91`). The 08-01 audit already caught the page; what survives is only the **settings tile**
+   `/settings/help-center`, still `<Planned/>` (`app.tsx:149`). **Factory languages** is the one genuinely
+   unbuilt on both counts (`app.tsx:142`, no endpoint). Don't let "help center" ride the open list as though
+   nothing exists.
+3. **Two session-10 cleanup chores were never done.** **`client/vite.config.js` is still committed** beside
+   `vite.config.ts` — Vite resolves `.js` first, so the TypeScript config has still never been the live one,
+   and the handoff's warning about that swap is still pending, not historical. And
+   **`client/src/features/master/pages.tsx`** (748 lines) still exists with **zero importers** — the
+   `master-data-page.tsx` hub reads from `features/masterdata/`, a different folder.
+4. **`depends_on` non-enforcement is concrete, not theoretical.** `ai.assistant.backend` and
+   `ai.vectorization` are both seeded `depends_on = '{ai.assistant}'` (`9100:112-113`, `9110:61-62`) and
+   `projectFeatures()` never reads the column — so the AI backend can be entitled with its own UI feature
+   off. That is the exact shape of the session-10 "19 modules were dark" bug, one layer up.
+
+**Closed the same day (session 18):** **AI summarisation** — `0481_ai_conversation_summary.sql` + a rolling
+summary in `orchestrator.service` (batched at 10, ≤200 words, replaced not appended, billed as
+`call_type='summary'`); and the **`/media` S3 caveat** — enforcement moved into code (`/media` mounted under
+both drivers, 302 to a 5-minute presigned URL under s3, `storage.publicUrl` no longer mints a direct bucket
+URL for a private key), so **no bucket policy is required and the bucket needs no public-read**. That last one
+was more urgent than it read: `pdf.service.renderAndStore` runs every rendered PDF through `publicUrl`, so the
+vault would have acquired shareable direct links on the day S3 was switched on.
+
+**External portal — CLIENT half closed (session 18).** The blocker was never the FE alone: `portal_access`
+grants by email, `portal_user` holds credentials, and nothing connected them (`POST /portal/users` had no
+caller), so every grant ever issued pointed at somebody with no password. Now `0482_portal_invite` +
+invite/reset/accept endpoints, an external SPA at **`/client-portal`** (not `/portal` — the staff grant screen
+owns `/portal/access`, and an auth boundary must not depend on route ranking), and a staff flow that creates
+the login alongside the grant and shows "no sign-in"/"invited" on every row. **Investor terminal also built**
+— statements + TAFIRE + derived KPIs on a defaulted period, OHADA basis declared in the payload.
+
+**Still open: the AUDITOR room, and it is blocked on policy rather than code.** `auditorView` returns
+procurement spend plus a literal note that it "reuses vault + audit ledger + reporting". The parts exist —
+`security/audit_ledger` over the immutable ledger, vault download + verification, time-boxing via
+`portal_access.expires_at` + `isGrantUsable`. What does not exist is a decision about **what an external
+auditor may see**: the ledger carries staff names, HR events and every permission change, so composing it for
+a third party without a scope definition would hand out the tenant's internal security history. One technical
+note for whoever builds it: audit-ledger security-event reads are pinned to `identityDb` (live) while portal
+views run on `req.tenantDb` — handle that split deliberately rather than discover it.
+
+**Also still open (PRD open question 4):** whether the investor terminal needs a true **IFRS** view or the
+OHADA KPIs suffice. Nothing IFRS is built anywhere.
+
+**Re-confirmed unchanged** (each read this session): `scopeColumn` declared by no module
+(`shared/crud/resource.js:35`, `middleware/rbac.js:107`); `requireCapability` zero call sites
+(`rbac.js:133` + docstrings only); the Live self-grant TODO (`permission.service.js:9`); `/media` S3 caveat
+(`media-guard.js:24`); the Control Tower activity feed deliberately removed pending an endpoint
+(`dashboard.tsx:787-798`); AI history capped at `HISTORY_TURNS = 20` with no summarisation
+(`orchestrator.service.js:22`); all three `ai.*` features seeded `off`.
+
+**One item the 08-01 audit missed entirely:** **`AssetsPage` is still a `ResourceList` stub**
+(`client/src/features/finance/pages.tsx:1120`) while `finance/asset/` is a complete module through
+depreciation and disposal. A finished backend behind a placeholder screen — flagged to the FS colleague in
+session 9 and still true.
+
 ## Repo audit — 2026-08-01 (verified against code, not against this file)
 
 Every line below was checked by reading the source, because several statuses in this document had rotted.
@@ -228,7 +324,8 @@ download (`document_vault.routes.js:15`); the per-tenant AI spend dashboard (`fe
 **no module declares it** — still blocked on no business table having a scope column); `requireCapability`
 has **zero call sites** outside its own docstring; `depends_on` is never consulted by `projectFeatures()`
 (only by `scripts/tenant/feature-report.js`); the Live self-grant block (`permission.service.js:9` TODO);
-report export renders **pdf only** (`report.validator.js:5` accepts pdf|csv|xlsx, nothing emits xlsx);
+report export renders **pdf only** (`report.validator.js:5` accepts pdf|csv|xlsx, nothing emits xlsx —
+**corrected 2026-08-02: the ExcelJS/CSV toolkit DOES exist and is unwired, see the session-18 audit above**);
 factory languages has no endpoint; external-facing portal FE (only staff-side `portal/access` is routed).
 
 **Two hazards found:**

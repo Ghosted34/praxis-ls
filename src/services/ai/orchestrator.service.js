@@ -22,19 +22,50 @@ const { logger } = require("../../config/logger");
 const HISTORY_TURNS = 20;
 
 /**
+ * How many messages must fall out of the replay window before the summary is
+ * regenerated (0481).
+ *
+ * The trade-off this number encodes: regenerating on every turn would mean a
+ * second model call per question — roughly doubling the cost of a long thread,
+ * against a budget that is hard-capped per tenant. Batching makes it one extra
+ * call per ten turns. The price is a **gap**: up to `SUMMARY_BATCH - 1` messages
+ * can sit outside both the replay window and the summary, so a detail mentioned
+ * exactly there is briefly unavailable until the next batch absorbs it. Bounded,
+ * self-correcting, and much cheaper than the alternative — but real, so it is
+ * written down rather than discovered.
+ */
+const SUMMARY_BATCH = 10;
+
+/** Cap on the summary itself, so the thing that bounds cost cannot grow unbounded. */
+const SUMMARY_WORDS = 200;
+
+/**
  * Conversation memory, isolated here so a failure in it can never take down an
  * answer. History is an enhancement: if the tables are unreachable the assistant
  * must still respond, just without recall — the same best-effort contract the
  * geocoding and milestone-seeding paths follow.
  */
 const history_ = {
+  /** Resolve the thread id once, so condense + load agree on which thread. */
+  async currentId(client, user) {
+    try {
+      return await convo.currentConversation(client, user.user_id);
+    } catch {
+      return null;
+    }
+  },
   async load(client, { user, conversationId }) {
     try {
       const id = conversationId || (await convo.currentConversation(client, user.user_id));
-      return { conversationId: id, turns: await convo.recentMessages(client, id, HISTORY_TURNS) };
+      const state = await convo.conversationSummary(client, id);
+      return {
+        conversationId: id,
+        turns: await convo.recentMessages(client, id, HISTORY_TURNS),
+        summary: state.summary || null,
+      };
     } catch (err) {
       logger.warn({ err: err.message }, "[ai] conversation history unavailable");
-      return { conversationId: conversationId || null, turns: [] };
+      return { conversationId: conversationId || null, turns: [], summary: null };
     }
   },
   async save(client, { conversationId, question, answer }) {
@@ -44,6 +75,68 @@ const history_ = {
       if (answer) await convo.addMessage(client, { conversationId, role: "assistant", content: answer });
     } catch (err) {
       logger.warn({ err: err.message }, "[ai] conversation turn not persisted");
+    }
+  },
+
+  /**
+   * Fold everything that has scrolled out of the replay window into one rolling
+   * summary (0481).
+   *
+   * WHY. `HISTORY_TURNS` caps what is re-sent so cost stays flat, but the effect
+   * was that turn 21 did not fade — it vanished. A user who was told something in
+   * message 3 and refers back to it in message 30 got a blank stare, which is
+   * worse than no memory at all, because the assistant had already taught them to
+   * expect recall.
+   *
+   * Runs BEFORE the model call, not after, so the current question benefits from
+   * the summary that was just written rather than the next one. Batched (see
+   * SUMMARY_BATCH) so the extra call is amortised over ten turns.
+   *
+   * Best-effort throughout: a summariser that throws must never cost the user an
+   * answer, and a failed batch simply retries on the next turn — `summary_through`
+   * only advances after a successful write, so nothing is skipped.
+   */
+  async condense(client, { user, conversationId, feature }) {
+    if (!conversationId) return;
+    try {
+      const state = await convo.conversationSummary(client, conversationId);
+      const pending = await convo.messagesAwaitingSummary(client, conversationId, {
+        keepRecent: HISTORY_TURNS,
+        sinceMessageId: state.summary_through,
+      });
+      if (pending.length < SUMMARY_BATCH) return;
+
+      // Redacted on the way IN, like every other egress path — the summariser is
+      // a model call, so PII/financial scrubbing applies before the text leaves.
+      const transcript = pending.map((m) => `${m.role}: ${redact(m.content)}`).join("\n");
+      const prior = state.summary ? `EXISTING SUMMARY:\n${redact(state.summary)}\n\n` : "";
+      const res = await llm.chat({
+        client,
+        temperature: 0,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You maintain a running summary of an ERP assistant conversation. " +
+              `Rewrite the existing summary and the new exchanges into ONE summary of at most ${SUMMARY_WORDS} words. ` +
+              "Keep decisions, figures, record references and anything the user asked to be remembered. " +
+              "Drop pleasantries and anything already superseded. Write plain prose, no preamble.",
+          },
+          { role: "user", content: `${prior}NEW EXCHANGES:\n${transcript}` },
+        ],
+      });
+      if (!res.text) return; // no provider configured, or the vendor failed — try again next turn
+
+      await convo.setSummary(client, conversationId, {
+        summary: res.text.trim(),
+        throughMessageId: pending[pending.length - 1].ai_message_id,
+      });
+      // Counted against the tenant's AI budget like any other call — it is real
+      // spend, and hiding it would make the cap lie. `call_type` distinguishes it
+      // so the spend dashboard can show what summarisation costs.
+      await recordUsage(client, { user, conversationId, res, feature, callType: "summary" });
+    } catch (err) {
+      logger.warn({ err: err.message }, "[ai] conversation summarisation skipped");
     }
   },
 };
@@ -115,9 +208,25 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
   //
   // Redaction applies to history too: PII/financial scrubbing has to hold for
   // replayed turns exactly as it does for the live question.
-  const history = await history_.load(client, { user, conversationId });
+  // Fold anything that has scrolled out of the window into the rolling summary
+  // first, so THIS answer sees it (0481). Best-effort — never blocks the answer.
+  const resolvedId = conversationId || (await history_.currentId(client, user));
+  await history_.condense(client, { user, conversationId: resolvedId, feature });
+
+  const history = await history_.load(client, { user, conversationId: resolvedId });
   const messages = [
     { role: "system", content: system },
+    // The summary rides as a system message rather than a fake assistant turn:
+    // it is context about the conversation, not something anyone actually said,
+    // and labelling it honestly stops the model quoting it back as its own words.
+    ...(history.summary
+      ? [{
+          role: "system",
+          content:
+            "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" +
+            redact(history.summary),
+        }]
+      : []),
     ...history.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
     { role: "user", content: redact(message) },
   ];
@@ -258,14 +367,14 @@ async function confirmBatch({ client, user, batchId, registry }) {
   return { batch_id: batchId, halted: false, executed: results.length, results };
 }
 
-async function recordUsage(client, { user, conversationId, res, feature }) {
+async function recordUsage(client, { user, conversationId, res, feature, callType = "chat" }) {
   try {
     const u = res.usage || {};
     // Route through governance so the row is tied to the active budget period and
     // its XAF cost is derived from the vendor's per-token rate (spend caps).
     await governance.recordUsage(client, {
       userId: user.user_id, featureKey: feature, conversationId: conversationId || null,
-      provider: res.provider, callType: "chat",
+      provider: res.provider, callType,
       inputTokens: u.prompt_tokens || 0, outputTokens: u.completion_tokens || 0,
       wasSuccessful: true,
     });

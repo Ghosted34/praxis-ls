@@ -85,10 +85,78 @@ async function startNewConversation(client, userId) {
   return rows[0].conversation_id;
 }
 
+// ── Rolling summary (0481) ──────────────────────────────────────────────────
+// The replay window keeps per-call cost flat; the summary is what stops the
+// messages that fall out of it from vanishing entirely. See orchestrator.service.
+
+/** The conversation's stored summary + how far it covers. */
+async function conversationSummary(client, conversationId) {
+  const { rows } = await client.query(
+    "SELECT summary, summary_through, summary_at FROM ai_conversation WHERE conversation_id = $1",
+    [conversationId],
+  );
+  return rows[0] || { summary: null, summary_through: null, summary_at: null };
+}
+
+/**
+ * Messages that have scrolled out of the replay window and are NOT yet covered
+ * by the summary — i.e. exactly the text at risk of being forgotten.
+ *
+ * `keepRecent` mirrors the orchestrator's replay window: those rows are re-sent
+ * verbatim, so summarising them too would duplicate them in the prompt.
+ * `sinceMessageId` is the last message the current summary covers; ordering by
+ * `(created_at, ai_message_id)` as a ROW comparison matches the ordering used
+ * everywhere else in this file, so a batch can neither skip nor double-count a
+ * message when two land in the same millisecond.
+ *
+ * Oldest-first: a summariser reads a transcript in the order it happened.
+ */
+async function messagesAwaitingSummary(client, conversationId, { keepRecent = 20, sinceMessageId = null } = {}) {
+  const { rows } = await client.query(
+    `WITH ranked AS (
+       SELECT ai_message_id, role, content, created_at,
+              row_number() OVER (ORDER BY created_at DESC, ai_message_id DESC) AS rn
+         FROM ai_message
+        WHERE conversation_id = $1
+          AND role IN ('user','assistant')
+          AND content IS NOT NULL AND content <> ''
+     ),
+     mark AS (
+       SELECT created_at, ai_message_id FROM ai_message WHERE ai_message_id = $3
+     )
+     SELECT r.ai_message_id, r.role, r.content
+       FROM ranked r
+      WHERE r.rn > $2
+        AND (NOT EXISTS (SELECT 1 FROM mark)
+             OR (r.created_at, r.ai_message_id) > (SELECT created_at, ai_message_id FROM mark))
+      ORDER BY r.created_at ASC, r.ai_message_id ASC`,
+    [conversationId, keepRecent, sinceMessageId],
+  );
+  return rows;
+}
+
+/**
+ * Replace the summary (never append).
+ *
+ * Replacing is the whole point: an appended summary grows without bound and
+ * recreates the cost problem the replay window exists to solve. `summary_through`
+ * advances to the newest message the new text covers, so the next batch resumes
+ * exactly where this one stopped.
+ */
+async function setSummary(client, conversationId, { summary, throughMessageId }) {
+  await client.query(
+    "UPDATE ai_conversation SET summary = $2, summary_through = $3, summary_at = now() WHERE conversation_id = $1",
+    [conversationId, summary, throughMessageId || null],
+  );
+}
+
 module.exports = {
   currentConversation,
   recentMessages,
   listMessages,
   addMessage,
   startNewConversation,
+  conversationSummary,
+  messagesAwaitingSummary,
+  setSummary,
 };

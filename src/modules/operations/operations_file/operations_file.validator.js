@@ -16,7 +16,12 @@ const create = z.object({
 });
 const update = create.partial();
 const transition = z.object({ to: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED"]) });
-const schemas = { create, update, transition };
+// AI-facing variants: the record id travels in the payload (there is no URL param
+// on the assistant path), so the executor knows WHICH dossier to act on. The REST
+// routes keep using `update`/`transition` (id comes from req.params).
+const aiUpdate = update.extend({ id: z.string().uuid() });
+const aiTransition = transition.extend({ id: z.string().uuid() });
+const schemas = { create, update, transition, aiUpdate, aiTransition };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

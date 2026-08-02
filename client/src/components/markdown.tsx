@@ -57,13 +57,39 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   return nodes;
 }
 
+type Align = "left" | "center" | "right" | null;
 type Block =
   | { type: "h"; level: number; text: string }
   | { type: "p"; text: string }
   | { type: "ul"; items: string[] }
   | { type: "ol"; items: string[] }
   | { type: "code"; text: string }
-  | { type: "quote"; text: string };
+  | { type: "quote"; text: string }
+  | { type: "table"; header: string[]; align: Align[]; rows: string[][] };
+
+/** Split a `| a | b |` row into trimmed cells, tolerating missing edge pipes. */
+function splitRow(line: string): string[] {
+  let s = line.trim();
+  if (s.startsWith("|")) s = s.slice(1);
+  if (s.endsWith("|")) s = s.slice(0, -1);
+  return s.split("|").map((c) => c.trim());
+}
+
+/** A GFM delimiter row: every cell is `---`, `:--`, `--:`, or `:-:`. */
+function isDelimiterRow(line: string): boolean {
+  if (!line.includes("|") && !/^\s*:?-+:?\s*$/.test(line)) return false;
+  const cells = splitRow(line);
+  return cells.length > 0 && cells.every((c) => /^:?-+:?$/.test(c));
+}
+
+function alignOf(cell: string): Align {
+  const l = cell.startsWith(":");
+  const r = cell.endsWith(":");
+  if (l && r) return "center";
+  if (r) return "right";
+  if (l) return "left";
+  return null;
+}
 
 function parseBlocks(src: string): Block[] {
   const lines = src.replace(/\r\n/g, "\n").split("\n");
@@ -103,6 +129,19 @@ function parseBlocks(src: string): Block[] {
       continue;
     }
 
+    // table: a header row followed by a delimiter row
+    if (line.includes("|") && i + 1 < lines.length && isDelimiterRow(lines[i + 1])) {
+      const header = splitRow(line);
+      const align = splitRow(lines[i + 1]).map(alignOf);
+      i += 2;
+      const rows: string[][] = [];
+      while (i < lines.length && lines[i].trim() && lines[i].includes("|")) {
+        rows.push(splitRow(lines[i++]));
+      }
+      blocks.push({ type: "table", header, align, rows });
+      continue;
+    }
+
     // unordered list
     if (/^\s*[-*]\s+/.test(line)) {
       const items: string[] = [];
@@ -128,7 +167,8 @@ function parseBlocks(src: string): Block[] {
       !/^\s*[-*]\s+/.test(lines[i]) &&
       !/^\s*\d+\.\s+/.test(lines[i]) &&
       !/^>\s?/.test(lines[i]) &&
-      !/^```/.test(lines[i].trim())
+      !/^```/.test(lines[i].trim()) &&
+      !(lines[i].includes("|") && i + 1 < lines.length && isDelimiterRow(lines[i + 1]))
     ) {
       buf.push(lines[i++]);
     }
@@ -187,6 +227,36 @@ export function Markdown({ text }: { text: string }) {
                 {renderInline(b.text, key)}
               </blockquote>
             );
+          case "table": {
+            const alignClass = (a: Align) =>
+              a === "center" ? "text-center" : a === "right" ? "text-right" : "text-left";
+            return (
+              <div key={key} className="overflow-x-auto">
+                <table className="w-full border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {b.header.map((h, hi) => (
+                        <th key={`${key}-h-${hi}`} className={`px-2 py-1 font-semibold ${alignClass(b.align[hi] ?? null)}`}>
+                          {renderInline(h, `${key}-h-${hi}`)}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {b.rows.map((row, ri) => (
+                      <tr key={`${key}-r-${ri}`} className="border-b border-border/50">
+                        {b.header.map((_, ci) => (
+                          <td key={`${key}-r-${ri}-${ci}`} className={`px-2 py-1 align-top ${alignClass(b.align[ci] ?? null)}`}>
+                            {renderInline(row[ci] ?? "", `${key}-r-${ri}-${ci}`)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            );
+          }
           default:
             return <p key={key}>{renderInline(b.text, key)}</p>;
         }

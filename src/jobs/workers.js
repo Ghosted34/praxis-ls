@@ -30,6 +30,10 @@ const PROCESSORS = [
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
   { name: "orchestration-dispatch", concurrency: 2, handler: require("./handlers/orchestration-dispatch") },
   { name: "orchestration-scheduler", concurrency: 1, handler: require("./handlers/orchestration-scheduler") },
+  { name: "mail-sync", concurrency: 2, handler: require("./handlers/mail-sync") },
+  { name: "mail-sync-scheduler", concurrency: 1, handler: require("./handlers/mail-sync-scheduler") },
+  { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
+  { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];
@@ -77,6 +81,26 @@ async function scheduleRecurring() {
   const { enqueue } = require("./queue-producer");
   await enqueue("orchestration-scheduler", "tick", {}, { repeat: { every }, removeOnComplete: true, removeOnFail: 50 });
   logger.info({ every }, "orchestration scheduler registered");
+
+  // Mail engine (doc/EMAIL_ENGINE_PLAN.md §5): fan out an IMAP poll per LIVE
+  // tenant. Idempotent across restarts (BullMQ dedupes a repeatable by name +
+  // repeat options). Disabled when the interval is 0.
+  const mailEvery = config.MAIL_SYNC_INTERVAL_MS;
+  if (!mailEvery || mailEvery <= 0) {
+    logger.info("mail sync scheduler disabled (MAIL_SYNC_INTERVAL_MS=0)");
+  } else {
+    await enqueue("mail-sync-scheduler", "tick", {}, { repeat: { every: mailEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: mailEvery }, "mail sync scheduler registered");
+  }
+
+  // Mail push-subscription renewal (Graph/Gmail webhooks expire). Disabled at 0.
+  const renewEvery = config.MAIL_WEBHOOK_RENEW_INTERVAL_MS;
+  if (!renewEvery || renewEvery <= 0) {
+    logger.info("mail webhook renew scheduler disabled (MAIL_WEBHOOK_RENEW_INTERVAL_MS=0)");
+  } else {
+    await enqueue("mail-webhook-renew-scheduler", "tick", {}, { repeat: { every: renewEvery }, removeOnComplete: true, removeOnFail: 50 });
+    logger.info({ every: renewEvery }, "mail webhook renew scheduler registered");
+  }
 }
 
 async function shutdown(sig) {

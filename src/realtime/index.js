@@ -30,6 +30,7 @@ const identityCache = require("../shared/cache/identity-cache");
 let io = null;
 
 const room = (slug, groupId) => `t:${slug}:c:${groupId}`;
+const mailRoom = (slug) => `t:${slug}:mail`;
 
 /** Same origin policy as the HTTP CORS: base domain + its subdomains, explicit
  *  extras, and localhost in development. */
@@ -97,6 +98,12 @@ function initSocket(httpServer) {
   io.on("connection", (socket) => {
     const { tenantSlug, env, userId, tenant } = socket.data;
 
+    // Every authenticated socket joins its tenant's mail room, so inbound-mail
+    // notifications (published from the worker via the Redis bus) reach the
+    // Comms → Mail view live. Membership is tenant-scoped; the API still enforces
+    // per-record access when the client re-fetches.
+    socket.join(mailRoom(tenantSlug));
+
     socket.on("channel:join", async (groupId, ack) => {
       try {
         // eslint-disable-next-line global-require
@@ -118,8 +125,37 @@ function initSocket(httpServer) {
     );
   });
 
+  attachMailBridge();
   logger.info("real-time (socket.io) ready");
   return io;
+}
+
+/**
+ * Subscribe to the Redis mail bus and re-emit inbound-mail events to each tenant's
+ * mail room. Retries until Redis is ready (initRedis resolves shortly after boot).
+ */
+function attachMailBridge(attempt = 0) {
+  let subscriber;
+  try {
+    // eslint-disable-next-line global-require
+    subscriber = require("../config/redis").getSubscriber();
+  } catch {
+    if (attempt < 20) setTimeout(() => attachMailBridge(attempt + 1), 500);
+    return;
+  }
+  // eslint-disable-next-line global-require
+  const { CHANNEL } = require("./mail-bus");
+  subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err: err.message }, "[mail-bus] subscribe failed"));
+  subscriber.on("message", (channel, message) => {
+    if (channel !== CHANNEL || !io) return;
+    try {
+      const { slug, payload } = JSON.parse(message);
+      if (slug) io.to(mailRoom(slug)).emit("mail:new", payload || {});
+    } catch {
+      /* ignore malformed bus messages */
+    }
+  });
+  logger.info("[mail-bus] realtime bridge attached");
 }
 
 /** Emit an event to everyone subscribed to a channel. No-op if not initialised. */

@@ -39,7 +39,7 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
     if (to === "SUBMITTED" && !pr.doc_number && entityId) {
       const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: date || new Date().toISOString().slice(0, 10) });
       updated = await repo.setDocNumber(client, id, number);
-      await documents.capture(client, { entityRef: ref(id), docType: "PURCHASE_REQUEST", status: "DRAFT" });
+      await documents.capture(client, { entityRef: ref(id), docType: "PURCHASE_REQUEST", status: "PENDING" });
     }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), after: updated });

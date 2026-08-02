@@ -61,6 +61,45 @@ async function listMessages(client, conversationId, limit = 200) {
   return rows.reverse();
 }
 
+/**
+ * The user's conversations for the history sidebar, newest activity first.
+ *
+ * Title falls back to the first user message (trimmed to 80 chars) when none was
+ * stored, so a thread is always identifiable. `last_at` is the most recent
+ * message time (not created_at), so an old thread the user just returned to sorts
+ * to the top. Empty threads (a `clear` with no follow-up question) are hidden.
+ */
+async function listConversations(client, userId, limit = 50) {
+  const { rows } = await client.query(
+    `SELECT c.conversation_id,
+            COALESCE(NULLIF(c.title, ''),
+              (SELECT LEFT(m2.content, 80) FROM ai_message m2
+                WHERE m2.conversation_id = c.conversation_id AND m2.role = 'user'
+                  AND m2.content IS NOT NULL AND m2.content <> ''
+                ORDER BY m2.created_at ASC, m2.ai_message_id ASC LIMIT 1)) AS title,
+            COALESCE(MAX(m.created_at), c.created_at) AS last_at,
+            COUNT(m.ai_message_id) FILTER (WHERE m.role IN ('user','assistant')) AS message_count
+       FROM ai_conversation c
+       LEFT JOIN ai_message m ON m.conversation_id = c.conversation_id
+      WHERE c.user_id = $1
+      GROUP BY c.conversation_id, c.title, c.created_at
+     HAVING COUNT(m.ai_message_id) FILTER (WHERE m.role IN ('user','assistant')) > 0
+      ORDER BY last_at DESC
+      LIMIT $2`,
+    [userId, limit],
+  );
+  return rows;
+}
+
+/** Ownership gate: a thread is private to its user, so load-by-id must verify it. */
+async function conversationBelongsToUser(client, conversationId, userId) {
+  const { rows } = await client.query(
+    "SELECT 1 FROM ai_conversation WHERE conversation_id = $1 AND user_id = $2",
+    [conversationId, userId],
+  );
+  return rows.length > 0;
+}
+
 async function addMessage(client, { conversationId, role, content }) {
   const { rows } = await client.query(
     "INSERT INTO ai_message (conversation_id, role, content) VALUES ($1,$2,$3) RETURNING ai_message_id, role, content, created_at",
@@ -154,6 +193,8 @@ module.exports = {
   currentConversation,
   recentMessages,
   listMessages,
+  listConversations,
+  conversationBelongsToUser,
   addMessage,
   startNewConversation,
   conversationSummary,

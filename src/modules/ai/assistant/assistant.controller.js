@@ -28,7 +28,17 @@ const confirmBatch = asyncHandler(async (req, res) => {
 });
 const history = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
-    service.history(client, { user: user(req), limit: Math.min(Number(req.query.limit) || 200, 500) }),
+    service.history(client, {
+      user: user(req),
+      conversationId: req.query.conversation_id || null,
+      limit: Math.min(Number(req.query.limit) || 200, 500),
+    }),
+  );
+  res.json({ data: out });
+});
+const conversations = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.conversations(client, { user: user(req), limit: Math.min(Number(req.query.limit) || 50, 200) }),
   );
   res.json({ data: out });
 });
@@ -37,4 +47,4 @@ const clearHistory = asyncHandler(async (req, res) => {
   res.json({ data: out });
 });
 
-module.exports = { ask, confirm, confirmBatch, history, clearHistory };
+module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory };

@@ -129,6 +129,35 @@ const Schema = z.object({
   // per tenant to drain event_log. 0 disables the recurring schedule.
   ORCHESTRATION_DISPATCH_INTERVAL_MS: int(30000),
 
+  // Mail engine (doc/EMAIL_ENGINE_PLAN.md): how often the scheduler fans an IMAP
+  // sync job per LIVE tenant to pull inbound mail. 0 disables the poll.
+  MAIL_SYNC_INTERVAL_MS: int(60000),
+
+  // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
+  MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h
+
+  // Gmail push (optional): Cloud Pub/Sub topic for users.watch. Empty ⇒ Gmail
+  // stays on delta polling (no push).
+  GOOGLE_PUBSUB_TOPIC: z.string().default(""),
+
+  // Microsoft Graph mail (doc/EMAIL_ENGINE_PLAN.md Phase 2) — deploy-wide Azure
+  // app registration. Client secret is deploy-wide (like VAPID); per-mailbox
+  // OAuth tokens live encrypted in the tenant's integration_secret vault.
+  // REDIRECT_URI empty ⇒ derived per-request from the tenant subdomain host.
+  MS_GRAPH_CLIENT_ID: z.string().default(""),
+  MS_GRAPH_CLIENT_SECRET: z.string().default(""),
+  MS_GRAPH_TENANT: z.string().default("common"),
+  MS_GRAPH_SCOPES: z.string().default("offline_access User.Read Mail.Read Mail.Send Mail.ReadWrite"),
+  MS_GRAPH_REDIRECT_URI: z.string().default(""),
+
+  // Google Gmail mail (doc/EMAIL_ENGINE_PLAN.md Phase 2) — deploy-wide Google
+  // Cloud OAuth client. Per-mailbox tokens live in the tenant vault. Inbound via
+  // Gmail history delta polling (Pub/Sub push is a later accelerator).
+  GOOGLE_CLIENT_ID: z.string().default(""),
+  GOOGLE_CLIENT_SECRET: z.string().default(""),
+  GOOGLE_SCOPES: z.string().default("openid email https://www.googleapis.com/auth/gmail.modify"),
+  GOOGLE_REDIRECT_URI: z.string().default(""),
+
   // Web-Push (VAPID) — deploy-wide identity, one keypair per deployment. Set +
   // tested in the Platform Console (private key encrypted in platform_setting);
   // these env vars are a fallback only. Generate via the console or web-push.

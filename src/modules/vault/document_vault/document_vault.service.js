@@ -19,6 +19,11 @@ const EXT = {
 };
 const MAX_BYTES = 25 * 1024 * 1024;
 
+// Mirrors the document_vault.status CHECK constraint (migration 0340). Guarding
+// here turns a wrong status into a clean 422 instead of a raw 23514 from Postgres
+// (which is how issuers passing "DRAFT" used to surface).
+const VALID_STATUS = new Set(["PENDING", "VERIFIED", "REJECTED", "ARCHIVED"]);
+
 /** True once a real stored object backs the row (not the pending placeholder). */
 const hasBytes = (storagePath) => Boolean(storagePath) && !String(storagePath).startsWith("pending://");
 
@@ -40,6 +45,9 @@ async function capture(client, opts) {
   assertDocType(docType);
   const path = storagePath || "pending://" + entityRef;
   const effStatus = resolveStatus(status, storagePath);
+  if (effStatus !== null && effStatus !== undefined && !VALID_STATUS.has(effStatus)) {
+    throw new AppError("BAD_STATUS", "document status must be one of " + [...VALID_STATUS].join(", "), 422);
+  }
 
   // Update-in-sync: system docs are captured once per entity_ref, then bumped
   // (e.g. placeholder → rendered bytes). Emit UPDATED + audit the transition.

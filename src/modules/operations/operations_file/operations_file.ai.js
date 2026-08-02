@@ -9,7 +9,7 @@ module.exports = {
   ],
   writes: [
     { key: "open_dossier", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-29", action: "create" }, confirm: true, describe: "Open a new operations file (dossier)." },
-    { key: "update_dossier", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-29", action: "edit" }, confirm: true, describe: "Update an open dossier." },
-    { key: "transition_dossier", service: service.transition, schema: validator.schemas.transition, permission: { module: "MOD-29", action: "edit" }, confirm: true, describe: "Advance a dossier (IN_PROGRESS/COMPLETED/CANCELLED)." },
+    { key: "update_dossier", service: service.update, schema: validator.schemas.aiUpdate, permission: { module: "MOD-29", action: "edit" }, confirm: true, describe: "Update an open dossier (payload includes its id)." },
+    { key: "transition_dossier", service: service.transition, schema: validator.schemas.aiTransition, permission: { module: "MOD-29", action: "edit" }, confirm: true, describe: "Advance a dossier by id to IN_PROGRESS/COMPLETED/CANCELLED." },
   ],
 };

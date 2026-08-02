@@ -4,8 +4,8 @@
  * audit applies). Explicit map = the safety boundary (AI_ARCHITECTURE §1/§7).
  *
  * Only actions with a COMPLETE, executable payload are enabled here. The create
- * actions carry a full schema; update/transition actions omit the record id in
- * their manifest schema, so they are intentionally NOT enabled until that lands.
+ * actions carry a full schema; update/transition now carry the record id in their
+ * AI-facing schema (validator.schemas.aiUpdate / aiTransition), so they are enabled.
  * A field-name adapter bridges snake_case AI payloads to the services' camelCase
  * args where they differ.
  */
@@ -31,6 +31,15 @@ const registry = {
   open_dossier: async ({ client, user, payload }) => {
     const r = await opsFile.create(client, { data: payload, actor: user });
     return { entity_ref: `dossier:${r.ref}` };
+  },
+  update_dossier: async ({ client, user, payload }) => {
+    const { id, ...patch } = payload;
+    await opsFile.update(client, { id, patch, actor: user });
+    return { entity_ref: `dossier:${id}` };
+  },
+  transition_dossier: async ({ client, user, payload }) => {
+    await opsFile.transition(client, { id: payload.id, to: payload.to, actor: user });
+    return { entity_ref: `dossier:${payload.id}` };
   },
 
   // ── Commercial / costing (services take { data, actor }) ──

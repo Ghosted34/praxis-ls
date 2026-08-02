@@ -38,7 +38,20 @@ export type AiHistoryMessage = {
 };
 export type AiHistory = { conversation_id: string; messages: AiHistoryMessage[] };
 
-export const fetchAiHistory = () => tenant<AiHistory>("/ai/history");
+/** One row in the history sidebar. `title` falls back to the first user message. */
+export type AiConversationMeta = {
+  conversation_id: string;
+  title: string | null;
+  last_at: string;
+  message_count: number;
+};
+
+/** The current thread, or a specific one by id (the server verifies ownership). */
+export const fetchAiHistory = (conversationId?: string) =>
+  tenant<AiHistory>(`/ai/history${conversationId ? `?conversation_id=${encodeURIComponent(conversationId)}` : ""}`);
+
+/** The caller's past threads for the history sidebar (metadata only, newest first). */
+export const listAiConversations = () => tenant<AiConversationMeta[]>("/ai/conversations");
 
 /** Start a fresh thread. The old one is retained, just no longer current. */
 export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { method: "POST" });

@@ -13,7 +13,7 @@ const { buildExecutorMap } = require("../../../services/ai/action-registrar");
 const registry = buildExecutorMap();
 
 const ask = (client, { user, message, conversationId, allowed }) =>
-  orchestrator.ask({ client, user, message, conversationId, allowed });
+  orchestrator.ask({ client, user, message, conversationId, allowed, registry });
 
 const confirm = (client, { user, actionRunId }) =>
   orchestrator.confirmAction({ client, user, actionRunId, registry });
@@ -26,10 +26,19 @@ const confirmBatch = (client, { user, batchId }) =>
  * Always scoped to req.user — a conversation is private to the person who had
  * it, and there is no cross-user read path by design.
  */
-async function history(client, { user, limit }) {
-  const conversationId = await repo.currentConversation(client, user.user_id);
-  const messages = await repo.listMessages(client, conversationId, limit || 200);
-  return { conversation_id: conversationId, messages };
+async function history(client, { user, conversationId, limit }) {
+  // A requested thread must belong to the caller; otherwise fall back to their
+  // current one (never read another user's conversation).
+  let id = conversationId || null;
+  if (id && !(await repo.conversationBelongsToUser(client, id, user.user_id))) id = null;
+  if (!id) id = await repo.currentConversation(client, user.user_id);
+  const messages = await repo.listMessages(client, id, limit || 200);
+  return { conversation_id: id, messages };
+}
+
+/** The caller's threads for the history sidebar (metadata only, newest first). */
+async function conversations(client, { user, limit }) {
+  return repo.listConversations(client, user.user_id, Math.min(limit || 50, 200));
 }
 
 /**
@@ -42,4 +51,4 @@ async function clearHistory(client, { user }) {
   return { conversation_id: conversationId, messages: [] };
 }
 
-module.exports = { ask, confirm, confirmBatch, history, clearHistory };
+module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory };

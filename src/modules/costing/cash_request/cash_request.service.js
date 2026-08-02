@@ -65,7 +65,7 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
     if (to === "APPROVED") fields.approver_id = actor.user_id || null;
     const updated = await repo.update(client, id, fields);
     if (to === "SUBMITTED") {
-      await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "DRAFT" });
+      await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "PENDING" });
       // Open the tenant's configurable approval chain (bound to disbursal.requested).
       // No workflow bound → autoApproved; the manual APPROVED path is unchanged.
       await executor.start(client, { eventTypeKey: "disbursal.requested", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });

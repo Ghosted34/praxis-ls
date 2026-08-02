@@ -58,3 +58,93 @@ export const putSetting = (section: string, key: string, value: unknown) =>
 
 export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean }) =>
   tenant<Sender>("/mail/senders", { method: "POST", body });
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Provider-agnostic email engine (Phase 1–3): connections, threads, send/reply.
+ * See doc/EMAIL_ENGINE_PLAN.md.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type Provider = "imap_smtp" | "microsoft_graph" | "google_gmail";
+
+export type Connection = {
+  email_connection_id: string;
+  email_address: string;
+  provider: Provider;
+  display_name?: string | null;
+  status: "PENDING" | "CONNECTED" | "ERROR" | "DISABLED";
+  last_sync_at?: string | null;
+  last_error?: string | null;
+  imap_host?: string | null;
+  imap_port?: number | null;
+  smtp_host?: string | null;
+  smtp_port?: number | null;
+  auth_user?: string | null;
+  created_at?: string | null;
+};
+
+export type ThreadMsg = {
+  email_inbound_id: string;
+  email_connection_id?: string | null;
+  thread_key?: string | null;
+  direction: "IN" | "OUT";
+  from_address: string;
+  to_address?: string | null;
+  subject?: string | null;
+  body_preview?: string | null;
+  body_html?: string | null;
+  body_text?: string | null;
+  entity_ref?: string | null;
+  is_read?: boolean;
+  received_at?: string | null;
+};
+
+export type Attachment = {
+  email_attachment_id: string;
+  vault_id?: string | null;
+  filename?: string | null;
+  content_type?: string | null;
+  size_bytes?: number | null;
+};
+
+export type TestResult = { ok: boolean; error?: string; stage?: string };
+
+export type Autoconfig = {
+  source: string; provider?: string;
+  imap_host?: string; imap_port?: number; imap_secure?: boolean;
+  smtp_host?: string; smtp_port?: number; smtp_secure?: boolean;
+  oauth_hint?: "microsoft_graph" | "google_gmail";
+};
+export const autodiscover = (email: string) => tenant<Autoconfig>(`/mail/autodiscover?email=${encodeURIComponent(email)}`);
+
+// Connections
+export const listConnections = () => tenant<Connection[]>("/mail/connections");
+export const connectImap = (body: {
+  email_address: string; display_name?: string;
+  imap_host: string; imap_port?: number; imap_secure?: boolean;
+  smtp_host: string; smtp_port?: number; smtp_secure?: boolean;
+  auth_user?: string; password: string;
+}) => tenant<Connection & { test?: TestResult }>("/mail/connections", { method: "POST", body });
+export const testConnection = (id: string) => tenant<TestResult>(`/mail/connections/${id}/test`, { method: "POST" });
+export const syncConnection = (id: string) => tenant<{ fetched?: number; inserted?: number; error?: string }>(`/mail/connections/${id}/sync`, { method: "POST" });
+
+// OAuth — start returns the provider consent URL to redirect the browser to.
+export const microsoftStartUrl = () => "/api/tenant/mail/oauth/microsoft/start";
+export const googleStartUrl = () => "/api/tenant/mail/oauth/google/start";
+export const startMicrosoft = () => tenant<{ url: string }>("/mail/oauth/microsoft/start");
+export const startGoogle = () => tenant<{ url: string }>("/mail/oauth/google/start");
+
+// Threads / messages
+export const listThread = (connectionId?: string) =>
+  tenant<ThreadMsg[]>(`/mail/thread${connectionId ? `?connection_id=${connectionId}` : ""}`);
+export const getMessage = (id: string) => tenant<ThreadMsg>(`/mail/thread/${id}`);
+export const listMsgAttachments = (id: string) => tenant<Attachment[]>(`/mail/thread/${id}/attachments`);
+export const markThreadRead = (id: string) => tenant<{ email_inbound_id: string }>(`/mail/thread/${id}/read`, { method: "POST" });
+export const linkThread = (id: string, entity_ref: string) =>
+  tenant<{ entity_ref: string }>(`/mail/thread/${id}/link`, { method: "POST", body: { entity_ref } });
+export const clientTimeline = (clientId: string) => tenant<ThreadMsg[]>(`/mail/client/${clientId}/timeline`);
+
+// Send / reply
+export const sendMail = (body: { connectionId: string; to: string | string[]; subject?: string; html?: string; text?: string; cc?: string[] }) =>
+  tenant<{ externalMessageId?: string }>("/mail/send", { method: "POST", body });
+export const replyMail = (inboundId: string, body: { connectionId: string; html?: string; text?: string }) =>
+  tenant<{ externalMessageId?: string }>(`/mail/thread/${inboundId}/reply`, { method: "POST", body });

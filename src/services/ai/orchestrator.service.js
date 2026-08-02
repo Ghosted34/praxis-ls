@@ -178,7 +178,7 @@ function validatePayload(schema, payload) {
  * payload, requires_confirmation}] }. Does NOT execute writes — that needs an
  * explicit confirm (see confirmAction).
  */
-async function ask({ client, user, conversationId, message, allowed, feature = "assistant" }) {
+async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant" }) {
   // Governance gate (AI_ARCHITECTURE §6): feature enabled + user granted + budget
   // not hard-capped. Nothing hits a model when the gate is closed.
   const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
@@ -233,19 +233,66 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
 
   const res = await llm.chat({ client, messages, tools: tools.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
-  // Persist the exchange AFTER the model call: a failed call leaves no orphan
-  // user turn that would be replayed forever with no answer beside it.
+
+  // Split the model's tool calls: reads are pure, so we run them NOW and let the
+  // model narrate the data back (a single bounded hop); writes are proposed as
+  // action cards that a human confirms. `writeCalls` collects both the writes from
+  // this turn and any write the follow-up proposes after seeing the read data.
+  const defFor = (call) => tools.find((t) => t.action_key === call.function.name);
+  const writeCalls = [];
+  const readCalls = [];
+  for (const call of res.toolCalls) {
+    const def = defFor(call);
+    if (!def) continue;
+    (def.is_write ? writeCalls : readCalls).push({ call, def });
+  }
+
+  let answer = res.text;
+
+  if (readCalls.length && registry) {
+    const toolMsgs = [];
+    for (const { call, def } of readCalls) {
+      let payload = {};
+      try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
+      let content;
+      try {
+        const fn = registry[def.action_key];
+        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" }; // eslint-disable-line no-await-in-loop
+        content = JSON.stringify(out && out.data !== undefined ? out.data : out);
+      } catch (err) {
+        content = JSON.stringify({ error: err.message });
+      }
+      // Cap + redact so a big list can't blow the context or leak sensitive text.
+      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
+    }
+    // No tools on the follow-up: the model must now narrate the fetched data as
+    // prose (passing tools risks it re-calling reads and returning empty text). A
+    // write it wants alongside a read should be proposed in the FIRST turn, which
+    // is already captured in writeCalls.
+    const followup = await llm.chat({
+      client,
+      messages: [
+        ...messages,
+        { role: "assistant", content: res.text || null, tool_calls: readCalls.map((r) => r.call) },
+        ...toolMsgs,
+      ],
+    });
+    await recordUsage(client, { user, conversationId: history.conversationId, res: followup, feature });
+    answer = followup.text || answer;
+  }
+
+  // Persist the exchange AFTER the answer is finalised (post read-narration), so
+  // the stored assistant turn is what the user actually saw — not the empty text
+  // of a turn that only made tool calls. Best-effort; never blocks the response.
   await history_.save(client, {
     conversationId: history.conversationId,
     question: message,
-    answer: res.text || null,
+    answer: answer || null,
   });
 
   const actions = [];
-  const batchId = res.toolCalls.length ? crypto.randomUUID() : null;
-  for (const call of res.toolCalls) {
-    const def = tools.find((t) => t.action_key === call.function.name);
-    if (!def) continue;
+  const batchId = writeCalls.length ? crypto.randomUUID() : null;
+  for (const { call, def } of writeCalls) {
     let payload = {};
     try {
       payload = JSON.parse(call.function.arguments || "{}");
@@ -275,7 +322,7 @@ async function ask({ client, user, conversationId, message, allowed, feature = "
   const batchable = actions.filter((x) => x.requires_confirmation && (!x.validation_errors || x.validation_errors.length === 0));
   // conversation_id is returned so the client can keep sending the same thread
   // (and so a future multi-thread UI has the handle it would need).
-  return { answer: res.text, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider, conversation_id: history.conversationId };
+  return { answer, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider, conversation_id: history.conversationId };
 }
 
 /**

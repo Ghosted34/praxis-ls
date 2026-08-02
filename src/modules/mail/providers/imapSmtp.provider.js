@@ -165,7 +165,7 @@ class ImapSmtpProvider {
       const uidValidity = Number(imap.mailbox.uidValidity);
       const prior = cursor || {};
       const sameBox = Number(prior.uidvalidity) === uidValidity;
-      let lastUid = sameBox ? Number(prior.last_uid || 0) : 0; // uidvalidity change ⇒ re-scan
+      const lastUid = sameBox ? Number(prior.last_uid || 0) : 0; // uidvalidity change ⇒ re-scan
 
       let maxUid = lastUid;
       const range = `${lastUid + 1}:*`;

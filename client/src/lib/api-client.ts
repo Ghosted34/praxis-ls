@@ -103,3 +103,32 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
 
 export const tenant = <T = unknown>(p: string, o?: Opts) => api<T>(`/tenant${p}`, o);
 export const platform = <T = unknown>(p: string, o?: Opts) => api<T>(`/platform${p}`, o);
+
+/**
+ * Fetch a binary endpoint (auth + env headers) and trigger a browser download.
+ * Used for file exports (csv/xlsx/pdf) where the response is a blob, not JSON —
+ * a plain <a href> can't carry the Bearer token, so this fetches then saves.
+ */
+export async function download(path: string, filename: string): Promise<void> {
+  const h = new Headers();
+  h.set("X-Praxis-Env", tokenStore.getEnv());
+  const t = tokenStore.getAccess();
+  if (t) h.set("Authorization", `Bearer ${t}`);
+  const res = await fetch(`/api${path}`, { headers: h });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    let message = res.statusText;
+    try { const j = body ? JSON.parse(body) : null; message = (j && j.error && j.error.message) || message; } catch { /* non-JSON body */ }
+    throw new ApiError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+export const tenantDownload = (p: string, filename: string) => download(`/tenant${p}`, filename);

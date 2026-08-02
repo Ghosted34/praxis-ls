@@ -199,7 +199,11 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
     "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
     "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
-    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID." +
+    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
+    // One step at a time: propose a single action, let the human confirm it, then
+    // (a recap is generated automatically) wait before the next.
+    "When a task needs several actions, do them ONE AT A TIME: propose a single action, wait for the user to " +
+    "confirm it, then wait for their go-ahead before proposing the next. Do not propose multiple actions at once." +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
@@ -423,7 +427,38 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
     logger.warn({ err: err.message, actionRunId }, "[ai] execution note not recorded in conversation");
   }
 
-  return { ok: true, result };
+  // Step-by-step narration. After a confirmed action we generate a short message
+  // that (1) confirms what was done by name, (2) recaps what's been completed in
+  // this task, and (3) proposes the SINGLE next step as a question — then stops
+  // and waits. No tools on this call, so it can only talk, never chain another
+  // action. Best-effort: a narration failure never fails the executed action.
+  let message = null;
+  try {
+    if (run.conversation_id) {
+      const hist = await history_.load(client, { user, conversationId: run.conversation_id });
+      const sys =
+        "You are Praxis LS, carrying out a step-by-step task for the user. An action was JUST executed " +
+        "successfully. Reply in 1-3 short sentences of plain business language (never show UUIDs or " +
+        "snake_case field names): first confirm what was done, naming the record; then recap what has been " +
+        "completed in this task so far; then propose the SINGLE next step as a question and STOP. Do not take " +
+        "any further action or call any function — wait for the user's go-ahead.";
+      const nar = await llm.chat({
+        client,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: sys },
+          ...hist.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
+        ],
+      });
+      message = nar.text || null;
+      await recordUsage(client, { user, conversationId: run.conversation_id, res: nar, feature: "assistant" });
+      if (message) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: message });
+    }
+  } catch (err) {
+    logger.warn({ err: err.message, actionRunId }, "[ai] post-action narration skipped");
+  }
+
+  return { ok: true, result, message };
 }
 
 /**

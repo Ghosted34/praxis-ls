@@ -176,8 +176,11 @@ export function PraxisCopilot() {
   async function runAction(run: AiActionRun, payload: Record<string, unknown>) {
     setConfirming(run.action_run_id);
     try {
-      await confirmAiAction(run.action_run_id, payload);
+      const r = await confirmAiAction(run.action_run_id, payload);
       setDoneActions((s) => ({ ...s, [run.action_run_id]: true }));
+      // Praxis's recap + "want me to do X next?" — shown as its own message so the
+      // user can answer and drive the plan one confirmed step at a time.
+      if (r.message) setMsgs((m) => [...m, { role: "praxis", text: r.message as string }]);
     } catch (e) {
       setMsgs((m) => [...m, { role: "praxis", text: errMsg(e) }]);
     } finally {

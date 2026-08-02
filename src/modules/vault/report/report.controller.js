@@ -1,8 +1,10 @@
 "use strict";
 const service = require("./report.service");
 const templateSvc = require("../../documents/template/template.service");
+const reportExport = require("./report-export");
 const { asyncHandler } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
+const stamp = () => new Date().toISOString().slice(0, 10);
 module.exports = {
   catalogue: asyncHandler(async (_req, res) => res.json({ data: service.catalogue() })),
   run: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.run(c, { reportKey: req.params.key, params: req.query })) })),
@@ -14,6 +16,18 @@ module.exports = {
       return templateSvc.renderPdfFromData(c, { docType: req.params.key, data: result.data, entityId: req.body.entity_id || null, actor: actor(req) });
     });
     res.status(201).json({ data: out });
+  }),
+  // Run + stream the report as csv or xlsx (?format=csv|xlsx). The house-styled
+  // spreadsheet toolkit renders it; PDF keeps its own vaulting endpoint above.
+  runExport: asyncHandler(async (req, res) => {
+    const format = String(req.query.format || "csv").toLowerCase();
+    const file = await req.tenantDb(async (c) => {
+      const result = await service.run(c, { reportKey: req.params.key, params: req.query });
+      return reportExport.toExport(req.params.key, result.data, format);
+    });
+    res.setHeader("Content-Type", file.contentType);
+    res.setHeader("Content-Disposition", `attachment; filename="${req.params.key}-${stamp()}.${file.extension}"`);
+    res.send(file.buffer);
   }),
   listSaved: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listSaved(c, req.query, actor(req))) })),
   save: asyncHandler(async (req, res) => {

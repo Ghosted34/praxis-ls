@@ -1212,9 +1212,6 @@ export function AssetsPage() {
   );
 }
 
-/** Current YYYY-MM, the default depreciation period. */
-const thisPeriod = () => today().slice(0, 7);
-
 function AssetCreateForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const [entityId, setEntityId] = React.useState("");
   const [entityLabel, setEntityLabel] = React.useState<string | null>(null);
@@ -1312,15 +1309,31 @@ function AssetCreateForm({ open, onClose, onCreated }: { open: boolean; onClose:
 
 function AssetDepreciateForm({ asset, onClose, onDone }: { asset: Asset | null; onClose: () => void; onDone: () => void }) {
   const open = !!asset;
-  const [period, setPeriod] = React.useState(thisPeriod());
+  const [period, setPeriod] = React.useState("");
+  const [nextDue, setNextDue] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [note, setNote] = React.useState<string | null>(null);
 
+  // Default the period to the earliest UN-POSTED scheduled row, so the box lands
+  // on the period that's actually due next rather than today's calendar month
+  // (which is usually not in the schedule, and posting out of order is wrong).
   React.useEffect(() => {
-    if (!open) return;
-    setPeriod(thisPeriod()); setError(null); setNote(null);
-  }, [open, asset]);
+    if (!asset) return;
+    let live = true;
+    setError(null); setNote(null); setNextDue(null); setPeriod(""); setLoading(true);
+    getAsset(String(asset.asset_id))
+      .then((d) => {
+        if (!live) return;
+        const next = (d.schedule ?? []).find((r) => !r.posted);
+        setNextDue(next ? next.period_code : null);
+        setPeriod(next ? next.period_code : "");
+      })
+      .catch((e) => live && setError(errMessage(e)))
+      .finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, [asset]);
 
   async function submit() {
     if (!asset) return;
@@ -1338,17 +1351,24 @@ function AssetDepreciateForm({ asset, onClose, onDone }: { asset: Asset | null; 
     }
   }
 
+  const allPosted = !loading && nextDue === null && !error;
+
   return (
     <Modal open={open} onClose={onClose} title="Post depreciation" description={asset ? `Post one month's dotation for ${asset.label}. Debit 6813, credit accumulated depreciation. Idempotent per period.` : ""}>
       <div className="space-y-4">
-        <Field label="Period" required hint="YYYY-MM — must be a scheduled period for this asset.">
-          <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} />
+        <Field label="Period" required hint={nextDue ? `Next un-posted period is ${nextDue}. Post periods in order.` : "YYYY-MM — must be a scheduled period for this asset."}>
+          <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading} />
         </Field>
+        {allPosted && (
+          <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+            Every scheduled period is already posted — nothing left to depreciate.
+          </div>
+        )}
         {note && <div className="rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-3 py-2 text-sm">{note}</div>}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="outline" onClick={onClose} disabled={busy}>Close</Button>
-          <Button onClick={submit} loading={busy} disabled={busy || !/^\d{4}-\d{2}$/.test(period)}>Post period</Button>
+          <Button onClick={submit} loading={busy} disabled={busy || loading || !/^\d{4}-\d{2}$/.test(period)}>Post period</Button>
         </div>
       </div>
     </Modal>

@@ -79,9 +79,10 @@ export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { met
 export const askPraxis = (message: string, conversationId?: string) =>
   tenant<AskResult>("/ai/ask", { method: "POST", body: { message, conversation_id: conversationId } });
 
-/** Confirm an action; pass `payload` to execute the form-edited values. */
+/** Confirm an action; pass `payload` to execute the form-edited values. `message`
+ *  is Praxis's step-by-step recap + next-step question after a successful run. */
 export const confirmAiAction = (actionRunId: string, payload?: Record<string, unknown>) =>
-  tenant<{ ok: boolean; result?: unknown }>(`/ai/actions/${actionRunId}/confirm`, {
+  tenant<{ ok: boolean; result?: unknown; message?: string | null }>(`/ai/actions/${actionRunId}/confirm`, {
     method: "POST",
     body: payload ? { payload } : {},
   });

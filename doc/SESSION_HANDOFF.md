@@ -222,6 +222,18 @@ ran. Windows validators are the gate. Backend changes are plain CommonJS; the FE
    not the CRUD grants. The old TODO comment is replaced with a pointer to the implementation. FE surfaces the
    specific message (the user form special-cases the code, since `errMsg` flattens every 403).
 
+6. **xlsx/csv report export wired — the toolkit finally has a consumer.** The ExcelJS/CSV service existed but
+   nothing called it; scheduled reports emailed raw JSON in a `<pre>` and ignored `formats`. Added
+   `report-export.js` (a generic `tabulate()` that projects any report producer's data — flat row arrays,
+   `{rows,…}` wrappers, or nested statement objects flattened to Field/Value — into the toolkit's
+   `{columns,rows}` contract, plus `toExport()` → csv/xlsx buffer). On-demand endpoint
+   `GET /reports/run/:key/export?format=csv|xlsx` mirrors the existing `/pdf` route; FE gained **Export CSV/XLSX**
+   buttons on the run panel (via a new authed `download()`/`tenantDownload()` blob helper — a plain `<a href>`
+   can't carry the Bearer token). Scheduled reports now render each requested csv/xlsx format and **attach** it
+   (base64 through the email job, which now forwards `attachments`); pdf keeps its inline body (its vaulting path
+   is separate). Tests: `report-export.test.js`. Not done: bespoke per-statement layouts (nested statements
+   export as Field/Value, honest but not the DGI liasse), and pdf-as-attachment for schedules.
+
 **Migrations to run:** tenant **`0487_approver_capability_backfill`**.
 **Owed (Windows):** `npm run lint`, `npm test`, `npm run build --prefix client`. Verify by hand: a non-CEO with
 the disburse grant but no APPROVER is now 403'd on disburse until granted the capability on the user screen; a

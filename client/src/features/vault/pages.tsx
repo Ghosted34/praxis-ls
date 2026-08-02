@@ -7,7 +7,7 @@
  * AI panels are gated globally (components/ai-actions.tsx).
  */
 import * as React from "react";
-import { tenant } from "@/lib/api-client";
+import { tenant, tenantDownload } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -124,6 +124,17 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
       setSaving(false);
     }
   }
+  // Server runs the report fresh and streams the file — works with the current
+  // params whether or not the preview above has been run.
+  async function exportAs(format: "csv" | "xlsx") {
+    setError(null);
+    try {
+      const qs = new URLSearchParams({ ...filled(), format }).toString();
+      await tenantDownload(`/reports/run/${key}/export?${qs}`, `${key}.${format}`);
+    } catch (e) {
+      setError(errMsg(e));
+    }
+  }
 
   return (
     <Modal open={open} onClose={onClose} title={`Run — ${key}`} description={report ? String(report.describe) : ""} size="xl">
@@ -135,9 +146,15 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
             </Field>
           ))}
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button onClick={run} loading={running}>
             Run report
+          </Button>
+          <Button variant="outline" onClick={() => exportAs("csv")} disabled={running}>
+            Export CSV
+          </Button>
+          <Button variant="outline" onClick={() => exportAs("xlsx")} disabled={running}>
+            Export XLSX
           </Button>
           <span className="text-xs text-muted-foreground">Leave params blank for report defaults.</span>
         </div>

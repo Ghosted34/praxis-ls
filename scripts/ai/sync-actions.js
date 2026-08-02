@@ -24,9 +24,17 @@ async function syncTenant(slug) {
   const cli = m.client(m.tenantDbName(slug), { superuser: true });
   await cli.connect();
   try {
-    await cli.query("SET search_path = live, public");
-    const r = await registrar.syncCatalogue(cli);
-    console.warn(`[praxis-ai] tenant ${slug}: ${r.upserts}/${r.total} catalogue actions synced`);
+    // Sync BOTH schemas: business data (incl. ai_action_catalogue) is served from
+    // `live` or `sandbox` depending on X-Praxis-Env (see middleware/tenant-context).
+    // Live-only sync left the copilot in TEST mode with just the seed actions.
+    const schemas = ["live"];
+    const { rows } = await cli.query("SELECT 1 FROM information_schema.schemata WHERE schema_name = 'sandbox'");
+    if (rows.length) schemas.push("sandbox");
+    for (const schema of schemas) {
+      await cli.query(`SET search_path = ${schema}, public`); // eslint-disable-line no-await-in-loop
+      const r = await registrar.syncCatalogue(cli); // eslint-disable-line no-await-in-loop
+      console.warn(`[praxis-ai] tenant ${slug} (${schema}): ${r.upserts}/${r.total} catalogue actions synced`);
+    }
   } finally {
     await cli.end();
   }

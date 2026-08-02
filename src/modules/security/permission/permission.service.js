@@ -6,10 +6,13 @@
  * point: writes emit `permission.changed` (seeded security-critical), which
  * shared/events/emit.js fans out as a HIGH notification to CEO/Management.
  *
- * TODO (not implemented here — flagging, not silently skipping):
- *   - Self-grant block in Live: needs req.env / req.user available at the
- *     service layer (currently only client/actor are threaded through
- *     makeService) — wire once the Live/Sandbox toggle is exposed here.
+ * Self-grant maker-checker (DB_ARCHITECTURE §108 — "a Super Admin cannot
+ * self-grant Issuer/Validator/Approver") is enforced where authority is actually
+ * assignable: capability.service.setForUser blocks a user adding a restricted
+ * capability to themselves. It lives there, not here, because the documented rule
+ * is about the ISSUER/VALIDATOR/APPROVER authority overlay, not this role×module
+ * grant matrix. The identity tables are pinned to the live schema, so the block is
+ * unconditional — that pinning is what the old "needs req.env" note predated.
  */
 "use strict";
 const { makeService } = require("../../../shared/crud/resource");

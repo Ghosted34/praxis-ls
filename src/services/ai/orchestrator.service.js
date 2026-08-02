@@ -395,10 +395,20 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
   try {
     if (run.conversation_id) {
       const ref = result && result.entity_ref ? ` (${result.entity_ref})` : "";
+      // Name the record so recall is concrete: replayed later, "✓ Executed
+      // create_client — name: SODECOTON (client:…)" lets the model answer "what
+      // did you just do?" by name, not just by action key.
+      const SALIENT = ["name", "full_name", "title", "ref", "code", "label", "to", "status", "amount", "email"];
+      const parts = [];
+      for (const k of SALIENT) {
+        if (payload && payload[k] !== undefined && payload[k] !== null && payload[k] !== "") parts.push(`${k}: ${payload[k]}`);
+        if (parts.length >= 3) break;
+      }
+      const summary = parts.length ? ` — ${parts.join(", ")}` : "";
       await convo.addMessage(client, {
         conversationId: run.conversation_id,
         role: "assistant",
-        content: `✓ Executed ${run.action_key}${ref}.`,
+        content: `✓ Executed ${run.action_key}${summary}${ref}.`,
       });
     }
   } catch (err) {

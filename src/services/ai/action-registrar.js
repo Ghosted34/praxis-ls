@@ -79,7 +79,7 @@ function buildCatalogue(manifests = loadManifests()) {
     const push = (a, isWrite) => {
       if (!a || !a.key || seen.has(a.key)) return;
       seen.add(a.key);
-      const executable = isExecutable(a.key, isWrite);
+      const executable = isExecutable(a, isWrite);
       rows.push({
         action_key: a.key,
         title: a.key.replace(/_/g, " "),
@@ -99,7 +99,14 @@ function buildCatalogue(manifests = loadManifests()) {
 }
 
 // ── Executor map ──
-// Reads are pure and get a generic adapter; writes must be in the explicit registry.
+// Reads are pure and get a generic adapter. Writes prefer a hand-vetted executor
+// from `action-registry` (which bridges snake_case AI payloads to a service's
+// exact signature); any write NOT in that registry falls back to a GENERIC
+// adapter that calls the manifest's own `service(client, payload, actor)`. This
+// keeps the AI's write reach equal to the app's — every module write is
+// proposable — while the vetted executors still own the ones whose service takes
+// a non-payload shape (camelCase args / {data,actor}). Human confirm still gates
+// every write regardless (orchestrator.confirmAction).
 function readAdapter(action, service) {
   return async ({ client, payload = {} }) => {
     let arg = payload;
@@ -109,17 +116,37 @@ function readAdapter(action, service) {
   };
 }
 
-function isExecutable(actionKey, isWrite) {
-  if (isWrite) return Boolean(registry[actionKey]);
+function writeAdapter(service) {
+  return async ({ client, user, payload = {} }) => {
+    const result = await service(client, payload, { user_id: user && user.user_id });
+    if (result && result.entity_ref) return result;
+    // Derive a reference from the returned row (first *_id column, or id/ref) so
+    // the ledger + the conversation "✓ Executed" note can name what was created.
+    let ref = null;
+    if (result && typeof result === "object") {
+      const idKey = Object.keys(result).find((k) => k.endsWith("_id")) || (result.id ? "id" : result.ref ? "ref" : null);
+      if (idKey) ref = `record:${result[idKey]}`;
+    }
+    return { entity_ref: ref, data: result };
+  };
+}
+
+/** A write is executable if vetted OR its manifest provides a callable service. */
+function isExecutable(action, isWrite) {
+  if (isWrite) return Boolean(registry[action.key]) || typeof action.service === "function";
   return true; // reads are always executable via the generic adapter
 }
 
-/** { action_key → executor({client,user,payload}) }. Writes from registry; reads auto. */
+/** { action_key → executor({client,user,payload}) }. Vetted registry wins; then
+ *  manifest reads (generic read adapter) and writes (generic write adapter). */
 function buildExecutorMap(manifests = loadManifests()) {
   const map = { ...registry };
   for (const { manifest } of manifests) {
     for (const r of manifest.reads || []) {
       if (!map[r.key] && typeof r.service === "function") map[r.key] = readAdapter(r.key, r.service);
+    }
+    for (const w of manifest.writes || []) {
+      if (!map[w.key] && typeof w.service === "function") map[w.key] = writeAdapter(w.service);
     }
   }
   return map;

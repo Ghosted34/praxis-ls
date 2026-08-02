@@ -153,13 +153,49 @@ async function seedDisplayName(slug, name) {
   }
 }
 
+/**
+ * Enforce `feature_catalogue.depends_on` at projection time: a feature may be
+ * 'on' only if every feature it depends on is itself 'on'. depends_on has lived
+ * in the platform catalogue since 0020 but the projection never honoured it, so a
+ * child could be entitled with its parent off — the exact shape of the session-10
+ * "19 modules were dark" bug, one layer up (e.g. ai.assistant.backend depends_on
+ * {ai.assistant}).
+ *
+ * Applied to a fixpoint so a broken dependency cascades through a chain (A→B→C:
+ * if C is off, B is forced off, which then forces A off). A dependency that isn't
+ * in the catalogue at all counts as unmet — an unknown key can't be satisfied, so
+ * the safe resolution is off. Mutates + returns `features` in place; the resolved
+ * `source` is preserved (the tenant `feature_state.source` CHECK only allows
+ * plan|override|default) while `state` becomes 'off'.
+ */
+function enforceDependencies(features) {
+  const byKey = new Map(features.map((f) => [String(f.feature_key), f]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const f of features) {
+      if (f.state !== "on") continue;
+      const deps = f.depends_on || [];
+      for (const dep of deps) {
+        const parent = byKey.get(String(dep));
+        if (!parent || parent.state !== "on") {
+          f.state = "off";
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return features;
+}
+
 async function projectFeatures(slug) {
   const pf = m.client(config.DB_NAME);
   await pf.connect();
   let features;
   try {
     const { rows } = await pf.query(
-      "SELECT fc.feature_key, " +
+      "SELECT fc.feature_key, fc.depends_on, " +
         "CASE WHEN ov.state IS NOT NULL THEN ov.state WHEN pf.included THEN fc.default_state ELSE 'off' END AS state, " +
         "CASE WHEN ov.state IS NOT NULL THEN 'override' WHEN pf.included THEN 'plan' ELSE 'default' END AS source " +
         "FROM platform.tenant t JOIN platform.feature_catalogue fc ON true " +
@@ -168,7 +204,7 @@ async function projectFeatures(slug) {
         "WHERE t.slug=$1",
       [slug],
     );
-    features = rows;
+    features = enforceDependencies(rows);
   } finally {
     await pf.end();
   }
@@ -369,6 +405,7 @@ module.exports = {
   migrateAllTenants,
   wipeSandbox,
   projectFeatures,
+  enforceDependencies,
   createAdmin,
   listTenantSlugs,
 };

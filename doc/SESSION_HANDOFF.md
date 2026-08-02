@@ -59,6 +59,7 @@ Newest first. Sessions 16–18 log below; 1–15 in `doc/SESSION_HISTORY.md`.
 
 | # | Date | Headline |
 |---|---|---|
+| 19 | 2026-08-02 | `depends_on` enforced at projection; **user↔capability assignment built** + `requireCapability` mounted on disburse/costing-status (`0487` backfill); **self-grant maker-checker block**; AssetsPage write UI (create/depreciate/dispose) |
 | 18 | 2026-08-02 | TEST-mode writes fully fixed; AI rolling summary (`0481`); `/media` safe under S3; **client + investor portals** (`0482`); open-list re-audit |
 | 17 | 2026-08-01 | Control Tower map made real (`0478`/`0479`); `/media` bypass closed; milestone auto-seeding; AI memory; service types + `0480`; doc-truth audit |
 | 16 | 2026-07-29 | Document-UI overhaul; master emails (`0475`); document line items (`0476`); logo fix; AI vendor keys → platform |
@@ -156,6 +157,67 @@ audit banners in `WORK_TO_BE_DONE.md` are the correction).
   sign-out (until told otherwise).
 - **Postman** `postman/praxis-ls.phase0.postman_collection.json` — Phase 0 + Finance +
   Fleet/WMS/HR folders.
+
+## Session log — 2026-08-02 (session 19: three RBAC/finance gaps closed — depends_on enforcement, capability assignment + gate, AssetsPage write UI)
+
+**⚠️ VALIDATION STATUS: NONE (sandbox VM down — "Not enough disk space").** No `tsc`/`eslint`/`jest`/`vite build`
+ran. Windows validators are the gate. Backend changes are plain CommonJS; the FE touch is `finance/pages.tsx`
++ `finance-api.ts` + `security/pages.tsx`. New tenant migration **`0487`** to run.
+
+1. **`depends_on` is now enforced at projection time.** `projectFeatures()` resolved each feature's state
+   (override → plan default → off) and wrote it verbatim, never consulting `feature_catalogue.depends_on` — so a
+   child could be entitled with its parent off (the session-10 "19 modules dark" bug one layer up;
+   `ai.assistant.backend`/`ai.vectorization` both declare `{ai.assistant}`). Added a pure
+   `enforceDependencies(features)` in `provisioning.service.js` (exported + unit-tested,
+   `tests/unit/feature-depends-on.test.js`): a feature stays `on` only if every key in its `depends_on` is `on`,
+   applied to a **fixpoint** so a broken dep cascades through a chain, and an **unknown** dependency counts as
+   unmet (can't be satisfied → off). The resolved `source` is preserved (the tenant `feature_state.source` CHECK
+   only allows plan|override|default) while `state` flips to off — no migration needed. Runs on every
+   projection, i.e. every deploy.
+
+2. **user↔capability assignment built — the writer `user_capability` never had.** `requireCapability` (the SoD
+   gate: ISSUER/VALIDATOR/APPROVER/LINE_MANAGER) was fully built and mounted **nowhere**, because nothing could
+   assign a capability to a user (catalogue seeded, `user_capability` had no INSERT anywhere). Mounting the gate
+   without this would have 403'd every non-CEO approver with no recovery. Added to the capability module:
+   `repo.userCapabilities` / `repo.setUserCapabilities` (blanket rows keyed on the `document_type='*'` sentinel —
+   the PK is `(user_id, capability_id, document_type)` so document_type is implicitly NOT NULL; requireCapability
+   ignores doc-type/thresholds so '*' reads as global), `service.setForUser` (replace-all; invalidates the user's
+   identity cache via **`invalidateUser`** because caps live under `identity:caps`, which `invalidateGrants` does
+   NOT clear; emits **`role.changed`** — seeded security-critical — for Watch-the-Watcher, not `capability.updated`
+   which isn't), and routes `GET|PUT /capabilities/users/:userId` (before `/:id`; PUT gated `approve`). FE: a
+   Capabilities chip selector on the user edit/create form (`security/pages.tsx`).
+
+3. **`requireCapability('APPROVER')` mounted on the two highest-authority costing routes** — cash-request
+   **disburse** (`MOD-49`) and costing **status** (`MOD-46`). CEO bypasses. **`0487_approver_capability_backfill`**
+   grants blanket APPROVER to everyone who already holds the approve grant on those modules via their roles, so no
+   existing approver is locked out on deploy; new users must be granted it explicitly (the SoD win). Tests:
+   `tests/unit/capability-assignment.test.js` (gate CEO-bypass/403/allow/LINE_MANAGER/no-context + repo + service).
+
+4. **AssetsPage is a real screen now, not a `ResourceList` stub.** `finance/asset/` (MOD-54) was a complete
+   backend — create (builds the monthly schedule), `/:id/depreciate` (posts one period's dotation, idempotent),
+   `/:id/dispose` (gain/loss vs NBV) — behind a read-only list. Built the create form, a per-period Depreciate
+   action, a Dispose form (shows NBV + gain/loss), and a detail modal with the depreciation schedule + per-row
+   **Post** buttons, all via new helpers in `finance-api.ts`. Removed the now-unused `ResourceList` import
+   (TS6133 would fail CI).
+
+5. **Self-grant maker-checker block implemented — the `permission.service.js:9` TODO is closed.** The documented
+   rule (DB_ARCHITECTURE §108) is "a Super Admin cannot self-grant Issuer/Validator/Approver", i.e. it is about
+   the **capability** overlay, which only became assignable via the writer built in point 2. `setForUser` now
+   rejects (403 `SELF_GRANT_FORBIDDEN`) a user **adding** a restricted authority (ISSUER/VALIDATOR/APPROVER) to
+   **themselves** — keeping or removing one a *different* admin granted, and clearing the set, stay allowed; a
+   diff against current holdings, not a blanket ban. The TODO's `req.env` dependency was moot: capabilities are
+   identity data pinned to the live schema, so the block is unconditional (there is no sandbox authority set to
+   exempt). The permission role×module matrix is deliberately untouched — the rule names the authority overlay,
+   not the CRUD grants. The old TODO comment is replaced with a pointer to the implementation. FE surfaces the
+   specific message (the user form special-cases the code, since `errMsg` flattens every 403).
+
+**Migrations to run:** tenant **`0487_approver_capability_backfill`**.
+**Owed (Windows):** `npm run lint`, `npm test`, `npm run build --prefix client`. Verify by hand: a non-CEO with
+the disburse grant but no APPROVER is now 403'd on disburse until granted the capability on the user screen; a
+fresh projection leaves `ai.assistant.backend` off while `ai.assistant` is off; a Super Admin cannot tick
+APPROVER on **their own** user row (403) but can on someone else's.
+
+**Still open:** `scopeColumn` record-level adoption; the auditor portal (policy); IFRS investor view (PRD Q4).
 
 ## Session log — 2026-08-02 (session 18: TEST-mode writes fully fixed — sandbox user mirroring moved to user create)
 
@@ -522,9 +584,10 @@ What is actually outstanding:
 3. **Before a real external party uses the portal** — tenant SMTP configured, `portal.*` feature
    flags on, and a scoping click-through (a client sees their own dossiers and nobody else's).
 4. **Pick from** `WORK_TO_BE_DONE.md` → "Repo audit — 2026-08-02" for the open list with file+line
-   evidence. Most tractable next: `depends_on` enforcement at projection time — small,
-   self-contained, and today a feature can be entitled with its parent off, which is the shape of
-   the session-10 "19 modules were dark" bug one layer up.
+   evidence. (Session 19 closed `depends_on` enforcement, built user↔capability assignment + mounted
+   `requireCapability` on disburse/costing-status, added the self-grant maker-checker block, and gave
+   AssetsPage its write UI.) Tractable next: `scopeColumn` record-level adoption (needs a schema decision
+   on which business tables carry a scope column), or the xlsx/csv export wiring.
 
 To preview: `npm run dev` (backend, repo root) + `cd client && npm run dev`. Set `VITE_TENANT_HOST`
 to a provisioned tenant (e.g. `smartls.praxisls.com`).
@@ -544,9 +607,10 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
   badged *Sample view · not live*, wiring deferred by decision) and the **Recent activity** feed (deleted
   rather than left fictional — needs an activity endpoint that doesn't exist). Everything else on the home
   view is live or routes into the real app; see session-10 log §5.
-- **`depends_on` is not enforced at projection time** — it's stored in `platform.feature_catalogue` but
-  `projectFeatures()` never consults it, so a child feature can be on with its parent off.
-  `scripts/tenant/feature-report.js` flags the condition; nothing fixes it.
+- **`depends_on` IS enforced at projection time (session 19).** `projectFeatures()` now runs
+  `enforceDependencies()` — a child feature is forced off unless every key in its `depends_on` is on
+  (fixpoint, so chains cascade; unknown dep = unmet). `scripts/tenant/feature-report.js` still reports the
+  condition as a cross-check.
 - **Fleet/WMS may hide more never-executed SQL.** Those 19 modules ran for the first time on 2026-07-20.
   The join audit (session-10 log §3) is clean, but it didn't cover every column each repo selects from its
   own primary table.

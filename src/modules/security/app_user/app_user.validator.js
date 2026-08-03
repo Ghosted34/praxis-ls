@@ -21,9 +21,12 @@ function zValidate(schema) {
   };
 }
 
-const login = zValidate(z.object({ email: z.string().trim().email(), password: z.string().min(1) }));
+// `keep_signed_in` MUST be declared: zValidate replaces req.body with the
+// parsed object and z.object() strips unknown keys, so an undeclared flag is
+// silently dropped before the controller reads it (0494).
+const login = zValidate(z.object({ email: z.string().trim().email(), password: z.string().min(1), keep_signed_in: z.boolean().optional() }));
 const refresh = zValidate(z.object({ refresh_token: z.string().min(1) }));
-const verifyTotp = zValidate(z.object({ pending_token: z.string().min(1), code: z.string().min(6).max(8) }));
+const verifyTotp = zValidate(z.object({ pending_token: z.string().min(1), code: z.string().min(6).max(8), keep_signed_in: z.boolean().optional() }));
 const totpCode = zValidate(z.object({ code: z.string().min(6).max(8) }));
 
 const schemas = {
@@ -57,7 +60,7 @@ const resetPassword = zValidate(z.object({ token: z.string().min(16), new_passwo
 
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
 const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
-const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/) }));
+const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_id: z.string().uuid(), pin: z.string().regex(/^\d{4,8}$/), keep_signed_in: z.boolean().optional() }));
 
 module.exports = {
   ...passthrough,

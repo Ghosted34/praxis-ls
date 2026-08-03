@@ -95,13 +95,15 @@ function signPendingTwoFaToken(userId) {
 
 /** Shared by login() (no-2FA path) and verifyTotp() (post-2FA path) — the
  *  actual "you're in" step: session row + Redis index + real token pair. */
-async function issueSessionTokens(client, user, { ip, userAgent, environment }) {
+async function issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn }) {
   await repo.recordLoginSuccess(client, user.user_id);
   const sessionId = await repo.createSession(client, {
     userId: user.user_id,
     ip,
     userAgent,
     environment,
+    // "Keep me signed in" exempts the session from the idle kill (0494).
+    keepSignedIn,
   });
   await sessionStore.indexSession(sessionId, { userId: user.user_id, ip, userAgent, environment });
 
@@ -138,7 +140,7 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment }) 
   };
 }
 
-async function login(client, { email, password, ip, userAgent, environment }) {
+async function login(client, { email, password, ip, userAgent, environment, keepSignedIn }) {
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
 
   // Same error for "no such user" and "wrong password" — don't leak which.
@@ -169,10 +171,10 @@ async function login(client, { email, password, ip, userAgent, environment }) {
     };
   }
 
-  return issueSessionTokens(client, user, { ip, userAgent, environment });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
 }
 
-async function verifyTotp(client, { pendingToken, code, ip, userAgent, environment }) {
+async function verifyTotp(client, { pendingToken, code, ip, userAgent, environment, keepSignedIn }) {
   let payload;
   try {
     payload = jwt.verify(pendingToken, config.JWT_ACCESS_SECRET);
@@ -195,7 +197,7 @@ async function verifyTotp(client, { pendingToken, code, ip, userAgent, environme
     throw new AppError("INVALID_2FA_CODE", "Invalid authentication code", 401);
   }
 
-  return issueSessionTokens(client, user, { ip, userAgent, environment });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
 }
 
 /** Generates+stores a secret but does NOT enable 2FA yet — enableTotp()
@@ -315,8 +317,17 @@ async function refresh(client, { refreshToken }) {
   // token already issued stays valid until its own short (15 min) expiry; this
   // blocks the *refresh* that would extend the session, it doesn't retroactively
   // revoke a live access token.
+  // "Keep me signed in" opts out of the idle kill (0494). The checkbox promised
+  // a 30-day refresh token and this timeout quietly cut it to 30 minutes, which
+  // is what users reported as "token expired" after stepping away. Rotation,
+  // reuse detection, remote kill and the refresh TTL all still apply — this is a
+  // longer leash, not an exemption from revocation.
   const idleSeconds = Number(session.idle_seconds);
-  if (Number.isFinite(idleSeconds) && idleSeconds > config.SESSION_INACTIVITY_MIN * 60) {
+  if (
+    session.keep_signed_in !== true
+    && Number.isFinite(idleSeconds)
+    && idleSeconds > config.SESSION_INACTIVITY_MIN * 60
+  ) {
     await repo.killSession(client, payload.sid, payload.sub);
     await sessionStore.removeSession(payload.sid, payload.sub);
     await identityCache.invalidateUser(payload.sub);
@@ -674,7 +685,7 @@ async function registerPinDevice(client, { userId, pin, label = null }) {
   return { device_id: row.device_id, label: row.label, status: row.status, created_at: row.created_at };
 }
 
-async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment }) {
+async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environment, keepSignedIn }) {
   const passwordFallback = new AppError("PIN_LOGIN_UNAVAILABLE", "Please sign in with your password", 401);
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
   if (!user || user.status !== "ACTIVE") throw passwordFallback;
@@ -689,7 +700,7 @@ async function pinLogin(client, { email, deviceId, pin, ip, userAgent, environme
     throw new AppError(lockedOut ? "PIN_LOCKED" : "INVALID_PIN", lockedOut ? "Too many attempts — sign in with your password" : "Invalid PIN", 401);
   }
   await repo.resetDevicePin(client, deviceId);
-  return issueSessionTokens(client, user, { ip, userAgent, environment });
+  return issueSessionTokens(client, user, { ip, userAgent, environment, keepSignedIn });
 }
 
 const listPinDevices = (client, userId) => repo.listDevices(client, userId);

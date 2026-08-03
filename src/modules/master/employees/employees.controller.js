@@ -22,6 +22,18 @@ module.exports = {
     res.json({ data: await maskForUserVia(req.identityDb, req.user, row) });
   }),
   references: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.references(c, req.params.id)) })),
+
+  // The reporting line (0493). Masked like every other employee read — a team
+  // list must not become a way around field visibility on salary.
+  reports: asyncHandler(async (req, res) => res.json({
+    data: await maskForUserVia(req.identityDb, req.user, await req.tenantDb((c) => service.directReports(c, req.params.id))),
+  })),
+  team: asyncHandler(async (req, res) => res.json({
+    data: await maskForUserVia(req.identityDb, req.user, await req.tenantDb((c) => service.team(c, req.params.id))),
+  })),
+  managers: asyncHandler(async (req, res) => res.json({
+    data: await maskForUserVia(req.identityDb, req.user, await req.tenantDb((c) => service.managerChain(c, req.params.id))),
+  })),
   // Department is a scope (0490) — resolved on the identity client, since the
   // scope tree lives in the live schema while `employee` does not.
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb(async (c) => service.create(c, { data: await withDepartment(req, req.body), actor: actor(req) })) })),

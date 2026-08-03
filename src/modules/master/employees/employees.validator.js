@@ -13,6 +13,9 @@ const base = {
   // Department is a scope (0490): scope_id is the reference, department the
   // display snapshot the controller keeps in step with it.
   scope_id: z.string().uuid().optional().nullable(),
+  // Line manager (0493). Cycles are rejected in the service, not here — the
+  // check needs the tree.
+  reports_to: z.string().uuid().optional().nullable(),
   department: z.string().max(120).optional(),
   job_title: z.string().max(120).optional(),
   email: z.string().email().optional().or(z.literal("")),

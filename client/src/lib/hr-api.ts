@@ -135,6 +135,8 @@ export type Employee = {
   entity_name?: string | null;
   // scope_id is the department reference (0490); department is the snapshot.
   scope_id?: string | null;
+  // Line manager (0493) — the reporting line `is_line_manager` always needed.
+  reports_to?: string | null;
   department?: string | null;
   job_title?: string | null;
   email?: string | null;
@@ -148,13 +150,13 @@ export const listEmployees = () => tenant<Employee[]>("/employees");
 export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
 // `scope_id` is the department reference (0490); `department` is the display
 // snapshot the API keeps in step with it.
-export const createEmployee = (body: { full_name: string; entity_id?: string; scope_id?: string; department?: string; job_title?: string; email?: string; employment_type?: string }) =>
+export const createEmployee = (body: { full_name: string; entity_id?: string; scope_id?: string; reports_to?: string; department?: string; job_title?: string; email?: string; employment_type?: string }) =>
   tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, { method: "POST", body: { is_active } });
 export const updateEmployee = (
   id: string,
-  body: Partial<{ full_name: string; entity_id: string; scope_id: string; department: string; job_title: string; email: string; employment_type: string }>,
+  body: Partial<{ full_name: string; entity_id: string; scope_id: string; reports_to: string; department: string; job_title: string; email: string; employment_type: string }>,
 ) => tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
 
 /* ── HR contracts (lifecycle) ── */
@@ -258,3 +260,11 @@ export function getFix(): Promise<Fix> {
     );
   });
 }
+
+/* ── Reporting line (0493) ─────────────────────────────────────────────────
+ * `role.is_line_manager` is seeded as "approves for own team"; until 0493 there
+ * was no team to resolve. `managers` is nearest-first — escalation reads [0].
+ */
+export const employeeReports = (id: string) => tenant<Employee[]>(`/employees/${id}/reports`);
+export const employeeTeam = (id: string) => tenant<Employee[]>(`/employees/${id}/team`);
+export const employeeManagers = (id: string) => tenant<Employee[]>(`/employees/${id}/managers`);

@@ -137,4 +137,89 @@ async function countReferences(client, id) {
   return { total, breakdown };
 }
 
-module.exports = { insert, get, getBare, update, list, roster, drivers, countReferences };
+/**
+ * Direct reports — one level down the reporting line (0493).
+ */
+async function directReports(client, managerId) {
+  const { rows } = await client.query(
+    `SELECT employee_id, full_name, job_title, department, scope_id, is_active
+       FROM employee
+      WHERE reports_to = $1
+      ORDER BY full_name ASC`,
+    [managerId],
+  );
+  return rows;
+}
+
+/**
+ * The whole team beneath a manager — direct reports and theirs, recursively.
+ *
+ * This is what `role.is_line_manager` ("approves for own team",
+ * 9020_seed_rbac_events.sql:10) has always needed and never had. Depth-capped
+ * and `UNION` (not UNION ALL) so a malformed tree can't spin a request: the
+ * service prevents cycles on write, but data predating that guard may exist.
+ *
+ * Excludes the manager themselves — "my team" is the people under me.
+ */
+async function teamOf(client, managerId, { includeInactive = false } = {}) {
+  const { rows } = await client.query(
+    `WITH RECURSIVE team AS (
+       SELECT employee_id, full_name, job_title, department, scope_id, is_active, reports_to, 1 AS depth
+         FROM employee WHERE reports_to = $1
+       UNION
+       SELECT e.employee_id, e.full_name, e.job_title, e.department, e.scope_id, e.is_active, e.reports_to, team.depth + 1
+         FROM employee e JOIN team ON e.reports_to = team.employee_id
+        WHERE team.depth < 32
+     )
+     SELECT * FROM team ${includeInactive ? "" : "WHERE is_active = true"}
+      ORDER BY depth ASC, full_name ASC`,
+    [managerId],
+  );
+  return rows;
+}
+
+/**
+ * Walk UP from `employeeId` — the chain of managers above them.
+ *
+ * The escalation path (audit W13): "this approval has gone stale, send it to
+ * their manager" reads the first entry. Ordered nearest-first.
+ */
+async function managerChain(client, employeeId) {
+  const { rows } = await client.query(
+    `WITH RECURSIVE up AS (
+       SELECT e.employee_id, e.full_name, e.job_title, e.reports_to, 1 AS depth
+         FROM employee e
+        WHERE e.employee_id = (SELECT reports_to FROM employee WHERE employee_id = $1)
+       UNION
+       SELECT m.employee_id, m.full_name, m.job_title, m.reports_to, up.depth + 1
+         FROM employee m JOIN up ON m.employee_id = up.reports_to
+        WHERE up.depth < 32
+     )
+     SELECT employee_id, full_name, job_title, depth FROM up ORDER BY depth ASC`,
+    [employeeId],
+  );
+  return rows;
+}
+
+/** Would setting `employeeId`'s manager to `managerId` close a loop? */
+async function wouldCycle(client, employeeId, managerId) {
+  if (!managerId || !employeeId) return false;
+  if (managerId === employeeId) return true;
+  const { rows } = await client.query(
+    `WITH RECURSIVE up AS (
+       SELECT employee_id, reports_to, 0 AS depth FROM employee WHERE employee_id = $1
+       UNION
+       SELECT e.employee_id, e.reports_to, up.depth + 1
+         FROM employee e JOIN up ON e.employee_id = up.reports_to
+        WHERE up.depth < 32
+     )
+     SELECT 1 FROM up WHERE employee_id = $2 LIMIT 1`,
+    [managerId, employeeId],
+  );
+  return rows.length > 0;
+}
+
+module.exports = {
+  insert, get, getBare, update, list, roster, drivers, countReferences,
+  directReports, teamOf, managerChain, wouldCycle,
+};

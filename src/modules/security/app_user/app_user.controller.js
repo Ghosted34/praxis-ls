@@ -14,7 +14,7 @@ const getSignature = asyncHandler(async (req, res) => res.json({ data: await req
 const setSignature = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setSignature(c, { id: req.params.id, html: req.body.html, actor: actor(req) })) }));
 
 const pinRegister = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.registerPinDevice(c, { userId: req.user.user_id, pin: req.body.pin, label: req.body.label })) }));
-const pinLogin = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.pinLogin(c, { email: req.body.email, deviceId: req.body.device_id, pin: req.body.pin, ip: req.ip, userAgent: req.headers["user-agent"], environment: req.env })) }));
+const pinLogin = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.pinLogin(c, { email: req.body.email, deviceId: req.body.device_id, pin: req.body.pin, ip: req.ip, userAgent: req.headers["user-agent"], environment: req.env, keepSignedIn: req.body.keep_signed_in === true })) }));
 const pinDevices = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listPinDevices(c, req.user.user_id)) }));
 const pinRevoke = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.revokePinDevice(c, { userId: req.user.user_id, deviceId: req.params.deviceId })) }));
 
@@ -26,6 +26,8 @@ const login = asyncHandler(async (req, res) => {
       ip: req.ip,
       userAgent: req.headers["user-agent"],
       environment: req.env,
+      // "Keep me signed in" — exempts the session from the idle kill (0494).
+      keepSignedIn: req.body.keep_signed_in === true,
     }),
   );
   res.json({ data: result });
@@ -82,6 +84,9 @@ const verifyTotp = asyncHandler(async (req, res) => {
       ip: req.ip,
       userAgent: req.headers["user-agent"],
       environment: req.env,
+      // Carried through the 2FA step too, or ticking the box then completing
+      // TOTP would silently lose the choice (0494).
+      keepSignedIn: req.body.keep_signed_in === true,
     }),
   );
   res.json({ data: result });

@@ -12,7 +12,7 @@
  * a code and calls verify2fa().
  */
 import * as React from "react";
-import { tenant, ApiError, tryRefresh } from "@/lib/api-client";
+import { tenant, ApiError, tryRefresh, SESSION_ENDED_EVENT } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
 
@@ -136,11 +136,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }
 
+  /**
+   * The session died mid-use and could not be refreshed.
+   *
+   * Without this the app kept believing it was authenticated while holding a
+   * dead token: every action failed with the same 401 and the user sat on a
+   * "token expired" banner until they signed out by hand — which is exactly what
+   * was reported. The boot path has always handled this; mid-session never did.
+   */
+  React.useEffect(() => {
+    const onEnded = () => {
+      persistUser(null);
+      setUser(null);
+      setPendingToken(null);
+      setStatus("anon");
+    };
+    window.addEventListener(SESSION_ENDED_EVENT, onEnded);
+    return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
+  }, []);
+
   const login: AuthState["login"] = async (email, password, keepSignedIn = true) => {
     // Record the persistence choice before any tokens land. It also carries the
     // 2FA path: acceptTokens() runs later in verify2fa() and reads this flag.
     tokenStore.setPersist(keepSignedIn);
-    const r = await tenant<LoginResponse>("/auth/login", { method: "POST", auth: false, body: { email, password } });
+    // The server needs the choice too: it exempts the session from the 30-minute
+// idle kill (0494). Storing the token for 30 days while the server killed the
+// session after half an hour is what users reported as "token expired".
+    const r = await tenant<LoginResponse>("/auth/login", { method: "POST", auth: false, body: { email, password, keep_signed_in: keepSignedIn } });
     if ("pending_2fa" in r) {
       setPendingToken(r.pending_token);
       return { pending2fa: true };
@@ -154,7 +176,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/2fa/verify", {
       method: "POST",
       auth: false,
-      body: { pending_token: pendingToken, code },
+      // Carried through 2FA as well, or ticking the box then completing TOTP
+      // would lose the choice (0494).
+      body: { pending_token: pendingToken, code, keep_signed_in: tokenStore.getPersist() },
     });
     acceptTokens(r);
   };
@@ -166,7 +190,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/pin/login", {
       method: "POST",
       auth: false,
-      body: { email: email.trim(), device_id: dev.device_id, pin },
+      body: { email: email.trim(), device_id: dev.device_id, pin, keep_signed_in: true },
     });
     acceptTokens(r);
   };

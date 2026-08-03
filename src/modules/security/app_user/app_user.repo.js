@@ -43,19 +43,19 @@ async function recordLoginFailure(client, userId) {
   );
 }
 
-async function createSession(client, { userId, deviceLabel, ip, userAgent, environment }) {
+async function createSession(client, { userId, deviceLabel, ip, userAgent, environment, keepSignedIn }) {
   const { rows } = await client.query(
-    `INSERT INTO user_session (user_id, device_label, ip, user_agent, environment)
-     VALUES ($1,$2,$3,$4,$5)
+    `INSERT INTO user_session (user_id, device_label, ip, user_agent, environment, keep_signed_in)
+     VALUES ($1,$2,$3,$4,$5,$6)
      RETURNING session_id`,
-    [userId, deviceLabel || null, ip || null, userAgent || null, environment || "live"],
+    [userId, deviceLabel || null, ip || null, userAgent || null, environment || "live", keepSignedIn === true],
   );
   return rows[0].session_id;
 }
 
 async function getActiveSession(client, sessionId) {
   const { rows } = await client.query(
-    `SELECT session_id, user_id, killed_at, last_seen_at, refresh_jti,
+    `SELECT session_id, user_id, killed_at, last_seen_at, refresh_jti, keep_signed_in,
             EXTRACT(EPOCH FROM (now() - last_seen_at)) AS idle_seconds
        FROM user_session WHERE session_id = $1`,
     [sessionId],

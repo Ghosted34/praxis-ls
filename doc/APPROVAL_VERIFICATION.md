@@ -31,7 +31,7 @@ npm test
 npm run build --prefix client
 ```
 
-Migrations — tenant `0488`–`0492`; seeds `9022`, `9130`. `scripts/deploy.sh`'s
+Migrations — tenant `0488`–`0494`; seeds `9022`, `9130`. `scripts/deploy.sh`'s
 migrate service runs platform + tenant + seeds, or per tenant:
 
 ```bash

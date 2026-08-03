@@ -28,6 +28,44 @@ type Opts = Omit<RequestInit, "body"> & { body?: unknown; auth?: boolean; retry?
 let refreshing: Promise<boolean> | null = null;
 
 /**
+ * Fired once when a refresh fails mid-session, i.e. the session is dead
+ * server-side and cannot be recovered without signing in again.
+ *
+ * WHY THIS EXISTS. `api()` used to try a refresh on a 401 and, if it failed,
+ * simply fall through and throw the 401 — no token clear, no state change, no
+ * redirect. The app went on believing it was authenticated while holding a dead
+ * refresh token, so every subsequent action produced the same error and the user
+ * sat looking at "token expired" indefinitely. The only escape was a manual sign
+ * out, which is exactly what users reported doing.
+ *
+ * The boot path in auth-context has always handled this correctly (clear tokens,
+ * status → anon, back to the login screen); mid-session simply never got the
+ * same treatment. This event gives it that, without api-client having to import
+ * React state.
+ *
+ * `SESSION_ENDED_EVENT` is dispatched on `window`; auth-context listens.
+ */
+export const SESSION_ENDED_EVENT = "praxis:session-ended";
+
+let sessionEndedAnnounced = false;
+
+/**
+ * Tear down a session the server has already rejected.
+ *
+ * Idempotent: a page mid-render can fire several failing requests at once, and
+ * the user should see one transition to the login screen, not a storm of them.
+ * The flag resets on a successful refresh so a later session can end too.
+ */
+function endSession() {
+  tokenStore.clear();
+  if (sessionEndedAnnounced) return;
+  sessionEndedAnnounced = true;
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new CustomEvent(SESSION_ENDED_EVENT));
+  }
+}
+
+/**
  * Exchange the refresh token for a fresh access token, de-duped so concurrent
  * callers (the 401-retry path here AND the boot restore in auth-context) share a
  * SINGLE network refresh. This matters because the BE rotates the refresh token
@@ -52,6 +90,8 @@ export async function tryRefresh(): Promise<boolean> {
         // Unwrap { data: ... } if the endpoint wraps its payload.
         const d = j && typeof j === "object" && "data" in j ? j.data : j;
         if (d && d.access_token) {
+          // A live session again — allow a future end-of-session to announce.
+          sessionEndedAnnounced = false;
           tokenStore.setAccess(d.access_token);
           // Refresh-token rotation: if the BE rotates and returns a new refresh
           // token, persist it (into whichever store the keep-signed-in choice
@@ -88,6 +128,11 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   if (res.status === 401 && auth && retry) {
     const ok = await tryRefresh();
     if (ok) return api<T>(path, { ...opts, retry: false });
+    // Refresh failed: the session is gone (idle timeout, revoked, or the refresh
+    // token no longer valid). Ending it here is what stops the app sitting on a
+    // dead token showing "token expired" until the user signs out by hand.
+    // The error still throws, so the caller's own handling is unchanged.
+    endSession();
   }
 
   const text = await res.text();

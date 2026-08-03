@@ -128,15 +128,80 @@ the set unpaginated.
   reported the file did not exist — the sandbox mount was hiding it. The correction and the
   re-verification of every other absence claim are in the audit document.
 
-**Migrations:** tenant `0488`–`0492`; seeds `9022` (grant gaps: MOD-00A, MOD-63, MOD-71, MOD-72) and
+### B1 — the reporting line (`0493`)
+
+`0490` answered *where* someone sits (branch / department, which is what approval routing needs). It did
+not answer *who reports to whom*, and three things wanted that: `role.is_line_manager` is seeded as
+"approves for own team" and nothing could resolve a team; escalation (W13) had nowhere to escalate to; and
+an org chart of PEOPLE cannot be drawn from a reporting line that isn't recorded.
+
+`employee.reports_to` with a **real** foreign key — unlike the scope references in 0489/0490 this points at
+the same table in the same schema, so it is satisfiable under LIVE and TEST alike. `ON DELETE SET NULL`, so
+deleting a manager orphans their reports rather than deleting them. Self-management is a DB CHECK (the
+mistake a picker makes easiest); deeper loops are caught by a walk in the service, with a message that
+names the person, because "cycle detected" tells an HR clerk nothing.
+
+`directReports`, `teamOf` (recursive, depth-capped) and `managerChain` (nearest-first — the escalation
+path). All masked like every other employee read, so a team list can't become a way around salary field
+visibility.
+
+**Not** added: a position/job catalogue. `job_title` remains free text with exactly the weakness
+`department` had before 0490 — but that is master data with its own lifecycle and a separate decision.
+
+### Auth — one live complaint, two defects
+
+Full model and the traps: `doc/AUTH_SESSIONS.md`.
+
+**The app never recovered from a failed refresh.** `api()` attempted one refresh on a 401 and, when that
+failed, fell through and threw the 401 — no token clear, no state change, no redirect. The client went on
+believing it was authenticated while holding a dead refresh token, so every subsequent action reproduced
+the same error and the user sat on a "token expired" banner indefinitely. Only a manual sign-out cleared
+it, which is precisely what was reported. The boot path in `auth-context` had always handled this
+correctly; mid-session simply never got the same treatment. `endSession()` now clears tokens and dispatches
+`SESSION_ENDED_EVENT`, which auth-context turns into `status: "anon"` — idempotent, so a page firing six
+failing requests produces one transition rather than six.
+
+The reported symptom ("logging out and back in fixes it") is the signature: a plain reload would have fixed
+a merely-expired session, because the boot path recovers. Needing an explicit sign-out means the client
+state was never reset.
+
+**"Keep me signed in" didn't (`0494`).** The checkbox persisted the refresh token for 30 days; the server
+killed any session idle for 30 minutes regardless. The promise and the enforcement disagreed and users got
+the shorter one. Now recorded on `user_session.keep_signed_in` and honoured in `refresh()`. Rotation, reuse
+detection, remote kill and the refresh TTL all still apply — a longer leash, not an exemption from
+revocation. Sessions predating the column default to `false` rather than being silently upgraded.
+
+Threading it exposed a trap worth remembering for any new auth field: **`zValidate` replaces `req.body`
+with the parsed object and `z.object()` strips unknown keys**, so a field not declared in the schema is
+dropped before the controller reads it. `keep_signed_in` had to be added to the login, 2FA-verify and
+PIN-login schemas or the feature would have looked implemented and done nothing. Carried through the 2FA
+step too, or ticking the box then completing TOTP would lose the choice.
+
+**Knowingly left alone:** `last_seen_at` is written in exactly one place — `touchSession()` inside
+`refresh()`. Ordinary authenticated requests never touch it, so the "inactivity" clock measures
+time-since-last-refresh under a name that says otherwise. It is correct today only because
+`JWT_ACCESS_TTL` (15m) is below `SESSION_INACTIVITY_MIN` (30), which forces a refresh well before the
+window closes. **Raise the access TTL past the idle window and every non-keep-signed-in user is logged out
+mid-work.** The proper fix touches every request in the system and wanted doing deliberately rather than at
+the end of a long session; a startup assertion that refuses to boot on an inverted ratio is the cheap
+interim guard.
+
+### Tooling
+
+`scripts/tenant/permission-report.js` — compares a tenant's grants against the seeded baseline, parsed out
+of the seed files themselves so it cannot drift from what a fresh tenant gets, and reports MISSING or
+REDUCED grants. Written because the matrix-pagination bug may have silently revoked grants and a
+70-column grid is not something anyone audits by eye. Read-only.
+
+**Migrations:** tenant `0488`–`0494`; seeds `9022` (grant gaps: MOD-00A, MOD-63, MOD-71, MOD-72) and
 `9130` (MOD-72 mail catalogue entry).
 
 **Owed:** `npm run build --prefix client` and `npm test` on Windows (~25 FE files changed after the last
 green build; `tsc` does not complete on the sandbox mount), and a non-CEO click-through.
 
-**Not done:** B1–B4 (no reporting line on `employee`; `LINE_MANAGER` still cannot resolve a team), W13
-(delegation/escalation/deadlines — depends on B1), C7 (`portal.*` gates the staff preview but not the
-external surface).
+**Not done:** B2–B4 (no position table; `job_title` still free text), W13 (delegation, escalation,
+deadlines — the DATA now exists via `managerChain`, the behaviour does not), C7 (`portal.*` gates the staff
+preview but not the external surface), and the `last_seen_at` coupling described above.
 
 ---
 

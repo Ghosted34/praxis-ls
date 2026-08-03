@@ -15,6 +15,11 @@ router.get("/roster", requirePermission(MODULE, "view"), controller.roster);
 router.get("/drivers", requirePermission(MODULE, "view"), controller.drivers);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/references", requirePermission(MODULE, "view"), controller.references);
+// Reporting line (0493): direct reports, the whole team beneath someone, and the
+// chain of managers above them — the escalation path W13 will read.
+router.get("/:id/reports", requirePermission(MODULE, "view"), controller.reports);
+router.get("/:id/team", requirePermission(MODULE, "view"), controller.team);
+router.get("/:id/managers", requirePermission(MODULE, "view"), controller.managers);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.post("/:id/active", requirePermission(MODULE, "edit"), validator.setActive, controller.setActive);

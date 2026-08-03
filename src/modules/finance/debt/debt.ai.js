@@ -2,7 +2,7 @@
 const service = require("./debt.service");
 const validator = require("./debt.validator");
 module.exports = {
-  entity: "debt_engagement", module_key: "MOD-53", screens: [],
+  entity: "debt_engagement", ai_writes: false, module_key: "MOD-53", screens: [],
   reads: [
     { key: "list_debt", service: service.list, describe: "List debt engagements." },
     { key: "get_debt", service: service.get, describe: "Get a debt engagement with repayments + outstanding." },

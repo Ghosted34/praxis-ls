@@ -17,10 +17,13 @@ describe("AI write surface is wired (not just cataloged)", () => {
     const enabled = buildCatalogue().filter((r) => r.is_write && r.ai_enabled).map((r) => r.action_key);
     // Was 1 (create_client) before this step; now the create path across the cycle.
     expect(enabled.length).toBeGreaterThanOrEqual(8);
+    // Finance is AI read-only (ai_writes:false), so draft_final_invoice is NOT
+    // enabled — the money-path writes that remain live outside the finance group.
     expect(enabled).toEqual(expect.arrayContaining([
       "create_client", "open_dossier", "create_costing", "draft_quotation",
-      "draft_final_invoice", "draft_purchase_order", "draft_supplier_invoice", "draft_cash_request",
+      "draft_purchase_order", "draft_supplier_invoice", "draft_cash_request",
     ]));
+    expect(enabled).not.toContain("draft_final_invoice");
   });
 
   it("every ai_enabled write has a real executor in the map", () => {

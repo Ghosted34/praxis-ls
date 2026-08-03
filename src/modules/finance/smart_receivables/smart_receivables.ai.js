@@ -2,7 +2,7 @@
 const service = require("./smart_receivables.service");
 const validator = require("./smart_receivables.validator");
 module.exports = {
-  entity: "payment_receipt", module_key: "MOD-52", screens: [],
+  entity: "payment_receipt", ai_writes: false, module_key: "MOD-52", screens: [],
   reads: [
     { key: "list_receipts", service: service.list, describe: "List customer receipts." },
     { key: "get_receipt", service: service.get, describe: "Get a receipt with its allocations." },

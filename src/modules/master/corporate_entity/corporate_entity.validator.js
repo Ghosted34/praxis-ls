@@ -11,6 +11,9 @@ const schemas = {
   update: z.object({ legal_name: z.string().optional(), niu: z.string().optional().nullable(), rccm: z.string().optional().nullable(), country_code: z.string().length(2).optional(), address: z.string().optional().nullable(), bank_block: z.record(z.any()).optional(), doc_prefix: z.string().optional(), default_language: z.enum(["fr", "en"]).optional(), fiscal_year_start_month: z.number().int().min(1).max(12).optional(), logo_light_ref: logoRef, logo_dark_ref: logoRef }),
   setActive: z.object({ active: z.boolean() }),
   logoUpload: z.object({ data_url: z.string().min(1), variant: z.enum(["light", "dark"]).optional() }),
+  // AI-facing: entity_id in the payload → list_entities picker.
+  aiUpdate: z.object({ entity_id: z.string().uuid(), legal_name: z.string().optional(), niu: z.string().optional().nullable(), rccm: z.string().optional().nullable(), country_code: z.string().length(2).optional(), address: z.string().optional().nullable(), bank_block: z.record(z.any()).optional(), doc_prefix: z.string().optional(), default_language: z.enum(["fr", "en"]).optional(), fiscal_year_start_month: z.number().int().min(1).max(12).optional(), logo_light_ref: logoRef, logo_dark_ref: logoRef }),
+  aiSetActive: z.object({ entity_id: z.string().uuid(), active: z.boolean() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

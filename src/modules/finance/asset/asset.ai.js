@@ -4,7 +4,7 @@ const service = require("./asset.service");
 const validator = require("./asset.validator");
 
 module.exports = {
-  entity: "asset",
+  entity: "asset", ai_writes: false,
   module_key: "MOD-54",
   screens: ["finance_assets"],
   reads: [

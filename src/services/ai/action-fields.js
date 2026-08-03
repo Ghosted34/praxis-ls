@@ -82,6 +82,10 @@ function buildFieldMeta(schema, availableReads) {
   if (!schema || !schema.properties) return meta;
   const required = new Set(schema.required || []);
   for (const [key, prop] of Object.entries(schema.properties)) {
+    // Free-form structured fields (object/array — e.g. a `client` record or an
+    // invoice `lines` list) have no sensible single-input widget. Omit them from
+    // the form; whatever the model pre-filled is carried through on submit.
+    if (prop && (prop.type === "object" || prop.type === "array")) continue;
     const base = { label: humanize(key), required: required.has(key) };
     if (Array.isArray(prop.enum) && prop.enum.length) {
       meta[key] = { ...base, widget: "select", options: prop.enum.map((v) => ({ value: v, label: String(v) })) };
@@ -97,7 +101,14 @@ function buildFieldMeta(schema, availableReads) {
   return meta;
 }
 
-const ID_KEYS = ["name", "full_name", "title", "label", "display_name", "ref", "code", "email"];
+// Preferred label columns, best first: a business name before a code/ref, and
+// only fall back to email/number when nothing more human exists. Many entities
+// use a qualified *_name (company_name, legal_name, supplier_name) rather than a
+// bare `name`, so those are matched too.
+const ID_KEYS = [
+  "name", "company_name", "legal_name", "supplier_name", "client_name", "full_name",
+  "display_name", "title", "label", "ref", "reference", "number", "doc_number", "code", "plate", "email",
+];
 
 /**
  * Map raw read rows to {value, label} option pairs. Value = the row's id-like

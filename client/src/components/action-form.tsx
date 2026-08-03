@@ -47,10 +47,16 @@ export function ActionForm({
   const missing = fields.filter((f) => meta[f].required && isEmpty(values[f]));
 
   function submit() {
-    const payload: Record<string, unknown> = {};
+    // Start from the model's original payload so structured fields not shown in
+    // the form (object/array, omitted from field_meta) are carried through, then
+    // overlay the user's edits for the visible fields.
+    const payload: Record<string, unknown> = { ...(action.payload || {}) };
     for (const f of fields) {
       const v = values[f];
-      if (isEmpty(v)) continue;
+      if (isEmpty(v)) {
+        delete payload[f];
+        continue;
+      }
       payload[f] = meta[f].widget === "number" ? Number(v) : v;
     }
     onConfirm(payload);

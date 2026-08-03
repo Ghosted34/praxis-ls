@@ -33,6 +33,38 @@ async function resolveVendor(client, name) {
   return null;
 }
 
+// Some models (notably DeepSeek, esp. when handed a large tool list) emit their
+// tool-call markup as TEXT in `content` instead of the structured `tool_calls`
+// field — e.g. `<｜…DSML…｜>invoke name="…"<parameter name="…">…`. Left as-is it
+// leaks raw markup to the user and the real action never runs. This recovers any
+// parsable calls and, either way, strips the markup so the user never sees it.
+// Anchored on the actual markup characters — the full-width pipe (｜), the ▁
+// token DeepSeek uses, the literal DSML marker, or an `invoke name="` tag — so it
+// never false-triggers on prose that merely says "tool calls".
+const TOOLCALL_MARKUP = /[｜▁]|DSML|invoke\s+name="/i;
+
+function extractInlineToolCalls(content) {
+  if (!content || !TOOLCALL_MARKUP.test(content)) return { toolCalls: [], text: content || "" };
+  const calls = [];
+  const invokeRe = /invoke\s+name="([^"]+)"[^>]*>([\s\S]*?)<\/[^>]*?invoke\s*>/gi;
+  let m;
+  while ((m = invokeRe.exec(content))) {
+    const args = {};
+    const paramRe = /parameter\s+name="([^"]+)"[^>]*?>([\s\S]*?)<\/[^>]*?parameter\s*>/gi;
+    let pm;
+    while ((pm = paramRe.exec(m[2]))) args[pm[1]] = pm[2].trim();
+    calls.push({ id: `inline_${calls.length}`, type: "function", function: { name: m[1], arguments: JSON.stringify(args) } });
+  }
+  // Cut everything from the first markup marker to the end, then remove any
+  // residual angle-bracket/pipe tokens, so the visible text is clean prose.
+  const text = content
+    .replace(/(?:<[^>]*)?(?:[｜▁]{1,2}\s*DSML|invoke\s+name="|[｜▁]\s*tool)[\s\S]*$/i, "")
+    .replace(/<\/?[^>]*>/g, "")
+    .replace(/[｜▁]/g, "")
+    .trim();
+  return { toolCalls: calls, text };
+}
+
 async function callVendor(vendor, { messages, tools, temperature }) {
   const base = String(vendor.endpoint_url).replace(/\/$/, "");
   const body = { model: vendor.model, messages, temperature };
@@ -42,7 +74,15 @@ async function callVendor(vendor, { messages, tools, temperature }) {
     timeout: 60000,
   });
   const msg = (data.choices && data.choices[0] && data.choices[0].message) || {};
-  return { provider: vendor.vendor, text: msg.content || "", toolCalls: Array.isArray(msg.tool_calls) ? msg.tool_calls : [], usage: data.usage || {} };
+  let toolCalls = Array.isArray(msg.tool_calls) ? msg.tool_calls : [];
+  let text = msg.content || "";
+  // Only salvage from text when the provider didn't already return structured calls.
+  if (!toolCalls.length && TOOLCALL_MARKUP.test(text)) {
+    const inline = extractInlineToolCalls(text);
+    toolCalls = inline.toolCalls;
+    text = inline.text;
+  }
+  return { provider: vendor.vendor, text, toolCalls, usage: data.usage || {} };
 }
 
 const STUB = {

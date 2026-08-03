@@ -9,6 +9,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_account", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-06", action: "create" }, confirm: true, describe: "Add a tenant sub-account (class-consistent; leaf becomes postable)." },
-    { key: "update_account", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-06", action: "edit" }, confirm: true, describe: "Edit an account (statutory rows: labels/flags only)." },
+    { key: "update_account", service: (c, p) => (({ code, ...patch }) => service.update(c, { code, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-06", action: "edit" }, confirm: true, describe: "Edit an account by its code (statutory rows: labels/flags only)." },
   ],
 };

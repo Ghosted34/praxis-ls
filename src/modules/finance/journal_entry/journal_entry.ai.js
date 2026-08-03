@@ -14,7 +14,7 @@ const service = require("./journal_entry.service");
 const validator = require("./journal_entry.validator");
 
 module.exports = {
-  entity: "journal_entry", ai_writes: false,
+  entity: "journal_entry",
   module_key: "MOD-55",
   // Screens where this module's AI can act (mirrors client screen-registry ids).
   screens: ["dashboard"],

@@ -31,14 +31,6 @@ describe("AI action registrar", () => {
     }
   });
 
-  test("finance is AI read-only: its writes are disabled even though an executor exists", () => {
-    const map = registrar.buildExecutorMap();
-    const fin = cat.find((r) => r.action_key === "draft_final_invoice");
-    expect(fin && fin.is_write).toBe(true);
-    expect(fin.ai_enabled).toBe(false); // ai_writes:false on the finance manifest
-    expect(typeof map[fin.action_key]).toBe("function"); // executor still exists
-  });
-
   test("executor map has every read + the registry writes", () => {
     const map = registrar.buildExecutorMap();
     const reads = cat.filter((r) => !r.is_write);

@@ -46,6 +46,9 @@ const schemas = {
   }),
   password: z.object({ new_password: z.string().min(8) }),
   status: z.object({ status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
+  // AI-facing: user_id in the payload → list_users picker.
+  aiUpdate: z.object({ user_id: z.string().uuid(), full_name: z.string().optional(), username: z.string().optional().nullable(), email: z.string().trim().email().optional(), employee_id: z.string().uuid().optional().nullable(), whatsapp_number: z.string().min(6).max(20).optional().nullable(), role_ids: z.array(z.string().uuid()).optional() }),
+  aiStatus: z.object({ user_id: z.string().uuid(), status: z.enum(["ACTIVE", "SUSPENDED", "LOCKED"]) }),
 };
 
 // Self-service reset. Full strength policy (length/complexity + HIBP) is enforced

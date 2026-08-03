@@ -1,7 +1,7 @@
 "use strict";
 const service = require("./tax_declaration.service");
 module.exports = {
-  entity: "tax_declaration", ai_writes: false,
+  entity: "tax_declaration",
   module_key: "MOD-07",
   screens: [],
   reads: [

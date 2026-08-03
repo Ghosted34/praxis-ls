@@ -14,6 +14,6 @@ module.exports = {
   writes: [
     { key: "create_payroll_run", service: service.createRun, schema: validator.schemas.createRun, permission: { module: "MOD-17", action: "create" }, confirm: true, describe: "Open a payroll run for an entity + period (YYYY-MM)." },
     { key: "compute_payroll", service: service.compute, schema: validator.schemas.compute, permission: { module: "MOD-17", action: "edit" }, confirm: true, describe: "Compute payslips for all active employees (CNPS/IRPP/CAC/CFC/FNE per KB §9)." },
-    { key: "set_payroll_status", service: service.setStatus, schema: validator.schemas.status, permission: { module: "MOD-17", action: "approve" }, confirm: true, describe: "Advance the payroll run (submit/approve/validate/disburse); validation posts the GL entry." },
+    { key: "set_payroll_status", service: (c, p) => service.setStatus(c, { id: p.payroll_run_id, status: p.status }), schema: validator.schemas.aiStatus, permission: { module: "MOD-17", action: "approve" }, confirm: true, describe: "Advance a payroll run by id (OPEN→COMPUTED→SUBMITTED→APPROVED→VALIDATED→DISBURSED, or REJECTED); validation posts the GL entry." },
   ],
 };

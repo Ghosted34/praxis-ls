@@ -161,6 +161,36 @@ const toOpenAiTool = (a) => ({
   },
 });
 
+// ── Tool scoping ────────────────────────────────────────────────────────────
+// The catalogue can advertise 150+ actions; handing all of them to the model
+// every turn bloats the request and pushes weaker models (DeepSeek especially)
+// into emitting malformed/hallucinated tool calls. So when the list is large we
+// send a focused subset: a small always-on CORE, plus the actions most relevant
+// to THIS turn (scored on the message + recent history so a "yes"/"go ahead"
+// still surfaces the tool the previous turn was about). Resolution/validation on
+// confirm still uses the full catalogue — scoping only limits what's OFFERED.
+const TOOL_LIMIT = 64;
+const CORE_TOOLS = new Set([
+  "create_client", "open_dossier", "list_dossiers", "list_clients", "list_leads",
+  "list_opportunities", "list_quotations", "list_final_invoices", "receivables_ageing", "get_trial_balance",
+]);
+const tokenize = (s) => (s || "").toLowerCase().match(/[a-z]{3,}/g) || [];
+
+function selectTools(tools, contextText, limit = TOOL_LIMIT) {
+  if (tools.length <= limit) return tools;
+  const q = new Set(tokenize(contextText));
+  const scored = tools.map((t) => {
+    const hay = `${t.action_key} ${t.title} ${t.description || ""}`.toLowerCase();
+    let s = 0;
+    for (const w of q) if (hay.includes(w)) s += 1;
+    if (CORE_TOOLS.has(t.action_key)) s += 100; // core is always retained
+    if (!t.is_write) s += 0.5; // gentle tie-break toward reads (answering needs them)
+    return { t, s };
+  });
+  scored.sort((a, b) => b.s - a.s);
+  return scored.slice(0, limit).map((x) => x.t);
+}
+
 // Minimal JSON-schema gate: required keys present + no unknown top-level keys.
 function validatePayload(schema, payload) {
   const errors = [];
@@ -253,7 +283,11 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     { role: "user", content: redact(message) },
   ];
 
-  const res = await llm.chat({ client, messages, tools: tools.map(toOpenAiTool) });
+  // Offer a focused, relevant slice of the catalogue (scored on this turn + the
+  // replayed history), not all 150 tools — keeps weaker models from choking.
+  const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
+  const offered = selectTools(tools, contextText);
+  const res = await llm.chat({ client, messages, tools: offered.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
 
   // Split the model's tool calls: reads are pure, so we run them NOW and let the

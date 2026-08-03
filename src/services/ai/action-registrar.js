@@ -52,6 +52,9 @@ function unwrap(zt) {
 const TYPE_MAP = { ZodString: "string", ZodNumber: "number", ZodBoolean: "boolean", ZodArray: "array", ZodObject: "object", ZodEnum: "string", ZodNativeEnum: "string", ZodRecord: "object", ZodAny: undefined };
 
 function zodToJsonSchema(schema) {
+  // Unwrap a .refine()/.superRefine() (ZodEffects) to the inner object so refined
+  // schemas (e.g. journal_entry post) still expose their fields to the form.
+  if (schema && !schema.shape && schema._def && schema._def.schema && schema._def.schema.shape) schema = schema._def.schema;
   if (!schema || !schema.shape) return { type: "object", properties: {} };
   const properties = {};
   const required = [];

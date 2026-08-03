@@ -2,7 +2,7 @@
 const service = require("./final_invoice.service");
 const validator = require("./final_invoice.validator");
 module.exports = {
-  entity: "final_invoice", ai_writes: false,
+  entity: "final_invoice",
   module_key: "MOD-51",
   screens: [],
   reads: [
@@ -11,7 +11,7 @@ module.exports = {
   ],
   writes: [
     { key: "draft_final_invoice", service: service.createDraft, schema: validator.schemas.createDraft, permission: { module: "MOD-51", action: "create" }, confirm: true, describe: "Create a DRAFT final invoice (no GL yet)." },
-    { key: "update_final_invoice", service: service.updateDraft, schema: validator.schemas.updateDraft, permission: { module: "MOD-51", action: "edit" }, confirm: true, describe: "Edit a DRAFT final invoice." },
-    { key: "submit_final_invoice", service: service.submit, schema: validator.schemas.submit, permission: { module: "MOD-51", action: "approve" }, confirm: true, describe: "Submit for approval; auto-posts (revenue+débours+VAT, clears advance, numbers + captures the doc) when no workflow is bound. KB §8.3." },
+    { key: "update_final_invoice", service: (c, p) => service.updateDraft(c, { invoiceId: p.invoice_id, patch: { client_id: p.client_id, dossier_id: p.dossier_id }, lines: p.lines || null }), schema: validator.schemas.aiUpdate, permission: { module: "MOD-51", action: "edit" }, confirm: true, describe: "Edit a DRAFT final invoice by id." },
+    { key: "submit_final_invoice", service: (c, p) => service.submit(c, { invoiceId: p.invoice_id, entryDate: p.entry_date, sourceDocRef: p.source_doc_ref }), schema: validator.schemas.aiSubmit, permission: { module: "MOD-51", action: "approve" }, confirm: true, describe: "Submit a final invoice by id; auto-posts (revenue+débours+VAT, clears advance, numbers + captures the doc) when no workflow is bound. KB §8.3." },
   ],
 };

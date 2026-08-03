@@ -2,7 +2,7 @@
 const service = require("./proforma.service");
 const validator = require("./proforma.validator");
 module.exports = {
-  entity: "advance",
+  entity: "advance", ai_writes: false,
   module_key: "MOD-50",
   screens: [],
   reads: [{ key: "get_advance", service: service.get, describe: "Get a customer advance by id." }],

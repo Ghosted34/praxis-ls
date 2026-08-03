@@ -21,11 +21,22 @@ describe("AI action registrar", () => {
     expect(writes.every((r) => r.requires_confirmation === true)).toBe(true);
   });
 
-  test("writes are ai_enabled ONLY when a vetted executor exists (no drift)", () => {
+  test("every ai_enabled write has a runnable executor (no drift)", () => {
+    // The write boundary is open (generic writeAdapter backs every manifest write,
+    // vetted registry wins where present), so the invariant is one-directional:
+    // anything ADVERTISED must be runnable — never advertise a write we can't run.
     const map = registrar.buildExecutorMap();
-    for (const w of cat.filter((r) => r.is_write)) {
-      expect(w.ai_enabled).toBe(Boolean(map[w.action_key]));
+    for (const w of cat.filter((r) => r.is_write && r.ai_enabled)) {
+      expect(typeof map[w.action_key]).toBe("function");
     }
+  });
+
+  test("finance is AI read-only: its writes are disabled even though an executor exists", () => {
+    const map = registrar.buildExecutorMap();
+    const fin = cat.find((r) => r.action_key === "draft_final_invoice");
+    expect(fin && fin.is_write).toBe(true);
+    expect(fin.ai_enabled).toBe(false); // ai_writes:false on the finance manifest
+    expect(typeof map[fin.action_key]).toBe("function"); // executor still exists
   });
 
   test("executor map has every read + the registry writes", () => {

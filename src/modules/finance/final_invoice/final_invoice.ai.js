@@ -2,7 +2,7 @@
 const service = require("./final_invoice.service");
 const validator = require("./final_invoice.validator");
 module.exports = {
-  entity: "final_invoice",
+  entity: "final_invoice", ai_writes: false,
   module_key: "MOD-51",
   screens: [],
   reads: [

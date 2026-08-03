@@ -209,7 +209,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
     "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
     "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
-    "with an action you already announced." +
+    "with an action you already announced. " +
+    // Status machines: a record usually can't jump straight to a terminal state.
+    "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
+    "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 

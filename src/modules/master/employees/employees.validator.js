@@ -29,8 +29,11 @@ const base = {
 const create = z.object(base);
 const update = z.object({ ...base, full_name: z.string().min(2).optional(), is_active: z.boolean().optional() });
 const setActive = z.object({ is_active: z.boolean() });
+// AI-facing: employee_id in the payload → list_employees picker.
+const aiUpdate = update.extend({ employee_id: z.string().uuid() });
+const aiSetActive = setActive.extend({ employee_id: z.string().uuid() });
 
-const schemas = { create, update, setActive };
+const schemas = { create, update, setActive, aiUpdate, aiSetActive };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

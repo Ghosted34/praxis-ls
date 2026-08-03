@@ -84,10 +84,14 @@ function buildCatalogue(manifests = loadManifests()) {
   for (const { manifest } of manifests) {
     if (!manifest || !manifest.entity) continue;
     const mod = manifest.module_key || null;
+    // `ai_writes: false` on a manifest makes it READ-ONLY for the AI (reads stay,
+    // every write is disabled). `aiEnabled: false` on a single action opts just
+    // that one out. Used to keep finance (posting/updating the ledger) read-only.
+    const aiWritesOff = manifest.ai_writes === false;
     const push = (a, isWrite) => {
       if (!a || !a.key || seen.has(a.key)) return;
       seen.add(a.key);
-      const executable = isExecutable(a, isWrite);
+      const executable = isExecutable(a, isWrite) && a.aiEnabled !== false && !(isWrite && aiWritesOff);
       rows.push({
         action_key: a.key,
         title: a.key.replace(/_/g, " "),

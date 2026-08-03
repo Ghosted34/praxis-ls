@@ -1,4 +1,3 @@
-# syntax=docker/dockerfile:1.7
 FROM node:20-alpine AS base
 # chromium + shared libs/fonts: PDF rendering (invoices, reports, payslips) goes
 # through src/services/pdf.service.js (Puppeteer) from both the API process

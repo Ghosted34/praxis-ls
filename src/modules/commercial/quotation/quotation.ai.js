@@ -9,7 +9,7 @@ module.exports = {
   ],
   writes: [
     { key: "draft_quotation", service: (c, p) => service.createDraft(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-27", action: "create" }, confirm: true, describe: "Draft a quotation (lines + totals)." },
-    { key: "transition_quotation", service: (c, p) => service.transition(c, { id: p.quotation_id, to: p.to, entityId: p.entity_id }), schema: validator.schemas.aiTransition, permission: { module: "MOD-27", action: "approve" }, confirm: true, describe: "Send/reject/expire a quotation by id." },
+    { key: "transition_quotation", service: (c, p) => service.transition(c, { id: p.quotation_id, to: p.to, entityId: p.entity_id }), schema: validator.schemas.aiTransition, permission: { module: "MOD-27", action: "approve" }, confirm: true, describe: "Advance a quotation by id: DRAFT→SENT first, then SENT→REJECTED/EXPIRED (acceptance is the separate accept_quotation action). Cannot skip states." },
     { key: "accept_quotation", service: (c, p) => service.accept(c, { id: p.quotation_id, convert: p.convert }), schema: validator.schemas.aiAccept, permission: { module: "MOD-27", action: "approve" }, confirm: true, describe: "Accept a sent quotation by id (optionally convert to a final invoice)." },
   ],
 };

@@ -27,7 +27,11 @@ const dispose = z.object({
   proceeds: z.number().nonnegative().optional(),
 });
 
-const schemas = { create, update, depreciate, dispose };
+// AI-facing: asset_id in the payload → list_assets picker.
+const aiUpdate = update.extend({ asset_id: z.string().uuid() });
+const aiDepreciate = depreciate.extend({ asset_id: z.string().uuid() });
+const aiDispose = dispose.extend({ asset_id: z.string().uuid() });
+const schemas = { create, update, depreciate, dispose, aiUpdate, aiDepreciate, aiDispose };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body || {});
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

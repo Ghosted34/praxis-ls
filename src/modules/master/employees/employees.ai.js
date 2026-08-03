@@ -20,7 +20,7 @@ module.exports = {
   ],
   writes: [
     { key: "create_employee", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-02", action: "create" }, confirm: true, describe: "Register a new employee (identity, CNPS, salary, bank block)." },
-    { key: "update_employee", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-02", action: "edit" }, confirm: true, describe: "Update an employee record." },
-    { key: "set_employee_active", service: service.setActive, schema: validator.schemas.setActive, permission: { module: "MOD-02", action: "edit" }, confirm: true, describe: "Activate or deactivate an employee." },
+    { key: "update_employee", service: (c, p) => (({ employee_id, ...patch }) => service.update(c, { id: employee_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-02", action: "edit" }, confirm: true, describe: "Update an employee record by id." },
+    { key: "set_employee_active", service: (c, p) => service.setActive(c, { id: p.employee_id, is_active: p.is_active }), schema: validator.schemas.aiSetActive, permission: { module: "MOD-02", action: "edit" }, confirm: true, describe: "Activate or deactivate an employee by id." },
   ],
 };

@@ -21,10 +21,13 @@ describe("AI action registrar", () => {
     expect(writes.every((r) => r.requires_confirmation === true)).toBe(true);
   });
 
-  test("writes are ai_enabled ONLY when a vetted executor exists (no drift)", () => {
+  test("every ai_enabled write has a runnable executor (no drift)", () => {
+    // The write boundary is open (generic writeAdapter backs every manifest write,
+    // vetted registry wins where present), so the invariant is one-directional:
+    // anything ADVERTISED must be runnable — never advertise a write we can't run.
     const map = registrar.buildExecutorMap();
-    for (const w of cat.filter((r) => r.is_write)) {
-      expect(w.ai_enabled).toBe(Boolean(map[w.action_key]));
+    for (const w of cat.filter((r) => r.is_write && r.ai_enabled)) {
+      expect(typeof map[w.action_key]).toBe("function");
     }
   });
 

@@ -12,6 +12,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_client", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-03", action: "create" }, confirm: true, describe: "Register a new client (KYC, credit limit, payment terms)." },
-    { key: "update_client", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-03", action: "edit" }, confirm: true, describe: "Update a client." },
+    { key: "update_client", service: (c, p) => (({ client_id, ...patch }) => service.update(c, { id: client_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-03", action: "edit" }, confirm: true, describe: "Update a client by id." },
   ],
 };

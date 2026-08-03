@@ -16,6 +16,14 @@ const schemas = {
     source_doc_ref: z.string().min(1).optional(),
     customer_account: z.string().optional(),
   }),
+  // AI-facing: receipt_id in the payload → list_receipts picker.
+  aiPost: z.object({
+    receipt_id: z.string().uuid(),
+    entity_id: z.string().uuid(),
+    entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+    source_doc_ref: z.string().min(1).optional(),
+    customer_account: z.string().optional(),
+  }),
 };
 
 const mw = (k) => (req, _res, next) => {

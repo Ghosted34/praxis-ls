@@ -20,7 +20,9 @@ const base = {
 };
 const create = z.object(base);
 const update = z.object({ ...base, name: z.string().min(1).optional(), is_active: z.boolean().optional() });
-const schemas = { create, update };
+// AI-facing: client_id in the payload → list_clients picker.
+const aiUpdate = update.extend({ client_id: z.string().uuid() });
+const schemas = { create, update, aiUpdate };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));

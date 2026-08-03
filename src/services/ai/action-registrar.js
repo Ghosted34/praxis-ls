@@ -52,6 +52,9 @@ function unwrap(zt) {
 const TYPE_MAP = { ZodString: "string", ZodNumber: "number", ZodBoolean: "boolean", ZodArray: "array", ZodObject: "object", ZodEnum: "string", ZodNativeEnum: "string", ZodRecord: "object", ZodAny: undefined };
 
 function zodToJsonSchema(schema) {
+  // Unwrap a .refine()/.superRefine() (ZodEffects) to the inner object so refined
+  // schemas (e.g. journal_entry post) still expose their fields to the form.
+  if (schema && !schema.shape && schema._def && schema._def.schema && schema._def.schema.shape) schema = schema._def.schema;
   if (!schema || !schema.shape) return { type: "object", properties: {} };
   const properties = {};
   const required = [];
@@ -84,10 +87,14 @@ function buildCatalogue(manifests = loadManifests()) {
   for (const { manifest } of manifests) {
     if (!manifest || !manifest.entity) continue;
     const mod = manifest.module_key || null;
+    // `ai_writes: false` on a manifest makes it READ-ONLY for the AI (reads stay,
+    // every write is disabled). `aiEnabled: false` on a single action opts just
+    // that one out. Used to keep finance (posting/updating the ledger) read-only.
+    const aiWritesOff = manifest.ai_writes === false;
     const push = (a, isWrite) => {
       if (!a || !a.key || seen.has(a.key)) return;
       seen.add(a.key);
-      const executable = isExecutable(a, isWrite);
+      const executable = isExecutable(a, isWrite) && a.aiEnabled !== false && !(isWrite && aiWritesOff);
       rows.push({
         action_key: a.key,
         title: a.key.replace(/_/g, " "),

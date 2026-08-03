@@ -10,6 +10,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_expense_rate", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-10", action: "create" }, confirm: true, describe: "Add an effective-dated expense rate." },
-    { key: "update_expense_rate", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-10", action: "edit" }, confirm: true, describe: "Edit an expense rate." },
+    { key: "update_expense_rate", service: (c, p) => (({ expense_rate_id, ...patch }) => service.update(c, { id: expense_rate_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-10", action: "edit" }, confirm: true, describe: "Edit an expense rate by id." },
   ],
 };

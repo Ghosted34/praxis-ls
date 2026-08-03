@@ -9,7 +9,7 @@ module.exports = {
   ],
   writes: [
     { key: "create_treasury_account", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-09", action: "create" }, confirm: true, describe: "Add a treasury account mapped to a class-5 GL account." },
-    { key: "update_treasury_account", service: service.update, schema: validator.schemas.update, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Edit a treasury account." },
-    { key: "set_treasury_account_active", service: service.setActive, schema: validator.schemas.setActive, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Activate/deactivate a treasury account." },
+    { key: "update_treasury_account", service: (c, p) => (({ treasury_account_id, ...patch }) => service.update(c, { id: treasury_account_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Edit a treasury account by id." },
+    { key: "set_treasury_account_active", service: (c, p) => service.setActive(c, { id: p.treasury_account_id, active: p.active }), schema: validator.schemas.aiSetActive, permission: { module: "MOD-09", action: "edit" }, confirm: true, describe: "Activate/deactivate a treasury account by id." },
   ],
 };

@@ -5,6 +5,9 @@ const schemas = {
   create: z.object({ entity_id: z.string().uuid(), kind: z.enum(["BANK", "CASH", "MOMO"]), label: z.string().min(1), coa_code: z.string().min(1), momo_network: z.string().optional().nullable(), momo_fee_account: z.string().optional().nullable(), currency: z.string().length(3).optional() }),
   update: z.object({ label: z.string().optional(), currency: z.string().length(3).optional(), coa_code: z.string().optional(), momo_network: z.string().optional().nullable(), momo_fee_account: z.string().optional().nullable() }),
   setActive: z.object({ active: z.boolean() }),
+  // AI-facing: treasury_account_id in the payload → list_treasury_accounts picker.
+  aiUpdate: z.object({ treasury_account_id: z.string().uuid(), label: z.string().optional(), currency: z.string().length(3).optional(), coa_code: z.string().optional(), momo_network: z.string().optional().nullable(), momo_fee_account: z.string().optional().nullable() }),
+  aiSetActive: z.object({ treasury_account_id: z.string().uuid(), active: z.boolean() }),
   gatewayUpsert: z.object({
     provider: z.string().min(1).max(64),
     active: z.boolean().optional(),

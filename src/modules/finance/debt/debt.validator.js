@@ -7,6 +7,9 @@ const schemas = {
   drawdown: z.object({ entity_id: z.string().uuid().optional(), entry_date: d, source_doc_ref: z.string().optional(), treasury_coa: z.string().optional() }),
   repay: z.object({ entity_id: z.string().uuid().optional(), entry_date: d, principal_part: z.number().nonnegative().optional(), interest_part: z.number().nonnegative().optional(), treasury_coa: z.string().optional(), interest_coa: z.string().optional(), source_doc_ref: z.string().optional() }),
   update: z.object({ lender_name: z.string().optional().nullable(), interest_rate: z.number().nonnegative().optional().nullable(), due_on: d.optional().nullable(), started_on: d.optional().nullable(), dossier_id: z.string().uuid().optional().nullable() }),
+  // AI-facing: debt_id in the payload → list_debt picker.
+  aiDrawdown: z.object({ debt_id: z.string().uuid(), entity_id: z.string().uuid().optional(), entry_date: d, source_doc_ref: z.string().optional(), treasury_coa: z.string().optional() }),
+  aiRepay: z.object({ debt_id: z.string().uuid(), entity_id: z.string().uuid().optional(), entry_date: d, principal_part: z.number().nonnegative().optional(), interest_part: z.number().nonnegative().optional(), treasury_coa: z.string().optional(), interest_coa: z.string().optional(), source_doc_ref: z.string().optional() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

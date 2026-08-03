@@ -5,6 +5,9 @@ const line = z.object({ dictionary_item_id: z.string().uuid().optional(), label:
 const create = z.object({ dossier_id: z.string().uuid(), currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
 const update = z.object({ currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
 const setStatus = z.object({ to: z.enum(["SUBMIT_VALIDATION", "SUBMIT_APPROVAL", "APPROVE", "REJECT"]) });
-const schemas = { create, update, setStatus };
+// AI-facing: costing_id in the payload → list_costings picker.
+const aiUpdate = update.extend({ costing_id: z.string().uuid() });
+const aiSetStatus = setStatus.extend({ costing_id: z.string().uuid() });
+const schemas = { create, update, setStatus, aiUpdate, aiSetStatus };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = { create: mw("create"), update: mw("update"), setStatus: mw("setStatus"), schemas };

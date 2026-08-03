@@ -21,6 +21,9 @@ const update = z.object({
   is_active: z.boolean().optional(),
   parent_code: z.string().optional(),
 });
-const schemas = { create, update };
+// AI-facing: this module is keyed by `code`, not a uuid — so the AI supplies the
+// account code (no list-read picker; it's a free-text account code).
+const aiUpdate = update.extend({ code: z.string().min(1) });
+const schemas = { create, update, aiUpdate };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = { create: mw("create"), update: mw("update"), schemas };

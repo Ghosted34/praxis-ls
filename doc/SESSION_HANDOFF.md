@@ -35,6 +35,7 @@ _Last updated: 2026-08-02 (session 18)._
    procurement + a period-scoped GL/document audit trail with the acting user named; HR, payroll and
    security/permission events excluded by an allow-list in `repo.auditLedger`; document files stay behind the
    gated vault download. `portal.service.auditorView` composes it; grants time-box via `portal_access.expires_at`.
+   FE: the `/client-portal` **Audit room** terminal is live (session 19).
 2. **PRD open question 4 — RESOLVED as OHADA (session 19).** No IFRS restatement layer is built or planned;
    `investorView` stays OHADA-basis and now carries net-margin / expense-ratio KPIs. Revisit only for a concrete
    IFRS-reporting investor.
@@ -249,7 +250,10 @@ APPROVER on **their own** user row (403) but can on someone else's.
    `repo.auditLedger` whose allow-list (`split_part(action,'.',1) ∈ finance/procurement/costing/document`)
    makes HR, payroll, permission/role and God-Mode events unreachable no matter what event a new module adds;
    document files stay behind the gated vault download. PRD Q4 resolved **OHADA** — `investorView` keeps
-   `basis:"OHADA"` and gains net-margin/expense-ratio KPIs. Tests in `portal.test.js`.
+   `basis:"OHADA"` and gains net-margin/expense-ratio KPIs. Tests in `portal.test.js`. **FE built too:** the
+   external `/client-portal` SPA now has a live **Audit room** terminal (statements + trial balance + a named
+   audit trail) — `AuditorTerminal` in `portal-app.tsx`, `portalAuditorView()` in `portal-api.ts`; `PortalHome`
+   now routes all three grants generically (the old "audit room isn't open yet" placeholder is gone).
 
 **Still open:** `scopeColumn` record-level adoption (needs the entity-level design call — see the suggestion in
 this session's chat: reuse `entity_id`, opt-in per table, enforce list+detail).

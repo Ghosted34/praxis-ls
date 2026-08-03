@@ -57,10 +57,18 @@ function zodToJsonSchema(schema) {
   const required = [];
   for (const [key, field] of Object.entries(schema.shape)) {
     const inner = unwrap(field);
-    const jsonType = inner && inner._def ? TYPE_MAP[inner._def.typeName] : undefined;
-    properties[key] = jsonType ? { type: jsonType } : {};
-    if (inner && inner._def && inner._def.typeName === "ZodEnum" && Array.isArray(inner._def.values)) {
-      properties[key].enum = inner._def.values;
+    const tn = inner && inner._def ? inner._def.typeName : undefined;
+    if (tn === "ZodArray") {
+      // Recurse one level into the element so array-of-objects (line items,
+      // narratives) carry their item shape — the copilot renders repeatable rows.
+      const el = unwrap(inner._def.type);
+      properties[key] = el && el.shape ? { type: "array", items: zodToJsonSchema(el) } : { type: "array" };
+    } else if (tn === "ZodObject" && inner.shape) {
+      properties[key] = zodToJsonSchema(inner);
+    } else {
+      const jsonType = TYPE_MAP[tn];
+      properties[key] = jsonType ? { type: jsonType } : {};
+      if (tn === "ZodEnum" && Array.isArray(inner._def.values)) properties[key].enum = inner._def.values;
     }
     if (typeof field.isOptional === "function" ? !field.isOptional() : true) required.push(key);
   }

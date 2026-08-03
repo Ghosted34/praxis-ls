@@ -17,9 +17,11 @@ export type AiOption = { value: unknown; label: string };
 export type AiFieldMeta = {
   label: string;
   required?: boolean;
-  widget: "select" | "number" | "text";
+  widget: "select" | "number" | "text" | "boolean" | "array";
   ref?: string;
   options?: AiOption[];
+  /** For `array` widgets: the fields of each repeatable row. */
+  item_fields?: Record<string, AiFieldMeta>;
 };
 
 export type AiActionRun = {

@@ -82,13 +82,22 @@ function buildFieldMeta(schema, availableReads) {
   if (!schema || !schema.properties) return meta;
   const required = new Set(schema.required || []);
   for (const [key, prop] of Object.entries(schema.properties)) {
-    // Free-form structured fields (object/array — e.g. a `client` record or an
-    // invoice `lines` list) have no sensible single-input widget. Omit them from
-    // the form; whatever the model pre-filled is carried through on submit.
-    if (prop && (prop.type === "object" || prop.type === "array")) continue;
     const base = { label: humanize(key), required: required.has(key) };
+    // Array of objects (line items, narratives) → repeatable rows, each row a
+    // mini-form built from the item's own fields. Scalar arrays and free-form
+    // objects have no sensible single-input widget, so they stay hidden (whatever
+    // the model pre-filled is carried through on submit).
+    if (prop && prop.type === "array") {
+      if (prop.items && prop.items.properties) {
+        meta[key] = { ...base, widget: "array", item_fields: buildFieldMeta(prop.items, availableReads) };
+      }
+      continue;
+    }
+    if (prop && prop.type === "object") continue;
     if (Array.isArray(prop.enum) && prop.enum.length) {
       meta[key] = { ...base, widget: "select", options: prop.enum.map((v) => ({ value: v, label: String(v) })) };
+    } else if (prop.type === "boolean") {
+      meta[key] = { ...base, widget: "boolean" };
     } else if (prop.type === "number" || prop.type === "integer") {
       meta[key] = { ...base, widget: "number" };
     } else if (isRefField(key)) {

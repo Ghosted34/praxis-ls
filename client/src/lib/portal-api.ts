@@ -110,27 +110,63 @@ export const portalAccept = (token: string, password: string) =>
     body: { token, password },
   });
 
+type IncomeStatement = { charges: number; produits: number; hao_net: number; result: number };
+type BalanceSheet = { active: number; passif: number; result: number; balanced: boolean };
+
 export type InvestorView = {
   portal: "INVESTOR";
-  /** OHADA as kept. Surfaced because PRD open question 4 (IFRS view) is unanswered. */
+  /** OHADA basis. PRD open question 4 (IFRS view) resolved as OHADA — no restatement layer. */
   basis: "OHADA";
   period: { from: string; to: string };
   kpis: {
     revenue: number;
     charges: number;
     net_result: number;
+    net_margin_pct: number | null;
+    expense_ratio_pct: number | null;
     cash_on_hand: number;
     balance_sheet_total: number;
   };
-  income_statement: { charges: number; produits: number; hao_net: number; result: number };
-  balance_sheet: { active: number; passif: number; result: number; balanced: boolean };
+  income_statement: IncomeStatement;
+  balance_sheet: BalanceSheet;
   cash_position: { accounts: { account_code: string; balance: number }[]; total_cash: number };
   cash_flow: Record<string, unknown>;
 };
 
+export type AuditTrailEntry = {
+  ledger_id: number;
+  action: string;
+  module_key: string | null;
+  entity_ref: string | null;
+  created_at: string;
+  actor_user_id: string | null;
+  actor_name: string | null;
+  actor_email: string | null;
+};
+export type TrialBalanceRow = { account_code: string; debit: string | number; credit: string | number };
+export type AuditorView = {
+  portal: "AUDITOR";
+  basis: "OHADA";
+  period: { from: string; to: string };
+  scope: { entity_id: string | null };
+  disclosure: string;
+  income_statement: IncomeStatement;
+  balance_sheet: BalanceSheet;
+  cash_flow: Record<string, unknown>;
+  trial_balance: { rows: TrialBalanceRow[]; totals: { debit: number; credit: number; balanced?: boolean } };
+  procurement_spend: unknown;
+  audit_trail: AuditTrailEntry[];
+};
+
 export const portalMe = () => portalApi<PortalMe>("/me");
 export const portalClientView = () => portalApi<ClientView>("/client");
+const periodQs = (q?: { from?: string; to?: string }) =>
+  new URLSearchParams(Object.entries(q || {}).filter(([, v]) => !!v) as [string, string][]).toString();
 export const portalInvestorView = (q?: { from?: string; to?: string }) => {
-  const s = new URLSearchParams(Object.entries(q || {}).filter(([, v]) => !!v) as [string, string][]).toString();
+  const s = periodQs(q);
   return portalApi<InvestorView>(`/investor${s ? `?${s}` : ""}`);
+};
+export const portalAuditorView = (q?: { from?: string; to?: string }) => {
+  const s = periodQs(q);
+  return portalApi<AuditorView>(`/auditor${s ? `?${s}` : ""}`);
 };

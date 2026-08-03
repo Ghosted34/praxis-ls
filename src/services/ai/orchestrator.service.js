@@ -203,7 +203,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     // One step at a time: propose a single action, let the human confirm it, then
     // (a recap is generated automatically) wait before the next.
     "When a task needs several actions, do them ONE AT A TIME: propose a single action, wait for the user to " +
-    "confirm it, then wait for their go-ahead before proposing the next. Do not propose multiple actions at once." +
+    "confirm it, then wait for their go-ahead before proposing the next. Do not propose multiple actions at once. " +
+    // The stall to kill: the model saying "let me do that now" WITHOUT emitting the
+    // tool call, forcing the user to prod it. Announce and act in the same turn.
+    "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
+    "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
+    "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
+    "with an action you already announced." +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 

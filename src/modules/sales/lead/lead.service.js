@@ -55,8 +55,11 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
   if (lead.status !== "QUALIFIED") throw new AppError("NOT_QUALIFIED", "Only a QUALIFIED lead can be converted", 422);
   await client.query("BEGIN");
   try {
+    // Map lead → client_master's actual fields: it wants `name` (required), and
+    // has no `legal_name`/`phone` columns — passing those made the insert fail.
+    const { legal_name, phone, ...restClient } = clientData || {};
     const created = await clientMaster.create(client, {
-      data: { legal_name: clientData.legal_name || lead.company_name, email: clientData.email || lead.email, phone: clientData.phone || lead.phone, ...clientData },
+      data: { email: lead.email || undefined, ...restClient, name: restClient.name || legal_name || lead.company_name },
       actor,
     });
     const clientId = created.client_id || created.id;

@@ -6,6 +6,9 @@ const schemas = {
   create: z.object({ pr_id: z.string().uuid().optional().nullable(), supplier_id: z.string().uuid().optional().nullable(), dossier_id: z.string().uuid().optional().nullable(), expense_category: z.enum(["OPERATIONS", "OVERHEAD"]).optional(), items: z.array(item).optional() }),
   update: z.object({ supplier_id: z.string().uuid().optional().nullable(), dossier_id: z.string().uuid().optional().nullable(), expense_category: z.enum(["OPERATIONS", "OVERHEAD"]).optional(), items: z.array(item).optional() }),
   transition: z.object({ to: z.enum(["ISSUED_LOCKED", "APPROVED_LOCKED", "RECEIVED", "CLOSED", "CANCELLED"]), entity_id: z.string().uuid().optional().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
+  // AI-facing: purchase_order_id in the payload → list_purchase_orders picker.
+  aiUpdate: z.object({ purchase_order_id: z.string().uuid(), supplier_id: z.string().uuid().optional().nullable(), dossier_id: z.string().uuid().optional().nullable(), expense_category: z.enum(["OPERATIONS", "OVERHEAD"]).optional(), items: z.array(item).optional() }),
+  aiTransition: z.object({ purchase_order_id: z.string().uuid(), to: z.enum(["ISSUED_LOCKED", "APPROVED_LOCKED", "RECEIVED", "CLOSED", "CANCELLED"]), entity_id: z.string().uuid().optional().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

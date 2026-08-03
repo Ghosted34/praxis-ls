@@ -154,49 +154,64 @@ async function seedDisplayName(slug, name) {
 }
 
 /**
- * Apply `feature_catalogue.depends_on` to a projected feature set.
+ * Enforce `feature_catalogue.depends_on` at projection time: a feature may be
+ * 'on' only if every feature it depends on is itself 'on'. depends_on has lived
+ * in the platform catalogue since 0020 but the projection never honoured it, so a
+ * child could be entitled with its parent off — the exact shape of the session-10
+ * "19 modules were dark" bug, one layer up (e.g. ai.assistant.backend depends_on
+ * {ai.assistant}).
  *
- * `depends_on` has been stored since the catalogue was written and consulted by
- * nothing — `projectFeatures` resolved each key in isolation, so a child could
- * be ON while its parent was OFF. `scripts/tenant/feature-report.js` flags the
- * condition; nothing prevented it. That is the shape of the session-10 bug ("19
- * modules dark for everyone") one layer up: a feature that appears enabled but
- * whose parent gate denies every request underneath it.
- *
- * A child whose parent is off is forced off, and the source is marked
- * `dependency` so the console can say WHY rather than showing an unexplained
- * "off" the operator will try to toggle. Applied transitively and to a fixed
- * point, because a grandchild (ai.vectorization → ai.assistant) must fall when
- * the grandparent does. Iteration is capped: the catalogue is small, and a
- * malformed cycle must not spin a deploy.
- *
- * Deliberately one-directional — turning a child on does NOT turn its parent on.
- * Entitlement is the plan's business; this only stops the incoherent state.
+ * Applied to a fixpoint so a broken dependency cascades through a chain (A→B→C:
+ * if C is off, B is forced off, which then forces A off). A dependency that isn't
+ * in the catalogue at all counts as unmet — an unknown key can't be satisfied, so
+ * the safe resolution is off. Mutates + returns `features` in place; the resolved
+ * `source` is preserved (the tenant `feature_state.source` CHECK only allows
+ * plan|override|default) while `state` becomes 'off'.
  */
-function applyDependencies(rows) {
-  const state = new Map(rows.map((r) => [r.feature_key, r]));
-  const parents = new Map(rows.map((r) => [r.feature_key, r.depends_on || []]));
+/**
+ * Normalise a feature's `depends_on` to a string[] of feature keys.
+ *
+ * `depends_on` is a `citext[]`. citext is an extension type with no array parser
+ * registered in node-postgres, so the driver returns the raw Postgres array
+ * literal as a STRING ("{}", "{ai.assistant}", "{a,b}") rather than a JS array —
+ * iterating that string character-by-character (what a naive `for..of` does) once
+ * turned EVERY feature off, including no-dependency ones, because "{" is not a
+ * key. The query now casts to text[] (which the driver DOES parse), and this
+ * parser is the belt-and-braces fallback so the function is correct whether it is
+ * handed an array or a literal string.
+ */
+function toDepsArray(v) {
+  if (Array.isArray(v)) return v.map((s) => String(s));
+  if (typeof v === "string") {
+    const inner = v.replace(/^\{/, "").replace(/\}$/, "").trim();
+    if (!inner) return [];
+    return inner
+      .split(",")
+      .map((s) => s.replace(/^"(.*)"$/, "$1").trim())
+      .filter(Boolean);
+  }
+  return [];
+}
 
-  for (let pass = 0; pass < 16; pass += 1) {
-    let changed = false;
-    for (const row of rows) {
-      if (row.state !== "on") continue;
-      const missing = (parents.get(row.feature_key) || []).find((p) => {
-        const parent = state.get(p);
-        // A dependency naming a key that isn't in the catalogue can't be
-        // evaluated; ignore it rather than darkening the child on bad data.
-        return parent && parent.state !== "on";
-      });
-      if (missing) {
-        row.state = "off";
-        row.source = "dependency";
-        row.blocked_by = missing;
-        changed = true;
+function enforceDependencies(features) {
+  const byKey = new Map(features.map((f) => [String(f.feature_key), f]));
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const f of features) {
+      if (f.state !== "on") continue;
+      const deps = toDepsArray(f.depends_on);
+      for (const dep of deps) {
+        const parent = byKey.get(String(dep));
+        if (!parent || parent.state !== "on") {
+          f.state = "off";
+          changed = true;
+          break;
+        }
       }
     }
-    if (!changed) break;
   }
-  return rows;
+  return features;
 }
 
 async function projectFeatures(slug) {
@@ -205,7 +220,11 @@ async function projectFeatures(slug) {
   let features;
   try {
     const { rows } = await pf.query(
-      "SELECT fc.feature_key, fc.depends_on, " +
+      // depends_on::text[] — the column is citext[], which node-postgres returns
+      // as a RAW STRING (no parser for the extension type). Casting to text[] makes
+      // the driver hand back a real JS array; enforceDependencies also self-defends
+      // via toDepsArray in case a caller passes the unparsed form.
+      "SELECT fc.feature_key, fc.depends_on::text[] AS depends_on, " +
         "CASE WHEN ov.state IS NOT NULL THEN ov.state WHEN pf.included THEN fc.default_state ELSE 'off' END AS state, " +
         "CASE WHEN ov.state IS NOT NULL THEN 'override' WHEN pf.included THEN 'plan' ELSE 'default' END AS source " +
         "FROM platform.tenant t JOIN platform.feature_catalogue fc ON true " +
@@ -214,11 +233,16 @@ async function projectFeatures(slug) {
         "WHERE t.slug=$1",
       [slug],
     );
-    features = applyDependencies(rows);
-    const blocked = features.filter((f) => f.source === "dependency");
+    const wantedOn = new Set(rows.filter((f) => f.state === "on").map((f) => f.feature_key));
+    features = enforceDependencies(rows);
+    // An unexplained "off" is one an operator will try to toggle, fail to change,
+    // and report as a bug. `source` can't carry the reason (the tenant
+    // feature_state.source CHECK allows only plan|override|default), so it goes
+    // to the log instead.
+    const blocked = features.filter((f) => f.state !== "on" && wantedOn.has(f.feature_key));
     if (blocked.length) {
       logger.warn(
-        { slug, blocked: blocked.map((f) => `${f.feature_key}←${f.blocked_by}`) },
+        { slug, blocked: blocked.map((f) => `${f.feature_key}<-${toDepsArray(f.depends_on).join(",")}`) },
         "[features] forced off because a dependency is off",
       );
     }
@@ -422,8 +446,8 @@ module.exports = {
   migrateAllTenants,
   wipeSandbox,
   projectFeatures,
-  applyDependencies, // exported for tests — the rule is pure and worth pinning
-
+  enforceDependencies,
+  toDepsArray,
   createAdmin,
   listTenantSlugs,
 };

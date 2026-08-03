@@ -16,7 +16,13 @@ const ask = asyncHandler(async (req, res) => {
 });
 const confirm = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
-    service.confirm(client, { user: user(req), actionRunId: req.params.id }),
+    service.confirm(client, { user: user(req), actionRunId: req.params.id, payload: req.body && req.body.payload }),
+  );
+  res.json({ data: out });
+});
+const options = asyncHandler(async (req, res) => {
+  const out = await req.tenantDb((client) =>
+    service.options(client, { user: user(req), ref: req.query.ref, q: req.query.q, limit: Number(req.query.limit) || 100 }),
   );
   res.json({ data: out });
 });
@@ -47,4 +53,4 @@ const clearHistory = asyncHandler(async (req, res) => {
   res.json({ data: out });
 });
 
-module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory };
+module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory, options };

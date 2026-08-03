@@ -1,5 +1,13 @@
 -- ============================================================================
--- TENANT DB — 0487 Default approval workflows: repair + audible failure (MOD-67)
+-- TENANT DB — 0492 Default approval workflows: repair + audible failure (MOD-67)
+--
+-- RENUMBERED from 0487 on 2026-08-02: a parallel branch landed
+-- 0487_approver_capability_backfill.sql, and the CI guard blocks new collisions.
+-- This file was chosen to move because it is genuinely idempotent — it only
+-- creates a workflow for an approvable event that has NONE — so re-running it
+-- under the new filename on a database where 0487 already applied inserts
+-- nothing. The capability backfill was left alone on the principle that you
+-- never renumber a migration whose re-run you haven't reasoned about.
 --
 -- 0469_default_workflows.sql seeds a single-step APPROVE workflow for the six
 -- events whose modules call executor.start(). Two problems with it, neither

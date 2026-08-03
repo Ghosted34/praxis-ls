@@ -6,7 +6,6 @@ import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
 import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
 import { useNavigate } from "react-router-dom";
-import { ResourceList } from "@/components/resource-list";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
@@ -48,6 +47,11 @@ import {
   createCreditNote,
   updateCreditNote,
   postCreditNote,
+  listAssets,
+  getAsset,
+  createAsset,
+  depreciateAsset,
+  disposeAsset,
   type Option,
   type JournalLineInput,
   type InvoiceLineInput,
@@ -56,6 +60,9 @@ import {
   type TaxDeclaration,
   type CreditNote,
   type CreditNoteLineInput,
+  type Asset,
+  type AssetDetail,
+  type AssetScheduleRow,
 } from "@/lib/finance-api";
 
 /* ── shared helpers ─────────────────────────────────────────────── */
@@ -1117,22 +1124,399 @@ export function InvoicesPage() {
    used to live here were deleted (2026-07-20) — they had no importers. FinanceHub
    takes both from the dedicated `./receivables` and `./chart-of-accounts` modules. */
 
-export const AssetsPage = () => (
-  <ResourceList
-    eyebrow={<HubCrumb area="Finance" to="/finance" />}
-    title="Assets"
-    description="Fixed-asset register with depreciation schedule, period posting and disposal."
-    endpoint="/assets"
-    columns={[
-      { key: "label", label: "Asset" },
-      { key: "tag", label: "Tag" },
-      { key: "acquisition_cost", label: "Cost" },
-      { key: "method", label: "Method" },
-      { key: "status", label: "Status" },
-      { key: "acquired_on", label: "Acquired" },
-    ]}
-  />
-);
+const assetStatusTone = (s?: string | null) => {
+  const u = String(s ?? "").toUpperCase();
+  if (u === "ACTIVE") return "ok" as const;
+  if (u === "DISPOSED") return "mute" as const;
+  return "blue" as const;
+};
+
+export function AssetsPage() {
+  const [rows, setRows] = React.useState<Asset[] | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+  const [createOpen, setCreateOpen] = React.useState(false);
+  const [detailId, setDetailId] = React.useState<string | null>(null);
+  const [deprTarget, setDeprTarget] = React.useState<Asset | null>(null);
+  const [disposeTarget, setDisposeTarget] = React.useState<Asset | null>(null);
+  const reload = () => setNonce((n) => n + 1);
+
+  React.useEffect(() => {
+    let live = true;
+    setRows(null);
+    setError(null);
+    listAssets()
+      .then((d) => live && setRows(Array.isArray(d) ? d : []))
+      .catch((e) => {
+        if (!live) return;
+        if (e instanceof ApiError && e.status === 403) setError("You don't have permission to view this.");
+        else setError(e instanceof ApiError ? e.message : "Failed to load.");
+      });
+    return () => { live = false; };
+  }, [nonce]);
+
+  const list = rows ?? [];
+  const active = list.filter((a) => String(a.status).toUpperCase() === "ACTIVE");
+  const totalCost = list.reduce((s, a) => s + Number(a.acquisition_cost || 0), 0);
+
+  const columns: Column<Asset>[] = [
+    { key: "label", label: "Asset", render: (r) => <span className="font-medium text-foreground">{fmtCell(r.label)}</span> },
+    { key: "tag", label: "Tag", render: (r) => <span className="num">{fmtCell(r.tag ?? "—")}</span> },
+    { key: "acquisition_cost", label: "Cost", className: "num text-right", render: (r) => moneyFmt(r.acquisition_cost as number | string | null) },
+    { key: "method", label: "Method", render: (r) => enumLabel(String(r.method ?? "LINEAR")) },
+    { key: "acquired_on", label: "Acquired", render: (r) => dateFmt(r.acquired_on ?? null) },
+    { key: "status", label: "Status", render: (r) => <Pill tone={assetStatusTone(r.status)}>{enumLabel(String(r.status))}</Pill> },
+    {
+      key: "_a", label: "", render: (r) => (
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <Button size="sm" variant="ghost" onClick={() => setDetailId(String(r.asset_id))}>Schedule</Button>
+          {String(r.status).toUpperCase() === "ACTIVE" && (
+            <>
+              <Button size="sm" variant="outline" onClick={() => setDeprTarget(r)}>Depreciate</Button>
+              <Button size="sm" variant="outline" onClick={() => setDisposeTarget(r)}>Dispose</Button>
+            </>
+          )}
+        </div>
+      ),
+    },
+  ];
+
+  return (
+    <section className="mx-auto max-w-6xl animate-fade-in">
+      <PageHeader
+        eyebrow={<HubCrumb area="Finance" to="/finance" />}
+        title="Assets"
+        description="Fixed-asset register — acquisition builds the monthly depreciation schedule; post a period's dotation to the ledger or dispose an asset and recognise the gain/loss."
+        action={<Button onClick={() => setCreateOpen(true)}>New asset</Button>}
+      />
+      <KpiRow>
+        <KpiTile label="Assets" value={String(list.length)} />
+        <KpiTile label="Active" value={String(active.length)} />
+        <KpiTile label="Acquisition cost" value={moneyFmt(totalCost)} />
+      </KpiRow>
+      <DataList
+        columns={columns}
+        rows={list}
+        loading={rows === null}
+        error={error}
+        rowKey={(r) => String(r.asset_id)}
+        onRowClick={(r) => setDetailId(String(r.asset_id))}
+        empty={{ title: "No assets yet", hint: "Register one to start its depreciation schedule." }}
+      />
+
+      <AssetCreateForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} />
+      <AssetDetailModal assetId={detailId} onClose={() => setDetailId(null)} onChanged={reload} />
+      <AssetDepreciateForm asset={deprTarget} onClose={() => setDeprTarget(null)} onDone={reload} />
+      <AssetDisposeForm asset={disposeTarget} onClose={() => setDisposeTarget(null)} onDone={reload} />
+    </section>
+  );
+}
+
+function AssetCreateForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
+  const [entityId, setEntityId] = React.useState("");
+  const [entityLabel, setEntityLabel] = React.useState<string | null>(null);
+  const [label, setLabel] = React.useState("");
+  const [tag, setTag] = React.useState("");
+  const [cost, setCost] = React.useState("");
+  const [residual, setResidual] = React.useState("");
+  const [method, setMethod] = React.useState<"LINEAR" | "DECLINING">("LINEAR");
+  const [lifeMonths, setLifeMonths] = React.useState("");
+  const [acquiredOn, setAcquiredOn] = React.useState(today());
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setEntityId(""); setEntityLabel(null); setLabel(""); setTag(""); setCost("");
+    setResidual(""); setMethod("LINEAR"); setLifeMonths(""); setAcquiredOn(today()); setError(null);
+  }, [open]);
+
+  const canSubmit = !!entityId && label.trim().length > 0 && Number(cost) > 0 && Number(lifeMonths) > 0 && !busy;
+
+  async function submit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await createAsset({
+        entity_id: entityId,
+        label: label.trim(),
+        tag: tag.trim() || undefined,
+        acquisition_cost: Number(cost),
+        residual_value: residual === "" ? undefined : Number(residual),
+        method,
+        useful_life_months: Number(lifeMonths),
+        acquired_on: acquiredOn,
+      });
+      onCreated();
+      onClose();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="New asset" description="On save, the full monthly depreciation schedule is generated from the cost, residual value, method and useful life." size="lg">
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Entity" required>
+            <SearchSelect
+              path="/entities"
+              value={entityLabel}
+              placeholder="Search entities…"
+              getLabel={(r) => (r.code ? `${String(r.code)} — ${String(r.legal_name ?? r.entity_id)}` : String(r.legal_name ?? r.entity_id))}
+              getKey={(r) => String(r.entity_id)}
+              onSelect={(r) => { setEntityId(String(r.entity_id)); setEntityLabel(String(r.legal_name ?? r.code ?? r.entity_id)); }}
+            />
+          </Field>
+          <Field label="Tag" hint="Optional inventory tag / plate number.">
+            <Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="VEH-001" />
+          </Field>
+          <Field label="Asset" required className="sm:col-span-2">
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Toyota Hilux — Douala fleet" autoFocus />
+          </Field>
+          <Field label="Acquisition cost (XAF)" required>
+            <Input type="number" min="0" step="1" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="25000000" />
+          </Field>
+          <Field label="Residual value (XAF)" hint="Salvage value at end of life. Defaults to 0.">
+            <Input type="number" min="0" step="1" value={residual} onChange={(e) => setResidual(e.target.value)} placeholder="0" />
+          </Field>
+          <Field label="Method" required>
+            <Select value={method} onChange={(e) => setMethod(e.target.value as "LINEAR" | "DECLINING")}>
+              <option value="LINEAR">Linear (straight-line)</option>
+              <option value="DECLINING">Declining balance</option>
+            </Select>
+          </Field>
+          <Field label="Useful life (months)" required>
+            <Input type="number" min="1" step="1" value={lifeMonths} onChange={(e) => setLifeMonths(e.target.value)} placeholder="60" />
+          </Field>
+          <Field label="Acquired on" required className="sm:col-span-2">
+            <Input type="date" value={acquiredOn} onChange={(e) => setAcquiredOn(e.target.value)} />
+          </Field>
+        </div>
+
+        {error && <ErrorState message={error} />}
+
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={submit} loading={busy} disabled={!canSubmit}>Create asset</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AssetDepreciateForm({ asset, onClose, onDone }: { asset: Asset | null; onClose: () => void; onDone: () => void }) {
+  const open = !!asset;
+  const [period, setPeriod] = React.useState("");
+  const [nextDue, setNextDue] = React.useState<string | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [note, setNote] = React.useState<string | null>(null);
+
+  // Default the period to the earliest UN-POSTED scheduled row, so the box lands
+  // on the period that's actually due next rather than today's calendar month
+  // (which is usually not in the schedule, and posting out of order is wrong).
+  React.useEffect(() => {
+    if (!asset) return;
+    let live = true;
+    setError(null); setNote(null); setNextDue(null); setPeriod(""); setLoading(true);
+    getAsset(String(asset.asset_id))
+      .then((d) => {
+        if (!live) return;
+        const next = (d.schedule ?? []).find((r) => !r.posted);
+        setNextDue(next ? next.period_code : null);
+        setPeriod(next ? next.period_code : "");
+      })
+      .catch((e) => live && setError(errMessage(e)))
+      .finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, [asset]);
+
+  async function submit() {
+    if (!asset) return;
+    setBusy(true);
+    setError(null);
+    setNote(null);
+    try {
+      const r = await depreciateAsset(String(asset.asset_id), period);
+      setNote(r?.posted_to_gl ? "Posted to the ledger." : "Recorded (ledger not configured — no GL entry).");
+      onDone();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const allPosted = !loading && nextDue === null && !error;
+
+  return (
+    <Modal open={open} onClose={onClose} title="Post depreciation" description={asset ? `Post one month's dotation for ${asset.label}. Debit 6813, credit accumulated depreciation. Idempotent per period.` : ""}>
+      <div className="space-y-4">
+        <Field label="Period" required hint={nextDue ? `Next un-posted period is ${nextDue}. Post periods in order.` : "YYYY-MM — must be a scheduled period for this asset."}>
+          <Input type="month" value={period} onChange={(e) => setPeriod(e.target.value)} disabled={loading} />
+        </Field>
+        {allPosted && (
+          <div className="rounded-lg border px-3 py-2 text-sm text-muted-foreground">
+            Every scheduled period is already posted — nothing left to depreciate.
+          </div>
+        )}
+        {note && <div className="rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-3 py-2 text-sm">{note}</div>}
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>Close</Button>
+          <Button onClick={submit} loading={busy} disabled={busy || loading || !/^\d{4}-\d{2}$/.test(period)}>Post period</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AssetDisposeForm({ asset, onClose, onDone }: { asset: Asset | null; onClose: () => void; onDone: () => void }) {
+  const open = !!asset;
+  const [disposedOn, setDisposedOn] = React.useState(today());
+  const [proceeds, setProceeds] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [result, setResult] = React.useState<{ net_book_value: number; gain_loss: number } | null>(null);
+
+  React.useEffect(() => {
+    if (!open) return;
+    setDisposedOn(today()); setProceeds(""); setError(null); setResult(null);
+  }, [open, asset]);
+
+  async function submit() {
+    if (!asset) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await disposeAsset(String(asset.asset_id), { disposed_on: disposedOn, proceeds: proceeds === "" ? 0 : Number(proceeds) });
+      setResult({ net_book_value: r.net_book_value, gain_loss: r.gain_loss });
+      onDone();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open={open} onClose={onClose} title="Dispose asset" description={asset ? `Mark ${asset.label} disposed and recognise the gain or loss against its net book value.` : ""}>
+      <div className="space-y-4">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Disposed on" required>
+            <Input type="date" value={disposedOn} onChange={(e) => setDisposedOn(e.target.value)} />
+          </Field>
+          <Field label="Proceeds (XAF)" hint="Sale proceeds; 0 if scrapped.">
+            <Input type="number" min="0" step="1" value={proceeds} onChange={(e) => setProceeds(e.target.value)} placeholder="0" />
+          </Field>
+        </div>
+        {result && (
+          <div className="rounded-lg border px-3 py-2 text-sm">
+            Net book value <span className="num font-medium">{moneyFmt(result.net_book_value)}</span> ·{" "}
+            <span className={result.gain_loss >= 0 ? "text-[rgb(var(--ok))]" : "text-[rgb(var(--bad))]"}>
+              {result.gain_loss >= 0 ? "Gain" : "Loss"} {moneyFmt(Math.abs(result.gain_loss))}
+            </span>
+          </div>
+        )}
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" onClick={onClose} disabled={busy}>Close</Button>
+          <Button onClick={submit} loading={busy} disabled={busy || !!result}>Dispose</Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function AssetDetailModal({ assetId, onClose, onChanged }: { assetId: string | null; onClose: () => void; onChanged: () => void }) {
+  const open = !!assetId;
+  const [detail, setDetail] = React.useState<AssetDetail | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [posting, setPosting] = React.useState<string | null>(null);
+  const [nonce, setNonce] = React.useState(0);
+
+  React.useEffect(() => {
+    if (!assetId) return;
+    let live = true;
+    setDetail(null);
+    setError(null);
+    getAsset(assetId)
+      .then((d) => live && setDetail(d))
+      .catch((e) => live && setError(errMessage(e)));
+    return () => { live = false; };
+  }, [assetId, nonce]);
+
+  async function postPeriod(row: AssetScheduleRow) {
+    if (!assetId) return;
+    setPosting(row.period_code);
+    setError(null);
+    try {
+      await depreciateAsset(assetId, row.period_code);
+      setNonce((n) => n + 1);
+      onChanged();
+    } catch (e) {
+      setError(errMessage(e));
+    } finally {
+      setPosting(null);
+    }
+  }
+
+  const schedule = detail?.schedule ?? [];
+  const isActive = String(detail?.status ?? "").toUpperCase() === "ACTIVE";
+
+  return (
+    <Modal open={open} onClose={onClose} title={detail?.label ?? "Asset"} description="Depreciation schedule — post any un-posted period to the ledger." size="xl">
+      {error && <ErrorState message={error} />}
+      {!detail && !error && <LoadingRow />}
+      {detail && (
+        <div className="space-y-4">
+          <KpiRow>
+            <KpiTile label="Acquisition cost" value={moneyFmt(detail.acquisition_cost as number | string | null)} />
+            <KpiTile label="Accumulated depr." value={moneyFmt(detail.accumulated_depreciation ?? 0)} />
+            <KpiTile label="Net book value" value={moneyFmt(detail.net_book_value ?? 0)} />
+            <KpiTile label="Status" value={enumLabel(String(detail.status))} />
+          </KpiRow>
+          {schedule.length === 0 ? (
+            <EmptyState title="No schedule" hint="This asset has no depreciation schedule." />
+          ) : (
+            <div className="max-h-80 overflow-auto rounded-2xl border">
+              <Table>
+                <THead>
+                  <TR>
+                    <TH>Period</TH>
+                    <TH>Amount</TH>
+                    <TH>Posted</TH>
+                    <TH></TH>
+                  </TR>
+                </THead>
+                <TBody>
+                  {schedule.map((row) => (
+                    <TR key={row.depreciation_id}>
+                      <TD className="num">{row.period_code}</TD>
+                      <TD className="num text-right">{moneyFmt(row.amount as number | string | null)}</TD>
+                      <TD>{row.posted ? <Pill tone="ok">Posted</Pill> : <Pill tone="mute">Pending</Pill>}</TD>
+                      <TD className="text-right">
+                        {!row.posted && isActive && (
+                          <Button size="sm" variant="outline" loading={posting === row.period_code} disabled={!!posting} onClick={() => postPeriod(row)}>
+                            Post
+                          </Button>
+                        )}
+                      </TD>
+                    </TR>
+                  ))}
+                </TBody>
+              </Table>
+            </div>
+          )}
+        </div>
+      )}
+    </Modal>
+  );
+}
 
 /* ── report viewer with period filters ──────────────────────────── */
 /** Report cells are dynamic — smartCell formats ISO dates, groups the ledger's

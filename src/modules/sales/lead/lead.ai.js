@@ -9,7 +9,7 @@ module.exports = {
   ],
   writes: [
     { key: "create_lead", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-20", action: "create" }, confirm: true, describe: "Capture a new lead." },
-    { key: "transition_lead", service: (c, p) => service.transition(c, p), schema: validator.schemas.transition, permission: { module: "MOD-20", action: "edit" }, confirm: true, describe: "Advance a lead (contacted/qualified/lost)." },
-    { key: "convert_lead", service: (c, p) => service.convert(c, p), schema: validator.schemas.convert, permission: { module: "MOD-20", action: "edit" }, confirm: true, describe: "Convert a qualified lead into a client." },
+    { key: "transition_lead", service: (c, p) => service.transition(c, { id: p.lead_id, to: p.to }), schema: validator.schemas.aiTransition, permission: { module: "MOD-20", action: "edit" }, confirm: true, describe: "Advance a lead by id to CONTACTED/QUALIFIED/LOST." },
+    { key: "convert_lead", service: (c, p) => service.convert(c, { id: p.lead_id, clientData: p.client }), schema: validator.schemas.aiConvert, permission: { module: "MOD-20", action: "edit" }, confirm: true, describe: "Convert a qualified lead (by id) into a client." },
   ],
 };

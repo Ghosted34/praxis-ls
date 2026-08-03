@@ -29,7 +29,8 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
-import { tenant } from "@/lib/api-client";
+// ApiError: the self-grant block surfaces SELF_GRANT_FORBIDDEN by code.
+import { tenant, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { Organigramme } from "@/components/organigramme";
 import {
@@ -173,6 +174,10 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
   const [password, setPassword] = React.useState("");
   const [status, setStatus] = React.useState(user?.status || "ACTIVE");
   const [roleIds, setRoleIds] = React.useState<string[]>([]);
+  // Authority overlay (ISSUER/VALIDATOR/APPROVER/LINE_MANAGER) — layered on top of
+  // roles and read by requireCapability() on high-authority routes (e.g. disburse).
+  const allCaps = useList<Capability>("/capabilities");
+  const [capIds, setCapIds] = React.useState<string[]>([]);
   const [employeeId, setEmployeeId] = React.useState(user?.employee_id || "");
   // Live-schema employees only — app_user + its employee FK live in the live
   // schema, so linking must never offer sandbox employees (would 409/EMPLOYEE_NOT_FOUND).
@@ -181,7 +186,8 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
   const [error, setError] = React.useState<string | null>(null);
   const [hydrating, setHydrating] = React.useState(editing);
 
-  // The list endpoint omits role_ids; the detail endpoint carries them.
+  // The list endpoint omits role_ids; the detail endpoint carries them. Current
+  // capabilities come from a separate endpoint (identity data, own writer).
   React.useEffect(() => {
     if (!user) return;
     let live = true;
@@ -189,11 +195,16 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
       .then((u) => { if (live) setRoleIds(u.role_ids || []); })
       .catch(() => { /* leave roles untouched if the read is denied */ })
       .finally(() => { if (live) setHydrating(false); });
+    tenant<Capability[]>(`/capabilities/users/${user.user_id}`)
+      .then((cs) => { if (live) setCapIds((cs || []).map((c) => c.capability_id)); })
+      .catch(() => { /* leave caps untouched if the read is denied */ });
     return () => { live = false; };
   }, [user]);
 
   const toggleRole = (id: string) =>
     setRoleIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+  const toggleCap = (id: string) =>
+    setCapIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -209,16 +220,24 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
         if (status !== user.status) {
           await tenant(`/users/${user.user_id}/status`, { method: "POST", body: { status } });
         }
+        // Capabilities are identity data with their own writer (replace-all).
+        await tenant(`/capabilities/users/${user.user_id}`, { method: "PUT", body: { capability_ids: capIds } });
       } else {
-        await tenant("/users", {
+        const created = await tenant<User>("/users", {
           method: "POST",
           body: { email, full_name: fullName, password, username: username || null, employee_id: employeeId || null, status, role_ids: roleIds },
         });
+        // Assign capabilities only after the login exists (needs its user_id).
+        if (created?.user_id && capIds.length) {
+          await tenant(`/capabilities/users/${created.user_id}`, { method: "PUT", body: { capability_ids: capIds } });
+        }
       }
       onSaved();
       onClose();
     } catch (err) {
-      setError(errMsg(err));
+      // The maker-checker self-grant block returns a specific 403 message worth
+      // showing verbatim (errMsg would otherwise flatten every 403 to a generic line).
+      setError(err instanceof ApiError && err.code === "SELF_GRANT_FORBIDDEN" ? err.message : errMsg(err));
     } finally {
       setBusy(false);
     }
@@ -280,6 +299,25 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
                   className={`chip ${on ? "on" : ""}`}
                 >
                   {r.name}
+                </button>
+              );
+            })}
+          </div>
+        </Field>
+
+        <Field label="Capabilities" hint="Authority overlay (segregation of duties) — required on high-authority actions like disbursing cash, on top of the role grant. CEO always has all.">
+          <div className="flex flex-wrap gap-1.5 rounded-lg border p-2">
+            {(allCaps.rows || []).length === 0 && <span className="micro">No capabilities defined — normally the four standard ones are seeded.</span>}
+            {(allCaps.rows || []).map((c) => {
+              const on = capIds.includes(c.capability_id);
+              return (
+                <button
+                  key={c.capability_id}
+                  type="button"
+                  onClick={() => toggleCap(c.capability_id)}
+                  className={`chip ${on ? "on" : ""}`}
+                >
+                  {c.code}
                 </button>
               );
             })}

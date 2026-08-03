@@ -32,10 +32,12 @@ import {
   portalMe,
   portalClientView,
   portalInvestorView,
+  portalAuditorView,
   PortalError,
   type PortalMe,
   type ClientView,
   type InvestorView,
+  type AuditorView,
 } from "@/lib/portal-api";
 
 const msg = (e: unknown) => (e instanceof PortalError ? e.message : "Something went wrong. Please try again.");
@@ -336,6 +338,123 @@ function InvestorTerminal({ me }: { me: PortalMe }) {
   );
 }
 
+/* ── auditor room ───────────────────────────────────────────────────────── */
+
+function AuditorTerminal({ me }: { me: PortalMe }) {
+  const [view, setView] = React.useState<AuditorView | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    portalAuditorView()
+      .then((v) => alive && setView(v))
+      .catch((e) => alive && setError(msg(e)));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) return <ErrorState message={error} />;
+  if (!view) return <SkeletonTable />;
+
+  const { income_statement: is, balance_sheet: bs, trial_balance: tb, audit_trail: trail } = view;
+  const actionLabel = (a: string) => (a || "").replace(/[._]/g, " ").replace(/^./, (c) => c.toUpperCase());
+
+  return (
+    <>
+      <h1 className="font-display text-2xl text-foreground">
+        Audit room{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
+      </h1>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {day(view.period.from)} to {day(view.period.to)} · {view.basis} basis
+        {me.grants.AUDITOR?.expires_at ? ` · access to ${day(me.grants.AUDITOR.expires_at)}` : ""}
+      </p>
+      <p className="mt-3 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">{view.disclosure}</p>
+
+      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+        <Panel title="Compte de résultat">
+          <Line label="Produits" value={is.produits} />
+          <Line label="Charges" value={is.charges} />
+          <Line label="Résultat net" value={is.result} strong />
+        </Panel>
+        <Panel title="Bilan">
+          <Line label="Actif" value={bs.active} />
+          <Line label="Passif" value={bs.passif} />
+          <Line label="Résultat" value={bs.result} strong />
+          {!bs.balanced ? (
+            <p className="mt-2 text-xs text-[hsl(var(--warn))]">Actif and passif do not balance for this period — figures are provisional.</p>
+          ) : null}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel title="Trial balance">
+          {tb.rows.length === 0 ? (
+            <EmptyState title="No movements" hint="No ledger movements for this period." />
+          ) : (
+            <div className="max-h-80 overflow-auto">
+              <table className="w-full text-sm">
+                <thead className="sticky top-0 bg-card text-xs uppercase tracking-wide text-muted-foreground">
+                  <tr>
+                    <th className="py-2 text-left font-medium">Account</th>
+                    <th className="py-2 text-right font-medium">Debit</th>
+                    <th className="py-2 text-right font-medium">Credit</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {tb.rows.map((r) => (
+                    <tr key={r.account_code}>
+                      <td className="py-2 text-foreground">{r.account_code}</td>
+                      <td className="num py-2 text-right text-foreground">{money(r.debit)}</td>
+                      <td className="num py-2 text-right text-foreground">{money(r.credit)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="border-t border-border">
+                  <tr>
+                    <td className="py-2 font-semibold text-foreground">Total</td>
+                    <td className="num py-2 text-right font-semibold text-foreground">{money(tb.totals.debit)}</td>
+                    <td className="num py-2 text-right font-semibold text-foreground">{money(tb.totals.credit)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <div className="mt-6">
+        <Panel title="Audit trail">
+          {trail.length === 0 ? (
+            <EmptyState title="No postings" hint="Financial and document postings for the period will appear here." />
+          ) : (
+            <div className="max-h-96 overflow-auto">
+              <ul className="divide-y divide-border">
+                {trail.map((t) => (
+                  <li key={t.ledger_id} className="flex items-center justify-between gap-4 py-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-foreground">{actionLabel(t.action)}</p>
+                      <p className="truncate text-xs text-muted-foreground">{t.entity_ref || "—"}</p>
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-sm text-foreground">{t.actor_name || "System"}</p>
+                      <p className="text-xs text-muted-foreground">{day(t.created_at)}</p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </Panel>
+      </div>
+
+      <p className="mt-6 text-xs text-muted-foreground">
+        Read-only, prepared on the {view.basis} basis for the period shown. HR, payroll and security events are excluded.
+      </p>
+    </>
+  );
+}
+
 /* ── client view ────────────────────────────────────────────────────────── */
 
 function ClientTerminal({ me }: { me: PortalMe }) {
@@ -415,19 +534,21 @@ function ClientTerminal({ me }: { me: PortalMe }) {
 }
 
 /**
- * Routes a signed-in portal user to whichever terminal their grant allows.
+ * Routes a signed-in portal user to whichever terminal(s) their grants allow.
  *
  * A single login can legitimately hold more than one grant (a CFO who is both a
- * client contact and on the board), so this picks CLIENT first — the everyday
- * case — and offers a switch rather than guessing. AUDITOR is deliberately absent:
- * `auditorView` is still a backend placeholder, so a login holding only an auditor
- * grant is told the room isn't open rather than shown one report dressed up as a
- * portal.
+ * client contact and on the board, or an auditor also given the investor view),
+ * so this picks the first allowed in CLIENT → INVESTOR → AUDITOR order and offers
+ * a switch when there's more than one. All three terminals are live.
  */
+const PORTALS = ["CLIENT", "INVESTOR", "AUDITOR"] as const;
+type PortalKind = (typeof PORTALS)[number];
+const TAB_LABEL: Record<PortalKind, string> = { CLIENT: "Shipments", INVESTOR: "Financials", AUDITOR: "Audit room" };
+
 function PortalHome() {
   const [me, setMe] = React.useState<PortalMe | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [tab, setTab] = React.useState<"CLIENT" | "INVESTOR" | null>(null);
+  const [tab, setTab] = React.useState<PortalKind | null>(null);
 
   React.useEffect(() => {
     let alive = true;
@@ -435,7 +556,7 @@ function PortalHome() {
       .then((m) => {
         if (!alive) return;
         setMe(m);
-        setTab(m.grants.CLIENT?.allowed ? "CLIENT" : m.grants.INVESTOR?.allowed ? "INVESTOR" : null);
+        setTab(PORTALS.find((p) => m.grants[p]?.allowed) || null);
       })
       .catch((e) => alive && setError(msg(e)));
     return () => {
@@ -446,31 +567,23 @@ function PortalHome() {
   if (error) return <PortalFrame wide><ErrorState message={error} /></PortalFrame>;
   if (!me) return <PortalFrame wide><SkeletonTable /></PortalFrame>;
 
-  const both = me.grants.CLIENT?.allowed && me.grants.INVESTOR?.allowed;
+  const allowed = PORTALS.filter((p) => me.grants[p]?.allowed);
 
-  // A login can exist with no usable grant — revoked, expired, or auditor-only.
-  // Say so plainly instead of rendering empty tables, which would read as "you
-  // have no shipments" and send them to the wrong person for help.
+  // A login can exist with no usable grant — revoked or expired. Say so plainly
+  // instead of rendering empty tables, which would read as "you have no data".
   if (!tab) {
     return (
       <PortalFrame wide>
-        <EmptyState
-          title="No active access"
-          hint={
-            me.grants.AUDITOR?.allowed
-              ? "The audit room isn't available yet. Please contact your engagement lead."
-              : "Your access has expired or been withdrawn. Please contact your account manager."
-          }
-        />
+        <EmptyState title="No active access" hint="Your access has expired or been withdrawn. Please contact your account manager." />
       </PortalFrame>
     );
   }
 
   return (
     <PortalFrame wide>
-      {both ? (
+      {allowed.length > 1 ? (
         <div className="mb-6 inline-flex rounded-full border border-border bg-card p-1">
-          {(["CLIENT", "INVESTOR"] as const).map((t) => (
+          {allowed.map((t) => (
             <button
               key={t}
               type="button"
@@ -479,12 +592,12 @@ function PortalHome() {
                 tab === t ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"
               }`}
             >
-              {t === "CLIENT" ? "Shipments" : "Financials"}
+              {TAB_LABEL[t]}
             </button>
           ))}
         </div>
       ) : null}
-      {tab === "CLIENT" ? <ClientTerminal me={me} /> : <InvestorTerminal me={me} />}
+      {tab === "CLIENT" ? <ClientTerminal me={me} /> : tab === "INVESTOR" ? <InvestorTerminal me={me} /> : <AuditorTerminal me={me} />}
     </PortalFrame>
   );
 }

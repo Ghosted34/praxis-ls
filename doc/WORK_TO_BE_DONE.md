@@ -238,6 +238,41 @@ were caught by gates that had never run before:
 looks like `"\ai\ask"` in a `grep -A` result is `/ai/ask` in the file. Verified three times this session;
 don't "fix" one.
 
+## Status banner — 2026-08-02 (session 19 + 19b): several long-standing "still open" entries are now CLOSED
+
+Read this before trusting anything below it. Two parallel streams landed the same day.
+
+**Closed by session 19:** `depends_on` enforcement at projection (`enforceDependencies` in
+`provisioning.service.js` — note the `citext[]` parsing trap it documents); user↔capability assignment
+plus `requireCapability` mounted on disburse and costing-status (`0487_approver_capability_backfill`);
+the Live self-grant block; AssetsPage write UI.
+
+**Closed by session 19b** (evidence and reasoning: `doc/ORGANOGRAMME_AUDIT_2026-08-02.md`, whose status
+banner is authoritative for this surface):
+
+- **`requireCapability` is no longer call-site-free** — mounted by session 19 on two routes, and by 19b
+  per target state inside approval steps (`shared/http/transition-permission.js`).
+- **`scopeColumn` has adopters.** The blocker recorded below — "no business table has a scope column" —
+  was removed by `0490`, which put `scope_id` on `employee`, `vacancy` and `purchase_request`.
+  `vacancy` and `purchase_request` now declare it. `middleware/rbac.js` resolves the scope **closure**,
+  not the raw rows, so a manager sees the branches beneath them; a row with a NULL scope stays visible to
+  everyone, deliberately, so a scoped user's list is never abruptly empty.
+- **`user_scope` is writable.** It had no write path anywhere in the codebase; there are now endpoints
+  and an assignment UI, so record-level scope and approval routing have real data to work with.
+- **The approval engine enforces.** Eligibility, maker-checker, per-module gating and the bypass routes —
+  the audit's W2/W3/W4/W5/W6/W7/W9/W10/W11/W12 are closed; W8 is resolved by W4 rather than by
+  auto-finalising (see `purchase_order.service.js` for why).
+- **The screen registry is complete** (59 → 96), so the AI corpus can see Operations, Sales, Commercial,
+  Costing, Procurement and Vault.
+
+**Still genuinely open** from this surface: **B1** — no reporting line on `employee`, so `LINE_MANAGER`
+("approves for own team") still cannot resolve a team; **W13** — no delegation, escalation or deadlines,
+which depends on B1; **C7** — `portal.*` gates the staff preview but not the external routes.
+
+**New backlog raised:** `doc/PERMISSION_SWEEP_BACKLOG.md` — the pattern where an ordinary user's action
+sits behind an administrator's permission, invisible because everyone tests as CEO. Four instances fixed,
+the class swept, and one root-cause suggestion (a smoke test as a role-limited user).
+
 ## Repo audit — 2026-08-02 (session 18: re-checked the "still open" list against source)
 
 The 2026-08-01 audit below is sound apart from four entries. Same method — read the source, cite the line.

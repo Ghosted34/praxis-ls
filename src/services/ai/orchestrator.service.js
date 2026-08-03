@@ -12,6 +12,7 @@ const { retrieve, toContextBlock } = require("./retrieval.service");
 const { redact } = require("./redact");
 const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
+const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
 
 /**
@@ -191,7 +192,25 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const system =
     "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
     "Only call a function when the user asks to DO something; never invent data. " +
-    "You act with the user's permissions and cannot exceed them.\n\nCONTEXT:\n" +
+    "You act with the user's permissions and cannot exceed them. " +
+    // Speak business language, not database language. Users identify records by
+    // name/reference, not internal keys — surfacing a UUID reads as a leak.
+    "Speak in plain business language. Refer to records by their name or human reference " +
+    "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
+    "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
+    "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
+    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
+    // One step at a time: propose a single action, let the human confirm it, then
+    // (a recap is generated automatically) wait before the next.
+    "When a task needs several actions, do them ONE AT A TIME: propose a single action, wait for the user to " +
+    "confirm it, then wait for their go-ahead before proposing the next. Do not propose multiple actions at once. " +
+    // The stall to kill: the model saying "let me do that now" WITHOUT emitting the
+    // tool call, forcing the user to prod it. Announce and act in the same turn.
+    "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
+    "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
+    "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
+    "with an action you already announced." +
+    "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
   // ── Conversation memory ──────────────────────────────────────────────────
@@ -239,6 +258,9 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // action cards that a human confirms. `writeCalls` collects both the writes from
   // this turn and any write the follow-up proposes after seeing the read data.
   const defFor = (call) => tools.find((t) => t.action_key === call.function.name);
+  // Reads available to this caller — the set a reference field's picker may draw
+  // from (buildFieldMeta only offers a picker whose read is in here).
+  const availableReads = new Set(tools.filter((t) => !t.is_write).map((t) => t.action_key));
   const writeCalls = [];
   const readCalls = [];
   for (const call of res.toolCalls) {
@@ -316,6 +338,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       payload,
       requires_confirmation: def.requires_confirmation,
       validation_errors: errs,
+      // Drives the interactive form: schema types each field, field_meta says
+      // which render as dropdowns (enum inline, or a `ref` list-read to fetch).
+      schema: def.payload_schema,
+      field_meta: buildFieldMeta(def.payload_schema, availableReads),
     });
   }
 
@@ -329,7 +355,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
  * Execute a confirmed action via the whitelisted registry, with the user's
  * permissions. Logs to the immutable ledger. Registry maps action_key → fn.
  */
-async function confirmAction({ client, user, actionRunId, registry }) {
+async function confirmAction({ client, user, actionRunId, registry, payload: edited }) {
   const { rows } = await client.query(
     "SELECT * FROM ai_action_run WHERE action_run_id=$1 AND user_id=$2",
     [actionRunId, user.user_id],
@@ -346,7 +372,23 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   const fn = registry && registry[run.action_key];
   if (!fn) throw new Error(`no executor registered for ${run.action_key}`);
 
-  const result = await fn({ client, user, payload: run.proposed_payload });
+  // The interactive form can submit an edited payload (user picked selects /
+  // filled fields). Re-validate against the SAME catalogue schema the propose
+  // step used, then persist it, so what executes is exactly what was confirmed
+  // and the ledger reflects the final values — never the model's first guess.
+  let payload = run.proposed_payload;
+  if (edited && typeof edited === "object") {
+    const { rows: cat } = await client.query(
+      "SELECT payload_schema FROM ai_action_catalogue WHERE action_key=$1",
+      [run.action_key],
+    );
+    const errs = validatePayload(cat[0] && cat[0].payload_schema, edited);
+    if (errs.length) throw new Error(`invalid payload: ${errs.join("; ")}`);
+    payload = edited;
+    await client.query("UPDATE ai_action_run SET proposed_payload=$2 WHERE action_run_id=$1", [actionRunId, payload]);
+  }
+
+  const result = await fn({ client, user, payload });
   await client.query(
     "UPDATE ai_action_run SET status='EXECUTED', executed_entity_ref=$2 WHERE action_run_id=$1",
     [actionRunId, result && result.entity_ref ? result.entity_ref : null],
@@ -354,7 +396,7 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   await client.query(
     `INSERT INTO immutable_ledger (actor_user_id, action, module_key, entity_ref, after_json)
      VALUES ($1,$2,'MOD-67',$3,$4)`,
-    [user.user_id, `ai.action.${run.action_key}`, result && result.entity_ref, run.proposed_payload],
+    [user.user_id, `ai.action.${run.action_key}`, result && result.entity_ref, payload],
   );
 
   // Record the execution in the conversation itself.
@@ -371,17 +413,58 @@ async function confirmAction({ client, user, actionRunId, registry }) {
   try {
     if (run.conversation_id) {
       const ref = result && result.entity_ref ? ` (${result.entity_ref})` : "";
+      // Name the record so recall is concrete: replayed later, "✓ Executed
+      // create_client — name: SODECOTON (client:…)" lets the model answer "what
+      // did you just do?" by name, not just by action key.
+      const SALIENT = ["name", "full_name", "title", "ref", "code", "label", "to", "status", "amount", "email"];
+      const parts = [];
+      for (const k of SALIENT) {
+        if (payload && payload[k] !== undefined && payload[k] !== null && payload[k] !== "") parts.push(`${k}: ${payload[k]}`);
+        if (parts.length >= 3) break;
+      }
+      const summary = parts.length ? ` — ${parts.join(", ")}` : "";
       await convo.addMessage(client, {
         conversationId: run.conversation_id,
         role: "assistant",
-        content: `✓ Executed ${run.action_key}${ref}.`,
+        content: `✓ Executed ${run.action_key}${summary}${ref}.`,
       });
     }
   } catch (err) {
     logger.warn({ err: err.message, actionRunId }, "[ai] execution note not recorded in conversation");
   }
 
-  return { ok: true, result };
+  // Step-by-step narration. After a confirmed action we generate a short message
+  // that (1) confirms what was done by name, (2) recaps what's been completed in
+  // this task, and (3) proposes the SINGLE next step as a question — then stops
+  // and waits. No tools on this call, so it can only talk, never chain another
+  // action. Best-effort: a narration failure never fails the executed action.
+  let message = null;
+  try {
+    if (run.conversation_id) {
+      const hist = await history_.load(client, { user, conversationId: run.conversation_id });
+      const sys =
+        "You are Praxis LS, carrying out a step-by-step task for the user. An action was JUST executed " +
+        "successfully. Reply in 1-3 short sentences of plain business language (never show UUIDs or " +
+        "snake_case field names): first confirm what was done, naming the record; then recap what has been " +
+        "completed in this task so far; then propose the SINGLE next step as a question and STOP. Do not take " +
+        "any further action or call any function — wait for the user's go-ahead.";
+      const nar = await llm.chat({
+        client,
+        temperature: 0.3,
+        messages: [
+          { role: "system", content: sys },
+          ...hist.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
+        ],
+      });
+      message = nar.text || null;
+      await recordUsage(client, { user, conversationId: run.conversation_id, res: nar, feature: "assistant" });
+      if (message) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: message });
+    }
+  } catch (err) {
+    logger.warn({ err: err.message, actionRunId }, "[ai] post-action narration skipped");
+  }
+
+  return { ok: true, result, message };
 }
 
 /**

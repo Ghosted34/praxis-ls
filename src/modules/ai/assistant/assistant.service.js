@@ -6,6 +6,7 @@
 const orchestrator = require("../../../services/ai/orchestrator.service");
 const repo = require("./assistant.repo");
 const { buildExecutorMap } = require("../../../services/ai/action-registrar");
+const { rowsToOptions } = require("../../../services/ai/action-fields");
 
 // Executor map is auto-derived from every module manifest (reads) + the vetted
 // write registry. Built once at load; a manifest change requires a restart, same
@@ -15,8 +16,27 @@ const registry = buildExecutorMap();
 const ask = (client, { user, message, conversationId, allowed }) =>
   orchestrator.ask({ client, user, message, conversationId, allowed, registry });
 
-const confirm = (client, { user, actionRunId }) =>
-  orchestrator.confirmAction({ client, user, actionRunId, registry });
+const confirm = (client, { user, actionRunId, payload }) =>
+  orchestrator.confirmAction({ client, user, actionRunId, registry, payload });
+
+/**
+ * Options for an interactive form's reference dropdown. `ref` must be an
+ * ai_enabled READ in the catalogue (so it respects the AI gate), and it runs
+ * with the caller's client — the picker can never surface rows the user's RBAC
+ * would hide. Rows are mapped to {value,label} for the select.
+ */
+async function options(client, { user, ref, q, limit }) {
+  if (!ref) throw new Error("ref is required");
+  const { rows } = await client.query(
+    "SELECT 1 FROM ai_action_catalogue WHERE action_key=$1 AND is_write=false AND ai_enabled=true",
+    [ref],
+  );
+  if (!rows.length) throw new Error(`unknown or disabled options source: ${ref}`);
+  const fn = registry[ref];
+  if (typeof fn !== "function") throw new Error(`no executor for ${ref}`);
+  const out = await fn({ client, user, payload: { limit: Math.min(limit || 100, 500), q: q || undefined } });
+  return rowsToOptions(out && out.data !== undefined ? out.data : out, Math.min(limit || 100, 500));
+}
 
 const confirmBatch = (client, { user, batchId }) =>
   orchestrator.confirmBatch({ client, user, batchId, registry });
@@ -51,4 +71,4 @@ async function clearHistory(client, { user }) {
   return { conversation_id: conversationId, messages: [] };
 }
 
-module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory };
+module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory, options };

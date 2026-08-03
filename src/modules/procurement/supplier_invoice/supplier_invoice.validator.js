@@ -9,6 +9,8 @@ const schemas = {
     vat_total: z.number().nonnegative().optional(), wht_total: z.number().nonnegative().optional(), due_on: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(), lines: z.array(line).min(1),
   }),
   post: z.object({ entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), source_doc_ref: z.string().min(1).optional(), supplier_account: z.string().optional() }),
+  // AI-facing: supplier_invoice_id in the payload → list_supplier_invoices picker.
+  aiPost: z.object({ supplier_invoice_id: z.string().uuid(), entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/), source_doc_ref: z.string().min(1).optional(), supplier_account: z.string().optional() }),
   match: z.object({}).strict(),
 };
 const mw = (k) => (req, _res, next) => {

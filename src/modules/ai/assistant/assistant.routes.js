@@ -12,6 +12,7 @@ router.post("/ask", validate("ask"), c.ask);
 // Conversation history — always the CALLER's own thread (scoped to req.user in
 // the service), so no RBAC beyond auth: there is no path to read anyone else's.
 router.get("/conversations", c.conversations);
+router.get("/options", c.options);
 router.get("/history", c.history);
 router.post("/history/clear", c.clearHistory);
 router.post("/actions/:id/confirm", c.confirm);

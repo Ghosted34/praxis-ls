@@ -10,6 +10,7 @@
 
 const repo = require("./report.repo");
 const events = require("./report.events");
+const reportExport = require("./report-export");
 const statements = require("../../finance/financial_statement/financial_statement.service");
 const receivables = require("../../finance/smart_receivables/smart_receivables.service");
 const dossier = require("../../operations/operations_file/operations_file.service");
@@ -130,10 +131,20 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
       // eslint-disable-next-line no-await-in-loop
       const out = await run(client, { reportKey: sr.report_key, params: sr.params || {} });
       const html = "<h1>" + sr.name + "</h1><pre>" + JSON.stringify(out.data, null, 2) + "</pre>";
+      // Render each requested spreadsheet format and attach it (base64, so the job
+      // stays JSON-serialisable through Redis). pdf keeps the inline HTML body —
+      // its vaulting path is separate (POST /run/:key/pdf).
+      const attachments = [];
+      for (const fmt of Array.isArray(sr.formats) ? sr.formats : []) {
+        if (fmt !== "csv" && fmt !== "xlsx") continue;
+        // eslint-disable-next-line no-await-in-loop
+        const file = await reportExport.toExport(sr.report_key, out.data, fmt);
+        attachments.push({ filename: `${sr.name}.${file.extension}`, content: file.buffer.toString("base64"), encoding: "base64", contentType: file.contentType });
+      }
       if (tenantMeta && Array.isArray(sr.recipients)) {
         for (const to of sr.recipients) {
           // eslint-disable-next-line no-await-in-loop
-          await enqueue("email", "scheduled-report", { tenantMeta, env, to, subject: sr.name, html, purpose: "reports", moduleKey: events.MODULE });
+          await enqueue("email", "scheduled-report", { tenantMeta, env, to, subject: sr.name, html, attachments: attachments.length ? attachments : undefined, purpose: "reports", moduleKey: events.MODULE });
         }
       }
     } catch (err) {

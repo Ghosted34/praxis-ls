@@ -21,6 +21,13 @@ router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+
+// USER↔capability assignment (the authority overlay requireCapability reads).
+// Declared before "/:id" so "users" isn't captured as a capability id. Assigning
+// authority is an approve-level act — same grant the permission-matrix write uses.
+router.get("/users/:userId", requirePermission(MODULE, "view"), controller.listForUser);
+router.put("/users/:userId", requirePermission(MODULE, "approve"), validator.setForUser, controller.setForUser);
+
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);

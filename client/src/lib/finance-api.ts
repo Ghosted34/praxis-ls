@@ -333,3 +333,29 @@ export const getInvoiceTotals = (id: string, entryDate?: string) =>
 /* attach a scanned slip / reference document to a receipt (vault upload, base64 data-url) */
 export const uploadReceiptSlip = (receiptId: string, dataUrl: string) =>
   tenant<{ vault_id?: string }>("/documents", { method: "POST", body: { data_url: dataUrl, doc_type: "RECEIPT_SLIP", entity_ref: `payment_receipt:${receiptId}` } });
+
+/* ══════════════ Fixed assets (MOD-54) — register, depreciation, disposal ══════════════ */
+export type Asset = {
+  asset_id: string; entity_id?: string | null; label: string; tag?: string | null;
+  acquisition_cost: number | string; residual_value?: number | string | null;
+  method?: string | null; useful_life_months?: number | null; acquired_on?: string | null;
+  status: string; disposed_on?: string | null; coa_asset_code?: string | null; coa_depr_code?: string | null;
+};
+export type AssetScheduleRow = { depreciation_id: string; period_code: string; amount: number | string; posted: boolean; entry_id?: string | null };
+export type AssetDetail = Asset & {
+  schedule?: AssetScheduleRow[]; accumulated_depreciation?: number; net_book_value?: number;
+};
+export type AssetInput = {
+  entity_id: string; label: string; tag?: string; coa_asset_code?: string; coa_depr_code?: string;
+  acquisition_cost: number; residual_value?: number; method?: "LINEAR" | "DECLINING"; useful_life_months: number; acquired_on: string;
+};
+
+export const listAssets = () => tenant<Asset[]>("/assets");
+export const getAsset = (id: string) => tenant<AssetDetail>(`/assets/${id}`);
+export const createAsset = (body: AssetInput) => tenant<Asset>("/assets", { method: "POST", body });
+export const updateAsset = (id: string, body: Partial<Pick<AssetInput, "label" | "tag" | "coa_asset_code" | "coa_depr_code">>) =>
+  tenant<Asset>(`/assets/${id}`, { method: "PATCH", body });
+export const depreciateAsset = (id: string, period_code: string) =>
+  tenant<{ depreciation: AssetScheduleRow; posted_to_gl: boolean }>(`/assets/${id}/depreciate`, { method: "POST", body: { period_code } });
+export const disposeAsset = (id: string, body: { disposed_on?: string; proceeds?: number }) =>
+  tenant<{ asset: Asset; net_book_value: number; proceeds: number; gain_loss: number }>(`/assets/${id}/dispose`, { method: "POST", body });

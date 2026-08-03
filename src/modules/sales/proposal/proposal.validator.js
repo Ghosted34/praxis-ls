@@ -8,6 +8,10 @@ const schemas = {
   update: z.object({ title: z.string().optional(), client_id: z.string().uuid().optional().nullable(), opportunity_id: z.string().uuid().optional().nullable(), lines: z.array(line).optional(), narratives: z.array(narrative).optional() }),
   transition: z.object({ to: z.enum(["IN_REVIEW", "SENT", "DRAFT", "REJECTED"]), entity_id: z.string().uuid().optional().nullable() }),
   accept: z.object({ create_quotation: z.boolean().optional(), entity_id: z.string().uuid().optional().nullable() }),
+  // AI-facing variants carry proposal_id (REST gets it from the URL). proposal_id
+  // resolves to a list_proposals picker in the copilot form.
+  aiTransition: z.object({ proposal_id: z.string().uuid(), to: z.enum(["IN_REVIEW", "SENT", "DRAFT", "REJECTED"]), entity_id: z.string().uuid().optional().nullable() }),
+  aiAccept: z.object({ proposal_id: z.string().uuid(), create_quotation: z.boolean().optional(), entity_id: z.string().uuid().optional().nullable() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), accept: mw("accept"), schemas };

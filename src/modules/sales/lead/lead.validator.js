@@ -6,6 +6,10 @@ const schemas = {
   update: z.object({ company_name: z.string().optional(), contact_name: z.string().optional(), email: z.string().email().optional(), phone: z.string().optional(), source: z.enum(["MANUAL", "WEBSITE", "REFERRAL", "CAMPAIGN"]).optional(), service_interest: z.string().optional(), owner_user_id: z.string().uuid().optional().nullable() }),
   transition: z.object({ to: z.enum(["CONTACTED", "QUALIFIED", "LOST"]) }),
   convert: z.object({ client: z.record(z.any()).optional() }),
+  // AI-facing variants carry lead_id in the payload (REST gets it from the URL).
+  // `lead_id` resolves to a list_leads picker in the copilot form.
+  aiTransition: z.object({ lead_id: z.string().uuid(), to: z.enum(["CONTACTED", "QUALIFIED", "LOST"]) }),
+  aiConvert: z.object({ lead_id: z.string().uuid(), client: z.record(z.any()).optional() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), convert: mw("convert"), schemas };

@@ -31,7 +31,7 @@ npm test
 npm run build --prefix client
 ```
 
-Migrations — tenant `0487`, `0488`; seeds `9022`, `9130`. `scripts/deploy.sh`'s
+Migrations — tenant `0488`–`0492`; seeds `9022`, `9130`. `scripts/deploy.sh`'s
 migrate service runs platform + tenant + seeds, or per tenant:
 
 ```bash
@@ -58,7 +58,7 @@ This is the first thing to check, because with no workflow bound every submissio
 auto-approves and nothing ever reaches a queue.
 
 ```sql
--- Workflows and their steps. Expect 6 default workflows after 0469/0487.
+-- Workflows and their steps. Expect 7 default workflows after 0469/0492/0491 (the six original events plus purchase requests).
 SELECT w.name, et.key AS event, w.is_active,
        s.step_seq, s.step_kind, r.code AS role, sc.code AS scope,
        s.capability_code, s.min_amount_xaf, s.max_amount_xaf
@@ -71,8 +71,8 @@ SELECT w.name, et.key AS event, w.is_active,
 ```
 
 **If this returns nothing**, `0469` failed and swallowed the error — that is
-exactly the silent failure `0487` was written to repair, so re-run the migration
-and watch for `WARNING [0487]` in the output.
+exactly the silent failure `0492` was written to repair, so re-run the migration
+and watch for `WARNING [0492]` in the output.
 
 ```sql
 -- Anything pending?

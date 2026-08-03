@@ -9,6 +9,6 @@ module.exports = {
   ],
   writes: [
     { key: "create_campaign", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-22", action: "create" }, confirm: true, describe: "Create a marketing campaign." },
-    { key: "transition_campaign", service: (c, p) => service.transition(c, p), schema: validator.schemas.transition, permission: { module: "MOD-22", action: "edit" }, confirm: true, describe: "Activate/pause/end a campaign." },
+    { key: "transition_campaign", service: (c, p) => service.transition(c, { id: p.campaign_id, to: p.to }), schema: validator.schemas.aiTransition, permission: { module: "MOD-22", action: "edit" }, confirm: true, describe: "Activate/pause/end a campaign by id." },
   ],
 };

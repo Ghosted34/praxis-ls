@@ -25,7 +25,7 @@
  */
 "use strict";
 
-const { requirePermission } = require("../../middleware/rbac");
+const { requirePermission, requireCapability } = require("../../middleware/rbac");
 
 function requireTransitionPermission(moduleKey, actionByTarget, opts = {}) {
   const field = opts.field || "to";
@@ -37,4 +37,29 @@ function requireTransitionPermission(moduleKey, actionByTarget, opts = {}) {
   };
 }
 
-module.exports = { requireTransitionPermission };
+/**
+ * The segregation-of-duties overlay, applied per target state.
+ *
+ * `requireCapability('APPROVER')` is the right gate on a decision — it is the
+ * authority layer that sits on top of the module grant. It is the WRONG gate on
+ * a submission: requiring APPROVER to submit is the same bug as requiring
+ * `approve` to submit, one layer up. So the capability is selected by target
+ * state too, and states not in the map are unaffected.
+ *
+ *     router.post("/:id/status",
+ *       validator.setStatus,
+ *       requireTransitionPermission(MODULE, TRANSITION_ACTION),
+ *       requireTransitionCapability({ APPROVE: "APPROVER", REJECT: "APPROVER" }),
+ *       controller.setStatus);
+ */
+function requireTransitionCapability(capabilityByTarget, opts = {}) {
+  const field = opts.field || "to";
+  return function transitionCapability(req, res, next) {
+    const target = req.body ? req.body[field] : undefined;
+    const code = capabilityByTarget[target];
+    if (!code) return next();
+    return requireCapability(code)(req, res, next);
+  };
+}
+
+module.exports = { requireTransitionPermission, requireTransitionCapability };

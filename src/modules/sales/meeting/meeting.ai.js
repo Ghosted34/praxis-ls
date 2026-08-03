@@ -9,6 +9,6 @@ module.exports = {
   ],
   writes: [
     { key: "schedule_meeting", service: (c, p) => service.create(c, { data: p }), schema: validator.schemas.create, permission: { module: "MOD-21", action: "create" }, confirm: true, describe: "Schedule a meeting." },
-    { key: "add_meeting_note", service: (c, p) => service.addNote(c, p), schema: validator.schemas.note, permission: { module: "MOD-21", action: "edit" }, confirm: true, describe: "Add a note or minutes to a meeting." },
+    { key: "add_meeting_note", service: (c, p) => service.addNote(c, { meetingId: p.meeting_id, body: p.body, isMinutes: p.is_minutes }), schema: validator.schemas.aiNote, permission: { module: "MOD-21", action: "edit" }, confirm: true, describe: "Add a note or minutes to a meeting (by id)." },
   ],
 };

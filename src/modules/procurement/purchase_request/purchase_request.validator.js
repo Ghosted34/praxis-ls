@@ -9,6 +9,8 @@ const schemas = {
     lines: z.array(z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().nonnegative().optional(), unit_price: z.number().nonnegative().optional() })).optional(),
   }),
   transition: z.object({ to: z.enum(["SUBMITTED", "APPROVED", "REJECTED", "ORDERED"]), entity_id: z.string().uuid().optional().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
+  // AI-facing: purchase_request_id in the payload → list_purchase_requests picker.
+  aiTransition: z.object({ purchase_request_id: z.string().uuid(), to: z.enum(["SUBMITTED", "APPROVED", "REJECTED", "ORDERED"]), entity_id: z.string().uuid().optional().nullable(), date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() }),
 };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);

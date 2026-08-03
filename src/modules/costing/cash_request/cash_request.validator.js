@@ -7,6 +7,9 @@ const schemas = {
   create: z.object({ dossier_id: z.string().uuid().optional().nullable(), costing_id: z.string().uuid().optional().nullable(), requested_by: z.string().uuid().optional().nullable(), lines: z.array(line).optional() }),
   update: z.object({ lines: z.array(line) }),
   transition: z.object({ to: z.enum(["SUBMITTED", "APPROVED", "REJECTED"]), entity_id: z.string().uuid().optional().nullable(), date: d.optional() }),
+  // AI-facing: cash_request_id in the payload → list_cash_requests picker.
+  aiUpdate: z.object({ cash_request_id: z.string().uuid(), lines: z.array(line) }),
+  aiTransition: z.object({ cash_request_id: z.string().uuid(), to: z.enum(["SUBMITTED", "APPROVED", "REJECTED"]), entity_id: z.string().uuid().optional().nullable(), date: d.optional() }),
   disburse: z.object({ entity_id: z.string().uuid(), entry_date: d, source_doc_ref: z.string().optional(), treasury_coa: z.string().optional(), holder_user_id: z.string().uuid().optional().nullable() }),
   justify: z.object({ lines: z.array(line) }),
 };

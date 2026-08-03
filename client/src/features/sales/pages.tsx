@@ -1059,7 +1059,6 @@ export function OpportunitiesPage() {
   const reload = () => setNonce((n) => n + 1);
   const { rows: stages, error: stErr } = useList("/opportunities/stages", nonce);
   const { rows: opps, error: oppErr } = useList("/opportunities", nonce);
-  const { rows: board } = useList("/opportunities/board", nonce);
   const { rows: leads } = useList("/leads", nonce);
   const { rows: clients } = useList("/clients", nonce);
   const { rows: entities } = useList("/entities", nonce);
@@ -1075,8 +1074,6 @@ export function OpportunitiesPage() {
 
   const clientName = React.useMemo(() => new Map((clients || []).map((c) => [String(c.client_id), cell(c.name ?? c.legal_name)])), [clients]);
   const leadName = React.useMemo(() => new Map((leads || []).map((l) => [String(l.lead_id), cell(l.company_name)])), [leads]);
-  const boardBy = React.useMemo(() => new Map((board || []).map((b) => [String(b.pipeline_stage_id), b])), [board]);
-
   function withLabel(o: Row): string {
     if (o.client_id) return clientName.get(String(o.client_id)) ?? "Client";
     if (o.lead_id) return leadName.get(String(o.lead_id)) ?? "Lead";
@@ -1174,8 +1171,11 @@ export function OpportunitiesPage() {
         <div className="flex gap-3 overflow-x-auto pb-4">
           {(stages || []).map((s) => {
             const sid = String(s.pipeline_stage_id);
-            const cards = openOpps.filter((o) => String(o.pipeline_stage_id) === sid);
-            const metric = boardBy.get(sid) as Row | undefined;
+            // Group by stage across ALL opps (not just OPEN) so a won deal lands
+            // in the Won column — filtering to OPEN left won/lost stages empty and
+            // out of sync with the List view. Lost deals are dropped from the board.
+            const cards = (opps || []).filter((o) => String(o.pipeline_stage_id) === sid && String(o.status) !== "LOST");
+            const colValue = cards.reduce((a, o) => a + (Number(o.estimated_value) || 0), 0);
             const won = s.is_won === true;
             const lost = s.is_lost === true;
             return (
@@ -1195,7 +1195,7 @@ export function OpportunitiesPage() {
                     <span className="text-sm font-semibold text-foreground">{cell(s.name)}</span>
                     <span className="text-xs text-muted-foreground">{cards.length}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{fmtMoney(metric?.value ?? 0)}</span>
+                  <span className="text-xs text-muted-foreground">{fmtMoney(colValue)}</span>
                 </div>
                 <div className="flex min-h-[8rem] flex-1 flex-col gap-2 p-2">
                   {cards.length === 0 ? (

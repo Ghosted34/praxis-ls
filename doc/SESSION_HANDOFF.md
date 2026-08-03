@@ -31,10 +31,13 @@ _Last updated: 2026-08-02 (session 18)._
 
 ## Open right now
 
-1. **Auditor portal is blocked on policy, not code** — the immutable ledger carries staff names, HR
-   events and every permission change; somebody must define what an external auditor may see.
-2. **PRD open question 4** — whether the investor terminal needs a true IFRS view or OHADA KPIs
-   suffice. Nothing IFRS exists anywhere.
+1. **Auditor portal — BUILT (session 19).** Disclosure policy set: statements + trial balance +
+   procurement + a period-scoped GL/document audit trail with the acting user named; HR, payroll and
+   security/permission events excluded by an allow-list in `repo.auditLedger`; document files stay behind the
+   gated vault download. `portal.service.auditorView` composes it; grants time-box via `portal_access.expires_at`.
+2. **PRD open question 4 — RESOLVED as OHADA (session 19).** No IFRS restatement layer is built or planned;
+   `investorView` stays OHADA-basis and now carries net-margin / expense-ratio KPIs. Revisit only for a concrete
+   IFRS-reporting investor.
 3. **Before a real external party uses the portal**: tenant SMTP must be configured (or invites
    fail silently from the recipient's side), the `portal.*` feature flags must be on (or staff
    previews 403 while the external view works), and one click-through should prove a client sees
@@ -240,7 +243,16 @@ the disburse grant but no APPROVER is now 403'd on disburse until granted the ca
 fresh projection leaves `ai.assistant.backend` off while `ai.assistant` is off; a Super Admin cannot tick
 APPROVER on **their own** user row (403) but can on someone else's.
 
-**Still open:** `scopeColumn` record-level adoption; the auditor portal (policy); IFRS investor view (PRD Q4).
+7. **Auditor room built + IFRS question closed.** Disclosure policy chosen and implemented in
+   `portal.service.auditorView`: OHADA statements + trial balance + procurement + a period-scoped
+   general-ledger/document **audit trail with the acting user named**, drawn through
+   `repo.auditLedger` whose allow-list (`split_part(action,'.',1) ∈ finance/procurement/costing/document`)
+   makes HR, payroll, permission/role and God-Mode events unreachable no matter what event a new module adds;
+   document files stay behind the gated vault download. PRD Q4 resolved **OHADA** — `investorView` keeps
+   `basis:"OHADA"` and gains net-margin/expense-ratio KPIs. Tests in `portal.test.js`.
+
+**Still open:** `scopeColumn` record-level adoption (needs the entity-level design call — see the suggestion in
+this session's chat: reuse `entity_id`, opt-in per table, enforce list+detail).
 
 ## Session log — 2026-08-02 (session 18: TEST-mode writes fully fixed — sandbox user mirroring moved to user create)
 

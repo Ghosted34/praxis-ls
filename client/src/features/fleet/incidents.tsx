@@ -16,6 +16,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const STATUS_TONE: Record<string, Tone> = { OPEN: "blue", UNDER_REVIEW: "warn", CLOSED: "ok" };
@@ -88,7 +89,7 @@ export function IncidentsPage() {
 
   async function toStatus(i: api.Incident, status: string) {
     setBusy(i.fleet_incident_id + status);
-    try { await api.setIncidentStatus(i.fleet_incident_id, status); inc.reload(); } finally { setBusy(null); }
+    try { await api.setIncidentStatus(i.fleet_incident_id, status); inc.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const cols: Column<api.Incident>[] = [

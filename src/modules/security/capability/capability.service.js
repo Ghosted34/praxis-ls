@@ -17,7 +17,7 @@ const { AppError } = require("../../../utils/errors");
 const repo = require("./capability.repo");
 const events = require("./capability.events");
 
-const base = makeService({ repo, moduleKey: events.MODULE, entity: "capability", events });
+const base = makeService({ repo, moduleKey: events.MODULE, entity: "capability", events, deleteMode: "hard"});
 
 // The authority overlay a user may not grant to themselves (maker-checker).
 // LINE_MANAGER is deliberately excluded — the documented rule (DB_ARCHITECTURE

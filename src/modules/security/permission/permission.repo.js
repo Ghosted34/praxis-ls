@@ -12,6 +12,31 @@ const base = makeRepo({
 });
 
 /**
+ * EVERY grant, unpaginated — what the matrix editor needs.
+ *
+ * The generic `list()` clamps to 50 rows (shared/db/query-helpers.js page()),
+ * and the matrix was loading through it. With 11 roles × 72 modules the default
+ * seed alone writes far more than 50 `permission` rows, so the editor only ever
+ * saw the first page. That is not a display bug — it is destructive:
+ *
+ *   · a cell whose grant exists but wasn't in the first 50 renders EMPTY;
+ *   · clicking one permission on that cell computes `current` as an all-false
+ *     grant and PUTs the whole row, and the upsert overwrites all five columns
+ *     from EXCLUDED — so the grants that were already there are wiped;
+ *   · after a refresh the row still isn't in the first page, so the cell looks
+ *     empty again and the edit looks like it "didn't save".
+ *
+ * Bounded by roles × modules and admin-only, so returning the lot is safe. The
+ * paginated `list()` stays for any other caller.
+ */
+async function listAll(client) {
+  const { rows } = await client.query(
+    "SELECT * FROM permission ORDER BY role_id, module_key",
+  );
+  return rows;
+}
+
+/**
  * Upsert a grant by its natural key (role_id, module_key) — the grant-matrix
  * edits by role×module, not by permission_id. Relies on the table's
  * UNIQUE(role_id, module_key). Returns the resulting row.
@@ -32,4 +57,4 @@ async function upsertGrant(client, g) {
   return rows[0];
 }
 
-module.exports = { ...base, upsertGrant };
+module.exports = { ...base, listAll, upsertGrant };

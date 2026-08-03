@@ -11,6 +11,7 @@ const { computeCosting } = require("./costing.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const finalInvoice = require("../../finance/final_invoice/final_invoice.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
@@ -58,17 +59,22 @@ async function updateDraft(client, { id, patch = {}, lines = null, actor = {} })
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-async function setStatus(client, { id, to, actor = {} }) {
+async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Costing not found", 404);
   if (LOCKED.has(before.status)) throw new AppError("LOCKED", "Costing is " + before.status, 422);
   const flow = { SUBMIT_VALIDATION: "SUBMITTED_FOR_VALIDATION", SUBMIT_APPROVAL: "SUBMITTED_FOR_APPROVAL", APPROVE: "APPROVED_LOCKED", REJECT: "REJECTED" };
   const status = flow[to];
   if (!status) throw new AppError("BAD_ACTION", "unknown transition", 422);
+  // Approving/rejecting directly while a chain is live would skip it (W4).
+  if (to === "APPROVE" || to === "REJECT") {
+    await assertNoPendingChain(client, "costing:" + id, { viaChain, what: "costing" });
+  }
   const row = await repo.update(client, id, { status });
   // On submit-for-approval, open the tenant's configurable approval chain (if any
-  // workflow is bound to costing.submitted). No workflow bound → autoApproved,
-  // the manual APPROVE path below is unchanged (BUILD_CONVENTIONS §2).
+  // workflow is bound to costing.submitted).
+  // No workflow bound → autoApproved and the manual APPROVE path stays available;
+  // see the note on W8 in purchase_order.service.js for why nothing auto-advances.
   if (status === "SUBMITTED_FOR_APPROVAL") {
     const totals = computeCosting(await repo.listLines(client, id), before.margin_percent);
     await executor.start(client, { eventTypeKey: "costing.submitted", entityRef: "costing:" + id, amountXaf: totals && totals.service_base ? totals.service_base : null });
@@ -100,6 +106,6 @@ async function get(client, id) {
 const list = (client, q) => repo.list(client, q);
 
 // A cleared approval chain approves+locks the costing (BUILD_CONVENTIONS §2/§5).
-onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {} }));
+onApproved.register("costing", (client, { id, actor }) => setStatus(client, { id, to: "APPROVE", actor: actor || {}, viaChain: true }));
 
 module.exports = { createDraft, updateDraft, setStatus, get, list };

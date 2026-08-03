@@ -16,6 +16,11 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
+// The full grant set for the matrix editor. GET / is paginated at 50 rows, which
+// is fewer than the default seed writes — an editor loading through it can't see
+// most grants and overwrites them blind. Before /:id so "matrix" isn't taken as
+// an id.
+router.get("/matrix", requirePermission(MODULE, "view"), controller.matrix);
 router.post("/", requirePermission(MODULE, "approve"), validator.create, controller.create);
 // Grant-matrix upsert by (role_id, module_key). Before /:id so "grant" isn't
 // swallowed as an :id param (different verb anyway, but explicit is safer).

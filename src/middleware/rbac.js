@@ -90,7 +90,12 @@ function requirePermission(moduleKey, action) {
     // they resolve against the live schema — same grants under LIVE and TEST.
     const { grants, scopeIds } = await req.identityDb(async (client) => ({
       grants: await identityCache.getGrants(client, { role_ids: req.user.role_ids, module: moduleKey }),
-      scopeIds: await identityCache.getUserScopeIds(client, req.user.user_id),
+      // The CLOSURE, not the raw assignments: authority flows down the
+      // organigramme, so someone assigned to HQ must see the branches beneath
+      // it. Using the raw rows would have made assigning a regional manager to
+      // HQ hide every branch record from them — worse than not scoping at all,
+      // and the reason `parent_scope_id` existed but never did anything.
+      scopeIds: await identityCache.getUserScopeClosure(client, req.user.user_id),
     }));
 
     const allowed = grants.some((g) => g[column] === true);
@@ -103,9 +108,10 @@ function requirePermission(moduleKey, action) {
     }
 
     // null = unrestricted (no scope rows assigned — today's behavior,
-    // unchanged); a non-empty array confines the request to those scopes.
+    // unchanged); a non-empty array confines the request to that closure.
     // Repos that opt in (cfg.scopeColumn) filter by this; repos that don't
-    // ignore it entirely, same as before this change.
+    // ignore it entirely. A row with a NULL scope stays visible either way —
+    // see shared/crud/resource.js for why.
     req.scope_ids = scopeIds.length ? scopeIds : null;
     req.permission_scope = req.scope_ids ? "scoped" : "all";
     return next();

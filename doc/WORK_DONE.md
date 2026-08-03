@@ -8,6 +8,138 @@ later without re-reading every diff.
 
 ---
 
+## 2026-08-02 — Session 19b: the approval engine made to enforce; the organigramme wired
+
+**Parallel stream to session 19, merged the same day.** Reference document with file+line evidence:
+`doc/ORGANOGRAMME_AUDIT_2026-08-02.md`. Test script: `doc/APPROVAL_VERIFICATION.md`. Follow-ups:
+`doc/PERMISSION_SWEEP_BACKLOG.md`.
+
+### What was actually wrong
+
+The workflow engine was well designed and wired to nothing. `workflow_step` binds a step to a role, a
+capability, **a scope** and an amount band — that scope reference is the organigramme link and it is the
+right design. The executor honoured exactly one of the four: the amount. `createTask` discarded role and
+scope; `executor.act` verified only that the task was still `PENDING`. **A chain routed notifications,
+not authority.**
+
+Three facts made it unenforceable rather than merely under-enforced:
+
+1. The step designer collected `capability_code` and the amount band — the two fields the engine ignored
+   — and had **no input** for `role_id` or `scope_id`, the ones it used. Every step built in the product
+   was therefore assigned to nobody (`assigned_role_id` null) and notified nobody
+   (`notify-approvals` opens with `if (!roleId) return 0`).
+2. Every approvable document kept a direct approve route, **exposed as a button**
+   (`features/procurement/pages.tsx` called `transitionPO(id, "APPROVED_LOCKED")` directly).
+3. `user_scope` was read in one place (`identity-cache.js:127`) and **written nowhere in the codebase** —
+   no endpoint, no UI, no script. So `req.scope_ids` was always null, every user was implicitly
+   unrestricted, and the tree an admin could draw had no attachment point.
+
+### The engine
+
+- **`executor.act` now checks the actor**: the step's role must be held, the step's scope must fall inside
+  the actor's closure, the capability must be held if the step names one, and the verb must match
+  `step_kind`. Null on any of them = unrestricted, which is every step built before the pickers existed,
+  so no existing tenant locks out.
+- **Maker-checker, enforced for everyone including the CEO.** `notify-approvals` already resolved the
+  requester — to decide whether to send a notification. The same comparison now decides whether the action
+  is allowed. Deliberate departure from the CEO's RBAC bypass: SoD exists precisely so no single person
+  completes a transaction alone. The product already enforces two-person integrity on *undeleting a row*
+  (`CHECK (restored_by <> deleted_by)`) and did not on approving a payroll run.
+- **Scope resolves as a closure** — `identity-cache.getUserScopeClosure`, a recursive walk down
+  `parent_scope_id`, so authority flows downward. Raw `user_scope` rows would have made assigning a
+  regional manager to HQ hide every branch from them, which is why the tree existed and never did anything.
+  `middleware/rbac.js` uses the closure too, so record-level scope and approval eligibility agree.
+- **`approval_task.module_key` (`0488`)** — approving anything required `approve` on **MOD-67, the IAM
+  module**, which the default seed grants to CEO only. Now gated per task on the owning module
+  (`modules/workflow/approval-permission.js`). Stored on the task rather than derived from the entity_ref
+  prefix, so it cannot drift from `on-approved.js`'s handler map. Null falls back to MOD-67 — a task
+  nobody can action is worse than one gated slightly too broadly.
+- **`services/workflow/pending-guard.js`** — the seven direct transition routes 422 `APPROVAL_PENDING`
+  while a task is live. Narrow on purpose: they refuse only while a chain is *pending*, so a document type
+  with no bound workflow keeps a working path.
+- **`W8` resolved by the guard, not by auto-finalising.** I implemented auto-finalise first and reverted
+  it: for supplier invoices it posted to the general ledger because nobody had configured a workflow.
+  Inferring authorisation from missing configuration is wrong. The reasoning is written into
+  `purchase_order.service.js` where it will be found.
+- **`0492`** (renumbered from 0487 in the merge) repairs the default workflows `0469` seeded and then
+  swallowed with `EXCEPTION WHEN OTHERS THEN NULL`; it raises warnings and routes each event to the role
+  that owns it. **`0491`** brings purchase requests into the engine — the only document with
+  APPROVED/REJECTED states and an "Approved" KPI that never called `executor.start`.
+- **Unknown amount now means most scrutiny.** `stepApplies` coerced null to 0, so a document with no total
+  matched no min-bounded step and `start()` returned `autoApproved` — skipping approval entirely. Four
+  callers legitimately pass null.
+
+### The organigramme
+
+- `user_scope` endpoints + assignment UI (`scope.members.js`), an **Organigramme** tab on Security →
+  Scopes (`components/organigramme.tsx`) that flags nodes with nobody in them, and role/scope pickers on
+  the step designer. `scope.validator` was `passthrough`; now shaped, with `assertNoCycle` — which matters
+  because the tree is walked now.
+- **Departments became scopes (`0490`).** "Department" had no table: free text in `employee`, `vacancy`
+  and `purchase_request`, and `employees.repo` matched it with `=`, so "Operations"/"operations" were two
+  departments each returning half the staff. `scope_id` added with the text kept as a display snapshot
+  (the `0477` line-item pattern), one shared resolver (`shared/rbac/department-scope.js`), one shared
+  picker, and the vacancy→employee hire path carries the reference instead of copying a typed string.
+- **No FK on any of these scope references**, same reason as `0489`: `scope` is identity data pinned to
+  LIVE while these tables are env data, so a declared FK resolves in the writing schema and rejects valid
+  ids under TEST. Validated in code instead.
+
+### Merge with the parallel session 19
+
+Both streams enforced `depends_on` independently. **Theirs won.** Mine had two bugs my unit tests could
+not see because they used synthetic data: `depends_on` is `citext[]`, which node-postgres returns as a raw
+string (mine called `.find()` on it and would have thrown on every projection), and I set
+`source: "dependency"`, which the `feature_state.source` CHECK forbids. Kept from mine: the log line
+naming which features were forced off and by what — an unexplained "off" is one an operator will try to
+toggle, fail to change, and report as a bug.
+
+Their `requireCapability` call sites are audit finding **W7** solved from their side, and complementary to
+the per-target-state permission map. Combined through `requireTransitionCapability`, so APPROVER is
+demanded for decisions and **not** for submissions — which would have been the same bug one layer up.
+
+### Four permission bugs, all found by testing as a non-CEO user
+
+The CEO bypasses `requirePermission` entirely, so every route passes for whoever wrote it. One afternoon
+as a Sales user found: the department picker gated on IAM; **every document View gated on MOD-70
+Settings** (the viewer renders through the template Studio router, and session 16 put that button on ~20
+screens); purchase-request **Submit** requiring `approve`, which under maker-checker means only an
+approver can submit and is then forbidden from approving it; and the scope tree gated on IAM. Fixed, with
+the class swept — seven more transition routes had the submit-as-approve shape
+(`shared/http/transition-permission.js`).
+
+Also: **the permission matrix was silently wiping grants.** `GET /permissions` paginates at 50; the matrix
+loaded every role and module but only the first page of grants, so a cell below the cut rendered empty and
+clicking one permission PUT an all-false row over whatever was stored. New `/permissions/matrix` returns
+the set unpaginated.
+
+### Other
+
+- **`A5` — DELETE was a no-op across 32 modules.** `makeService` gained `deleteMode`; the five RBAC config
+  tables really delete now (still writing `soft_delete`, so restore and maker-checker survive), and
+  sessions return **405** pointing at `/sessions/:id/kill` rather than reporting a success that did nothing.
+- **Screen registry 59 → 96.** It is the AI's map of the product and was missing all of Operations, Sales,
+  Commercial, Costing, Procurement, Vault and AI Control.
+- **20 silent frontend handlers now report.** `try {} finally {}` with no `catch` is how the
+  milestone-advance 422 hid for weeks and how a 403 on Submit presented as "submit not working". A shared
+  reporter plus a banner in the app shell made each retrofit one line; `lib/use-action.ts` is the better
+  pattern for new code.
+- **An audit finding was withdrawn.** C1 claimed `MOD-71` was uncatalogued and named the commit that
+  "broke" it. False: `9120_hr_discipline_module.sql` adds it, committed alongside the modules. Four greps
+  reported the file did not exist — the sandbox mount was hiding it. The correction and the
+  re-verification of every other absence claim are in the audit document.
+
+**Migrations:** tenant `0488`–`0492`; seeds `9022` (grant gaps: MOD-00A, MOD-63, MOD-71, MOD-72) and
+`9130` (MOD-72 mail catalogue entry).
+
+**Owed:** `npm run build --prefix client` and `npm test` on Windows (~25 FE files changed after the last
+green build; `tsc` does not complete on the sandbox mount), and a non-CEO click-through.
+
+**Not done:** B1–B4 (no reporting line on `employee`; `LINE_MANAGER` still cannot resolve a team), W13
+(delegation/escalation/deadlines — depends on B1), C7 (`portal.*` gates the staff preview but not the
+external surface).
+
+---
+
 ## 2026-08-02 — Session 18: TEST-mode writes fully fixed (sandbox user mirroring moved to user create, not just wipe)
 
 **Closes the one item session 17 left open — and a second hole nobody had spotted.**

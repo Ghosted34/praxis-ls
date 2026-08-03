@@ -21,6 +21,7 @@ const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
 const controller = require("./workflow.controller");
 const validator = require("./workflow.validator");
+const { requireApprovalPermission } = require("./approval-permission");
 
 const M = "MOD-67";
 const router = express.Router();
@@ -41,8 +42,15 @@ router.get("/workflows/:id/steps", requirePermission(M, "view"), controller.list
 router.post("/workflows/:id/steps", requirePermission(M, "edit"), validator.addStep, controller.addStep);
 router.delete("/workflows/:id/steps/:stepId", requirePermission(M, "edit"), controller.removeStep);
 
-// approval_task runtime queue (read-only)
+// approval_task runtime queue.
+//
+// `view` on MOD-67 still gates *seeing* the queue — it is an administrative
+// overview — but the rows returned are now narrowed to what the caller can act
+// on (workflow.repo.listApprovals), so it is no longer every task in the tenant.
+//
+// Acting is gated per TASK, on the module that owns the record, rather than on
+// MOD-67 (audit finding W3). See approval-permission.js.
 router.get("/approvals", requirePermission(M, "view"), controller.listApprovals);
-router.post("/approvals/:id/act", requirePermission(M, "approve"), validator.actApproval, controller.actApproval);
+router.post("/approvals/:id/act", requireApprovalPermission(), validator.actApproval, controller.actApproval);
 
 module.exports = { basePath: "/", feature: null, router };

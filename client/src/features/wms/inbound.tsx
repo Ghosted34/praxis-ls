@@ -18,6 +18,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const QA_TONE: Record<string, Tone> = { HOLD: "warn", PASSED: "ok", REJECTED: "bad" };
@@ -118,7 +119,7 @@ export function InboundPage() {
 
   async function reject(g: api.GrnInbound) {
     setBusy(g.grn_inbound_id);
-    try { await api.setInboundQa(g.grn_inbound_id, "REJECTED"); grns.reload(); } finally { setBusy(null); }
+    try { await api.setInboundQa(g.grn_inbound_id, "REJECTED"); grns.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const cols: Column<api.GrnInbound>[] = [

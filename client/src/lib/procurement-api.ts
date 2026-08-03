@@ -5,8 +5,10 @@
 import { tenant } from "./api-client";
 
 /* ── Purchase requests(/purchase-requests) ── */
-export type PurchaseRequest = { pr_id: string; ref?: string | null; department?: string | null; justification?: string | null; status: string; created_at?: string };
-export type PurchaseRequestInput = { requested_by?: string; department?: string; justification?: string; lines?: { dictionary_item_id: string; label?: string; qty?: number; unit_price?: number }[] };
+// `scope_id` is the department reference (0490); `department` is the display
+// snapshot stored beside it, which is what documents print.
+export type PurchaseRequest = { pr_id: string; ref?: string | null; scope_id?: string | null; department?: string | null; justification?: string | null; status: string; created_at?: string };
+export type PurchaseRequestInput = { requested_by?: string; scope_id?: string; department?: string; justification?: string; lines?: { dictionary_item_id: string; label?: string; qty?: number; unit_price?: number }[] };
 export const listPurchaseRequests = () => tenant<PurchaseRequest[]>("/purchase-requests");
 export const createPurchaseRequest = (body: PurchaseRequestInput) => tenant<PurchaseRequest>("/purchase-requests", { method: "POST", body });
 export const transitionPR = (id: string, to: "SUBMITTED" | "APPROVED" | "REJECTED" | "ORDERED", extra: { entity_id?: string; date?: string } = {}) =>

@@ -15,6 +15,9 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { money, num, dateFmt, enumLabel, humanizeRef } from "@/lib/format";
 import * as wf from "@/lib/workflow-api";
+import { fetchRoles } from "@/lib/rbac";
+import { fetchScopeTree, buildScopeTree, type ScopeTreeNode } from "@/lib/scope-api";
+import { reportActionError } from "@/lib/action-error";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
@@ -648,16 +651,32 @@ function band(s: wf.WorkflowStep): string {
 }
 
 function StepForm({ workflowId, nextSeq, onClose, onSaved }: { workflowId: string; nextSeq: number; onClose: () => void; onSaved: () => void }) {
-  const [f, setF] = React.useState({ step_seq: String(nextSeq), step_kind: "APPROVE", capability_code: "APPROVER", min_amount_xaf: "", max_amount_xaf: "" });
+  const [f, setF] = React.useState({ step_seq: String(nextSeq), step_kind: "APPROVE", capability_code: "APPROVER", role_id: "", scope_id: "", min_amount_xaf: "", max_amount_xaf: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+
+  // Who may act on this step. Until these existed, every step built here was
+  // saved with role_id = NULL, which meant the task it opened was assigned to
+  // nobody and notified nobody (audit finding W1).
+  const roles = useResource(() => fetchRoles(), []);
+  const scopes = useResource(() => fetchScopeTree(), []);
+  const scopeTree = React.useMemo(() => buildScopeTree(scopes.data || []), [scopes.data]);
+  const flatScopes = React.useMemo(() => {
+    const out: ScopeTreeNode[] = [];
+    const walk = (ns: ScopeTreeNode[]) => ns.forEach((n) => { out.push(n); walk(n.children); });
+    walk(scopeTree);
+    return out;
+  }, [scopeTree]);
+
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
       await wf.addStep(workflowId, {
         step_seq: Number(f.step_seq), step_kind: f.step_kind as "VALIDATE" | "APPROVE",
         capability_code: f.capability_code as "VALIDATOR" | "APPROVER",
+        role_id: f.role_id || undefined,
+        scope_id: f.scope_id || undefined,
         min_amount_xaf: f.min_amount_xaf === "" ? undefined : Number(f.min_amount_xaf),
         max_amount_xaf: f.max_amount_xaf === "" ? undefined : Number(f.max_amount_xaf),
       });
@@ -665,7 +684,7 @@ function StepForm({ workflowId, nextSeq, onClose, onSaved }: { workflowId: strin
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
   return (
-    <Modal open onClose={onClose} title="Add step" description="A stage in the chain — who acts, and (optionally) the amount band it applies to.">
+    <Modal open onClose={onClose} title="Add step" description="A stage in the chain — who acts, where in the company, and (optionally) the amount band it applies to.">
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Order" required><Input type="number" min="1" className="num" value={f.step_seq} onChange={(e) => set("step_seq", e.target.value)} /></Field>
@@ -675,7 +694,21 @@ function StepForm({ workflowId, nextSeq, onClose, onSaved }: { workflowId: strin
               <option value="APPROVE">Approve</option>
             </Select>
           </Field>
-          <Field label="Capability" required>
+          <Field label="Role" hint="Who decides this step. Leave as Anyone and the step is open to any approver.">
+            <Select value={f.role_id} onChange={(e) => set("role_id", e.target.value)}>
+              <option value="">Anyone</option>
+              {(roles.data || []).map((r) => <option key={r.role_id} value={r.role_id}>{r.name}</option>)}
+            </Select>
+          </Field>
+          <Field label="Part of the company" hint="The organigramme node this decision belongs to. Anyone above it in the tree can act; leave blank for company-wide.">
+            <Select value={f.scope_id} onChange={(e) => set("scope_id", e.target.value)}>
+              <option value="">Company-wide</option>
+              {flatScopes.map((s) => (
+                <option key={s.scope_id} value={s.scope_id}>{`${"  ".repeat(s.depth)}${s.code} · ${s.name}`}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Capability" required hint="Segregation-of-duties overlay — the actor must hold this authority.">
             <Select value={f.capability_code} onChange={(e) => set("capability_code", e.target.value)}>
               <option value="VALIDATOR">Validator</option>
               <option value="APPROVER">Approver</option>
@@ -685,6 +718,11 @@ function StepForm({ workflowId, nextSeq, onClose, onSaved }: { workflowId: strin
           <Field label="Min amount (XAF)"><Input type="number" min="0" className="num text-right" value={f.min_amount_xaf} onChange={(e) => set("min_amount_xaf", e.target.value)} placeholder="Any" /></Field>
           <Field label="Max amount (XAF)"><Input type="number" min="0" className="num text-right" value={f.max_amount_xaf} onChange={(e) => set("max_amount_xaf", e.target.value)} placeholder="Any" /></Field>
         </div>
+        {!scopes.loading && !flatScopes.length && (
+          <p className="micro">
+            No scopes defined yet — build the tree under Security &rsaquo; Scopes to route steps to a branch or department.
+          </p>
+        )}
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -700,11 +738,22 @@ function WorkflowDrawer({ workflow, onClose, onChanged }: { workflow: wf.Workflo
   const [adding, setAdding] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const chain = (steps.data || []).slice().sort((a, b) => a.step_seq - b.step_seq);
+
+  // Resolve the ids a step binds to into names, so the chain reads as
+  // "Finance · Douala branch" rather than two UUIDs the reader can't check.
+  const roles = useResource(() => fetchRoles(), []);
+  const scopes = useResource(() => fetchScopeTree(), []);
+  const roleName = (id?: string | null) =>
+    (roles.data || []).find((r) => r.role_id === id)?.name || null;
+  const scopeName = (id?: string | null) => {
+    const s = (scopes.data || []).find((x) => x.scope_id === id);
+    return s ? `${s.code} · ${s.name}` : null;
+  };
   const nextSeq = chain.length ? Math.max(...chain.map((s) => s.step_seq)) + 1 : 1;
 
   async function remove(s: wf.WorkflowStep) {
     setBusy(s.workflow_step_id);
-    try { await wf.removeStep(workflow.workflow_id, s.workflow_step_id); steps.reload(); onChanged(); } finally { setBusy(null); }
+    try { await wf.removeStep(workflow.workflow_id, s.workflow_step_id); steps.reload(); onChanged(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   return (
@@ -718,10 +767,14 @@ function WorkflowDrawer({ workflow, onClose, onChanged }: { workflow: wf.Workflo
           <ol className="space-y-2">
             {chain.map((s) => (
               <li key={s.workflow_step_id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
-                <span className="flex items-center gap-3">
+                <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   <span className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-[rgb(var(--primary))]">{s.step_seq}</span>
                   <Pill tone={s.step_kind === "VALIDATE" ? "blue" : "ok"}>{s.step_kind}</Pill>
-                  <span className="text-sm">{s.capability_code || "role"}</span>
+                  {/* An unbound step is open to anyone — say so plainly rather than
+                      showing a capability that reads like a restriction. */}
+                  <span className="text-sm">{roleName(s.role_id) || "Anyone"}</span>
+                  <span className="micro">· {scopeName(s.scope_id) || "company-wide"}</span>
+                  {s.capability_code && <span className="micro">· {s.capability_code}</span>}
                   <span className="micro">· {band(s)}</span>
                 </span>
                 <Button size="sm" variant="ghost" loading={busy === s.workflow_step_id} onClick={() => remove(s)}>Remove</Button>
@@ -778,7 +831,7 @@ export function WorkflowsPage() {
 
   async function toggleActive(w: wf.Workflow) {
     setBusy(w.workflow_id);
-    try { await wf.updateWorkflow(w.workflow_id, { is_active: !w.is_active }); reload(); } finally { setBusy(null); }
+    try { await wf.updateWorkflow(w.workflow_id, { is_active: !w.is_active }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const columns: Column<wf.Workflow>[] = [
@@ -830,6 +883,7 @@ function entityLabel(r: ApprovalTask): { title: string; sub?: string } {
 export function ApprovalsPage() {
   const { rows, error, loading, reload } = useList<ApprovalTask>("/approvals?status=PENDING");
   const [busy, setBusy] = React.useState<string | null>(null);
+  const [actError, setActError] = React.useState<string | null>(null);
   const list = rows || [];
   const idOf = (r: ApprovalTask) => String(r.approval_task_id || r.id || "");
 
@@ -838,8 +892,11 @@ export function ApprovalsPage() {
     if (!id) return;
     const note = action === "reject" ? window.prompt("Reason for rejection (optional):") ?? undefined : undefined;
     setBusy(id + action);
-    try { await tenant(`/approvals/${id}/act`, { method: "POST", body: { action, note } }); reload(); }
-    catch (e) { alert(errMsg(e)); } finally { setBusy(null); }
+    // Was `alert(errMsg(e))`. The refusals this screen now produces —
+    // SELF_APPROVAL, NOT_ELIGIBLE, WRONG_ACTION_FOR_STEP — are explanatory
+    // messages a user needs to read next to the row, not dismiss in a modal.
+    try { await tenant(`/approvals/${id}/act`, { method: "POST", body: { action, note } }); setActError(null); reload(); }
+    catch (e) { setActError(errMsg(e)); } finally { setBusy(null); }
   }
 
   const columns: Column<ApprovalTask>[] = [
@@ -874,6 +931,7 @@ export function ApprovalsPage() {
         <KpiTile label="To validate" value={num(list.filter((r) => r.step_kind === "VALIDATE").length)} />
         <KpiTile label="To approve" value={num(list.filter((r) => r.step_kind === "APPROVE").length)} />
       </KpiRow>
+      {actError && <ErrorState message={actError} />}
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => idOf(r)} empty={{ title: "Nothing awaiting you", hint: "Items needing your validation or approval land here." }} />
     </section>
   );

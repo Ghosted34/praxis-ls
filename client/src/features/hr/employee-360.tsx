@@ -15,6 +15,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { DepartmentSelect, type DepartmentValue } from "@/components/department-select";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -42,14 +43,17 @@ const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <td
 
 function NewEmployeeForm({ onClose, onSaved }: { onClose: () => void; onSaved: (e: api.Employee) => void }) {
   const { rows: entities } = useList<{ entity_id: string; legal_name?: string }>("/entities");
-  const [f, setF] = React.useState({ full_name: "", entity_id: "", department: "", job_title: "", email: "", employment_type: "CDI" });
+  const [f, setF] = React.useState({ full_name: "", entity_id: "", job_title: "", email: "", employment_type: "CDI" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  // Department is a scope (0490) — this is what finally links an employee to a
+  // place in the organigramme instead of a typed string.
+  const [dept, setDept] = React.useState<DepartmentValue>({ scope_id: null, department: null });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
-      const created = await api.createEmployee({ full_name: f.full_name, entity_id: f.entity_id || undefined, department: f.department || undefined, job_title: f.job_title || undefined, email: f.email || undefined, employment_type: f.employment_type });
+      const created = await api.createEmployee({ full_name: f.full_name, entity_id: f.entity_id || undefined, scope_id: dept.scope_id || undefined, department: dept.department || undefined, job_title: f.job_title || undefined, email: f.email || undefined, employment_type: f.employment_type });
       onSaved(created); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
@@ -64,7 +68,7 @@ function NewEmployeeForm({ onClose, onSaved }: { onClose: () => void; onSaved: (
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
+          <Field label="Department" hint="From your organigramme."><DepartmentSelect value={dept} onChange={setDept} /></Field>
           <Field label="Job title"><Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} /></Field>
         </div>
         <Field label="Email" hint="Used to send payslips & contracts"><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="name@company.cm" /></Field>
@@ -88,12 +92,18 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
   const [f, setF] = React.useState({
     full_name: employee.full_name || "",
     entity_id: employee.entity_id || "",
-    department: employee.department || "",
     job_title: employee.job_title || "",
     email: employee.email || "",
     employment_type: employee.employment_type || "CDI",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  // Seeded from whatever the record already has: an employee migrated by 0490
+  // has scope_id, one that couldn't be matched still has only the text, and the
+  // picker handles both (see DepartmentSelect).
+  const [dept, setDept] = React.useState<DepartmentValue>({
+    scope_id: employee.scope_id || null,
+    department: employee.department || null,
+  });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
@@ -102,7 +112,8 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
       const updated = await api.updateEmployee(employee.employee_id, {
         full_name: f.full_name,
         entity_id: f.entity_id || undefined,
-        department: f.department || undefined,
+        scope_id: dept.scope_id || undefined,
+        department: dept.department || undefined,
         job_title: f.job_title || undefined,
         email: f.email || undefined,
         employment_type: f.employment_type || undefined,
@@ -121,7 +132,7 @@ function EditEmployeeForm({ employee, onClose, onSaved }: { employee: api.Employ
           </Select>
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
+          <Field label="Department" hint="From your organigramme."><DepartmentSelect value={dept} onChange={setDept} /></Field>
           <Field label="Job title"><Input value={f.job_title} onChange={(e) => set("job_title", e.target.value)} placeholder="Accountant" /></Field>
         </div>
         <Field label="Email" hint="Used to send payslips & contracts"><Input type="email" value={f.email} onChange={(e) => set("email", e.target.value)} placeholder="name@company.cm" /></Field>

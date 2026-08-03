@@ -5,7 +5,7 @@ what happened and why), `doc/WORK_TO_BE_DONE.md` (backlog with dated audit banne
 **`doc/SESSION_HISTORY.md`** (session logs 1–15, plus the 2026-07-18 post-merge reconciliation
 and the answered BE open questions).
 
-_Last updated: 2026-08-02 (session 18)._
+_Last updated: 2026-08-02 (session 19)._
 
 > **Restructured 2026-08-02.** This header used to be a single 4,000-word paragraph that every
 > session prepended to — ten pages of prose in front of a document whose job is fast context
@@ -15,6 +15,15 @@ _Last updated: 2026-08-02 (session 18)._
 
 ## Where things stand
 
+- **The approval engine enforces something for the first time.** It was designed well and wired to
+  nothing: steps bound to a role, a scope and a capability, and `act()` checked only that the task
+  was still PENDING. A chain routed *notifications*, not authority. Session 19 closed that —
+  eligibility, maker-checker, per-module gating, and the bypass routes. **Proven end to end on
+  smartls** (submit → task → self-approval refused → second user approves). Read
+  `doc/ORGANOGRAMME_AUDIT_2026-08-02.md` before touching any of it.
+- **The organigramme is real.** `scope` is the entity/branch/**department** tree; `user_scope` had
+  no write path anywhere, so nobody could be in it. There is now an assignment UI, a chart at
+  Security → Scopes, and departments across HR/procurement are scopes rather than free text (`0490`).
 - **TEST mode is writable for the first time since session 3.** Identity is pinned to the LIVE
   schema while business data writes to the env-selected one, and 60+ tenant columns are
   `REFERENCES app_user(user_id)` — so a user missing from `sandbox.app_user` makes that user's TEST
@@ -54,8 +63,16 @@ _Last updated: 2026-08-02 (session 18)._
   has no CEO bypass. If a screen 403s, run `node scripts/tenant/feature-report.js --slug=<slug>`
   before suspecting permissions.
 - **The bash mount serves stale copies of freshly written files.** In-sandbox `node`/`jest` can
-  fail on files that are actually fine. Windows validators are authoritative — see "Sandbox
-  gotcha" at the end.
+  fail on files that are actually fine — and it can hide a file *entirely*: on 2026-08-02 four
+  greps reported `9120_hr_discipline_module.sql` did not exist, and an audit wrongly accused a
+  colleague of shipping an uncatalogued module key on that basis. Windows validators are
+  authoritative — see "Sandbox gotcha" at the end.
+- **Test as a non-CEO user, or you are not testing.** The CEO bypasses `requirePermission`
+  entirely, so every route passes for whoever wrote it. One session-19b afternoon as a Sales user
+  found four separate screens where an ordinary action sat behind an administrator's permission
+  (department picker → IAM, every document View → Settings, purchase-request Submit → `approve`,
+  and the scope tree → IAM). All four were invisible to CEO testing. See
+  `doc/PERMISSION_SWEEP_BACKLOG.md`.
 
 ## Session index
 
@@ -63,6 +80,7 @@ Newest first. Sessions 16–18 log below; 1–15 in `doc/SESSION_HISTORY.md`.
 
 | # | Date | Headline |
 |---|---|---|
+| 19b | 2026-08-02 | **Approval engine made to enforce** (eligibility, maker-checker, per-module gating, bypasses closed — `0488`–`0492`); organigramme wired (`user_scope` assignment + chart); departments became scopes (`0490`); PRs joined the engine (`0491`); mail RBAC (`MOD-72`); permission matrix stopped wiping grants; screen registry 59→96 |
 | 19 | 2026-08-02 | `depends_on` enforced at projection; **user↔capability assignment built** + `requireCapability` mounted on disburse/costing-status (`0487` backfill); **self-grant maker-checker block**; AssetsPage write UI (create/depreciate/dispose) |
 | 18 | 2026-08-02 | TEST-mode writes fully fixed; AI rolling summary (`0481`); `/media` safe under S3; **client + investor portals** (`0482`); open-list re-audit |
 | 17 | 2026-08-01 | Control Tower map made real (`0478`/`0479`); `/media` bypass closed; milestone auto-seeding; AI memory; service types + `0480`; doc-truth audit |
@@ -161,6 +179,103 @@ audit banners in `WORK_TO_BE_DONE.md` are the correction).
   sign-out (until told otherwise).
 - **Postman** `postman/praxis-ls.phase0.postman_collection.json` — Phase 0 + Finance +
   Fleet/WMS/HR folders.
+
+## Session log — 2026-08-02 (session 19b: the approval engine made to enforce; the organigramme wired)
+
+**A parallel stream to session 19, merged 2026-08-02.** Where the two overlapped, see §9.
+
+**VALIDATION:** backend green in-sandbox (lint 0 errors, migration-number guard clean, ~40 assertions
+across purpose-built harnesses plus the existing executor suite replayed for regressions). **The client
+build passed on Windows** mid-session and again after the last FE batch — but ~25 frontend files changed
+after that second pass, so **`npm run build --prefix client` is still owed**. `tsc` never completes on the
+sandbox mount (it runs past three minutes), so no FE change here was typechecked by me.
+
+**Started as an audit** — `doc/ORGANOGRAMME_AUDIT_2026-08-02.md`, which is the reference for all of this
+and carries file+line evidence. "Organogramme" resolved to three different things, and the business meant
+the approval hierarchy.
+
+1. **The finding: the approval chain routed notifications, not authority.** `workflow_step` binds a step
+   to a role, a capability, **a scope** and an amount band. The executor honoured exactly one of those —
+   the amount. `createTask` dropped role and scope; `act()` verified only that the task was still PENDING.
+   So anyone past the route gate could clear any task at any step of any document, including one they
+   raised. Three structural facts made it unenforceable rather than merely under-enforced: the step
+   designer collected `capability_code` and the amount band (the two fields the engine ignored) and had
+   no input for `role_id` or `scope_id` (the ones it used); every approvable document kept a direct
+   approve route, exposed as a button; and `user_scope` was **written nowhere in the codebase**, so no
+   user was ever in a scope.
+
+2. **`executor.act` now checks the actor.** Role and scope must both match (business decision: a step
+   names both, null = unrestricted), the capability if the step names one, and `step_kind` against the
+   verb. **Maker-checker is enforced for everyone including the CEO** — the requester was already
+   resolved, and used only to decide whether to send a notification. Deliberate departure from the CEO
+   RBAC bypass; on a tenant where one person is the only approver *and* the only requester this WILL
+   block, which is the control working.
+
+3. **Scope resolves as a CLOSURE** (`identity-cache.getUserScopeClosure`) — a manager at HQ can act on
+   DLA beneath it. Using raw `user_scope` rows would have made assigning a regional manager to HQ hide
+   every branch from them, which is why `parent_scope_id` existed and never did anything.
+
+4. **`approval_task.module_key` (`0488`)** — approving a payroll run required `approve` on **MOD-67, the
+   IAM module**, seeded to CEO only. Now per-task, resolved from the owning module. Stored rather than
+   derived from the entity_ref prefix so it can't drift from `on-approved.js`'s handler map.
+
+5. **The bypasses close while a chain is live** (`services/workflow/pending-guard.js`) — the seven direct
+   transition routes 422 with `APPROVAL_PENDING`. Narrow on purpose: they refuse only while a task is
+   PENDING, so a document with no bound workflow still has a path. **W8 is resolved by this, not by
+   auto-finalising** — I built auto-finalise first and reverted it: for supplier invoices it posted to the
+   general ledger because nobody had configured a workflow. An ERP must not infer authorisation from
+   missing configuration. Reasoning is in `purchase_order.service.js`.
+
+6. **The organigramme is wired.** `user_scope` got endpoints and an assignment UI; Security → Scopes has
+   an **Organigramme** tab (`components/organigramme.tsx`) flagging nodes with nobody in them; the step
+   designer got role and scope pickers. `scope.validator` was `passthrough` — now shaped, with a cycle
+   guard (`assertNoCycle`), which matters because the tree is walked now.
+
+7. **Departments became scopes (`0490`).** "Department" was free text typed into three unrelated forms
+   with no table behind it, and `employees.repo` matched it with `=`, so "Operations"/"operations" were
+   two departments each returning half the staff. `scope_id` added to `employee`/`vacancy`/
+   `purchase_request` with the text kept as a display snapshot (the `0477` pattern), one shared resolver
+   (`shared/rbac/department-scope.js`), one shared picker, and the vacancy→employee hire path now carries
+   the reference instead of copying a typed string. **No FK, deliberately** — same reason as `0489`.
+
+8. **Purchase requests joined the engine (`0491`)** and **`0492`** repairs the default workflows `0469`
+   seeded then swallowed (`EXCEPTION WHEN OTHERS THEN NULL`). Renumbered from 0487 in the merge; it is
+   idempotent so the re-run inserts nothing.
+
+9. **Merge with the parallel session 19.** Both streams enforced `depends_on` independently — **theirs
+   won**, and mine had two bugs my unit tests couldn't see because they used synthetic data:
+   `depends_on` is `citext[]`, which node-postgres returns as a raw string (mine called `.find()` on it),
+   and I set `source: "dependency"`, which the `feature_state.source` CHECK forbids. Kept from mine: the
+   log line naming what was forced off and why. Their `requireCapability` call sites (audit finding W7,
+   solved from their side) are complementary to the per-target-state permission map — combined via
+   `requireTransitionCapability`, so APPROVER is demanded for decisions and **not** for submissions,
+   which would have been the same bug one layer up.
+
+10. **Four permission bugs found by testing as a non-CEO user**, all pre-existing, all invisible to CEO
+    testing — see the new rule above and `doc/PERMISSION_SWEEP_BACKLOG.md`. Plus: **the permission matrix
+    was silently wiping grants.** `GET /permissions` paginates at 50; the matrix loaded every role and
+    module but only the first page, so a cell whose grant was below the cut rendered empty and clicking
+    it PUT an all-false row over the top. New `/permissions/matrix` returns the set unpaginated.
+
+11. **`A5` — DELETE was a no-op across 32 modules.** `makeService` gained `deleteMode`; the five RBAC
+    config tables now really delete (still recording `soft_delete`, so restore and maker-checker survive),
+    and sessions return **405** pointing at `/sessions/:id/kill` rather than reporting success.
+
+12. **Screen registry 59 → 96.** It is the AI's map of the product (`services/ai/knowledge/codebase.js`)
+    and was missing all of Operations, Sales, Commercial, Costing, Procurement, Vault and AI Control.
+
+13. **20 silent frontend handlers now report.** `try {} finally {}` with no `catch` is how the
+    milestone-advance 422 hid for weeks and how a 403 on Submit presented as "submit not working". A
+    shared reporter + a banner in the app shell made each retrofit one line; `lib/use-action.ts` is the
+    better pattern for new code.
+
+**Migrations to run:** tenant **`0488`**, **`0489`**, **`0490`**, **`0491`**, **`0492`**; seeds
+**`9022`** (grant gaps) + **`9130`** (MOD-72 mail). **Owed:** `npm run build --prefix client`, `npm test`
+on Windows, and a **non-CEO** click-through — `doc/APPROVAL_VERIFICATION.md` is the script.
+
+**Known unfinished:** B1–B4 (no reporting line on `employee`; `LINE_MANAGER` still cannot resolve a team),
+W13 (no delegation, escalation or deadlines — depends on B1), C7 (`portal.*` gates the staff preview but
+not the external surface it exists to control).
 
 ## Session log — 2026-08-02 (session 19: three RBAC/finance gaps closed — depends_on enforcement, capability assignment + gate, AssetsPage write UI)
 
@@ -614,19 +729,38 @@ Sessions 1–15 each left a "pick up here" list; every one of those items has si
 superseded, so they now live in `doc/SESSION_HISTORY.md` rather than at the top of this file.
 What is actually outstanding:
 
-1. **Nothing is owed from sessions 16–18.** Migrations `0475`–`0482` are applied and
-   `npm run lint` / `npm test` / `npm run build` are green (user-run on Windows). Do not re-raise
-   the validation items in the older logs.
+1. **Owed from session 19b — do these first.**
+   - `npm run build --prefix client` and `npm test` on Windows. ~25 FE files changed after the last
+     green build, and `tsc` does not complete on the sandbox mount, so none of them are typechecked.
+   - Migrations: tenant **`0488`–`0492`**, seeds **`9022`** + **`9130`**.
+   - A **non-CEO** click-through of the approval chain: `doc/APPROVAL_VERIFICATION.md`. This is the
+     single test that would have caught the four permission bugs of 19b before they hit a screen.
+   - Sanity-check the permission matrix after rebuilding: it was silently overwriting grants it
+     hadn't loaded, so grants set on that screen before today may have been lost.
+   - Nothing is owed from sessions 16–18. Migrations `0475`–`0482` are applied and lint/test/build
+     were green (user-run on Windows). Do not re-raise the validation items in the older logs.
 2. **Before another tenant is provisioned** — nothing, as of 2026-08-02. The sandbox-user gap that
    made a fresh tenant's first TEST write fail is closed and runs on every deploy. Worth one
    sanity check after the next provision: sign in, flip to TEST, create something.
 3. **Before a real external party uses the portal** — tenant SMTP configured, `portal.*` feature
    flags on, and a scoping click-through (a client sees their own dossiers and nobody else's).
 4. **Pick from** `WORK_TO_BE_DONE.md` → "Repo audit — 2026-08-02" for the open list with file+line
-   evidence. (Session 19 closed `depends_on` enforcement, built user↔capability assignment + mounted
-   `requireCapability` on disburse/costing-status, added the self-grant maker-checker block, and gave
-   AssetsPage its write UI.) Tractable next: `scopeColumn` record-level adoption (needs a schema decision
-   on which business tables carry a scope column), or the xlsx/csv export wiring.
+   evidence, and `doc/ORGANOGRAMME_AUDIT_2026-08-02.md` for the approval/organigramme surface (its
+   status banner says what is done and what is not).
+
+   Session 19 closed `depends_on` enforcement, built user↔capability assignment, mounted
+   `requireCapability`, added the self-grant block and gave AssetsPage its write UI. Session 19b did
+   the approval engine, the organigramme, departments-as-scopes and the first `scopeColumn` adopters.
+
+   **Tractable next:**
+   - **B1 — a reporting line on `employee`.** This is the one product decision left in the
+     organigramme work: `LINE_MANAGER` is seeded as "approves for own team" and nothing can resolve a
+     team. W13 (delegation, escalation, deadlines) depends on it — "the only approver is on leave"
+     currently has no answer in the model.
+   - **C7** — `portal.*` gates the staff preview but not the external routes, so turning a portal off
+     doesn't stop clients reading. The flag is not the kill switch an operator would reach for.
+   - The remaining `scopeColumn` adopters (only `vacancy` and `purchase_request` are wired), or the
+     xlsx/csv export wiring.
 
 To preview: `npm run dev` (backend, repo root) + `cd client && npm run dev`. Set `VITE_TENANT_HOST`
 to a provisioned tenant (e.g. `smartls.praxisls.com`).

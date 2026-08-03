@@ -136,6 +136,68 @@ async function getUserScopeIds(client, userId) {
 }
 
 /**
+ * Every module_key the given roles hold `approve` on.
+ *
+ * Used by the approvals inbox to show a caller only the tasks they could act on
+ * (W12), matching the per-task gate the act route applies (W3). Not cached: it
+ * is one indexed read per inbox load, and the grant cache is keyed by
+ * (roles, module) — a per-role-set key would be a third cache shape to
+ * invalidate correctly, which is how stale RBAC happens.
+ */
+async function getApprovableModules(client, roleIds = []) {
+  if (!roleIds || !roleIds.length) return [];
+  const { rows } = await client.query(
+    `SELECT DISTINCT module_key FROM permission
+      WHERE role_id = ANY($1::uuid[]) AND can_approve = true`,
+    [roleIds],
+  );
+  return rows.map((r) => r.module_key);
+}
+
+/**
+ * Resolve the DOWNWARD closure of a user's scope assignments: every scope they
+ * are assigned to, plus everything beneath those nodes in the `parent_scope_id`
+ * tree — the organigramme.
+ *
+ * This is what approval routing needs and `getUserScopeIds` above does not give.
+ * A workflow step names the scope the decision belongs to (e.g. the Douala
+ * branch); an approver qualifies if they sit at that node **or at an ancestor of
+ * it**, because authority flows downward — the regional manager over Douala can
+ * approve Douala's work, not the reverse. Expressed from the user's side, that
+ * is exactly "is the step's scope inside my closure".
+ *
+ * NOT cached, deliberately: `getUserScopeIds` caches a flat row read, but this
+ * walks a tree whose shape changes when any scope is re-parented, and the scope
+ * cache is keyed by user — a re-parent would leave every descendant user stale
+ * for the TTL. Approval decisions are rare compared to list requests, so the
+ * round trip is cheap and correctness is worth more here.
+ *
+ * `depth < 32` caps the walk. `UNION` (not UNION ALL) already terminates on a
+ * cycle by discarding rows it has seen, but the cap is kept as a second brake:
+ * scope has no cycle guard yet (scope.validator.js is passthrough — audit
+ * finding A4), so a malformed tree must not be able to spin a request.
+ */
+async function getUserScopeClosure(client, userId) {
+  if (!userId) return [];
+  const { rows } = await client.query(
+    `WITH RECURSIVE mine AS (
+       SELECT s.scope_id, 0 AS depth
+         FROM scope s
+         JOIN user_scope us ON us.scope_id = s.scope_id
+        WHERE us.user_id = $1
+       UNION
+       SELECT child.scope_id, mine.depth + 1
+         FROM scope child
+         JOIN mine ON child.parent_scope_id = mine.scope_id
+        WHERE mine.depth < 32
+     )
+     SELECT scope_id FROM mine`,
+    [userId],
+  );
+  return rows.map((r) => r.scope_id);
+}
+
+/**
  * Resolve the authority overlay a user carries (DB_ARCHITECTURE §4.2 — the
  * segregation-of-duties layer that sits *on top of* the role×module grant
  * matrix): the capability codes from `user_capability` (ISSUER / VALIDATOR /
@@ -241,6 +303,8 @@ module.exports = {
   getAuthUser,
   getGrants,
   getUserScopeIds,
+  getUserScopeClosure,
+  getApprovableModules,
   getUserCapabilities,
   getMaskedFieldKeys,
   invalidateUser,

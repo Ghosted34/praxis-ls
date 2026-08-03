@@ -133,6 +133,8 @@ export type Employee = {
   full_name?: string | null;
   entity_id?: string | null;
   entity_name?: string | null;
+  // scope_id is the department reference (0490); department is the snapshot.
+  scope_id?: string | null;
   department?: string | null;
   job_title?: string | null;
   email?: string | null;
@@ -144,13 +146,15 @@ export type Employee = {
 };
 export const listEmployees = () => tenant<Employee[]>("/employees");
 export const getEmployee = (id: string) => tenant<Employee>(`/employees/${id}`);
-export const createEmployee = (body: { full_name: string; entity_id?: string; department?: string; job_title?: string; email?: string; employment_type?: string }) =>
+// `scope_id` is the department reference (0490); `department` is the display
+// snapshot the API keeps in step with it.
+export const createEmployee = (body: { full_name: string; entity_id?: string; scope_id?: string; department?: string; job_title?: string; email?: string; employment_type?: string }) =>
   tenant<Employee>("/employees", { method: "POST", body });
 export const setEmployeeActive = (id: string, is_active: boolean) =>
   tenant<Employee>(`/employees/${id}/active`, { method: "POST", body: { is_active } });
 export const updateEmployee = (
   id: string,
-  body: Partial<{ full_name: string; entity_id: string; department: string; job_title: string; email: string; employment_type: string }>,
+  body: Partial<{ full_name: string; entity_id: string; scope_id: string; department: string; job_title: string; email: string; employment_type: string }>,
 ) => tenant<Employee>(`/employees/${id}`, { method: "PATCH", body });
 
 /* ── HR contracts (lifecycle) ── */
@@ -200,7 +204,9 @@ export type Applicant = {
   status: string; // APPLIED | SHORTLISTED | INTERVIEWED | HIRED | REJECTED | TALENT_POOL
 };
 export const listVacancies = () => tenant<Vacancy[]>("/vacancies");
-export const createVacancy = (body: { title: string; department?: string; description?: string }) =>
+// `scope_id` is the department reference (0490), carried onto the employee
+// record at hire; `department` is the display snapshot stored beside it.
+export const createVacancy = (body: { title: string; scope_id?: string; department?: string; description?: string }) =>
   tenant<Vacancy>("/vacancies", { method: "POST", body });
 export const setVacancyStatus = (id: string, status: string) =>
   tenant<Vacancy>(`/vacancies/${id}/status`, { method: "POST", body: { status } });

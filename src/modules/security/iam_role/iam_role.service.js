@@ -10,7 +10,7 @@ const { AppError } = require("../../../utils/errors");
 const repo = require("./iam_role.repo");
 const events = require("./iam_role.events");
 
-const base = makeService({ repo, moduleKey: events.MODULE, entity: "iam_role", events });
+const base = makeService({ repo, moduleKey: events.MODULE, entity: "iam_role", events, deleteMode: "hard"});
 
 module.exports = {
   ...base,

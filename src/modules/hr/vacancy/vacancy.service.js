@@ -57,10 +57,15 @@ module.exports = {
     if (status === "HIRED" && before.status !== "HIRED" && row.full_name) {
       // Carry the vacancy's role (title) + department onto the new employee, so
       // the profile isn't a nameless "—" the moment it's provisioned.
+      //
+      // `scope_id` rides along with the text (0490). This is the path that used
+      // to propagate whatever spelling the vacancy happened to use into the
+      // employee master, which is how one department became three; carrying the
+      // reference means the new hire lands in the same node the vacancy named.
       const vacancy = await repo.findById(client, vacancyId);
       const ins = await client.query(
-        "INSERT INTO employee (full_name, job_title, department, is_active) VALUES ($1, $2, $3, true) RETURNING employee_id",
-        [row.full_name, vacancy?.title || null, vacancy?.department || null],
+        "INSERT INTO employee (full_name, job_title, department, scope_id, is_active) VALUES ($1, $2, $3, $4, true) RETURNING employee_id",
+        [row.full_name, vacancy?.title || null, vacancy?.department || null, vacancy?.scope_id || null],
       );
       const employeeId = ins.rows[0].employee_id;
       await emitEvent(client, { eventTypeKey: events.APPLICANT_UPDATED, moduleKey: events.MODULE, entityRef: `employee:${employeeId}`, actorUserId: actor.user_id, payload: { provisioned_from_applicant: applicantId, vacancy_id: vacancyId } });

@@ -21,6 +21,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
+import { ActionErrorBanner } from "@/components/action-error-banner";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
 
@@ -892,6 +893,10 @@ export function AppShell() {
 
       <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
 
+      {/* Surfaces row-action failures reported via lib/action-error. Retrofit
+          for screens whose handlers had no catch — see
+          doc/PERMISSION_SWEEP_BACKLOG.md §C. */}
+      <ActionErrorBanner />
       <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />

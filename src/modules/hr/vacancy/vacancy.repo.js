@@ -9,6 +9,15 @@ const base = makeRepo({
   activeColumn: null,
   searchColumn: "title",
   orderBy: "created_at DESC",
+  // First adopter of record-level scope (audit finding A2). The mechanism has
+  // existed since scopes were wired into requirePermission and NO repo declared
+  // a column, so `req.scope_ids` was computed on every request and filtered
+  // nothing. 0490 gave this table a scope_id, so it can opt in.
+  //
+  // Effect: a user assigned to a branch sees that branch's vacancies and those
+  // beneath it (the closure). A user with no assignment is unrestricted, as
+  // before, and a vacancy with no scope stays visible to everyone.
+  scopeColumn: "scope_id",
 });
 
 module.exports = {

@@ -17,6 +17,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/mail-api";
+import { reportActionError } from "@/lib/action-error";
 
 const sendTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
@@ -224,8 +225,8 @@ function MailboxesSection() {
     try { const r = kind === "ms" ? await api.startMicrosoft() : await api.startGoogle(); window.location.href = r.url; }
     catch (err) { setNote(errMsg(err)); }
   }
-  async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } finally { setBusyId(""); } }
-  async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } finally { setBusyId(""); } }
+  async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+  async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
 
   return (
     <div className="space-y-5">

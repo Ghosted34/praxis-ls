@@ -77,4 +77,25 @@ async function killAllMine(client, actor) {
   return { killed: ids.length };
 }
 
-module.exports = { ...crud, mine, kill, killAllMine };
+/**
+ * DELETE refuses (audit finding A5).
+ *
+ * `user_session` has no active column, so the shared archive wrote a
+ * soft_delete row and left the session untouched — the API answered
+ * `{ archived: true }` and the session stayed live. An admin who believed they
+ * had removed someone's session had not, which on a security screen is worse
+ * than an error.
+ *
+ * Hard-deleting is not the answer either: the row is the record that a session
+ * existed, and revoking is what the caller actually wants. `/sessions/:id/kill`
+ * does that — it revokes in the store and in Redis. So say so, with 405.
+ */
+async function archive() {
+  throw new AppError(
+    "METHOD_NOT_ALLOWED",
+    "Sessions aren't deleted — revoke it with POST /sessions/:id/kill, which ends the session everywhere.",
+    405,
+  );
+}
+
+module.exports = { ...crud, archive, mine, kill, killAllMine };

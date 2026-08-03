@@ -13,6 +13,7 @@ import { EmptyState, ErrorState } from "@/components/ui/states";
 import { PageHeader } from "@/components/data-list";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { DepartmentSelect, type DepartmentValue } from "@/components/department-select";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
@@ -55,20 +56,31 @@ function AddApplicantForm({ vacancyId, onClose, onSaved }: { vacancyId: string; 
 }
 
 function NewVacancyForm({ onClose, onSaved }: { onClose: () => void; onSaved: (v: api.Vacancy) => void }) {
-  const [f, setF] = React.useState({ title: "", department: "", description: "" });
+  const [f, setF] = React.useState({ title: "", description: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
+  // Department is a scope (0490). It carries onto the employee record at hire,
+  // so picking a real node here is what puts the new starter in the right part
+  // of the organigramme instead of copying a typed string.
+  const [dept, setDept] = React.useState<DepartmentValue>({ scope_id: null, department: null });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
-    try { const v = await api.createVacancy({ title: f.title, department: f.department || undefined, description: f.description || undefined }); onSaved(v); onClose(); }
-    catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    try {
+      const v = await api.createVacancy({
+        title: f.title,
+        scope_id: dept.scope_id || undefined,
+        department: dept.department || undefined,
+        description: f.description || undefined,
+      });
+      onSaved(v); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
   return (
     <Modal open onClose={onClose} title="New vacancy" description="Open a role and start collecting applicants.">
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Title" required><Input value={f.title} onChange={(e) => set("title", e.target.value)} placeholder="Driver — heavy goods" /></Field>
-        <Field label="Department"><Input value={f.department} onChange={(e) => set("department", e.target.value)} /></Field>
+        <Field label="Department" hint="From your organigramme — Security › Scopes."><DepartmentSelect value={dept} onChange={setDept} /></Field>
         <Field label="Description"><Input value={f.description} onChange={(e) => set("description", e.target.value)} /></Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

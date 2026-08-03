@@ -15,6 +15,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { getRule } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
@@ -62,8 +63,8 @@ async function match(client, { supplierInvoiceId, actor = {} }) {
       const grns = si.po_id ? await grnService.list(client, { po_id: si.po_id }) : [];
       for (const g of grns) { /* eslint-disable-next-line no-await-in-loop */ await grnService.markMatched(client, g.grn_id, true); }
       // Open the tenant's configurable approval chain on a clean match (bound to
-      // supplier_invoice.matched). No workflow bound → autoApproved; posting stays
-      // an explicit step as today (BUILD_CONVENTIONS §2).
+      // supplier_invoice.matched). No workflow bound → autoApproved and the
+      // explicit Post step stays available (see the note on W8 below).
       await executor.start(client, { eventTypeKey: "supplier_invoice.matched", entityRef: ref(supplierInvoiceId), amountXaf: result.invoice_total === null || result.invoice_total === undefined ? null : Number(result.invoice_total) });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.MATCHED, moduleKey: events.MODULE, entityRef: ref(supplierInvoiceId), after: result });
@@ -73,10 +74,14 @@ async function match(client, { supplierInvoiceId, actor = {} }) {
 }
 
 /** Post a MATCHED supplier invoice to the GL and capture the document. */
-async function post(client, { supplierInvoiceId, entryDate, sourceDocRef, supplierAccount = "4011", actor = {}, ip = null }) {
+async function post(client, { supplierInvoiceId, entryDate, sourceDocRef, supplierAccount = "4011", actor = {}, ip = null, viaChain = false }) {
   const si = await repo.getSI(client, supplierInvoiceId);
   if (!si) throw new AppError("NOT_FOUND", "Supplier invoice not found", 404);
   if (!["MATCHED", "DRAFT"].includes(si.status)) throw new AppError("BAD_STATE", "Supplier invoice must be MATCHED to post", 422);
+  // Posting IS the approval outcome here, so posting directly while a chain is
+  // live would skip it (W4). Before BEGIN so the refusal doesn't open and roll
+  // back a transaction.
+  await assertNoPendingChain(client, ref(supplierInvoiceId), { viaChain, what: "supplier invoice" });
   const lineRows = await repo.listLines(client, supplierInvoiceId);
   const built = buildPostingLines({ lines: lineRows, vatTotal: si.vat_total, whtTotal: si.wht_total, dossierId: si.dossier_id, supplierAccount });
 
@@ -107,6 +112,6 @@ const list = (client, q) => repo.listSI(client, q);
 
 // A cleared approval chain posts the matched supplier invoice (BUILD_CONVENTIONS §2/§5).
 onApproved.register("supplier_invoice", (client, { id, actor }) =>
-  post(client, { supplierInvoiceId: id, entryDate: new Date().toISOString().slice(0, 10), sourceDocRef: "approval:" + id, actor: actor || {} }));
+  post(client, { supplierInvoiceId: id, entryDate: new Date().toISOString().slice(0, 10), sourceDocRef: "approval:" + id, actor: actor || {}, viaChain: true }));
 
 module.exports = { createDraft, match, post, get, list };

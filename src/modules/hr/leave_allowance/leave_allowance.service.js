@@ -5,6 +5,7 @@ const { AppError } = require("../../../utils/errors");
 const repo = require("./leave_allowance.repo");
 const events = require("./leave_allowance.events");
 const employeeService = require("../../master/employees/employees.service");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 
 // Leave / salary-advance / mission requests. A request is decided once from
 // REQUESTED. Salary-advance ledger posting (amount → 4211) is deferred to the
@@ -20,9 +21,12 @@ module.exports = {
     return base.create(client, { data, actor });
   },
 
-  async decide(client, { id, status, actor }) {
+  async decide(client, { id, status, actor, viaChain = false }) {
     const before = await repo.findById(client, id);
     if (!before) return null;
+    // Deciding directly while a chain is live would skip it (W4). Checked before
+    // the status guard below so the message names the real reason.
+    await assertNoPendingChain(client, `leave_allowance:${id}`, { viaChain, what: "leave request" });
     if (before.status !== "REQUESTED") {
       // Idempotent: if an approval chain already moved it, don't error.
       if (before.status === status) return before;
@@ -40,5 +44,5 @@ module.exports = {
 // rejected), move the request to its terminal state — so the central Approvals
 // inbox and the HR leave queue stay in lockstep (single source of truth).
 const onApproved = require("../../../services/workflow/on-approved");
-onApproved.register("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "APPROVED", actor: actor || {} }));
-onApproved.registerReject("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "REJECTED", actor: actor || {} }));
+onApproved.register("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "APPROVED", actor: actor || {}, viaChain: true }));
+onApproved.registerReject("leave_allowance", (client, { id, actor }) => module.exports.decide(client, { id, status: "REJECTED", actor: actor || {}, viaChain: true }));

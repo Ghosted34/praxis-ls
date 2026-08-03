@@ -107,13 +107,45 @@ module.exports = {
   },
 
   // ---- approval_task (read-only runtime view) ----
-  async listApprovals(client, q = {}) {
+  /**
+   * The approvals queue.
+   *
+   * `approval_task` is introduced in schema as "approvals waiting on me"
+   * (0120_events_workflow.sql:62) but this filtered on status and nothing else,
+   * so every user with MOD-67 view saw every pending task in the tenant and the
+   * KPI tiles counted the lot (audit finding W12).
+   *
+   * `viewer` narrows it to what the caller could actually act on:
+   *   · roleIds     — a task assigned to a role the caller does not hold is not
+   *                   theirs. Tasks with NO assigned role stay visible: an
+   *                   unassigned step is open to anyone, which is every step
+   *                   built through the designer before it grew a role picker,
+   *                   so excluding them would empty the inbox on real data.
+   *   · moduleKeys  — modules the caller holds `approve` on, matching the
+   *                   per-task gate on the act route (0488 / W3). Tasks with a
+   *                   null module_key stay visible for the same reason the
+   *                   permission check falls back rather than denying.
+   *   · isCeo       — sees everything, consistent with the RBAC bypass.
+   *
+   * Passing no `viewer` returns the unfiltered queue — that is the admin
+   * overview and what the existing callers get until they opt in.
+   */
+  async listApprovals(client, q = {}, viewer = null) {
     const { limit, offset } = page(q);
     const params = [limit, offset];
     const wh = [];
     if (q.status) {
       params.push(q.status);
       wh.push(`at.status = $${params.length}`);
+    }
+    if (viewer && viewer.isCeo !== true) {
+      const roleIds = Array.isArray(viewer.roleIds) ? viewer.roleIds : [];
+      params.push(roleIds);
+      wh.push(`(at.assigned_role_id IS NULL OR at.assigned_role_id = ANY($${params.length}::uuid[]))`);
+
+      const moduleKeys = Array.isArray(viewer.moduleKeys) ? viewer.moduleKeys : [];
+      params.push(moduleKeys);
+      wh.push(`(at.module_key IS NULL OR at.module_key = ANY($${params.length}::citext[]))`);
     }
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
     // Decorate for a human-readable inbox: the workflow name, the current stage,

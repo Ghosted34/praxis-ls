@@ -19,6 +19,7 @@ import { Pill, ActivePill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
+import { reportActionError } from "@/lib/action-error";
 
 /* Shared modal footer. */
 function FormButtons({ busy, disabled, onCancel, saveLabel = "Save" }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel?: string }) {
@@ -418,7 +419,7 @@ export function CorporateEntitiesPage() {
     try {
       await api.setEntityActive(en.entity_id, !en.is_active);
       reload();
-    } finally {
+    } catch (e) { reportActionError(e); } finally {
       setBusyId(null);
     }
   }
@@ -519,7 +520,7 @@ export function ExpenseRatesPage() {
   async function remove(r: api.ExpenseRate) {
     if (!window.confirm("Delete this expense rate?")) return;
     setBusyId(r.expense_rate_id);
-    try { await api.deleteExpenseRate(r.expense_rate_id); reload(); } finally { setBusyId(null); }
+    try { await api.deleteExpenseRate(r.expense_rate_id); reload(); } catch (e) { reportActionError(e); } finally { setBusyId(null); }
   }
 
   const columns: Column<api.ExpenseRate>[] = [

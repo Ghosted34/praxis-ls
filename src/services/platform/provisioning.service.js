@@ -233,7 +233,19 @@ async function projectFeatures(slug) {
         "WHERE t.slug=$1",
       [slug],
     );
+    const wantedOn = new Set(rows.filter((f) => f.state === "on").map((f) => f.feature_key));
     features = enforceDependencies(rows);
+    // An unexplained "off" is one an operator will try to toggle, fail to change,
+    // and report as a bug. `source` can't carry the reason (the tenant
+    // feature_state.source CHECK allows only plan|override|default), so it goes
+    // to the log instead.
+    const blocked = features.filter((f) => f.state !== "on" && wantedOn.has(f.feature_key));
+    if (blocked.length) {
+      logger.warn(
+        { slug, blocked: blocked.map((f) => `${f.feature_key}<-${toDepsArray(f.depends_on).join(",")}`) },
+        "[features] forced off because a dependency is off",
+      );
+    }
   } finally {
     await pf.end();
   }

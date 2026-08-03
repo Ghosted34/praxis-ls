@@ -15,7 +15,9 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
+import { DepartmentSelect, type DepartmentValue } from "@/components/department-select";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
+import { reportActionError } from "@/lib/action-error";
 import type { Entity, Supplier } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/procurement-api";
@@ -46,7 +48,9 @@ type PrLine = { dictionary_item_id: string; label: string; qty: string; unit_pri
 const blankPrLine = (): PrLine => ({ dictionary_item_id: "", label: "", qty: "1", unit_price: "" });
 
 function PrForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
-  const [department, setDepartment] = React.useState("");
+  // Department is a scope (0490) — carries both the reference and the display
+  // snapshot the API stores beside it.
+  const [dept, setDept] = React.useState<DepartmentValue>({ scope_id: null, department: null });
   const [justification, setJustification] = React.useState("");
   const [lines, setLines] = React.useState<PrLine[]>([blankPrLine()]);
   const [busy, setBusy] = React.useState(false);
@@ -56,14 +60,16 @@ function PrForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
     e.preventDefault(); setBusy(true); setError(null);
     try {
       const cleaned = lines.filter((l) => l.dictionary_item_id).map((l) => ({ dictionary_item_id: l.dictionary_item_id, label: l.label, qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0 }));
-      await api.createPurchaseRequest({ department: department || undefined, justification: justification || undefined, lines: cleaned.length ? cleaned : undefined });
+      await api.createPurchaseRequest({ scope_id: dept.scope_id || undefined, department: dept.department || undefined, justification: justification || undefined, lines: cleaned.length ? cleaned : undefined });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
   return (
     <Modal open onClose={onClose} title="New purchase request" description="Ask for a purchase to be raised.">
       <form className="space-y-4" onSubmit={submit}>
-        <Field label="Department"><Input value={department} onChange={(e) => setDepartment(e.target.value)} /></Field>
+        <Field label="Department" hint="From your organigramme — Security › Scopes.">
+          <DepartmentSelect value={dept} onChange={setDept} />
+        </Field>
         <Field label="Justification"><Input value={justification} onChange={(e) => setJustification(e.target.value)} placeholder="Why this is needed" /></Field>
         <div className="space-y-2">
           <div className="micro">Items</div>
@@ -89,9 +95,21 @@ export function PurchaseRequestsPage() {
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const list = rows || [];
+  // try/finally with no catch swallowed every failure — the button span, then
+  // nothing, and the row unchanged. That is exactly how the milestone-advance
+  // bug hid a 422 for weeks (session 17). Surface it.
+  const [actionError, setActionError] = React.useState<string | null>(null);
   async function submitPr(p: api.PurchaseRequest) {
     setBusyId(p.pr_id);
-    try { await api.transitionPR(p.pr_id, "SUBMITTED"); reload(); } finally { setBusyId(null); }
+    setActionError(null);
+    try {
+      await api.transitionPR(p.pr_id, "SUBMITTED");
+      reload();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setBusyId(null);
+    }
   }
   const columns: Column<api.PurchaseRequest>[] = [
     { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.pr_id.slice(0, 8)}</span> },
@@ -116,6 +134,7 @@ export function PurchaseRequestsPage() {
         <KpiTile label="Approved" value={num(list.filter((p) => p.status === "APPROVED").length)} />
         <KpiTile label="Submitted" value={num(list.filter((p) => p.status === "SUBMITTED").length)} />
       </KpiRow>
+      {actionError && <ErrorState message={actionError} />}
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.pr_id} empty={{ title: "No purchase requests", hint: "Raise a request to start procurement." }} />
       {open && <PrForm onClose={() => setOpen(false)} onSaved={reload} />}
       <ScreenAi path="procurement/purchase-requests" />
@@ -196,13 +215,40 @@ function PoForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
 export function PurchaseOrdersPage() {
   const { rows, error, loading, reload } = useList<api.PurchaseOrder>("/purchase-orders");
   const { rows: suppliers } = useList<Supplier>("/suppliers");
+  const { rows: entities } = useList<Entity>("/entities");
   const [open, setOpen] = React.useState(false);
   const [busyId, setBusyId] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const sname = map(suppliers, "supplier_id", "name");
   const list = rows || [];
-  async function approve(p: api.PurchaseOrder) {
+
+  /**
+   * The screen showed one button, "Approve", on DRAFT rows — and it could never
+   * work: DRAFT → APPROVED_LOCKED is not a legal transition
+   * (purchase_order.rules.js), so it always 422'd, silently, because the handler
+   * had no catch.
+   *
+   * A PO is ISSUED first, and issuing is what opens the approval chain
+   * (`po.issued`). With no Issue button the chain could never open from the UI —
+   * the same gap costing had. So: Issue on DRAFT, Approve on ISSUED_LOCKED.
+   *
+   * Issuing allocates the document number, which needs an entity — the API
+   * raises ENTITY_REQUIRED without one.
+   */
+  async function move(p: api.PurchaseOrder, to: "ISSUED_LOCKED" | "APPROVED_LOCKED") {
     setBusyId(p.po_id);
-    try { await api.transitionPO(p.po_id, "APPROVED_LOCKED"); reload(); } finally { setBusyId(null); }
+    setActionError(null);
+    try {
+      const extra = to === "ISSUED_LOCKED"
+        ? { entity_id: (entities || [])[0]?.entity_id, date: todayISO() }
+        : {};
+      await api.transitionPO(p.po_id, to, extra);
+      reload();
+    } catch (err) {
+      setActionError(errMsg(err));
+    } finally {
+      setBusyId(null);
+    }
   }
   const columns: Column<api.PurchaseOrder>[] = [
     { key: "ref", label: "Ref", render: (r) => <span className="num font-medium text-foreground">{r.ref || r.po_id.slice(0, 8)}</span> },
@@ -214,7 +260,12 @@ export function PurchaseOrdersPage() {
       key: "_a", label: "", render: (r) => (
         <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
           <DocButton docType="PURCHASE_ORDER" id={r.po_id} title={r.ref || `PO ${r.po_id.slice(0, 8)}`} label="View" />
-          {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => approve(r)}>Approve</Button>}
+          {(r.status === "DRAFT" || !r.status) && (
+            <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => move(r, "ISSUED_LOCKED")}>Issue</Button>
+          )}
+          {r.status === "ISSUED_LOCKED" && (
+            <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => move(r, "APPROVED_LOCKED")}>Approve</Button>
+          )}
         </div>
       ),
     },
@@ -228,6 +279,7 @@ export function PurchaseOrdersPage() {
         <KpiTile label="Approved" value={num(list.filter((p) => String(p.status).includes("APPROVED")).length)} />
         <KpiTile label="Spend" value={money(list.reduce((s, r) => s + (Number(r.total_ttc) || 0), 0))} />
       </KpiRow>
+      {actionError && <ErrorState message={actionError} />}
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.po_id} empty={{ title: "No purchase orders", hint: "Raise a PO to a supplier." }} />
       {open && <PoForm onClose={() => setOpen(false)} onSaved={reload} />}
       <ScreenAi path="procurement/purchase-orders" />
@@ -377,7 +429,7 @@ export function SupplierInvoicesPage() {
 
   async function post(inv: api.SupplierInvoice) {
     setBusyId(inv.supplier_invoice_id);
-    try { await api.postSupplierInvoice(inv.supplier_invoice_id, { entry_date: todayISO() }); reload(); } finally { setBusyId(null); }
+    try { await api.postSupplierInvoice(inv.supplier_invoice_id, { entry_date: todayISO() }); reload(); } catch (e) { reportActionError(e); } finally { setBusyId(null); }
   }
 
   const columns: Column<api.SupplierInvoice>[] = [

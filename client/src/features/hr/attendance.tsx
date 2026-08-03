@@ -16,6 +16,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const today = () => new Date().toISOString().slice(0, 10);
@@ -125,7 +126,7 @@ function Worksites() {
   const [busy, setBusy] = React.useState<string | null>(null);
   async function toggle(s: api.WorkSite) {
     setBusy(s.work_site_id);
-    try { await api.updateSite(s.work_site_id, { is_active: !s.is_active }); sites.reload(); } finally { setBusy(null); }
+    try { await api.updateSite(s.work_site_id, { is_active: !s.is_active }); sites.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
   const cols: Column<api.WorkSite>[] = [
     { key: "name", label: "Worksite", render: (s) => <span className="font-medium text-foreground">{s.name}</span> },

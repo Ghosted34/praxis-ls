@@ -5,6 +5,7 @@
 "use strict";
 const service = require("./employees.service");
 const { maskForUserVia } = require("../../../shared/rbac/field-mask");
+const { withDepartment } = require("../../../shared/rbac/department-scope");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 
@@ -21,8 +22,10 @@ module.exports = {
     res.json({ data: await maskForUserVia(req.identityDb, req.user, row) });
   }),
   references: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.references(c, req.params.id)) })),
-  create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
-  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+  // Department is a scope (0490) — resolved on the identity client, since the
+  // scope tree lives in the live schema while `employee` does not.
+  create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb(async (c) => service.create(c, { data: await withDepartment(req, req.body), actor: actor(req) })) })),
+  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb(async (c) => service.update(c, { id: req.params.id, patch: await withDepartment(req, req.body), actor: actor(req) })) })),
   setActive: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setActive(c, { id: req.params.id, is_active: req.body.is_active, actor: actor(req) })) })),
   remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { id: req.params.id, actor: actor(req) })) })),
 };

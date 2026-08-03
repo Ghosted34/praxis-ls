@@ -708,6 +708,339 @@
       "module_key": "MOD-52",
       "purpose": "Proforma and advance-payment invoices — advance posts to 4191, not revenue.",
       "actions": []
+    },
+    {
+      "id": "ai_features",
+      "title": "Features",
+      "route": "/ai-control/features",
+      "area": "ai",
+      "module_key": "MOD-67",
+      "purpose": "Per-screen AI feature toggles for the tenant.",
+      "actions": []
+    },
+    {
+      "id": "ai_access",
+      "title": "Access",
+      "route": "/ai-control/access",
+      "area": "ai",
+      "module_key": "MOD-67",
+      "purpose": "Which roles may use AI actions.",
+      "actions": []
+    },
+    {
+      "id": "ai_budget",
+      "title": "Budget",
+      "route": "/ai-control/budget",
+      "area": "ai",
+      "module_key": "MOD-67",
+      "purpose": "AI spend caps and alerts.",
+      "actions": []
+    },
+    {
+      "id": "ai_usage",
+      "title": "Usage",
+      "route": "/ai-control/usage",
+      "area": "ai",
+      "module_key": "MOD-67",
+      "purpose": "AI call volume and cost by period.",
+      "actions": []
+    },
+    {
+      "id": "commercial_quotations",
+      "title": "Quotations",
+      "route": "/commercial/quotations",
+      "area": "commercial",
+      "module_key": "MOD-27",
+      "purpose": "Client quotations: draft, send, accept, convert.",
+      "actions": []
+    },
+    {
+      "id": "commercial_margin_sim",
+      "title": "Margin simulation",
+      "route": "/commercial/margin-simulation",
+      "area": "commercial",
+      "module_key": "MOD-27",
+      "purpose": "Model margin on a service before quoting.",
+      "actions": []
+    },
+    {
+      "id": "commercial_extra_charges",
+      "title": "Extra-charge simulation",
+      "route": "/commercial/extra-charge-simulation",
+      "area": "commercial",
+      "module_key": "MOD-28",
+      "purpose": "Model extra charges (surcharges, demurrage).",
+      "actions": []
+    },
+    {
+      "id": "commercial_pricing_variance",
+      "title": "Pricing variance",
+      "route": "/commercial/pricing-variance",
+      "area": "commercial",
+      "module_key": "MOD-27",
+      "purpose": "Quoted vs realised price variance.",
+      "actions": []
+    },
+    {
+      "id": "costing_sheets",
+      "title": "Costing",
+      "route": "/costing/costing",
+      "area": "costing",
+      "module_key": "MOD-46",
+      "purpose": "Planned cost sheets and margin per dossier.",
+      "actions": []
+    },
+    {
+      "id": "costing_tracking",
+      "title": "Cost tracking",
+      "route": "/costing/cost-tracking",
+      "area": "costing",
+      "module_key": "MOD-47",
+      "purpose": "Actual costs booked against a dossier.",
+      "actions": []
+    },
+    {
+      "id": "costing_cash_requests",
+      "title": "Cash requests",
+      "route": "/costing/cash-requests",
+      "area": "costing",
+      "module_key": "MOD-49",
+      "purpose": "Disbursal requests, approval and payout.",
+      "actions": []
+    },
+    {
+      "id": "costing_regie",
+      "title": "Régie",
+      "route": "/costing/regie",
+      "area": "costing",
+      "module_key": "MOD-49",
+      "purpose": "Cash advances held by a régisseur and their justification.",
+      "actions": []
+    },
+    {
+      "id": "hr_queries",
+      "title": "Queries",
+      "route": "/hr/queries",
+      "area": "hr",
+      "module_key": "MOD-71",
+      "purpose": "Disciplinary queries issued to an employee.",
+      "actions": []
+    },
+    {
+      "id": "hr_sanctions",
+      "title": "Sanctions",
+      "route": "/hr/sanctions",
+      "area": "hr",
+      "module_key": "MOD-71",
+      "purpose": "Disciplinary outcomes and their lifting.",
+      "actions": []
+    },
+    {
+      "id": "ops_files",
+      "title": "Files",
+      "route": "/operations/files",
+      "area": "operations",
+      "module_key": "MOD-29",
+      "purpose": "Operations files (dossiers) — the shipment record.",
+      "actions": []
+    },
+    {
+      "id": "ops_milestones",
+      "title": "Milestones",
+      "route": "/operations/milestones",
+      "area": "operations",
+      "module_key": "MOD-31",
+      "purpose": "Milestone chain and progress per dossier.",
+      "actions": []
+    },
+    {
+      "id": "ops_transit_orders",
+      "title": "Transit orders",
+      "route": "/operations/transit-orders",
+      "area": "operations",
+      "module_key": "MOD-30",
+      "purpose": "Transit declarations raised against a dossier.",
+      "actions": []
+    },
+    {
+      "id": "ops_delivery_notes",
+      "title": "Delivery notes",
+      "route": "/operations/delivery-notes",
+      "area": "operations",
+      "module_key": "MOD-32",
+      "purpose": "Delivery notes issued on arrival.",
+      "actions": []
+    },
+    {
+      "id": "ops_service_types",
+      "title": "Service types",
+      "route": "/operations/service-types",
+      "area": "operations",
+      "module_key": "MOD-29",
+      "purpose": "Service taxonomy and its milestone templates.",
+      "actions": []
+    },
+    {
+      "id": "proc_requests",
+      "title": "Requests",
+      "route": "/procurement/purchase-requests",
+      "area": "procurement",
+      "module_key": "MOD-62",
+      "purpose": "Purchase requisitions, before a PO.",
+      "actions": []
+    },
+    {
+      "id": "proc_orders",
+      "title": "Purchase orders",
+      "route": "/procurement/purchase-orders",
+      "area": "procurement",
+      "module_key": "MOD-60",
+      "purpose": "Orders raised to suppliers.",
+      "actions": []
+    },
+    {
+      "id": "proc_grn",
+      "title": "Goods received",
+      "route": "/procurement/goods-received",
+      "area": "procurement",
+      "module_key": "MOD-61",
+      "purpose": "Goods-received notes and three-way match.",
+      "actions": []
+    },
+    {
+      "id": "proc_supplier_invoices",
+      "title": "Supplier invoices",
+      "route": "/procurement/supplier-invoices",
+      "area": "procurement",
+      "module_key": "MOD-61",
+      "purpose": "Supplier invoices, matching and posting.",
+      "actions": []
+    },
+    {
+      "id": "sales_leads",
+      "title": "Leads & intake",
+      "route": "/sales/leads",
+      "area": "sales",
+      "module_key": "MOD-20",
+      "purpose": "Inbound leads and their qualification.",
+      "actions": []
+    },
+    {
+      "id": "sales_opportunities",
+      "title": "Opportunities",
+      "route": "/sales/opportunities",
+      "area": "sales",
+      "module_key": "MOD-24",
+      "purpose": "Pipeline of open opportunities by stage.",
+      "actions": []
+    },
+    {
+      "id": "sales_proposals",
+      "title": "Proposals",
+      "route": "/sales/proposals",
+      "area": "sales",
+      "module_key": "MOD-23",
+      "purpose": "Generated client proposals.",
+      "actions": []
+    },
+    {
+      "id": "sales_meetings",
+      "title": "Meetings",
+      "route": "/sales/meetings",
+      "area": "sales",
+      "module_key": "MOD-21",
+      "purpose": "Client meetings and their outcomes.",
+      "actions": []
+    },
+    {
+      "id": "sales_campaigns",
+      "title": "Campaigns",
+      "route": "/sales/campaigns",
+      "area": "sales",
+      "module_key": "MOD-22",
+      "purpose": "Marketing campaigns and sends.",
+      "actions": []
+    },
+    {
+      "id": "sales_success_stories",
+      "title": "Success stories",
+      "route": "/sales/success-stories",
+      "area": "sales",
+      "module_key": "MOD-26",
+      "purpose": "Reference projects used in proposals.",
+      "actions": []
+    },
+    {
+      "id": "security_overview",
+      "title": "Overview",
+      "route": "/security/overview",
+      "area": "security",
+      "module_key": "MOD-67",
+      "purpose": "Security posture summary for the tenant.",
+      "actions": []
+    },
+    {
+      "id": "security_my_security",
+      "title": "My security",
+      "route": "/security/my-security",
+      "area": "security",
+      "module_key": "MOD-67",
+      "purpose": "Your own password, 2FA, Quick PIN and devices.",
+      "actions": []
+    },
+    {
+      "id": "vault_overview",
+      "title": "Overview",
+      "route": "/vault/overview",
+      "area": "vault",
+      "module_key": "MOD-64",
+      "purpose": "Document vault summary.",
+      "actions": []
+    },
+    {
+      "id": "vault_documents",
+      "title": "Documents",
+      "route": "/vault/documents",
+      "area": "vault",
+      "module_key": "MOD-64",
+      "purpose": "Stored documents, gated download.",
+      "actions": []
+    },
+    {
+      "id": "vault_signatures",
+      "title": "Signatures",
+      "route": "/vault/signatures",
+      "area": "vault",
+      "module_key": "MOD-64",
+      "purpose": "Signature blocks used on documents.",
+      "actions": []
+    },
+    {
+      "id": "vault_verification",
+      "title": "Verification",
+      "route": "/vault/verification",
+      "area": "vault",
+      "module_key": "MOD-66",
+      "purpose": "QR verification of an issued document.",
+      "actions": []
+    },
+    {
+      "id": "vault_compliance",
+      "title": "Compliance flags",
+      "route": "/vault/compliance-flags",
+      "area": "vault",
+      "module_key": "MOD-65",
+      "purpose": "Compliance checks raised against records.",
+      "actions": []
+    },
+    {
+      "id": "vault_reports",
+      "title": "Reports",
+      "route": "/vault/reports",
+      "area": "vault",
+      "module_key": "MOD-63",
+      "purpose": "Saved reports and dashboard tiles.",
+      "actions": []
     }
   ]
 }

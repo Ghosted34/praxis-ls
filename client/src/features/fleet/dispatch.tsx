@@ -17,6 +17,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const STATUS_TONE: Record<string, Tone> = { ASSIGNED: "blue", OUT: "warn", RETURNED: "ok", CANCELLED: "bad" };
@@ -103,7 +104,7 @@ export function DispatchPage() {
 
   async function cancel(d: api.Dispatch) {
     setBusy(d.fleet_dispatch_id);
-    try { await api.setDispatchStatus(d.fleet_dispatch_id, "CANCELLED"); disp.reload(); } finally { setBusy(null); }
+    try { await api.setDispatchStatus(d.fleet_dispatch_id, "CANCELLED"); disp.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const cols: Column<api.Dispatch>[] = [

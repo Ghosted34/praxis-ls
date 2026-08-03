@@ -43,7 +43,19 @@ export type WorkflowStep = {
 export const listSteps = (id: string) => tenant<WorkflowStep[]>(`/workflows/${id}/steps`);
 export const addStep = (
   id: string,
-  body: { step_seq: number; step_kind: "VALIDATE" | "APPROVE"; capability_code?: "VALIDATOR" | "APPROVER"; role_id?: string; min_amount_xaf?: number; max_amount_xaf?: number },
+  // `role_id` and `scope_id` are what the executor's eligibility check binds to —
+  // a step with neither is open to anyone. The API and repo always accepted both;
+  // the designer had no inputs for them, so every step built in the product was
+  // unassigned and unnotified (audit finding W1).
+  body: {
+    step_seq: number;
+    step_kind: "VALIDATE" | "APPROVE";
+    capability_code?: "VALIDATOR" | "APPROVER";
+    role_id?: string;
+    scope_id?: string;
+    min_amount_xaf?: number;
+    max_amount_xaf?: number;
+  },
 ) => tenant<WorkflowStep>(`/workflows/${id}/steps`, { method: "POST", body });
 export const removeStep = (id: string, stepId: string) =>
   tenant<{ ok: boolean }>(`/workflows/${id}/steps/${stepId}`, { method: "DELETE" });

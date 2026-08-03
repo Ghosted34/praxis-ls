@@ -14,6 +14,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
+import { reportActionError } from "@/lib/action-error";
 import type { Entity, DictItem } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
@@ -97,9 +98,23 @@ export function CostingPage() {
   const dref = refOf(dossiers);
   const list = rows || [];
 
-  async function approve(c: api.Costing) {
+  // The screen had Approve and nothing else, so `costing.submitted` — the event
+  // the approval chain binds to — could never fire from the UI. A costing went
+  // DRAFT → APPROVED_LOCKED in one click by one person, with the configured
+  // chain bypassed entirely because it was never opened.
+  const [actionError, setActionError] = React.useState<string | null>(null);
+  async function setStatus(c: api.Costing, to: "SUBMIT_APPROVAL" | "APPROVE") {
     setBusyId(c.costing_id);
-    try { await api.setCostingStatus(c.costing_id, "APPROVE"); reload(); } finally { setBusyId(null); }
+    setActionError(null);
+    try {
+      await api.setCostingStatus(c.costing_id, to);
+      reload();
+    } catch (err) {
+      // try/finally with no catch is why the old button failed silently.
+      setActionError(errMsg(err));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const columns: Column<api.Costing>[] = [
@@ -110,8 +125,19 @@ export function CostingPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
-          {!["APPROVED_LOCKED", "REJECTED"].includes(r.status) && <Button size="sm" variant="outline" loading={busyId === r.costing_id} onClick={() => approve(r)}>Approve</Button>}
+        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          {/* Submit opens the approval chain; Approve is the direct path, which
+              now refuses while a chain is pending (W4). */}
+          {["DRAFT", "SUBMITTED_FOR_VALIDATION"].includes(r.status) && (
+            <Button size="sm" variant="outline" loading={busyId === r.costing_id} onClick={() => setStatus(r, "SUBMIT_APPROVAL")}>
+              Submit for approval
+            </Button>
+          )}
+          {!["APPROVED_LOCKED", "REJECTED"].includes(r.status) && (
+            <Button size="sm" variant="outline" loading={busyId === r.costing_id} onClick={() => setStatus(r, "APPROVE")}>
+              Approve
+            </Button>
+          )}
         </div>
       ),
     },
@@ -125,6 +151,7 @@ export function CostingPage() {
         <KpiTile label="Approved" value={num(list.filter((c) => c.status === "APPROVED_LOCKED").length)} />
         <KpiTile label="Draft" value={num(list.filter((c) => c.status === "DRAFT").length)} />
       </KpiRow>
+      {actionError && <ErrorState message={actionError} />}
       <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.costing_id} empty={{ title: "No costings yet", hint: "Build a costing sheet for a dossier." }} />
       {open && <CostingForm onClose={() => setOpen(false)} onSaved={reload} />}
     </section>
@@ -247,7 +274,7 @@ export function CashRequestsPage() {
 
   async function submitCr(c: api.CashRequest) {
     setBusyId(c.cash_request_id);
-    try { await api.transitionCashRequest(c.cash_request_id, "SUBMITTED"); reload(); } finally { setBusyId(null); }
+    try { await api.transitionCashRequest(c.cash_request_id, "SUBMITTED"); reload(); } catch (e) { reportActionError(e); } finally { setBusyId(null); }
   }
 
   const columns: Column<api.CashRequest>[] = [

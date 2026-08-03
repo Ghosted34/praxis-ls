@@ -22,6 +22,9 @@ router.get("/declarations", requirePermission(MODULE, "view"), controller.listDe
 router.get("/declarations/:id", requirePermission(MODULE, "view"), controller.getDeclaration);
 router.post("/declarations", requirePermission(MODULE, "create"), validator.file, controller.fileDeclaration);
 router.post("/declarations/:id/approve", requirePermission(MODULE, "approve"), controller.approveDeclaration);
-router.post("/declarations/:id/submit", requirePermission(MODULE, "approve"), validator.submit, controller.submitDeclaration);
+// Filing a declaration with the tax authority follows an approval; SUBMITTING it
+// internally is the preparer's act. The /approve route above is the decision.
+// See doc/PERMISSION_SWEEP_BACKLOG.md §A.
+router.post("/declarations/:id/submit", requirePermission(MODULE, "edit"), validator.submit, controller.submitDeclaration);
 
 module.exports = { basePath: "/tax", feature: "accounting.tax", router };

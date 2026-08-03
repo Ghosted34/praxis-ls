@@ -15,6 +15,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const STATUS_TONE: Record<string, Tone> = { SCHEDULED: "blue", DONE: "ok", CANCELLED: "bad" };
@@ -119,7 +120,7 @@ export function TrainingsPage() {
 
   async function toStatus(t: api.Training, status: string) {
     setBusy(t.training_id + status);
-    try { await api.setTrainingStatus(t.training_id, status); trainings.reload(); } finally { setBusy(null); }
+    try { await api.setTrainingStatus(t.training_id, status); trainings.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const cols: Column<api.Training>[] = [

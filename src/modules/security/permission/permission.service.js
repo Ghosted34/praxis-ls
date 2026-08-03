@@ -18,10 +18,13 @@ const identityCache = require("../../../shared/cache/identity-cache");
 const repo = require("./permission.repo");
 const events = require("./permission.events");
 
-const base = makeService({ repo, moduleKey: events.MODULE, entity: "permission", events });
+const base = makeService({ repo, moduleKey: events.MODULE, entity: "permission", events, deleteMode: "hard"});
 
 module.exports = {
   ...base,
+  // Unpaginated read for the matrix editor — see permission.repo.listAll for
+  // why the paginated list() is unsafe there.
+  listAll: (client) => repo.listAll(client),
   async create(client, args) {
     const row = await base.create(client, args);
     await identityCache.invalidateGrants();

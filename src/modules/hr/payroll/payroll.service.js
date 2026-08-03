@@ -22,6 +22,7 @@ const employeeService = require("../../master/employees/employees.service");
 const journal = require("../../finance/journal_entry/journal_entry.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -92,11 +93,15 @@ async function compute(client, { id, config = null, actor = {} }) {
   return { run: updated, item_count: count, totals: { gross: round(totalGross), net: round(totalNet), employer_charges: round(totalEmployer) } };
 }
 
-async function setStatus(client, { id, status, actor = {} }) {
+async function setStatus(client, { id, status, actor = {}, viaChain = false }) {
   const before = await repo.findRun(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Payroll run not found", 404);
   const allowed = TRANSITIONS[before.status] || [];
   if (!allowed.includes(status)) throw new AppError("INVALID_TRANSITION", `Cannot move payroll ${before.status} → ${status}`, 422);
+  // Approving/rejecting directly while a chain is live would skip it (W4).
+  if (status === "APPROVED" || status === "REJECTED") {
+    await assertNoPendingChain(client, ref(id), { viaChain, what: "payroll run" });
+  }
 
   let entry_id = before.entry_id;
   if (status === "VALIDATED" && !entry_id) {
@@ -184,6 +189,6 @@ function periodEnd(periodCode) {
 }
 
 // A cleared approval chain advances the run SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
-onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {} }));
+onApproved.register("payroll_run", (client, { id, actor }) => setStatus(client, { id, status: "APPROVED", actor: actor || {}, viaChain: true }));
 
 module.exports = { createRun, compute, setStatus, get, list, myPayslips };

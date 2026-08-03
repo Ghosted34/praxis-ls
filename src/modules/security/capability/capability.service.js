@@ -10,7 +10,7 @@ const identityCache = require("../../../shared/cache/identity-cache");
 const repo = require("./capability.repo");
 const events = require("./capability.events");
 
-const base = makeService({ repo, moduleKey: events.MODULE, entity: "capability", events });
+const base = makeService({ repo, moduleKey: events.MODULE, entity: "capability", events, deleteMode: "hard"});
 
 module.exports = {
   ...base,

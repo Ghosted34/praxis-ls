@@ -10,7 +10,7 @@ const identityCache = require("../../../shared/cache/identity-cache");
 const repo = require("./field_visibility.repo");
 const events = require("./field_visibility.events");
 
-const base = makeService({ repo, moduleKey: events.MODULE, entity: "field_visibility", events });
+const base = makeService({ repo, moduleKey: events.MODULE, entity: "field_visibility", events, deleteMode: "hard"});
 
 module.exports = {
   ...base,

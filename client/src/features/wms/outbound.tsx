@@ -16,6 +16,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const STATUS_TONE: Record<string, Tone> = { CREATED: "mute", PICKING: "blue", PACKED: "warn", DISPATCHED: "ok", CANCELLED: "bad" };
@@ -116,7 +117,7 @@ export function OutboundPage() {
 
   async function newOrder() {
     setCreating(true);
-    try { const o = await api.createOutbound(); orders.reload(); setView(o); }
+    try { const o = await api.createOutbound(); orders.reload(); setView(o); } catch (e) { reportActionError(e); }
     finally { setCreating(false); }
   }
 

@@ -10,6 +10,9 @@ const EMPLOYMENT_TYPES = ["CDI", "CDD", "STAGE", "INTERIM", "CONSULTANT", "TEMPO
 const base = {
   entity_id: z.string().uuid().optional(),
   full_name: z.string().min(2),
+  // Department is a scope (0490): scope_id is the reference, department the
+  // display snapshot the controller keeps in step with it.
+  scope_id: z.string().uuid().optional().nullable(),
   department: z.string().max(120).optional(),
   job_title: z.string().max(120).optional(),
   email: z.string().email().optional().or(z.literal("")),

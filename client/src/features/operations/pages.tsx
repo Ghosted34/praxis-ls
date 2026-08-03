@@ -534,11 +534,22 @@ export function OperationsFilesPage() {
     return hay.includes(q.trim().toLowerCase());
   });
 
+  // try/finally with no catch swallowed every failure here — see
+  // doc/PERMISSION_SWEEP_BACKLOG.md §C and lib/use-action.ts.
+  const [actionError, setActionError] = React.useState<string | null>(null);
   async function advance(d: api.Dossier) {
     const next = d.status === "OPEN" ? "IN_PROGRESS" : d.status === "IN_PROGRESS" ? "COMPLETED" : null;
     if (!next) return;
     setBusyId(d.dossier_id);
-    try { await api.transitionDossier(d.dossier_id, next); reload(); } finally { setBusyId(null); }
+    setActionError(null);
+    try {
+      await api.transitionDossier(d.dossier_id, next);
+      reload();
+    } catch (e) {
+      setActionError(errMsg(e));
+    } finally {
+      setBusyId(null);
+    }
   }
 
   const columns: Column<api.Dossier>[] = [
@@ -610,6 +621,7 @@ export function OperationsFilesPage() {
         </div>
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by ref, client, BL/MAWB, vessel…" className="w-full max-w-xs" />
       </div>
+      {actionError && <ErrorState message={actionError} />}
       <DataList columns={columns} rows={filtered} error={error} loading={loading} rowKey={(r) => r.dossier_id} onRowClick={(r) => setView(r)} empty={{ title: "No operation files yet", hint: "Open a dossier to start moving a shipment." }} />
       {editing !== null && <DossierForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
       {view && <Dossier360Modal dossier={view} clientLabel={clientOf(view)} onClose={() => setView(null)} />}

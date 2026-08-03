@@ -32,9 +32,19 @@ function makeRepo(cfg) {
         params.push(`%${q.q}%`);
         wh.push(`${cfg.searchColumn} ILIKE $${params.length}`);
       }
+      // Record-level scope. `scopeIds` is the caller's scope CLOSURE (their
+      // nodes plus everything beneath — middleware/rbac.js), so a manager at HQ
+      // sees the branches under it; null means they have no assignment at all
+      // and are unrestricted, which is the pre-existing behaviour.
+      //
+      // A row with a NULL scope is visible to everyone, deliberately. Most
+      // records predate the organigramme and were never assigned to a part of
+      // the company; excluding them would make a scoped user's list abruptly
+      // empty, which is a far worse failure than showing an unassigned record to
+      // someone who shouldn't care about it. Assign the record to narrow it.
       if (cfg.scopeColumn && scopeIds) {
         params.push(scopeIds);
-        wh.push(`${cfg.scopeColumn} = ANY($${params.length}::uuid[])`);
+        wh.push(`(${cfg.scopeColumn} IS NULL OR ${cfg.scopeColumn} = ANY($${params.length}::uuid[]))`);
       }
       const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
       const { rows } = await client.query(
@@ -81,6 +91,23 @@ function makeService(opts) {
       await audit(client, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey, entityRef: ref(before), before, after: row });
       return row;
     },
+    /**
+     * `deleteMode` (audit finding A5), default "soft":
+     *
+     *   soft   deactivate if the table has an active column, otherwise record
+     *          the deletion and leave the row. Right for business records, which
+     *          are referenced by ledgers and documents and must not vanish.
+     *
+     *   hard   record the deletion, then actually DELETE. Right for CONFIGURATION
+     *          — a role, a grant, a capability, a scope. On a table with no
+     *          active column the soft path removed nothing at all, so the
+     *          security UI reported success and changed nothing: an admin who
+     *          revoked a grant had not. That is the bug this mode exists for.
+     *
+     * The soft_delete row is written in BOTH modes, so a hard delete is still
+     * recoverable through the audit ledger's restore path and still carries
+     * maker-checker.
+     */
     async archive(client, { id, actor }) {
       const before = await repo.findById(client, id);
       if (!before) return null;
@@ -100,9 +127,22 @@ function makeService(opts) {
           "SELECT $1,$2,(SELECT user_id FROM app_user WHERE user_id = $3)",
         [ref(before), before, actor.user_id],
       );
+      // Hard delete AFTER the soft_delete row and BEFORE the event/audit writes,
+      // so the record of what was removed exists even if the delete then fails a
+      // foreign key — and so the audit entry describes something that really is
+      // gone.
+      let removed = false;
+      if (opts.deleteMode === "hard" && !repo.cfg.activeColumn) {
+        const { rowCount } = await client.query(
+          `DELETE FROM ${repo.cfg.table} WHERE ${repo.cfg.pk} = $1`,
+          [id],
+        );
+        removed = rowCount > 0;
+      }
+
       await emitEvent(client, { eventTypeKey: events.ARCHIVED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });
       await audit(client, { actorUserId: actor.user_id, action: events.ARCHIVED, moduleKey, entityRef: ref(before), before });
-      return { archived: true, [repo.cfg.pk]: id };
+      return { archived: true, deleted: removed, [repo.cfg.pk]: id };
     },
   };
 }

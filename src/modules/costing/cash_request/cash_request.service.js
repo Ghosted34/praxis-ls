@@ -15,6 +15,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -51,10 +52,15 @@ async function updateDraft(client, { id, lines = null, actor = {} }) {
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-async function transition(client, { id, to, entityId = null, date = null, actor = {} }) {
+async function transition(client, { id, to, entityId = null, date = null, actor = {}, viaChain = false }) {
   const cr = await repo.getCR(client, id);
   if (!cr) throw new AppError("NOT_FOUND", "Cash request not found", 404);
   assertTransition(cr.status, to);
+  // Approving/rejecting directly while a chain is live would skip it (W4).
+  // Before BEGIN so the refusal doesn't open and roll back a transaction.
+  if (to === "APPROVED" || to === "REJECTED") {
+    await assertNoPendingChain(client, ref(id), { viaChain, what: "cash request" });
+  }
   await client.query("BEGIN");
   try {
     const fields = { status: to };
@@ -67,7 +73,8 @@ async function transition(client, { id, to, entityId = null, date = null, actor 
     if (to === "SUBMITTED") {
       await documents.capture(client, { entityRef: ref(id), docType: "CASH_REQUEST", status: "PENDING" });
       // Open the tenant's configurable approval chain (bound to disbursal.requested).
-      // No workflow bound → autoApproved; the manual APPROVED path is unchanged.
+      // No workflow bound → autoApproved and the manual APPROVED path stays
+      // available; see the note on W8 in purchase_order.service.js.
       await executor.start(client, { eventTypeKey: "disbursal.requested", entityRef: ref(id), amountXaf: updated.amount === null || updated.amount === undefined ? null : Number(updated.amount) });
     }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
@@ -123,6 +130,6 @@ async function get(client, id) {
 const list = (client, q) => repo.list(client, q);
 
 // A cleared approval chain advances the request SUBMITTED → APPROVED (BUILD_CONVENTIONS §2/§5).
-onApproved.register("cash_request", (client, { id, actor }) => transition(client, { id, to: "APPROVED", actor: actor || {} }));
+onApproved.register("cash_request", (client, { id, actor }) => transition(client, { id, to: "APPROVED", actor: actor || {}, viaChain: true }));
 
 module.exports = { createDraft, updateDraft, transition, disburse, justify, get, list };

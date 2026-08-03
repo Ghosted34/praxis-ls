@@ -13,6 +13,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt } from "@/lib/format";
+import { reportActionError } from "@/lib/action-error";
 
 type EmployeeLite = { employee_id: string; full_name?: string | null };
 const READINESS: { value: string; label: string; tone: Tone }[] = [
@@ -175,7 +176,7 @@ function OnboardingDetail({ id, onClose, onChanged }: { id: string; onClose: () 
   }
   async function complete() {
     setBusy("complete");
-    try { await tenant(`/onboarding/${id}/complete`, { method: "POST" }); detail.reload(); onChanged(); } finally { setBusy(null); }
+    try { await tenant(`/onboarding/${id}/complete`, { method: "POST" }); detail.reload(); onChanged(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   return (

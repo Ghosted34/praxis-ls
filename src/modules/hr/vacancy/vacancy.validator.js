@@ -6,6 +6,8 @@ const APPLICANT_STATUS = ["APPLIED", "SHORTLISTED", "INTERVIEWED", "HIRED", "REJ
 
 const create = z.object({
   title: z.string().min(1),
+  // Department is a scope (0490) — carried onto the employee record at hire.
+  scope_id: z.string().uuid().optional().nullable(),
   department: z.string().optional(),
   description: z.string().optional(),
   ai_generated: z.boolean().optional(),

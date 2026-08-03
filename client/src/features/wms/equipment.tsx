@@ -15,6 +15,7 @@ import { ScreenAi } from "@/components/screen-ai";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/wms-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "mx-auto max-w-6xl animate-fade-in";
 const COLUMNS = ["AVAILABLE", "IN_USE", "MAINTENANCE", "OUT_OF_SERVICE"];
@@ -97,7 +98,7 @@ export function EquipmentPage() {
 
   async function move(e: api.Equipment, status: string) {
     setBusy(e.wms_equipment_id);
-    try { await api.setEquipmentStatus(e.wms_equipment_id, status); equipment.reload(); } finally { setBusy(null); }
+    try { await api.setEquipmentStatus(e.wms_equipment_id, status); equipment.reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const byStatus = React.useMemo(() => {

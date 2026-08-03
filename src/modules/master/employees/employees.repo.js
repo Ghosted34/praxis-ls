@@ -40,7 +40,15 @@ async function list(client, q = {}) {
   const params = [limit, offset];
   const wh = [];
   if (q.entity_id) { params.push(q.entity_id); wh.push("e.entity_id = $" + params.length); }
-  if (q.department) { params.push(q.department); wh.push("e.department = $" + params.length); }
+  // Prefer the scope reference (0490). `department` matching stays for callers
+  // that only have the text — but case- and whitespace-insensitively now, since
+  // exact equality made "Operations", "operations" and " Operations" three
+  // different departments and quietly returned an empty list for two of them.
+  if (q.scope_id) { params.push(q.scope_id); wh.push("e.scope_id = $" + params.length); }
+  else if (q.department) {
+    params.push(q.department);
+    wh.push(`lower(btrim(e.department)) = lower(btrim($${params.length}))`);
+  }
   if (q.employment_type) { params.push(q.employment_type); wh.push("e.employment_type = $" + params.length); }
   if (q.is_driver !== undefined) { params.push(q.is_driver === "true" || q.is_driver === true); wh.push("e.is_driver = $" + params.length); }
   if (q.active !== undefined) { params.push(q.active === "true" || q.active === true); wh.push("e.is_active = $" + params.length); }

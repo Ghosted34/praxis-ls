@@ -13,6 +13,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
+const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -52,10 +53,16 @@ async function updateDraft(client, { poId, items = null, patch = {}, actor = {} 
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
-async function transition(client, { poId, to, entityId = null, date = null, actor = {} }) {
+async function transition(client, { poId, to, entityId = null, date = null, actor = {}, viaChain = false }) {
   const po = await repo.getPO(client, poId);
   if (!po) throw new AppError("NOT_FOUND", "Purchase order not found", 404);
   assertTransition(po.status, to);
+  // Approving directly while a chain is live would skip it entirely (W4). Only
+  // the approval transition is guarded — issuing, receiving and cancelling are
+  // not decisions the chain owns.
+  if (to === "APPROVED_LOCKED") {
+    await assertNoPendingChain(client, ref(poId), { viaChain, what: "purchase order" });
+  }
   await client.query("BEGIN");
   try {
     const fields = { status: to };
@@ -69,7 +76,8 @@ async function transition(client, { poId, to, entityId = null, date = null, acto
     if (to === "ISSUED_LOCKED") {
       await documents.capture(client, { entityRef: ref(poId), docType: "PURCHASE_ORDER", status: "VERIFIED" });
       // Open the tenant's configurable approval chain on issue (bound to po.issued).
-      // No workflow bound → autoApproved; the manual APPROVED_LOCKED path is unchanged.
+      // No workflow bound → autoApproved and the manual APPROVED_LOCKED path
+      // stays available (see the note on W8 below).
       await executor.start(client, { eventTypeKey: "po.issued", entityRef: ref(poId), amountXaf: updated.total_ttc === null || updated.total_ttc === undefined ? null : Number(updated.total_ttc) });
     }
     await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(poId), actorUserId: actor.user_id || null });
@@ -78,6 +86,25 @@ async function transition(client, { poId, to, entityId = null, date = null, acto
     return updated;
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
+
+// ── On W8 (autoApproved), and why nothing auto-finalises here ────────────────
+//
+// `executor.start` returns `{ autoApproved: true }` when no chain applies, and
+// this module discards it — which the audit flagged as leaving the record with
+// no task to act on and nothing to move it on.
+//
+// Resolved by W4 rather than by auto-finalising. `assertNoPendingChain` refuses
+// the manual approval only while a task is PENDING, so:
+//   · a chain exists  → the chain is the only way through, which is the rule the
+//                       business asked for;
+//   · no chain exists → no task is ever pending, the manual transition works
+//                       exactly as before, and the record is not stuck.
+//
+// Auto-advancing instead would mean "nobody configured a workflow" silently
+// becomes "approved by no one" — and for supplier invoices it would post to the
+// general ledger unprompted. An ERP should not infer authorisation from the
+// absence of configuration. `executor.start` logs every auto-approval so the
+// condition stays visible.
 
 async function get(client, id) {
   const po = await repo.getPO(client, id);
@@ -88,6 +115,6 @@ async function get(client, id) {
 const list = (client, q) => repo.listPO(client, q);
 
 // A cleared approval chain approves+locks the issued PO (BUILD_CONVENTIONS §2/§5).
-onApproved.register("purchase_order", (client, { id, actor }) => transition(client, { poId: id, to: "APPROVED_LOCKED", actor: actor || {} }));
+onApproved.register("purchase_order", (client, { id, actor }) => transition(client, { poId: id, to: "APPROVED_LOCKED", actor: actor || {}, viaChain: true }));
 
 module.exports = { createDraft, updateDraft, transition, get, list };

@@ -14,6 +14,9 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/totals", requirePermission(MODULE, "view"), controller.totals);
 router.post("/", requirePermission(MODULE, "create"), validator.createDraft, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.updateDraft, controller.update);
-router.post("/:id/submit", requirePermission(MODULE, "approve"), validator.submit, controller.submit);
+// Submitting an invoice for approval is the author's own act, not a decision —
+// requiring `approve` here meant only approvers could submit, and maker-checker
+// then forbids them from approving it. See doc/PERMISSION_SWEEP_BACKLOG.md §A.
+router.post("/:id/submit", requirePermission(MODULE, "edit"), validator.submit, controller.submit);
 
 module.exports = { basePath: "/final-invoices", feature: "accounting.core", router };

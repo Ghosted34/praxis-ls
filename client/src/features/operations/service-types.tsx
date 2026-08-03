@@ -24,6 +24,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import * as api from "@/lib/operations-api";
+import { reportActionError } from "@/lib/action-error";
 
 const shell = "space-y-5";
 
@@ -277,7 +278,7 @@ export function ServiceTypesPage() {
     try {
       await api.archiveServiceType(s.service_type_id);
       list.reload();
-    } finally {
+    } catch (e) { reportActionError(e); } finally {
       setBusyId(null);
     }
   }

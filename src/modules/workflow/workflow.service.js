@@ -142,7 +142,9 @@ module.exports = {
   },
 
   // ---- approvals (read-only runtime) ----
-  listApprovals: (client, q) => repo.listApprovals(client, q),
+  // `viewer` narrows the queue to what the caller can act on (W12). Optional —
+  // omitting it returns the unfiltered administrative view.
+  listApprovals: (client, q, viewer = null) => repo.listApprovals(client, q, viewer),
   actApproval: async (client, opts) => {
     const result = await executor.act(client, opts);
     if (result.completed && result.entityRef) {

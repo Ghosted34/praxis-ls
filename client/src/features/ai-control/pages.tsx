@@ -16,6 +16,7 @@ import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import * as api from "@/lib/ai-governance-api";
+import { reportActionError } from "@/lib/action-error";
 
 type GovUser = { user_id: string; full_name?: string | null; email: string };
 
@@ -43,7 +44,7 @@ export function AiFeaturesPage() {
 
   async function toggle(f: api.FeatureFlag) {
     setBusy(f.feature_key);
-    try { await api.setFeature(f.feature_key, { is_enabled: !f.is_enabled }); reload(); } finally { setBusy(null); }
+    try { await api.setFeature(f.feature_key, { is_enabled: !f.is_enabled }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const columns: Column<api.FeatureFlag>[] = [
@@ -124,7 +125,7 @@ export function AiGrantsPage() {
 
   async function revoke(g: api.Grant) {
     setBusy(g.user_id + g.feature_key);
-    try { await api.revokeAccess({ user_id: g.user_id, feature_key: g.feature_key }); reload(); } finally { setBusy(null); }
+    try { await api.revokeAccess({ user_id: g.user_id, feature_key: g.feature_key }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
 
   const columns: Column<api.Grant>[] = [
@@ -310,7 +311,7 @@ export function AiVendorsPage() {
 
   async function toggleActive(v: api.Vendor) {
     setBusy(v.vendor);
-    try { await api.setVendor(v.vendor, { is_active: !v.is_active }); reload(); } finally { setBusy(null); }
+    try { await api.setVendor(v.vendor, { is_active: !v.is_active }); reload(); } catch (e) { reportActionError(e); } finally { setBusy(null); }
   }
   async function test(v: api.Vendor) {
     setTesting(v.vendor);

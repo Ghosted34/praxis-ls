@@ -41,5 +41,14 @@ export const emptyGrant = (role_id: string, module_key: string): Grant => ({
 
 export const fetchRoles = () => tenant<Role[]>("/roles");
 export const fetchModules = () => tenant<Module[]>("/catalogue/modules");
-export const fetchPermissions = () => tenant<Grant[]>("/permissions");
+/**
+ * The COMPLETE grant set — not `/permissions`, which paginates at 50.
+ *
+ * The matrix edits by role×module and PUTs the whole row, so a grant it hasn't
+ * loaded is a grant it will overwrite with all-false the moment you touch that
+ * cell. With 11 roles × 72 modules the seeded grants alone exceed one page, so
+ * loading through the paginated list made edits look like they weren't saving
+ * while quietly destroying the grants below the cut.
+ */
+export const fetchPermissions = () => tenant<Grant[]>("/permissions/matrix");
 export const upsertGrant = (g: Grant) => tenant<Grant>("/permissions/grant", { method: "PUT", body: g });

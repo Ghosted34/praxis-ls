@@ -153,13 +153,59 @@ async function seedDisplayName(slug, name) {
   }
 }
 
+/**
+ * Apply `feature_catalogue.depends_on` to a projected feature set.
+ *
+ * `depends_on` has been stored since the catalogue was written and consulted by
+ * nothing — `projectFeatures` resolved each key in isolation, so a child could
+ * be ON while its parent was OFF. `scripts/tenant/feature-report.js` flags the
+ * condition; nothing prevented it. That is the shape of the session-10 bug ("19
+ * modules dark for everyone") one layer up: a feature that appears enabled but
+ * whose parent gate denies every request underneath it.
+ *
+ * A child whose parent is off is forced off, and the source is marked
+ * `dependency` so the console can say WHY rather than showing an unexplained
+ * "off" the operator will try to toggle. Applied transitively and to a fixed
+ * point, because a grandchild (ai.vectorization → ai.assistant) must fall when
+ * the grandparent does. Iteration is capped: the catalogue is small, and a
+ * malformed cycle must not spin a deploy.
+ *
+ * Deliberately one-directional — turning a child on does NOT turn its parent on.
+ * Entitlement is the plan's business; this only stops the incoherent state.
+ */
+function applyDependencies(rows) {
+  const state = new Map(rows.map((r) => [r.feature_key, r]));
+  const parents = new Map(rows.map((r) => [r.feature_key, r.depends_on || []]));
+
+  for (let pass = 0; pass < 16; pass += 1) {
+    let changed = false;
+    for (const row of rows) {
+      if (row.state !== "on") continue;
+      const missing = (parents.get(row.feature_key) || []).find((p) => {
+        const parent = state.get(p);
+        // A dependency naming a key that isn't in the catalogue can't be
+        // evaluated; ignore it rather than darkening the child on bad data.
+        return parent && parent.state !== "on";
+      });
+      if (missing) {
+        row.state = "off";
+        row.source = "dependency";
+        row.blocked_by = missing;
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return rows;
+}
+
 async function projectFeatures(slug) {
   const pf = m.client(config.DB_NAME);
   await pf.connect();
   let features;
   try {
     const { rows } = await pf.query(
-      "SELECT fc.feature_key, " +
+      "SELECT fc.feature_key, fc.depends_on, " +
         "CASE WHEN ov.state IS NOT NULL THEN ov.state WHEN pf.included THEN fc.default_state ELSE 'off' END AS state, " +
         "CASE WHEN ov.state IS NOT NULL THEN 'override' WHEN pf.included THEN 'plan' ELSE 'default' END AS source " +
         "FROM platform.tenant t JOIN platform.feature_catalogue fc ON true " +
@@ -168,7 +214,14 @@ async function projectFeatures(slug) {
         "WHERE t.slug=$1",
       [slug],
     );
-    features = rows;
+    features = applyDependencies(rows);
+    const blocked = features.filter((f) => f.source === "dependency");
+    if (blocked.length) {
+      logger.warn(
+        { slug, blocked: blocked.map((f) => `${f.feature_key}←${f.blocked_by}`) },
+        "[features] forced off because a dependency is off",
+      );
+    }
   } finally {
     await pf.end();
   }
@@ -369,6 +422,8 @@ module.exports = {
   migrateAllTenants,
   wipeSandbox,
   projectFeatures,
+  applyDependencies, // exported for tests — the rule is pure and worth pinning
+
   createAdmin,
   listTenantSlugs,
 };

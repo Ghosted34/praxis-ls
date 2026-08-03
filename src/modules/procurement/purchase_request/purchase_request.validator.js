@@ -4,6 +4,10 @@ const { AppError } = require("../../../utils/errors");
 const schemas = {
   create: z.object({
     requested_by: z.string().uuid().optional().nullable(),
+    // Department is a scope (0490). `scope_id` is the reference; `department`
+    // stays accepted so imports and tenants with no organigramme still work —
+    // the controller keeps the two in step.
+    scope_id: z.string().uuid().optional().nullable(),
     department: z.string().optional(),
     justification: z.string().optional(),
     lines: z.array(z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().nonnegative().optional(), unit_price: z.number().nonnegative().optional() })).optional(),

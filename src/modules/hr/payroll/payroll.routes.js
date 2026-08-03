@@ -7,6 +7,7 @@
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
+const { requireTransitionPermission } = require("../../../shared/http/transition-permission");
 const controller = require("./payroll.controller");
 const validator = require("./payroll.validator");
 
@@ -21,6 +22,11 @@ router.get("/", requirePermission(M, "view"), controller.list);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.post("/", requirePermission(M, "create"), validator.createRun, controller.create);
 router.post("/:id/compute", requirePermission(M, "edit"), validator.compute, controller.compute);
-router.post("/:id/status", requirePermission(M, "approve"), validator.status, controller.setStatus);
+// Computing and submitting a run is payroll's own work; approving, validating
+// and disbursing are decisions. The SoD note above still holds — compute and
+// approve remain different permissions. See shared/http/transition-permission.js.
+const TRANSITION_ACTION = { COMPUTED: "edit", SUBMITTED: "edit", OPEN: "edit", APPROVED: "approve", VALIDATED: "approve", DISBURSED: "approve", REJECTED: "approve" };
+
+router.post("/:id/status", validator.status, requireTransitionPermission(M, TRANSITION_ACTION, { field: "status" }), controller.setStatus);
 
 module.exports = { basePath: "/payroll", feature: null, router };

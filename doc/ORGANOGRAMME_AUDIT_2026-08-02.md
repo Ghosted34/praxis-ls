@@ -20,8 +20,12 @@ was changed.
 > **W8 resolved by W4 rather than by auto-finalising** — see the note in `purchase_order.service.js`
 > for why inferring authorisation from missing configuration was the wrong default.
 >
-> **Still open:** W13 (delegation, escalation, deadlines), B1–B4 (the people reporting line), C7
-> (`portal.*` is not a kill switch for the external surface), C8 (minor drift). W13 depends on B1.
+> **B1 closed later the same day (`0493`)** — `employee.reports_to`, with `directReports` / `teamOf` /
+> `managerChain`. `is_line_manager` can finally resolve a team, and W13 has an escalation path to read.
+>
+> **Still open:** W13 (delegation, escalation, deadlines — the data now exists, the behaviour doesn't),
+> B2–B4 (no position table; `job_title` is still free text, the weakness `department` had before 0490),
+> C7 (`portal.*` is not a kill switch for the external surface), C8 (minor drift).
 >
 > **C1 is withdrawn — it was wrong** (see Part 4).
 >

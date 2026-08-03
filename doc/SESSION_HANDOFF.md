@@ -80,7 +80,7 @@ Newest first. Sessions 16–18 log below; 1–15 in `doc/SESSION_HISTORY.md`.
 
 | # | Date | Headline |
 |---|---|---|
-| 19b | 2026-08-02 | **Approval engine made to enforce** (eligibility, maker-checker, per-module gating, bypasses closed — `0488`–`0492`); organigramme wired (`user_scope` assignment + chart); departments became scopes (`0490`); PRs joined the engine (`0491`); mail RBAC (`MOD-72`); permission matrix stopped wiping grants; screen registry 59→96 |
+| 19b | 2026-08-02 | **Approval engine made to enforce** (eligibility, maker-checker, per-module gating, bypasses closed — `0488`–`0492`); organigramme wired (`user_scope` assignment + chart); departments became scopes (`0490`); PRs joined the engine (`0491`); **reporting line — B1** (`0493`); **auth: session recovery + "keep me signed in" honoured** (`0494`); mail RBAC (`MOD-72`); permission matrix stopped wiping grants; screen registry 59→96 |
 | 19 | 2026-08-02 | `depends_on` enforced at projection; **user↔capability assignment built** + `requireCapability` mounted on disburse/costing-status (`0487` backfill); **self-grant maker-checker block**; AssetsPage write UI (create/depreciate/dispose) |
 | 18 | 2026-08-02 | TEST-mode writes fully fixed; AI rolling summary (`0481`); `/media` safe under S3; **client + investor portals** (`0482`); open-list re-audit |
 | 17 | 2026-08-01 | Control Tower map made real (`0478`/`0479`); `/media` bypass closed; milestone auto-seeding; AI memory; service types + `0480`; doc-truth audit |
@@ -269,13 +269,46 @@ the approval hierarchy.
     shared reporter + a banner in the app shell made each retrofit one line; `lib/use-action.ts` is the
     better pattern for new code.
 
-**Migrations to run:** tenant **`0488`**, **`0489`**, **`0490`**, **`0491`**, **`0492`**; seeds
-**`9022`** (grant gaps) + **`9130`** (MOD-72 mail). **Owed:** `npm run build --prefix client`, `npm test`
-on Windows, and a **non-CEO** click-through — `doc/APPROVAL_VERIFICATION.md` is the script.
+14. **B1 — the reporting line (`0493`).** `0490` answered WHERE someone sits; this answers who reports to
+    whom. `employee.reports_to` with a REAL foreign key (same table, same schema, so unlike the scope
+    references it is satisfiable under TEST), `ON DELETE SET NULL`, a CHECK against self-management and a
+    service-side walk for deeper loops. `directReports` / `teamOf` (recursive) / `managerChain` — the first
+    is what `is_line_manager` ("approves for own team") has never been able to resolve, the last is the
+    escalation path W13 will read. Reads are field-masked like every other employee read, so a team list
+    can't become a way around salary visibility. **Not** added: a position table — `job_title` is still
+    free text with the same weakness `department` had, but that is separate master data.
 
-**Known unfinished:** B1–B4 (no reporting line on `employee`; `LINE_MANAGER` still cannot resolve a team),
-W13 (no delegation, escalation or deadlines — depends on B1), C7 (`portal.*` gates the staff preview but
-not the external surface it exists to control).
+15. **Auth — a live complaint, two fixes.** See `doc/AUTH_SESSIONS.md` for the whole model and the traps.
+    - **The app never recovered from a failed refresh.** `api()` tried one refresh on a 401 and, when it
+      failed, fell through and threw — no token clear, no state change. The app kept believing it was
+      signed in while holding a dead token, so every action reproduced the same "token expired" banner and
+      only a manual sign-out cleared it (exactly what users reported). The boot path had always handled
+      this; mid-session never did. Now `endSession()` fires `SESSION_ENDED_EVENT` and auth-context returns
+      to the login screen. **Tell, if it regresses:** a page reload fixes it but signing out is needed.
+    - **"Keep me signed in" now means it (`0494`).** The checkbox persisted the refresh token for 30 days
+      while the server killed the session after 30 minutes idle. Recorded on `user_session.keep_signed_in`
+      and honoured in `refresh()`; rotation, reuse detection and remote kill still apply. **Trap:**
+      `zValidate` replaces `req.body` with the parsed object and `z.object()` strips unknown keys, so the
+      flag had to be declared in the login / 2FA-verify / PIN-login schemas or it would have been silently
+      dropped and the feature would have looked implemented while doing nothing.
+    - **Left alone, deliberately:** `last_seen_at` is written ONLY by `touchSession()` inside `refresh()`,
+      so the "inactivity" clock actually measures time-since-last-refresh. It is correct today only because
+      `JWT_ACCESS_TTL` (15m) < `SESSION_INACTIVITY_MIN` (30). **Raise the access TTL past 30 minutes and
+      every non-keep-signed-in user is logged out mid-work.** Two settings that look independent and are
+      not — `doc/AUTH_SESSIONS.md` Trap 1.
+
+16. **`scripts/tenant/permission-report.js`** — compares a tenant's grants against the seeded baseline
+    (parsed from the seed files, so it can't drift) and reports MISSING / REDUCED. Written because the
+    matrix-pagination bug may have silently revoked grants, and a 70-column grid is not something you
+    audit by eye.
+
+**Migrations to run:** tenant **`0488`**–**`0494`**; seeds **`9022`** (grant gaps) + **`9130`** (MOD-72
+mail). **Owed:** `npm run build --prefix client`, `npm test` on Windows, and a **non-CEO** click-through —
+`doc/APPROVAL_VERIFICATION.md` is the script.
+
+**Known unfinished:** B2–B4 (no position table; `job_title` still free text), W13 (delegation, escalation,
+deadlines — the data now exists via `managerChain`, the behaviour doesn't), C7 (`portal.*` gates the staff
+preview but not the external surface it exists to control), and the `last_seen_at` coupling above.
 
 ## Session log — 2026-08-02 (session 19: three RBAC/finance gaps closed — depends_on enforcement, capability assignment + gate, AssetsPage write UI)
 

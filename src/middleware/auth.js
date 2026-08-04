@@ -79,6 +79,10 @@ async function authMiddleware(req, _res, next) {
     is_ceo: user.is_ceo === true,
     jwt_iat: payload.iat,
     jwt_jti: payload.jti,
+    // SEC-C2: the session this token belongs to, so logout can revoke it without
+    // the client having to tell us. Undefined on tokens issued before that
+    // shipped; logout degrades rather than erroring.
+    session_id: payload.sid || null,
   };
 
   // OBS-L3. `tenantContext` binds the ambient request-context BEFORE auth runs,

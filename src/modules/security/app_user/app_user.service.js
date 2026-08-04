@@ -73,10 +73,33 @@ async function resolveChannels(client) {
   return { comms: await read("comms"), whatsapp: await read("whatsapp"), instagram: await read("instagram") };
 }
 
-function signAccessToken({ userId, jti }) {
-  return jwt.sign({ sub: userId, jti, typ: "access" }, config.JWT_ACCESS_SECRET, {
-    expiresIn: config.JWT_ACCESS_TTL,
-  });
+/**
+ * Access tokens now carry `sid` — the session they belong to.
+ *
+ * Audit SEC-C2 (Critical). Logout is authenticated by the ACCESS token, but the
+ * access token carried only `{ sub, jti }`. The server therefore had no way to
+ * know which session the caller was in, and `logout()` fell back to
+ * `req.body.session_id` — which the client never sends. So logout invalidated
+ * the identity cache, emitted a LOGGED_OUT event, returned
+ * `{ logged_out: true }`, and left the session row alive and the refresh token
+ * valid. Anyone holding that refresh token could mint new access tokens
+ * indefinitely, including after the user had "signed out" on a shared machine.
+ *
+ * Binding the session id into the access token is also the groundwork for
+ * SEC-M1 (access tokens are not session-bound, so revocation does not revoke) —
+ * `authMiddleware` can now check the session on each request once that is taken
+ * on deliberately.
+ *
+ * Backward compatible: tokens issued before this change have no `sid`. They
+ * keep working until they expire (15 minutes), and logout for those callers
+ * degrades to the previous body-parameter behaviour rather than erroring.
+ */
+function signAccessToken({ userId, jti, sessionId }) {
+  return jwt.sign(
+    { sub: userId, jti, sid: sessionId, typ: "access" },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: config.JWT_ACCESS_TTL },
+  );
 }
 
 function signRefreshToken({ userId, sessionId, jti }) {
@@ -108,7 +131,8 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
   await sessionStore.indexSession(sessionId, { userId: user.user_id, ip, userAgent, environment });
 
   const jti = uuid();
-  const accessToken = signAccessToken({ userId: user.user_id, jti });
+  // SEC-C2: bind the access token to its session so logout can revoke it.
+  const accessToken = signAccessToken({ userId: user.user_id, jti, sessionId });
   const refreshJti = uuid();
   const refreshToken = signRefreshToken({ userId: user.user_id, sessionId, jti: refreshJti });
   await repo.setRefreshJti(client, sessionId, refreshJti); // for rotation reuse-detection
@@ -414,7 +438,11 @@ async function refresh(client, { refreshToken }) {
   }
 
   await repo.touchSession(client, payload.sid);
-  const accessToken = signAccessToken({ userId: payload.sub, jti: uuid() });
+  // SEC-C2: carry the session through rotation too. Without this, a client that
+  // has refreshed once holds an access token with no `sid` and logout silently
+  // reverts to revoking nothing — which is the original bug, reintroduced after
+  // fifteen minutes of use.
+  const accessToken = signAccessToken({ userId: payload.sub, jti: uuid(), sessionId: payload.sid });
   // Refresh-token rotation: mint a fresh refresh token (new jti + sliding exp)
   // bound to the SAME session and return it. The client swaps its stored token
   // for this one (already wired FE-side), so each refresh shortens the window in
@@ -478,10 +506,39 @@ async function setAvatar(client, { userId, dataUrl, slug }) {
   return { avatar_url: (row && row.avatar_ref) || stored.public_url };
 }
 
+/**
+ * End the caller's session (audit SEC-C2, Critical).
+ *
+ * What this used to do: take `sessionId` from `req.body.session_id`, which the
+ * client never sends, skip the whole revocation block, and return
+ * `{ logged_out: true }`. The session row stayed alive and the refresh token
+ * stayed valid — so "sign out" on a shared machine ended nothing, and anyone
+ * holding the refresh token kept minting access tokens.
+ *
+ * The session now comes from the ACCESS TOKEN (`sid`), so the caller cannot
+ * fail to supply it and cannot choose someone else's. An explicitly passed
+ * session_id is still honoured for "sign out this other device", but it is
+ * checked against the caller — see the ownership guard below (SEC-M2 notes the
+ * same gap in killSession).
+ */
 async function logout(client, { actor, sessionId }) {
-  if (sessionId) {
-    await repo.killSession(client, sessionId, actor.user_id);
-    await sessionStore.removeSession(sessionId, actor.user_id);
+  // Prefer the session bound to the presented token. Fall back to an explicit
+  // id only when the token predates SEC-C2 (issued before this shipped, ≤15
+  // minutes) or the caller is deliberately killing another device.
+  const target = sessionId || (actor && actor.session_id) || null;
+
+  if (target) {
+    // SEC-M2: killSession had no ownership predicate, so a caller could revoke
+    // any session id they could guess. Scope the kill to the acting user.
+    await repo.killSession(client, target, actor.user_id);
+    await sessionStore.removeSession(target, actor.user_id);
+  } else {
+    // No session identifiable. Previously this path silently returned success;
+    // it is the exact shape of the bug, so it is now loud rather than quiet.
+    logger.warn(
+      { user_id: actor && actor.user_id },
+      "logout could not identify a session to revoke — token predates SEC-C2 and no session_id was supplied",
+    );
   }
   await identityCache.invalidateUser(actor.user_id);
   await emitEvent(client, {
@@ -496,7 +553,8 @@ async function logout(client, { actor, sessionId }) {
     moduleKey: events.MODULE,
     entityRef: `app_user:${actor.user_id}`,
   });
-  return { logged_out: true };
+  // Report what actually happened rather than an unconditional success.
+  return { logged_out: true, session_revoked: Boolean(target) };
 }
 
 

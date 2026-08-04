@@ -21,6 +21,7 @@ import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
+import { DataView } from "@/components/ui/data-view";
 
 const PORTAL_AI: AiAction[] = [
   { label: "Review access", kind: "read", describe: "Summarise who currently has portal access and when grants expire." },
@@ -200,7 +201,12 @@ function PreviewModal({ open, title, path, onClose }: { open: boolean; title: st
         ) : data === undefined ? (
           <LoadingRow label="Loading scope…" />
         ) : (
-          <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre>
+          <DataView
+            data={data}
+            emptyTitle="This grantee would see nothing here"
+            emptyHint="The scope resolves to no records — check the grant's client and date range."
+            className="max-h-96 overflow-auto"
+          />
         )}
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>

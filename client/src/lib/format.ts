@@ -130,13 +130,52 @@ export function enumLabel(v?: string | null): string {
   return s;
 }
 
+/**
+ * Acronyms and codes that must not be sentence-cased by `fieldLabel`. Mostly
+ * OHADA / Cameroon statutory vocabulary, which is exactly the vocabulary that
+ * looks wrong when a generic humaniser gets hold of it: "Total Ttc" instead of
+ * "Total TTC" tells an accountant the screen was not built for them.
+ */
+const ACRONYMS = new Set([
+  "ttc", "ht", "tva", "niu", "rccm", "coa", "xaf", "fx", "po", "kyc", "ai", "api",
+  "url", "id", "hr", "vat", "iban", "bic", "cnps", "irpp", "sms", "pdf", "csv", "eta",
+]);
+
+/**
+ * Turn a raw database column into a column HEADER: "total_ttc" → "Total TTC",
+ * "client_id" → "Client", "created_at" → "Created".
+ *
+ * Audit A4: `vault/pages.tsx:32-60` inferred report table columns via
+ * `Object.keys()` and printed them unchanged, so an operator running a
+ * catalogue report saw `total_ttc` and `client_id` as headings. Reports are a
+ * customer-facing surface — on the client portal, literally so.
+ *
+ * This is a fallback for genuinely dynamic payloads. A table whose shape is
+ * known should still spell its headers out; a human-written "Amount due" beats
+ * anything derivable from `amount_due_ttc`.
+ */
+export function fieldLabel(key: string): string {
+  const words = String(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1 $2") // camelCase → spaced
+    .split(/[_\-\s.]+/)
+    .filter(Boolean);
+  // A trailing "_id" is plumbing: "client_id" is the Client column.
+  if (words.length > 1 && words[words.length - 1].toLowerCase() === "id") words.pop();
+  // "created_at" / "updated_at" read better without the preposition.
+  if (words.length > 1 && words[words.length - 1].toLowerCase() === "at") words.pop();
+  if (!words.length) return String(key);
+  const out = words.map((w) => (ACRONYMS.has(w.toLowerCase()) ? w.toUpperCase() : w.toLowerCase()));
+  out[0] = out[0].charAt(0).toUpperCase() + out[0].slice(1);
+  return out.join(" ");
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ISO_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
 const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Generic human-readable cell (FE_DESIGN_RULES §5) for tables that render
- * unknown/dynamic values (report viewers, ResourceList, raw-record tables).
+ * unknown/dynamic values (report viewers, raw-record tables).
  * ISO timestamps → dateTimeFmt, plain dates → dateFmt, UUIDs → first 8 chars,
  * numeric strings → grouped, SCREAMING_SNAKE → spaced, objects → "k: v" pairs
  * instead of raw JSON. Known-shape tables should still use the specific

@@ -21,9 +21,10 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
-import { cell, dateFmt } from "@/lib/format";
+import { cell, dateFmt, smartCell } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
+import { DataView } from "@/components/ui/data-view";
 import { Segmented } from "@/components/ui/segmented";
 import { tokenStore } from "@/lib/token-store";
 
@@ -31,41 +32,6 @@ function isGated(msg: string | null): boolean {
   return !!msg && /feature|not enabled|disabled|forbidden|permission/i.test(msg);
 }
 
-/** Generic renderer for an arbitrary report/portal payload. */
-function ResultBlock({ data }: { data: unknown }) {
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
-    const rows = data as Row[];
-    const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
-    return (
-      <div className="max-h-96 overflow-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/60">
-            <tr>
-              {cols.map((c) => (
-                <th key={c} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-t">
-                {cols.map((c) => (
-                  <td key={c} className="px-3 py-1.5">
-                    {cell(r[c])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-  if (data === null || data === undefined) return <EmptyState title="No data" />;
-  return <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre>;
-}
 
 /* ═══════════════════════════════════ REPORTS ═══════════════════════════════════ */
 
@@ -168,7 +134,7 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
         {error && <ErrorState message={error} />}
         {result !== undefined && (
           <div className="space-y-3">
-            <ResultBlock data={result} />
+            <DataView data={result} emptyTitle="This report returned no rows" emptyHint="Adjust the parameters above and run it again." />
             <div className="flex flex-wrap items-end gap-2 border-t pt-3">
               <Field label="Save as" className="flex-1">
                 <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="My Q1 income statement" />
@@ -208,7 +174,7 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
   return (
     <Modal open={open} onClose={onClose} title={title} description="Report result." size="xl">
       <div className="space-y-4">
-        {error ? <ErrorState message={error} /> : data === undefined ? <LoadingRow label="Running…" /> : <ResultBlock data={data} />}
+        {error ? <ErrorState message={error} /> : data === undefined ? <LoadingRow label="Running…" /> : <DataView data={data} emptyTitle="This saved report returned no rows" />}
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>
             Close
@@ -432,7 +398,7 @@ export function ComplianceFlagsPage() {
     try {
       const res = await tenant<Row>("/compliance/run", { method: "POST", body: {} });
       const s = (res && typeof res === "object" ? (res as Row).summary : null) ?? res;
-      setSummary(typeof s === "string" ? s : JSON.stringify(s));
+      setSummary(typeof s === "string" ? s : smartCell(s));
       reload();
     } catch (e) {
       setError(errMsg(e));

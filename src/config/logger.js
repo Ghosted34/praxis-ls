@@ -9,8 +9,23 @@
 
 const pino = require("pino");
 
-const isDev =
-  process.env.NODE_ENV === "development" || process.env.NODE_ENV === "test";
+/**
+ * Pretty-print only in local development.
+ *
+ * `test` used to be included here, which meant every Jest worker spawned a
+ * pino-pretty transport — a worker THREAD that outlives the test file and
+ * produces:
+ *
+ *   "A worker process has failed to exit gracefully and has been force exited.
+ *    This is likely caused by tests leaking due to improper teardown."
+ *
+ * It buys nothing: tests/jest.setup.js pins LOG_LEVEL=silent, so nothing is
+ * printed to prettify. Dropping the transport under NODE_ENV=test removes the
+ * open handle and speeds the suite up slightly.
+ *
+ * Production is unaffected — it never used the transport.
+ */
+const isDev = process.env.NODE_ENV === "development";
 
 /**
  * Fields that must never reach a log line.

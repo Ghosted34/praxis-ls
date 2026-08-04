@@ -279,6 +279,36 @@ The app shell wraps content in `<main>` with responsive padding, so screens **do
 padding or page chrome. One `<PageContainer>` per screen, at the top; nesting them is a bug.
 Don't add `max-w-*` inside one — if a section must be narrower, constrain the section.
 
+### 3.7 Routes and bundle chunks
+
+**Add your screen to `app/app.tsx` with `lazyNamed(...)`, like every other screen.** Routes are
+lazy, so each one becomes its own chunk automatically. That is the whole of the chunking strategy
+for app code — there is nothing to configure and nothing to add to `vite.config.ts`.
+
+**Never add a `manualChunks` bucket.** This is not a style preference; it is the rule that keeps
+the app from serving a blank page, and it has been broken once already:
+
+> On 2026-08-04 production served an empty `<div id="root">`. `manualChunks` split `vendor-react`
+> (react, react-dom, react-router) out of `vendor` (everything else) — but react-dom needs
+> `scheduler` and react-router-dom needs `@remix-run/router`, and neither matched the react rule,
+> so both stayed in `vendor`. The two chunks imported each other. The browser evaluated one, it
+> re-entered the other before React's export binding was assigned, and TanStack Query's top-level
+> `createContext` read `undefined`:
+> `Uncaught TypeError: Cannot read properties of undefined (reading 'createContext')`.
+> That throws during module evaluation, *before* React renders — so neither ErrorBoundary can
+> catch it and there is no fallback UI at all. The `feature-*` buckets were circular too
+> (settings → hr → wms → fleet → settings).
+
+A hand-drawn partition over an import graph can cut a cycle into it, and a cyclic chunk graph is a
+blank page. So there is exactly **one** manual bucket, `vendor` (all of `node_modules`), which is
+acyclic because a single bucket cannot import itself. To keep a heavy library out of the
+first-load payload, add it to `ROUTE_LOCAL_VENDOR` in `vite.config.ts` and let Rollup place it
+next to the route that imports it — never give it a bucket of its own.
+
+Two gates enforce this and both run in CI: `vite.config.ts` throws on Rollup's `CIRCULAR_CHUNK`
+warning (it warned last time, and the build went green anyway), and `npm run check:bundle`
+re-derives the graph from what was actually written to `dist/`.
+
 ---
 
 ## 4. Accessibility — the floor, not the aspiration
@@ -336,7 +366,8 @@ it needs a formatter before it reaches the DOM.
 - [ ] No raw UUIDs, ISO dates, dotted event keys or SCREAMING_ENUMs on screen (§5).
 - [ ] No raw `<table>` / `<input>` / `<textarea>` / `role="menu"` — use the primitives (§3.5).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
-- [ ] `npm run lint`, `npm test`, `npm run check:contrast` and `npm run build` all pass in `client/`.
+- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run build` and `npm run check:bundle` all pass in `client/`.
+- [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).
 - [ ] Route added in `app.tsx` + `NAV`; `screen-registry.json` updated only when the page is real.
 

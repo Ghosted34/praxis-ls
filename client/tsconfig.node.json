@@ -1,6 +1,19 @@
 {
   "compilerOptions": {
     "composite": true,
+    // Emit OUTSIDE the project root. A composite project must emit, and with no
+    // outDir `tsc -b` writes vite.config.js + vite.config.d.ts next to the
+    // source — where Vite resolves vite.config.js BEFORE vite.config.ts. The
+    // compiled snapshot then shadows the real config, so `npm run dev` and a
+    // bare `vite build` keep using the LAST compiled version and every later
+    // edit to the .ts is a silent no-op until something runs `tsc -b` again.
+    //
+    // The root .gitignore already blocks those two files from being committed,
+    // with the same explanation. This stops them being produced at all, which
+    // is the half that actually bites you locally: found while verifying the
+    // chunking fix, when a deliberately reintroduced bug "passed" the build
+    // because Vite was reading a stale vite.config.js from ten minutes earlier.
+    "outDir": "./node_modules/.tmp/tsconfig-node",
     "skipLibCheck": true,
     "module": "ESNext",
     "moduleResolution": "bundler",

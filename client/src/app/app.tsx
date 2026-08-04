@@ -1,54 +1,122 @@
+import { lazy, Suspense } from "react";
+import type { ComponentType } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { AppShell } from "@/app/layout/app-shell";
 import { LandingPage } from "@/features/landing/landing-page";
-import { ResetPasswordPage } from "@/features/auth/reset-password-page";
-import { HelpPage } from "@/features/help/help-page";
-import { DashboardPage } from "@/features/dashboard";
-import { SecurityHub } from "@/features/security/hub";
-import { AuditPage, NotificationsPage, WorkflowsPage, ApprovalsPage } from "@/features/governance/pages";
-import { GovernanceHub } from "@/features/governance/hub";
-import { MyHrPage } from "@/features/hr/my-hr";
-import { AppearancePage } from "@/features/settings/appearance-page";
-import { SettingsHub } from "@/features/settings/settings-hub";
-import { LoginEditor } from "@/features/settings/login-editor";
-import {
-  PaymentGatewaysPage,
-  ScheduledReportsPage,
-  ApiKeysPage,
-  PipelineStagesPage,
-  NumberingPage,
-} from "@/features/settings/config-pages";
-import { CustomFieldsPage, EmailSignaturesPage, BusinessPoliciesPage } from "@/features/settings/store-pages";
-import { TemplateStudioPage } from "@/features/settings/document-templates-page";
-import { DocumentPage } from "@/components/document-view";
-import { ModuleCataloguePage } from "@/features/settings/catalogue-page";
-import { FleetHub } from "@/features/fleet/hub";
-import { WarehouseHub } from "@/features/wms/hub";
-import { HrHub } from "@/features/hr/hub";
-import { FinanceHub } from "@/features/finance/hub";
-import { Planned } from "@/features/scaffold/screen-scaffold";
-import { SalesHub } from "@/features/sales/hub";
-import { CommercialHub } from "@/features/commercial/hub";
-import { VaultHub } from "@/features/vault/hub";
-import { PortalAccessPage } from "@/features/portal/pages";
-import { PortalApp } from "@/features/portal/portal-app";
-import { WorkspacePage } from "@/features/workspace/workspace-page";
-import { MasterDataPage } from "@/features/masterdata/master-data-page";
-import { OperationsHub } from "@/features/operations/hub";
-import { CostingHub } from "@/features/costing/hub";
-import { ProcurementHub } from "@/features/procurement/hub";
-import { AiControlHub } from "@/features/ai-control/hub";
-import { GodModePage } from "@/features/godmode/godmode-page";
-import { SupportPage } from "@/features/support/support-page";
-import { CommsHub } from "@/features/comms/hub";
 import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
+import { Spinner } from "@/components/ui/states";
+
+/**
+ * ROUTE-LEVEL CODE SPLITTING (audit F16 / Phase 4 — "62 routes in one entry
+ * bundle"). Every screen below is a dynamic import, so Rollup derives one chunk
+ * per screen from the real module graph.
+ *
+ * This replaces the hand-written `feature-*` buckets that used to live in
+ * vite.config.ts. Those buckets were a partition drawn by hand over a graph that
+ * has cross-area edges (finance/pages.tsx imports from sales/ui.tsx, and so on),
+ * so they went circular — settings → hr → wms → fleet → settings — and a
+ * circular chunk graph serves a blank page. Dynamic imports cannot do that:
+ * Rollup's own chunking is acyclic by construction, and adding a feature area
+ * now needs no build-config change at all.
+ *
+ * EAGER on purpose, and only these:
+ *   BootGate / PwaLayer / RequireAuth / AppShell — the shell itself; splitting
+ *     it would only add a round trip in front of every route.
+ *   LandingPage — the login screen. It is the cold-start destination for every
+ *     unauthenticated visit, so making it lazy puts a second network round trip
+ *     in front of first paint, which is the one place that cost is felt.
+ */
+
+/**
+ * React.lazy only understands a `default` export; every screen here is a named
+ * one. The `M extends { [P in K]: ComponentType }` constraint is what makes this
+ * safe — a renamed or misspelled export fails `tsc -b` rather than resolving to
+ * `undefined` and blanking the route at navigation time.
+ */
+function lazyNamed<K extends string, M extends { [P in K]: ComponentType }>(
+  load: () => Promise<M>,
+  name: K,
+) {
+  return lazy(() => load().then((m) => ({ default: m[name] })));
+}
+
+const ResetPasswordPage = lazyNamed(() => import("@/features/auth/reset-password-page"), "ResetPasswordPage");
+const PortalApp = lazyNamed(() => import("@/features/portal/portal-app"), "PortalApp");
+const PortalAccessPage = lazyNamed(() => import("@/features/portal/pages"), "PortalAccessPage");
+
+const DashboardPage = lazyNamed(() => import("@/features/dashboard"), "DashboardPage");
+const HelpPage = lazyNamed(() => import("@/features/help/help-page"), "HelpPage");
+const SupportPage = lazyNamed(() => import("@/features/support/support-page"), "SupportPage");
+const GodModePage = lazyNamed(() => import("@/features/godmode/godmode-page"), "GodModePage");
+const WorkspacePage = lazyNamed(() => import("@/features/workspace/workspace-page"), "WorkspacePage");
+const Planned = lazyNamed(() => import("@/features/scaffold/screen-scaffold"), "Planned");
+const DocumentPage = lazyNamed(() => import("@/components/document-view"), "DocumentPage");
+
+// Hubs — one chunk each, which is also one feature area each.
+const SecurityHub = lazyNamed(() => import("@/features/security/hub"), "SecurityHub");
+const GovernanceHub = lazyNamed(() => import("@/features/governance/hub"), "GovernanceHub");
+const FleetHub = lazyNamed(() => import("@/features/fleet/hub"), "FleetHub");
+const WarehouseHub = lazyNamed(() => import("@/features/wms/hub"), "WarehouseHub");
+const HrHub = lazyNamed(() => import("@/features/hr/hub"), "HrHub");
+const FinanceHub = lazyNamed(() => import("@/features/finance/hub"), "FinanceHub");
+const SalesHub = lazyNamed(() => import("@/features/sales/hub"), "SalesHub");
+const CommercialHub = lazyNamed(() => import("@/features/commercial/hub"), "CommercialHub");
+const VaultHub = lazyNamed(() => import("@/features/vault/hub"), "VaultHub");
+const OperationsHub = lazyNamed(() => import("@/features/operations/hub"), "OperationsHub");
+const CostingHub = lazyNamed(() => import("@/features/costing/hub"), "CostingHub");
+const ProcurementHub = lazyNamed(() => import("@/features/procurement/hub"), "ProcurementHub");
+const AiControlHub = lazyNamed(() => import("@/features/ai-control/hub"), "AiControlHub");
+const CommsHub = lazyNamed(() => import("@/features/comms/hub"), "CommsHub");
+const SettingsHub = lazyNamed(() => import("@/features/settings/settings-hub"), "SettingsHub");
+const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data-page"), "MasterDataPage");
+const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
+
+// Governance leaf screens — all four live in one module, so they share a chunk.
+const AuditPage = lazyNamed(() => import("@/features/governance/pages"), "AuditPage");
+const NotificationsPage = lazyNamed(() => import("@/features/governance/pages"), "NotificationsPage");
+const WorkflowsPage = lazyNamed(() => import("@/features/governance/pages"), "WorkflowsPage");
+const ApprovalsPage = lazyNamed(() => import("@/features/governance/pages"), "ApprovalsPage");
+
+// Settings leaf editors.
+const AppearancePage = lazyNamed(() => import("@/features/settings/appearance-page"), "AppearancePage");
+const LoginEditor = lazyNamed(() => import("@/features/settings/login-editor"), "LoginEditor");
+const TemplateStudioPage = lazyNamed(() => import("@/features/settings/document-templates-page"), "TemplateStudioPage");
+const ModuleCataloguePage = lazyNamed(() => import("@/features/settings/catalogue-page"), "ModuleCataloguePage");
+const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/config-pages"), "PaymentGatewaysPage");
+const ScheduledReportsPage = lazyNamed(() => import("@/features/settings/config-pages"), "ScheduledReportsPage");
+const ApiKeysPage = lazyNamed(() => import("@/features/settings/config-pages"), "ApiKeysPage");
+const PipelineStagesPage = lazyNamed(() => import("@/features/settings/config-pages"), "PipelineStagesPage");
+const NumberingPage = lazyNamed(() => import("@/features/settings/config-pages"), "NumberingPage");
+const CustomFieldsPage = lazyNamed(() => import("@/features/settings/store-pages"), "CustomFieldsPage");
+const EmailSignaturesPage = lazyNamed(() => import("@/features/settings/store-pages"), "EmailSignaturesPage");
+const BusinessPoliciesPage = lazyNamed(() => import("@/features/settings/store-pages"), "BusinessPoliciesPage");
+
+/**
+ * Fallback for the routes that render OUTSIDE the shell (reset-password, the
+ * client portal). Inside the shell the boundary lives next to `<Outlet />` in
+ * app-shell.tsx, so the nav and topbar stay on screen and the fallback is a
+ * PageSkeleton in the content column rather than a bare spinner.
+ *
+ * In practice this is rarely seen: BrowserRouter runs with `v7_startTransition`
+ * (main.tsx), so React keeps the current screen painted while the next route's
+ * chunk arrives instead of flashing a fallback on every navigation.
+ */
+function RouteFallback() {
+  return (
+    <div className="flex min-h-screen items-center justify-center" role="status" aria-label="Loading page">
+      <Spinner />
+      <span className="sr-only">Loading…</span>
+    </div>
+  );
+}
 
 export function App() {
   return (
     <BootGate>
       <PwaLayer />
+      <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LandingPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
@@ -167,6 +235,7 @@ export function App() {
 
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
+      </Suspense>
     </BootGate>
   );
 }

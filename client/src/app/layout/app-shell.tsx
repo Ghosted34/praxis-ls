@@ -23,6 +23,7 @@ import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
+import { PageSkeleton } from "@/components/ui/skeleton";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
@@ -892,7 +893,16 @@ export function AppShell() {
             The root boundary in main.tsx is the backstop; this one keeps the
             shell, the nav and the copilot alive when a single screen throws. */}
         <ErrorBoundary key={location.pathname} name="This screen">
-          <Outlet />
+          {/* Screens are lazy (app.tsx), so the routed element can suspend while
+              its chunk downloads. The boundary sits HERE rather than around the
+              whole app so the nav, topbar and copilot stay painted and only the
+              content column shows the skeleton. Inside the ErrorBoundary so a
+              chunk that fails to load — a stale service worker pointing at a
+              filename a deploy removed — surfaces as the screen error, not a
+              silent dead route. */}
+          <React.Suspense fallback={<PageSkeleton />}>
+            <Outlet />
+          </React.Suspense>
         </ErrorBoundary>
       </main>
 

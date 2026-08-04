@@ -182,7 +182,7 @@ export function VacanciesPage() {
   const [selId, setSelId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
 
-  const rows = vacancies.data || [];
+  const rows = React.useMemo(() => vacancies.data || [], [vacancies.data]);
   const selected = rows.find((v) => v.vacancy_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].vacancy_id); }, [rows, selId]);
 

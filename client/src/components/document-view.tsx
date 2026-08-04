@@ -183,6 +183,9 @@ export function DocumentPage() {
       ) : pv.report || !d ? (
         /* Reports have no record shape → show the branded paper preview. */
         <div className="-mx-4 rounded-2xl bg-[rgb(var(--ink)_/_0.06)] px-4 py-6 md:-mx-6 md:px-6">
+          {/* onLoad is a lifecycle event, not a user interaction — the rule
+              matches the handler name and cannot make that distinction. */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <iframe title="document" srcDoc={pv.html} sandbox="allow-same-origin"
             onLoad={(e) => { try { const doc = (e.target as HTMLIFrameElement).contentWindow?.document; if (doc && doc.body) setHeight(doc.body.scrollHeight + 48); } catch { /* blocked */ } }}
             style={{ height }} className="mx-auto block w-full max-w-[860px] rounded-md border border-black/5 bg-white shadow-2xl" />

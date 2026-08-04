@@ -23,6 +23,7 @@ import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt, smartCell } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
+import { Callout } from "@/components/ui/callout";
 import { Chips } from "@/components/ui/chips";
 import { DataView } from "@/components/ui/data-view";
 import { Segmented } from "@/components/ui/segmented";
@@ -975,12 +976,10 @@ export function VerificationPage() {
       </form>
 
       {result && (
-        <div className={`lux-card mt-4 p-4 ${verified ? "border-emerald-500/40" : "border-rose-500/40"}`}>
-          <div className="flex items-center gap-2">
-            <span className={`text-lg font-semibold ${verified ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>
-              {verified ? "✓ Verified — no tampering" : "✗ Not verified — hash mismatch"}
-            </span>
-          </div>
+        <div className={`lux-card mt-4 p-4 ${verified ? "border-ok/40" : "border-bad/40"}`}>
+          <Callout tone={verified ? "ok" : "bad"} title={verified ? "Verified" : "Not verified"}>
+            {verified ? "The stored hash matches this document — no tampering." : "The stored hash does not match this document."}
+          </Callout>
           <dl className="mt-3 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
             <div className="flex justify-between gap-4">
               <dt className="text-muted-foreground">Type</dt>

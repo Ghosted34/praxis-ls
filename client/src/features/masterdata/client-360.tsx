@@ -131,7 +131,7 @@ export function ClientsPage() {
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Client | "new" | null>(null);
 
-  const rows = clients.data || [];
+  const rows = React.useMemo(() => clients.data || [], [clients.data]);
   const filtered = q ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((c) => c.client_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].client_id); }, [rows, selId]);

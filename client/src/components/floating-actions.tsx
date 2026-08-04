@@ -110,7 +110,30 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
   // uses viewport-relative pointer + rect coords) would land the FAB in the wrong
   // place and it would drift away from the cursor.
   return createPortal(
-    <div ref={ref} style={containerStyle} onMouseEnter={openNow} onMouseLeave={closeSoon} className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:bottom-6">
+    /*
+     * A hover container wrapping real buttons.
+     *
+     * `onFocus`/`onBlur` are the keyboard equivalent of the hover pair, and they
+     * were genuinely missing: the cluster opened on hover and closed on
+     * mouse-leave, so a keyboard user who tabbed in saw nothing change and one
+     * who tabbed away left it hanging open. React's onFocus/onBlur bubble (the
+     * native events do not), so one pair on the container covers every child.
+     *
+     * eslint-disable, with the reason, rather than a role: this div is a layout
+     * wrapper whose every child is already a real <button>, and the FAB itself
+     * toggles on click/Enter. Giving it an interactive role would add a tab stop
+     * that opens nothing and announce a control that is not one.
+     */
+    // eslint-disable-next-line jsx-a11y/no-static-element-interactions
+    <div
+      ref={ref}
+      style={containerStyle}
+      onMouseEnter={openNow}
+      onMouseLeave={closeSoon}
+      onFocus={openNow}
+      onBlur={closeSoon}
+      className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:bottom-6"
+    >
       {open && (
         <>
           {actions.map((a, i) => (
@@ -142,7 +165,7 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       >
         <BurstIcon />
         {badge > 0 && !open && (
-          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-sky-500 px-1 text-[10px] font-bold text-white ring-2 ring-background">
+          <span className="absolute -right-1 -top-1 grid h-5 min-w-[20px] place-items-center rounded-full bg-brand-blue px-1 text-[10px] font-bold text-white ring-2 ring-background">
             {badge > 99 ? "99+" : badge}
           </span>
         )}

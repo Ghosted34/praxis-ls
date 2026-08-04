@@ -76,7 +76,7 @@ export function ClockPunch() {
       >
         <ClockIcon />
         {canPunch && (
-          <span className={cn("absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full ring-2 ring-background", clockedIn ? "bg-emerald-500" : "bg-[rgb(var(--ink-3)/0.4)]")} />
+          <span className={cn("absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full ring-2 ring-background", clockedIn ? "bg-ok-fill" : "bg-[rgb(var(--ink-3)/0.4)]")} />
         )}
       </button>
     </div>

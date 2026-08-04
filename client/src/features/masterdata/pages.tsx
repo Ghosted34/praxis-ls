@@ -18,6 +18,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, ActivePill } from "@/components/ui/pill";
+import { RowActions } from "@/components/ui/row-actions";
 import { useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
@@ -423,10 +424,10 @@ export function CorporateEntitiesPage() {
     { key: "is_active", label: "Status", render: (r) => <ActivePill active={r.is_active} /> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
           <Button size="sm" variant="outline" loading={busyId === r.entity_id} onClick={() => toggle(r)}>{r.is_active ? "Deactivate" : "Activate"}</Button>
-        </div>
+        </RowActions>
       ),
     },
   ];
@@ -521,10 +522,10 @@ export function ExpenseRatesPage() {
     { key: "effective_from", label: "From", render: (r) => dateFmt(r.effective_from) },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
           <Button size="sm" variant="outline" loading={busyId === r.expense_rate_id} onClick={() => remove(r)}>Delete</Button>
-        </div>
+        </RowActions>
       ),
     },
   ];

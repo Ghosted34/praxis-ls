@@ -35,6 +35,7 @@ import { num, dateFmt } from "@/lib/format";
 import { tenant, ApiError } from "@/lib/api-client";
 import { cn } from "@/lib/cn";
 import { Organigramme } from "@/components/organigramme";
+import { RowActions } from "@/components/ui/row-actions";
 import {
   fetchScopeTree, buildScopeTree, fetchScopeEntities,
   listScopeMembers, addScopeMember, removeScopeMember,
@@ -92,14 +93,6 @@ const statusTone = (s?: string | null): Tone => {
 };
 
 
-/** Right-aligned row-action cell that doesn't trigger the row's onClick. */
-function Actions({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
-      {children}
-    </div>
-  );
-}
 
 /** Confirm-then-delete modal shared by the four registry screens. */
 function ConfirmDelete({
@@ -230,7 +223,7 @@ function UserForm({ user, roles, onClose, onSaved }: { user: User | null; roles:
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Full name" required>
-            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Amina Ndoumbe" autoFocus />
+            <Input value={fullName} onChange={(e) => setFullName(e.target.value)} placeholder="Amina Ndoumbe" />
           </Field>
           <Field label="Email" required>
             <Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="amina@tenant.cm" />
@@ -346,7 +339,7 @@ function PasswordForm({ user, onClose }: { user: User; onClose: () => void }) {
       ) : (
         <form className="space-y-4" onSubmit={submit}>
           <Field label="New password" required hint="Minimum 8 characters.">
-            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} autoFocus placeholder="••••••••" />
+            <Input type="password" value={pw} onChange={(e) => setPw(e.target.value)} placeholder="••••••••" />
           </Field>
           {error && <ErrorState message={error} />}
           <div className="flex justify-end gap-2 pt-2">
@@ -367,7 +360,7 @@ export function UsersPage() {
   const [form, setForm] = React.useState<{ user: User | null } | null>(null);
   const [pwTarget, setPwTarget] = React.useState<User | null>(null);
 
-  const all = rows || [];
+  const all = React.useMemo(() => rows || [], [rows]);
   const list = all.filter((u) => {
     if (filter !== "ALL" && String(u.status || "").toUpperCase() !== filter) return false;
     const hay = `${u.full_name} ${u.email} ${u.username || ""}`.toLowerCase();
@@ -384,10 +377,10 @@ export function UsersPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <Actions>
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setPwTarget(r)}>Password</Button>
           <Button size="sm" variant="outline" onClick={() => setForm({ user: r })}>Edit</Button>
-        </Actions>
+        </RowActions>
       ),
     },
   ];
@@ -475,7 +468,7 @@ function RoleForm({ role, onClose, onSaved }: { role: Role | null; onClose: () =
     <Modal open onClose={onClose} title={editing ? "Edit role" : "New role"} description="A role is a job area. Grants are attached to it on the Permission matrix tab.">
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Code" required hint="Short uppercase key, unique per tenant — e.g. FINANCE, CUSTOMS_DESK.">
-          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} disabled={editing} placeholder="FINANCE" autoFocus />
+          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} disabled={editing} placeholder="FINANCE" />
         </Field>
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Finance & treasury" />
@@ -501,7 +494,7 @@ export function RolesPage() {
   const { rows, error, loading, reload } = useList<Role>("/roles");
   const [form, setForm] = React.useState<{ role: Role | null } | null>(null);
   const [del, setDel] = React.useState<Role | null>(null);
-  const all = rows || [];
+  const all = React.useMemo(() => rows || [], [rows]);
 
   const columns: Column<Role>[] = [
     { key: "code", label: "Code", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.code}</span> },
@@ -513,10 +506,10 @@ export function RolesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <Actions>
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setForm({ role: r })}>Edit</Button>
           <Button size="sm" variant="outline" disabled={!!r.is_system} onClick={() => setDel(r)}>Delete</Button>
-        </Actions>
+        </RowActions>
       ),
     },
   ];
@@ -578,7 +571,7 @@ function CapabilityForm({ cap, onClose, onSaved }: { cap: Capability | null; onC
           </Select>
         </Field>
         <Field label="Name" required>
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Issues documents" autoFocus />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Issues documents" />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -602,10 +595,10 @@ export function CapabilitiesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <Actions>
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setForm({ cap: r })}>Edit</Button>
           <Button size="sm" variant="outline" onClick={() => setDel(r)}>Delete</Button>
-        </Actions>
+        </RowActions>
       ),
     },
   ];
@@ -692,7 +685,7 @@ function ScopeForm({ scope, scopes, onClose, onSaved }: { scope: Scope | null; s
           ) : null}
         </Field>
         <Field label="Code" required hint="Unique within the entity — e.g. HQ, DLA_BRANCH, CUSTOMS_DESK.">
-          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HQ" autoFocus />
+          <Input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="HQ" />
         </Field>
         <Field label="Name" required>
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Head office" />
@@ -780,7 +773,7 @@ export function ScopesPage() {
   const [del, setDel] = React.useState<Scope | null>(null);
   const [view, setView] = React.useState<"chart" | "list">("chart");
 
-  const all = rows || [];
+  const all = React.useMemo(() => rows || [], [rows]);
   const tree = React.useMemo(() => buildScopeTree(treeQ.data || []), [treeQ.data]);
   const reloadAll = React.useCallback(() => { reload(); treeQ.reload(); }, [reload, treeQ]);
   const entityName = React.useMemo(() => {
@@ -803,10 +796,10 @@ export function ScopesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <Actions>
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setForm({ scope: r })}>Edit</Button>
           <Button size="sm" variant="outline" onClick={() => setDel(r)}>Delete</Button>
-        </Actions>
+        </RowActions>
       ),
     },
   ];
@@ -903,7 +896,7 @@ function FieldVisForm({ fv, roles, onClose, onSaved }: { fv: FieldVis | null; ro
           </Select>
         </Field>
         <Field label="Field key" required hint="Dotted path, e.g. dossier.margin. Must match the key the backend masks on.">
-          <Input value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} list="known-field-keys" placeholder="dossier.margin" autoFocus />
+          <Input value={fieldKey} onChange={(e) => setFieldKey(e.target.value)} list="known-field-keys" placeholder="dossier.margin" />
           <datalist id="known-field-keys">
             {KNOWN_FIELDS.map((f) => <option key={f} value={f} />)}
           </datalist>
@@ -943,10 +936,10 @@ export function FieldVisibilityPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <Actions>
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setForm({ fv: r })}>Edit</Button>
           <Button size="sm" variant="outline" onClick={() => setDel(r)}>Delete</Button>
-        </Actions>
+        </RowActions>
       ),
     },
   ];
@@ -1010,7 +1003,7 @@ export function SessionsPage() {
 
   const withKill: Column<Session>[] = [
     ...baseCols,
-    { key: "_a", label: "", render: (r) => <Actions><Button size="sm" variant="outline" disabled={!!r.revoked_at} onClick={() => kill(r.session_id)}>Revoke</Button></Actions> },
+    { key: "_a", label: "", render: (r) => <RowActions><Button size="sm" variant="outline" disabled={!!r.revoked_at} onClick={() => kill(r.session_id)}>Revoke</Button></RowActions> },
   ];
 
   const adminCols: Column<Session>[] = [

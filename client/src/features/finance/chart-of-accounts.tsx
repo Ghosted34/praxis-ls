@@ -86,7 +86,7 @@ export function ChartOfAccountsPage() {
   const [editing, setEditing] = React.useState<api.Account | "new" | null>(null);
   const [q, setQ] = React.useState("");
   const [klass, setKlass] = React.useState<number | "ALL">("ALL");
-  const accounts = rows || [];
+  const accounts = React.useMemo(() => rows || [], [rows]);
 
   const classCounts = React.useMemo(() => {
     const m: Record<string, number> = {};

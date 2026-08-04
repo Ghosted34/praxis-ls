@@ -80,7 +80,7 @@ export function AssetCreateForm({ open, onClose, onCreated }: { open: boolean; o
             <Input value={tag} onChange={(e) => setTag(e.target.value)} placeholder="VEH-001" />
           </Field>
           <Field label="Asset" required className="sm:col-span-2">
-            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Toyota Hilux — Douala fleet" autoFocus />
+            <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Toyota Hilux — Douala fleet" />
           </Field>
           <Field label="Acquisition cost (XAF)" required>
             <Input type="number" min="0" step="1" value={cost} onChange={(e) => setCost(e.target.value)} placeholder="25000000" />

@@ -59,7 +59,7 @@ export const CardTitle = ({
   // Generic wrapper: children arrive through {...p}, so heading-has-content
   // cannot see them here. The call sites are what need content, and those are
   // checked.
-  // eslint-disable-next-line jsx-a11y/heading-has-content
+   
   <Tag className={cn("text-title font-semibold leading-none tracking-tight", className)} {...p} />
 );
 

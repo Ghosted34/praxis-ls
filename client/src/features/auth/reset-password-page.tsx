@@ -115,7 +115,6 @@ export function ResetPasswordPage() {
                     type={showPw ? "text" : "password"}
                     autoComplete="new-password"
                     required
-                    autoFocus
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="••••••••••••"

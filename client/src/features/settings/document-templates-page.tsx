@@ -51,7 +51,7 @@ export function TemplateStudioPage() {
   const [error, setError] = React.useState<string | null>(null);
   const [dirty, setDirty] = React.useState(false);
 
-  const list = templates.data || [];
+  const list = React.useMemo(() => templates.data || [], [templates.data]);
   React.useEffect(() => { if (!docType && list.length) setDocType(list[0].docType); }, [list, docType]);
 
   // Load saved config + records when the document or entity changes.

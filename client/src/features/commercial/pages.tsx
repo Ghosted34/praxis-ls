@@ -78,10 +78,7 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
   React.useEffect(() => {
     if (!open) return;
     setEntityId(editing?.entity_id ? String(editing.entity_id) : "");
-    const cid = editing?.client_id ? String(editing.client_id) : "";
-    setClientId(cid);
-    const cm = (clients || []).find((c) => String(c.client_id) === cid);
-    setClientLabel(cm ? String(cm.name ?? cm.legal_name ?? "") : "");
+    setClientId(editing?.client_id ? String(editing.client_id) : "");
     setOpportunityId(editing?.opportunity_id ? String(editing.opportunity_id) : "");
     setCurrency(editing?.currency ? String(editing.currency) : "XAF");
     setQuoteModel(editing?.quote_model ? String(editing.quote_model) : "HT_ON_TOP");
@@ -91,6 +88,27 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
     setLines(el.length ? el.map((l) => ({ dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null, label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_debours: l.is_debours === true, tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null })) : [blankLine()]);
     setError(null);
   }, [open, editing]);
+
+  /**
+   * Resolve the client's display label, separately from the form reset above.
+   *
+   * It used to live inside that effect, which depends on `[open, editing]` only
+   * — so the lookup ran against whatever `/clients` had returned at the moment
+   * the modal opened. Open the editor before that request lands (the common case
+   * on a cold navigation) and the client field renders BLANK on a quotation that
+   * definitely has a client, with no way to tell it apart from one that has none.
+   *
+   * Adding `clients` to the reset effect's deps is the fix the linter suggests
+   * and it would be worse: the whole form would reset — wiping every edit in
+   * progress — each time the clients list refetched in the background.
+   *
+   * So it is its own effect, keyed on the two things it actually reads.
+   */
+  React.useEffect(() => {
+    if (!open) return;
+    const cm = (clients || []).find((c) => String(c.client_id) === clientId);
+    setClientLabel(cm ? String(cm.name ?? cm.legal_name ?? "") : "");
+  }, [open, clientId, clients]);
 
   // Load sales VAT codes once the modal opens (aggregated across jurisdictions).
   React.useEffect(() => {

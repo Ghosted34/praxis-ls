@@ -34,11 +34,13 @@ import type { AiAction } from "@/features/scaffold/screen-specs";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
+import { Callout } from "@/components/ui/callout";
 import { Segmented } from "@/components/ui/segmented";
 import { Chips } from "@/components/ui/chips";
 import { Avatar } from "@/components/ui/avatar";
 import { Stat } from "@/components/ui/stat";
 import { SearchSelect } from "@/components/ui/search-select";
+import { DropdownMenu, DropdownItem } from "@/components/ui/dropdown-menu";
 
 /* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
@@ -1188,6 +1190,10 @@ export function OpportunitiesPage() {
             const won = s.is_won === true;
             const lost = s.is_lost === true;
             return (
+              // Drop target for the pointer gesture. Every card carries a
+              // "Move" menu that performs the same `move()` server-side, so the
+              // board has a complete keyboard path and this is enhancement only.
+              // eslint-disable-next-line jsx-a11y/no-static-element-interactions
               <div
                 key={sid}
                 onDragOver={(e) => {
@@ -1200,7 +1206,7 @@ export function OpportunitiesPage() {
               >
                 <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
                   <div className="flex items-center gap-2">
-                    <span className={`h-2 w-2 rounded-full ${won ? "bg-emerald-500" : lost ? "bg-rose-500" : "bg-primary"}`} />
+                    <span className={`h-2 w-2 rounded-full ${won ? "bg-ok-fill" : lost ? "bg-bad-fill" : "bg-primary"}`} />
                     <span className="text-sm font-semibold text-foreground">{cell(s.name)}</span>
                     <span className="text-xs text-muted-foreground">{cards.length}</span>
                   </div>
@@ -1213,6 +1219,13 @@ export function OpportunitiesPage() {
                     cards.map((o) => {
                       const id = String(o.opportunity_id);
                       return (
+                        // `draggable` is a pointer-only gesture. The "Move" menu
+                        // below is its keyboard equivalent — same `move()` call,
+                        // reachable by Tab + Enter + arrows. Without it the board
+                        // was operable by mouse alone, which for the CRM's primary
+                        // screen meant the pipeline could not be worked at all
+                        // without one.
+                        // eslint-disable-next-line jsx-a11y/no-static-element-interactions
                         <div
                           key={id}
                           draggable
@@ -1226,7 +1239,7 @@ export function OpportunitiesPage() {
                           </div>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">{withLabel(o)}</p>
                           <p className="mt-1 text-xs font-semibold text-foreground">{money(o.estimated_value, o.currency)}</p>
-                          <div className="mt-2 flex gap-1">
+                          <div className="mt-2 flex flex-wrap gap-1">
                             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id} onClick={() => setWinning(o)}>
                               Win
                             </Button>
@@ -1244,6 +1257,25 @@ export function OpportunitiesPage() {
                             >
                               Edit
                             </Button>
+                            {/* The keyboard path across the pipeline. Named per
+                                card so a screen-reader user hears which deal is
+                                being moved, not six identical "Move" buttons. */}
+                            <DropdownMenu
+                              label={`Move ${cell(o.name)} to stage`}
+                              trigger={
+                                <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id}>
+                                  Move
+                                </Button>
+                              }
+                            >
+                              {(stages || [])
+                                .filter((t) => String(t.pipeline_stage_id) !== sid)
+                                .map((t) => (
+                                  <DropdownItem key={String(t.pipeline_stage_id)} onSelect={() => move(id, String(t.pipeline_stage_id))}>
+                                    {cell(t.name)}
+                                  </DropdownItem>
+                                ))}
+                            </DropdownMenu>
                           </div>
                         </div>
                       );
@@ -2272,7 +2304,7 @@ export function CampaignsPage() {
       </div>
 
       {notice && (
-        <div className="mb-3 rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">{notice}</div>
+        <Callout tone="ok" className="mb-3">{notice}</Callout>
       )}
       {rowError && (
         <div className="mb-3">

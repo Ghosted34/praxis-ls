@@ -22,15 +22,13 @@ import { fetchRoles } from "@/lib/rbac";
 import { fetchScopeTree, buildScopeTree, type ScopeTreeNode } from "@/lib/scope-api";
 import { reportActionError } from "@/lib/action-error";
 import { PushOptIn } from "@/components/pwa/push-opt-in";
+import { RowActions } from "@/components/ui/row-actions";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
 
 const shell = pageShell.wide;
 
 
-function Acts({ children }: { children: React.ReactNode }) {
-  return <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>{children}</div>;
-}
 
 /** Short display for a user id when the /users list isn't readable. */
 const shortId = (id?: string | null) => (id ? `…${String(id).slice(-8)}` : "—");
@@ -231,7 +229,7 @@ function NewReviewForm({ onClose, onSaved }: { onClose: () => void; onSaved: () 
     <Modal open onClose={onClose} title="New access review" description="Snapshots every user and their roles right now, then asks you to approve, revoke or flag each one.">
       <form className="space-y-4" onSubmit={submit}>
         <Field label="Name" required hint="e.g. Q3 2026 access recertification">
-          <Input value={name} onChange={(e) => setName(e.target.value)} autoFocus placeholder="Q3 2026 access recertification" />
+          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Q3 2026 access recertification" />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -290,7 +288,7 @@ export function AuditPage() {
     { key: "created_by", label: "Opened by", render: (r) => actor(r.created_by) },
     { key: "created_at", label: "Opened", render: (r) => <span className="num">{dateFmt(r.created_at)}</span> },
     { key: "state", label: "State", render: (r) => (r.completed_at ? <Pill tone="ok">Completed</Pill> : <Pill tone="warn">In progress</Pill>) },
-    { key: "_a", label: "", render: (r) => <Acts><Button size="sm" variant="outline" onClick={() => setOpenReview(r)}>Open</Button></Acts> },
+    { key: "_a", label: "", render: (r) => <RowActions><Button size="sm" variant="outline" onClick={() => setOpenReview(r)}>Open</Button></RowActions> },
   ];
   const restoreCols: Column<SoftDelete>[] = [
     { key: "entity_ref", label: "Record", render: (r) => <span className="num font-medium text-foreground">{r.entity_ref}</span> },
@@ -299,12 +297,12 @@ export function AuditPage() {
     { key: "state", label: "State", render: (r) => (r.restore_requested_by ? <Pill tone="warn">Restore requested</Pill> : <Pill tone="mute">Soft-deleted</Pill>) },
     {
       key: "_a", label: "", render: (r) => (
-        <Acts>
+        <RowActions>
           {!r.restore_requested_by && (
             <Button size="sm" variant="outline" disabled={busy === r.soft_delete_id} onClick={() => softDeleteAction(r.soft_delete_id, "request-restore")}>Request restore</Button>
           )}
           <Button size="sm" variant="outline" disabled={busy === r.soft_delete_id} onClick={() => softDeleteAction(r.soft_delete_id, "restore")}>Restore</Button>
-        </Acts>
+        </RowActions>
       ),
     },
   ];
@@ -572,9 +570,9 @@ export function NotificationsPage() {
     {
       key: "_a", label: "",
       render: (r) => (
-        <Acts>
+        <RowActions>
           {r.read_at ? <Pill tone="mute">Read</Pill> : <Button size="sm" variant="outline" disabled={busy === r.notification_id} onClick={() => markRead(r.notification_id)}>Mark read</Button>}
-        </Acts>
+        </RowActions>
       ),
     },
   ];
@@ -831,7 +829,7 @@ export function WorkflowsPage() {
     { key: "event", label: "On event", render: (w) => (w.event_type_key ? <Pill tone="mute">{w.event_type_key}</Pill> : "—") },
     { key: "steps", label: "Steps", className: "num text-right", render: (w) => num(w.step_count ?? 0) },
     { key: "active", label: "Active", render: (w) => <Toggle on={!!w.is_active} busy={busy === w.workflow_id} onClick={() => toggleActive(w)} /> },
-    { key: "_a", label: "", render: (w) => <div className="flex justify-end" onClick={(e) => e.stopPropagation()}><Button size="sm" variant="outline" onClick={() => setView(w)}>Edit chain</Button></div> },
+    { key: "_a", label: "", render: (w) => <RowActions><Button size="sm" variant="outline" onClick={() => setView(w)}>Edit chain</Button></RowActions> },
   ];
 
   return (
@@ -905,11 +903,11 @@ export function ApprovalsPage() {
       key: "_a", label: "", render: (r) => {
         const id = idOf(r);
         return (
-          <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+          <RowActions>
             {r.step_kind === "VALIDATE" && <Button size="sm" variant="outline" loading={busy === id + "validate"} onClick={() => act(r, "validate")}>Validate</Button>}
             <Button size="sm" loading={busy === id + "approve"} onClick={() => act(r, "approve")}>Approve</Button>
             <Button size="sm" variant="outline" loading={busy === id + "reject"} onClick={() => act(r, "reject")}>Reject</Button>
-          </div>
+          </RowActions>
         );
       },
     },

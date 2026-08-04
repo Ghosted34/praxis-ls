@@ -15,6 +15,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { smartCell, todayISO } from "@/lib/format";
+import { Pill } from "@/components/ui/pill";
 
 
 
@@ -147,7 +148,7 @@ function FxSyncCard() {
           <h3 className="text-base font-semibold">Automatic FX sync</h3>
           <p className="text-xs text-muted-foreground">Daily rates from exchangerate-api.com. The key is encrypted — only the last 4 characters are shown.</p>
         </div>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isSet ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${isSet ? "bg-ok-fill/15 text-ok" : "bg-muted text-muted-foreground"}`}>
           {isSet ? `key set · …${last4}` : "no key"}
         </span>
       </div>
@@ -156,7 +157,7 @@ function FxSyncCard() {
           <Input type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder={isSet ? "•••••• (unchanged)" : "paste key…"} />
         </Field>
       </div>
-      {msg && <div className={`mt-2 text-sm ${msg.ok ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{msg.text}</div>}
+      {msg && <div className={`mt-2 text-sm ${msg.ok ? "text-ok" : "text-destructive"}`}>{msg.text}</div>}
       <div className="mt-3 flex items-center justify-end gap-2">
         <Button size="sm" variant="outline" loading={testing} onClick={test} disabled={!isSet && !secret}>Test</Button>
         <Button size="sm" loading={busy} onClick={save} disabled={!secret}>Save</Button>
@@ -527,7 +528,7 @@ export function TaxJurisdictionsPage() {
                     <TD className="text-sm">{smartCell(r.currency)}</TD>
                     <TD className="text-sm">
                       {active ? (
-                        <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">active</span>
+                        <Pill tone="ok">active</Pill>
                       ) : (
                         <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">inactive</span>
                       )}

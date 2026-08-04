@@ -30,8 +30,8 @@ export function AiGate({ children }: { children: React.ReactNode }) {
 
 const AI_LABEL: Record<AiKind, string> = { read: "read", write: "action", assist: "AI-assist" };
 const AI_CLASS: Record<AiKind, string> = {
-  read: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
-  write: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  read: "bg-brand-blue/10 text-brand-blue",
+  write: "bg-warn-fill/12 text-warn",
   assist: "bg-primary/10 text-primary",
 };
 

@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { Pill } from "@/components/ui/pill";
+import { Callout } from "@/components/ui/callout";
 import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -794,9 +795,9 @@ export function ApiKeysPage() {
       />
 
       {testResult && (
-        <div className={`mb-3 rounded-lg border px-4 py-3 text-sm ${testResult.ok ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "border-destructive/30 bg-destructive/10 text-destructive"}`}>
-          <span className="font-medium">{testResult.key}:</span> {testResult.text}
-        </div>
+        <Callout tone={testResult.ok ? "ok" : "bad"} title={`${testResult.key}:`} className="mb-3">
+          {testResult.text}
+        </Callout>
       )}
 
       {error ? (
@@ -1008,7 +1009,7 @@ function NumberingEditor({ moduleKey, label }: { moduleKey: string; label: strin
         </div>
       )}
       <div className="mt-3 flex items-center justify-end gap-3">
-        {saved && <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved.</span>}
+        {saved && <span className="text-xs text-ok">Saved.</span>}
         <Button size="sm" onClick={save} loading={busy}>
           Save scheme
         </Button>

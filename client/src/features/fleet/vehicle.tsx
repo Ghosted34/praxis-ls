@@ -190,7 +190,7 @@ export function VehiclesPage() {
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
-  const rows = vehicles.data || [];
+  const rows = React.useMemo(() => vehicles.data || [], [vehicles.data]);
   const filtered = q ? rows.filter((v) => (v.registration || "").toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((v) => v.vehicle_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].vehicle_id); }, [rows, selId]);

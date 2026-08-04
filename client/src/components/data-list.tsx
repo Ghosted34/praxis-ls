@@ -67,6 +67,45 @@ export function PageHeader({
   );
 }
 
+/**
+ * The keyboard-reachable half of a click-anywhere row (audit F9, F13).
+ *
+ * THE DEFECT. `onRowClick` was attached to a `<tr>` and, on phones, to a plain
+ * `<div>` — with no `role`, no `tabIndex` and no key handler. So the primary
+ * navigation gesture on most list screens in the product existed for the mouse
+ * only. F13 counted 23 of these across 16 files; this component is the one that
+ * multiplied across every screen.
+ *
+ * WHY NOT `role="button"` ON THE ROW. It would work for the keyboard and destroy
+ * the table: a `<tr role="button">` stops being a row, so a screen-reader user
+ * loses row/column position, header association and "row 4 of 120" — a bad trade
+ * on a 200-row shipment table, where the grid semantics ARE the usability.
+ *
+ * WHAT THIS DOES INSTEAD. The first column's content becomes a real `<button>`.
+ * The row keeps `<tr>` semantics and its click-anywhere convenience; keyboard
+ * and screen-reader users get an ordinary, labelled, focusable control in the
+ * cell that already identifies the record ("SBX-OPS-2026-0142"). One activator
+ * per row, in reading order, named by the thing it opens.
+ *
+ * This is why `onRowClick` rows must put something identifying in column 0 —
+ * which every screen already does, because that is also what a human scans.
+ */
+function RowActivator({ children, onClick }: { children: React.ReactNode; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      // Stop the row's own handler from firing a second time on a mouse click.
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      className="-mx-1 -my-0.5 rounded px-1 py-0.5 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      {children}
+    </button>
+  );
+}
+
 export function DataList<T extends Record<string, unknown>>({
   columns,
   rows,
@@ -84,6 +123,10 @@ export function DataList<T extends Record<string, unknown>>({
    *  control, which is what turns an empty table into an onboarding step. */
   empty?: { title: string; hint?: string; action?: React.ReactNode };
   rowKey: (row: T, i: number) => string;
+  /**
+   * Click-anywhere row navigation. The first column becomes a real button so
+   * this is reachable without a mouse — see `RowActivator`.
+   */
   onRowClick?: (row: T) => void;
 }) {
   if (error) return <ErrorState message={error} />;
@@ -119,11 +162,14 @@ export function DataList<T extends Record<string, unknown>>({
                 className={onRowClick ? "cursor-pointer" : undefined}
                 onClick={onRowClick ? () => onRowClick(r) : undefined}
               >
-                {columns.map((c) => (
-                  <TD key={c.key} className={c.className}>
-                    {c.render ? c.render(r) : cell(r[c.key])}
-                  </TD>
-                ))}
+                {columns.map((c, ci) => {
+                  const val = c.render ? c.render(r) : cell(r[c.key]);
+                  return (
+                    <TD key={c.key} className={c.className}>
+                      {onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{val}</RowActivator> : val}
+                    </TD>
+                  );
+                })}
               </TR>
             ))}
           </TBody>
@@ -134,17 +180,23 @@ export function DataList<T extends Record<string, unknown>>({
           columns (e.g. row actions) render full-width at the foot of the card. */}
       <div className="animate-fade-up space-y-2 sm:hidden">
         {rows.map((r, i) => (
+          // Same reasoning as the table branch: the card keeps click-anywhere,
+          // and column 0 carries the real control. The card itself cannot BE a
+          // button — unlabelled columns render row actions inside it, and a
+          // button containing buttons is invalid HTML that no AT handles well.
+          // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
           <div
             key={rowKey(r, i)}
             className={cn("lux-card p-3", onRowClick && "cursor-pointer")}
             onClick={onRowClick ? () => onRowClick(r) : undefined}
           >
-            {columns.map((c) => {
-              const val = c.render ? c.render(r) : cell(r[c.key]);
+            {columns.map((c, ci) => {
+              const raw = c.render ? c.render(r) : cell(r[c.key]);
+              const val = onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{raw}</RowActivator> : raw;
               return c.label ? (
                 <div key={c.key} className="flex items-baseline justify-between gap-3 py-0.5">
                   <span className="micro shrink-0">{c.label}</span>
-                  <span className="min-w-0 text-right text-[13px]">{val}</span>
+                  <span className="min-w-0 text-right text-sm">{val}</span>
                 </div>
               ) : (
                 <div key={c.key} className="mt-2 flex flex-wrap justify-end gap-2">{val}</div>

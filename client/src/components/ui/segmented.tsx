@@ -104,6 +104,9 @@ export function Segmented<T extends string>({
   }
 
   return (
+    // Composite radiogroup — see the note in ui/chips.tsx. Arrow keys on the
+    // group, roving tabindex on the segments.
+    // eslint-disable-next-line jsx-a11y/interactive-supports-focus
     <div
       ref={ref}
       role="radiogroup"

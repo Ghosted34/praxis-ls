@@ -18,6 +18,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
 import { DepartmentSelect, type DepartmentValue } from "@/components/department-select";
+import { RowActions } from "@/components/ui/row-actions";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import type { Entity, Supplier } from "@/lib/masterdata-api";
@@ -112,10 +113,10 @@ export function PurchaseRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <DocButton docType="PURCHASE_REQUEST" id={r.pr_id} title={r.ref || `Request ${r.pr_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.pr_id} onClick={() => submitPr(r)}>Submit</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];
@@ -252,7 +253,7 @@ export function PurchaseOrdersPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <DocButton docType="PURCHASE_ORDER" id={r.po_id} title={r.ref || `PO ${r.po_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && (
             <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => move(r, "ISSUED_LOCKED")}>Issue</Button>
@@ -260,7 +261,7 @@ export function PurchaseOrdersPage() {
           {r.status === "ISSUED_LOCKED" && (
             <Button size="sm" variant="outline" loading={busyId === r.po_id} onClick={() => move(r, "APPROVED_LOCKED")}>Approve</Button>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];
@@ -434,10 +435,10 @@ export function SupplierInvoicesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <DocButton docType="SUPPLIER_INVOICE" id={r.supplier_invoice_id} title={r.ref || `Invoice ${r.supplier_invoice_id.slice(0, 8)}`} label="View" />
           {!String(r.status).includes("POSTED") && <Button size="sm" variant="outline" loading={busyId === r.supplier_invoice_id} onClick={() => post(r)}>Post</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];

@@ -49,7 +49,7 @@ export function disconnectCommsSocket() {
   }
 }
 
-type Handlers = Record<string, (payload: any) => void>; // eslint-disable-line @typescript-eslint/no-explicit-any
+type Handlers = Record<string, (payload: any) => void>;  
 
 /**
  * Subscribe to a channel's live events for the lifetime of the mounted

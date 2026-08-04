@@ -54,7 +54,7 @@ function Field({
   const label = (
     <label htmlFor={id} className="micro mb-0.5 block text-foreground">
       {m.label}
-      {m.required ? <span className="text-red-500"> *</span> : null}
+      {m.required ? <span className="text-destructive"> *</span> : null}
     </label>
   );
 
@@ -150,7 +150,7 @@ function ArrayField({
                 loading={loading}
               />
             ))}
-            <button type="button" onClick={() => setRows(rows.filter((_, idx) => idx !== i))} className="micro text-red-500 hover:underline">
+            <button type="button" onClick={() => setRows(rows.filter((_, idx) => idx !== i))} className="micro text-bad hover:underline">
               Remove
             </button>
           </div>
@@ -172,8 +172,13 @@ export function ActionForm({
   busy?: boolean;
   onConfirm: (payload: Record<string, unknown>) => void;
 }) {
-  const meta = action.field_meta || {};
-  const fields = React.useMemo(() => Object.keys(meta), [action.action_run_id]);
+  // Keyed on the RUN, not on `meta`: `action.field_meta || {}` minted a new
+  // object every render, so every hook downstream of it re-ran every render. The
+  // field set is fixed for the lifetime of a run, which is what the original
+  // `[action.action_run_id]` dep was expressing — it just had nothing stable to
+  // express it against.
+  const meta = React.useMemo(() => action.field_meta || {}, [action.field_meta]);
+  const fields = React.useMemo(() => Object.keys(meta), [meta]);
   const [values, setValues] = React.useState<Record<string, unknown>>(() => ({ ...(action.payload || {}) }));
   const [options, setOptions] = React.useState<Options>({});
   const [loading, setLoading] = React.useState<Loading>({});

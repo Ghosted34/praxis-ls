@@ -103,7 +103,11 @@ if [ "$CURRENT" != "unknown" ] && git rev-parse --verify "$CURRENT" >/dev/null 2
       echo
       echo "   Restore is a human decision. To do it:"
       echo "     docker compose stop api api-standby worker"
-      echo "     gunzip -c <dump> | docker compose exec -T postgres psql -U postgres"
+      # -U is read from inside the container: compose sets POSTGRES_USER from
+      # DB_USER (default praxis-admin), NOT 'postgres'. Guessing 'postgres' here
+      # is what broke the first real run of deploy.sh's backup step, and getting
+      # it wrong mid-restore is considerably more expensive.
+      echo "     gunzip -c <dump> | docker compose exec -T postgres sh -c 'psql -U \"\$POSTGRES_USER\" -d postgres'"
       echo "     bash scripts/rollback.sh $TARGET --schema-restored"
       echo
       if [ "${2:-}" != "--schema-restored" ]; then exit 1; fi

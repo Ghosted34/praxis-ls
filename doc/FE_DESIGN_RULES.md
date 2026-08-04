@@ -309,6 +309,31 @@ Two gates enforce this and both run in CI: `vite.config.ts` throws on Rollup's `
 warning (it warned last time, and the build went green anyway), and `npm run check:bundle`
 re-derives the graph from what was actually written to `dist/`.
 
+### 3.8 Shared schemas (`@shared`)
+
+`import { finalInvoice } from "@shared"` gives you the **same Zod objects the
+Express API validates with** — that is the whole point of `packages/shared`, and
+`useZodForm` is built on it (§3.3).
+
+Three things make that work, all of them in `client/config/shared-alias.ts`, and
+all three were broken until 2026-08-04 because nothing routed imported the
+package and so no build ever compiled it:
+
+- **`build.commonjsOptions.include`** covers `packages/shared`. Vite applies
+  CommonJS interop only inside `node_modules` by default, and this is *source*.
+- **`optimizeDeps.include`** names the package, so the dev server pre-bundles it.
+  Without that, `npm run dev` serves its raw `require()` to the browser —
+  `commonjsOptions` is build-only.
+- **The `zod` alias pins an entry FILE**, not the package directory. Zod ships
+  separate ESM and CJS entries, so a directory alias gives client code one and
+  `packages/shared` the other — two instances, and `instanceof z.ZodType` false.
+
+You do not need to think about any of it — but **don't hand-edit those settings
+without running `npm run check:shared`**, which builds a probe against the real
+config and asserts the schemas resolve, parse, and share one Zod. And when you
+add a schema, export it as `exports.name = name` — `module.exports = { name }`
+is invisible to every bundler (see `packages/shared/README.md`).
+
 ---
 
 ## 4. Accessibility — the floor, not the aspiration
@@ -366,7 +391,7 @@ it needs a formatter before it reaches the DOM.
 - [ ] No raw UUIDs, ISO dates, dotted event keys or SCREAMING_ENUMs on screen (§5).
 - [ ] No raw `<table>` / `<input>` / `<textarea>` / `role="menu"` — use the primitives (§3.5).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
-- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run build` and `npm run check:bundle` all pass in `client/`.
+- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run build`, `npm run check:bundle` and `npm run check:shared` all pass in `client/`.
 - [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).
 - [ ] Route added in `app.tsx` + `NAV`; `screen-registry.json` updated only when the page is real.

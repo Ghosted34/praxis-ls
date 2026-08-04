@@ -1140,3 +1140,121 @@ It builds today purely because nothing routed imports `@/components/ui/form` or
 references in the emitted bundle). **The first screen that actually uses
 `useZodForm` will break the image build** — which, given Phase 4 puts every form
 on `<Form>` + a shared schema, is a Phase 3/4 prerequisite, not a someday item.
+
+---
+
+# Addendum 5 — `packages/shared` was never actually buildable (2026-08-04)
+
+Addendum 4 closed with one open item: the `zod` alias pointed at the repo-root
+copy, which the Docker `clientbuild` stage does not have, so "the first screen
+that actually uses `useZodForm` will break the image build."
+
+That was right about the consequence and **wrong about the cause being one
+thing**. Closing it properly meant pulling the package into a build for the
+first time, and it failed three separate ways before it worked. Recording all of
+them, because the pattern matters more than the bugs.
+
+## The pattern: the only path that exercised it was the only one that couldn't see the problem
+
+`packages/shared` shipped with 10 passing tests and was consumed by the backend
+in production. It was also **completely unbuildable by the client**, and had been
+since the day it was written — because no routed screen imports the form layer,
+so every `vite build` tree-shook the package away and never compiled it.
+
+Vitest loads that CommonJS through **Node**. `vite build` loads it through
+**Rollup**. Those two disagree, and only the forgiving one ever ran.
+
+## The three defects
+
+**1. No CommonJS interop — breaks every environment, not just Docker.**
+Vite applies CJS interop only to `build.commonjsOptions.include`, which defaults
+to `[/node_modules/]`. `packages/shared` is *source*. Rollup therefore read
+`module.exports = { common, finalInvoice }` as an ES module with no named
+exports:
+
+```
+"finalInvoice" is not exported by "../packages/shared/index.js"
+```
+
+This had nothing to do with Docker or with Zod. CI would have failed on it too,
+the moment any screen imported the package.
+
+**2. The `zod` alias hardcoded the repo-root copy** — the Addendum 4 finding,
+and real: `Could not load /app/node_modules/zod: ENOENT` in a client-only
+install. Now resolved with a preference (root copy first — the instance the API
+runs with; the client's own copy second) and a loud error if neither exists.
+
+**3. `module.exports = { a, b }` is invisible to every bundler.** With 1 and 2
+fixed, the build passed and **dev silently handed back `undefined`** — a form
+with no validation, and a crash inside `zodResolver`. `cjs-module-lexer`, which
+both esbuild and Rollup use to find a CommonJS module's named exports, cannot see
+through the object-literal form. All three files now use `exports.name = name`,
+which is identical to Node and therefore invisible to the API.
+
+## And a fourth, found by measuring rather than assuming
+
+With all three fixed, a probe in the browser reported:
+
+```
+{ instanceofZodType: false, hasSafeParse: true, resolverBuilt: true, resolverErrorKeys: 1 }
+```
+
+Validation worked — but **`instanceof z.ZodType` was false**, in the production
+build *and* in dev. One copy of Zod on disk is not one Zod instance: its
+`exports` map has separate `import` (`./index.js`, ESM) and `require`
+(`./index.cjs`, CJS) entries, so a directory alias hands client code the ESM
+build and `packages/shared`'s `require("zod")` the CJS one.
+
+That is precisely the failure the single-instance alias was written to prevent,
+and it had been silently true all along — the invariant the design rests on was
+only ever satisfied in Vitest, where Node gives both sides `./index.cjs`.
+
+Pinning the ESM **entry file** for bundlers fixes it. The alias is now
+tool-aware, because the two toolchains need opposite things: bundlers need the
+file (or ESM and CJS split), Vitest needs the directory (or the ESM file splits
+what Node had already unified). Both are asserted, not assumed.
+
+## Also fixed, incidentally
+
+- **`npm run dev` could not load `@shared` at all** — the dev server served its
+  raw `require()` / `module.exports` to the browser. `commonjsOptions` is
+  build-only. The package is now a declared `file:` dependency
+  (`@praxis/shared`), so npm links it and `optimizeDeps.include` pre-bundles it.
+  A Phase 3 blocker nobody had hit yet, because nobody had opened the file.
+- **`vite.config.ts` and `vitest.config.ts` each carried their own copy of the
+  alias block** and had drifted. Both now import `client/config/shared-alias.ts`.
+
+## The gate
+
+`npm run check:shared` (`client/scripts/check-shared.mjs`, wired into CI) builds
+a probe entry against the **real** `vite.config.ts` and asserts the schemas
+resolve, parse, and share one Zod instance. Verified to fail on a reintroduced
+directory alias (`oneZodInstance: FAILED`) and on removed `commonjsOptions`
+(`"common" is not exported by …`).
+
+This is the piece that matters going into Phase 3: the package can no longer be
+green in tests while broken in the build.
+
+## Verified paths
+
+| Path | Before | After |
+|---|---|---|
+| `vite build` | ✗ no named exports | ✓ one Zod instance (browser-verified) |
+| `vite dev` | ✗ raw CommonJS served to the browser | ✓ one Zod instance (browser-verified) |
+| Docker `clientbuild` (clean tree, client-only install) | ✗ `ENOENT` on root zod | ✓ build + both gates pass |
+| `vitest` | ✓ (the only path that worked) | ✓ 184/184, up from 174 — `form.test.tsx` now loads |
+
+The Docker path was checked by replaying the stage's exact commands against a
+tree built to `.dockerignore`'s rules with no root `node_modules`, since the
+sandbox has no Docker daemon. **No Dockerfile change was needed** in the end:
+declaring `@praxis/shared` as a real dependency plus the zod fallback makes a
+client-only install sufficient.
+
+## One thing deliberately not changed
+
+CI still runs `npm install` at the repo root for the client job. Vitest resolves
+`packages/shared`'s `require("zod")` through **Node**, which walks up from
+`packages/shared/` to the repo root and ignores Vite aliases entirely — so the
+root copy is genuinely required for the test path. `deps.inline` was tried and
+does not change it. A frontend-only contributor can build, lint and run the dev
+server without a root install; running the full suite still needs one.

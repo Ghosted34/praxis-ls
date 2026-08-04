@@ -1,6 +1,7 @@
 import { defineConfig } from "vitest/config";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
+import { sharedAlias, SHARED_COMMONJS_INCLUDE } from "./config/shared-alias";
 import { fileURLToPath } from "node:url";
 
 // fileURLToPath rather than __dirname (unavailable in an ESM config) or
@@ -20,20 +21,17 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(dirname, "src"),
-      // Mirrors vite.config.ts: packages/shared holds the Zod schemas the
-      // Express API validates with, so the form tests exercise the SAME schema
-      // objects the backend parses with rather than a copy (audit F12).
-      "@shared": path.resolve(dirname, "../packages/shared"),
-      // ONE zod instance. packages/shared is CommonJS: Node's own loader
-      // resolves its `require("zod")` from the repo root, and no bundler flag
-      // changes that (dedupe and ssr.noExternal both leave CJS interop alone).
-      // So the client is pointed at that same root copy — two copies would make
-      // `instanceof z.ZodType` false across the boundary and hand zodResolver a
-      // schema from the "wrong" zod. This requires the root install; CI's
-      // frontend job does it explicitly for the client.
-      zod: path.resolve(dirname, "../node_modules/zod"),
+      // @shared + zod come from config/shared-alias.ts — the SAME module vite.config.ts
+      // uses. They were duplicated here and drifted: the tests transformed
+      // packages/shared one way and the build another, so the package passed its
+      // suite while `vite build` could not resolve its named exports at all.
+      ...sharedAlias(dirname, "node"),
     },
   },
+  // packages/shared is CommonJS source. Vitest inlines it rather than going
+  // through Rollup's commonjs plugin, but keep the include aligned so a future
+  // change to one path is visible in the other.
+  build: { commonjsOptions: { include: SHARED_COMMONJS_INCLUDE } },
   test: {
     environment: "jsdom",
     globals: true,

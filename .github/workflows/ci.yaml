@@ -269,6 +269,23 @@ jobs:
       - name: Build
         run: npm run build --prefix ${{ matrix.app }}
 
+      - name: Shared schema package
+        # packages/shared was written, tested and merged without a single routed
+        # screen importing it, so it was tree-shaken out of every build and NO
+        # build ever compiled it. It passed its Vitest suite throughout — Vitest
+        # loads that CommonJS through Node, not through Rollup, so the two paths
+        # never agreed and only one was exercised. Pulling it into a build for
+        # the first time failed three ways: no named exports (commonjsOptions
+        # does not cover source outside node_modules), an ENOENT on the
+        # repo-root zod the Docker clientbuild stage does not have, and — once
+        # both were fixed — two different Zod instances, because zod ships
+        # separate ESM and CJS entries and the alias pointed at the directory.
+        #
+        # This builds a probe entry against the real vite.config.ts and asserts
+        # the schemas resolve, parse, and share ONE Zod. Client only.
+        if: matrix.app == 'client'
+        run: npm run check:shared --prefix client
+
       - name: Bundle graph
         # The 2026-08-04 blank page: `manualChunks` split `vendor-react` out of
         # `vendor`, but react-dom needs `scheduler` and react-router-dom needs

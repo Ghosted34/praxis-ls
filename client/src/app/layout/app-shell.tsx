@@ -1,18 +1,25 @@
 /**
  * Protected app shell — Lovable "Control Tower" look on the app's real nav.
  *
- * Navigation lives in the top command bar: the primary areas — Control Tower,
- * Finance, Warehouse, Fleet — sit inline. Areas with child screens open a
- * dropdown on hover (with a short grace delay) or on click/tap (kept as a
- * fallback for touch + keyboard); Control Tower is a direct link. A "More"
- * button opens the full menu as a collapsible overlay sidebar (outside-click or
- * Escape to close). On mobile the inline areas collapse and the hamburger opens
- * that same sidebar.
+ * NAVIGATION (audit F9, Phase 3). Twelve of the sixteen top-level areas used to
+ * be reachable ONLY through a "More" button that opened a `fixed inset-0` scrim
+ * plus a 288px drawer — a phone pattern, on a 2560px screen with several hundred
+ * pixels of unused top bar. Desktop users paid two clicks and a full-screen
+ * overlay to reach three quarters of the product.
+ *
+ * The top bar is now a real menubar that widens with the viewport: four areas
+ * inline at `md`, five at `lg`, seven at `xl`, ten at `2xl`, and an "All areas"
+ * button that opens every one of the sixteen in a single in-place panel — no
+ * scrim, no drawer, Escape and arrow keys handled by Radix. The overlay drawer
+ * survives for `< md` only, driven by the hamburger, which is where that pattern
+ * belongs.
  */
 import * as React from "react";
 import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
+import { CommandPaletteProvider } from "@/app/layout/command-palette-context";
+import { areaEntries, NAV, TIER_CLASS, TOPBAR, type NavGroup } from "@/app/layout/nav-model";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -24,115 +31,10 @@ import { FloatingActions } from "@/components/floating-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
+import { XIcon } from "@/components/ui/icons";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
-
-type NavItem = { to: string; label: string };
-type NavGroup = { heading: string; items: NavItem[]; prefix?: string };
-
-// Menu mirrors the target IA map (doc/FE_IA_HANDOFF.md). Screens without a page
-// yet route to a shared "Coming soon" placeholder — tab-children are kept as flat
-// items for now (they'll fold into tabbed parents when those screens are built).
-const NAV: NavGroup[] = [
-  {
-    heading: "Overview",
-    prefix: "/",
-    items: [
-      { to: "/", label: "Control Tower" },
-      { to: "/workspace", label: "My workspace" },
-      { to: "/support", label: "Support & feedback" },
-      { to: "/godmode", label: "God mode" },
-    ],
-  },
-  {
-    heading: "Commercial",
-    prefix: "/commercial",
-    items: [{ to: "/commercial", label: "Commercial" }],
-  },
-  {
-    heading: "Sales & CRM",
-    prefix: "/sales",
-    items: [{ to: "/sales", label: "Sales & CRM" }],
-  },
-  {
-    heading: "Operations",
-    prefix: "/operations",
-    items: [
-      { to: "/operations", label: "Operations" },
-    ],
-  },
-  {
-    heading: "Procurement",
-    prefix: "/procurement",
-    items: [
-      { to: "/procurement", label: "Procurement" },
-    ],
-  },
-  {
-    heading: "Costing",
-    prefix: "/costing",
-    items: [
-      { to: "/costing", label: "Costing" },
-    ],
-  },
-  {
-    heading: "Finance",
-    prefix: "/finance",
-    items: [
-      { to: "/finance", label: "Finance" },
-    ],
-  },
-  {
-    heading: "Warehouse",
-    prefix: "/wms",
-    items: [
-      { to: "/wms", label: "Warehouse" },
-    ],
-  },
-  {
-    heading: "Fleet",
-    prefix: "/fleet",
-    items: [
-      { to: "/fleet", label: "Fleet" },
-    ],
-  },
-  {
-    heading: "People & HR",
-    prefix: "/hr",
-    items: [{ to: "/hr", label: "People & HR" }],
-  },
-  {
-    heading: "Master data",
-    prefix: "/master",
-    items: [{ to: "/master", label: "Master data" }],
-  },
-  {
-    heading: "Vault",
-    prefix: "/vault",
-    items: [{ to: "/vault", label: "Vault & compliance" }],
-  },
-  {
-    heading: "Comms",
-    prefix: "/comms",
-    items: [{ to: "/comms", label: "Smart Comms" }],
-  },
-  {
-    heading: "Security & Access",
-    prefix: "/security",
-    items: [{ to: "/security", label: "Security & access" }],
-  },
-  {
-    heading: "Governance",
-    prefix: "/governance",
-    items: [{ to: "/governance", label: "Governance" }],
-  },
-  {
-    heading: "Settings & Admin",
-    prefix: "/settings",
-    items: [{ to: "/settings", label: "Settings & admin" }],
-  },
-];
 
 /** The grouped nav, minus AI-only destinations when AI is off for the tenant.
  *  AI Control is a no-op surface without AI provisioned, so it's hidden (and any
@@ -146,9 +48,6 @@ function useVisibleNav(): NavGroup[] {
       .filter((g) => g.items.length > 0);
   }, [aiEnabled]);
 }
-
-/** Areas surfaced inline in the top bar (in order). The rest live under More. */
-const TOPBAR = ["Overview", "Operations", "Fleet", "Finance"];
 
 // --- tiny inline icons (stroke inherits currentColor) ----------------------
 type IP = React.SVGProps<SVGSVGElement>;
@@ -192,6 +91,30 @@ const MoreIcon = (p: IP) => (
     <circle cx="5" cy="12" r="1.4" />
     <circle cx="12" cy="12" r="1.4" />
     <circle cx="19" cy="12" r="1.4" />
+  </svg>
+);
+/** "All areas" — a 3×3 grid, the conventional glyph for an app/area index. */
+const GridIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <rect x="3.5" y="3.5" width="6" height="6" rx="1.2" />
+    <rect x="14.5" y="3.5" width="6" height="6" rx="1.2" />
+    <rect x="3.5" y="14.5" width="6" height="6" rx="1.2" />
+    <rect x="14.5" y="14.5" width="6" height="6" rx="1.2" />
+  </svg>
+);
+/** Hamburger. Replaces the literal "☰" character the shell used as its mobile
+ *  menu control — a text glyph is not an icon: it inherits the font stack, has
+ *  no fixed metrics, and renders differently on every platform (F14). */
+const MenuIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M4 6h16M4 12h16M4 18h16" />
+  </svg>
+);
+/** Warning triangle for the sandbox banner, replacing the literal "⚠". */
+const AlertIcon = (p: IP) => (
+  <svg {...sic(p)}>
+    <path d="M10.3 3.9 2 18a2 2 0 0 0 1.7 3h16.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    <path d="M12 9v4.5M12 17h.01" />
   </svg>
 );
 const ChevronIcon = (p: IP) => (
@@ -474,6 +397,7 @@ function NavArea({
   onNavigate,
   onHoverOpen,
   onHoverClose,
+  className,
 }: {
   group: NavGroup;
   active: boolean;
@@ -482,18 +406,20 @@ function NavArea({
   onNavigate: () => void;
   onHoverOpen: () => void;
   onHoverClose: () => void;
+  /** Which viewport tier reveals this area — see TOPBAR. */
+  className?: string;
 }) {
   const Icon = AREA_ICON[group.heading] || MoreIcon;
   const label = group.heading;
 
-  // Single-item area (Overview) → direct link, no dropdown. Hovering it should
-  // still dismiss any open sibling dropdown.
+  // Single-item area → direct link, no dropdown. Hovering it should still
+  // dismiss any open sibling dropdown.
   if (group.items.length === 1) {
     return (
       <NavLink
         to={group.items[0].to}
         end
-        className={cn("lux-navlink", active && "active")}
+        className={cn("lux-navlink", className, active && "active")}
         onClick={onNavigate}
         onMouseEnter={onHoverClose}
       >
@@ -508,7 +434,7 @@ function NavArea({
   // stripped by role="menuitem". `modal={false}` keeps the rest of the top bar
   // interactive so sliding the pointer to a sibling area still works.
   return (
-    <div data-navarea onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
+    <div data-navarea className={className} onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
       <DropdownMenu
         align="start"
         modal={false}
@@ -536,9 +462,57 @@ function NavArea({
   );
 }
 
-/** The full grouped menu — rendered inside the More overlay sidebar. Every group
- *  carries its area icon. Single-screen areas (now hubs) are a single link;
- *  multi-item areas (Overview) are a collapsible section with a chevron. */
+/**
+ * "All areas" — every destination in the product, in one in-place panel.
+ *
+ * This is what replaces the desktop half of the More drawer (F9). It is a real
+ * menu button: Radix owns the arrow keys, Home/End, type-ahead, Escape and the
+ * focus cycle, and it closes on outside click. Nothing is scrimmed, so the page
+ * behind stays readable while you decide — which is most of the difference
+ * between an index and an interruption.
+ *
+ * Flattened deliberately. `Overview` is a grouping, not a destination, so its
+ * four screens appear as themselves; the other fifteen areas are hubs and
+ * appear once each. Nineteen entries, every one a link.
+ */
+function AllAreasMenu() {
+  const nav = useVisibleNav();
+  const entries = areaEntries(nav).map((e) => ({
+    ...e,
+    Icon: AREA_ICON[e.label] || CHILD_ICON[e.to] || DotIcon,
+  }));
+
+  return (
+    // `data-navarea` keeps the shell's outside-click handler from treating a
+    // click inside this menu as "close the open area dropdown".
+    <div data-navarea>
+      <DropdownMenu
+        align="start"
+        // The panel is a grid of links, so Radix's default min-width would
+        // squeeze it; this sizes to the viewport and never overflows it.
+        className="grid w-[min(44rem,calc(100vw-2rem))] grid-cols-2 gap-0.5 sm:grid-cols-3"
+        trigger={
+          <button type="button" className="lux-navlink">
+            <GridIcon />
+            <span>All areas</span>
+            <ChevronIcon />
+          </button>
+        }
+      >
+        {entries.map(({ to, label, Icon }) => (
+          <DropdownItem key={to} to={to}>
+            <Icon />
+            <span className="truncate">{label}</span>
+          </DropdownItem>
+        ))}
+      </DropdownMenu>
+    </div>
+  );
+}
+
+/** The full grouped menu — rendered inside the mobile overlay sidebar. Every
+ *  group carries its area icon. Single-screen areas (now hubs) are a single
+ *  link; multi-item areas (Overview) are a collapsible section with a chevron. */
 function SidebarLinks({ onNavigate }: { onNavigate: () => void }) {
   const nav = useVisibleNav();
   const { pathname } = useLocation();
@@ -752,10 +726,24 @@ export function AppShell() {
     setEnvState(next);
   }
 
-  const topbarGroups = TOPBAR.map((h) => NAV.find((g) => g.heading === h)!).filter(Boolean);
+  const topbarAreas = TOPBAR.map((t) => ({ ...t, group: NAV.find((g) => g.heading === t.heading) })).filter(
+    (t): t is typeof t & { group: NavGroup } => !!t.group,
+  );
   const visibleNav = useVisibleNav();
 
+  // Handed to screens through context so a component can open ⌘K without
+  // synthesising a keyboard event at `document` — see command-palette-context.
+  const paletteApi = React.useMemo(
+    () => ({
+      open: () => setPaletteOpen(true),
+      close: () => setPaletteOpen(false),
+      toggle: () => setPaletteOpen((o) => !o),
+    }),
+    [],
+  );
+
   return (
+    <CommandPaletteProvider value={paletteApi}>
     <div className="flex h-full flex-col">
       {/*
         Skip link (audit F13, WCAG 2.4.1). With 12 of 16 areas behind the More
@@ -772,34 +760,33 @@ export function AppShell() {
       {/* Top command bar */}
       <header className="lux-topbar relative z-40 flex h-[66px] flex-none items-center gap-3 px-4 md:px-6">
         <button
-          className="md:hidden"
+          type="button"
+          className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
           onClick={() => setSidebarOpen(true)}
           aria-label="Open menu"
         >
-          ☰
+          <MenuIcon width={20} height={20} />
         </button>
         <Brand name={brandName} logoUrl={branding.logoUrl} />
 
         {/* Inline primary nav (desktop) — Control Tower now sits directly beside
             the logo (the brand text block was removed), so it starts tight to the
             mark and the rest of the bar has room to align. */}
-        <nav className="ml-2 hidden items-center gap-1 md:flex">
-          {topbarGroups.map((g) => (
+        <nav className="ml-2 hidden min-w-0 items-center gap-0.5 md:flex" aria-label="Areas">
+          {topbarAreas.map(({ group, from }) => (
             <NavArea
-              key={g.heading}
-              group={g}
-              active={isAreaActive(g)}
-              open={openArea === g.heading}
-              onToggle={() => setOpenArea((cur) => (cur === g.heading ? null : g.heading))}
+              key={group.heading}
+              group={group}
+              className={TIER_CLASS[from]}
+              active={isAreaActive(group)}
+              open={openArea === group.heading}
+              onToggle={() => setOpenArea((cur) => (cur === group.heading ? null : group.heading))}
               onNavigate={() => setOpenArea(null)}
-              onHoverOpen={() => openAreaNow(g.heading)}
+              onHoverOpen={() => openAreaNow(group.heading)}
               onHoverClose={closeAreaDeferred}
             />
           ))}
-          <button className="lux-navlink" aria-haspopup="dialog" onClick={() => setSidebarOpen(true)}>
-            <MoreIcon />
-            <span>More</span>
-          </button>
+          <AllAreasMenu />
         </nav>
 
         <div className="ml-auto flex items-center gap-3">
@@ -811,26 +798,32 @@ export function AppShell() {
             <span className="text-xs">Search…</span>
             <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
           </button>
-          <div className="inline-flex items-center rounded-xl border p-0.5 text-xs font-semibold" role="group" aria-label="Data environment">
+          {/* Raw `emerald-500` / `amber-500` here were two of the 122 palette
+              bypasses F14 counted, in the shell itself. `--ok` / `--warn` are
+              the same decision in tokens, so they follow the AA retune and a
+              tenant's dark theme rather than Tailwind's defaults. */}
+          <div className="hidden items-center rounded-md border p-0.5 text-xs font-semibold sm:inline-flex" role="group" aria-label="Data environment">
             <button
+              type="button"
               onClick={() => switchEnv("live")}
               aria-pressed={env !== "sandbox"}
               className={cn(
-                "rounded-lg px-2.5 py-1.5 transition-colors",
+                "rounded-sm px-2.5 py-1.5 transition-colors",
                 env !== "sandbox"
-                  ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                  ? "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
               LIVE
             </button>
             <button
+              type="button"
               onClick={() => switchEnv("sandbox")}
               aria-pressed={env === "sandbox"}
               className={cn(
-                "rounded-lg px-2.5 py-1.5 transition-colors",
+                "rounded-sm px-2.5 py-1.5 transition-colors",
                 env === "sandbox"
-                  ? "bg-amber-500/20 text-amber-700 dark:text-amber-300"
+                  ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
@@ -845,15 +838,25 @@ export function AppShell() {
         </div>
       </header>
 
-      {/* Collapsible overlay sidebar (More / mobile hamburger) — full menu */}
+      {/*
+        Mobile overlay sidebar — hamburger only, and `md:hidden` so it cannot
+        appear on a desktop viewport even if the state is somehow set (F9: this
+        drawer used to be the ONLY route to twelve of sixteen areas at every
+        width). Desktop reaches everything through the menubar above.
+      */}
       {sidebarOpen && (
-        <div className="fixed inset-0 z-40">
+        <div className="fixed inset-0 z-40 md:hidden">
           <div className="absolute inset-0 animate-fade-in bg-black/40" onClick={() => setSidebarOpen(false)} />
           <aside className="lux-sidebar-in absolute left-0 top-0 flex h-full w-72 flex-col overflow-y-auto border-r bg-sidebar">
             <div className="flex h-[66px] flex-none items-center justify-between border-b px-4">
               <Brand name={brandName} logoUrl={branding.logoUrl} />
-              <button onClick={() => setSidebarOpen(false)} aria-label="Close menu">
-                ✕
+              <button
+                type="button"
+                onClick={() => setSidebarOpen(false)}
+                aria-label="Close menu"
+                className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                <XIcon width={18} height={18} />
               </button>
             </div>
             <SidebarLinks onNavigate={() => setSidebarOpen(false)} />
@@ -865,10 +868,10 @@ export function AppShell() {
           clipped (pages that need it wrap their own overflow-x-auto region). */}
       {/* Sandbox warning banner (Lovable mock) — only in TEST mode. */}
       {env === "sandbox" && (
-        <div className="flex flex-none items-center justify-center gap-2 border-b border-amber-500/30 bg-amber-500/15 px-4 py-2 text-center text-xs font-medium text-amber-700 dark:text-amber-300">
-          <span aria-hidden>⚠</span>
-          <span>TEST MODE — you're viewing sandbox data. Changes here don't affect live.</span>
-          <button onClick={() => switchEnv("live")} className="ml-1 underline underline-offset-2 hover:no-underline">
+        <div className="flex flex-none items-center justify-center gap-2 border-b border-[rgb(var(--warn-fill)_/_0.35)] bg-[rgb(var(--warn-fill)_/_0.14)] px-4 py-2 text-center text-xs font-medium text-[rgb(var(--warn))]">
+          <AlertIcon width={14} height={14} className="shrink-0" />
+          <span>TEST MODE — you&rsquo;re viewing sandbox data. Changes here don&rsquo;t affect live.</span>
+          <button type="button" onClick={() => switchEnv("live")} className="ml-1 underline underline-offset-2 hover:no-underline">
             Switch to live
           </button>
         </div>
@@ -916,5 +919,6 @@ export function AppShell() {
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />
     </div>
+    </CommandPaletteProvider>
   );
 }

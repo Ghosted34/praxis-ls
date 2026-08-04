@@ -111,11 +111,19 @@ export default {
 
       keyframes: {
         "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
+        // Control Tower map: the marching-ants stroke on a shipping lane. The
+        // only decorative motion the app keeps, because on a live map it is
+        // carrying meaning — direction of travel — rather than delight.
+        // Speed differs per mode; the offset is the same.
+        "lane-dash": { to: { strokeDashoffset: "-100" } },
       },
       animation: {
         // Was 0.35s with a 4px translate. Entrance motion on a screen opened
         // dozens of times a day should be imperceptible, not decorative.
         "fade-in": "fade-in 0.12s ease-out both",
+        "lane-sea": "lane-dash 2.4s linear infinite",
+        "lane-road": "lane-dash 1.6s linear infinite",
+        "lane-air": "lane-dash 3s linear infinite",
       },
     },
   },

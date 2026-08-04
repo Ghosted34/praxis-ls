@@ -52,18 +52,31 @@ function discover() {
 }
 
 /**
- * basePaths that more than one module is allowed to share.
- *
- * EMPTY, and it should stay that way. It exists so that if a collision is ever
- * a deliberate design decision, it has to be written down here with a reason
- * rather than discovered in production.
- *
- * "/inbound" was grandfathered here for part of 2026-08-04 while
- * sales/inbound_intake and wms/inbound both claimed it (audit API F-6). Sales
- * has since moved to "/intake" and the entry is gone. Adding one back should
- * feel like a decision, because it is.
+ * Recover the mount path of a nested sub-router from its layer regexp, so a
+ * module that composes several routers (app_user mounts /users and /auth)
+ * reports its real URLs rather than the sub-paths alone.
  */
-const ALLOWED_SHARED_BASEPATHS = new Set();
+function mountPathOf(layer) {
+  const s = layer.regexp && layer.regexp.source;
+  if (!s || s === "^\\/?(?=\\/|$)") return "";
+  const m = s.match(/^\^\\\/(.*?)\\\/\?\(\?=\\\/\|\$\)$/);
+  return m ? "/" + m[1].replace(/\\\//g, "/") : "";
+}
+
+/** Every `METHOD /path` a router serves, relative to its basePath. */
+function routeKeys(router, prefix = "") {
+  const out = [];
+  for (const layer of (router && router.stack) || []) {
+    if (layer.route) {
+      for (const method of Object.keys(layer.route.methods || {})) {
+        out.push(`${method.toUpperCase()} ${prefix}${layer.route.path}`);
+      }
+    } else if (layer.handle && layer.handle.stack) {
+      out.push(...routeKeys(layer.handle, prefix + mountPathOf(layer)));
+    }
+  }
+  return out;
+}
 
 /**
  * The last mount result, for the readiness probe and the CI manifest check.
@@ -79,7 +92,7 @@ function mountReport() {
 function mountTenantModules(tenantRouter) {
   const mounted = [];
   const skipped = [];
-  const byBasePath = new Map();
+  const byRoute = new Map();
 
   for (const m of discover()) {
     const name = `${m.group}/${m.module}`;
@@ -112,18 +125,32 @@ function mountTenantModules(tenantRouter) {
     // gates (feature:null vs feature:"wms") on one namespace. The day either
     // module adds a route the other already has, one silently shadows the other.
     //
-    // Fail at boot, not in production. A collision is a five-second fix while
-    // you are looking at it and a very expensive one six months later.
-    const prior = byBasePath.get(basePath);
-    if (prior && !ALLOWED_SHARED_BASEPATHS.has(basePath)) {
-      throw new Error(
-        `Duplicate tenant basePath "${basePath}": ${prior} and ${name} both mount it. ` +
-          "Two modules on one namespace shadow each other's routes and enforce different " +
-          "permissions on the same URL. Give one of them its own basePath, or add the path " +
-          "to ALLOWED_SHARED_BASEPATHS with a reason.",
-      );
+    // The check is on the RESOLVED URL, not on basePath.
+    //
+    // A shared basePath is not by itself a bug: three modules legitimately mount
+    // at "/" (app_user → /users + /auth, workflow → /workflows,
+    // treasury_account → /treasury-accounts) and their URLs never overlap. The
+    // audit records this as API F-9. An earlier version of this guard rejected
+    // any duplicate basePath, which meant boot threw on those three and the
+    // container never came up — a self-inflicted outage in the name of
+    // preventing one.
+    //
+    // What actually matters is two modules answering the SAME method+path,
+    // because then one silently shadows the other under a different permission
+    // module. That is what is rejected here, and it would still have caught
+    // /inbound the moment the two path sets overlapped.
+    for (const key of routeKeys(def.router, basePath === "/" ? "" : basePath)) {
+      const prior = byRoute.get(key);
+      if (prior) {
+        throw new Error(
+          `Duplicate tenant route "${key}": mounted by both ${prior} and ${name}. ` +
+            "Whichever the module loader reaches first wins and the other is dead code, " +
+            "enforcing a different permission module on the same URL. Give one of them a " +
+            "distinct path.",
+        );
+      }
+      byRoute.set(key, name);
     }
-    byBasePath.set(basePath, name);
 
     const chain = def.feature ? [requireFeature(def.feature)] : [];
     tenantRouter.use(basePath, ...chain, def.router);
@@ -146,6 +173,6 @@ module.exports = {
   discover,
   mountTenantModules,
   mountReport,
-  ALLOWED_SHARED_BASEPATHS,
+  routeKeys,
   MODULES_DIR,
 };

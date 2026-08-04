@@ -1,13 +1,41 @@
 import type { Config } from "tailwindcss";
 
-// Semantic colors resolve to CSS variables defined in src/index.css. The vars
-// hold full oklch() values (ported from the Lovable mock's design system) so the
-// tenant white-label loader can override --primary etc. at runtime from the
-// `setting`/`corporate_entity` tokens without a rebuild.
+/**
+ * Praxis LS design tokens.
+ *
+ * Semantic colours resolve to the CSS variables in src/index.css so the tenant
+ * white-label loader (src/lib/theme.ts) can override --primary etc. at runtime
+ * without a rebuild.
+ *
+ * PHASE 1 (audit F2 / F3 / F14 / F17): before this pass the config extended
+ * `colors`, `borderRadius`, `keyframes` and `animation` and nothing else —
+ * which is why the app fragmented into 19 ad-hoc type sizes, five unruled page
+ * widths and zero desktop breakpoints. The scales below are the missing
+ * contract:
+ *
+ *   screens   `xl` / `2xl` are the DESKTOP tiers this product actually targets.
+ *             Every layout decision used to be made at `sm` (640px), so 1280px
+ *             and 2560px rendered identically.
+ *   fontSize  one ramp. `text-[13px]` and friends become a lint smell.
+ *   maxWidth  named page containers, replacing 86 `max-w-6xl` literals.
+ *             Consumed through <PageContainer>, not by hand.
+ *   spacing   the row steps the table-density work needs.
+ *
+ * Scope note: `sm` / `md` / `lg` / `xl` keep Tailwind's default pixel values on
+ * purpose — this pass adds the missing desktop tier, it does not move the
+ * breakpoints existing screens are already written against.
+ */
 export default {
   darkMode: "class",
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
+    screens: {
+      sm: "640px",
+      md: "768px",
+      lg: "1024px",
+      xl: "1280px",
+      "2xl": "1600px",
+    },
     extend: {
       colors: {
         background: "var(--background)",
@@ -17,7 +45,14 @@ export default {
         ring: "var(--ring)",
         card: { DEFAULT: "var(--card)", foreground: "var(--card-foreground)" },
         popover: { DEFAULT: "var(--popover)", foreground: "var(--popover-foreground)" },
-        primary: { DEFAULT: "var(--primary)", foreground: "var(--primary-foreground)" },
+        primary: {
+          DEFAULT: "var(--primary)",
+          foreground: "var(--primary-foreground)",
+          // Accessible orange for TEXT. --primary is a FILL colour: at 2.59:1 on
+          // white it fails WCAG AA as type (audit F13). Brand identity is
+          // unchanged — fills keep --primary, text uses --primary-ink (4.64:1).
+          ink: "var(--primary-ink)",
+        },
         secondary: { DEFAULT: "var(--secondary)", foreground: "var(--secondary-foreground)" },
         muted: { DEFAULT: "var(--muted)", foreground: "var(--muted-foreground)" },
         accent: { DEFAULT: "var(--accent)", foreground: "var(--accent-foreground)" },
@@ -30,17 +65,57 @@ export default {
           "accent-foreground": "var(--sidebar-accent-foreground)",
         },
       },
+
+      /**
+       * Type ramp. Extends rather than replaces, so `text-xs`/`text-xl`/`2xl`/
+       * `3xl` keep their defaults while the migration runs; `sm`/`base`/`lg` are
+       * retuned one step down for data density.
+       *
+       * `micro` and `label` replace the 9px / 9.5px / 10px uppercase spread that
+       * measured 3.01:1 (F13). At 11-12px with restrained tracking they clear AA
+       * and still read as captions.
+       */
+      fontSize: {
+        micro: ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.06em" }], // 11
+        label: ["0.75rem", { lineHeight: "1.125rem", letterSpacing: "0.01em" }], // 12
+        sm: ["0.8125rem", { lineHeight: "1.25rem" }], // 13 — table + body default
+        base: ["0.875rem", { lineHeight: "1.375rem" }], // 14
+        lg: ["1rem", { lineHeight: "1.5rem" }], // 16
+        title: ["1.125rem", { lineHeight: "1.625rem", letterSpacing: "-0.01em" }], // 18
+        h2: ["1.375rem", { lineHeight: "1.75rem", letterSpacing: "-0.015em" }], // 22
+        h1: ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.02em" }], // 28
+      },
+
+      // Named page containers — the replacement for `mx-auto max-w-6xl` (F3).
+      // `wide` is the default for data screens; `reading` caps prose/settings.
+      maxWidth: {
+        reading: "48rem", // 768  — settings, forms, docs
+        standard: "80rem", // 1280 — detail + mixed screens
+        wide: "104rem", // 1664 — dense tables, dashboards
+      },
+
       borderRadius: {
+        // 0.9rem (14.4px) read as a consumer app (F17). Linear / Stripe / Vercel
+        // sit at 6-8px; --radius is now 8px.
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
       },
+
+      spacing: {
+        // Dense table row: 6px vertical against a 13px/20px line gives 32px rows,
+        // down from ~46px — roughly 40% more rows per screen (F17).
+        row: "0.375rem",
+        "row-compact": "0.25rem",
+      },
+
       keyframes: {
-        "fade-in": { from: { opacity: "0", transform: "translateY(4px)" }, to: { opacity: "1", transform: "translateY(0)" } },
-        shimmer: { "100%": { transform: "translateX(100%)" } },
+        "fade-in": { from: { opacity: "0" }, to: { opacity: "1" } },
       },
       animation: {
-        "fade-in": "fade-in 0.35s ease-out both",
+        // Was 0.35s with a 4px translate. Entrance motion on a screen opened
+        // dozens of times a day should be imperceptible, not decorative.
+        "fade-in": "fade-in 0.12s ease-out both",
       },
     },
   },

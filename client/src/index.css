@@ -12,7 +12,9 @@
  * at runtime, so tenants recolour the accent while the surfaces stay Lovable.
  */
 :root {
-  --radius: 0.9rem;
+  /* 8px. Was 0.9rem (14.4px), which read as a consumer app rather than an
+     instrument (F17). Controls derive 6px/4px from this. */
+  --radius: 0.5rem;
 
   /* Neutral surfaces (Lovable light) */
   --background: rgb(243 246 251);
@@ -33,6 +35,15 @@
   /* Accent = brand orange (tenant loader may override) */
   --primary: rgb(245 130 31);
   --primary-foreground: rgb(255 255 255);
+  /* --primary is a FILL colour. As TEXT it measures 2.59:1 on --card and fails
+     WCAG AA (F13). --primary-ink is the type-safe orange at 4.64:1. Brand
+     identity is untouched: buttons/marks keep --primary, orange type uses this.
+     Split into -light/-dark sources so lib/theme.ts can write BOTH inline for a
+     tenant's colour while the theme class still selects the right one — an
+     inline `--primary-ink` would otherwise beat the `.dark` rule. */
+  --primary-ink-light: rgb(190 86 14);
+  --primary-ink-dark: rgb(250 158 78);
+  --primary-ink: var(--primary-ink-light);
   --ring: rgb(245 130 31);
   --destructive: rgb(210 68 58);
   --destructive-foreground: rgb(255 255 255);
@@ -51,58 +62,91 @@
   --brand-blue: 24 132 196;
   --brand-blue-bright: 28 155 215;
   --brand-blue-deep: 12 74 122;
-  --ok: 40 148 94;
-  --warn: 176 128 24;
+  /* Status colours are used as TEXT (pills, ledger figures), so they are tuned
+     to clear 4.5:1 on --card rather than to look vivid on a swatch (F13).
+     Measured: ok 4.70:1, warn 4.99:1, bad 4.54:1. The -fill variants below keep
+     the original saturation for backgrounds and chart marks. */
+  --ok: 28 132 82;
+  --warn: 146 104 12;
   --bad: 210 68 58;
+  --ok-fill: 40 148 94;
+  --warn-fill: 176 128 24;
+  --bad-fill: 210 68 58;
   --ink: 16 30 52;
-  --ink-3: 132 150 176;
+  /* 132 150 176 measured 3.01:1 on --card and 2.78:1 on --background — the
+     single most-used failing token in the app (198 uses via .micro). Now
+     5.36:1 / 4.89:1. */
+  --ink-3: 90 108 133;
 
-  --font-display: "Playfair Display", Georgia, serif;
-  --font-body: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --shadow-s: 0 1px 2px rgb(16 30 52 / 0.05), 0 2px 8px rgb(16 30 52 / 0.05);
-  --shadow-m: 0 4px 12px rgb(16 30 52 / 0.06), 0 14px 34px rgb(16 30 52 / 0.09);
-  --shadow-l: 0 18px 48px rgb(16 30 52 / 0.16);
-  --mesh: 0.5;
+  /* One family. Playfair Display is a high-contrast Didone — an editorial face
+     that was being applied to page titles, modal titles AND trial-balance money
+     figures (F17). Inter is what this category ships (Palantir/Linear/Vercel);
+     it is self-hosted via @fontsource-variable/inter so the PWA keeps its
+     typography offline, which the Google-CDN link did not.
+     --font-display is retained as a token so the 35 `font-display` call sites
+     keep working; it now resolves to the display optical size of the same
+     family rather than a second typeface. */
+  --font-display: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-body: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Flatter. The previous ramp paired a soft ambient shadow with a large
+     coloured drop; combined with the glow on .btn-primary it read as a Dribbble
+     shot. Enterprise surfaces carry a hairline border and minimal elevation. */
+  --shadow-s: 0 1px 2px rgb(16 30 52 / 0.04);
+  --shadow-m: 0 2px 6px rgb(16 30 52 / 0.07);
+  --shadow-l: 0 8px 28px rgb(16 30 52 / 0.14);
 
-  /* Motion (Lovable) */
-  --ease: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 0.3s;
+  /* Motion. 0.3s base / 0.5s entrances made good backend latency feel slow on
+     screens opened dozens of times a day (F17). */
+  --ease: cubic-bezier(0.2, 0, 0.13, 1);
+  --dur: 0.15s;
 }
 
+/**
+ * Dark theme. Retuned from a navy base (rgb(7 19 36)) to a near-neutral one:
+ * a strongly blue-tinted dark reads "crypto dashboard" rather than
+ * "instrument", and the category standard (Linear #08090a, Vercel #000,
+ * Palantir near-black) is essentially neutral (F17). A trace of cool remains so
+ * the surface is not clinically grey.
+ */
 .dark {
-  --background: rgb(7 19 36);
-  --foreground: rgb(226 236 248);
-  --card: rgb(13 29 51);
-  --card-foreground: rgb(226 236 248);
-  --popover: rgb(13 29 51);
-  --popover-foreground: rgb(226 236 248);
-  --secondary: rgb(17 36 62);
-  --secondary-foreground: rgb(226 236 248);
-  --muted: rgb(17 36 62);
-  --muted-foreground: rgb(150 170 197);
-  --accent: rgb(22 44 74);
-  --accent-foreground: rgb(226 236 248);
-  --border: rgb(226 236 248 / 0.1);
-  --input: rgb(226 236 248 / 0.15);
+  --background: rgb(11 13 17);
+  --foreground: rgb(228 233 240);
+  --card: rgb(18 22 30);
+  --card-foreground: rgb(228 233 240);
+  --popover: rgb(22 26 35);
+  --popover-foreground: rgb(228 233 240);
+  --secondary: rgb(25 30 39);
+  --secondary-foreground: rgb(228 233 240);
+  --muted: rgb(25 30 39);
+  --muted-foreground: rgb(150 163 182);
+  --accent: rgb(32 38 49);
+  --accent-foreground: rgb(228 233 240);
+  --border: rgb(228 233 240 / 0.11);
+  --input: rgb(228 233 240 / 0.16);
   --primary: rgb(245 130 31);
   --primary-foreground: rgb(255 255 255);
+  /* Orange goes LIGHTER on dark, not darker — 8.68:1 on --card. */
+  --primary-ink: var(--primary-ink-dark);
   --ring: rgb(245 130 31);
   --destructive: rgb(232 104 96);
   --destructive-foreground: rgb(255 255 255);
-  --sidebar: rgb(13 29 51);
-  --sidebar-foreground: rgb(226 236 248);
-  --sidebar-border: rgb(226 236 248 / 0.1);
-  --sidebar-accent: rgb(22 44 74);
-  --sidebar-accent-foreground: rgb(226 236 248);
+  --sidebar: rgb(18 22 30);
+  --sidebar-foreground: rgb(228 233 240);
+  --sidebar-border: rgb(228 233 240 / 0.11);
+  --sidebar-accent: rgb(32 38 49);
+  --sidebar-accent-foreground: rgb(228 233 240);
   --brand-orange-ink: 250 158 78;
-  --brand-blue: 52 170 226;
-  --brand-blue-bright: 74 186 236;
-  --ink: 226 236 248;
-  --ink-3: 100 123 152;
+  --brand-blue: 82 180 233;
+  --brand-blue-bright: 98 196 245;
+  --ink: 228 233 240;
+  /* 100 123 152 measured 3.89:1 on the old card. Now 5.43:1. */
+  --ink-3: 122 143 170;
   --ok: 74 176 120;
   --warn: 224 180 66;
   --bad: 232 104 96;
-  --mesh: 0.7;
+  --ok-fill: 74 176 120;
+  --warn-fill: 224 180 66;
+  --bad-fill: 232 104 96;
 }
 
 @layer base {
@@ -123,9 +167,12 @@
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-body);
-    font-size: 14px;
-    line-height: 1.55;
+    /* 13px/1.45 — one step denser. Paired with the 32px table row this is the
+       working density an operator scanning 200 shipments needs (F17). */
+    font-size: 13px;
+    line-height: 1.45;
     -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
     overflow-x: hidden;
   }
 
@@ -151,18 +198,21 @@
     background: color-mix(in srgb, var(--foreground) 45%, transparent);
     background-clip: content-box;
   }
-  /* Signature mesh: warm orange top-right + cool blue bottom-left glow */
-  body::before {
-    content: "";
-    position: fixed;
-    inset: -20%;
-    z-index: -1;
-    pointer-events: none;
-    opacity: var(--mesh);
-    background:
-      radial-gradient(38% 40% at 82% -6%, color-mix(in srgb, rgb(var(--brand-orange)) 22%, transparent), transparent 70%),
-      radial-gradient(42% 44% at 6% 108%, color-mix(in srgb, rgb(var(--brand-blue-bright)) 26%, transparent), transparent 72%);
-    filter: blur(30px);
+  /* The full-page mesh gradient (fixed, blur(30px), opacity 0.5/0.7) was
+     removed in Phase 1. Stripe-style mesh belongs on a marketing page, not
+     behind a data grid: it lowered effective contrast on every screen — .micro
+     measured 3.01:1 on --card but 2.78:1 over the mesh — and it is the single
+     loudest "template" signal in the visual system (F13 / F17). The brand now
+     lives in the mark, the accent and the type, not the wallpaper. */
+
+  /* Keyboard focus, globally. Previously .chip, .lux-navlink and
+     .lux-botnav-btn had no focus indicator at all, so the primary navigation
+     and every filter chip were invisible to keyboard users (F13, WCAG 2.4.7).
+     :focus-visible keeps it off for pointer users. */
+  :where(a, button, [role="button"], [role="menuitem"], [role="tab"], summary):focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+    border-radius: calc(var(--radius) - 4px);
   }
 }
 
@@ -176,12 +226,17 @@
     font-variant-numeric: tabular-nums;
     letter-spacing: -0.015em;
   }
+  /* Was 10px / 0.19em / --ink-3 — 3.01:1, the app's most-used contrast failure
+     across 198 call sites (F13). 11px with restrained tracking and the retuned
+     --ink-3 measures 5.36:1 on --card and 4.89:1 on --background. Heavy
+     tracking on tiny uppercase is an editorial device that cost legibility
+     here. */
   .micro {
-    font-size: 10px;
+    font-size: 11px;
     text-transform: uppercase;
-    letter-spacing: 0.19em;
+    letter-spacing: 0.06em;
     color: rgb(var(--ink-3));
-    font-weight: 700;
+    font-weight: 600;
   }
 
   /* Lovable card — soft white surface, hairline border, layered shadow */
@@ -194,10 +249,10 @@
 
   /* Status pills */
   .status {
-    padding: 3px 9px;
-    border-radius: 999px;
-    font-size: 10.5px;
-    font-weight: 700;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
@@ -210,12 +265,19 @@
     border-radius: 50%;
     background: currentColor;
   }
+  /* Text uses the AA-tuned status token; the ground uses the -fill variant so
+     the pill keeps its saturation without dragging the label below 4.5:1. */
   .st-blue { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
   .st-orange { color: rgb(var(--brand-orange-ink)); background: rgb(var(--brand-orange) / 0.14); }
-  .st-ok { color: rgb(var(--ok)); background: rgb(var(--ok) / 0.14); }
-  .st-warn { color: rgb(var(--warn)); background: rgb(var(--warn) / 0.15); }
-  .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad) / 0.13); }
-  .st-mute { color: rgb(var(--ink) / 0.7); background: rgb(var(--ink) / 0.06); }
+  .st-ok { color: rgb(var(--ok)); background: rgb(var(--ok-fill) / 0.13); }
+  .st-warn { color: rgb(var(--warn)); background: rgb(var(--warn-fill) / 0.14); }
+  .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad-fill) / 0.12); }
+  .st-mute { color: rgb(var(--ink) / 0.72); background: rgb(var(--ink) / 0.06); }
+  /* Was referenced by features/scaffold/screen-scaffold.tsx and never defined,
+     so every read-only scaffold rendered a colourless pill (audit F12).
+     Uses --brand-blue, which IS retuned under .dark — --brand-blue-deep is not,
+     and would have been unreadable on a dark surface. */
+  .st-info { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
 
   /* Filter chips (Lovable) — surface pill, orange-tinted when active. Tint
      tracks --primary via color-mix so tenant re-branding recolours them. */
@@ -223,23 +285,25 @@
   .chip {
     display: inline-flex;
     align-items: center;
-    gap: 7px;
-    padding: 8px 14px;
-    border-radius: 10px;
-    font-size: 12.5px;
-    font-weight: 600;
+    gap: 6px;
+    padding: 6px 11px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
     white-space: nowrap;
-    color: rgb(var(--ink) / 0.72);
+    color: rgb(var(--ink) / 0.75);
     background: var(--card);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-s);
-    transition: all var(--dur) var(--ease);
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease), color var(--dur) var(--ease);
   }
-  .chip:hover { transform: translateY(-1px); }
+  /* Hover was `transform: translateY(-1px)` — a landing-page micro-interaction
+     that is fussy at data density (F17). State now reads through colour. */
+  .chip:hover { background: var(--accent); color: var(--foreground); }
   .chip.on {
-    color: var(--primary);
+    /* --primary-ink, not --primary: the active chip label is TEXT (F13). */
+    color: var(--primary-ink);
     background: color-mix(in srgb, var(--primary) 12%, transparent);
-    border-color: color-mix(in srgb, var(--primary) 30%, transparent);
+    border-color: color-mix(in srgb, var(--primary) 32%, transparent);
   }
   .chip .ct {
     font-size: 10px;
@@ -248,17 +312,17 @@
     background: rgb(var(--ink) / 0.07);
   }
 
-  /* Section header (Lovable) — serif w400 title + hairline rule + optional link */
-  .sec { display: flex; align-items: center; gap: 12px; margin: 30px 2px 16px; }
-  .sec h2 { font-family: var(--font-display); font-weight: 400; font-size: 21px; }
+  /* Section header — sans w600 title + hairline rule + optional link */
+  .sec { display: flex; align-items: center; gap: 12px; margin: 24px 2px 12px; }
+  .sec h2 { font-family: var(--font-display); font-weight: 600; font-size: 18px; letter-spacing: -0.01em; }
   .sec .ln { flex: 1; height: 1px; background: var(--border); }
-  .sec a { font-size: 12px; font-weight: 600; color: var(--primary); }
+  .sec a { font-size: 12px; font-weight: 600; color: var(--primary-ink); }
 
-  /* Glassmorphic top command bar */
+  /* Top command bar. The 20px backdrop-blur + saturate(150%) glass effect was
+     removed: it is a 2020-21 trend that is already dated, and content scrolling
+     underneath a translucent bar hurts legibility in a data app (F17). */
   .lux-topbar {
-    background: color-mix(in srgb, var(--card) 82%, transparent);
-    backdrop-filter: blur(20px) saturate(150%);
-    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    background: var(--card);
     border-bottom: 1px solid var(--border);
   }
   /* Brand mark — blue gradient tile with serif glyph */
@@ -306,35 +370,40 @@
     border-radius: 3px;
     background: rgb(var(--brand-orange));
   }
-  /* Primary action — orange gradient */
+  /* Primary action — flat brand fill */
   .lux-btn-primary {
-    background: linear-gradient(135deg, rgb(var(--brand-orange)), rgb(var(--brand-orange-deep)));
+    background: rgb(var(--brand-orange));
     color: #fff;
-    box-shadow: 0 8px 20px rgb(var(--brand-orange) / 0.35);
   }
 
-  /* Kit button recipes (Lovable). Colours track --primary via color-mix so the
-     tenant loader's re-tint keeps working; hover lifts per the reference. */
+  /**
+   * Button recipes. Colours track --primary via color-mix so the tenant loader's
+   * re-tint keeps working.
+   *
+   * Removed in Phase 1 (F17): the gradient fill, the coloured glow
+   * (`0 8px 20px color-mix(--primary 35%)`) and the `translateY(-1px)` hover
+   * lift. A glowing, rising button is a Dribbble idiom; enterprise controls are
+   * flat fills that darken on hover. Focus rings are unaffected — they come
+   * from the global :focus-visible rule and Button's own ring utilities.
+   */
   .btn-primary {
     color: var(--primary-foreground);
-    background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 82%, #000));
+    background: var(--primary);
     border: 1px solid transparent;
-    box-shadow: 0 8px 20px color-mix(in srgb, var(--primary) 35%, transparent);
+    transition: background-color var(--dur) var(--ease);
   }
   .btn-primary:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: 0 12px 28px color-mix(in srgb, var(--primary) 45%, transparent);
+    background: color-mix(in srgb, var(--primary) 88%, #000);
   }
   .btn-surface {
     color: var(--foreground);
     background: var(--card);
     border: 1px solid var(--border);
-    box-shadow: var(--shadow-s);
+    transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
   }
   .btn-surface:hover:not(:disabled) {
-    transform: translateY(-1px);
-    box-shadow: var(--shadow-m);
-    border-color: color-mix(in srgb, var(--primary) 40%, transparent);
+    background: var(--accent);
+    border-color: color-mix(in srgb, var(--foreground) 18%, transparent);
   }
   /* Mobile bottom nav (Lovable). Display is driven by `flex md:hidden`
      utilities on the element; this class only styles it. */
@@ -347,9 +416,7 @@
     align-items: center;
     justify-content: space-around;
     padding: 8px 6px calc(8px + env(safe-area-inset-bottom));
-    background: color-mix(in srgb, var(--card) 92%, transparent);
-    backdrop-filter: blur(18px) saturate(150%);
-    -webkit-backdrop-filter: blur(18px) saturate(150%);
+    background: var(--card);
     border-top: 1px solid var(--border);
   }
   .lux-botnav-btn {
@@ -796,19 +863,26 @@
   .login-card { animation: none; }
 }
 
-/* Content enter animation (Lovable) — cards/tables/views rise in on mount. */
+/**
+ * Content enter animation. Was `translateY(12px)` over 0.5s on every card and
+ * table mount — a dispatcher opening the shipments view 40x a day waited 20
+ * seconds a day for a decoration, and it made fast backend responses feel slow
+ * (F17). Now a 0.12s opacity fade with no translate: present enough to signal
+ * "this is new", short enough to be subliminal.
+ */
 @keyframes fadeUp {
-  from { opacity: 0; transform: translateY(12px); }
-  to { opacity: 1; transform: none; }
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
-.animate-fade-up { animation: fadeUp 0.5s var(--ease) both; }
+.animate-fade-up { animation: fadeUp 0.12s var(--ease) both; }
 
-/* Modal entrance (Lovable "rise"). */
+/* Modal entrance — a short rise is still worth keeping: a dialog is a context
+   change, not a list refresh. Trimmed from 0.28s/24px to 0.16s/8px. */
 @keyframes modalRise {
-  from { opacity: 0; transform: translateY(24px) scale(0.97); }
+  from { opacity: 0; transform: translateY(8px) scale(0.99); }
   to { opacity: 1; transform: none; }
 }
-.animate-modal-rise { animation: modalRise 0.28s var(--ease) both; }
+.animate-modal-rise { animation: modalRise 0.16s var(--ease) both; }
 
 /* Reduced motion — kill all animation/transition globally (reference parity). */
 @media (prefers-reduced-motion: reduce) {

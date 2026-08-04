@@ -31,6 +31,8 @@ const root = () => document.documentElement;
 const MANAGED_VARS = [
   "--primary",
   "--primary-foreground",
+  "--primary-ink-light",
+  "--primary-ink-dark",
   "--ring",
   "--brand-orange",
   "--secondary",
@@ -62,6 +64,73 @@ function hexToTriplet(value: string): string | null {
   return `${(n >> 16) & 255} ${(n >> 8) & 255} ${n & 255}`;
 }
 
+/* ── accessible text variant of the tenant accent ─────────────────────────────
+ *
+ * A brand colour chosen to look good as a BUTTON FILL is usually unreadable as
+ * TEXT: the default #F5821F measures 2.59:1 on white, well under the WCAG 2.1
+ * AA floor of 4.5:1 (audit F13). Every tenant picks their own primary, so this
+ * cannot be a hand-tuned constant — it has to be derived.
+ *
+ * We keep the hue and walk the colour toward black (light theme) or white (dark
+ * theme) until it clears the threshold against that theme's card surface. Hue
+ * is preserved because the result must still read as the tenant's brand.
+ */
+type Rgb = [number, number, number];
+
+const LIGHT_SURFACE: Rgb = [255, 255, 255]; // --card, light
+const DARK_SURFACE: Rgb = [18, 22, 30]; // --card, dark
+const AA_NORMAL = 4.5;
+
+function parseHex(value: string): Rgb | null {
+  const t = hexToTriplet(value);
+  if (!t) return null;
+  const [r, g, b] = t.split(" ").map(Number);
+  return [r, g, b];
+}
+
+/** WCAG relative luminance. */
+function luminance([r, g, b]: Rgb): number {
+  const lin = (c: number) => {
+    const s = c / 255;
+    return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
+  };
+  return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
+}
+
+function contrast(a: Rgb, b: Rgb): number {
+  const la = luminance(a);
+  const lb = luminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+
+/** Linear mix toward `target` by `t` (0..1). */
+function mix(c: Rgb, target: Rgb, t: number): Rgb {
+  return [
+    Math.round(c[0] + (target[0] - c[0]) * t),
+    Math.round(c[1] + (target[1] - c[1]) * t),
+    Math.round(c[2] + (target[2] - c[2]) * t),
+  ];
+}
+
+/**
+ * Nudge `colour` toward black or white — whichever moves it away from
+ * `surface` — until it clears `ratio` against that surface. Steps of 2% so the
+ * result is the *least* altered colour that passes, keeping it on-brand.
+ * Returns the fully-darkened/lightened colour if even that cannot reach the
+ * target (only possible for a mid-grey surface, where nothing can).
+ */
+function toAccessibleInk(colour: Rgb, surface: Rgb, ratio = AA_NORMAL): Rgb {
+  if (contrast(colour, surface) >= ratio) return colour;
+  const target: Rgb = luminance(surface) > 0.5 ? [0, 0, 0] : [255, 255, 255];
+  for (let t = 0.02; t <= 1; t += 0.02) {
+    const next = mix(colour, target, t);
+    if (contrast(next, surface) >= ratio) return next;
+  }
+  return target;
+}
+
+const rgbCss = ([r, g, b]: Rgb) => `rgb(${r} ${g} ${b})`;
+
 export function applyBrand(brand: Brand) {
   const r = root();
   const set = (name: string, value?: string | null) => {
@@ -79,6 +148,16 @@ export function applyBrand(brand: Brand) {
   set("--primary-foreground", brand.primaryForeground);
   set("--secondary", brand.secondary);
   set("--accent", brand.accent);
+
+  // Accessible TEXT variants of the accent, one per theme. Both are written as
+  // inline sources; index.css picks between them via :root / .dark, because an
+  // inline --primary-ink would outrank the .dark rule and pin one theme's value
+  // to both.
+  const accent = brand.primary ? parseHex(brand.primary) : null;
+  if (accent) {
+    r.style.setProperty("--primary-ink-light", rgbCss(toAccessibleInk(accent, LIGHT_SURFACE)));
+    r.style.setProperty("--primary-ink-dark", rgbCss(toAccessibleInk(accent, DARK_SURFACE)));
+  }
 
   // Brand-mark gradient stops (raw triplets in index.css).
   setTriplet("--brand-orange", brand.primary);

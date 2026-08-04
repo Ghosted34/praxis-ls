@@ -22,15 +22,25 @@ export const TR = ({ className, ...p }: React.HTMLAttributes<HTMLTableRowElement
     {...p}
   />
 );
+/**
+ * Density (audit F17): `px-4 py-3.5` gave ~46px rows against a 28-32px category
+ * standard (Palantir/Bloomberg/Retool) — roughly 40% fewer rows per screen on a
+ * product whose users scan hundreds of shipments. Now `px-3 py-row` (6px) for a
+ * 32px row.
+ *
+ * TH was 9.5px uppercase at 0.14em tracking, which is below comfortable reading
+ * size; it is now 11px at 0.06em and uses the retuned --ink-3 via
+ * text-muted-foreground, clearing WCAG AA (F13).
+ */
 export const TH = ({ className, ...p }: React.ThHTMLAttributes<HTMLTableCellElement>) => (
   <th
     className={cn(
-      "whitespace-nowrap px-4 py-3.5 text-left align-middle text-[9.5px] font-bold uppercase tracking-[0.14em] text-muted-foreground",
+      "whitespace-nowrap px-3 py-2 text-left align-middle text-micro font-semibold uppercase text-muted-foreground",
       className,
     )}
     {...p}
   />
 );
 export const TD = ({ className, ...p }: React.TdHTMLAttributes<HTMLTableCellElement>) => (
-  <td className={cn("px-4 py-3.5 align-middle text-[13px]", className)} {...p} />
+  <td className={cn("px-3 py-row align-middle text-sm", className)} {...p} />
 );

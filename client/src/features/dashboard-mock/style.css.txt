@@ -27,29 +27,38 @@
         --warn: 176 128 24;
         --bad: 210 68 58;
 
-        --font-display: "Playfair Display", Georgia, serif;
-        --font-body: "Montserrat", system-ui, sans-serif;
+        /* Phase 1 alignment. This mock renders inside an <iframe srcDoc>, which
+           does NOT inherit the parent document's font faces — so when the app
+           dropped the Google-Fonts link for self-hosted Inter, the Control Tower
+           would have silently fallen back to Georgia. A system stack keeps it
+           consistent with the app's Inter without shipping a second webfont into
+           the frame. Phase 3 deletes this mock entirely (audit F1). */
+        --font-display: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        --font-body: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
 
-        --r: 16px;
-        --r-s: 11px;
-        --r-l: 22px;
-        --ease: cubic-bezier(0.16, 1, 0.3, 1);
-        --dur: 0.3s;
-        --shadow-s: 0 1px 2px rgb(16 30 52 / 0.05), 0 2px 8px rgb(16 30 52 / 0.05);
-        --shadow-m: 0 4px 12px rgb(16 30 52 / 0.06), 0 14px 34px rgb(16 30 52 / 0.09);
-        --shadow-l: 0 18px 48px rgb(16 30 52 / 0.16);
-        --mesh: 0.5;
+        --r: 8px;
+        --r-s: 6px;
+        --r-l: 12px;
+        --ease: cubic-bezier(0.2, 0, 0.13, 1);
+        --dur: 0.15s;
+        --shadow-s: 0 1px 2px rgb(16 30 52 / 0.04);
+        --shadow-m: 0 2px 6px rgb(16 30 52 / 0.07);
+        --shadow-l: 0 8px 28px rgb(16 30 52 / 0.14);
+        --mesh: 0;
         --topbar-h: 66px;
       }
       [data-theme="dark"] {
-        --bg: 7 19 36;
-        --surface: 13 29 51;
-        --surface-2: 17 36 62;
-        --surface-3: 22 44 74;
-        --ink: 226 236 248;
-        --ink-2: 150 170 197;
-        --ink-3: 100 123 152;
-        --line: 226 236 248;
+        /* Neutralised to match the app's Phase 1 dark surfaces — the frame sits
+           inside the shell, so a navy iframe on a near-neutral page was a
+           visible seam. --ink-3 is lifted to the AA-passing value (F13). */
+        --bg: 11 13 17;
+        --surface: 18 22 30;
+        --surface-2: 25 30 39;
+        --surface-3: 32 38 49;
+        --ink: 228 233 240;
+        --ink-2: 150 163 182;
+        --ink-3: 122 143 170;
+        --line: 228 233 240;
         --line-a: 0.1;
         --orange: 245 130 31;
         --orange-ink: 250 158 78;
@@ -61,9 +70,9 @@
         --warn: 224 180 66;
         --bad: 232 104 96;
         --shadow-s: 0 1px 2px rgb(0 0 0 / 0.3);
-        --shadow-m: 0 6px 16px rgb(0 0 0 / 0.35), 0 16px 40px rgb(0 0 0 / 0.4);
-        --shadow-l: 0 24px 60px rgb(0 0 0 / 0.55);
-        --mesh: 0.7;
+        --shadow-m: 0 2px 8px rgb(0 0 0 / 0.35);
+        --shadow-l: 0 10px 32px rgb(0 0 0 / 0.5);
+        --mesh: 0;
       }
       @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
       * { box-sizing: border-box; margin: 0; padding: 0; }

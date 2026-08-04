@@ -16,12 +16,14 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Praxis LS" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&family=Montserrat:wght@300;400;500;600;700;800&display=swap"
-    />
+    <!-- Fonts are SELF-HOSTED (@fontsource-variable/inter, imported by
+         src/main.tsx). The previous Google-Fonts <link> pulled 11 weights of
+         Playfair Display + Montserrat from a third-party origin, blocking first
+         render — and because workbox only precaches local assets, the offline
+         mode this PWA advertises fell back to Georgia + system sans, so the app
+         looked like a different product offline (audit F17). A bundled variable
+         font is emitted into dist/assets and picked up by the existing
+         `**/*.woff2` precache glob. -->
     <title>Praxis LS</title>
   </head>
   <body>

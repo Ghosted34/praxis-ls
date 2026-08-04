@@ -169,6 +169,9 @@ const toOpenAiTool = (a) => ({
 // to THIS turn (scored on the message + recent history so a "yes"/"go ahead"
 // still surfaces the tool the previous turn was about). Resolution/validation on
 // confirm still uses the full catalogue — scoping only limits what's OFFERED.
+// Phrases that mean "I'm about to act" — used to catch a stall (announcement with
+// no tool call). "let me know" is excluded so a normal closing doesn't match.
+const STALL_RE = /\b(let me(?! know)|i['’]?ll\b|i will\b|let['’]?s\b|one moment|hold on|allow me|give me a moment|now i)\b/i;
 const TOOL_LIMIT = 64;
 const CORE_TOOLS = new Set([
   "create_client", "open_dossier", "list_dossiers", "list_clients", "list_leads",
@@ -222,6 +225,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const system =
     "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
     "Only call a function when the user asks to DO something; never invent data. " +
+    // Reads vs writes: a question is never a create.
+    "A question or request to SEE/LIST/COUNT/CHECK/SUMMARISE data is a READ — use a list_/get_ action (or just " +
+    "answer); NEVER a create_/update_/record_ write. Propose a write ONLY when the user explicitly asks to create, " +
+    "change, advance, record, or post something. 'How many X are there' means list_X, not create_X. " +
+    // Filter/fetch by the internal id, not a human label.
+    "When filtering or fetching a record, use its internal id (the UUID from a previous read), NOT a human " +
+    "reference like a vehicle registration, ref, or code — those won't match an id filter. " +
     "You act with the user's permissions and cannot exceed them. " +
     // Speak business language, not database language. Users identify records by
     // name/reference, not internal keys — surfacing a UUID reads as a leak.
@@ -287,8 +297,26 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // replayed history), not all 150 tools — keeps weaker models from choking.
   const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
   const offered = selectTools(tools, contextText);
-  const res = await llm.chat({ client, messages, tools: offered.map(toOpenAiTool) });
+  let res = await llm.chat({ client, messages, tools: offered.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
+
+  // Anti-stall: the model sometimes ANNOUNCES an action ("Now let me check…",
+  // "I'll create it now") but emits no tool call, forcing the user to type
+  // "continue". When that happens, nudge it ONCE to actually act in this turn.
+  // The nudge message is not persisted — only the real question + final answer.
+  if (!res.toolCalls.length && STALL_RE.test(res.text || "")) {
+    const retry = await llm.chat({
+      client,
+      messages: [
+        ...messages,
+        { role: "assistant", content: res.text || "" },
+        { role: "user", content: "Proceed NOW: if this needs an action, call the function in THIS reply; otherwise give the answer directly. Do not just say you will." },
+      ],
+      tools: offered.map(toOpenAiTool),
+    });
+    await recordUsage(client, { user, conversationId: history.conversationId, res: retry, feature });
+    if (retry.toolCalls.length || (retry.text && retry.text.trim())) res = retry;
+  }
 
   // Split the model's tool calls: reads are pure, so we run them NOW and let the
   // model narrate the data back (a single bounded hop); writes are proposed as

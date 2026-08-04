@@ -125,7 +125,15 @@ function buildCatalogue(manifests = loadManifests()) {
 function readAdapter(action, service) {
   return async ({ client, payload = {} }) => {
     let arg = payload;
-    if (action.startsWith("get_") || action.startsWith("effective_")) arg = payload.id || payload;
+    // `get_*` reads take a scalar id. The model may pass it as `id` OR as the
+    // natural field name it saw upstream (e.g. `po_id` from a GRN, `dossier_id`),
+    // so accept `id` first, then any single *_id value, else the raw payload.
+    if (action.startsWith("get_") || action.startsWith("effective_")) {
+      if (payload && typeof payload === "object") {
+        const idKey = payload.id !== undefined ? "id" : Object.keys(payload).find((k) => k.endsWith("_id"));
+        arg = idKey ? payload[idKey] : payload;
+      }
+    }
     const data = await service(client, arg);
     return { data };
   };

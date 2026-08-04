@@ -25,7 +25,7 @@
  * is precisely where the largest single source lived (the 27-entry `Badge` map).
  * Scanning text catches every shape.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
@@ -127,6 +127,12 @@ function stripComments(text) {
  * anything. This was found by running the gate against its own new file.
  *
  * `-z`/NUL separation because a filename may contain a space.
+ *
+ * `existsSync` because `--cached` also lists files that have been DELETED in the
+ * working tree but not yet staged — which is the normal state of a directory
+ * mid-refactor. Without it the gate throws ENOENT and reports nothing at all,
+ * which is the worst possible failure mode for a checker: it looks like a
+ * broken tool rather than a clean tree, and the next person disables it.
  */
 function sources() {
   const out = execFileSync(
@@ -134,7 +140,11 @@ function sources() {
     ["ls-files", "-z", "--cached", "--others", "--exclude-standard", "--", "client"],
     { cwd: repoRoot, encoding: "utf8" },
   );
-  return out.split("\0").filter(Boolean).filter((f) => /\.(tsx?|mjs|css)$/.test(f));
+  return out
+    .split("\0")
+    .filter(Boolean)
+    .filter((f) => /\.(tsx?|mjs|css)$/.test(f))
+    .filter((f) => existsSync(join(repoRoot, f)));
 }
 
 const violations = [];

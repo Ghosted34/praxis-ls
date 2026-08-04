@@ -66,12 +66,25 @@ import { AuditPage } from "./governance/audit";
 import { NotificationsPage } from "./governance/notifications";
 import { WorkflowsPage } from "./governance/workflows";
 import { ApprovalsPage } from "./governance/approvals";
-import * as master from "./master/pages";
-import * as masterdata from "./masterdata/pages";
-import * as procurement from "./procurement/pages";
-import * as settingsConfig from "./settings/config-pages";
-import * as settingsStore from "./settings/store-pages";
-import * as settingsMd from "./settings/master-data-pages";
+import { ClientsPage as MasterClientsPage } from "./master/clients";
+import { SuppliersPage as MasterSuppliersPage } from "./master/suppliers";
+import { CorporateEntitiesPage } from "./master/corporate-entities";
+import { ExpenseRatesPage } from "./masterdata/expense-rates";
+import { FinancialDictionaryPage } from "./masterdata/financial-dictionary";
+import { PurchaseRequestsPage } from "./procurement/purchase-requests";
+import { PurchaseOrdersPage } from "./procurement/purchase-orders";
+import { GoodsReceivedPage } from "./procurement/goods-received";
+import { SupplierInvoicesPage } from "./procurement/supplier-invoices";
+import { BankAccountsPage } from "./settings/bank-accounts";
+import { PaymentGatewaysPage } from "./settings/payment-gateways";
+import { ScheduledReportsPage } from "./settings/scheduled-reports";
+import { ApiKeysPage } from "./settings/api-keys";
+import { PipelineStagesPage } from "./settings/pipeline-stages";
+import { CustomFieldsPage } from "./settings/custom-fields";
+import { EmailSignaturesPage } from "./settings/email-signatures";
+import { BusinessPoliciesPage } from "./settings/business-policies";
+import { CurrenciesPage } from "./settings/currencies";
+import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
 
@@ -270,35 +283,35 @@ const AREAS: Area[] = [
   {
     area: "Master data",
     screens: [
-      { name: "Clients", render: () => <master.ClientsPage />, routes: { "/clients": CLIENTS, "/entities": ENTITIES } },
-      { name: "Suppliers", render: () => <master.SuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
-      { name: "Corporate entities", render: () => <master.CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
-      { name: "Expense rates", render: () => <masterdata.ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", code: "PERDIEM", amount: 25000, currency: "XAF" }] } },
-      { name: "Financial dictionary", render: () => <masterdata.FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
+      { name: "Clients", render: () => <MasterClientsPage />, routes: { "/clients": CLIENTS, "/entities": ENTITIES } },
+      { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
+      { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
+      { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", code: "PERDIEM", amount: 25000, currency: "XAF" }] } },
+      { name: "Financial dictionary", render: () => <FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
     ],
   },
   {
     area: "Procurement",
     screens: [
-      { name: "Purchase requests", render: () => <procurement.PurchaseRequestsPage />, routes: { "/purchase-requests": [{ pr_id: "pr1", ref: "PR-2026-001", status: "DRAFT", justification: "Spares" }] } },
-      { name: "Purchase orders", render: () => <procurement.PurchaseOrdersPage />, routes: { "/purchase-orders": [{ po_id: "po1", ref: "PO-2026-001", status: "OPEN" }], "/suppliers": [] } },
-      { name: "Goods received", render: () => <procurement.GoodsReceivedPage />, routes: { "/goods-received": [{ grn_id: "g1", ref: "GRN-001", status: "RECEIVED" }], "/purchase-orders": [] } },
-      { name: "Supplier invoices", render: () => <procurement.SupplierInvoicesPage />, routes: { "/supplier-invoices": [{ invoice_id: "si1", ref: "SI-001", status: "PENDING", amount: 900000 }], "/suppliers": [] } },
+      { name: "Purchase requests", render: () => <PurchaseRequestsPage />, routes: { "/purchase-requests": [{ pr_id: "pr1", ref: "PR-2026-001", status: "DRAFT", justification: "Spares" }] } },
+      { name: "Purchase orders", render: () => <PurchaseOrdersPage />, routes: { "/purchase-orders": [{ po_id: "po1", ref: "PO-2026-001", status: "OPEN" }], "/suppliers": [] } },
+      { name: "Goods received", render: () => <GoodsReceivedPage />, routes: { "/goods-received": [{ grn_id: "g1", ref: "GRN-001", status: "RECEIVED" }], "/purchase-orders": [] } },
+      { name: "Supplier invoices", render: () => <SupplierInvoicesPage />, routes: { "/supplier-invoices": [{ invoice_id: "si1", ref: "SI-001", status: "PENDING", amount: 900000 }], "/suppliers": [] } },
     ],
   },
   {
     area: "Settings",
     screens: [
-      { name: "Bank accounts", render: () => <settingsConfig.BankAccountsPage />, routes: { "/treasury-accounts": [{ account_id: "b1", label: "SGC main", bank_name: "SGC", currency: "XAF" }], "/entities": ENTITIES } },
-      { name: "Payment gateways", render: () => <settingsConfig.PaymentGatewaysPage />, routes: { "/payment-gateways": [{ gateway_id: "g1", provider: "MTN", is_active: true }] } },
-      { name: "Scheduled reports", render: () => <settingsConfig.ScheduledReportsPage />, routes: { "/reports/scheduled": [{ schedule_id: "s1", report_key: "ar_ageing", cadence: "weekly" }], "/reports/catalogue": [] } },
-      { name: "API keys", render: () => <settingsConfig.ApiKeysPage />, routes: { "/settings/integration_secret": [{ key: "exchangerate", last4: "9f2a" }] } },
-      { name: "Pipeline stages", render: () => <settingsConfig.PipelineStagesPage />, routes: { "/opportunities/stages": [{ pipeline_stage_id: "p1", name: "Qualified", sort_order: 1 }] } },
-      { name: "Custom fields", render: () => <settingsStore.CustomFieldsPage />, routes: { "/settings": [] } },
-      { name: "Email signatures", render: () => <settingsStore.EmailSignaturesPage />, routes: { "/settings": [] } },
-      { name: "Business policies", render: () => <settingsStore.BusinessPoliciesPage />, routes: { "/settings": [] } },
-      { name: "Currencies", render: () => <settingsMd.CurrenciesPage />, routes: { "/currencies": [{ code: "XAF", name: "CFA franc", rate: 1 }] } },
-      { name: "Tax jurisdictions", render: () => <settingsMd.TaxJurisdictionsPage />, routes: { "/tax-jurisdictions": [{ jurisdiction_id: "tj1", country_code: "CM", name: "Cameroon", currency: "XAF", is_active: true }] } },
+      { name: "Bank accounts", render: () => <BankAccountsPage />, routes: { "/treasury-accounts": [{ account_id: "b1", label: "SGC main", bank_name: "SGC", currency: "XAF" }], "/entities": ENTITIES } },
+      { name: "Payment gateways", render: () => <PaymentGatewaysPage />, routes: { "/payment-gateways": [{ gateway_id: "g1", provider: "MTN", is_active: true }] } },
+      { name: "Scheduled reports", render: () => <ScheduledReportsPage />, routes: { "/reports/scheduled": [{ schedule_id: "s1", report_key: "ar_ageing", cadence: "weekly" }], "/reports/catalogue": [] } },
+      { name: "API keys", render: () => <ApiKeysPage />, routes: { "/settings/integration_secret": [{ key: "exchangerate", last4: "9f2a" }] } },
+      { name: "Pipeline stages", render: () => <PipelineStagesPage />, routes: { "/opportunities/stages": [{ pipeline_stage_id: "p1", name: "Qualified", sort_order: 1 }] } },
+      { name: "Custom fields", render: () => <CustomFieldsPage />, routes: { "/settings": [] } },
+      { name: "Email signatures", render: () => <EmailSignaturesPage />, routes: { "/settings": [] } },
+      { name: "Business policies", render: () => <BusinessPoliciesPage />, routes: { "/settings": [] } },
+      { name: "Currencies", render: () => <CurrenciesPage />, routes: { "/currencies": [{ code: "XAF", name: "CFA franc", rate: 1 }] } },
+      { name: "Tax jurisdictions", render: () => <TaxJurisdictionsPage />, routes: { "/tax-jurisdictions": [{ jurisdiction_id: "tj1", country_code: "CM", name: "Cameroon", currency: "XAF", is_active: true }] } },
     ],
   },
   {

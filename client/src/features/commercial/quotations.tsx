@@ -17,7 +17,8 @@ import { useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt, money } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Chips } from "@/components/ui/chips";
-import { QuotationForm, QuotationDetail } from "./quotation-forms";
+import { QuotationForm } from "./quotation-forms";
+import { QuotationDetail } from "./quotation-detail";
 
 const QUOTATION_AI: AiAction[] = [
   { label: "Draft quotation", kind: "assist", describe: "Draft a quotation's lines from an opportunity, dossier or costing (human-reviewed before send)." },

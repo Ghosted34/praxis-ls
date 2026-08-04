@@ -17,7 +17,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { listDossiers, type Dossier } from "@/lib/operations-api";
-import { ClientForm } from "./pages";
+import { ClientForm } from "./clients";
 
 const shell = pageShell.wide;
 const DOSSIER_TONE: Record<string, Tone> = { DRAFT: "mute", IN_PROGRESS: "blue", COMPLETED: "ok", CANCELLED: "bad" };

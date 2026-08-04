@@ -20,12 +20,18 @@ const express = require("express");
 const request = require("supertest");
 
 describe("OBS-A2 — the readiness probe can actually fail", () => {
+  // Mocks services/platform/db, NOT config/database. The first version of the
+  // probe used config/database.query(), whose `initDatabase()` is never called
+  // anywhere in src/ — so it threw "db pool not initialised" regardless of
+  // database health, returned 503 on a healthy server, and failed the deploy at
+  // the readiness gate. A probe that cannot pass is as bad as one that cannot
+  // fail; this suite now exercises the pool the API actually uses.
   const OK = { rows: [{ "?column?": 1 }] };
 
   function buildAppWith({ pgFails = false, redisFails = false } = {}) {
     jest.resetModules();
-    jest.doMock("../../src/config/database", () => ({
-      query: jest.fn(() => (pgFails ? Promise.reject(new Error("connection refused")) : Promise.resolve(OK))),
+    jest.doMock("../../src/services/platform/db", () => ({
+      query: jest.fn(() => (pgFails ? Promise.reject(new Error("connect ECONNREFUSED")) : Promise.resolve(OK))),
     }));
     jest.doMock("../../src/config/redis", () => ({
       getClient: () => ({
@@ -89,7 +95,7 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
 
   it("surfaces modules that failed to load (API F-19)", async () => {
     jest.resetModules();
-    jest.doMock("../../src/config/database", () => ({ query: jest.fn(() => Promise.resolve(OK)) }));
+    jest.doMock("../../src/services/platform/db", () => ({ query: jest.fn(() => Promise.resolve(OK)) }));
     jest.doMock("../../src/config/redis", () => ({ getClient: () => ({ ping: () => Promise.resolve("PONG") }) }));
     jest.doMock("../../src/shared/http/module-loader", () => ({
       mountReport: () => ({ mounted: ["a/b"], skipped: [{ module: "wms/inbound", error: "boom" }] }),

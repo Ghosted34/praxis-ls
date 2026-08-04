@@ -85,7 +85,14 @@ export function LiveShipments({ shipments }: { shipments: LiveShipment[] }) {
         </Pill>
       </div>
       {shipments.length ? (
-        <ul className="flex flex-col gap-0.5 overflow-y-auto p-1.5 xl:max-h-[26rem]">
+        // `flex-1 min-h-0` rather than a fixed max-height: from xl the grid
+        // stretches this card to the map's height, so the list fills exactly
+        // that and scrolls inside it. A hardcoded cap left a row sliced in half
+        // against a taller map, which reads as a rendering fault rather than as
+        // "there is more below". Below xl the card is auto-height and the whole
+        // list shows.
+        <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">
+
           {shipments.map((s) => (
             <ShipmentRow key={s.ref} s={s} />
           ))}

@@ -58,7 +58,7 @@ export function ShipmentMap({ lanes }: { lanes: Lane[] }) {
   const laneCount = model?.lanes.length ?? 0;
 
   return (
-    <Card className="relative flex flex-col overflow-hidden bg-[linear-gradient(180deg,color-mix(in_srgb,rgb(var(--brand-blue-bright))_6%,var(--card)),var(--card))]">
+    <Card className="relative flex flex-col overflow-hidden">
       <div className="pointer-events-none absolute inset-x-4 top-4 z-[1] flex items-start justify-between gap-4">
         <div className="min-w-0">
           <h2 className="text-title font-semibold leading-tight tracking-tight">Live shipment map</h2>
@@ -78,6 +78,14 @@ export function ShipmentMap({ lanes }: { lanes: Lane[] }) {
         </ul>
       </div>
 
+      {/*
+        The ocean is a CSS background on this region, not a `<rect>` inside the
+        SVG. The SVG has a fixed aspect ratio, so when the grid stretches this
+        card to match a taller shipments panel there is slack under the map —
+        and a rect that stops at the SVG's own box left a visible waterline with
+        bare card below it. As a background it simply fills.
+      */}
+      <div className="flex flex-1 items-center bg-[linear-gradient(135deg,rgb(var(--brand-blue-bright)/0.12),rgb(var(--brand-blue-deep)/0.05))]">
       <svg
         viewBox={`0 0 ${MAP_W} ${MAP_H}`}
         className="block h-auto w-full"
@@ -89,21 +97,16 @@ export function ShipmentMap({ lanes }: { lanes: Lane[] }) {
         }
       >
         <defs>
-          <linearGradient id="ct-ocean" x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="rgb(var(--brand-blue-bright))" stopOpacity="0.12" />
-            <stop offset="1" stopColor="rgb(var(--brand-blue-deep))" stopOpacity="0.05" />
-          </linearGradient>
           <linearGradient id="ct-land" x1="0" y1="0" x2="1" y2="1">
             <stop offset="0" stopColor="rgb(var(--ink))" stopOpacity="0.05" />
             <stop offset="1" stopColor="rgb(var(--ink))" stopOpacity="0.02" />
           </linearGradient>
         </defs>
 
-        {/* Draw order: ocean → land → graticule → equator → degree labels →
-            routes → nodes. Land arrives after first paint (see useLandRings) and
-            sits at the bottom of the stack, so nothing above it moves. */}
-        <rect x="0" y="0" width={MAP_W} height={MAP_H} fill="url(#ct-ocean)" />
-
+        {/* Draw order: land → graticule → equator → degree labels → routes →
+            nodes, over the CSS ocean above. Land arrives after first paint (see
+            useLandRings) and sits at the bottom of the stack, so nothing above
+            it moves when it lands. */}
         {!model ? (
           <text x={MAP_W / 2} y={MAP_H / 2} textAnchor="middle" className="fill-muted-foreground text-[11px]">
             No plottable routes — open dossiers need a port of loading and discharge.
@@ -204,8 +207,14 @@ export function ShipmentMap({ lanes }: { lanes: Lane[] }) {
           </>
         )}
       </svg>
+      </div>
 
-      <div className="flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-2.5">
+      {/* `mt-auto` pins the footer to the bottom of the card. The map's SVG has a
+          fixed aspect ratio, so when the grid stretches this card to match a
+          taller shipments panel the slack has to go SOMEWHERE — under the map,
+          against the card's own gradient, rather than as a floating strip with
+          a gap beneath it. */}
+      <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-2.5">
         {(["sea", "road", "air"] as const).map((m) => {
           const Icon = MODE_ICON[m];
           return (

@@ -148,6 +148,25 @@ jobs:
       - name: Build
         run: npm run build --prefix ${{ matrix.app }}
 
+      - name: Bundle graph
+        # The 2026-08-04 blank page: `manualChunks` split `vendor-react` out of
+        # `vendor`, but react-dom needs `scheduler` and react-router-dom needs
+        # `@remix-run/router` — both of which stayed in `vendor`. The two chunks
+        # imported each other, one read the other's React binding before it was
+        # assigned, and TanStack Query's top-level createContext threw on
+        # `undefined`. That happens during module evaluation, before React
+        # renders, so no ErrorBoundary caught it: smartls.praxisls.com served an
+        # empty <div id="root">.
+        #
+        # Rollup DID warn ("Circular chunk: vendor -> vendor-react -> vendor")
+        # and this job went green anyway, because a warning is not a gate.
+        # vite.config.ts now throws on that warning; this step re-derives the
+        # graph from what was actually written to dist/ and fails on any cycle
+        # the bundler did not report. Client only — platform-console has no
+        # manual chunking.
+        if: matrix.app == 'client'
+        run: npm run check:bundle --prefix client
+
   docker-build:
     runs-on: ubuntu-latest
     steps:

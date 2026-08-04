@@ -983,3 +983,160 @@ Stated so the next phase does not assume it is done:
 - **Only one domain's schemas live in `packages/shared`** (final invoice). The
   package, the wiring and the pattern are real and the backend consumes them;
   moving the rest is per-module work.
+
+---
+
+# Addendum 4 — Production incident: the blank page, and the chunking fix (2026-08-04)
+
+Written after Phases 1 and 2 were merged and deployed. The deploy served a **fully
+blank page** on `smartls.praxisls.com`, which is what stopped Phase 3 from
+starting. This records what happened, because the cause was not in any of the
+work the audit describes — and the fix pulled one Phase 4 deliverable forward.
+
+## What the user saw
+
+An empty `<div id="root">`. No error UI, no fallback, no partial render. One
+console line:
+
+```
+vendor-BC54ZJUQ.js:18  Uncaught TypeError: Cannot read properties of undefined (reading 'createContext')
+```
+
+The `304`s in the network tab were a red herring — `index.html` is served by
+`res.sendFile` at `max-age=0` (`src/server.js:191`) and was correctly revalidated
+and fresh, pointing at the current chunk hashes. Nothing was stale. The bundle
+that arrived was the right bundle; it simply could not evaluate.
+
+## Cause: a circular chunk graph, hand-drawn in `vite.config.ts`
+
+`manualChunks` sorted `node_modules` into two buckets — `vendor-react` (react,
+react-dom, react-router) and `vendor` (everything else). But **react-dom needs
+`scheduler`**, and **react-router-dom needs `@remix-run/router`**, and neither
+package name matched the react rule. Both stayed in `vendor`:
+
+```
+vendor  ──── needs react ────▶  vendor-react
+vendor  ◀── needs scheduler ──  vendor-react
+```
+
+The browser began evaluating `vendor-react`, which re-entered `vendor` before
+React's export binding had been assigned. Rollup emits that binding as a hoisted
+`var`, so it read `undefined` rather than throwing a TDZ error, and the first
+top-level `React.createContext` call in `vendor` — TanStack Query's
+`QueryClientContext` — died on it.
+
+**Why no ErrorBoundary caught it:** the throw happens during *module evaluation*,
+before `ReactDOM.createRoot(...).render(...)` is ever reached. The root boundary
+added in Phase 2 (`main.tsx`) and the per-route one (`app-shell.tsx`) both need
+React to be running to catch anything. Neither existed yet at that moment. This
+is the one failure class those boundaries structurally cannot cover.
+
+## Why it fired now, and not before
+
+The cycle had been in the config for as long as `vendor-react` existed. It was
+harmless while nothing in `vendor` touched React *at import time* — the old
+`vendor` held clsx, tailwind-merge, socket.io-client, topojson, world-atlas and
+Inter, none of which do.
+
+**Phase 2 added TanStack Query, seven Radix packages and React Hook Form. All of
+them call `createContext` at module scope.** The Phase 2 work did not introduce
+the defect; it was the first code to walk into it.
+
+Worth stating plainly: **the build was not silent.** Rollup printed
+
+```
+Circular chunk: vendor -> vendor-react -> vendor. Please adjust the manual chunk logic for these chunks.
+```
+
+as the *first line* of the build log, plus three more for the `feature-*` buckets
+(`settings → hr → wms → fleet → settings`), and exited 0. CI ran `npm run build`
+and went green. A warning nobody reads is not a gate.
+
+## The fix
+
+**1. One manual bucket, and only one.** All of `node_modules` goes to `vendor`.
+A single bucket cannot import itself, so it is acyclic by construction. Splitting
+node_modules further requires proving no edge runs backwards against a lockfile
+that moves — which is not a property anyone can maintain by hand.
+
+**2. App code is no longer partitioned by hand at all.** The `feature-*` and
+`dashboard-mock` buckets are gone. `app/app.tsx` now loads every screen through
+`React.lazy`, and Rollup derives one chunk per route from the real graph. This is
+**F16's "Route-level `React.lazy`", listed as a Phase 4 deliverable** — pulled
+forward, because it is the mechanism that makes the hand-drawn buckets
+unnecessary rather than merely fixed. Adding a feature area now needs no build
+config change at all.
+
+`ROUTE_LOCAL_VENDOR` in `vite.config.ts` is the escape hatch for a heavy library
+that belongs with one route rather than in the first-load payload — it currently
+holds `world-atlas` (~500 kB of Natural Earth geometry, read only by the Control
+Tower map). Excluding a package is always safe; Rollup places it, and Rollup does
+not create cycles. Adding a *bucket* is what is forbidden.
+
+**3. Two gates, both in CI.** `vite.config.ts` throws on Rollup's
+`CIRCULAR_CHUNK` warning, and `client/scripts/check-bundle.mjs`
+(`npm run check:bundle`) re-derives the graph from what was actually written to
+`dist/` and fails on any cycle the bundler did not report. Both were verified by
+reintroducing the original rule: the build now exits 1, and with the throw
+disabled the artifact check catches it independently.
+
+## Second defect found while verifying the first
+
+`client/tsconfig.node.json` is `composite: true` with no `outDir`, so `tsc -b`
+(the first half of `npm run build`) emitted **`vite.config.js` next to
+`vite.config.ts`** — and Vite resolves `vite.config.js` *first*. Every subsequent
+`npm run dev` or bare `vite build` silently used the last compiled snapshot, so
+edits to `vite.config.ts` became no-ops. This was caught the hard way: a
+deliberately reintroduced cycle "passed" the build because Vite was reading a
+config from ten minutes earlier.
+
+The root `.gitignore` already documents this trap and blocks both files from
+being committed — but ignoring an artifact does not stop it shadowing the source
+locally. `tsconfig.node.json` now emits to `node_modules/.tmp/` instead.
+
+## Measured effect
+
+| | Before | After |
+|---|---|---|
+| First load (login screen), gzip | **423 kB** — all 17 chunks were `modulepreload`ed | **154 kB** — entry + vendor only |
+| First load, raw | 1,483 kB | 484 kB |
+| Entry chunk | 295 kB | 112 kB |
+| JS chunks emitted | 17 | 67 (one per route) |
+| Circular chunk warnings | **6** | 0, and now fatal |
+| Control Tower + world map on the login screen | yes | no — lazy, arrives with the route |
+
+Verified in headless Chromium against the built `dist/`: `/`, `/login` and
+`/reset-password` all render with zero page errors, and the lazy route fetches
+its own chunk on navigation. The pre-fix build reproduced the exact production
+failure (`#root` empty, identical `createContext` throw, identical
+`vendor-BC54ZJUQ.js` hash), which is how the diagnosis was confirmed rather than
+inferred.
+
+## What this means for Phase 3
+
+- **No build-config work is needed for the Control Tower rebuild.** `dashboard`
+  is already its own lazy chunk (197 kB, the largest route). Deleting
+  `features/dashboard-mock/*` shrinks it automatically.
+- **Route-level lazy loading is done**, so Phase 4's bundle deliverable is
+  already met and its "Bundle-size report confirming the lazy-loading win" can be
+  read off the table above.
+- **The `<Suspense>` boundary lives next to `<Outlet />`** in `app-shell.tsx`,
+  inside the per-route `ErrorBoundary`. A new screen inherits both; it does not
+  add its own.
+- **`BrowserRouter` now runs with `v7_startTransition`** (`main.tsx`) so
+  navigation keeps the current screen painted while the next chunk arrives,
+  rather than flashing a skeleton on every route change.
+
+## One item still open, unrelated to this incident
+
+The `zod` alias (`vite.config.ts`) points at `../node_modules/zod`, the repo-root
+copy, so the client and `packages/shared` share one Zod instance. CI installs
+root dependencies for the client job to satisfy it (`ci.yaml`), but the
+Dockerfile's `clientbuild` stage does **not** — `.dockerignore` excludes
+`**/node_modules` and that stage runs only `npm install --prefix client`.
+
+It builds today purely because nothing routed imports `@/components/ui/form` or
+`@/lib/use-zod-form`, so the whole Zod layer is tree-shaken out (zero `zod`
+references in the emitted bundle). **The first screen that actually uses
+`useZodForm` will break the image build** — which, given Phase 4 puts every form
+on `<Form>` + a shared schema, is a Phase 3/4 prerequisite, not a someday item.

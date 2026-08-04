@@ -68,7 +68,7 @@ try {
             $tmpFilePath = sys_get_temp_dir() . '/' . uniqid('story_audio_') . '.webm';
             file_put_contents($tmpFilePath, $audioData);
 
-            $groq_api_key = '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'; 
+            $groq_api_key = '__REMOVED_ROTATE_ME__'; 
             
             $cFile = new CURLFile($tmpFilePath, 'audio/webm', 'audio.webm');
             

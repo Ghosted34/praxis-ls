@@ -32,14 +32,22 @@ value was replaced with `__REMOVED_ROTATE_ME__` and the surrounding logic left i
 | `legacy_codebase/administration/index.php` | inline MySQL host / database / user |
 | `legacy_codebase/administration/view/admin/test_smtp_mail.php` | Office 365 SMTP username + password |
 | `legacy_codebase/administration/api/praxis/command_engine.php` | Google Gemini API key |
-| `legacy_codebase/administration/api/smart_quote_api.php` | Google Gemini API key |
-| `legacy_codebase/administration/api/success_story_api.php` | Google Gemini API key ×2 |
+| `legacy_codebase/administration/api/smart_quote_api.php` | Google Gemini API key **+ Groq API key** |
+| `legacy_codebase/administration/api/success_story_api.php` | Google Gemini API key ×2 **+ Groq API key** |
 | `legacy_codebase/public_html/test_gemini.php` | Google Gemini API key |
+
+**The two Groq keys were found by CI, not by the sweep.** The first pass grepped
+for the shapes it expected — `$gemini_api_key` and `AIza…` — and missed
+`$groq_api_key`. The rewritten scanner caught them on its first run, which is
+the entire argument for the scanner over a careful look. Both are the same key
+value, and it is now in a public CI log: treat it as maximally compromised and
+rotate it first.
 
 ### Still outstanding — this is not finished
 
 1. **Rotate every one of them at the provider.** Removing a secret from the working
-   tree does not make it secret again. Until the MySQL user's password, the Office 365
+   tree does not make it secret again. Rotate the **Groq key first** — it was printed
+   in a CI job log on 2026-08-04 and is the most exposed of the set. Until the MySQL user's password, the Office 365
    mailbox password and the Gemini keys are rotated, they are live.
 2. **The values remain in git history.** Anyone with a clone still has them. A history
    purge (`git filter-repo`) rewrites every commit SHA and invalidates every existing

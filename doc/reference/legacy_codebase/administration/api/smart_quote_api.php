@@ -485,7 +485,7 @@ try {
             file_put_contents($tmpFilePath, $audioData);
 
             // TODO: Insert your generated Groq API Key here
-            $groq_api_key = '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'; 
+            $groq_api_key = '__REMOVED_ROTATE_ME__'; 
             
             $cFile = new CURLFile($tmpFilePath, 'audio/webm', 'audio.webm');
             

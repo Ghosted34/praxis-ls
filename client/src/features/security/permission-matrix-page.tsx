@@ -31,6 +31,7 @@
  *
  * Editing requires the 'approve' grant (or CEO); others get a 403 on save.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { createPortal } from "react-dom";
 import { Link } from "react-router-dom";
@@ -217,7 +218,7 @@ export function PermissionMatrixPage() {
     : null;
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Security & access" to="/security" />}
         title="Permission matrix"

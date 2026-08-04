@@ -5,6 +5,7 @@
  * Data comes from the template preview endpoint (`data`); reports (which have no
  * record shape) fall back to the paper preview.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import { tenant } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { errMsg } from "@/lib/use-resource";
 import { num, dateFmt, enumLabel } from "@/lib/format";
+import { cn } from "@/lib/cn";
 
 /** Auth-gated binary fetch of a vaulted document → open the blob in a new tab.
  *  Used when a signed copy has been uploaded (served instead of regenerating). */
@@ -178,7 +180,7 @@ export function DocumentPage() {
       {note && <div className="mx-auto mb-3 max-w-3xl rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-3 py-2 text-sm">{note}</div>}
 
       {!pv ? (
-        <div className="mx-auto max-w-3xl py-10 text-center micro">Loading…</div>
+        <div className={cn(pageShell.reading, "py-10 text-center micro")}>Loading…</div>
       ) : pv.report || !d ? (
         /* Reports have no record shape → show the branded paper preview. */
         <div className="-mx-4 rounded-2xl bg-[rgb(var(--ink)_/_0.06)] px-4 py-6 md:-mx-6 md:px-6">
@@ -188,7 +190,7 @@ export function DocumentPage() {
         </div>
       ) : (
         /* Native, app-themed detail — blends with the dark UI. */
-        <div className="mx-auto max-w-3xl space-y-4 pb-10">
+        <div className={cn(pageShell.reading, "space-y-4 pb-10")}>
           <Card>
             <div className="grid gap-5 sm:grid-cols-2">
               <PartyCol label="From" p={fromParty(pv.entity)} />

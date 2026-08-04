@@ -5,6 +5,7 @@
  *   • Log       — the legacy per-purpose sender identities + outbound send log.
  * Kit-styled; accents resolve to --primary. Bodies are server-sanitized on ingest.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Modal, Field } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -320,7 +321,7 @@ const MODES: { key: Mode; label: string }[] = [
 export function MailPage() {
   const [mode, setMode] = React.useState<Mode>("threads");
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title="Mail" description="Connect any mailbox — Microsoft 365, Google, or IMAP/SMTP — and work every conversation in one place." />
       <HubTabs />
 

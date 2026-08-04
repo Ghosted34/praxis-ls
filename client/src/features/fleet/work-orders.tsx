@@ -3,6 +3,7 @@
  * OPEN → IN_PROGRESS → DONE; parts (spares + labour) are logged line by line and
  * the work-order cost rolls up to the sum of its parts.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -18,7 +19,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { OPEN: "blue", IN_PROGRESS: "warn", DONE: "ok", CANCELLED: "bad" };
 const TRANSITIONS: Record<string, string[]> = { OPEN: ["IN_PROGRESS", "CANCELLED"], IN_PROGRESS: ["DONE", "CANCELLED"], DONE: [], CANCELLED: [] };
 const STATUS_LABEL: Record<string, string> = { IN_PROGRESS: "Start work", DONE: "Complete", CANCELLED: "Cancel" };

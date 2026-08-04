@@ -5,6 +5,7 @@
  * Treasury accounts + payment gateways live in features/settings/config-pages.tsx;
  * Currencies & Tax jurisdictions in features/settings/master-data-pages.tsx.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ function FormButtons({ busy, disabled, onCancel, saveLabel = "Save" }: { busy: b
   );
 }
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 /* ══════════════════════════════ Clients ═════════════════════════ */
 

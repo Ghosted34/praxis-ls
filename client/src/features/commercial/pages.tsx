@@ -9,6 +9,7 @@
  * Shared primitives + Pixie-tinted design come from features/sales/ui.tsx.
  * AI panels are gated globally (components/ai-actions.tsx).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -438,7 +439,7 @@ export function QuotationsPage() {
   const gated = error && /feature|not enabled|disabled/i.test(error);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Quotations"
@@ -623,7 +624,7 @@ export function MarginSimulationsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Margin simulation"
@@ -826,7 +827,7 @@ export function ExtraChargeSimulationsPage() {
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Extra-charge simulation"
@@ -989,7 +990,7 @@ export function PricingVariancePage() {
   const dossierRef = React.useMemo(() => new Map((dossiers || []).map((d) => [String(d.dossier_id), cell(d.reference ?? d.title ?? d.dossier_id)])), [dossiers]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Commercial" to="/commercial" />}
         title="Pricing variance"

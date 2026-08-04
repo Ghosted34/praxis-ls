@@ -3,6 +3,7 @@
  * to an employee and move it DRAFT → ISSUED → SIGNED → ENDED. A signed/ended
  * contract is terminal for forward flow.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -18,7 +19,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { DRAFT: "mute", ISSUED: "blue", SIGNED: "ok", ENDED: "mute" };
 const TRANSITIONS: Record<string, string[]> = { DRAFT: ["ISSUED"], ISSUED: ["SIGNED", "ENDED"], SIGNED: ["ENDED"], ENDED: [] };
 const STATUS_LABEL: Record<string, string> = { ISSUED: "Issue", SIGNED: "Mark signed", ENDED: "End" };

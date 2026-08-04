@@ -120,6 +120,20 @@ jobs:
       - name: Lint
         run: npm run lint --prefix ${{ matrix.app }}
 
+      - name: Design-token contrast
+        # Asserts every text-on-surface token pair clears WCAG 2.1 AA. Six pairs
+        # failed before Phase 1 — most visibly `.micro` at 3.01:1, used 198x
+        # across 54 files. Client only; the platform console has no token file.
+        if: matrix.app == 'client'
+        run: npm run check:contrast --prefix client
+
+      - name: Test
+        # The client had zero tests until Phase 1 PR2 (audit F15) while the
+        # backend carried ~50 suites — on a frontend that drives journal entries,
+        # payroll runs and God-Mode purges. `--if-present` so platform-console
+        # (which still has no suite) does not fail the matrix.
+        run: npm run test --if-present --prefix ${{ matrix.app }}
+
       - name: Build
         run: npm run build --prefix ${{ matrix.app }}
 

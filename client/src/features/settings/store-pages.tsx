@@ -11,6 +11,7 @@
  * All writes need MOD-70 `edit`; a role without it 403s (graceful error state).
  * Same primitives as config-pages.tsx / master-data-pages.tsx.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -165,7 +166,7 @@ export function DocumentTemplatesPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document templates" description="Letterhead and body templates per document type — invoices, POs, receipts, contracts." action={<Button onClick={() => edit(null)}>New template</Button>} />
 
       <PageError message={rowError} />
@@ -359,7 +360,7 @@ export function CustomFieldsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Custom fields" description="Per-entity field definitions — extra fields a consuming module can render and store." action={<Button onClick={() => edit(null)}>New definition</Button>} />
 
       <PageError message={rowError} />
@@ -443,7 +444,7 @@ export function EmailSignaturesPage() {
   }
 
   return (
-    <section className="mx-auto max-w-4xl animate-fade-in">
+    <section className={pageShell.reading}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Email signatures" description="The tenant-wide brand signature template. Per-staff rendering is managed on each user's profile." />
 
       {error ? (
@@ -558,7 +559,7 @@ export function BusinessPoliciesPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Business policies" description="Named policy documents — privacy, refund, QMS, terms and more." action={<Button onClick={() => edit(null)}>New policy</Button>} />
 
       <PageError message={rowError} />

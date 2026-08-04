@@ -4,6 +4,7 @@
  * states. Columns are inferred from the first row when not given. Build richer
  * create/edit UIs on top per screen as they're prioritised.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { ApiError } from "@/lib/api-client";
@@ -61,7 +62,7 @@ export function ResourceList({
     columns || (rows && rows[0] ? Object.keys(rows[0]).slice(0, 6).map((k) => ({ key: k, label: k })) : []);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader title={title} description={description} action={action ? action(reload) : undefined} eyebrow={eyebrow} />
       <HubTabs />
 

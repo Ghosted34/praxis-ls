@@ -7,6 +7,7 @@
  * BE: `GET /catalogue/modules` (read-only, gated **MOD-67 / IAM view**) — there is
  * no write surface, by design. Built on the shared DataList/PageHeader scaffold.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -58,7 +59,7 @@ export function ModuleCataloguePage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         title="Module catalogue"
         description="Every MOD-xx the platform knows about — the same list that backs the permission matrix. Read-only."

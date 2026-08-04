@@ -3,6 +3,7 @@
  * vehicle (odometer is guarded from going backwards server-side); pick a vehicle
  * to see its consumption stats (litres, cost, distance, L/100km).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 type Dossier = { dossier_id: string; ref?: string | null };
 
 function Stat({ label, value }: { label: string; value: string }) {

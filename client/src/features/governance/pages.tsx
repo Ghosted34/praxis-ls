@@ -2,6 +2,7 @@
  * Governance — audit ledger, notifications, the workflow ENGINE (definitions +
  * ordered validate/approve step chains), and the runtime approvals queue.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +23,7 @@ import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 /* ═════════════════════════ shared local primitives ══════════════════════════ */
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { key: T; label: string }[] }) {
   return (
@@ -843,7 +844,7 @@ export function WorkflowsPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Workflows" description="Validate/approve chains bound to approvable events — the org's approval routing." action={<Button onClick={() => setCreating(true)}>New workflow</Button>} />
       <KpiRow>
         <KpiTile label="Workflows" value={num(list.length)} />
@@ -924,7 +925,7 @@ export function ApprovalsPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Governance" to="/governance" />} title="Approvals" description="Your runtime approval queue — validate or approve/reject items routed to you by workflow." />
       <KpiRow>
         <KpiTile label="Pending" value={num(list.length)} />

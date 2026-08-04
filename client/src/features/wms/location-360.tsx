@@ -3,6 +3,7 @@
  * left; pick one to see its rollup: stock stored there, handling equipment parked
  * there, cycle-count history, and capacity utilisation.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATE_TONE: Record<string, Tone> = { AVAILABLE: "ok", QA_HOLD: "warn", ALLOCATED: "blue", DISPATCHED: "mute", DAMAGED: "bad" };
 const EQ_TONE: Record<string, Tone> = { AVAILABLE: "ok", IN_USE: "blue", MAINTENANCE: "warn", OUT_OF_SERVICE: "bad" };
 

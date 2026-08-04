@@ -2,7 +2,9 @@
  * Help center (example). A simple in-app guide + FAQ + shortcuts + contact.
  * Reachable from the floating action cluster's Help button and /help.
  */
+import { pageShell } from "@/lib/layout";
 import { Link } from "react-router-dom";
+import { cn } from "@/lib/cn";
 
 const GUIDES: { title: string; body: string; to?: string }[] = [
   { title: "Getting started", body: "The Control Tower is your home. Use the top-bar areas or ⌘K to jump anywhere.", to: "/" },
@@ -26,7 +28,7 @@ const SHORTCUTS: { keys: string; what: string }[] = [
 
 export function HelpPage() {
   return (
-    <section className="mx-auto max-w-4xl animate-fade-in pb-16">
+    <section className={cn(pageShell.reading, "pb-16")}>
       <header className="mb-6 border-b border-border pb-4">
         <div className="micro mb-1 uppercase tracking-wide">
           <Link to="/" className="transition-colors hover:text-primary">Hub</Link> › Help center

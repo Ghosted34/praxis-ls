@@ -9,6 +9,7 @@
  * for the current route so app.tsx can point every un-built route at one wrapper.
  * Full map + AI-integration table: doc/FE_IA_BUILD_MAP.md.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useLocation, Link } from "react-router-dom";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -36,7 +37,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
   const actions = tabActions || spec.actions || [];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
           {spec.area && <p className="micro mb-1">{spec.area}</p>}

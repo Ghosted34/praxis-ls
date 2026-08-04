@@ -4,6 +4,7 @@
  * PENDING payroll earning (added to gross next run, then locked once paid). This
  * is the appraisal → pay link.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const rate = (v: string | number | null | undefined) => (v == null ? "—" : `${num(v)} / 5`);
 
 function RewardBadge({ a }: { a: api.Appraisal }) {

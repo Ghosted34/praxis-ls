@@ -18,6 +18,7 @@
  * NB identity is pinned to the LIVE schema server-side (req.identityDb), so these
  * screens read the same rows under both the LIVE and TEST toggle. That's intended.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,7 +39,7 @@ import {
   listScopeMembers, addScopeMember, removeScopeMember,
 } from "@/lib/scope-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 /* ────────────────────────────── shared types ───────────────────────────── */
 

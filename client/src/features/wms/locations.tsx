@@ -3,6 +3,7 @@
  * zone (yard slots last), each showing its aisle · rack · bin and capacity, with
  * a New location form.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +15,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { num } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 function NewLocationForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const [f, setF] = React.useState({ zone: "", aisle: "", rack: "", bin: "", yard: "", capacity_units: "" });

@@ -3,6 +3,7 @@
  * moves CREATED → Picking → Packed → Dispatched; its lines are picked and packed
  * item by item. (Stock is decremented by the inventory move journal.)
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { CREATED: "mute", PICKING: "blue", PACKED: "warn", DISPATCHED: "ok", CANCELLED: "bad" };
 const TRANSITIONS: Record<string, string[]> = {
   CREATED: ["PICKING", "CANCELLED"], PICKING: ["PACKED", "CANCELLED"], PACKED: ["DISPATCHED", "CANCELLED"], DISPATCHED: [], CANCELLED: [],

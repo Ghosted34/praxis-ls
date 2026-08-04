@@ -4,6 +4,7 @@
  * workflows / approvals) into one entry that opens this hub; each card routes to
  * its screen.
  */
+import { pageShell } from "@/lib/layout";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/data-list";
 
@@ -59,7 +60,7 @@ function ChevIcon() {
 
 export function GovernanceHub() {
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader title="Governance" description="Oversight in one place — approvals, workflow chains, the audit trail and your notifications." />
 
       <div className="mt-2 flex flex-col gap-8">

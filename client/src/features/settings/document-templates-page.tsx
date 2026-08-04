@@ -5,6 +5,7 @@
  * scoped per corporate entity, previewing a real record (or bundled sample).
  * Talks to /document-templates (MOD-70).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ type Entity = { entity_id: string; legal_name?: string };
 type Rec = { id: string; label?: string };
 type Cfg = Record<string, unknown>;
 
-const shell = "mx-auto max-w-[1400px] animate-fade-in";
+const shell = pageShell.wide;
 const label = (t: Tpl["title"]) => t.en || t.fr || "";
 
 const Field = ({ label: l, children }: { label: string; children: React.ReactNode }) => (

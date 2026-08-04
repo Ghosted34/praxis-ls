@@ -3,6 +3,7 @@
  * then check out (odometer) and check in (odometer) through the lifecycle
  * ASSIGNED → OUT → RETURNED. Driver time on a dossier is costed on return.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -19,7 +20,7 @@ import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { ASSIGNED: "blue", OUT: "warn", RETURNED: "ok", CANCELLED: "bad" };
 
 type Dossier = { dossier_id: string; ref?: string | null };

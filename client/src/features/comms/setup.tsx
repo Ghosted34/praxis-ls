@@ -4,6 +4,7 @@
  * address + SMTP; the shared SMTP login; and the WhatsApp / Instagram API keys.
  * Secrets are write-only (blank keeps current). Kit-styled; accents → --primary.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -194,7 +195,7 @@ export function SetupPage() {
   }, [senders.data]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <div className="mb-4 flex items-center justify-between gap-3 border-b border-border pb-3">
         <div>
           <div className="micro uppercase tracking-wide">Comms</div>

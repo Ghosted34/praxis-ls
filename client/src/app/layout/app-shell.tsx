@@ -780,6 +780,18 @@ export function AppShell() {
 
   return (
     <div className="flex h-full flex-col">
+      {/*
+        Skip link (audit F13, WCAG 2.4.1). With 12 of 16 areas behind the More
+        drawer, a keyboard user previously tabbed the entire header on every
+        navigation before reaching content. Visually hidden until focused.
+      */}
+      <a
+        href="#main-content"
+        className="sr-only z-50 focus:not-sr-only focus:absolute focus:left-4 focus:top-4 focus:rounded-md focus:bg-card focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-foreground focus:shadow-[var(--shadow-l)] focus:outline-none focus:ring-2 focus:ring-ring"
+      >
+        Skip to main content
+      </a>
+
       {/* Top command bar */}
       <header className="lux-topbar relative z-40 flex h-[66px] flex-none items-center gap-3 px-4 md:px-6">
         <button
@@ -887,7 +899,18 @@ export function AppShell() {
 
       {/* key={env} remounts the routed screen on an env switch so every screen
           re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
-      <main key={env} className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-6 pb-24 md:pb-6">
+      {/*
+        Padding scales with the viewport now (was a flat p-6 at every width).
+        Width itself is NOT capped here — each screen picks a deliberate column
+        width via <PageContainer> / pageShell (audit F3), so the shell stays out
+        of that decision and a full-bleed screen stays possible.
+      */}
+      <main
+        id="main-content"
+        tabIndex={-1}
+        key={env}
+        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
+      >
         <Outlet />
       </main>
 

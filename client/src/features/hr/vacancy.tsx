@@ -4,6 +4,7 @@
  * → Hired), with Reject / Talent-pool outcomes. The vacancy head has its own
  * DRAFT → OPEN → CLOSED lifecycle.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = { DRAFT: "mute", OPEN: "ok", CLOSED: "mute" };
 const VAC_TRANSITIONS: Record<string, string[]> = { DRAFT: ["OPEN"], OPEN: ["CLOSED"], CLOSED: [] };
 const VAC_LABEL: Record<string, string> = { OPEN: "Open", CLOSED: "Close" };

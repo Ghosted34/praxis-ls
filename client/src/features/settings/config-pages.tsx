@@ -6,6 +6,7 @@
  *  - PipelineStagesPage  → /opportunities/stages (read-only — no stage CRUD yet)
  *  - NumberingPage       → /numbering-schemes/:moduleKey (static doc-type list)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -223,7 +224,7 @@ export function BankAccountsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Bank accounts" description="Company bank, cash and mobile-money accounts, each mapped to a chart-of-accounts code." action={<Button onClick={() => setCreateOpen(true)}>New account</Button>} />
       <HubTabs />
 
@@ -411,7 +412,7 @@ export function PaymentGatewaysPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Payment gateways" description="Per-tenant gateway providers and their encrypted credentials. Keys are write-only and never returned." action={<Button onClick={openNew}>Add gateway</Button>} />
 
       <PageError message={rowError} />
@@ -632,7 +633,7 @@ export function ScheduledReportsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Scheduled reports" description="Automated report delivery — pick a report, a cadence and recipients." action={<Button onClick={() => setCreateOpen(true)}>Schedule report</Button>} />
 
       <PageError message={rowError} />
@@ -835,7 +836,7 @@ export function ApiKeysPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Settings" to="/settings" />}
         title="API keys & secrets"
@@ -910,7 +911,7 @@ export function PipelineStagesPage() {
   const { rows, error } = useList("/opportunities/stages", 0);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Pipeline stages" description="The CRM opportunity pipeline stages. Read-only — stage editing is not yet exposed by the backend." />
 
       {error ? (
@@ -1109,7 +1110,7 @@ export function NumberingPage() {
   const [selected, setSelected] = React.useState<string>(DOC_NUMBER_MODULES[0].items[0].key);
 
   return (
-    <section className="mx-auto max-w-4xl animate-fade-in">
+    <section className={pageShell.reading}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Document numbering" description="Per-document numbering schemes — prefix, padding, reset cadence and separator." />
 
       <div className="space-y-4">

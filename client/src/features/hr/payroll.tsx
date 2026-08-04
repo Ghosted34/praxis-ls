@@ -4,6 +4,7 @@
  * with segregation of duties (compute vs approve are different permissions,
  * enforced server-side). Payslips drill into the Cameroon statutory breakdown.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -19,7 +20,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 const STATUS_TONE: Record<string, Tone> = {
   OPEN: "mute", COMPUTED: "blue", SUBMITTED: "warn", APPROVED: "warn", VALIDATED: "ok", DISBURSED: "ok", REJECTED: "bad",

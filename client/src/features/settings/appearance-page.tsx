@@ -5,6 +5,7 @@
  * every field persists. Saving re-applies branding live via the branding
  * context (primary/foreground re-tint immediately through theme.ts).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useBranding } from "@/app/branding/branding-context";
 import { saveBranding, type Branding } from "@/lib/branding";
@@ -14,6 +15,7 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, Field, Segmented, ColorRow, ImageField } from "@/components/settings/controls";
+import { cn } from "@/lib/cn";
 
 /**
  * `fallback` is what the app ACTUALLY renders when a token is unset — the values
@@ -119,7 +121,7 @@ export function AppearancePage() {
   }
 
   return (
-    <section className="mx-auto max-w-3xl animate-fade-in pb-24">
+    <section className={cn(pageShell.reading, "pb-24")}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Appearance" description="White-label the workspace — identity, colours, logos, type. Changes apply on save." />
 
       <div className="mt-2 flex flex-col gap-5">

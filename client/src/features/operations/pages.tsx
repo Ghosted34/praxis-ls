@@ -3,6 +3,7 @@
  * delivery notes, milestones. Composes the locked shared kit (DataList,
  * PageHeader, KpiRow/KpiTile, Pill, modal forms) per doc/FE_WIRING_PLAN.md.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -24,7 +25,7 @@ import { Segmented, SearchSelect } from "@/features/sales/ui";
 import { useSearchParams } from "react-router-dom";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const TONES: Record<string, Tone> = {
   OPEN: "blue", IN_PROGRESS: "warn", COMPLETED: "ok", CANCELLED: "bad",
   PENDING: "warn", DONE: "ok", DRAFT: "mute", SUBMITTED: "blue", CLEARED: "ok", DELIVERED: "ok",

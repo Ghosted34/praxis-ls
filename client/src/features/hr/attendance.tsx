@@ -4,6 +4,7 @@
  * the day's clock-ins with lateness + on-site status, who's absent, and the
  * worksite geofences. Uses the locked kit.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const today = () => new Date().toISOString().slice(0, 10);
 
 function SitePill({ within }: { within?: boolean | null }) {

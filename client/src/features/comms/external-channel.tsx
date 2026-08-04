@@ -5,6 +5,7 @@
  * the two-pane inbox structure is here, wired to fill once the platform API is
  * connected in Setup (Chunk 4) and the conversation backend lands. Kit-styled.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { PageHeader } from "@/components/data-list";
 import { Input } from "@/components/ui/input";
@@ -21,7 +22,7 @@ function ExternalChannel({ platform }: { platform: Platform }) {
   const m = META[platform];
   const [q, setQ] = React.useState("");
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title={m.label} description={m.blurb} />
       <HubTabs />
 

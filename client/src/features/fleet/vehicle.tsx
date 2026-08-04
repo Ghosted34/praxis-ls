@@ -3,6 +3,7 @@
  * its registry card, drive the status ladder (Active ⇄ Inactive → Disposed) and
  * review its maintenance, dispatch, compliance, fuel and incident history.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const VSTATUS_TONE: Record<string, Tone> = { ACTIVE: "ok", INACTIVE: "mute", DISPOSED: "bad" };
 const WO_TONE: Record<string, Tone> = { OPEN: "blue", IN_PROGRESS: "warn", DONE: "ok", CANCELLED: "bad" };
 const DISP_TONE: Record<string, Tone> = { ASSIGNED: "blue", OUT: "warn", RETURNED: "ok", CANCELLED: "bad" };

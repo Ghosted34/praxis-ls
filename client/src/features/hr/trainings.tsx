@@ -3,6 +3,7 @@
  * move it SCHEDULED → DONE | CANCELLED; open a session to manage its attendance
  * roster (add employees, mark who attended).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { SCHEDULED: "blue", DONE: "ok", CANCELLED: "bad" };
 const TRANSITIONS: Record<string, string[]> = { SCHEDULED: ["DONE", "CANCELLED"], DONE: [], CANCELLED: [] };
 const STATUS_LABEL: Record<string, string> = { DONE: "Mark done", CANCELLED: "Cancel" };

@@ -15,6 +15,7 @@
  *
  * AI panels are gated globally (components/ai-actions.tsx).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -547,7 +548,7 @@ export function LeadsPage() {
   const [tab, setTab] = React.useState<"leads" | "intake">(initialTab as "leads" | "intake");
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />} title="Leads & intake" description="The top of the sales funnel — capture and qualify leads, and triage inbound enquiries into them." />
       <HubTabs />
 
@@ -781,7 +782,7 @@ export function MeetingsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Meetings"
@@ -1751,7 +1752,7 @@ export function ProposalsPage() {
   }, [rows, filter, search]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Proposals"
@@ -2229,7 +2230,7 @@ export function CampaignsPage() {
   }, [campaigns]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Marketing campaigns"
@@ -2510,7 +2511,7 @@ export function SuccessStoriesPage() {
   const filtered = React.useMemo(() => (rows || []).filter((r) => !filter || storyStatus(r) === filter), [rows, filter]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Success stories"

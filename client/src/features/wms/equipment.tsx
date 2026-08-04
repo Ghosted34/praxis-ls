@@ -3,6 +3,7 @@
  * (forklifts, reach-stackers) grouped by status; check out to an operator, return,
  * send to maintenance or retire, following the status lifecycle.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/wms-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const COLUMNS = ["AVAILABLE", "IN_USE", "MAINTENANCE", "OUT_OF_SERVICE"];
 const COL_LABEL: Record<string, string> = { AVAILABLE: "Available", IN_USE: "In use", MAINTENANCE: "Maintenance", OUT_OF_SERVICE: "Out of service" };
 const COL_TONE: Record<string, Tone> = { AVAILABLE: "ok", IN_USE: "blue", MAINTENANCE: "warn", OUT_OF_SERVICE: "bad" };

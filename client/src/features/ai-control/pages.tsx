@@ -4,6 +4,7 @@
  * access grants, spend caps, vendor keys, and usage. Admin-gated server-side
  * (MOD-70). Composes the locked kit; accents resolve to --primary.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -20,7 +21,7 @@ import { reportActionError } from "@/lib/action-error";
 
 type GovUser = { user_id: string; full_name?: string | null; email: string };
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 function Toggle({ on, busy, onClick }: { on: boolean; busy?: boolean; onClick: () => void }) {
   return (

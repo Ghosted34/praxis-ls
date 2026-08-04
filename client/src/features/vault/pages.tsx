@@ -6,6 +6,7 @@
  * Shared primitives + Pixie-tinted design from features/sales/ui.tsx.
  * AI panels are gated globally (components/ai-actions.tsx).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant, tenantDownload } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -278,7 +279,7 @@ export function ReportsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Reports"
@@ -467,7 +468,7 @@ export function ComplianceFlagsPage() {
   const filtered = React.useMemo(() => (flags || []).filter((f) => !severity || String(f.severity) === severity), [flags, severity]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Compliance flags"
@@ -726,7 +727,7 @@ export function DocumentsPage() {
   }, [rows, filter, q]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />}
         title="Documents"
@@ -884,7 +885,7 @@ export function SignaturesPage() {
   const gated = isGated(error);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />} title="Signatures" description="Signatures are bound to a document's fingerprint. Look one up by its reference, then sign." />
       <HubTabs />
       <form
@@ -986,7 +987,7 @@ export function VerificationPage() {
   const verified = result ? result.verified === true : null;
 
   return (
-    <section className="mx-auto max-w-2xl animate-fade-in">
+    <section className={pageShell.reading}>
       <PageHeader eyebrow={<HubCrumb area="Vault & compliance" to="/vault" />} title="Document verification" description="Check a document's fingerprint against the vault — confirms it hasn't been tampered with." />
       <HubTabs />
       <form

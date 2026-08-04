@@ -5,6 +5,7 @@
  * and `<basePath>/:section`; each tab renders its page unchanged, so per-module
  * RBAC/org-workflow are untouched. Active tab uses the --primary accent.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
@@ -59,7 +60,7 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   return (
     <HubTabsContext.Provider value={tabsNode}>
       {inlineTabs && (
-        <div className="mx-auto mb-4 max-w-6xl">
+        <div className={cn("mb-4", pageShell.wide)}>
           <div className="micro mb-2">{eyebrow}</div>
           {tabsNode}
         </div>

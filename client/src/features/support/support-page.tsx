@@ -6,6 +6,7 @@
  * ungated tenant API `/support/tickets` (writes the central platform ticket
  * store, scoped to this tenant).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,7 +179,7 @@ export function SupportPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         title="Support & feedback"
         description="Reach the Praxis team directly. Raise a ticket and track it from New through to Shipped."

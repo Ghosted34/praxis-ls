@@ -3,6 +3,7 @@
  * disciplinary queries they can respond to, sanctions on record, and their KPI
  * appraisals. Reads the self-scoped /mine endpoints (no admin grant needed).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { useResource, errMsg } from "@/lib/use-resource";
@@ -148,7 +149,7 @@ export function MyHrPage() {
   const openQueries = qs.filter((q) => q.status === "OPEN").length;
 
   return (
-    <section className="mx-auto max-w-5xl animate-fade-in">
+    <section className={pageShell.standard}>
       <PageHeader
         eyebrow="My HR"
         title="My HR"

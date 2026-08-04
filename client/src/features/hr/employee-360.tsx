@@ -4,6 +4,7 @@
  * appraisals. Suspend/activate drives the `is_active` lifecycle the rest of the
  * system checks (payroll, contracts, dispatch).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -20,7 +21,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, dateFmt, dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const CONTRACT_TONE: Record<string, Tone> = { DRAFT: "mute", ISSUED: "blue", SIGNED: "ok", ENDED: "mute" };
 const LEAVE_TONE: Record<string, Tone> = { REQUESTED: "warn", APPROVED: "ok", REJECTED: "bad" };
 

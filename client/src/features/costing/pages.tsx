@@ -2,6 +2,7 @@
  * Costing screens (Wave 3) — costing sheets, cost tracking (actuals), cash
  * requests, régie d'avance. Locked shared kit; line editors kept minimal.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,7 @@ import type { Entity, DictItem } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const TONES: Record<string, Tone> = { DRAFT: "mute", COMPUTED: "blue", APPROVED: "ok", APPROVED_LOCKED: "ok", SUBMITTED: "warn", SUBMITTED_FOR_VALIDATION: "warn", SUBMITTED_FOR_APPROVAL: "warn", REJECTED: "bad", DISBURSED: "ok", OPEN: "blue", SETTLED: "ok" };
 const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
 const refOf = (rows: Dossier[] | null) => { const m: Record<string, string> = {}; (rows || []).forEach((d) => { m[d.dossier_id] = d.ref; }); return m; };

@@ -3,6 +3,7 @@
  * outstanding tracking and a repayment-history drawer. Locked shared kit; accents
  * resolve to --primary (settings-driven).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -17,7 +18,7 @@ import { money, num, dateFmt, todayISO } from "@/lib/format";
 import type { Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const TONES: Record<string, Tone> = { ACTIVE: "blue", SETTLED: "ok", DEFAULTED: "bad" };
 const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
 const LENDERS = ["BANK", "THIRD_PARTY", "DIRECTOR"];

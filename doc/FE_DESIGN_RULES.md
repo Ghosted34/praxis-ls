@@ -113,12 +113,23 @@ export const VehiclesPage = () => (
 );
 ```
 
-**Write-capable lists use `<CrudResource>`** (`components/crud-resource.tsx`) — the
-create / edit / delete sibling of `ResourceList`, driven by a declarative `fields` spec.
-It matches the BE zod validators (numbers coerced, empty optional UUIDs omitted, FK
-`<select>` pickers loaded from an `optionsEndpoint`), and **resolves FK columns to human
-names** in the table automatically (see §5). Reach for it when a screen needs forms, not
-just a read list — the fleet / WMS / HR grids are all thin field-specs on top of it.
+> ⚠️ **CORRECTION (Phase 1, 2026-08-04).** The two paragraphs above are wrong and are kept
+> only so the error is not silently repeated. **`<CrudResource>` does not exist** — there is
+> no `components/crud-resource.tsx` in the repo and no reference to it anywhere in `client/src`.
+> **`<ResourceList>` exists but has zero call sites** — every screen abandoned it.
+>
+> This fictional on-ramp is finding **F5** in `doc/DESKTOP_UI_AUDIT.md`, and the audit
+> identifies it as the *root cause* of most drift in the frontend: with no working paved road,
+> 24 feature areas each paved their own. A new engineer following this doc would import a
+> component that does not exist.
+>
+> **What screens actually do today:** compose `useList` / `useResource` (`lib/use-resource.ts`)
+> with `<PageHeader>` + `<DataList>` (`components/data-list.tsx`) and a `<Modal>` + `<Field>`
+> write form (`components/ui/modal.tsx`). See `features/hr/payroll.tsx`,
+> `features/wms/inventory.tsx` or `features/procurement/pages.tsx` — the canonical examples.
+>
+> **Phase 2 replaces this section** with a real, tested `<ListPage>` scaffold and a verified
+> "build a new screen" guide. Until then, copy one of the three screens named above.
 
 **Data access.** Use `lib/api-client.ts`: `tenant(path)` (prefixes `/api/tenant`) and `api(path)`.
 Errors throw `ApiError` with `.status` — treat `403` as a permission message, not a crash. Keep
@@ -133,10 +144,44 @@ e.g. `postJournalEntry`, `createInvoiceDraft`) rather than inline in components.
 - Write forms — `components/ui/modal.tsx`: `Modal`, `Field`, `Select`. Create/edit UIs are
   modals over the list, wired to a `lib/<area>-api.ts` helper.
 
-**Layout.** The app shell already wraps content in `<main class="p-6">`, so screens **don't**
-add their own outer padding or page chrome. Group content in `.lux-card` panels; constrain
-forms/detail with a `max-w-*` and center (`mx-auto`). Headings use `.font-display`; small
-labels use `.micro`.
+**Layout.** The app shell wraps content in `<main>` with responsive padding, so screens
+**don't** add their own outer padding or page chrome. Group content in `.lux-card` panels.
+Headings use `.font-display`; small labels use `.micro`.
+
+**Page width — pick one, never hand-roll (Phase 1).** Do **not** write `mx-auto max-w-*` on a
+screen. Width comes from the fixed set in `lib/layout.ts`, via `<PageContainer>` (preferred in
+new code) or the `pageShell.*` class token:
+
+| Width | Value | Use for |
+|---|---|---|
+| `wide` | 1664px | Dense data — lists, tables, dashboards, hubs. **The default.** |
+| `standard` | 1280px | Detail / mixed screens, 360 views. |
+| `reading` | 768px | Prose and single-column forms — settings, help, editors. |
+| `full` | — | Screens that manage their own width (split panes, chat, kanban). |
+
+```tsx
+import { PageContainer } from "@/components/layout/page-container";
+
+export function InvoicesPage() {
+  return (
+    <PageContainer>                       {/* wide by default */}
+      <PageHeader title="Invoices" description="…" />
+      <DataList … />
+    </PageContainer>
+  );
+}
+```
+
+Why this exists: before Phase 1 the app carried `mx-auto max-w-6xl` at **86 call sites** and
+capped every screen at 1152px, so 1280px and 2560px rendered identically (audit F2/F3).
+
+**Breakpoints.** `sm` (640) and `md` (768) are phone/tablet boundaries — they are *not* where
+desktop decisions belong. Use `lg` (1024), `xl` (1280) and `2xl` (1600) for desktop layout.
+A grid that goes two-up at `sm:` and never changes again is the bug F2 describes.
+
+**Type + colour.** Use the ramp (`text-micro/label/sm/base/lg/title/h2/h1`), not arbitrary
+`text-[13px]`. Never use `--primary` (or `text-primary`) for **text** — it fails contrast at
+2.59:1. Use `--primary-ink` / `text-primary-ink`, which is derived per tenant to clear AA.
 
 **Light/dark.** Everything is token-driven — if you only used tokens and `lux-*` classes, dark
 mode already works. Test both. No `dark:` hex overrides.

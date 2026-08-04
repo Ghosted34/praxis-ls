@@ -1,6 +1,7 @@
 /** Finance screens — Phase 1 accounting spine + the asset register. Read surfaces
  *  (lists + computed statement/tax reports) plus the write forms that post to the
  *  ledger: journal entries, customer advances, and the final-invoice lifecycle. */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
@@ -413,7 +414,7 @@ export function JournalsPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Journals"
@@ -606,7 +607,7 @@ export const ProformasPage = () => {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Proforma & advances"
@@ -1090,7 +1091,7 @@ export function InvoicesPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Invoices"
@@ -1182,7 +1183,7 @@ export function AssetsPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Assets"
@@ -1823,7 +1824,7 @@ function ReportTabs({
   }, [path, isCustom, activeTab.path]);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Finance" to="/finance" />} title={title} description={description} />
 
       <div className="mb-4 flex flex-wrap gap-1 border-b">
@@ -2568,7 +2569,7 @@ export function CreditNotesPage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Finance" to="/finance" />}
         title="Credit notes"

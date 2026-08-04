@@ -40,17 +40,25 @@ export function PageHeader({
         <span aria-hidden className="mt-1 h-7 w-1 shrink-0 rounded-full bg-primary" />
         <div className="min-w-0">
           {eyebrow && <div className="micro mb-1">{eyebrow}</div>}
+          {/*
+            The <h1> is now unconditional (audit F13). It used to render only
+            when `description` was absent — and 116 of 117 call sites pass one,
+            so in practice almost every screen in the app shipped with NO h1 at
+            all and a flat document outline.
+
+            The visual intent is preserved: inside a hub the tab bar already
+            names the screen, so the title stays visually small (`micro`) and the
+            description carries the visual weight. It is still a real h1 for
+            assistive tech and document structure — `sr-only` is deliberately NOT
+            used, because the title is genuinely useful context on screen too.
+          */}
           {description ? (
-            // Inside a hub the tab bar already names the screen, so leading with
-            // the tab-duplicating title is redundant — lead with the one-line
-            // description instead. When there's no eyebrow (standalone page), keep
-            // the title as a small kicker above it so no context is lost.
             <>
-              {!eyebrow && title && <div className="micro mb-1">{title}</div>}
-              <p className="max-w-2xl text-[15px] font-medium leading-snug text-foreground">{description}</p>
+              <h1 className="micro mb-1">{title}</h1>
+              <p className="max-w-prose text-base font-medium leading-snug text-foreground">{description}</p>
             </>
           ) : (
-            <h1 className="font-display text-[22px] leading-tight tracking-tight">{title}</h1>
+            <h1 className="font-display text-h2 leading-tight">{title}</h1>
           )}
         </div>
       </div>

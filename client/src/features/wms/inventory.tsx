@@ -3,6 +3,7 @@
  * state, plus the real actions: Move (receive / issue / adjust / transfer),
  * state transitions (QA hold, damaged…), and the append-only movement journal.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATE_TONE: Record<string, Tone> = { AVAILABLE: "ok", QA_HOLD: "warn", ALLOCATED: "blue", DISPATCHED: "mute", DAMAGED: "bad" };
 const TRANSITIONS: Record<string, string[]> = {
   AVAILABLE: ["QA_HOLD", "ALLOCATED", "DAMAGED"], QA_HOLD: ["AVAILABLE", "DAMAGED"],

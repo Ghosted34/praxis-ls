@@ -3,6 +3,7 @@
  * their master terms plus a live rollup: outstanding balance, dossiers, overdue
  * invoices and receipts — mirroring the Dossier 360 pattern for customers.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
@@ -18,7 +19,7 @@ import * as api from "@/lib/masterdata-api";
 import { listDossiers, type Dossier } from "@/lib/operations-api";
 import { ClientForm } from "./pages";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const DOSSIER_TONE: Record<string, Tone> = { DRAFT: "mute", IN_PROGRESS: "blue", COMPLETED: "ok", CANCELLED: "bad" };
 
 const TABS = ["Dossiers", "Overdue", "Receipts"] as const;

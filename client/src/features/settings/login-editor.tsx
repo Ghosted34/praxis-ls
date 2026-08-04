@@ -4,6 +4,7 @@
  * subtext, layout (centered/split), show-logo, and an optional accent override.
  * All fields persist.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
@@ -16,6 +17,7 @@ import {
 import { ApiError } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { SettingsCard, Field, TextArea, Segmented, Toggle, ColorRow, ImageField } from "@/components/settings/controls";
+import { cn } from "@/lib/cn";
 
 export function LoginEditor() {
   const [loaded, setLoaded] = React.useState(false);
@@ -75,7 +77,7 @@ export function LoginEditor() {
   }
 
   return (
-    <section className="mx-auto max-w-2xl animate-fade-in pb-24">
+    <section className={cn(pageShell.reading, "pb-24")}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Login screen" description="Configure the signed-out door — no code, no redeploy." />
 
       {!loaded ? (

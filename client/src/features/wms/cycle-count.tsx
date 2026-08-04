@@ -3,6 +3,7 @@
  * count each item against its expected on-hand, see the variance live, and submit
  * — a discrepancy raises the reconciliation event. Past counts show their result.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -18,7 +19,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 function CountSheet({ locations, onClose, onSaved }: { locations: api.WarehouseLocation[]; onClose: () => void; onSaved: () => void }) {
   const inv = useResource(() => api.listInventory(), []);

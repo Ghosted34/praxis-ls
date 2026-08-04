@@ -3,6 +3,7 @@
  * dunning reminders, and a receipt detail drawer (FIFO allocations). Composes the
  * locked shared kit; every accent resolves to --primary (settings-driven).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { money, dateFmt, todayISO, enumLabel } from "@/lib/format";
 import type { Client, Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const TONES: Record<string, Tone> = { DRAFT: "mute", POSTED_LOCKED: "ok", REVERSED: "bad" };
 const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
 const METHODS = ["BANK", "CASH", "MOBILE_MONEY", "CHEQUE"];

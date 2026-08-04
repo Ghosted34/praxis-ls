@@ -6,6 +6,7 @@
  *
  * Shared primitives from features/sales/ui.tsx; AI panel gated globally.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
@@ -268,7 +269,7 @@ export function PortalAccessPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Portal" to="/portal/access" />}
         title="Portal access"

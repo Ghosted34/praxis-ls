@@ -3,6 +3,7 @@
  * Log a fleet incident against a vehicle/driver, then move it OPEN →
  * UNDER_REVIEW → CLOSED. (Insurance claims hang off a reviewed incident.)
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { dateTimeFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const STATUS_TONE: Record<string, Tone> = { OPEN: "blue", UNDER_REVIEW: "warn", CLOSED: "ok" };
 const SEV_TONE: Record<string, Tone> = { MINOR: "blue", MAJOR: "warn", TOTAL: "bad" };
 const TRANSITIONS: Record<string, string[]> = { OPEN: ["UNDER_REVIEW", "CLOSED"], UNDER_REVIEW: ["CLOSED"], CLOSED: [] };

@@ -4,6 +4,7 @@
  * payload to the immutable ledger. Accounting-connected records can NEVER be
  * purged (reverse instead) — the backend refuses them. Server enforces CEO + PIN.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -76,7 +77,7 @@ export function GodModePage() {
   ];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader title="God Mode" description="CEO-only purge of soft-deleted junk data. Permanent, PIN-gated, and always written to the immutable ledger." />
       <div className="mb-4 rounded-xl border border-[rgb(var(--warn))]/40 bg-[rgb(var(--warn)/0.08)] px-4 py-3 text-sm">
         Restricted to the CEO. Accounting-connected records can never be purged — only reversed. Every purge is audited.

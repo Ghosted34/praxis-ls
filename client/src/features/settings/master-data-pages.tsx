@@ -2,6 +2,7 @@
  *  - CurrenciesPage       → /currencies (+ /currencies/rates, POST rate)
  *  - TaxJurisdictionsPage → /tax-jurisdictions (+ /:id/codes)
  *  Same primitives + patterns as features/finance/pages.tsx. */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -210,7 +211,7 @@ export function CurrenciesPage() {
   const codes = (currencies || []).map((c) => String(c.code ?? "")).filter(Boolean);
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Currencies & FX" description="Active currencies and exchange rates. Manual overrides are as-of dated." action={<Button onClick={() => setRateOpen(true)} disabled={codes.length < 2}>Set rate</Button>} />
       <HubTabs />
 
@@ -524,7 +525,7 @@ export function TaxJurisdictionsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Settings" to="/settings" />} title="Tax rates & jurisdictions" description="Jurisdictions and their effective-dated tax codes (TVA/WHT/IS…) read by account determination." action={<Button onClick={() => setCreateOpen(true)}>New jurisdiction</Button>} />
       <HubTabs />
 

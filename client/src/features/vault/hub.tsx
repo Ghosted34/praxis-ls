@@ -11,6 +11,7 @@
  * (a 403 becomes a dash, never an error banner) — the pages themselves already
  * render a proper "enable it" state.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { useList } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import { DocumentsPage, SignaturesPage, VerificationPage, ComplianceFlagsPage, ReportsPage } from "./pages";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 type Doc = { doc_id: string; doc_type?: string | null; status?: string | null; entity_ref?: string | null; created_at?: string | null };
 type Flag = { flag_id: string; rule_key: string; severity?: string | null; message?: string | null; resolved_at?: string | null; created_at?: string | null };

@@ -6,6 +6,7 @@
  * deeper modules sit as links beside that button and open via /finance/<slug>.
  * Accents resolve to --primary (settings-driven).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -21,7 +22,7 @@ import { ReceivablesPage } from "./receivables";
 import { DebtPage } from "./debt";
 import { ChartOfAccountsPage } from "./chart-of-accounts";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const statusTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
   if (u.includes("LOCKED") || u === "VALIDATED" || u === "PAID" || u === "APPLIED") return "ok";

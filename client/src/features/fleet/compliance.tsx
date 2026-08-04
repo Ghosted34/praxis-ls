@@ -3,6 +3,7 @@
  * visite-technique records sorted by expiry, each flagged valid / due-soon /
  * expired, with a one-click Renew (push the expiry forward).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel, expiryStatus, type ExpiryLevel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const EXP_TONE: Record<ExpiryLevel, Tone> = { valid: "ok", soon: "warn", expired: "bad", none: "mute" };
 const EXP_LABEL: Record<ExpiryLevel, string> = { valid: "Valid", soon: "Due soon", expired: "Expired", none: "No date" };
 const KIND_LABEL: Record<string, string> = { insurance: "Insurance", visite_technique: "Visite technique" };

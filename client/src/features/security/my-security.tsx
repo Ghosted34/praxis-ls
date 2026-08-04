@@ -5,6 +5,7 @@
  * The backend doesn't report current MFA status (no /me), so both the enrol and
  * disable flows are shown with guidance.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useAuth } from "@/app/auth/auth-context";
 import { ApiError, tenant } from "@/lib/api-client";
@@ -164,7 +165,7 @@ export function MySecurityPage() {
   const errCls = "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive";
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Security & access" to="/security" />} title="My security" description="Protect your account with an authenticator app and a device-bound Quick PIN." />
       <HubTabs />
 

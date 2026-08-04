@@ -2,6 +2,7 @@
  * Procurement screens (Wave 3) — purchase requests, purchase orders, goods
  * received (GRN), supplier invoices. Locked shared kit; line editors minimal.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
@@ -22,7 +23,7 @@ import type { Entity, Supplier } from "@/lib/masterdata-api";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/procurement-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const TONES: Record<string, Tone> = {
   DRAFT: "mute", SUBMITTED: "warn", APPROVED: "ok", REJECTED: "bad", ORDERED: "blue",
   APPROVED_LOCKED: "ok", ISSUED_LOCKED: "blue", RECEIVED: "ok", CLOSED: "mute", CANCELLED: "bad",

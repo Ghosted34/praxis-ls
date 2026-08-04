@@ -4,6 +4,7 @@
  *   - CorporateEntitiesPage → /entities (+ /:id/active)
  *  Same primitives + patterns as features/settings/master-data-pages.tsx.
  *  AI panels are gated globally (components/ai-actions.tsx). */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
@@ -259,7 +260,7 @@ export function ClientsPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Clients" description="Customer registry referenced across sales, operations and receivables." action={<Button onClick={openNew}>New client</Button>} />
 
       {error ? (
@@ -471,7 +472,7 @@ export function SuppliersPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Suppliers" description="Vendor registry referenced across procurement and payables." action={<Button onClick={openNew}>New supplier</Button>} />
 
       {error ? (
@@ -668,7 +669,7 @@ export function CorporateEntitiesPage() {
   }
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Corporate entities" description="The legal entities you operate — used by treasury, tax and document numbering." action={<Button onClick={openNew}>New entity</Button>} />
 
       {rowError && (

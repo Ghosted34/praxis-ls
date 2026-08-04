@@ -2,6 +2,7 @@
  * Driver licences — expiry board (replaces the CRUD table). Licences and certs
  * per driver, flagged valid / due-soon / expired, with a one-click Renew.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { dateFmt, expiryStatus, type ExpiryLevel } from "@/lib/format";
 import * as api from "@/lib/fleet-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const EXP_TONE: Record<ExpiryLevel, Tone> = { valid: "ok", soon: "warn", expired: "bad", none: "mute" };
 const EXP_LABEL: Record<ExpiryLevel, string> = { valid: "Valid", soon: "Due soon", expired: "Expired", none: "No date" };
 

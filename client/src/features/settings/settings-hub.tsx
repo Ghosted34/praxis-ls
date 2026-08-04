@@ -4,6 +4,7 @@
  * to the shared ComingSoon placeholder (see doc/FE_IA_HANDOFF.md). Cards linking
  * into existing areas (Appearance, Notifications, IAM, Roles) go straight there.
  */
+import { pageShell } from "@/lib/layout";
 import { Link } from "react-router-dom";
 
 type Card = { to: string; label: string; desc: string; icon: IconKey };
@@ -113,7 +114,7 @@ function ChevIcon() {
 
 export function SettingsHub() {
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <h1 className="font-display text-2xl tracking-tight">Settings</h1>
       <p className="mt-1 text-sm text-muted-foreground">
         Configure the hub. Business identity, money, operations, communication &amp; integrations.

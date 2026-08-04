@@ -50,7 +50,7 @@ function PortalFrame({ children, wide = false }: { children: React.ReactNode; wi
   return (
     <div className="min-h-screen bg-background">
       <header className="border-b border-border bg-card">
-        <div className={`mx-auto flex items-center justify-between px-6 py-4 ${wide ? "max-w-6xl" : "max-w-md"}`}>
+        <div className={`mx-auto flex items-center justify-between px-6 py-4 ${wide ? "max-w-standard" : "max-w-md"}`}>
           <div className="flex items-center gap-3">
             {branding?.logoUrl ? (
               <img src={branding.logoUrl} alt="" className="h-8 w-auto" />
@@ -73,7 +73,7 @@ function PortalFrame({ children, wide = false }: { children: React.ReactNode; wi
           ) : null}
         </div>
       </header>
-      <main className={`mx-auto px-6 py-10 ${wide ? "max-w-6xl" : "max-w-md"}`}>{children}</main>
+      <main className={`mx-auto px-6 py-10 ${wide ? "max-w-standard" : "max-w-md"}`}>{children}</main>
       <footer className="px-6 pb-10 text-center text-xs text-muted-foreground">
         Powered by JBS Praxis LLC
       </footer>

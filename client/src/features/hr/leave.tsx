@@ -4,6 +4,7 @@
  * Approve or Reject (MOD-15 "approve" permission). Managers work the pending
  * queue; a "New request" raises one.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,7 @@ import { money, dateFmt } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/hr-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 const STATUS_TONE: Record<string, Tone> = { REQUESTED: "warn", APPROVED: "ok", REJECTED: "bad" };
 const KIND: Record<string, { label: string; tone: Tone }> = {

@@ -3,6 +3,7 @@
  * note opens on HOLD; QA either PASSES it (choosing a putaway location) or REJECTS
  * it. Once decided the GRN is terminal.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { DocButton } from "@/components/doc-button";
@@ -20,7 +21,7 @@ import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/wms-api";
 import { reportActionError } from "@/lib/action-error";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const QA_TONE: Record<string, Tone> = { HOLD: "warn", PASSED: "ok", REJECTED: "bad" };
 const QA_LABEL: Record<string, string> = { HOLD: "On hold", PASSED: "Passed", REJECTED: "Rejected" };
 

@@ -1,6 +1,7 @@
 /** HR screens. Every substantive screen is a purpose-built workstation
  *  (360 / run / queue / kanban / lifecycle / roster), re-exported here so the
  *  hub imports are stable. SOPs and Talent pool are light reference lists. */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -24,7 +25,7 @@ const READINESS: { value: string; label: string; tone: Tone }[] = [
 const readinessMeta = (v?: string | null) => READINESS.find((r) => r.value === v);
 
 const eyebrow = <HubCrumb area="Human capital" to="/hr" />;
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 // Employees is now a profile 360 (record + HR history + suspend/activate).
 export { EmployeesPage } from "./employee-360";

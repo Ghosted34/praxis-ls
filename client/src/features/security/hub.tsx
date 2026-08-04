@@ -9,6 +9,7 @@
  * Access = Role × Capability × Scope × CRUD-per-module × field visibility, so the
  * overview reads as a posture summary across exactly those axes.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,7 @@ import { UsersPage, RolesPage, CapabilitiesPage, ScopesPage, FieldVisibilityPage
 import { PermissionMatrixPage } from "./permission-matrix-page";
 import { MySecurityPage } from "./my-security";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 
 /** Horizontal proportion bar — one segment per status. */
 function Bar({ parts }: { parts: { label: string; value: number; tone: string }[] }) {

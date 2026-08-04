@@ -3,6 +3,7 @@
  * search, and sub-account create/edit. Read-heavy master screen on the locked kit;
  * accents resolve to --primary (settings-driven).
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useList, errMsg } from "@/lib/use-resource";
 import { num } from "@/lib/format";
 import * as api from "@/lib/finance-api";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 const CLASS_NAMES: Record<number, string> = {
   1: "Equity & liabilities", 2: "Fixed assets", 3: "Inventory", 4: "Third parties", 5: "Treasury",
   6: "Expenses", 7: "Revenue", 8: "Special", 9: "Analytic",

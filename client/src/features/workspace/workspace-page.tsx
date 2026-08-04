@@ -4,6 +4,7 @@
  * unread notifications, and recent activity. Composes the locked kit; accents
  * resolve to --primary.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/data-list";
@@ -46,7 +47,7 @@ export function WorkspacePage() {
   const activity = d?.recent_activity || [];
 
   return (
-    <section className="mx-auto max-w-6xl animate-fade-in">
+    <section className={pageShell.wide}>
       <PageHeader title="My workspace" description="What's on your desk right now — approvals, alerts and the latest activity." />
       {r.loading ? (
         <div className="py-10 text-center micro">Loading…</div>

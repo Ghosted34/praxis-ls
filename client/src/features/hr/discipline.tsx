@@ -3,6 +3,7 @@
  * queries and sanctions per employee. Employees see/respond to their own via
  * My HR (/my-hr). Two hub tabs: Queries and Sanctions.
  */
+import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +17,7 @@ import { useList, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, money, dateFmt } from "@/lib/format";
 
-const shell = "mx-auto max-w-6xl animate-fade-in";
+const shell = pageShell.wide;
 type EmployeeLite = { employee_id: string; full_name?: string | null };
 
 const sevTone = (s: string): Tone => (s === "SERIOUS" ? "bad" : s === "WARNING" ? "warn" : "blue");

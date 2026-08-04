@@ -10,7 +10,7 @@
  * overview reads as a posture summary across exactly those axes.
  */
 import { pageShell } from "@/lib/layout";
-import * as React from "react";
+import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -50,15 +50,6 @@ function Bar({ parts }: { parts: { label: string; value: number; tone: string }[
   );
 }
 
-function Panel({ title, subtitle, children }: { title: string; subtitle: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg">{title}</h3>
-      <div className="micro mb-4 uppercase tracking-wide">{subtitle}</div>
-      {children}
-    </div>
-  );
-}
 
 function Overview() {
   const navigate = useNavigate();

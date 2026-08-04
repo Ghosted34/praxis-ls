@@ -12,7 +12,7 @@
  * render a proper "enable it" state.
  */
 import { pageShell } from "@/lib/layout";
-import * as React from "react";
+import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -42,20 +42,6 @@ const docTone = (s?: string | null): Tone => {
   return "warn";
 };
 
-function Panel({ title, subtitle, action, children }: { title: string; subtitle: string; action?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-display text-lg">{title}</h3>
-          <div className="micro uppercase tracking-wide">{subtitle}</div>
-        </div>
-        {action}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 function Overview() {
   const navigate = useNavigate();

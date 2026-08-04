@@ -31,6 +31,22 @@ export function money0(amount: number | string | null | undefined): string {
   return n.toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
+/** Grouped to exactly 2dp with NO currency suffix — for ledger columns whose
+ *  header already names the currency ("Debit · XAF"), where repeating it on
+ *  every row is noise. `money0` is the same idea at zero decimals; use this one
+ *  where the cents are the point (journal lines, trial balance).
+ *
+ *  Absorbs the local `money` from `features/finance/pages.tsx:106` (F6). That
+ *  copy formatted fr-FR while the canonical formatters format en-US, so the
+ *  same figure carried a different decimal mark depending on which Finance
+ *  screen you were on. One locale now — see the consolidation commit. */
+export function amount(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export function num(value: number | string | null | undefined): string {
   if (value === null || value === undefined || value === "") return "—";
   const n = typeof value === "string" ? Number(value) : value;
@@ -162,6 +178,11 @@ export function smartCell(v: unknown): string {
 export function cell(v: unknown): string {
   if (v === null || v === undefined || v === "") return "—";
   if (typeof v === "boolean") return v ? "Yes" : "No";
+  // Arrays render as their members, not as JSON. The fourth copy of this helper
+  // (settings/config-pages.tsx:26, now deleted) had this and the canonical one
+  // did not, so a `recipients` or `formats` column showed `["a@b.com"]` with the
+  // brackets and quotes on some screens and not others (F6).
+  if (Array.isArray(v)) return v.length ? v.map((x) => cell(x)).join(", ") : "—";
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }

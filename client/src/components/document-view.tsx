@@ -14,7 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { tenant } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { errMsg } from "@/lib/use-resource";
-import { num, dateFmt, enumLabel } from "@/lib/format";
+import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 
 /** Auth-gated binary fetch of a vaulted document → open the blob in a new tab.
@@ -66,7 +66,6 @@ type Preview = { html: string; data?: DocData | null; title?: { fr?: string; en?
 const fromParty = (e?: Entity): Party | undefined =>
   e ? { name: e.legal_name, lines: [e.niu && `NIU ${e.niu}`, e.rccm && `RCCM ${e.rccm}`].filter(Boolean) as string[] } : undefined;
 
-const money = (n: unknown, ccy = "XAF") => `${Number(n || 0).toLocaleString("fr-FR", { maximumFractionDigits: 2 })} ${ccy}`;
 const STATUS_TONE = (s?: string): Tone => {
   const u = String(s || "").toUpperCase();
   if (/PAID|APPLIED|VALIDATED|SIGNED|DONE|DELIVERED|ACCEPTED|LOCKED/.test(u)) return "ok";

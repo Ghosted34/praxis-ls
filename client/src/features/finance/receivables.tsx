@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -29,14 +30,6 @@ const nameMap = (rows: Client[] | null) => {
   return m;
 };
 
-function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button type="submit" loading={busy} disabled={disabled}>{saveLabel}</Button>
-    </div>
-  );
-}
 
 /* ── create receipt ── */
 const KIND_FOR_METHOD: Record<string, string> = { BANK: "BANK", CHEQUE: "BANK", MOBILE_MONEY: "MOMO", CASH: "CASH" };

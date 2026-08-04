@@ -4,7 +4,8 @@
  *  Same primitives + patterns as features/finance/pages.tsx. */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
-import { tenant, ApiError } from "@/lib/api-client";
+import { errMsg, useList, useRefresh } from "@/lib/use-resource";
+import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -13,45 +14,9 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { smartCell } from "@/lib/format";
+import { smartCell, todayISO } from "@/lib/format";
 
-type Row = Record<string, unknown>;
 
-function errMsg(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 403) return "You don't have permission to do this.";
-    return e.message || "Something went wrong.";
-  }
-  return "Something went wrong.";
-}
-
-// Human-readable §5 cell (ISO dates → readable, decimals grouped, UUIDs short).
-function cell(v: unknown): string {
-  return smartCell(v);
-}
-
-function today(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-}
-
-/** Load a resource into state, keyed on a reload nonce. */
-function useList(path: string, nonce: number) {
-  const [rows, setRows] = React.useState<Row[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    setRows(null);
-    setError(null);
-    tenant<Row[]>(path)
-      .then((d) => live && setRows(Array.isArray(d) ? d : []))
-      .catch((e) => live && setError(errMsg(e)));
-    return () => {
-      live = false;
-    };
-  }, [path, nonce]);
-  return { rows, error };
-}
 
 /* ─────────────────────────── Currencies ─────────────────────────── */
 
@@ -59,7 +24,7 @@ function SetRateForm({ open, onClose, onSaved, codes }: { open: boolean; onClose
   const [base, setBase] = React.useState("");
   const [quote, setQuote] = React.useState("");
   const [rate, setRate] = React.useState("");
-  const [asOf, setAsOf] = React.useState(today());
+  const [asOf, setAsOf] = React.useState(todayISO());
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -68,7 +33,7 @@ function SetRateForm({ open, onClose, onSaved, codes }: { open: boolean; onClose
     setBase("");
     setQuote("");
     setRate("");
-    setAsOf(today());
+    setAsOf(todayISO());
     setError(null);
   }, [open]);
 
@@ -137,8 +102,7 @@ function SetRateForm({ open, onClose, onSaved, codes }: { open: boolean; onClose
  * Encrypted + write-only (only last4 shown), with a live connection test. Lives
  * here, in Currencies & FX, next to the rates it populates. */
 function FxSyncCard() {
-  const [nonce, setNonce] = React.useState(0);
-  const { rows } = useList("/settings/integration_secret", nonce);
+  const { rows, reload } = useList("/settings/integration_secret");
   const fx = (rows || []).find((r) => String(r.key) === "fx_exchangerate");
   const last4 = (fx?.value as { last4?: string } | undefined)?.last4;
   const isSet = !!last4;
@@ -156,7 +120,7 @@ function FxSyncCard() {
         body: { value: { provider: "exchangerate-api", key_name: "EXCHANGERATE_API_KEY", secret } },
       });
       setSecret("");
-      setNonce((n) => n + 1);
+      reload();
     } catch (e) {
       setMsg({ ok: false, text: errMsg(e) });
     } finally {
@@ -202,10 +166,9 @@ function FxSyncCard() {
 }
 
 export function CurrenciesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows: currencies, error: curErr } = useList("/currencies", nonce);
-  const { rows: rates, error: rateErr } = useList("/currencies/rates", nonce);
+  const reload = useRefresh();
+  const { rows: currencies, error: curErr } = useList("/currencies");
+  const { rows: rates, error: rateErr } = useList("/currencies/rates");
   const [rateOpen, setRateOpen] = React.useState(false);
 
   const codes = (currencies || []).map((c) => String(c.code ?? "")).filter(Boolean);
@@ -235,9 +198,9 @@ export function CurrenciesPage() {
           <TBody>
             {currencies.map((c, i) => (
               <TR key={i}>
-                <TD className="text-sm font-medium">{cell(c.code)}</TD>
-                <TD className="text-sm">{cell(c.name)}</TD>
-                <TD className="text-sm">{cell(c.symbol)}</TD>
+                <TD className="text-sm font-medium">{smartCell(c.code)}</TD>
+                <TD className="text-sm">{smartCell(c.name)}</TD>
+                <TD className="text-sm">{smartCell(c.symbol)}</TD>
                 <TD className="text-sm">{c.is_base ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">base</span> : "—"}</TD>
               </TR>
             ))}
@@ -270,11 +233,11 @@ export function CurrenciesPage() {
             {rates.map((r, i) => (
               <TR key={i}>
                 <TD className="text-sm font-medium">
-                  {cell(r.base_code)} → {cell(r.quote_code)}
+                  {smartCell(r.base_code)} → {smartCell(r.quote_code)}
                 </TD>
-                <TD className="num text-sm">{cell(r.rate)}</TD>
-                <TD className="text-sm">{cell(r.as_of_date)}</TD>
-                <TD className="text-sm">{cell(r.source)}</TD>
+                <TD className="num text-sm">{smartCell(r.rate)}</TD>
+                <TD className="text-sm">{smartCell(r.as_of_date)}</TD>
+                <TD className="text-sm">{smartCell(r.source)}</TD>
                 <TD className="text-sm">{r.is_override ? "yes" : "—"}</TD>
               </TR>
             ))}
@@ -357,7 +320,7 @@ function AddCodeForm({ jurisdictionId, onClose, onAdded }: { jurisdictionId: str
   const [ratePercent, setRatePercent] = React.useState("");
   const [appliesTo, setAppliesTo] = React.useState("");
   const [recoverable, setRecoverable] = React.useState(false);
-  const [effectiveFrom, setEffectiveFrom] = React.useState(today());
+  const [effectiveFrom, setEffectiveFrom] = React.useState(todayISO());
   const [effectiveTo, setEffectiveTo] = React.useState("");
   const [legalRef, setLegalRef] = React.useState("");
   const [busy, setBusy] = React.useState(false);
@@ -370,7 +333,7 @@ function AddCodeForm({ jurisdictionId, onClose, onAdded }: { jurisdictionId: str
     setRatePercent("");
     setAppliesTo("");
     setRecoverable(false);
-    setEffectiveFrom(today());
+    setEffectiveFrom(todayISO());
     setEffectiveTo("");
     setLegalRef("");
     setError(null);
@@ -455,8 +418,8 @@ function AddCodeForm({ jurisdictionId, onClose, onAdded }: { jurisdictionId: str
   );
 }
 
-function CodesPanel({ jurisdictionId, nonce, onAddCode }: { jurisdictionId: string; nonce: number; onAddCode: () => void }) {
-  const { rows: codes, error } = useList(`/tax-jurisdictions/${jurisdictionId}/codes`, nonce);
+function CodesPanel({ jurisdictionId, onAddCode }: { jurisdictionId: string; onAddCode: () => void }) {
+  const { rows: codes, error } = useList(`/tax-jurisdictions/${jurisdictionId}/codes`);
   return (
     <div className="mt-2 rounded-lg border bg-muted/30 p-4">
       <div className="mb-2 flex items-center justify-between">
@@ -486,12 +449,12 @@ function CodesPanel({ jurisdictionId, nonce, onAddCode }: { jurisdictionId: stri
           <TBody>
             {codes.map((c, i) => (
               <TR key={i}>
-                <TD className="text-sm font-medium">{cell(c.code)}</TD>
-                <TD className="text-sm">{cell(c.kind)}</TD>
-                <TD className="num text-sm">{cell(c.rate_percent)}</TD>
-                <TD className="text-sm">{cell(c.applies_to)}</TD>
-                <TD className="text-sm">{cell(c.effective_from)}</TD>
-                <TD className="text-sm">{cell(c.effective_to)}</TD>
+                <TD className="text-sm font-medium">{smartCell(c.code)}</TD>
+                <TD className="text-sm">{smartCell(c.kind)}</TD>
+                <TD className="num text-sm">{smartCell(c.rate_percent)}</TD>
+                <TD className="text-sm">{smartCell(c.applies_to)}</TD>
+                <TD className="text-sm">{smartCell(c.effective_from)}</TD>
+                <TD className="text-sm">{smartCell(c.effective_to)}</TD>
               </TR>
             ))}
           </TBody>
@@ -502,9 +465,8 @@ function CodesPanel({ jurisdictionId, nonce, onAddCode }: { jurisdictionId: stri
 }
 
 export function TaxJurisdictionsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/tax-jurisdictions", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/tax-jurisdictions");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [expandedId, setExpandedId] = React.useState<string | null>(null);
   const [addCodeFor, setAddCodeFor] = React.useState<string | null>(null);
@@ -560,9 +522,9 @@ export function TaxJurisdictionsPage() {
               return (
                 <React.Fragment key={id}>
                   <TR>
-                    <TD className="text-sm font-medium">{cell(r.country_code)}</TD>
-                    <TD className="text-sm">{cell(r.name)}</TD>
-                    <TD className="text-sm">{cell(r.currency)}</TD>
+                    <TD className="text-sm font-medium">{smartCell(r.country_code)}</TD>
+                    <TD className="text-sm">{smartCell(r.name)}</TD>
+                    <TD className="text-sm">{smartCell(r.currency)}</TD>
                     <TD className="text-sm">
                       {active ? (
                         <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">active</span>
@@ -584,7 +546,7 @@ export function TaxJurisdictionsPage() {
                   {isOpen && (
                     <TR>
                       <TD colSpan={5}>
-                        <CodesPanel jurisdictionId={id} nonce={nonce} onAddCode={() => setAddCodeFor(id)} />
+                        <CodesPanel jurisdictionId={id} onAddCode={() => setAddCodeFor(id)} />
                       </TD>
                     </TR>
                   )}

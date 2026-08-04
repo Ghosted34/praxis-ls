@@ -6,7 +6,12 @@
  *  AI panels are gated globally (components/ai-actions.tsx). */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
-import { tenant, ApiError } from "@/lib/api-client";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell } from "@/lib/format";
+import { ActivePill } from "@/components/ui/pill";
+import { Stat } from "@/components/ui/stat";
+import { money } from "@/lib/format";
+import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
@@ -18,48 +23,7 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 
-type Row = Record<string, unknown>;
 
-function errMsg(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 403) return "You don't have permission to do this.";
-    return e.message || "Something went wrong.";
-  }
-  return "Something went wrong.";
-}
-
-function cell(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-/** Load a resource into state, keyed on a reload nonce. */
-function useList(path: string, nonce: number) {
-  const [rows, setRows] = React.useState<Row[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    setRows(null);
-    setError(null);
-    tenant<Row[]>(path)
-      .then((d) => live && setRows(Array.isArray(d) ? d : []))
-      .catch((e) => live && setError(errMsg(e)));
-    return () => {
-      live = false;
-    };
-  }, [path, nonce]);
-  return { rows, error };
-}
-
-function StatusPill({ active }: { active: boolean }) {
-  return active ? (
-    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">active</span>
-  ) : (
-    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">inactive</span>
-  );
-}
 
 /** Optional corporate-entity picker, shared by Clients + Suppliers. */
 function EntitySelect({ entities, value, onChange }: { entities: Row[] | null; value: string; onChange: (v: string) => void }) {
@@ -204,7 +168,7 @@ function CreditModal({ client, onClose }: { client: Row | null; onClose: () => v
     };
   }, [client]);
 
-  const money = (v: unknown) => (v === null || v === undefined ? "no limit" : `${Number(v).toLocaleString()} XAF`);
+  const limit = (v: unknown) => (v === null || v === undefined ? "no limit" : money(v));
 
   return (
     <Modal open={open} onClose={onClose} title={`Credit status — ${client ? cell(client.name) : ""}`} description="Live credit availability from the client master.">
@@ -215,11 +179,11 @@ function CreditModal({ client, onClose }: { client: Row | null; onClose: () => v
           <LoadingRow label="Checking credit…" />
         ) : (
           <div className="grid grid-cols-2 gap-3">
-            <Stat label="KYC complete" value={data.kyc_complete ? "yes" : "no"} good={data.kyc_complete === true} />
-            <Stat label="Within limit" value={data.within ? "yes" : "over"} good={data.within === true} />
-            <Stat label="Credit limit" value={money(data.limit)} />
+            <Stat label="KYC complete" value={data.kyc_complete ? "Yes" : "No"} tone={data.kyc_complete === true ? "ok" : "bad"} />
+            <Stat label="Within limit" value={data.within ? "Yes" : "Over"} tone={data.within === true ? "ok" : "bad"} />
+            <Stat label="Credit limit" value={limit(data.limit)} />
             <Stat label="Receivables used" value={money(data.used)} />
-            <Stat label="Available" value={data.available === null ? "—" : money(data.available)} />
+            <Stat label="Available" value={limit(data.available)} />
           </div>
         )}
         <div className="flex justify-end pt-2">
@@ -232,20 +196,11 @@ function CreditModal({ client, onClose }: { client: Row | null; onClose: () => v
   );
 }
 
-function Stat({ label, value, good }: { label: string; value: string; good?: boolean }) {
-  return (
-    <div className="rounded-lg border bg-muted/30 p-3">
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className={`mt-0.5 text-sm font-semibold ${good === undefined ? "text-foreground" : good ? "text-emerald-600 dark:text-emerald-400" : "text-destructive"}`}>{value}</p>
-    </div>
-  );
-}
 
 export function ClientsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/clients", nonce);
-  const { rows: entities } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/clients");
+  const { rows: entities } = useList("/entities");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [creditFor, setCreditFor] = React.useState<Row | null>(null);
@@ -291,7 +246,7 @@ export function ClientsPage() {
                 <TD className="num text-sm">{r.payment_terms_days != null ? `${cell(r.payment_terms_days)} d` : "—"}</TD>
                 <TD className="num text-sm">{r.credit_limit != null ? Number(r.credit_limit).toLocaleString() : "—"}</TD>
                 <TD className="text-sm">
-                  <StatusPill active={r.is_active !== false} />
+                  <ActivePill active={r.is_active !== false} />
                 </TD>
                 <TD>
                   <div className="flex gap-2">
@@ -455,10 +410,9 @@ function SupplierForm({ open, editing, entities, onClose, onSaved }: { open: boo
 }
 
 export function SuppliersPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/suppliers", nonce);
-  const { rows: entities } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/suppliers");
+  const { rows: entities } = useList("/entities");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
 
@@ -503,7 +457,7 @@ export function SuppliersPage() {
                 <TD className="text-sm">{r.payment_method ? cell(r.payment_method).replace("_", " ") : "—"}</TD>
                 <TD className="num text-sm">{r.rating != null ? `${cell(r.rating)}/5` : "—"}</TD>
                 <TD className="text-sm">
-                  <StatusPill active={r.is_active !== false} />
+                  <ActivePill active={r.is_active !== false} />
                 </TD>
                 <TD>
                   <Button size="sm" variant="outline" onClick={() => openEdit(r)}>
@@ -638,9 +592,8 @@ function EntityForm({ open, editing, onClose, onSaved }: { open: boolean; editin
 }
 
 export function CorporateEntitiesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/entities");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -709,7 +662,7 @@ export function CorporateEntitiesPage() {
                   <TD className="text-sm">{cell(r.rccm)}</TD>
                   <TD className="text-sm">{cell(r.country_code)}</TD>
                   <TD className="text-sm">
-                    <StatusPill active={active} />
+                    <ActivePill active={active} />
                   </TD>
                   <TD>
                     <div className="flex gap-2">

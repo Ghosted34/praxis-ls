@@ -7,6 +7,7 @@ import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { DictionaryItemSelect } from "@/components/catalogue-select";
 import { Input } from "@/components/ui/input";
@@ -34,14 +35,6 @@ const map = <T extends Record<string, unknown>>(rows: T[] | null, id: string, na
   const m: Record<string, string> = {}; (rows || []).forEach((r) => { m[String(r[id])] = String(r[name] ?? ""); }); return m;
 };
 
-function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button type="submit" loading={busy} disabled={disabled}>{saveLabel}</Button>
-    </div>
-  );
-}
 
 /* ═══════════════════ Purchase requests ═══════════════════ */
 

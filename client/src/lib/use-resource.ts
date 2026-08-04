@@ -46,12 +46,28 @@ export type Row = Record<string, unknown>;
  * `features/finance/pages.tsx:92`, `features/settings/master-data-pages.tsx:19`
  * and `features/settings/config-pages.tsx:23`).
  *
+ * Five of the six were byte-identical. The sixth — Finance's `errMessage` — was
+ * BETTER: it unpacked a 422's `details` into "field: message" instead of
+ * showing the generic validation banner. Consolidating kept that behaviour and
+ * gave it to the other five, rather than flattening to the lowest common
+ * version. Every write surface in the ERP now tells the user WHICH field the
+ * server rejected.
+ *
+ * (Routing those messages to the offending inputs rather than into one banner
+ * is the remaining half of F12, and belongs to the Field/RHF work in PR2.)
+ *
  * Call this in a `catch` block. Do NOT call it on the `error` string returned
  * by `useList`/`useResource` — that has already been through here.
  */
 export function errMsg(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 403) return "You don't have permission to do this.";
+    if (e.status === 422 && e.details && typeof e.details === "object") {
+      const parts = Object.entries(e.details as Record<string, string[] | string>).map(
+        ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`,
+      );
+      if (parts.length) return parts.join("; ");
+    }
     return e.message || "Something went wrong.";
   }
   return "Something went wrong.";

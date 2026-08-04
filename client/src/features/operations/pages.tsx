@@ -5,7 +5,9 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { InventoryItemSelect } from "@/components/catalogue-select";
 import { Input } from "@/components/ui/input";
@@ -54,14 +56,6 @@ const nameMap = <T extends Record<string, unknown>>(rows: T[] | null, idKey: str
   return m;
 };
 
-function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button type="submit" loading={busy} disabled={disabled}>{saveLabel}</Button>
-    </div>
-  );
-}
 
 /* ═══════════════════════════ Operation files (dossiers) ═══════════════════════════ */
 
@@ -187,15 +181,6 @@ function DossierForm({ row, onClose, onSaved }: { row: api.Dossier | null; onClo
   );
 }
 
-function Stat({ label, value, tone: t }: { label: string; value: React.ReactNode; tone?: "warn" | "ok" | "default" }) {
-  const color = t === "warn" ? "text-[rgb(var(--warn))]" : t === "ok" ? "text-[rgb(var(--primary))]" : "text-foreground";
-  return (
-    <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5">
-      <div className="micro mb-1">{label}</div>
-      <div className={`num text-lg font-medium ${color}`}>{value}</div>
-    </div>
-  );
-}
 
 /* ── 360° modal (Milestones / Money / People / Documents tabs) ── */
 

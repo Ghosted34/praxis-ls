@@ -111,7 +111,7 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
           </div>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-              <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+              <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
                 <option value="">Dictionary item…</option>
                 {items.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -340,7 +340,7 @@ export function InvoiceEditForm({
             </div>
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-                <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+                <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
                   <option value="">Dictionary item…</option>
                   {items.map((o) => (
                     <option key={o.id} value={o.id}>

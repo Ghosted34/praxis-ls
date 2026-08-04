@@ -134,7 +134,7 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
           <div className="space-y-2">
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_7rem_7rem_auto] gap-2">
-                <Select value={l.account_code} onChange={(e) => setLine(i, { account_code: e.target.value })}>
+                <Select aria-label={`Account, line ${i + 1}`} value={l.account_code} onChange={(e) => setLine(i, { account_code: e.target.value })}>
                   <option value="">Account…</option>
                   {accounts.map((o) => (
                     <option key={o.id} value={o.id}>

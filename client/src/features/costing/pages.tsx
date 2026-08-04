@@ -175,7 +175,7 @@ export function CostTrackingPage() {
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>
-        <Select value={dossierId} onChange={(e) => setDossierId(e.target.value)} className="max-w-xs">
+        <Select aria-label="Filter by dossier" value={dossierId} onChange={(e) => setDossierId(e.target.value)} className="max-w-xs">
           <option value="">Select a dossier…</option>
           {(dossiers || []).map((d) => <option key={d.dossier_id} value={d.dossier_id}>{d.ref}</option>)}
         </Select>

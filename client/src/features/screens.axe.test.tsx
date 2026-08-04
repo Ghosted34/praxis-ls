@@ -87,6 +87,22 @@ import { CurrenciesPage } from "./settings/currencies";
 import { TaxJurisdictionsPage } from "./settings/tax-jurisdictions";
 import * as aiControl from "./ai-control/pages";
 import * as costing from "./costing/pages";
+import { CycleCountsPage } from "./wms/cycle-count";
+import { EquipmentPage } from "./wms/equipment";
+import { InboundPage } from "./wms/inbound";
+import { InventoryPage } from "./wms/inventory";
+import { OutboundPage } from "./wms/outbound";
+import { VehicleCompliancePage } from "./fleet/compliance";
+import { DispatchPage } from "./fleet/dispatch";
+import { DriversPage } from "./fleet/drivers";
+import { FuelLogPage } from "./fleet/fuel";
+import { IncidentsPage } from "./fleet/incidents";
+import { WorkOrdersPage } from "./fleet/work-orders";
+import { SopsPage } from "./hr/sops";
+import { TalentPoolPage } from "./hr/talent-pool";
+import { SupportPage } from "./support/support-page";
+import { HelpPage } from "./help/help-page";
+import { GodModePage } from "./godmode/godmode-page";
 
 /* ── fixtures ─────────────────────────────────────────────────────────────── */
 
@@ -325,6 +341,50 @@ const AREAS: Area[] = [
     area: "Costing",
     screens: [
       { name: "Costing", render: () => <costing.CostingPage />, routes: { "/costings": [{ costing_id: "co1", ref: "CST-001", status: "DRAFT", total: 5_000_000 }], "/operations": [] } },
+    ],
+  },
+  {
+    area: "WMS",
+    screens: [
+      { name: "Cycle counts", render: () => <CycleCountsPage />, routes: { "/cycle-counts": [{ cycle_count_id: "cc1", ref: "CC-001", status: "OPEN", location_id: "loc1" }], "/warehouse-locations": [] } },
+      { name: "Equipment", render: () => <EquipmentPage />, routes: { "/equipment": [{ equipment_id: "eq1", code: "FL-01", kind: "FORKLIFT", is_active: true }] } },
+      { name: "Inbound", render: () => <InboundPage />, routes: { "/inbound": [{ inbound_id: "in1", ref: "IN-001", status: "EXPECTED" }] } },
+      { name: "Inventory", render: () => <InventoryPage />, routes: { "/inventory": [{ inventory_item_id: "it1", sku: "SKU-1", description: "Pallet", qty_on_hand: 12 }] } },
+      { name: "Outbound", render: () => <OutboundPage />, routes: { "/outbound": [{ outbound_id: "o1", ref: "OUT-001", status: "PICKING" }] } },
+    ],
+  },
+  {
+    area: "Fleet",
+    screens: [
+      { name: "Compliance", render: () => <VehicleCompliancePage />, routes: { "/vehicle-compliance": [{ compliance_id: "vc1", vehicle_id: "v1", registration: "LT-1234-AB", kind: "INSURANCE", expires_on: "2026-12-31" }], "/vehicles": [] } },
+      { name: "Dispatch", render: () => <DispatchPage />, routes: { "/dispatch": [{ dispatch_id: "d1", ref: "DSP-001", status: "PLANNED" }], "/vehicles": [], "/drivers": [] } },
+      { name: "Drivers", render: () => <DriversPage />, routes: { "/drivers": [{ driver_id: "dr1", full_name: "Jean K.", licence_no: "CM-001", is_active: true }] } },
+      { name: "Fuel log", render: () => <FuelLogPage />, routes: { "/fuel": [{ fuel_log_id: "f1", vehicle_id: "v1", litres: 60, cost: 45000, logged_on: "2026-07-01" }], "/vehicles": [] } },
+      { name: "Incidents", render: () => <IncidentsPage />, routes: { "/incidents": [{ incident_id: "i1", ref: "INC-001", severity: "LOW", status: "OPEN" }], "/vehicles": [] } },
+      { name: "Work orders", render: () => <WorkOrdersPage />, routes: { "/work-orders": [{ work_order_id: "w1", ref: "WO-001", status: "OPEN" }], "/vehicles": [] } },
+    ],
+  },
+  {
+    area: "HR",
+    screens: [
+      { name: "SOPs", render: () => <SopsPage />, routes: { "/sops": [{ sop_document_id: "s1", title: "Cargo handling", category: "Ops", version_no: 2, is_active: true }], "/onboarding": [], "/employees": [] } },
+      { name: "Talent pool", render: () => <TalentPoolPage />, routes: { "/talent-pool": [{ talent_pool_id: "t1", full_name: "Marie N.", skills: "Customs" }], "/succession": [], "/employees": [] } },
+    ],
+  },
+  {
+    area: "Support & admin",
+    screens: [
+      { name: "Support", render: () => <SupportPage />, routes: { "/support": [{ ticket_id: "t1", title: "Cannot post journal", status: "OPEN", created_at: "2026-07-01" }] } },
+      {
+        // Static content: zero network calls, so there is no loading or error
+        // state for this screen to be missing. Verified by reading it, not
+        // assumed — `grep -c "useList\|useResource\|tenant("` returns 0.
+        name: "Help",
+        render: () => <HelpPage />,
+        routes: {},
+        states: ["populated"],
+      },
+      { name: "God mode", render: () => <GodModePage />, routes: { "/god-mode/soft-deletes": [{ soft_delete_id: "g1", table_name: "clients", deleted_at: "2026-07-01", is_accounting_connected: false }] } },
     ],
   },
 ];

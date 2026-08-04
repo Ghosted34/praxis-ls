@@ -39,7 +39,7 @@ function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLine
       {lines.map((l, i) => (
         <div key={i} className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-center gap-2">
           <Input placeholder="Label (required)" value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} />
-          <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+          <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
             <option value="">Dictionary item…</option>
             {items.map((o) => (
               <option key={o.id} value={o.id}>

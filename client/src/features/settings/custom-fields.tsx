@@ -100,7 +100,7 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
             <div key={i} className="grid items-center gap-2 sm:grid-cols-[1fr_1fr_auto_auto_auto]">
               <Input value={f.field_key} onChange={(e) => setField(i, { field_key: e.target.value })} placeholder="field key" />
               <Input value={f.label} onChange={(e) => setField(i, { label: e.target.value })} placeholder="Label" />
-              <Select value={f.field_type} onChange={(e) => setField(i, { field_type: e.target.value })}>
+              <Select aria-label={`Field type, row ${i + 1}`} value={f.field_type} onChange={(e) => setField(i, { field_type: e.target.value })}>
                 {FIELD_TYPES.map((t) => (
                   <option key={t} value={t}>
                     {t}

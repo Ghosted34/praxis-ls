@@ -152,7 +152,7 @@ function ScopeMembers({ scopeId }: { scopeId: string }) {
         <p className="micro">Nobody assigned — approvals routed here have no one to action them.</p>
       )}
       <div className="flex items-center gap-2">
-        <Select value={adding} onChange={(e) => setAdding(e.target.value)} className="max-w-xs">
+        <Select aria-label="Add a user to this scope" value={adding} onChange={(e) => setAdding(e.target.value)} className="max-w-xs">
           <option value="">Add someone…</option>
           {candidates.map((u) => <option key={u.user_id} value={u.user_id}>{u.full_name}</option>)}
         </Select>

@@ -118,7 +118,7 @@ export function TemplateStudioPage() {
 
       <div className="mb-4 max-w-sm">
         <span className="micro mb-1 block">Document</span>
-        <Select value={docType} onChange={(e) => setDocType(e.target.value)}>
+        <Select aria-label="Document type" value={docType} onChange={(e) => setDocType(e.target.value)}>
           {list.map((t) => <option key={t.docType} value={t.docType}>{label(t.title)}{t.report ? " · report" : ""}</option>)}
         </Select>
       </div>
@@ -129,12 +129,12 @@ export function TemplateStudioPage() {
           <div className="flex items-center justify-between gap-2 border-b px-3 py-2">
             <div className="flex flex-wrap items-center gap-2">
               <span className="micro">Entity</span>
-              <Select value={entityId} onChange={(e) => setEntityId(e.target.value)} className="h-8 w-auto">
+              <Select aria-label="Preview as entity" value={entityId} onChange={(e) => setEntityId(e.target.value)} className="h-8 w-auto">
                 <option value="">All entities (default)</option>
                 {(entities || []).map((en) => <option key={en.entity_id} value={en.entity_id}>{en.legal_name || en.entity_id.slice(0, 8)}</option>)}
               </Select>
               <span className="micro ml-2">Preview</span>
-              <Select value={recordId} onChange={(e) => setRecordId(e.target.value)} className="h-8 w-auto">
+              <Select aria-label="Preview with record" value={recordId} onChange={(e) => setRecordId(e.target.value)} className="h-8 w-auto">
                 <option value="">Sample data</option>
                 {records.map((r) => <option key={r.id} value={r.id}>{r.label || r.id.slice(0, 8)}</option>)}
               </Select>

@@ -167,6 +167,10 @@ async function get(client, entryId) {
   return entry;
 }
 
-const list = (client, query) => repo.listEntries(client, query);
+/** One page of entries plus the filter total, for `X-Total-Count`. */
+const listPaged = (client, query) => repo.listEntries(client, query);
 
-module.exports = { post, reverse, get, list, buildAndInsert };
+/** Bare array — kept for non-HTTP callers that expect a list, not an envelope. */
+const list = async (client, query) => (await repo.listEntries(client, query)).rows;
+
+module.exports = { post, reverse, get, list, listPaged, buildAndInsert };

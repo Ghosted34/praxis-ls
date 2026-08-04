@@ -109,7 +109,23 @@ export async function tryRefresh(): Promise<boolean> {
   return refreshing;
 }
 
-export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
+/**
+ * A response body plus the pagination metadata that rides in the headers.
+ *
+ * `total` is the number of rows matching the filter BEFORE the server's
+ * `LIMIT` — null when the endpoint does not report one (most don't). It comes
+ * from `X-Total-Count`; see src/shared/http/paged.js on the API side.
+ */
+export type Paged<T> = { data: T; total: number | null };
+
+/**
+ * The full request, returning headers as well as the unwrapped body.
+ *
+ * `api()` is this with the metadata dropped. List screens that need to page
+ * want the count, so it cannot simply be discarded here — but every existing
+ * caller expects the bare payload, hence the two entry points.
+ */
+export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Promise<Paged<T>> {
   const { body, auth = true, retry = true, headers, ...rest } = opts;
   const h = new Headers(headers);
   if (body !== undefined) h.set("Content-Type", "application/json");
@@ -127,7 +143,7 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
 
   if (res.status === 401 && auth && retry) {
     const ok = await tryRefresh();
-    if (ok) return api<T>(path, { ...opts, retry: false });
+    if (ok) return apiPaged<T>(path, { ...opts, retry: false });
     // Refresh failed: the session is gone (idle timeout, revoked, or the refresh
     // token no longer valid). Ending it here is what stops the app sitting on a
     // dead token showing "token expired" until the user signs out by hand.
@@ -143,10 +159,22 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
     throw new ApiError(err.code || "ERROR", err.message || res.statusText, res.status, err.details);
   }
   // Endpoints wrap payloads as { data: ... }; unwrap when present.
-  return (json && "data" in json ? json.data : json) as T;
+  const data = (json && "data" in json ? json.data : json) as T;
+
+  // Absent on most endpoints, and absent CROSS-ORIGIN unless the API lists it
+  // in CORS `exposedHeaders` — in which case this reads null and the caller
+  // falls back to a single page rather than breaking.
+  const raw = res.headers.get("X-Total-Count");
+  const parsed = raw === null ? NaN : Number(raw);
+  return { data, total: Number.isFinite(parsed) ? parsed : null };
+}
+
+export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {
+  return (await apiPaged<T>(path, opts)).data;
 }
 
 export const tenant = <T = unknown>(p: string, o?: Opts) => api<T>(`/tenant${p}`, o);
+export const tenantPaged = <T = unknown>(p: string, o?: Opts) => apiPaged<T>(`/tenant${p}`, o);
 export const platform = <T = unknown>(p: string, o?: Opts) => api<T>(`/platform${p}`, o);
 
 /**

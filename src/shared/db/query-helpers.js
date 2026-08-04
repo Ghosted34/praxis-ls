@@ -50,4 +50,37 @@ function page(q = {}) {
   return { limit, offset };
 }
 
-module.exports = { insertOne, updateOne, getById, page };
+/**
+ * The `COUNT(*) OVER()` column a paged list SELECT adds to report how many rows
+ * match the filter BEFORE `LIMIT` truncates them.
+ *
+ * Why this exists: `page()` above silently clamps every list to 50 rows. A
+ * caller that renders the result and filters it in the browser is therefore
+ * filtering a truncated set — the Finance hub showed "No invoices match" for
+ * invoices that exist, because the match sat at row 80 of 300. Returning the
+ * true total alongside the page is what lets a client page through instead of
+ * quietly showing a prefix of the data.
+ *
+ * A window function keeps this to ONE round trip and one WHERE clause. A
+ * separate `SELECT COUNT(*)` would duplicate the filter, and the two copies
+ * would drift.
+ */
+const TOTAL_COL = "COUNT(*) OVER() AS _total";
+
+/**
+ * Split the window-function total off a paged result set.
+ *
+ * @param {Array<object>} rows rows from a SELECT that included {@link TOTAL_COL}
+ * @returns {{rows: Array<object>, total: number}} rows without `_total`, plus the count
+ */
+function splitTotal(rows) {
+  // No rows means no window-function output to read; the total is genuinely 0.
+  if (!rows || rows.length === 0) return { rows: [], total: 0 };
+  const total = Number(rows[0]._total) || 0;
+  return {
+    rows: rows.map(({ _total, ...rest }) => rest),
+    total,
+  };
+}
+
+module.exports = { insertOne, updateOne, getById, page, TOTAL_COL, splitTotal };

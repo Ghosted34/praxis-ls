@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const { insertOne, getById } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 async function getJournal(client, { journalId, journalCode, entityId }) {
   if (journalId) {
@@ -69,20 +69,37 @@ async function listLines(client, entryId) {
   return rows;
 }
 
+/**
+ * One page of journal entries, plus how many match the filter in total.
+ *
+ * `q` searches source_doc_ref and source — the two fields the Finance hub's
+ * Journals tab filters on, previously done in the browser over a set already
+ * clamped to 50.
+ *
+ * The limit/offset clamp now comes from the shared `page()` rather than a
+ * hand-copied pair of Math.min/Math.max lines that had drifted here.
+ *
+ * @returns {Promise<{rows: Array<object>, total: number}>}
+ */
 async function listEntries(client, q = {}) {
-  const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
-  const offset = Math.max(parseInt(q.offset, 10) || 0, 0);
+  const { limit, offset } = page(q);
   const wh = [];
   const params = [limit, offset];
   if (q.journal_id) { params.push(q.journal_id); wh.push("journal_id = $" + params.length); }
   if (q.period_id) { params.push(q.period_id); wh.push("period_id = $" + params.length); }
   if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
+  if (q.q) {
+    params.push("%" + q.q + "%");
+    const p = "$" + params.length;
+    wh.push(`(source_doc_ref ILIKE ${p} OR source ILIKE ${p})`);
+  }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const { rows } = await client.query(
-    "SELECT * FROM journal_entry " + where + " ORDER BY entry_date DESC, entry_no DESC LIMIT $1 OFFSET $2",
+    `SELECT *, ${TOTAL_COL} FROM journal_entry ` + where +
+      " ORDER BY entry_date DESC, entry_no DESC LIMIT $1 OFFSET $2",
     params,
   );
-  return rows;
+  return splitTotal(rows);
 }
 
 module.exports = {

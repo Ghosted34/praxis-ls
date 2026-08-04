@@ -25,7 +25,7 @@
  */
 import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { tenant, ApiError } from "./api-client";
+import { tenant, tenantPaged, ApiError } from "./api-client";
 import { TENANT_KEY, tenantKey } from "./query-client";
 
 /**
@@ -127,6 +127,99 @@ export function useList<T = Record<string, unknown>>(path: string | null) {
     // path) reports loading, exactly as the old effect-early-return did.
     loading: q.data === undefined && !error,
     reload,
+  };
+}
+
+/** Query-string params for {@link useListPaged}. `q` is the free-text search. */
+export type ListParams = {
+  /** ZERO-based, matching `<Pagination>`'s `page` prop. */
+  page?: number;
+  pageSize?: number;
+  q?: string;
+} & Record<string, string | number | undefined>;
+
+/** What {@link useListPaged} hands back, on top of `useList`'s shape. */
+export type PagedList<T> = {
+  rows: T[] | null;
+  error: string | null;
+  loading: boolean;
+  reload: () => void;
+  /** Rows matching the filter across ALL pages, not just the loaded one. */
+  total: number;
+  /** ZERO-based, echoing the `page` param. */
+  page: number;
+  pageSize: number;
+  pageCount: number;
+};
+
+/**
+ * A SERVER-PAGED list — one page of rows plus the true total.
+ *
+ * Use this, not `useList`, for any screen that renders a table the user
+ * searches or scrolls. `useList` fetches whatever the API's default `LIMIT`
+ * allows (50) and gives no indication that more exist, so a screen that filters
+ * its result in the browser is filtering a truncated set. That is not a
+ * performance nit: the Finance hub told users "No invoices match" for invoices
+ * that existed, because the match sat past row 50. Paging and searching both
+ * have to happen server-side for the answer to be correct.
+ *
+ * `total` comes from the `X-Total-Count` header. Endpoints that don't send one
+ * report `total: 0` and `pageCount: 1`, which renders as a single page rather
+ * than as a broken pager.
+ *
+ * @example
+ * const [page, setPage] = React.useState(0);
+ * const invoices = useListPaged<InvoiceRow>("/final-invoices", { page, pageSize: 25, q });
+ * <DataList rows={invoices.rows} … />
+ * <Pagination page={invoices.page} pageSize={invoices.pageSize}
+ *             total={invoices.total} onPageChange={setPage} />
+ */
+export function useListPaged<T = Record<string, unknown>>(
+  path: string | null,
+  params: ListParams = {},
+): PagedList<T> {
+  const qc = useQueryClient();
+  const { page: pageNo = 0, pageSize = 25, ...filters } = params;
+  const safePage = Math.max(pageNo, 0);
+
+  // Build the query string here so the cache key and the request cannot drift:
+  // the key IS the URL. Empty/undefined filters are dropped so that clearing a
+  // search box returns to the same cache entry as never having typed.
+  const search = new URLSearchParams();
+  search.set("limit", String(pageSize));
+  search.set("offset", String(safePage * pageSize));
+  Object.entries(filters).forEach(([k, v]) => {
+    if (v !== undefined && v !== null && String(v).trim() !== "") search.set(k, String(v).trim());
+  });
+  const url = path ? `${path}?${search.toString()}` : null;
+
+  const query = useQuery({
+    queryKey: tenantKey(url ?? ""),
+    queryFn: () => tenantPaged<T[]>(url as string),
+    enabled: !!url,
+    // Without this the table blanks to the loading skeleton on every page step
+    // and every keystroke, which reads as the data vanishing.
+    placeholderData: (prev) => prev,
+  });
+
+  const reload = React.useCallback(() => {
+    if (url) void qc.invalidateQueries({ queryKey: tenantKey(url) });
+  }, [qc, url]);
+
+  const error = query.error ? errMsg(query.error) : null;
+  const raw = query.data?.data;
+  const rows = raw === undefined ? null : Array.isArray(raw) ? raw : [];
+  const total = query.data?.total ?? 0;
+
+  return {
+    rows,
+    error,
+    loading: query.data === undefined && !error,
+    reload,
+    total,
+    page: safePage,
+    pageSize,
+    pageCount: Math.max(1, Math.ceil(total / pageSize)),
   };
 }
 

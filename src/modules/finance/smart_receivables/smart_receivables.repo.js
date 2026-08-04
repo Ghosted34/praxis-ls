@@ -3,7 +3,7 @@
  * outstanding/ageing reads. All SQL for this module lives here.
  */
 "use strict";
-const { insertOne, getById } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insertReceipt = (client, data) => insertOne(client, "payment_receipt", data);
 const getReceipt = (client, id) => getById(client, "payment_receipt", "receipt_id", id);
@@ -40,15 +40,32 @@ async function openInvoices(client, { clientId = null }) {
   return rows;
 }
 
-async function listReceipts(client, { clientId = null, limit = 50, offset = 0 }) {
-  const params = [limit, offset];
+/**
+ * One page of receipts, plus how many match the filter in total.
+ *
+ * `q` searches CLIENT NAME, the field the Finance hub's Receipts tab filters
+ * on — previously done in the browser over a truncated set.
+ *
+ * limit/offset now go through `page()` rather than being taken raw: the caller
+ * passed `q.limit` straight from the query string, so a non-numeric or
+ * unbounded value reached the SQL unclamped.
+ *
+ * @returns {Promise<{rows: Array<object>, total: number}>}
+ */
+async function listReceipts(client, { clientId = null, limit, offset, q: text = null } = {}) {
+  const { limit: lim, offset: off } = page({ limit, offset });
+  const params = [lim, off];
   const wh = ["1=1"];
-  if (clientId) { params.push(clientId); wh.push("client_id = $" + params.length); }
+  if (clientId) { params.push(clientId); wh.push("r.client_id = $" + params.length); }
+  if (text) { params.push("%" + text + "%"); wh.push("c.name ILIKE $" + params.length); }
   const { rows } = await client.query(
-    "SELECT * FROM payment_receipt WHERE " + wh.join(" AND ") + " ORDER BY received_on DESC, created_at DESC LIMIT $1 OFFSET $2",
+    `SELECT r.*, ${TOTAL_COL} FROM payment_receipt r ` +
+      "LEFT JOIN client_master c ON c.client_id = r.client_id " +
+      "WHERE " + wh.join(" AND ") +
+      " ORDER BY r.received_on DESC, r.created_at DESC LIMIT $1 OFFSET $2",
     params,
   );
-  return rows;
+  return splitTotal(rows);
 }
 
 async function allocationsForReceipt(client, receiptId) {

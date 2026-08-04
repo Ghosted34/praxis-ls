@@ -48,6 +48,12 @@ function buildCorsOptions() {
   const isDev = config.NODE_ENV !== "production";
   return {
     credentials: true,
+    // Paged list endpoints report the true match count in X-Total-Count (see
+    // shared/http/paged.js). A custom response header is NOT readable by
+    // browser JS cross-origin unless it is advertised here — without this the
+    // client reads null and silently falls back to "one page", which is the
+    // very bug the header exists to fix.
+    exposedHeaders: ["X-Total-Count"],
     origin(origin, cb) {
       if (!origin) return cb(null, true);
       let host;

@@ -47,6 +47,10 @@ async function recordPayment(client, opts) {
 }
 
 const get = (client, id) => repo.getAdvance(client, id);
-const list = (client, q) => repo.listAdvances(client, q);
+/** One page of advances plus the filter total, for `X-Total-Count`. */
+const listPaged = (client, q) => repo.listAdvances(client, q);
 
-module.exports = { recordPayment, get, list };
+/** Bare array — kept for non-HTTP callers that expect a list, not an envelope. */
+const list = async (client, q) => (await repo.listAdvances(client, q)).rows;
+
+module.exports = { recordPayment, get, list, listPaged };

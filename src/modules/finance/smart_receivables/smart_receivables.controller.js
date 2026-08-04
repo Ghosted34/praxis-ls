@@ -2,8 +2,10 @@
 const service = require("./smart_receivables.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
+const { sendPaged } = require("../../../shared/http/paged");
 module.exports = {
-  list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  list: asyncHandler(async (req, res) =>
+    sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query)))),
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!row) throw new AppError("NOT_FOUND", "Receipt not found", 404);

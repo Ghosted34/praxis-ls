@@ -3,7 +3,7 @@
  * this module lives here (CONVENTIONS: the repo is the only place with SQL).
  */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insertInvoice = (client, data) => insertOne(client, "invoice", data);
 const getInvoice = (client, id) => getById(client, "invoice", "invoice_id", id);
@@ -28,18 +28,38 @@ async function listLines(client, invoiceId) {
   return rows;
 }
 
+/**
+ * One page of final invoices, plus how many match the filter in total.
+ *
+ * `q` searches doc_number, CLIENT NAME and DOSSIER REF — the same three fields
+ * the Finance hub's search box targets. It used to match doc_number only, so
+ * the hub did the other two client-side over whatever `page()` had already
+ * truncated to 50 rows: searching a client name returned nothing unless that
+ * client happened to appear in the 50 most recent invoices. The joins are
+ * LEFT so an invoice with no client or no dossier is still returned.
+ *
+ * @returns {Promise<{rows: Array<object>, total: number}>}
+ */
 async function listInvoices(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
-  const wh = ["type = 'FINAL'"];
-  if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
-  if (q.client_id) { params.push(q.client_id); wh.push("client_id = $" + params.length); }
-  if (q.q) { params.push("%" + q.q + "%"); wh.push("doc_number ILIKE $" + params.length); }
+  const wh = ["i.type = 'FINAL'"];
+  if (q.status) { params.push(q.status); wh.push("i.status = $" + params.length); }
+  if (q.client_id) { params.push(q.client_id); wh.push("i.client_id = $" + params.length); }
+  if (q.q) {
+    params.push("%" + q.q + "%");
+    const p = "$" + params.length;
+    wh.push(`(i.doc_number ILIKE ${p} OR c.name ILIKE ${p} OR d.ref ILIKE ${p})`);
+  }
   const { rows } = await client.query(
-    "SELECT * FROM invoice WHERE " + wh.join(" AND ") + " ORDER BY created_at DESC LIMIT $1 OFFSET $2",
+    `SELECT i.*, ${TOTAL_COL} FROM invoice i ` +
+      "LEFT JOIN client_master c ON c.client_id = i.client_id " +
+      "LEFT JOIN dossier d ON d.dossier_id = i.dossier_id " +
+      "WHERE " + wh.join(" AND ") +
+      " ORDER BY i.created_at DESC LIMIT $1 OFFSET $2",
     params,
   );
-  return rows;
+  return splitTotal(rows);
 }
 
 async function openAdvances(client, { clientId, dossierId }) {

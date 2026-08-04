@@ -72,12 +72,6 @@ function buildAccessLog() {
     // (OBS-E3: the id was minted and then thrown away).
     genReqId: (req) => req.request_id,
 
-    // OBS-M1 + OBS-T2: count and time every request. The access log answers
-    // "what happened"; the histogram answers "is it slow, and slower than
-    // yesterday" — which no log line can, because nobody eyeballs percentiles.
-    // Route is templated (`/invoices/:id`) so uuids cannot explode cardinality.
-    customProps_metrics: undefined,
-
     customLogLevel(_req, res, err) {
       if (err || res.statusCode >= 500) return "error";
       if (res.statusCode >= 400) return "warn";

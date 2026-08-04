@@ -67,8 +67,9 @@ async function configuredClient() {
  *   sendToUser(tenantClient, { user_id, ... })  → reads the TENANT
  *     `push_subscription` table (where the opt-in endpoint stores them). This is
  *     the path notify() uses.
- *   sendToUser({ user_id, ... })                → legacy: reads
- *     `shared.push_subscription` via the platform pool. Kept for back-compat.
+ *   The legacy no-client style read `shared.push_subscription` via the platform
+ *   pool. That schema has never existed (DI-4.2), so the branch was dead; it
+ *   and its only caller are gone.
  * Subscriptions that come back gone (404/410) are pruned from whichever table
  * they were read from.
  */
@@ -84,7 +85,12 @@ async function sendToUser(a, b) {
     : query
       ? (sql, params) => query(sql, params)
       : null;
-  const table = client ? "push_subscription" : "shared.push_subscription";
+  // DI-4.2: this used to fall back to `shared.push_subscription` via the
+  // platform pool. There is no `shared` schema — only live, sandbox and
+  // platform — so that branch could only ever return "no push_subscription
+  // table". Its sole caller was services/notifications.service.js, which had
+  // zero importers and has been deleted. A tenant client is now required.
+  const table = "push_subscription";
 
   const webpush = await configuredClient();
   if (!webpush || !q) return { sent: 0, reason: "push not configured" };

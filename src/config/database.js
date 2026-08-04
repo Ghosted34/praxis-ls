@@ -7,8 +7,12 @@
  *   - db.transaction(async (client) => …) — multi-statement transaction
  *
  * Per V2.2 §8 — no ORM. Plain pg with parameterised queries.
- * Per V2.2 §3 — every connection sets `app.current_business` GUC so
- *               RLS policies (once enabled) can filter by entity.
+ * NOTE (DI-4.1): an RLS apparatus used to live here — RLS_READ_ENFORCE,
+ * queryWithContext, and a GUC-setting path attributed to "migration 000200".
+ * No such migration exists and there is no CREATE POLICY anywhere in the repo,
+ * so it filtered nothing while costing a round-trip per read. Removed.
+ * Tenant isolation comes from the database boundary (doc/DB_ARCHITECTURE.md §1),
+ * not from RLS.
  */
 
 "use strict";
@@ -70,12 +74,6 @@ async function initDatabase() {
   // owner. If read-enforcement is on but we connected as a superuser, isolation
   // on shared tables silently does NOT apply — warn loudly so it's caught before
   // it becomes a cross-entity data leak.
-  if (config.RLS_READ_ENFORCE && rows[0].is_superuser === "on") {
-    logger.warn(
-      { user: rows[0].usr },
-      "RLS_READ_ENFORCE is on but the DB connection is a SUPERUSER — RLS on shared tables is bypassed. Connect as a non-superuser app role (e.g. pixie_app) for entity isolation to take effect.",
-    );
-  }
 
   return pool;
 }
@@ -91,18 +89,24 @@ function getPool() {
  * transaction or set per-connection GUCs (e.g. RLS context), use
  * `transaction()` instead.
  *
- * H-1 read-side RLS: `pool.query()` checks out an arbitrary pooled connection
- * with no `app.current_business` set, so RLS does NOT filter one-shot reads
- * (write paths via `transaction()` already set the GUC). When
- * `RLS_READ_ENFORCE` is on AND a tenant context is ambient, the read is routed
- * through a minimal transaction so the local GUC applies and RLS filters it.
+ * (DI-4.1) This docblock used to describe read-side RLS routing. There are no
+ * RLS policies in this database, so there was nothing to route around.
  */
 async function query(text, params = []) {
   if (!pool) throw new Error("db pool not initialised");
 
-  if (config.RLS_READ_ENFORCE && requestContext.getTenant()) {
-    return queryWithContext(text, params);
-  }
+  // DI-4.1: this used to route to queryWithContext() when RLS_READ_ENFORCE was
+  // on, wrapping the read in a transaction so `SET LOCAL app.current_business`
+  // would apply to it. That GUC drives POLICIES THAT DO NOT EXIST: there is no
+  // `ROW LEVEL SECURITY` or `CREATE POLICY` statement anywhere in migrations/,
+  // and no migration 000200 (which two comments cited). Verified across every
+  // migration file.
+  //
+  // Cross-tenant isolation is NOT affected — that comes from the database
+  // boundary (database-per-tenant), which is real. What never existed is the
+  // entity-level filtering the GUC implied. Turning the flag on added a
+  // transaction round-trip per read and filtered nothing, while reading as
+  // though isolation were enabled. That misleading affordance is the finding.
 
   const started = Date.now();
   try {
@@ -124,42 +128,6 @@ async function query(text, params = []) {
   }
 }
 
-/**
- * One-shot read on a context-bound connection (H-1 read-side). Wraps the single
- * statement in a transaction so `set_config(..., is_local := true)` persists for
- * the SELECT, then commits. Only reached when RLS_READ_ENFORCE is on and a tenant
- * context is ambient.
- */
-async function queryWithContext(text, params = []) {
-  const client = await pool.connect();
-  const started = Date.now();
-  try {
-    await client.query("BEGIN");
-    await applySessionContext(client, {
-      tenant: requestContext.getTenant(),
-      userId: requestContext.getUserId(),
-    });
-    const res = await client.query(text, params);
-    await client.query("COMMIT");
-    const ms = Date.now() - started;
-    metrics.observe("praxis_db_query_duration_seconds", ms / 1000, {}, "Database query duration in seconds.");
-    if (ms > SLOW_QUERY_MS) {
-      metrics.inc("praxis_db_slow_queries_total", {}, 1, "Queries slower than the slow-query threshold.");
-      logger.warn({ ms, threshold_ms: SLOW_QUERY_MS, sql: text.slice(0, 200) }, "slow query (rls read)");
-    }
-    return res;
-  } catch (err) {
-    try {
-      await client.query("ROLLBACK");
-    } catch (rollbackErr) {
-      logger.error({ rollbackErr }, "rollback failed (rls read)");
-    }
-    logger.error({ err, sql: text.slice(0, 200) }, "query failed (rls read)");
-    throw err;
-  } finally {
-    client.release();
-  }
-}
 
 /**
  * Set the RLS/audit GUCs on a client *for the current transaction* (R-1).

@@ -104,7 +104,9 @@ const Schema = z.object({
   DB_POOL_MAX: int(10),
   DB_STATEMENT_TIMEOUT_MS: int(30000),
   DB_PLATFORM_SCHEMA: z.string().default("platform"),
-  RLS_READ_ENFORCE: bool(false),
+  // RLS_READ_ENFORCE removed 2026-08-05 (DI-4.1): it gated a code path that set
+  // a GUC for policies that do not exist. Turning it on cost a round-trip per
+  // read and filtered nothing. Tenant isolation is the database boundary.
 
   TENANT_DB_HOST_DEFAULT: z.string().default(urlParts.host || "localhost"),
   TENANT_DB_PORT_DEFAULT: int(urlParts.port || 5432),

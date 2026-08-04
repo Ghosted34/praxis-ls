@@ -54,6 +54,39 @@ STATE_DIR="./.deploy-state"
 
 mkdir -p "$STATE_DIR"
 
+# ---------------------------------------------------------------------------
+# Deploy announcements (audit OBS-I5).
+#
+# Deploys were unattributed and unannounced: nothing recorded who deployed what,
+# and nobody found out a deploy had happened — so a 09:00 incident could not be
+# correlated with an 08:55 release without asking around. Now that
+# ALERT_WEBHOOK_URL exists (OBS-A1), say so.
+#
+# Silent no-op when unset, so a dev running this by hand is unaffected. Never
+# fatal: a webhook being down must not fail a deploy that otherwise worked.
+# ---------------------------------------------------------------------------
+ALERT_WEBHOOK_URL="${ALERT_WEBHOOK_URL:-$(grep -E '^ALERT_WEBHOOK_URL=' .env 2>/dev/null | cut -d= -f2- | tr -d '"'"'"'' || true)}"
+
+announce() {
+  # NOT `[ -z … ] && return 0`: under `set -e` that construct aborts the whole
+  # script when the test is FALSE, because the && list then exits non-zero. An
+  # announcement helper must never be able to kill a deploy.
+  if [ -z "${ALERT_WEBHOOK_URL:-}" ]; then
+    return 0
+  fi
+  local text="$1"
+  local payload
+  payload="$(printf '%s' "$text" | python3 -c 'import json,sys; print(json.dumps({"text": sys.stdin.read()}))' 2>/dev/null || true)"
+  if [ -n "$payload" ]; then
+    curl -fsS --max-time 5 -X POST -H 'Content-Type: application/json' \
+         -d "$payload" "$ALERT_WEBHOOK_URL" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
+DEPLOYER="$(git config user.name 2>/dev/null || echo "${USER:-unknown}")"
+HOSTNAME_S="$(hostname 2>/dev/null || echo unknown)"
+
 echo "── recording the currently-running build (for rollback)"
 PREVIOUS_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if [ -f "$STATE_DIR/current" ]; then
@@ -66,6 +99,7 @@ git pull --ff-only
 BUILD_SHA="$(git rev-parse HEAD)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "   deploying: $BUILD_SHA"
+announce "Deploy started on ${HOSTNAME_S} by ${DEPLOYER}: ${PREVIOUS_SHA:0:8} → ${BUILD_SHA:0:8}"
 
 # ---------------------------------------------------------------------------
 # Database backup — BEFORE migrations.
@@ -82,14 +116,50 @@ echo "   deploying: $BUILD_SHA"
 echo "── backing up the database (pre-migration)"
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${BUILD_SHA:0:8}.sql.gz"
-if docker compose exec -T postgres pg_dumpall -U "${POSTGRES_USER:-postgres}" | gzip > "$BACKUP_FILE"; then
-  echo "   wrote $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
-  echo "$BACKUP_FILE" > "$STATE_DIR/last-backup"
+
+# The superuser is read from INSIDE the container, not guessed out here.
+#
+# First run of this step failed with `role "postgres" does not exist`: it
+# defaulted to -U postgres, but docker-compose.yml sets
+# `POSTGRES_USER: ${DB_USER:-praxis-admin}`, so the superuser is whatever DB_USER
+# says. Resolving it host-side means duplicating that default and drifting from
+# it; `sh -c` inside the container reads the value compose actually injected, so
+# there is exactly one source of truth.
+#
+# pg_dumpall (not pg_dump) is deliberate: tenancy is database-per-tenant, so a
+# single-database dump would back up the platform registry and none of the
+# tenant data. It also captures roles, which a tenant restore needs.
+#
+# `set -o pipefail` at the top is what makes this `if` honest — without it the
+# exit status would be gzip's, and gzip happily succeeds on an empty stream.
+if docker compose exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' | gzip > "$BACKUP_FILE"; then
+  BACKUP_BYTES="$(wc -c < "$BACKUP_FILE" | tr -d ' ')"
+  # A dump that "succeeded" but is a few hundred bytes is an empty cluster or a
+  # silently truncated stream. Treat it as a failure — the point of this step is
+  # to have something to restore, not to have a file.
+  if [ "${BACKUP_BYTES:-0}" -lt 4096 ]; then
+    echo "!! BACKUP SUSPICIOUSLY SMALL (${BACKUP_BYTES} bytes) — treating as failed."
+    rm -f "$BACKUP_FILE"
+    if [ "${SKIP_BACKUP:-0}" != "1" ]; then
+      announce "DEPLOY ABORTED on ${HOSTNAME_S}: pre-migration backup was only ${BACKUP_BYTES} bytes"
+      exit 1
+    fi
+  else
+    echo "   wrote $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+    echo "$BACKUP_FILE" > "$STATE_DIR/last-backup"
+  fi
 else
   rm -f "$BACKUP_FILE"
   echo "!! BACKUP FAILED — refusing to run migrations without one."
-  echo "   Migrations have no down path. Fix the backup first."
-  if [ "${SKIP_BACKUP:-0}" != "1" ]; then exit 1; fi
+  echo "   Migrations have no down path (DATA 3.5). Fix the backup first."
+  echo
+  echo "   Check the superuser compose injected:"
+  echo "     docker compose exec -T postgres sh -c 'echo \$POSTGRES_USER'"
+  echo "   and that it matches DB_USER in .env on this host."
+  if [ "${SKIP_BACKUP:-0}" != "1" ]; then
+    announce "DEPLOY ABORTED on ${HOSTNAME_S}: pre-migration backup failed, nothing was migrated"
+    exit 1
+  fi
   echo "   SKIP_BACKUP=1 set — continuing anyway. State where your backup is."
 fi
 
@@ -153,6 +223,7 @@ if [ "$READY" -ne 1 ]; then
   echo
   echo "   Roll back:  bash scripts/rollback.sh $PREVIOUS_SHA"
   echo "   Backup:     $(cat "$STATE_DIR/last-backup" 2>/dev/null || echo 'none taken')"
+  announce "DEPLOY FAILED READINESS on ${HOSTNAME_S}: ${BUILD_SHA:0:8} is running but cannot serve. Roll back: bash scripts/rollback.sh ${PREVIOUS_SHA:0:8}"
   exit 1
 fi
 
@@ -181,6 +252,8 @@ for svc in api worker; do
         fi
       done
 done
+
+announce "Deploy ✓ ${HOSTNAME_S}: now running ${BUILD_SHA:0:8} (was ${PREVIOUS_SHA:0:8}), by ${DEPLOYER}"
 
 echo
 echo "deploy ✓  ${BUILD_SHA:0:8}"

@@ -133,4 +133,23 @@ One entry in `src/features/screens.axe.test.tsx`:
 
 That buys four assertions: loading is announced, error says what went wrong, empty is not the developer default, populated has exactly one `<h1>` — each axe-clean.
 
-`states: [...]` narrows which of the four apply. **The only legitimate reason is a screen that fetches nothing on arrival** — a search-first lookup has no loading state until the user asks it something. Narrowing it because a screen is *missing* a state it should have is the defect this file exists to catch, so every use carries a comment saying which it is.
+**Get the fixture's paths and field names from the API types, not from memory.** Building this register, the same mistake was made seven times: a fixture keyed on a path or field the screen does not use (`/godmode` for `/god-mode/soft-deletes`, `inbound_id` for `grn_inbound_id`). Four crashed loudly. The other three were silent — nothing arrives, the screen renders its **empty state**, and all four assertions pass. An axe-clean empty table is axe-clean and worthless as coverage.
+
+The populated test therefore asserts the fixture actually reached the screen: if `routes` supplied rows, the screen must not be sitting in an empty state. Run against all 64 cases it flagged exactly 2 — precise, not noisy.
+
+Two opt-outs, each requiring a written reason at the call site:
+
+- `states: [...]` narrows which of the four states apply. **The only legitimate reason is a screen that fetches nothing on arrival** — a search-first lookup has no loading state until the user asks it something.
+- `rendersRows: false` allows an empty state alongside data — a side panel with nothing in it, an empty board column.
+
+Narrowing either because a screen is *missing* something it should have is the defect this file exists to catch.
+
+---
+
+## 6. How to verify
+
+**Check exit codes, not output.** `npm test | grep 'Tests '` discards both Vitest's `Errors` line and the exit code — the pipe makes `$?` grep's. A run can report "563 passed" and still exit 1 on unhandled render errors, which is exactly how a red build was reported green on this branch.
+
+```sh
+npm test; echo "exit: $?"          # not: npm test | grep …
+```

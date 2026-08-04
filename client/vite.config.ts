@@ -2,6 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
+import { sharedAlias, SHARED_COMMONJS_INCLUDE, SHARED_OPTIMIZE_INCLUDE } from "./config/shared-alias";
 
 // Dev proxy: the SPA calls /api/* and Vite forwards to the Node API. `changeOrigin`
 // + the Host header rewrite make tenant resolution work locally without editing
@@ -55,22 +56,17 @@ export default defineConfig({
       },
     }),
   ],
+  // @praxis/shared is a LINKED CommonJS package. Linked packages are not
+  // pre-bundled by default, and without pre-bundling the dev server serves its
+  // raw `require()` / `module.exports` straight to the browser —
+  // build.commonjsOptions is build-only and does nothing for `npm run dev`.
+  optimizeDeps: { include: SHARED_OPTIMIZE_INCLUDE },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "src"),
-      // packages/shared — the Zod schemas the Express API validates with, so
-      // the client enforces the SAME rules rather than a re-statement of them
-      // (audit F12). CommonJS on purpose: the backend requires it with no build
-      // step. See packages/shared/README.md.
-      "@shared": path.resolve(__dirname, "../packages/shared"),
-      // ONE zod instance. packages/shared is CommonJS: Node's own loader
-      // resolves its `require("zod")` from the repo root, and no bundler flag
-      // changes that (dedupe and ssr.noExternal both leave CJS interop alone).
-      // So the client is pointed at that same root copy — two copies would make
-      // `instanceof z.ZodType` false across the boundary and hand zodResolver a
-      // schema from the "wrong" zod. This requires the root install; CI's
-      // frontend job does it explicitly for the client.
-      zod: path.resolve(__dirname, "../node_modules/zod"),
+      // @shared + zod resolve through config/shared-alias.ts, which vitest.config.ts
+      // imports too — the build and the tests must not disagree about this again.
+      ...sharedAlias(__dirname, "bundler"),
     },
   },
   /**
@@ -117,6 +113,8 @@ export default defineConfig({
    * re-checks the emitted artifact. Both run in CI.
    */
   build: {
+    // packages/shared is CommonJS source, not a dependency — see shared-alias.ts.
+    commonjsOptions: { include: SHARED_COMMONJS_INCLUDE },
     rollupOptions: {
       onwarn(warning, warn) {
         // Rollup DID warn about the cycle that blanked production — "Circular

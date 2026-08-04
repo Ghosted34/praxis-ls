@@ -82,6 +82,10 @@ dump.rdb
 # Compiled Vite config. `vite.config.ts` is the source of truth, but Vite resolves
 # vite.config.js BEFORE vite.config.ts — a committed build artifact silently shadows
 # the real config and every later edit to the .ts becomes a no-op.
+# Transient entry written by client/scripts/check-shared.mjs; removed on exit,
+# listed here so a crashed run cannot leave it committable.
+client/.shared-probe.generated.js
+
 client/vite.config.js
 client/vite.config.d.ts
 platform-console/vite.config.js

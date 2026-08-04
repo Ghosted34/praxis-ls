@@ -79,9 +79,45 @@ The client never re-states the rule. If the API starts requiring
 
 1. Write it in `schemas/<domain>.js` **against the API's existing validator** —
    this package exists to remove a second definition, not to add a third.
-2. Export it from `index.js` and declare it in `index.d.ts`.
+2. Export it from `index.js` and declare it in `index.d.ts`. Use
+   **`exports.name = name;`**, never `module.exports = { name }` — see below.
 3. Point the backend validator at it and delete the local copy.
 4. Use it in the client form.
 
 Step 3 is the one that matters. A schema here that the backend does not use is
 just a third definition with better branding.
+
+### `exports.x =`, never `module.exports = { x }`
+
+The two are identical to Node, so the API cannot tell them apart. The client
+can: it is **bundled**, and `cjs-module-lexer` — which both esbuild and Rollup
+use to discover a CommonJS module's named exports — cannot see through the
+object-literal form.
+
+This is not a style preference. With `module.exports = { … }` the client was
+broken in every bundler path at once, and nobody noticed for as long as no
+routed screen imported the package:
+
+| Path | Symptom |
+|---|---|
+| `vite build` | `"finalInvoice" is not exported by "packages/shared/index.js"` |
+| `vite dev` | the import silently resolved to `undefined` — a form with no validation, then a crash inside `zodResolver` |
+| `vitest` | **passed** — Vitest loads this CommonJS through Node, which does not care |
+
+That last row is why it survived review: the only path that exercised the
+package was the only one that could not see the problem. `npm run check:shared`
+now builds a probe against the real Vite config on every CI run, so a
+regression fails the build instead of waiting for the next screen.
+
+### Zod stays a peer dependency
+
+Never add `zod` to this package's own `dependencies`. A second copy on disk
+means `instanceof z.ZodType` is false across the FE/BE boundary and `zodResolver`
+gets a schema from the "wrong" Zod. The client resolves the single instance in
+`client/config/shared-alias.ts`; the API resolves it from the repo root.
+
+One subtlety recorded there and worth repeating: **one copy on disk is not one
+instance.** Zod's `exports` map has separate `import` (`./index.js`, ESM) and
+`require` (`./index.cjs`, CJS) entries, so a bundler alias pointing at the
+package *directory* still hands client code the ESM build and this package's
+`require("zod")` the CJS one. The alias must pin an entry file.

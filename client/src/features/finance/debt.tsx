@@ -168,7 +168,11 @@ export function DebtPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        // A click SHIELD, not a control: it stops a row action reaching the
+        // row's own onRowClick. The real controls inside are buttons and are
+        // keyboard-reachable, so role="presentation" is accurate — F13 targets
+        // handlers that ARE the interaction, which this is not.
+        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
           <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
           {r.status === "ACTIVE" && <Button size="sm" variant="outline" onClick={() => setRepay(r)}>Repay</Button>}
         </div>

@@ -268,7 +268,19 @@
   /* Text uses the AA-tuned status token; the ground uses the -fill variant so
      the pill keeps its saturation without dragging the label below 4.5:1. */
   .st-blue { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
-  .st-orange { color: rgb(var(--brand-orange-ink)); background: rgb(var(--brand-orange) / 0.14); }
+  /*
+   * The accent status pill. Its GROUND already tracked the tenant — `applyBrand`
+   * writes `--brand-orange` from `brand.primary` (lib/theme.ts) — but its TEXT
+   * read `--brand-orange-ink`, which `applyBrand` never sets. So a tenant whose
+   * primary is, say, teal got a teal-tinted pill with SmartLS brown-orange text
+   * on it: wrong brand, and a contrast pair nobody had measured.
+   *
+   * `--primary-ink` is the same value for the default tenant (both are
+   * rgb(190 86 14) light / rgb(250 158 78) dark), and for every other tenant it
+   * is DERIVED to clear 4.5:1 against the surface by `toAccessibleInk`. Found by
+   * the Phase 3 white-label smoke test.
+   */
+  .st-orange { color: var(--primary-ink); background: rgb(var(--brand-orange) / 0.14); }
   .st-ok { color: rgb(var(--ok)); background: rgb(var(--ok-fill) / 0.13); }
   .st-warn { color: rgb(var(--warn)); background: rgb(var(--warn-fill) / 0.14); }
   .st-bad { color: rgb(var(--bad)); background: rgb(var(--bad-fill) / 0.12); }

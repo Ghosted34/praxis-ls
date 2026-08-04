@@ -1,6 +1,6 @@
 /** Operations file (dossier) repository (MOD-29). All dossier SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "dossier", data);
 const get = (client, id) => getById(client, "dossier", "dossier_id", id);
@@ -16,17 +16,39 @@ async function update(client, id, fields) {
   return rows[0] || null;
 }
 
-async function list(client, q = {}) {
+/**
+ * One page of dossiers, plus how many match the filter in total.
+ *
+ * `q` searches REF, CLIENT NAME, BL/MAWB and VESSEL — the four fields the
+ * Operations screen's search box has always advertised ("Search by ref, client,
+ * BL/MAWB, vessel…"). It used to match `ref` only, and the screen made up the
+ * difference by filtering in the browser over whatever `page()` had already
+ * truncated to 50 rows. On any tenant past its fiftieth dossier that search
+ * could not find an older file and said "No operation files" instead — the same
+ * shape of defect the Finance hub carried, and a correctness problem rather
+ * than a performance one. The client-name join is LEFT so a dossier with no
+ * client is still returned.
+ *
+ * `TOTAL_COL` is a `COUNT(*) OVER()` window function, so the count costs one
+ * round trip and shares the WHERE clause rather than duplicating it.
+ *
+ * @returns {Promise<{rows: Array<object>, total: number}>}
+ */
+async function listPaged(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset]; const wh = [];
-  if (q.entity_id) { params.push(q.entity_id); wh.push("entity_id = $" + params.length); }
-  if (q.client_id) { params.push(q.client_id); wh.push("client_id = $" + params.length); }
-  if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
-  if (q.service_type_id) { params.push(q.service_type_id); wh.push("service_type_id = $" + params.length); }
-  if (q.q) { params.push("%" + q.q + "%"); wh.push("ref ILIKE $" + params.length); }
+  if (q.entity_id) { params.push(q.entity_id); wh.push("d.entity_id = $" + params.length); }
+  if (q.client_id) { params.push(q.client_id); wh.push("d.client_id = $" + params.length); }
+  if (q.status) { params.push(q.status); wh.push("d.status = $" + params.length); }
+  if (q.service_type_id) { params.push(q.service_type_id); wh.push("d.service_type_id = $" + params.length); }
+  if (q.q) {
+    params.push("%" + q.q + "%");
+    const p = "$" + params.length;
+    wh.push(`(d.ref ILIKE ${p} OR cm.name ILIKE ${p} OR d.bl_mawb ILIKE ${p} OR d.vessel_flight ILIKE ${p})`);
+  }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
   const sql =
-    "SELECT d.*, cm.name AS client_name, " +
+    `SELECT d.*, cm.name AS client_name, ${TOTAL_COL}, ` +
     "st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr, st.territory AS service_territory, " +
     "(SELECT COALESCE(SUM(cl.qty * cl.unit_cost), 0) FROM costing_line cl JOIN costing c ON c.costing_id = cl.costing_id WHERE c.dossier_id = d.dossier_id) AS costing_total, " +
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
@@ -37,7 +59,13 @@ async function list(client, q = {}) {
     "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
     where + " ORDER BY d.created_at DESC LIMIT $1 OFFSET $2";
   const { rows } = await client.query(sql, params);
-  return rows;
+  return splitTotal(rows);
+}
+
+/** Rows only. Kept because several callers (the AI adapter, the id→ref maps on
+ *  other screens) want a bare array and have no use for the count. */
+async function list(client, q = {}) {
+  return (await listPaged(client, q)).rows;
 }
 
 
@@ -130,4 +158,4 @@ async function overview(client, dossierId) {
   };
 }
 
-module.exports = { insert, get, update, list, overview };
+module.exports = { insert, get, update, list, listPaged, overview };

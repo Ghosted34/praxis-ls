@@ -229,7 +229,7 @@ export function TeamChatPage() {
           <div className="flex-1 overflow-y-auto px-2 pb-3">
             {channels.loading ? (
               <div className="space-y-1 p-2">{Array.from({ length: 6 }).map((_, i) => <div key={i} className="h-14 animate-pulse rounded-xl border border-border bg-accent/40" />)}</div>
-            ) : channels.error ? <div className="p-4"><ErrorState message={errMsg(channels.error)} /></div> : filtered.length ? (
+            ) : channels.error ? <div className="p-4"><ErrorState message={channels.error} /></div> : filtered.length ? (
               <div className="space-y-px">{filtered.map((c) => <ChannelRow key={c.group_id} c={c} active={activeId === c.group_id} onClick={() => select(c.group_id)} />)}</div>
             ) : <div className="px-4 py-12 text-center micro">{q || filter !== "all" ? "No conversations match." : "No conversations yet"}</div>}
           </div>
@@ -302,7 +302,7 @@ function Thread({ channelId, meId, nameOf, onBack, onSent }: { channelId: string
         {ch.data?.kind && <span className="micro">· {ch.data.kind.toLowerCase()}</span>}
       </div>
       <div className="flex-1 space-y-2 overflow-y-auto bg-[rgb(var(--ink-3)/0.04)] px-4 py-3">
-        {thread.loading && msgs.length === 0 ? <div className="micro">Loading…</div> : thread.error ? <ErrorState message={errMsg(thread.error)} /> : msgs.length ? msgs.map((m) => {
+        {thread.loading && msgs.length === 0 ? <div className="micro">Loading…</div> : thread.error ? <ErrorState message={thread.error} /> : msgs.length ? msgs.map((m) => {
           const mine = !!meId && m.sender_user_id === meId;
           return (
             <div key={m.message_id} className={mine ? "flex justify-end" : "flex justify-start"}>

@@ -207,7 +207,7 @@ export function SetupPage() {
 
       <h2 className="mb-2 font-display text-lg">Section senders</h2>
       <p className="micro mb-3">Each section mails from its own verified address. Set the From identity and (optionally) a dedicated SMTP host.</p>
-      {senders.error && <ErrorState message={errMsg(senders.error)} />}
+      {senders.error && <ErrorState message={senders.error} />}
       <div className="grid gap-4 lg:grid-cols-2">
         {PURPOSES.map((p) => (
           <SectionCard key={p.key + (byPurpose[p.key]?.email_identity_id || "")} purpose={p.key} label={p.label} blurb={p.blurb} existing={byPurpose[p.key]} onSaved={senders.reload} />

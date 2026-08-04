@@ -121,7 +121,7 @@ function DebtDrawer({ debt, onClose, onRepay }: { debt: api.DebtEngagement; onCl
   const x = d.data;
   return (
     <Modal open onClose={onClose} size="lg" title={`${debt.lender_name || debt.lender_kind || "Facility"} · ${money(debt.principal)}`} description={debt.due_on ? `Due ${dateFmt(debt.due_on)}` : undefined}>
-      {d.loading ? <div className="py-8 text-center micro">Loading…</div> : d.error ? <ErrorState message={errMsg(d.error)} /> : x ? (
+      {d.loading ? <div className="py-8 text-center micro">Loading…</div> : d.error ? <ErrorState message={d.error} /> : x ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Principal</div><div className="num text-lg font-medium">{money(x.principal)}</div></div>

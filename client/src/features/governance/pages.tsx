@@ -5,6 +5,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Segmented } from "@/components/ui/segmented";
+import { DataView } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -99,13 +100,10 @@ const decisionTone = (d?: string | null): Tone =>
   d === "approved" ? "ok" : d === "revoked" ? "bad" : d === "flagged" ? "warn" : "mute";
 
 /** Pretty-print a jsonb column without exploding on a null/primitive. */
+/** An audit-ledger before/after snapshot. These are arbitrary row shapes, so
+ *  DataView renders them as a labelled field list rather than raw JSON (A4). */
 function Json({ value }: { value: unknown }) {
-  if (value === null || value === undefined) return <span className="micro">—</span>;
-  return (
-    <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed">
-      {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-    </pre>
-  );
+  return <DataView data={value} emptyTitle="—" className="max-h-64 overflow-auto" />;
 }
 
 function LedgerDetail({ row, actorName, onClose }: { row: LedgerEntry; actorName: Record<string, string>; onClose: () => void }) {
@@ -757,7 +755,7 @@ function WorkflowDrawer({ workflow, onClose, onChanged }: { workflow: wf.Workflo
           <span className="micro uppercase tracking-wide">Approval chain</span>
           <Button size="sm" onClick={() => setAdding(true)}>Add step</Button>
         </div>
-        {steps.loading ? <div className="py-6 text-center micro">Loading…</div> : steps.error ? <ErrorState message={errMsg(steps.error)} /> : chain.length ? (
+        {steps.loading ? <div className="py-6 text-center micro">Loading…</div> : steps.error ? <ErrorState message={steps.error} /> : chain.length ? (
           <ol className="space-y-2">
             {chain.map((s) => (
               <li key={s.workflow_step_id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">

@@ -66,7 +66,7 @@ function AbsencePanel({ date }: { date: string }) {
       {a.loading ? (
         <div className="py-3 text-center micro">Loading…</div>
       ) : a.error ? (
-        <ErrorState message={errMsg(a.error)} />
+        <ErrorState message={a.error} />
       ) : rows.length === 0 ? (
         <div className="lux-card p-4 text-sm text-muted-foreground">Everyone active clocked in.</div>
       ) : (

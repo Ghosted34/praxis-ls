@@ -11,7 +11,7 @@ import { PageHeader } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
-import { useResource, errMsg } from "@/lib/use-resource";
+import { useResource } from "@/lib/use-resource";
 import { money, num, dateFmt, humanizeEvent, humanizeRef } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
@@ -41,7 +41,7 @@ export function WorkspacePage() {
       {r.loading ? (
         <div className="py-10 text-center micro">Loading…</div>
       ) : r.error ? (
-        <ErrorState message={errMsg(r.error)} />
+        <ErrorState message={r.error} />
       ) : (
         <>
           <KpiRow>

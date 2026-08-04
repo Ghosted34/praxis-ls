@@ -116,6 +116,8 @@ export function useList<T = Record<string, unknown>>(path: string | null) {
     if (path) void qc.invalidateQueries({ queryKey: tenantKey(path) });
   }, [qc, path]);
 
+  // The ONE correct errMsg call on a hook error: q.error is a thrown ApiError,
+  // not the formatted string. Callers receive the string — see the header.
   const error = q.error ? errMsg(q.error) : null;
 
   return {
@@ -170,6 +172,8 @@ export function useResource<T>(fn: () => Promise<T>, deps: React.DependencyList)
     void qc.invalidateQueries({ queryKey: key });
   }, [qc, key]);
 
+  // The ONE correct errMsg call on a hook error: q.error is a thrown ApiError,
+  // not the formatted string. Callers receive the string — see the header.
   const error = q.error ? errMsg(q.error) : null;
 
   return {

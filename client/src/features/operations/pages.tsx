@@ -288,7 +288,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
       {ov.loading ? (
         <div className="py-10 text-center micro">Loading 360…</div>
       ) : ov.error ? (
-        <ErrorState message={errMsg(ov.error)} />
+        <ErrorState message={ov.error} />
       ) : d ? (
         <div className="space-y-5">
           <div className="grid gap-3 sm:grid-cols-4">

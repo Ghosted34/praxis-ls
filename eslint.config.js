@@ -44,6 +44,10 @@ module.exports = [
         URL: "readonly",
         fetch: "readonly",
         AbortController: "readonly",
+        // Node 20 global. Used by shared/observability/error-reporter.js to
+        // bound the outbound webhook call — a reporting POST must not hang a
+        // request path.
+        AbortSignal: "readonly",
       },
     },
     rules: {

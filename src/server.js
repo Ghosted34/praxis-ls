@@ -21,6 +21,8 @@ const routes = require("./routes");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
 const { buildAccessLog } = require("./middleware/access-log");
+const { report } = require("./shared/observability/error-reporter");
+const { router: clientErrorsRouter } = require("./routes/client-errors");
 const { initRateLimitStore } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
 const storage = require("./services/storage.service");
@@ -112,6 +114,11 @@ function buildApp() {
   app.use(buildAccessLog());
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
+
+  // OBS-E2: browser crash reports. Mounted before the tenant router so it needs
+  // no Host resolution and no token — the crashes worth catching happen at
+  // login, during boot, or after a session expires.
+  app.use("/api", clientErrorsRouter);
 
   app.use("/api", routes);
 
@@ -224,6 +231,7 @@ function installProcessGuards() {
   // fatal.
   process.on("unhandledRejection", (reason) => {
     logger.error({ err: reason }, "unhandledRejection (kept alive)");
+    report(reason, { origin: "server", severity: "error", route: "unhandledRejection" });
   });
 
   // OBS-E4. This used to swallow uncaughtException and keep going, which is
@@ -243,7 +251,11 @@ function installProcessGuards() {
   // immediately loses the very log line explaining why.
   process.on("uncaughtException", (err) => {
     logger.error({ err }, "uncaughtException — exiting so the supervisor restarts a clean process");
-    setTimeout(() => process.exit(1), 100).unref();
+    // Report BEFORE exiting, and give the send a moment. A crash is the single
+    // most important thing to hear about, and it is the one case where the
+    // process will not be around to retry.
+    report(err, { origin: "server", severity: "fatal", route: "uncaughtException" });
+    setTimeout(() => process.exit(1), 750).unref();
   });
 }
 

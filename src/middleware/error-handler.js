@@ -9,6 +9,7 @@
 const { ZodError } = require("zod");
 const { logger } = require("../config/logger");
 const { AppError } = require("../utils/errors");
+const { report } = require("../shared/observability/error-reporter");
 
 function notFoundHandler(req, res) {
   res.status(404).json({
@@ -37,7 +38,10 @@ function errorHandler(err, req, res, _next) {
 
   if (err instanceof AppError) {
     const status = err.status || 500;
-    if (status >= 500) logger.error({ err, request_id }, err.message);
+    if (status >= 500) {
+      logger.error({ err, request_id }, err.message);
+      report(err, { origin: "server", route: `${req.method} ${req.originalUrl || req.path}`, request_id });
+    }
     else logger.warn({ request_id, code: err.code, status }, err.message);
     return res.status(status).json({
       error: { code: err.code, message: err.message, ...(err.details ? { fields: err.details } : {}) },
@@ -109,6 +113,11 @@ function errorHandler(err, req, res, _next) {
   }
 
   logger.error({ err, request_id }, "unhandled error");
+  // OBS-E1: a 500 used to end here — one line in a log that is not shipped and
+  // is wiped on every deploy. Now it also reaches the error sink, with tenant,
+  // user and request_id attached. Fire-and-forget: reporting must never turn a
+  // handled 500 into an unhandled one.
+  report(err, { origin: "server", route: `${req.method} ${req.originalUrl || req.path}`, request_id });
   return res.status(500).json({
     error: { code: "INTERNAL_ERROR", message: "Something went wrong on our side — please try again.", reference: request_id },
     request_id,

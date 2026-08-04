@@ -277,7 +277,7 @@ export function EmployeesPage() {
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
-  const rows = employees.data || [];
+  const rows = React.useMemo(() => employees.data || [], [employees.data]);
   const filtered = q ? rows.filter((e) => (e.full_name || "").toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((e) => e.employee_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].employee_id); }, [rows, selId]);

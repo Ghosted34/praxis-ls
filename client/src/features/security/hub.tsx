@@ -19,7 +19,13 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
-import { UsersPage, RolesPage, CapabilitiesPage, ScopesPage, FieldVisibilityPage, SessionsPage, type User, type Role } from "./pages";
+import { UsersPage } from "./users";
+import { RolesPage } from "./roles";
+import { CapabilitiesPage } from "./capabilities";
+import { ScopesPage } from "./scopes";
+import { FieldVisibilityPage } from "./field-visibility";
+import { SessionsPage } from "./sessions";
+import type { User, Role } from "./shared";
 import { PermissionMatrixPage } from "./permission-matrix-page";
 import { MySecurityPage } from "./my-security";
 

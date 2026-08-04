@@ -143,7 +143,15 @@ export function CommandPalette({
 
   return (
     <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 pt-[12vh]">
-      <div className="absolute inset-0 animate-fade-in bg-black/40" onClick={onClose} />
+      {/* Decorative scrim. Click-to-dismiss is a pointer convenience whose
+          keyboard equivalent is Escape, handled in onKeyDown below. aria-hidden
+          is the whole fix: a decorative scrim should not be announced at all,
+          and hiding it also settles the rule honestly rather than by suppression. */}
+      <div aria-hidden className="absolute inset-0 animate-fade-in bg-black/40" onClick={onClose} />
+      {/* A dialog handling its own arrow/Enter/Escape keys is the WAI-ARIA
+          pattern, not a violation — the rule cannot tell a composite widget from
+          a decorated <p>, and flags any key handler on a non-<button> role. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <div
         role="dialog"
         aria-modal="true"

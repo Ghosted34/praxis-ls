@@ -14,6 +14,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { RowActions } from "@/components/ui/row-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -119,7 +120,7 @@ export function CostingPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           {/* Submit opens the approval chain; Approve is the direct path, which
               now refuses while a chain is pending (W4). */}
           {["DRAFT", "SUBMITTED_FOR_VALIDATION"].includes(r.status) && (
@@ -132,7 +133,7 @@ export function CostingPage() {
               Approve
             </Button>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];
@@ -174,7 +175,7 @@ export function CostTrackingPage() {
       <HubTabs />
       <div className="mb-4 flex items-center gap-3">
         <span className="micro">Dossier</span>
-        <Select value={dossierId} onChange={(e) => setDossierId(e.target.value)} className="max-w-xs">
+        <Select aria-label="Filter by dossier" value={dossierId} onChange={(e) => setDossierId(e.target.value)} className="max-w-xs">
           <option value="">Select a dossier…</option>
           {(dossiers || []).map((d) => <option key={d.dossier_id} value={d.dossier_id}>{d.ref}</option>)}
         </Select>
@@ -278,10 +279,10 @@ export function CashRequestsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <DocButton docType="CASH_REQUEST" id={r.cash_request_id} title={r.ref || `Cash request ${r.cash_request_id.slice(0, 8)}`} label="View" />
           {(r.status === "DRAFT" || !r.status) && <Button size="sm" variant="outline" loading={busyId === r.cash_request_id} onClick={() => submitCr(r)}>Submit</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];

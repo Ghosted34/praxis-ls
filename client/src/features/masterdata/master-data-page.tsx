@@ -16,9 +16,13 @@
  */
 import { TabbedHub, type HubTab } from "@/components/tabbed-hub";
 import { ClientsPage } from "./client-360"; // customer 360 (replaces the flat clients CRUD)
-import { SuppliersPage, CorporateEntitiesPage, ExpenseRatesPage, FinancialDictionaryPage } from "./pages";
-import { CurrenciesPage, TaxJurisdictionsPage } from "@/features/settings/master-data-pages";
-import { BankAccountsPage } from "@/features/settings/config-pages";
+import { SuppliersPage } from "./suppliers";
+import { CorporateEntitiesPage } from "./corporate-entities";
+import { ExpenseRatesPage } from "./expense-rates";
+import { FinancialDictionaryPage } from "./financial-dictionary";
+import { CurrenciesPage } from "@/features/settings/currencies";
+import { TaxJurisdictionsPage } from "@/features/settings/tax-jurisdictions";
+import { BankAccountsPage } from "@/features/settings/bank-accounts";
 
 const TABS: HubTab[] = [
   { key: "clients", label: "Clients", Component: ClientsPage },

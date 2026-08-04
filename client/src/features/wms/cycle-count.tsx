@@ -76,7 +76,7 @@ function CountSheet({ locations, onClose, onSaved }: { locations: api.WarehouseL
                   label: "Variance", align: "right",
                   render: (i) => {
                     const v = varianceOf(i);
-                    return <span className={"num " + (v === 0 ? "text-muted-foreground" : v > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-[rgb(var(--bad))]")}>{v > 0 ? `+${num(v)}` : num(v)}</span>;
+                    return <span className={"num " + (v === 0 ? "text-muted-foreground" : v > 0 ? "text-ok" : "text-bad")}>{v > 0 ? `+${num(v)}` : num(v)}</span>;
                   },
                 },
               ]}

@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { PageHeader, DataList, type Column } from "./data-list";
 
@@ -82,6 +83,64 @@ describe("DataList states", () => {
 
   it("populated table has no axe violations", async () => {
     const { container } = render(<DataList {...base} rows={rows} error={null} loading={false} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+});
+
+/**
+ * Row activation (audit F9, F13).
+ *
+ * `onRowClick` was attached to a `<tr>` and, on phones, to a bare `<div>` — no
+ * role, no tabIndex, no key handler. The primary navigation gesture on most list
+ * screens in this product worked for the mouse and for nothing else. F13 counted
+ * 23 such handlers across 16 files; this component is the one that multiplied
+ * across every screen, so it is the one worth pinning.
+ */
+describe("DataList row activation", () => {
+  const base = { columns, rowKey: (r: Row) => r.id, error: null, loading: false };
+
+  it("exposes a real, focusable, NAMED control per row — not a clickable div", () => {
+    render(<DataList {...base} rows={rows} onRowClick={() => {}} />);
+    // Named by the record, because column 0 is what identifies it.
+    const activator = screen.getAllByRole("button", { name: "SBX-2026-0001" });
+    expect(activator.length).toBeGreaterThan(0);
+  });
+
+  it("activates by keyboard alone", async () => {
+    const seen: Row[] = [];
+    render(<DataList {...base} rows={rows} onRowClick={(r) => seen.push(r)} />);
+    const activator = screen.getAllByRole("button", { name: "SBX-2026-0002" })[0];
+    activator.focus();
+    expect(activator).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(seen).toHaveLength(1);
+    expect(seen[0].ref).toBe("SBX-2026-0002");
+  });
+
+  it("fires the row handler exactly ONCE on a mouse click, not twice", async () => {
+    // The activator sits inside the row, so without stopPropagation a click on it
+    // would bubble to the row's own handler and navigate twice.
+    const seen: Row[] = [];
+    render(<DataList {...base} rows={rows} onRowClick={(r) => seen.push(r)} />);
+    await userEvent.click(screen.getAllByRole("button", { name: "SBX-2026-0001" })[0]);
+    expect(seen).toHaveLength(1);
+  });
+
+  it("keeps table semantics — the row is still a row, not a button", () => {
+    render(<DataList {...base} rows={rows} onRowClick={() => {}} />);
+    // The tempting fix was <tr role="button">, which would have cost row/column
+    // position and header association on a 200-row table.
+    const table = screen.getByRole("table");
+    expect(within(table).getAllByRole("row").length).toBe(rows.length + 1); // + header
+  });
+
+  it("adds no buttons when the list is not clickable", () => {
+    render(<DataList {...base} rows={rows} />);
+    expect(screen.queryByRole("button", { name: "SBX-2026-0001" })).not.toBeInTheDocument();
+  });
+
+  it("a clickable list has no axe violations", async () => {
+    const { container } = render(<DataList {...base} rows={rows} onRowClick={() => {}} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

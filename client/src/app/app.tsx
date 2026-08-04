@@ -74,24 +74,24 @@ const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data
 const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
 
 // Governance leaf screens — all four live in one module, so they share a chunk.
-const AuditPage = lazyNamed(() => import("@/features/governance/pages"), "AuditPage");
-const NotificationsPage = lazyNamed(() => import("@/features/governance/pages"), "NotificationsPage");
-const WorkflowsPage = lazyNamed(() => import("@/features/governance/pages"), "WorkflowsPage");
-const ApprovalsPage = lazyNamed(() => import("@/features/governance/pages"), "ApprovalsPage");
+const AuditPage = lazyNamed(() => import("@/features/governance/audit"), "AuditPage");
+const NotificationsPage = lazyNamed(() => import("@/features/governance/notifications"), "NotificationsPage");
+const WorkflowsPage = lazyNamed(() => import("@/features/governance/workflows"), "WorkflowsPage");
+const ApprovalsPage = lazyNamed(() => import("@/features/governance/approvals"), "ApprovalsPage");
 
 // Settings leaf editors.
 const AppearancePage = lazyNamed(() => import("@/features/settings/appearance-page"), "AppearancePage");
 const LoginEditor = lazyNamed(() => import("@/features/settings/login-editor"), "LoginEditor");
 const TemplateStudioPage = lazyNamed(() => import("@/features/settings/document-templates-page"), "TemplateStudioPage");
 const ModuleCataloguePage = lazyNamed(() => import("@/features/settings/catalogue-page"), "ModuleCataloguePage");
-const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/config-pages"), "PaymentGatewaysPage");
-const ScheduledReportsPage = lazyNamed(() => import("@/features/settings/config-pages"), "ScheduledReportsPage");
-const ApiKeysPage = lazyNamed(() => import("@/features/settings/config-pages"), "ApiKeysPage");
-const PipelineStagesPage = lazyNamed(() => import("@/features/settings/config-pages"), "PipelineStagesPage");
-const NumberingPage = lazyNamed(() => import("@/features/settings/config-pages"), "NumberingPage");
-const CustomFieldsPage = lazyNamed(() => import("@/features/settings/store-pages"), "CustomFieldsPage");
-const EmailSignaturesPage = lazyNamed(() => import("@/features/settings/store-pages"), "EmailSignaturesPage");
-const BusinessPoliciesPage = lazyNamed(() => import("@/features/settings/store-pages"), "BusinessPoliciesPage");
+const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/payment-gateways"), "PaymentGatewaysPage");
+const ScheduledReportsPage = lazyNamed(() => import("@/features/settings/scheduled-reports"), "ScheduledReportsPage");
+const ApiKeysPage = lazyNamed(() => import("@/features/settings/api-keys"), "ApiKeysPage");
+const PipelineStagesPage = lazyNamed(() => import("@/features/settings/pipeline-stages"), "PipelineStagesPage");
+const NumberingPage = lazyNamed(() => import("@/features/settings/numbering"), "NumberingPage");
+const CustomFieldsPage = lazyNamed(() => import("@/features/settings/custom-fields"), "CustomFieldsPage");
+const EmailSignaturesPage = lazyNamed(() => import("@/features/settings/email-signatures"), "EmailSignaturesPage");
+const BusinessPoliciesPage = lazyNamed(() => import("@/features/settings/business-policies"), "BusinessPoliciesPage");
 
 /**
  * Fallback for the routes that render OUTSIDE the shell (reset-password, the

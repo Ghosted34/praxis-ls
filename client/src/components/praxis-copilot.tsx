@@ -21,6 +21,7 @@ import { errMsg } from "@/lib/use-resource";
 import { useAiEnabled } from "@/components/ai-actions";
 import { Markdown } from "@/components/markdown";
 import { ActionForm } from "@/components/action-form";
+import { LoadingRow } from "@/components/ui/states";
 
 type Msg = {
   role: "user" | "praxis";
@@ -243,7 +244,7 @@ export function PraxisCopilot() {
               </div>
               <div className="flex-1 overflow-y-auto p-2">
                 {loadingConvos ? (
-                  <div className="micro px-2 py-2">Loading…</div>
+                  <LoadingRow />
                 ) : convos.length === 0 ? (
                   <div className="micro px-2 py-2 text-muted-foreground">No past conversations yet.</div>
                 ) : (

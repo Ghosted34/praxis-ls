@@ -207,6 +207,14 @@ export function SearchSelect({
         </button>
       ) : (
         <input
+          /*
+           * Focus management, not an unsolicited focus grab. Opening the combobox
+           * REPLACES the trigger <button> with this input, so the element the
+           * user was focused on ceases to exist — without this, focus falls to
+           * <body> and a keyboard user is dumped at the top of the page. The APG
+           * combobox pattern requires focus to be on the input while it is open.
+           */
+          // eslint-disable-next-line jsx-a11y/no-autofocus
           autoFocus
           id={baseId}
           role="combobox"

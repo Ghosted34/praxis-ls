@@ -15,6 +15,7 @@
     "lint": "eslint .",
     "check:contrast": "node scripts/check-contrast.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
+    "check:palette": "node scripts/check-palette.mjs",
     "check:shared": "node scripts/check-shared.mjs",
     "format": "prettier --write .",
     "test": "vitest run",

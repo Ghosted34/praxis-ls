@@ -17,7 +17,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { listDossiers, type Dossier } from "@/lib/operations-api";
-import { ClientForm } from "./pages";
+import { ClientForm } from "./clients";
 
 const shell = pageShell.wide;
 const DOSSIER_TONE: Record<string, Tone> = { DRAFT: "mute", IN_PROGRESS: "blue", COMPLETED: "ok", CANCELLED: "bad" };
@@ -131,7 +131,7 @@ export function ClientsPage() {
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Client | "new" | null>(null);
 
-  const rows = clients.data || [];
+  const rows = React.useMemo(() => clients.data || [], [clients.data]);
   const filtered = q ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((c) => c.client_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].client_id); }, [rows, selId]);

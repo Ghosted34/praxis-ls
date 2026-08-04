@@ -19,7 +19,7 @@ export function PwaUpdater() {
   } = useRegisterSW({
     onRegisterError(err) {
       // Non-fatal: the app works without the SW, just without offline/install.
-      // eslint-disable-next-line no-console
+       
       console.warn("[pwa] service worker registration failed", err);
     },
   });

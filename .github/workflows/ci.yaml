@@ -259,6 +259,22 @@ jobs:
         if: matrix.app == 'client'
         run: npm run check:contrast --prefix client
 
+      - name: Raw-palette gate
+        # Phase 4 deliverable: "Zero raw-palette colours". The audit measured 122
+        # `text-emerald-600`-style literals against a design rule (#1: "never
+        # hardcode colours") that nothing enforced. Each one breaks tenant
+        # white-labelling — it stays that hue when the tenant's brand is teal,
+        # which is exactly the class of defect the Phase 3 smoke test caught in
+        # production (Addendum 6: a tenant-tinted pill ground with SmartLS-brown
+        # text on it, an unmeasured contrast pair).
+        #
+        # 122 → 56 (Phase 2) → 46 (Phase 3) → 0 here. This is what keeps it at 0.
+        # A plain script rather than a lint rule because the largest single source
+        # was a lookup TABLE of class strings, not a JSX attribute — an AST rule
+        # reading className would have missed the one that mattered most.
+        if: matrix.app == 'client'
+        run: npm run check:palette --prefix client
+
       - name: Test
         # The client had zero tests until Phase 1 PR2 (audit F15) while the
         # backend carried ~50 suites — on a frontend that drives journal entries,

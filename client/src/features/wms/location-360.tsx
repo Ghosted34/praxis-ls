@@ -146,7 +146,7 @@ export function LocationsPage() {
   const [q, setQ] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
-  const rows = locs.data || [];
+  const rows = React.useMemo(() => locs.data || [], [locs.data]);
   const filtered = q ? rows.filter((l) => api.locationLabel(l).toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((l) => l.location_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].location_id); }, [rows, selId]);

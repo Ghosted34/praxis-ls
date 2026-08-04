@@ -9,6 +9,7 @@ import * as React from "react";
 import { Link } from "react-router-dom";
 import { Popover } from "@/components/ui/popover";
 import { tenant } from "@/lib/api-client";
+import { LoadingRow } from "@/components/ui/states";
 
 type Notif = {
   notification_id: string;
@@ -131,7 +132,7 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
             The audit found 3 live regions in ~40,000 lines (F13). */}
         <div className="max-h-[22rem] overflow-y-auto" aria-live="polite" aria-busy={rows === null}>
           {rows === null ? (
-            <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+            <LoadingRow />
           ) : rows.length === 0 ? (
             <div className="px-3 py-8 text-center text-xs text-muted-foreground">You're all caught up.</div>
           ) : (

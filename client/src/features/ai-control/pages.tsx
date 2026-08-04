@@ -14,6 +14,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
+import { RowActions } from "@/components/ui/row-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import * as api from "@/lib/ai-governance-api";
@@ -325,10 +326,10 @@ export function AiVendorsPage() {
     { key: "key", label: "Key", render: (v) => <Pill tone={v.has_key ? "ok" : "warn"}>{v.has_key ? "Set" : "Missing"}</Pill> },
     { key: "active", label: "Active", render: (v) => <Toggle on={!!v.is_active} busy={busy === v.vendor} onClick={() => toggleActive(v)} /> },
     { key: "_a", label: "", render: (v) => (
-      <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+      <RowActions>
         <Button size="sm" variant="outline" loading={testing === v.vendor} onClick={() => test(v)}>Test</Button>
         <Button size="sm" variant="ghost" onClick={() => setEditing(v)}>Key</Button>
-      </div>
+      </RowActions>
     ) },
   ];
 

@@ -1,11 +1,17 @@
 /** People & HR — one hub, deep-linkable tabs (the old /hr/<screen> paths resolve
  *  as sections). Mirrors FleetHub / WarehouseHub. */
 import { TabbedHub } from "@/components/tabbed-hub";
-import {
-  EmployeesPage, PayrollPage, VacanciesPage, ContractsPage, AppraisalsPage,
-  AttendancePage, LeavePage, TrainingsPage, SopsPage, TalentPoolPage,
-  QueriesPage, SanctionsPage,
-} from "./pages";
+import { EmployeesPage } from "./employee-360";
+import { QueriesPage, SanctionsPage } from "./discipline";
+import { PayrollPage } from "./payroll";
+import { VacanciesPage } from "./vacancy";
+import { ContractsPage } from "./contracts";
+import { AppraisalsPage } from "./appraisal";
+import { AttendancePage } from "./attendance";
+import { LeavePage } from "./leave";
+import { TrainingsPage } from "./trainings";
+import { SopsPage } from "./sops";
+import { TalentPoolPage } from "./talent-pool";
 
 export function HrHub() {
   return (

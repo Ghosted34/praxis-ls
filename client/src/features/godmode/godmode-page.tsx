@@ -13,6 +13,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
+import { RowActions } from "@/components/ui/row-actions";
 import { useList, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
@@ -45,7 +46,7 @@ function PurgeModal({ row, onClose, onPurged }: { row: SoftDelete; onClose: () =
           <div className="micro mt-0.5">Accounting-connected records are refused by the server — reverse them instead.</div>
         </div>
         <Field label="God Mode PIN" required>
-          <Input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="CEO PIN" autoFocus />
+          <Input type="password" value={pin} onChange={(e) => setPin(e.target.value)} placeholder="CEO PIN" />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -69,9 +70,9 @@ export function GodModePage() {
     { key: "connected", label: "Ledger", render: (r) => (r.is_accounting_connected ? <Pill tone="bad">Protected</Pill> : <Pill tone="ok">Purgeable</Pill>) },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        <RowActions>
           <Button size="sm" variant="outline" disabled={!!r.is_accounting_connected} onClick={() => setTarget(r)}>Purge</Button>
-        </div>
+        </RowActions>
       ),
     },
   ];

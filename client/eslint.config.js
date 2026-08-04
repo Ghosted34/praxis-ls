@@ -25,7 +25,23 @@ export default tseslint.config(
     },
     rules: {
       "react-hooks/rules-of-hooks": "error",
-      "react-hooks/exhaustive-deps": "warn",
+      /**
+       * PHASE 4: error, because the backlog reached zero.
+       *
+       * The audit (F15) flagged this as `warn` and suppressed. Every one of the
+       * ten outstanding warnings turned out to be the SAME live bug, not lint
+       * pedantry: `const rows = query.data || []` mints a fresh array on every
+       * render, so an effect or memo depending on it re-runs on every render.
+       * On the 360 screens (client, vehicle, employee, location) that effect
+       * calls `setSelId`, which renders, which rebuilds the array — the loop was
+       * only bounded by the `if (!selId)` guard happening to be false after the
+       * first pass.
+       *
+       * Six `eslint-disable-next-line` suppressions remain, each with a written
+       * reason at the call site. That is the difference this flip is for: an
+       * exception someone had to justify, rather than a warning nobody reads.
+       */
+      "react-hooks/exhaustive-deps": "error",
       "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
       "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
       "@typescript-eslint/no-explicit-any": "off",
@@ -66,13 +82,43 @@ export default tseslint.config(
       "jsx-a11y/scope": "error",
       "jsx-a11y/tabindex-no-positive": "error",
 
-      "jsx-a11y/click-events-have-key-events": "warn",
-      "jsx-a11y/no-static-element-interactions": "warn",
-      "jsx-a11y/no-noninteractive-element-interactions": "warn",
-      "jsx-a11y/label-has-associated-control": "warn",
-      "jsx-a11y/interactive-supports-focus": "warn",
-      "jsx-a11y/anchor-is-valid": "warn",
-      "jsx-a11y/no-autofocus": "warn",
+      /**
+       * PHASE 4: these were the rules with a real backlog. The backlog is now
+       * zero, so they are errors.
+       *
+       * The comment above says they "flip to error in Phase 5 once the count is
+       * zero". The count reached zero here — Phase 4 is the per-area sweep that
+       * clears them — and leaving a satisfied rule at "warn" just invites the
+       * backlog back. The 83 warnings this config reported at the start of the
+       * phase are gone: 23 non-interactive onClicks became real controls or one
+       * documented exception in a shared component, and 11 redundant `autoFocus`
+       * props were deleted outright (they sat inside <Modal>, which is now Radix
+       * Dialog and focuses its first control already).
+       *
+       * Every remaining exception in the tree is a `eslint-disable-next-line`
+       * carrying a written reason, which is reviewable. A blanket "warn" is not.
+       */
+      "jsx-a11y/click-events-have-key-events": "error",
+      "jsx-a11y/no-static-element-interactions": "error",
+      "jsx-a11y/no-noninteractive-element-interactions": "error",
+      "jsx-a11y/interactive-supports-focus": "error",
+      "jsx-a11y/anchor-is-valid": "error",
+      "jsx-a11y/no-autofocus": "error",
+
+      /**
+       * `controlComponents` teaches the rule this app's form primitives.
+       *
+       * A `<label>Pos <Input/></label>` associates by NESTING, which is valid —
+       * but the rule only recognises native `<input>`/`<select>`/`<textarea>`,
+       * so every design-system control read as "a label wrapping nothing". That
+       * is a false positive that would have been silenced with a disable
+       * comment, teaching people the rule is noise. Naming the components makes
+       * it correct instead, and it now genuinely catches an unassociated label.
+       */
+      "jsx-a11y/label-has-associated-control": [
+        "error",
+        { controlComponents: ["Input", "Textarea", "Select", "SearchSelect", "Checkbox", "RadioGroup", "OtpInput"] },
+      ],
     },
   },
   // Test files run under Vitest globals and legitimately use non-null assertions.

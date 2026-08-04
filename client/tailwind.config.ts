@@ -57,6 +57,40 @@ export default {
         muted: { DEFAULT: "var(--muted)", foreground: "var(--muted-foreground)" },
         accent: { DEFAULT: "var(--accent)", foreground: "var(--accent-foreground)" },
         destructive: { DEFAULT: "var(--destructive)", foreground: "var(--destructive-foreground)" },
+
+        /**
+         * Semantic STATUS tones (Phase 4).
+         *
+         * These existed in index.css from Phase 1 but were never exposed to
+         * Tailwind, so the only way to reach them was the arbitrary-value form:
+         *
+         *   text-[rgb(var(--ok))]        vs   text-ok
+         *   bg-[rgb(var(--ok)_/_0.12)]   vs   bg-ok/10
+         *
+         * That is the whole reason `text-emerald-600` kept reappearing. The
+         * audit called it a discipline problem (F14, rule #1 "never hardcode
+         * colours") — it was partly an ergonomics problem: the wrong thing was
+         * shorter to type than the right one, and 46 sites took the shortcut.
+         *
+         * `<alpha-value>` is what lets the slash-opacity syntax work on a
+         * variable-backed colour, so `border-ok/40` resolves rather than being
+         * silently dropped. That requires the CSS var to hold a bare `R G B`
+         * triplet, which is how index.css already defines these.
+         *
+         * TEXT vs FILL is a real distinction here, not tidiness: `--ok` is the
+         * AA-corrected value for type, `--ok-fill` the more saturated one for
+         * grounds. Pairing text-ok with bg-ok-fill/12 is what `.st-ok` does, and
+         * what <Pill> should still be preferred for on an actual status.
+         */
+        ok: "rgb(var(--ok) / <alpha-value>)",
+        "ok-fill": "rgb(var(--ok-fill) / <alpha-value>)",
+        warn: "rgb(var(--warn) / <alpha-value>)",
+        "warn-fill": "rgb(var(--warn-fill) / <alpha-value>)",
+        bad: "rgb(var(--bad) / <alpha-value>)",
+        "bad-fill": "rgb(var(--bad-fill) / <alpha-value>)",
+        "brand-blue": "rgb(var(--brand-blue) / <alpha-value>)",
+        "brand-orange": "rgb(var(--brand-orange) / <alpha-value>)",
+
         sidebar: {
           DEFAULT: "var(--sidebar)",
           foreground: "var(--sidebar-foreground)",

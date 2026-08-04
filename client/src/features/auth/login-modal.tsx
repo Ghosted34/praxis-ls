@@ -142,6 +142,9 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
+    // Backdrop dismissal is pointer-only by design; Escape is wired in the
+    // effect above and is the keyboard equivalent.
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions
     <div
       className="login-scrim"
       role="dialog"
@@ -318,6 +321,10 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
                   type="email"
                   autoComplete="username"
                   required
+              // Hand-rolled dialog (login-scrim), NOT the Radix one — nothing else
+              // moves focus into it on open, so this is the dialog's initial-focus
+              // step rather than an unsolicited grab.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
                   autoFocus
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
@@ -369,6 +376,10 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
         {stage === "twofa" && (
           <form onSubmit={(e) => e.preventDefault()} className="mt-6 flex flex-col gap-5" noValidate>
             <p className="login-note">Enter the 6-digit code from your authenticator app.</p>
+            {/* Focus moves to the OTP field when the 2FA stage replaces the
+                password form — the element the user was typing in is gone by
+                then, so this is focus RECOVERY, not an unsolicited grab. */}
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
             <OtpInput value={code} onChange={setCode} onComplete={submitCode} autoFocus disabled={busy} />
             {error && <p className="login-error text-center">{error}</p>}
             <button

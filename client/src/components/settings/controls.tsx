@@ -236,6 +236,10 @@ export function ImageField({
 
   return (
     <Field label={label} soon={soon}>
+      {/* Drag-and-drop layered over a real <label>+<input type="file">, which
+          is what keyboard and AT users activate. The drop target adds a pointer
+          shortcut; it does not replace the control. */}
+      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
       <label
         onDragOver={(e) => e.preventDefault()}
         onDrop={(e) => {

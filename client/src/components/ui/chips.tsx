@@ -80,6 +80,15 @@ export function Chips({
   }
 
   return (
+    /*
+     * The APG radiogroup pattern: the GROUP owns arrow-key handling, the
+     * children own focus via a roving tabindex (`tabIndex={on ? 0 : -1}` below).
+     * `interactive-supports-focus` wants the element with the key handler to be
+     * focusable itself, which is right for a single control and wrong for a
+     * composite widget — the rule cannot see the children's tabindex. Making
+     * this div focusable would add a dead tab stop in front of the real one.
+     */
+    // eslint-disable-next-line jsx-a11y/interactive-supports-focus
     <div ref={ref} role="radiogroup" aria-label={label} onKeyDown={onKeyDown} className={cn("chips", className)}>
       {options.map((o) => {
         const on = o.value === value;

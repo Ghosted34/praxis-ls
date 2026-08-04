@@ -18,6 +18,7 @@ import { DepartmentSelect, type DepartmentValue } from "@/components/department-
 import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
+import { LoadingRow } from "@/components/ui/states";
 
 const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = { DRAFT: "mute", OPEN: "ok", CLOSED: "mute" };
@@ -160,7 +161,7 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
               <span className="micro">{byStatus[col]?.length || 0}</span>
             </div>
             <div className="max-h-[62vh] space-y-2 overflow-y-auto rounded-lg border bg-muted/30 p-2 min-h-24">
-              {applicants.loading ? <div className="px-2 py-3 micro">Loading…</div> : (byStatus[col] || []).map((a) => (
+              {applicants.loading ? <LoadingRow /> : (byStatus[col] || []).map((a) => (
                 <div key={a.applicant_id} className="rounded-md border bg-card p-3">
                   <div className="text-sm font-medium text-foreground">{a.full_name}</div>
                   {(a.email || a.phone) && <div className="mt-0.5 micro truncate">{a.email || a.phone}</div>}
@@ -182,7 +183,7 @@ export function VacanciesPage() {
   const [selId, setSelId] = React.useState<string | null>(null);
   const [creating, setCreating] = React.useState(false);
 
-  const rows = vacancies.data || [];
+  const rows = React.useMemo(() => vacancies.data || [], [vacancies.data]);
   const selected = rows.find((v) => v.vacancy_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].vacancy_id); }, [rows, selId]);
 
@@ -192,7 +193,7 @@ export function VacanciesPage() {
       <HubTabs />      {vacancies.error ? <ErrorState message={vacancies.error} /> : (
         <div className="grid gap-5 lg:grid-cols-[240px_1fr]">
           <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
-            {vacancies.loading ? <div className="px-3 py-4 micro">Loading…</div> : rows.length === 0 ? <div className="px-3 py-4 micro">No vacancies.</div> : rows.map((v) => (
+            {vacancies.loading ? <LoadingRow /> : rows.length === 0 ? <div className="px-3 py-4 micro">No vacancies.</div> : rows.map((v) => (
               <button key={v.vacancy_id} onClick={() => setSelId(v.vacancy_id)}
                 className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${v.vacancy_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
                 <span className="truncate font-medium">{v.title || v.vacancy_id.slice(0, 8)}</span>

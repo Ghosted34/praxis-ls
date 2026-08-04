@@ -649,12 +649,12 @@ export function ScheduledReportsPage() {
 
 /* Generic tenant integration secrets, wired to /settings/integration_secret
  * (write-only; only last4 is ever returned). Domain-owned keys live on their own
- * screens and are hidden here: FX → Currencies & FX, WhatsApp/SMTP → Comms →
+ * screens and are hidden here: FX → Currencies & FX, SMTP → Comms →
  * Setup, AI providers → AI Control → Vendors. */
 type Integration = { key: string; provider: string; keyName: string; label: string; hint: string };
 const KNOWN_INTEGRATIONS: Integration[] = [];
 // Secrets configured by a dedicated screen — never surfaced on this generic page.
-const DOMAIN_OWNED = new Set(["fx_exchangerate", "whatsapp_token", "email_smtp_pass"]);
+const DOMAIN_OWNED = new Set(["fx_exchangerate", "email_smtp_pass"]);
 
 type KeyInit = { key?: string; label?: string; provider?: string; keyName?: string; locked?: boolean; configured?: boolean };
 

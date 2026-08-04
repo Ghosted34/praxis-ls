@@ -402,7 +402,7 @@ type Notification = {
 };
 type Preference = { channel: string; category: string; enabled: boolean };
 
-const CHANNELS = ["IN_APP", "EMAIL", "SMS", "WHATSAPP"];
+const CHANNELS = ["IN_APP", "EMAIL", "SMS"];
 /**
  * The backend accepts any category string (it's free text), so this list is a UI
  * convention rather than a contract. Categories the user already has a stored
@@ -444,7 +444,7 @@ function PreferencesPanel() {
   const isSecurity = React.useCallback((k: string) => !!catMeta.find((c) => c.key === k)?.security, [catMeta]);
 
   // Defaults when the user has set no explicit row: IN_APP on (cheap, in-product),
-  // outbound channels (EMAIL/SMS/WHATSAPP) off — they're opt-in so we never
+  // outbound channels (EMAIL/SMS) off — they're opt-in so we never
   // message someone who didn't ask. Mirrors notification.repo.isChannelEnabled.
   const key = (c: string, ch: string) => `${ch}::${c}`;
   const current = React.useMemo(() => {

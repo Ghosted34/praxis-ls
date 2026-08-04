@@ -43,17 +43,15 @@ function fmtRelative(iso?: string | null) {
   return new Date(iso).toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-type Filter = "all" | "unread" | "inhouse" | "groups" | "whatsapp" | "instagram" | "email";
+type Filter = "all" | "unread" | "inhouse" | "groups" | "email";
 const FILTERS: { key: Filter; label: string }[] = [
   { key: "all", label: "All" },
   { key: "unread", label: "Unread" },
   { key: "inhouse", label: "In-house" },
   { key: "groups", label: "Groups" },
-  { key: "whatsapp", label: "WhatsApp" },
-  { key: "instagram", label: "Instagram" },
   { key: "email", label: "Email" },
 ];
-const EXTERNAL: Filter[] = ["whatsapp", "instagram", "email"];
+const EXTERNAL: Filter[] = ["email"];
 
 function NewChatModal({ colleagues, onClose, onCreated }: { colleagues: api.Colleague[]; onClose: () => void; onCreated: (id: string) => void }) {
   const [mode, setMode] = React.useState<"DIRECT" | "GROUP">("DIRECT");

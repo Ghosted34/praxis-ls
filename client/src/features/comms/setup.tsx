@@ -1,7 +1,7 @@
 /**
  * Comms → Setup — messaging keys & channels. PER-SECTION sender identities
  * (Billing / Documents / Notifications / Support) each with their own From
- * address + SMTP; the shared SMTP login; and the WhatsApp / Instagram API keys.
+ * address + SMTP, and the shared SMTP login.
  * Secrets are write-only (blank keeps current). Kit-styled; accents → --primary.
  */
 import { pageShell } from "@/lib/layout";
@@ -73,63 +73,19 @@ function SectionCard({ purpose, label, blurb, existing, onSaved }: { purpose: st
   );
 }
 
-/* write-only secret card (shared SMTP creds, channel tokens) */
-function SecretCard({ title, description, fields, onSave }: { title: string; description: string; fields: { key: string; label: string; type?: string; placeholder?: string }[]; onSave: (v: Record<string, string>) => Promise<void> }) {
-  const [v, setV] = React.useState<Record<string, string>>({});
-  const [busy, setBusy] = React.useState(false);
-  const [done, setDone] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null); setDone(false);
-    try { await onSave(v); setDone(true); setV({}); } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
-  }
-  return (
-    <form onSubmit={save} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-base">{title}</h3>
-      <p className="micro mb-3">{description}</p>
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((fd) => (
-          <Field key={fd.key} label={fd.label}>
-            <Input type={fd.type || "text"} value={v[fd.key] || ""} onChange={(e) => setV((s) => ({ ...s, [fd.key]: e.target.value }))} placeholder={fd.placeholder || "•••••• (leave blank to keep)"} />
-          </Field>
-        ))}
-      </div>
-      {error && <div className="mt-3"><ErrorState message={error} /></div>}
-      <div className="mt-3 flex items-center justify-end gap-3">
-        {done && <span className="micro text-[rgb(var(--ok))]">✓ Saved</span>}
-        <Button type="submit" size="sm" loading={busy} disabled={busy || Object.values(v).every((x) => !x)}>Save</Button>
-      </div>
-    </form>
-  );
-}
-
-/* Live test result line (shared by the WhatsApp + SMTP cards). */
+/* Live test result line for the SMTP card. */
 function TestLine({ result }: { result: scapi.TestResult | null }) {
   if (!result) return null;
   return result.ok
-    ? <span className="micro text-[rgb(var(--ok))]">✓ Connected{typeof result.verified_name === "string" ? ` · ${result.verified_name}` : ""}{typeof result.smtp_host === "string" ? ` · ${result.smtp_host}` : ""}</span>
+    ? <span className="micro text-[rgb(var(--ok))]">✓ Connected{typeof result.smtp_host === "string" ? ` · ${result.smtp_host}` : ""}</span>
     : <span className="micro text-[rgb(var(--bad))]">✗ {String(result.error || "Failed").slice(0, 80)}</span>;
 }
 
-/* WhatsApp + SMTP provider config — encrypted token/pass + a live connection
- * test. Secrets are write-only (blank keeps the current value). */
+/* SMTP provider config — encrypted password + a live connection test.
+ * Secrets are write-only (blank keeps the current value). */
 function ChannelConfig() {
   const cfg = useResource(() => scapi.getCommsConfig(), []);
-  const wa = cfg.data?.whatsapp;
   const em = cfg.data?.email;
-
-  // WhatsApp
-  const [waF, setWaF] = React.useState({ phone_id: "", token: "" });
-  const [waBusy, setWaBusy] = React.useState(false);
-  const [waTest, setWaTest] = React.useState<scapi.TestResult | null>(null);
-  const [waErr, setWaErr] = React.useState<string | null>(null);
-  React.useEffect(() => { if (wa) setWaF((s) => ({ ...s, phone_id: wa.phone_id || "" })); }, [wa]);
-  async function saveWa(e: React.FormEvent) {
-    e.preventDefault(); setWaBusy(true); setWaErr(null); setWaTest(null);
-    try { await scapi.setWhatsappConfig({ phone_id: waF.phone_id || undefined, token: waF.token || undefined }); setWaF((s) => ({ ...s, token: "" })); cfg.reload(); }
-    catch (err) { setWaErr(errMsg(err)); } finally { setWaBusy(false); }
-  }
-  async function testWa() { setWaTest(null); setWaErr(null); try { setWaTest(await scapi.testWhatsapp()); } catch (err) { setWaErr(errMsg(err)); } }
 
   // SMTP
   const [emF, setEmF] = React.useState({ smtp_host: "", smtp_port: "", smtp_user: "", smtp_pass: "" });
@@ -146,23 +102,6 @@ function ChannelConfig() {
 
   return (
     <>
-      <form onSubmit={saveWa} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-        <div className="mb-3 flex items-center justify-between">
-          <div><h3 className="font-display text-base">WhatsApp Business API</h3><p className="micro">Meta Cloud API — token encrypted, phone-number ID, live check.</p></div>
-          <Pill tone={wa?.token_set ? "ok" : "warn"}>{wa?.token_set ? `Token set${wa.token_last4 ? ` · …${wa.token_last4}` : ""}` : "Not set"}</Pill>
-        </div>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Phone number ID"><Input value={waF.phone_id} onChange={(e) => setWaF((s) => ({ ...s, phone_id: e.target.value }))} placeholder="1234567890" /></Field>
-          <Field label="Access token" hint={wa?.token_set ? "Leave blank to keep current." : "Cloud API permanent token."}><Input type="password" value={waF.token} onChange={(e) => setWaF((s) => ({ ...s, token: e.target.value }))} placeholder="••••••" /></Field>
-        </div>
-        {waErr && <div className="mt-2"><ErrorState message={waErr} /></div>}
-        <div className="mt-3 flex items-center justify-end gap-3">
-          <TestLine result={waTest} />
-          <Button type="button" size="sm" variant="outline" onClick={testWa} disabled={waBusy}>Test</Button>
-          <Button type="submit" size="sm" loading={waBusy} disabled={waBusy}>Save</Button>
-        </div>
-      </form>
-
       <form onSubmit={saveEm} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
           <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Fallback transport for senders without their own — password encrypted.</p></div>
@@ -200,7 +139,7 @@ export function SetupPage() {
         <div>
           <div className="micro uppercase tracking-wide">Comms</div>
           <h1 className="font-display text-2xl tracking-tight text-foreground">Setup &amp; channels</h1>
-          <p className="mt-0.5 text-sm text-muted-foreground">Per-section email senders, shared credentials, and the WhatsApp / Instagram APIs.</p>
+          <p className="mt-0.5 text-sm text-muted-foreground">Per-section email senders and shared credentials.</p>
         </div>
         <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
       </div>
@@ -214,15 +153,9 @@ export function SetupPage() {
         ))}
       </div>
 
-      <h2 className="mb-2 mt-8 font-display text-lg">Credentials &amp; channels</h2>
+      <h2 className="mb-2 mt-8 font-display text-lg">Credentials</h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChannelConfig />
-        <SecretCard
-          title="Instagram / Meta"
-          description="Instagram Graph API access token for DMs."
-          fields={[{ key: "token", label: "Access token", type: "password" }, { key: "ig_account_id", label: "IG account ID" }]}
-          onSave={async (val) => { await api.putSetting("messaging", "instagram", val); }}
-        />
       </div>
     </section>
   );

@@ -21,6 +21,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
+import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
@@ -400,77 +401,64 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
 
 /** User avatar + dropdown (role · My HR · My security · Sign out). */
 function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef<HTMLDivElement>(null);
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
   const email = user?.email || "";
   const role = user?.role || "Member";
 
-  React.useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, []);
-
+  // Was a hand-rolled role="menu" (audit F13). It declared menu semantics —
+  // which promise arrow keys, Home/End, type-ahead and a managed focus cycle,
+  // and which STRIP the link role from every <Link role="menuitem"> — while
+  // app-shell.tsx contained zero onKeyDown handlers. That is worse than plain
+  // links: the markup told a screen-reader user to use the arrow keys, the
+  // arrow keys did nothing, and the link affordance was gone. Radix implements
+  // the pattern it was claiming.
   return (
-    <div className="relative" ref={ref} data-navarea>
-      <button
-        onClick={() => setOpen((o) => !o)}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="flex items-center gap-2 rounded-xl border p-1 pr-2 transition-colors hover:bg-accent/50"
-      >
-        {user?.avatar_url ? (
-          <img src={user.avatar_url} alt={name} className="h-8 w-8 rounded-lg object-cover" />
-        ) : (
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary text-xs font-bold text-primary-foreground">
-            {initialsOf(name || email)}
-          </span>
-        )}
-        <span className="hidden text-left leading-tight sm:block">
-          <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
-          <span className="block max-w-[10rem] truncate text-[11px] text-muted-foreground">{role}</span>
-        </span>
-        <ChevronIcon className={cn("hidden transition-transform sm:block", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          style={{ background: "var(--popover)" }}
-          className="absolute right-0 top-[calc(100%+8px)] z-50 w-60 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
-        >
-          <div className="border-b px-3 pb-2 pt-1">
-            <div className="truncate text-sm font-semibold capitalize">{name}</div>
-            <div className="truncate text-xs text-muted-foreground">{role}</div>
-          </div>
-          <Link to="/my-hr" role="menuitem" onClick={() => setOpen(false)} className="mt-1 flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            <HrIcon /> My HR
-          </Link>
-          <Link to="/security/my-security" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            <SecurityIcon /> My security
-          </Link>
-          <Link to="/appearance" role="menuitem" onClick={() => setOpen(false)} className="flex items-center gap-2.5 rounded-md px-3 py-2 text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground">
-            <PaletteIcon /> Appearance
-          </Link>
-          {!isStandalone() && (
-            <button
-              role="menuitem"
-              onClick={() => {
-                setOpen(false);
-                openInstallUi();
-              }}
-              className="flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-muted-foreground transition-colors hover:bg-accent/60 hover:text-foreground"
-            >
-              <DownloadIcon /> Install app
-            </button>
-          )}
-          <button role="menuitem" onClick={onLogout} className="mt-1 flex w-full items-center gap-2.5 rounded-md px-3 py-2 text-left text-sm text-[rgb(var(--bad))] transition-colors hover:bg-accent/60">
-            <LogoutIcon /> Sign out
+    <div data-navarea>
+      <DropdownMenu
+        trigger={
+          <button
+            type="button"
+            className="flex items-center gap-2 rounded-lg border p-1 pr-2 transition-colors hover:bg-accent/50"
+          >
+            {user?.avatar_url ? (
+              <img src={user.avatar_url} alt="" className="h-8 w-8 rounded-md object-cover" />
+            ) : (
+              <span aria-hidden className="grid h-8 w-8 place-items-center rounded-md bg-primary text-xs font-bold text-primary-foreground">
+                {initialsOf(name || email)}
+              </span>
+            )}
+            <span className="hidden text-left leading-tight sm:block">
+              <span className="block max-w-[10rem] truncate text-sm font-semibold capitalize text-foreground">{name}</span>
+              <span className="block max-w-[10rem] truncate text-micro text-muted-foreground">{role}</span>
+            </span>
+            <ChevronIcon className="hidden shrink-0 sm:block" />
           </button>
-        </div>
-      )}
+        }
+      >
+        <DropdownLabel>
+          <span className="block truncate text-sm font-semibold capitalize text-foreground">{name}</span>
+          <span className="block truncate text-xs text-muted-foreground">{role}</span>
+        </DropdownLabel>
+        <DropdownSeparator />
+        <DropdownItem to="/my-hr">
+          <HrIcon /> My HR
+        </DropdownItem>
+        <DropdownItem to="/security/my-security">
+          <SecurityIcon /> My security
+        </DropdownItem>
+        <DropdownItem to="/appearance">
+          <PaletteIcon /> Appearance
+        </DropdownItem>
+        {!isStandalone() && (
+          <DropdownItem onSelect={openInstallUi}>
+            <DownloadIcon /> Install app
+          </DropdownItem>
+        )}
+        <DropdownSeparator />
+        <DropdownItem destructive onSelect={onLogout}>
+          <LogoutIcon /> Sign out
+        </DropdownItem>
+      </DropdownMenu>
     </div>
   );
 }
@@ -513,48 +501,35 @@ function NavArea({
     );
   }
 
+  // Second hand-rolled role="menu" (audit F13). Same defect as UserMenu: menu
+  // semantics declared with zero keyboard handling, and NavLink's link role
+  // stripped by role="menuitem". `modal={false}` keeps the rest of the top bar
+  // interactive so sliding the pointer to a sibling area still works.
   return (
-    <div className="relative" data-navarea onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
-      <button
-        className={cn("lux-navlink", (active || open) && "active")}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        onClick={onToggle}
+    <div data-navarea onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
+      <DropdownMenu
+        align="start"
+        modal={false}
+        open={open}
+        onOpenChange={(next) => next !== open && onToggle()}
+        trigger={
+          <button type="button" className={cn("lux-navlink", (active || open) && "active")}>
+            <Icon />
+            <span>{label}</span>
+            <ChevronIcon className={cn("transition-transform", open && "rotate-180")} />
+          </button>
+        }
       >
-        <Icon />
-        <span>{label}</span>
-        <ChevronIcon className={cn("transition-transform", open && "rotate-180")} />
-      </button>
-      {open && (
-        <div
-          role="menu"
-          style={{ background: "var(--popover)" }}
-          className="absolute left-0 top-[calc(100%+8px)] z-50 min-w-56 animate-fade-in rounded-xl border bg-popover p-2 shadow-l"
-        >
-          {group.items.map((it) => {
-            const CIcon = CHILD_ICON[it.to] || DotIcon;
-            return (
-              <NavLink
-                key={it.to}
-                to={it.to}
-                role="menuitem"
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  cn(
-                    "flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
-                    isActive
-                      ? "bg-accent font-semibold text-foreground"
-                      : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
-                  )
-                }
-              >
-                <CIcon />
-                <span>{it.label}</span>
-              </NavLink>
-            );
-          })}
-        </div>
-      )}
+        {group.items.map((it) => {
+          const CIcon = CHILD_ICON[it.to] || DotIcon;
+          return (
+            <DropdownItem key={it.to} to={it.to}>
+              <CIcon />
+              <span>{it.label}</span>
+            </DropdownItem>
+          );
+        })}
+      </DropdownMenu>
     </div>
   );
 }

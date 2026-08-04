@@ -15,6 +15,7 @@ import { useLocation, Link } from "react-router-dom";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { AiActions } from "@/components/ai-actions";
+import { TabList, TabsRoot, TabsContent } from "@/components/ui/tabs";
 import { SPECS_BY_PATH, type ScreenSpec, type BeStatus } from "./screen-specs";
 
 const BE_LABEL: Record<BeStatus, string> = {
@@ -37,6 +38,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
   const actions = tabActions || spec.actions || [];
 
   return (
+    <TabsRoot value={String(tab)} onValueChange={(v) => setTab(Number(v))} activationMode="manual" asChild>
     <section className={pageShell.wide}>
       <header className="mb-5 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0">
@@ -56,23 +58,17 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
         </div>
       </header>
 
+      {/* Was a THIRD independent tab-bar style with the same missing semantics
+          as tabbed-hub's (audit F13/F14: three interaction patterns for one
+          job). Now the shared primitive, so all three look and behave alike. */}
       {spec.tabs && spec.tabs.length > 0 && (
-        <div className="mb-4 flex flex-wrap gap-1 border-b">
-          {spec.tabs.map((t, i) => (
-            <button
-              key={t.label}
-              onClick={() => setTab(i)}
-              className={`-mb-px border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-                i === tab ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
+        <TabList
+          label={`${spec.title} sections`}
+          tabs={spec.tabs.map((t, i) => ({ value: String(i), label: t.label }))}
+        />
       )}
 
-      <div className="lux-card overflow-hidden">
+      <TabsContent value={String(tab)} className="lux-card block overflow-hidden focus-visible:outline-none">
         <Table>
           <THead>
             <TR>
@@ -96,7 +92,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
             </TR>
           </TBody>
         </Table>
-      </div>
+      </TabsContent>
 
       <AiActions actions={spec.ai} />
 
@@ -106,6 +102,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
         </Link>
       </p>
     </section>
+    </TabsRoot>
   );
 }
 

@@ -20,7 +20,7 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { errMsg, useList, useRefresh, isFeatureDisabled, type Row } from "@/lib/use-resource";
 import { cell, dateFmt, smartCell } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
@@ -29,9 +29,26 @@ import { DataView } from "@/components/ui/data-view";
 import { Segmented } from "@/components/ui/segmented";
 import { tokenStore } from "@/lib/token-store";
 
-function isGated(msg: string | null): boolean {
-  return !!msg && /feature|not enabled|disabled|forbidden|permission/i.test(msg);
-}
+/**
+ * Is this failure "the tenant does not have this feature", or "you do not have
+ * access to it"? Two different problems with two different remedies, and the
+ * screen shows a different message for each.
+ *
+ * This used to regex the error SENTENCE:
+ *
+ *     /feature|not enabled|disabled|forbidden|permission/i.test(msg)
+ *
+ * `errMsg` renders every 403 as "You don't have permission to do this.", which
+ * matches `/permission/`. So a user missing the reports GRANT was told the
+ * tenant's reporting FEATURE was off, and sent to a developer-dashboard toggle
+ * that was already on — while the real cause, their role, went unmentioned.
+ * Found by the Phase 4 screen axe gate, which renders every screen's 403 state.
+ *
+ * The backend has always distinguished them (`FEATURE_DISABLED` from
+ * middleware/feature-gate.js vs `FORBIDDEN`); the code was simply not reaching
+ * the screen. `useList` now returns `errorCode` alongside `error`.
+ */
+const isGated = isFeatureDisabled;
 
 
 /* ═══════════════════════════════════ REPORTS ═══════════════════════════════════ */
@@ -193,8 +210,8 @@ export function ReportsPage() {
   // refetched all three lists on every mount with no cache (F8). As three
   // useList calls they are deduplicated, cached and revalidated independently —
   // and /reports/catalogue is now shared with every other screen that reads it.
-  const { rows: catalogue, error: catalogueError } = useList<Row>("/reports/catalogue");
-  const { rows: saved, error: savedError } = useList<Row>("/reports/saved");
+  const { rows: catalogue, error: catalogueError, errorCode: catalogueCode } = useList<Row>("/reports/catalogue");
+  const { rows: saved, error: savedError, errorCode: savedCode } = useList<Row>("/reports/saved");
   // Tiles are optional: the endpoint 403s for roles without dashboard config,
   // and that must not blank the page. The original swallowed it with
   // `.catch(() => [])`; here its error is simply not surfaced.
@@ -205,6 +222,7 @@ export function ReportsPage() {
   const [tileBusy, setTileBusy] = React.useState<string | null>(null);
 
   const error = actionError ?? catalogueError ?? savedError;
+  const errorCode = catalogueCode ?? savedCode;
   const setError = setActionError;
 
   async function del(id: string) {
@@ -263,7 +281,7 @@ export function ReportsPage() {
       <HubTabs />
 
       {error ? (
-        isGated(error) ? (
+        isGated(errorCode) ? (
           <EmptyState title="Reporting isn't enabled for this tenant" hint="The reporting feature flag is off. Enable it in the developer dashboard to run reports." />
         ) : (
           <ErrorState message={error} />
@@ -833,9 +851,9 @@ export function SignaturesPage() {
   const [refInput, setRefInput] = React.useState("");
   const [activeRef, setActiveRef] = React.useState("");
   const reload = useRefresh();
-  const { rows, error } = useList(activeRef ? `/signatures?entity_ref=${encodeURIComponent(activeRef)}` : null);
+  const { rows, error, errorCode } = useList(activeRef ? `/signatures?entity_ref=${encodeURIComponent(activeRef)}` : null);
   const [signOpen, setSignOpen] = React.useState(false);
-  const gated = isGated(error);
+  const gated = isGated(errorCode);
 
   return (
     <section className={pageShell.wide}>

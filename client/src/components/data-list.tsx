@@ -13,10 +13,42 @@ import { cell } from "@/lib/format";
 
 export type Column<T> = {
   key: string;
+  /**
+   * Visible column heading. Pass `""` for a column that carries no heading —
+   * conventionally the trailing row-actions cell (`key: "_a"`). An empty label
+   * still gets an accessible name; see `headerLabel` below.
+   */
   label: string;
+  /**
+   * Accessible name for a column whose `label` is intentionally blank.
+   * Defaults to "Actions", which is what every such column in this app is.
+   */
+  srLabel?: string;
   render?: (row: T) => React.ReactNode;
   className?: string;
 };
+
+/**
+ * The heading a screen reader announces for a column.
+ *
+ * WHY THIS ISN'T JUST `c.label` (found by the Phase 4 axe gate, on its first
+ * run). Every list screen in the app ends with `{ key: "_a", label: "" }` — the
+ * row-actions cell — which rendered a literally empty `<th>`. axe calls that
+ * `empty-table-header`, and the user-facing consequence is precise: navigating
+ * that table by column, a screen reader announces the buttons in the last cell
+ * with no idea what column they are in, because the header it would read is
+ * blank. On a table where that column holds "Approve" and "Reject", that is not
+ * cosmetic.
+ *
+ * The heading is visually hidden rather than shown: the column deliberately has
+ * no visible title, and adding one would change every table's layout. `sr-only`
+ * is the correct tool for exactly this — a name that must exist for AT and must
+ * not exist on screen.
+ */
+function headerLabel<T>(c: Column<T>): React.ReactNode {
+  if (c.label) return c.label;
+  return <span className="sr-only">{c.srLabel ?? "Actions"}</span>;
+}
 
 // Canonical implementation lives in lib/format.ts (deduped at the 2026-07-18
 // merge); re-exported here so existing `import { cell } from "@/components/data-list"`
@@ -151,7 +183,7 @@ export function DataList<T extends Record<string, unknown>>({
           <THead>
             <TR>
               {columns.map((c) => (
-                <TH key={c.key}>{c.label}</TH>
+                <TH key={c.key}>{headerLabel(c)}</TH>
               ))}
             </TR>
           </THead>

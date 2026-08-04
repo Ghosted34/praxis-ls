@@ -123,11 +123,51 @@ export function useList<T = Record<string, unknown>>(path: string | null) {
   return {
     rows: q.data ?? null,
     error,
+    /** @see errorCode — the machine-readable half of `error`. */
+    errorCode: errCode(q.error),
     // Matches the previous `rows === null && !error`: a disabled hook (null
     // path) reports loading, exactly as the old effect-early-return did.
     loading: q.data === undefined && !error,
     reload,
   };
+}
+
+/**
+ * The API's error CODE, for screens that must branch on WHICH failure occurred.
+ *
+ * WHY THIS WAS NEEDED (found by the Phase 4 screen axe gate).
+ *
+ * `error` is a formatted sentence, and that is the right default — screens
+ * should display it, not parse it. But four screens needed to distinguish two
+ * genuinely different failures, and with only a sentence available they did the
+ * only thing they could: regex the prose.
+ *
+ *     // features/vault/pages.tsx, before
+ *     const isGated = (msg) => /feature|not enabled|disabled|forbidden|permission/i.test(msg);
+ *
+ * `errMsg` renders EVERY 403 as "You don't have permission to do this.", which
+ * matches `/permission/`. So a user who simply lacked the reports grant was told
+ * **"Reporting isn't enabled for this tenant"** — and pointed at a developer
+ * dashboard feature flag that was already on. They would ask an admin to enable
+ * a feature that is enabled; the admin would look in the wrong place; the actual
+ * cause — a missing role grant — is never mentioned. It is the same shape as the
+ * Control Tower defect Addendum 6 records, where a 403 rendered as "All clear".
+ *
+ * The backend has always distinguished these properly:
+ *   FEATURE_DISABLED  middleware/feature-gate.js — the tenant does not have it
+ *   FORBIDDEN         the caller does not have the grant
+ *
+ * So the discriminator existed at the source and was being thrown away one layer
+ * from the screen. This exposes it. `error` is unchanged, so the 161 call sites
+ * that only display it are untouched.
+ */
+export function errCode(e: unknown): string | null {
+  return e instanceof ApiError ? e.code : null;
+}
+
+/** True when the failure is "this tenant doesn't have the feature", NOT "you lack access". */
+export function isFeatureDisabled(code: string | null | undefined): boolean {
+  return code === "FEATURE_DISABLED";
 }
 
 /** Query-string params for {@link useListPaged}. `q` is the free-text search. */

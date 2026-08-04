@@ -7,6 +7,7 @@
 "use strict";
 
 const { insertOne, updateOne, getById, page } = require("../db/query-helpers");
+const { atomically } = require("../db/tx");
 const { emitEvent, audit } = require("../events/emit");
 const { asyncHandler, AppError } = require("../../utils/errors");
 const express = require("express");
@@ -62,6 +63,7 @@ function makeRepo(cfg) {
 }
 
 /** opts: { repo, moduleKey, entity, events:{CREATED,UPDATED,ARCHIVED}, beforeCreate? } */
+
 function makeService(opts) {
   const { repo, moduleKey, entity, events } = opts;
   const ref = (row) => `${entity}:${row[repo.cfg.pk]}`;
@@ -77,19 +79,24 @@ function makeService(opts) {
     list: (client, q, scopeIds) => repo.list(client, q, scopeIds),
     get: (client, id) => repo.findById(client, id),
     async create(client, { data, actor }) {
-      const payload = opts.beforeCreate ? opts.beforeCreate(data) : data;
-      const row = await repo.create(client, payload);
-      await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey, entityRef: ref(row), actorUserId: actor.user_id });
-      await audit(client, { actorUserId: actor.user_id, action: events.CREATED, moduleKey, entityRef: ref(row), after: row });
-      return row;
+      // DATA 5.2: business row + event + audit are ONE unit.
+      return atomically(client, async () => {
+        const payload = opts.beforeCreate ? opts.beforeCreate(data) : data;
+        const row = await repo.create(client, payload);
+        await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey, entityRef: ref(row), actorUserId: actor.user_id });
+        await audit(client, { actorUserId: actor.user_id, action: events.CREATED, moduleKey, entityRef: ref(row), after: row });
+        return row;
+      });
     },
     async update(client, { id, patch, actor }) {
-      const before = await repo.findById(client, id);
-      if (!before) return null;
-      const row = await repo.update(client, id, patch);
-      await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });
-      await audit(client, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey, entityRef: ref(before), before, after: row });
-      return row;
+      return atomically(client, async () => {
+        const before = await repo.findById(client, id);
+        if (!before) return null;
+        const row = await repo.update(client, id, patch);
+        await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });
+        await audit(client, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey, entityRef: ref(before), before, after: row });
+        return row;
+      });
     },
     /**
      * `deleteMode` (audit finding A5), default "soft":
@@ -109,6 +116,12 @@ function makeService(opts) {
      * maker-checker.
      */
     async archive(client, { id, actor }) {
+      // DATA 5.2: the soft_delete row, the DELETE, the event and the audit are
+      // one unit. The ordering reasoning below is kept because it is still
+      // correct — but it is no longer load-bearing, because a failure now rolls
+      // the whole thing back instead of stranding a soft_delete row that
+      // asserts a deletion which never happened.
+      return atomically(client, async () => {
       const before = await repo.findById(client, id);
       if (!before) return null;
       if (repo.cfg.activeColumn) await repo.setActive(client, id, false);
@@ -143,6 +156,7 @@ function makeService(opts) {
       await emitEvent(client, { eventTypeKey: events.ARCHIVED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });
       await audit(client, { actorUserId: actor.user_id, action: events.ARCHIVED, moduleKey, entityRef: ref(before), before });
       return { archived: true, deleted: removed, [repo.cfg.pk]: id };
+      });
     },
   };
 }

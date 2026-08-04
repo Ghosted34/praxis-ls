@@ -49,7 +49,14 @@ async function post(client, { receiptId, entityId, entryDate, sourceDocRef, cust
 
   await client.query("BEGIN");
   try {
-    const openInv = await repo.openInvoices(client, { clientId: receipt.client_id });
+    // DATA 5.3: LOCK the open invoices before planning the allocation. This is
+    // the only caller that WRITES allocations; the read-only callers below
+    // deliberately do not lock. Two concurrent receipts for one client used to
+    // both see the same open invoices, both FIFO-allocate, and both commit —
+    // over-allocating an invoice past its value, which makes `outstanding`
+    // negative and then hides the invoice from ageing and dunning entirely,
+    // because openInvoices filters `outstanding > 0`.
+    const openInv = await repo.openInvoices(client, { clientId: receipt.client_id, forUpdate: true });
     const plan = planAllocation(receipt.amount, openInv);
     const cashCoa = await cashCoaFor(client, receipt);
 

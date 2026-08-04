@@ -49,6 +49,18 @@ jobs:
         # to renumber. See scripts/db/check-migration-numbers.js.
         run: node scripts/db/check-migration-numbers.js
 
+      - name: Migration reversibility
+        # Audit DATA 3.5 / TEST-D2: there is not one down-migration in this
+        # repo, which is half of why a bad deploy was unrecoverable (the other
+        # half — no pre-migration backup — is fixed in scripts/deploy.sh).
+        #
+        # This does NOT retro-fit the 92 existing migrations; an untested DROP
+        # written for a migration that already ran in production looks like a
+        # recovery path and is not one. It requires every NEW migration to carry
+        # a commented `-- DOWN` block or an explicit `-- IRREVERSIBLE: <reason>`.
+        # Stops the backlog growing while DATA 3.5 is worked.
+        run: node scripts/db/check-migration-reversibility.js
+
   security:
     runs-on: ubuntu-latest
     steps:

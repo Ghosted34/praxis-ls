@@ -21,7 +21,7 @@ const crud = makeRepo({
 async function findByEmail(client, email) {
   const { rows } = await client.query(
     `SELECT user_id, email, full_name, password_hash, status, failed_logins,
-            is_2fa_enabled
+            last_failed_login_at, is_2fa_enabled
      FROM app_user
      WHERE email = $1`,
     [email],
@@ -31,14 +31,22 @@ async function findByEmail(client, email) {
 
 async function recordLoginSuccess(client, userId) {
   await client.query(
-    `UPDATE app_user SET failed_logins = 0, last_login_at = now() WHERE user_id = $1`,
+    `UPDATE app_user
+        SET failed_logins = 0, last_failed_login_at = NULL, last_login_at = now()
+      WHERE user_id = $1`,
     [userId],
   );
 }
 
 async function recordLoginFailure(client, userId) {
+  // SEC-C3: the timestamp is what makes the counter enforceable. Without it the
+  // count is monotonic and meaningless — a user who mistyped twice a year ago
+  // would be throttled today.
   await client.query(
-    `UPDATE app_user SET failed_logins = failed_logins + 1 WHERE user_id = $1`,
+    `UPDATE app_user
+        SET failed_logins = failed_logins + 1,
+            last_failed_login_at = now()
+      WHERE user_id = $1`,
     [userId],
   );
 }

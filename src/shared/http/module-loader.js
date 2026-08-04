@@ -54,28 +54,16 @@ function discover() {
 /**
  * basePaths that more than one module is allowed to share.
  *
- * Nothing should be added here without a reason written next to it. The point
- * of the guard below is that a collision becomes a decision instead of an
- * accident.
+ * EMPTY, and it should stay that way. It exists so that if a collision is ever
+ * a deliberate design decision, it has to be written down here with a reason
+ * rather than discovered in production.
  *
- * "/inbound" — GRANDFATHERED 2026-08-04, must not be extended.
- *   `sales/inbound_intake` (MOD-25, feature:null) and `wms/inbound` (MOD-33,
- *   feature:"wms") both mount here. Today the path sets are disjoint — sales
- *   owns /enquiries* and /partnerships*, WMS owns /, /:id, /:id/qa — so
- *   requests fall through the first router into the second and land correctly.
- *   It works by accident of discovery order, and it is already observably
- *   wrong: with WMS disabled for a tenant, GET /inbound 403s FEATURE_DISABLED
- *   while GET /inbound/enquiries returns 200 on the same namespace.
- *
- *   The fix is to move one of them (API F-6 suggests sales → /intake/*), which
- *   changes a public URL and needs the client updated in the same release. That
- *   is a deliberate breaking change, not a Phase 1 item, so it is NOT done here.
- *   What IS done here: the collision can no longer grow silently, and the next
- *   one fails at boot.
- *
- *   Tracked as API F-6. Remove this entry when the move lands.
+ * "/inbound" was grandfathered here for part of 2026-08-04 while
+ * sales/inbound_intake and wms/inbound both claimed it (audit API F-6). Sales
+ * has since moved to "/intake" and the entry is gone. Adding one back should
+ * feel like a decision, because it is.
  */
-const ALLOWED_SHARED_BASEPATHS = new Set(["/inbound"]);
+const ALLOWED_SHARED_BASEPATHS = new Set();
 
 /**
  * The last mount result, for the readiness probe and the CI manifest check.

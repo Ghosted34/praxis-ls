@@ -19,12 +19,14 @@
 --   * Custom roles created since 0031 are likewise not granted. Grant
 --     deliberately, per role, via the console — do not backfill.
 --
--- Reversal: this migration is additive and safe to reverse by deleting the two
--- rows. Doing so re-opens nothing, because the route gate is in code; it only
--- removes Root's display row.
+-- DOWN
+-- Additive and safe to reverse. Deleting these rows re-opens nothing: the route
+-- gate lives in code (platform.routes.js), so removing the capability only
+-- removes Root Admin's display row from the permission matrix. Root continues to
+-- pass requireCap by role.
 --
---   DELETE FROM platform.platform_role_permission
---    WHERE capability IN ('settings.read','settings.write');
+-- DELETE FROM platform.platform_role_permission
+--  WHERE capability IN ('settings.read','settings.write');
 
 INSERT INTO platform.platform_role_permission (role_id, capability)
 SELECT r.role_id, c.capability

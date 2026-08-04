@@ -111,6 +111,60 @@ async function probeRedis() {
   return { status: "up", latency_ms: Date.now() - started };
 }
 
+
+/**
+ * Count permanently-undelivered business events across every active tenant.
+ *
+ * OBS-A6. Best-effort by construction: this walks tenant databases, and a
+ * single unreachable tenant must not make the whole process report unready.
+ * Anything it cannot read is reported as `unknown` rather than silently zero —
+ * a census that quietly returns 0 when it failed is the same class of bug as
+ * the health check that could not fail.
+ */
+async function deadLetterSummary() {
+  try {
+    const registry = require("../services/tenant/registry.service");
+    const { countDeadLetters } = require("../orchestration/dispatcher");
+
+    // listActiveTenants() is the real API and already returns connection metas
+    // in the same shape resolveByHost gives — the shape withTenantConnection
+    // wants. It is what the orchestration fan-out itself uses.
+    const tenants = await withTimeout(
+      registry.listActiveTenants(),
+      PROBE_TIMEOUT_MS,
+      "dead-letter tenant list",
+    );
+
+    let total = 0;
+    const byTenant = {};
+    const unreadable = [];
+
+    for (const meta of tenants) {
+      try {
+         
+        const dl = await withTimeout(
+          registry.withTenantConnection(meta, "live", (c) => countDeadLetters(c)),
+          PROBE_TIMEOUT_MS,
+          `dead-letters:${meta.slug}`,
+        );
+        if (dl.total > 0) byTenant[meta.slug] = dl.total;
+        total += dl.total;
+      } catch {
+        unreadable.push(meta.slug);
+      }
+    }
+
+    return {
+      status: total > 0 ? "degraded" : unreadable.length ? "unknown" : "up",
+      total,
+      ...(Object.keys(byTenant).length ? { by_tenant: byTenant } : {}),
+      ...(unreadable.length ? { unreadable } : {}),
+    };
+  } catch (err) {
+    return { status: "unknown", error: err.message };
+  }
+}
+
 /**
  * LIVENESS — no dependencies, cannot fail while the process is serving.
  * Shape kept backward-compatible: `{ ok, ts }` plus additive fields, so any
@@ -159,9 +213,18 @@ router.get("/health/ready", async (_req, res) => {
   // multiplies every configured limit by the container count. Worth seeing.
   checks.rate_limit_store = { status: "up", kind: rateLimitStoreKind() };
 
+  // OBS-A6: dead-lettered business events. Reported here as well as by the
+  // worker sweep so the number is available on demand — during an incident you
+  // want to know NOW whether money-path events have been dropped, not at the
+  // next sweep. Counted across the platform's tenants, best-effort: a census
+  // failure must never make the process look unready.
+  checks.dead_letters = await deadLetterSummary();
+
   const fatal = checks.postgres.status === "down";
   const degraded =
-    checks.redis.status === "down" || checks.modules.status === "degraded";
+    checks.redis.status === "down" ||
+    checks.modules.status === "degraded" ||
+    checks.dead_letters.status === "degraded";
 
   res.status(fatal ? 503 : 200).json({
     ok: !fatal,

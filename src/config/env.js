@@ -81,6 +81,13 @@ const Schema = z.object({
    */
   ALERT_WEBHOOK_URL: z.string().default(""),
   ALERT_EMAIL: z.string().default(""),
+
+  /**
+   * Optional bearer token guarding GET /api/metrics (OBS-M1). Unset = open,
+   * which is correct when the scraper shares the host or the network is
+   * private. Set it the moment the endpoint is reachable from outside.
+   */
+  METRICS_TOKEN: z.string().default(""),
   // Dedicated host for the Praxis-side Platform Console (e.g. admin.praxisls.com).
   // The console static app is served ONLY when the request Host matches this, at
   // the root of that host; tenant hosts never serve it. Empty (default) = the

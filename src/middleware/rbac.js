@@ -45,6 +45,8 @@
 
 const { AppError } = require("../utils/errors");
 const identityCache = require("../shared/cache/identity-cache");
+const { logger } = require("../config/logger");
+const metrics = require("../shared/observability/metrics");
 
 const ACTION_COLUMN = {
   view: "can_read",
@@ -100,6 +102,15 @@ function requirePermission(moduleKey, action) {
 
     const allowed = grants.some((g) => g[column] === true);
     if (!allowed) {
+      // OBS-T4: rbac.js contained zero logger calls, so "why is this user
+      // getting 403s?" had no answer anywhere, and a burst of denials — the
+      // signature of a compromised account probing for access — was invisible.
+      metrics.inc("praxis_rbac_denials_total", { module: moduleKey, action }, 1,
+        "Permission denials by module and action.");
+      logger.warn(
+        { user_id: req.user.user_id, module: moduleKey, action },
+        "permission denied",
+      );
       throw new AppError(
         "PERMISSION_DENIED",
         `No permission for ${moduleKey}.${action}`,

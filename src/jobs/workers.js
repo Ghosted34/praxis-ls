@@ -17,6 +17,9 @@
 const { Worker } = require("bullmq");
 const { config } = require("../config/env");
 const { logger } = require("../config/logger");
+const metrics = require("../shared/observability/metrics");
+const requestContext = require("../config/request-context");
+const { report } = require("../shared/observability/error-reporter");
 const { initRedis, getClient, closeRedis } = require("../config/redis");
 
 // name: BullMQ queue name; handler: async (job) => result; concurrency optional.
@@ -49,17 +52,69 @@ function startWorkers() {
     const worker = new Worker(
       p.name,
       async (job) => {
-        logger.info({ queue: p.name, job: job.name, id: job.id }, "job start");
-        const result = await p.handler(job);
-        logger.info({ queue: p.name, job: job.name, id: job.id }, "job done");
-        return result;
+        // OBS-T2: "job start"/"job done" were logged and elapsed time never
+        // computed, so "is it slow or is it hung?" was unanswerable.
+        // OBS-T3: the enqueuing request_id is carried on the job payload and
+        // restored here, so a failed job traces back to the user action.
+        const started = Date.now();
+        const ctx = job.data && job.data.__ctx;
+        logger.info({ queue: p.name, job: job.name, id: job.id, request_id: ctx && ctx.request_id }, "job start");
+        try {
+          const result = ctx
+            ? await requestContext.run(
+                { tenant: ctx.tenant, userId: ctx.user_id, requestId: ctx.request_id },
+                () => p.handler(job),
+              )
+            : await p.handler(job);
+          const ms = Date.now() - started;
+          metrics.observe("praxis_job_duration_seconds", ms / 1000, { queue: p.name },
+            "Background job duration in seconds.");
+          metrics.inc("praxis_jobs_total", { queue: p.name, outcome: "ok" }, 1,
+            "Background jobs by queue and outcome.");
+          logger.info({ queue: p.name, job: job.name, id: job.id, ms }, "job done");
+          return result;
+        } catch (err) {
+          const ms = Date.now() - started;
+          metrics.observe("praxis_job_duration_seconds", ms / 1000, { queue: p.name });
+          logger.error({ queue: p.name, job: job.name, id: job.id, ms, err }, "job threw");
+          throw err;
+        }
       },
       { connection, concurrency: p.concurrency || 5 },
     );
-    worker.on("failed", (job, err) =>
-      logger.error({ queue: p.name, job: job && job.name, id: job && job.id, err }, "job failed"),
-    );
-    worker.on("error", (err) => logger.error({ queue: p.name, err }, "worker error"));
+    // OBS-A7: BullMQ's `failed` fires PER ATTEMPT, so a transient blip and a
+    // permanent failure looked identical in the logs and nothing aggregated
+    // either. Attempts are counted; only exhaustion is reported, for the same
+    // reason a retriable orchestration failure is not (OBS-A6): an alert that
+    // fires on retries gets muted.
+    worker.on("failed", (job, err) => {
+      const attempts = (job && job.attemptsMade) || 0;
+      const max = (job && job.opts && job.opts.attempts) || 1;
+      const terminal = attempts >= max;
+      metrics.inc("praxis_jobs_total", { queue: p.name, outcome: terminal ? "dead" : "retry" }, 1);
+      logger.error(
+        { queue: p.name, job: job && job.name, id: job && job.id, attempts, max, terminal, err },
+        terminal ? "job FAILED PERMANENTLY — giving up" : "job attempt failed — will retry",
+      );
+      if (terminal) {
+        report(err, {
+          origin: "worker",
+          severity: "fatal",
+          route: `job/${p.name}/${job && job.name}`,
+          extra: { queue: p.name, job_id: job && job.id, attempts, dropped: true },
+        });
+      }
+    });
+    worker.on("error", (err) => {
+      metrics.inc("praxis_worker_errors_total", { queue: p.name }, 1, "Worker-level errors by queue.");
+      logger.error({ queue: p.name, err }, "worker error");
+    });
+    // OBS-A5: the worker had no healthcheck and nothing tracked its liveness.
+    // A heartbeat makes "the worker is alive" a fact rather than an assumption —
+    // failure-by-absence is the class nobody notices until a customer asks
+    // where their invoice went.
+    worker.on("completed", () => metrics.inc("praxis_jobs_completed_total", { queue: p.name }, 1,
+      "Jobs completed, by queue."));
     workers.push(worker);
     logger.info({ queue: p.name, concurrency: p.concurrency || 5 }, "worker registered");
   }

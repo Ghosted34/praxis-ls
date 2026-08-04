@@ -31,6 +31,11 @@ function tenantContext(req, res, next) {
   const ctx = {
     tenant: req.tenant.slug,
     userId: req.user ? req.user.user_id : null,
+    // OBS-E3: the correlation id was minted by requestIdMiddleware and then
+    // thrown away — it reached the response header and nothing else. Carrying
+    // it in the ambient context is what lets a log line, an error report and a
+    // background job all name the same request.
+    requestId: req.request_id || null,
     env,
   };
   return requestContext.run(ctx, () => next());

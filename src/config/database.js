@@ -18,8 +18,15 @@ const { registerType } = require("pgvector/pg");
 const { config } = require("./env");
 const { logger } = require("./logger");
 const requestContext = require("./request-context");
+const metrics = require("../shared/observability/metrics");
 
 let pool = null;
+
+/**
+ * Slow-query threshold, configurable (OBS-M3 noted it was hardcoded at 500ms).
+ * The metric is recorded for EVERY query regardless; this only controls the log.
+ */
+const SLOW_QUERY_MS = Number(process.env.SLOW_QUERY_MS || 500);
 
 async function initDatabase() {
   pool = new Pool({
@@ -101,8 +108,14 @@ async function query(text, params = []) {
   try {
     const res = await pool.query(text, params);
     const ms = Date.now() - started;
-    if (ms > 500) {
-      logger.warn({ ms, sql: text.slice(0, 200) }, "slow query");
+    // OBS-M3: the warn line was a log entry, not a measurement — no percentiles,
+    // no top-N, no trend, and with a 30s statement timeout a query could burn
+    // 29.9s and produce one warn lost among thousands. Every query is now timed;
+    // the threshold log stays for the obvious case.
+    metrics.observe("praxis_db_query_duration_seconds", ms / 1000, {}, "Database query duration in seconds.");
+    if (ms > SLOW_QUERY_MS) {
+      metrics.inc("praxis_db_slow_queries_total", {}, 1, "Queries slower than the slow-query threshold.");
+      logger.warn({ ms, threshold_ms: SLOW_QUERY_MS, sql: text.slice(0, 200) }, "slow query");
     }
     return res;
   } catch (err) {
@@ -129,8 +142,10 @@ async function queryWithContext(text, params = []) {
     const res = await client.query(text, params);
     await client.query("COMMIT");
     const ms = Date.now() - started;
-    if (ms > 500) {
-      logger.warn({ ms, sql: text.slice(0, 200) }, "slow query (rls read)");
+    metrics.observe("praxis_db_query_duration_seconds", ms / 1000, {}, "Database query duration in seconds.");
+    if (ms > SLOW_QUERY_MS) {
+      metrics.inc("praxis_db_slow_queries_total", {}, 1, "Queries slower than the slow-query threshold.");
+      logger.warn({ ms, threshold_ms: SLOW_QUERY_MS, sql: text.slice(0, 200) }, "slow query (rls read)");
     }
     return res;
   } catch (err) {

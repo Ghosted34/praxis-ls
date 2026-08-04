@@ -145,6 +145,7 @@ function contextMixin() {
   const out = {};
   if (ctx.tenant) out.tenant = ctx.tenant;
   if (ctx.userId) out.user_id = ctx.userId;
+  if (ctx.requestId) out.request_id = ctx.requestId;
   if (ctx.crossTenant) out.cross_tenant = true;
   return out;
 }

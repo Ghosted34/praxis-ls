@@ -197,7 +197,15 @@ router.get("/health/ready", async (_req, res) => {
   checks.redis =
     redis.status === "fulfilled"
       ? redis.value
-      : { status: "down", error: redis.reason.message };
+      : {
+          status: "down",
+          error: redis.reason.message,
+          // OBS-A3: name what is actually broken. "redis: down" understates it —
+          // with Redis gone, sessions, rate limiting, the identity cache,
+          // socket.io pub-sub and ALL job enqueueing stop working while the API
+          // keeps answering 200s.
+          degrades: ["sessions", "rate_limiting", "identity_cache", "socketio_pubsub", "job_enqueueing"],
+        };
 
   // API F-19: a module whose require() throws is skipped and boot continues, so
   // a process can serve an incomplete API and look perfectly healthy. Surfacing

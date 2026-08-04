@@ -22,7 +22,7 @@
 
 const { AsyncLocalStorage } = require("node:async_hooks");
 
-/** @typedef {{ tenant?: string, userId?: string, crossTenant?: boolean }} RequestContext */
+/** @typedef {{ tenant?: string, userId?: string, requestId?: string, crossTenant?: boolean }} RequestContext */
 
 const storage = new AsyncLocalStorage();
 
@@ -53,4 +53,10 @@ function getUserId() {
   return (ctx && ctx.userId) || null;
 }
 
-module.exports = { run, get, getTenant, getUserId };
+/** The correlating request id, or null (OBS-E3/T3). */
+function getRequestId() {
+  const ctx = storage.getStore();
+  return (ctx && ctx.requestId) || null;
+}
+
+module.exports = { run, get, getTenant, getUserId, getRequestId };

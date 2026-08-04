@@ -23,6 +23,7 @@ const { requestIdMiddleware } = require("./middleware/request-id");
 const { buildAccessLog } = require("./middleware/access-log");
 const { report } = require("./shared/observability/error-reporter");
 const { router: clientErrorsRouter } = require("./routes/client-errors");
+const { router: metricsRouter } = require("./routes/metrics");
 const { initRateLimitStore } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
 const storage = require("./services/storage.service");
@@ -119,6 +120,10 @@ function buildApp() {
   // no Host resolution and no token — the crashes worth catching happen at
   // login, during boot, or after a session expires.
   app.use("/api", clientErrorsRouter);
+
+  // OBS-M1: Prometheus scrape target. Mounted alongside health — no tenant
+  // resolution, no token, same reasoning as the probes.
+  app.use("/api", metricsRouter);
 
   app.use("/api", routes);
 
@@ -287,7 +292,27 @@ function start() {
     // if Redis is down (see shared/http/rate-limit.js).
     .then(() => initRateLimitStore())
     .catch((err) => {
-      logger.warn({ err: err.message }, "redis unavailable at boot — continuing without it");
+      // OBS-A3 (Critical). This was ONE warn line. With Redis down the API
+      // starts and reports healthy while sessions/refresh, remote session kill,
+      // rate limiting, the identity/permission cache, socket.io pub-sub AND ALL
+      // JOB ENQUEUEING are broken. Users see login failures and background work
+      // that silently never happens.
+      //
+      // It stays non-fatal on purpose — refusing to boot would turn a degraded
+      // cache into a total outage — but it is now an ERROR, it reports, and
+      // /api/health/ready marks the process `degraded` so a monitor sees it.
+      logger.error(
+        { err: err.message },
+        "REDIS UNAVAILABLE AT BOOT — sessions, rate limiting, the identity cache and ALL job enqueueing are degraded",
+      );
+      report(err, {
+        origin: "server",
+        severity: "fatal",
+        route: "boot/redis",
+        extra: {
+          degraded: ["sessions", "rate_limiting", "identity_cache", "socketio_pubsub", "job_enqueueing"],
+        },
+      });
       initRateLimitStore();
     });
   const server = app.listen(config.PORT, () =>

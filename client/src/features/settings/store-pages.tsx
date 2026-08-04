@@ -13,6 +13,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
@@ -26,7 +27,6 @@ import { errMsg, useList, type Row } from "@/lib/use-resource";
 import { cell } from "@/lib/format";
 import { StatusPill } from "@/components/ui/pill";
 
-const TEXTAREA = "w-full rounded-lg border bg-background px-3 py-2 text-sm";
 
 const slug = (s: string) =>
   s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "_").replace(/(^_|_$)/g, "").slice(0, 60);
@@ -122,10 +122,10 @@ function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; edit
           </Field>
         </div>
         <Field label="Body (HTML)" hint="Rendered as the document body">
-          <textarea value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} rows={8} placeholder="<h1>{{entity.legal_name}}</h1>…" className={TEXTAREA} />
+          <Textarea value={bodyHtml} onChange={(e) => setBodyHtml(e.target.value)} rows={8} placeholder="<h1>{{entity.legal_name}}</h1>…" />
         </Field>
         <Field label="CSS variables (JSON)" hint="Optional — overrides for this template, e.g. {&quot;--brand&quot;: &quot;#F5821F&quot;}">
-          <textarea value={cssVars} onChange={(e) => setCssVars(e.target.value)} rows={3} placeholder="{}" className={TEXTAREA} />
+          <Textarea value={cssVars} onChange={(e) => setCssVars(e.target.value)} rows={3} placeholder="{}" />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">
@@ -450,7 +450,7 @@ export function EmailSignaturesPage() {
       ) : (
         <div className="lux-card space-y-4 p-4">
           <Field label="Signature template (HTML)" hint="Use tokens like {{user.full_name}}, {{user.email}}, {{tenant.name}}">
-            <textarea value={html} onChange={(e) => setHtml(e.target.value)} rows={10} placeholder="<p>{{user.full_name}}<br/>{{tenant.name}}</p>" className={TEXTAREA} />
+            <Textarea value={html} onChange={(e) => setHtml(e.target.value)} rows={10} placeholder="<p>{{user.full_name}}<br/>{{tenant.name}}</p>" />
           </Field>
           {saveError && <ErrorState message={saveError} />}
           <div className="flex items-center justify-end gap-3">
@@ -512,7 +512,7 @@ function PolicyForm({ open, editing, onClose, onSaved }: { open: boolean; editin
           </Field>
         </div>
         <Field label="Body (HTML or text)">
-          <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="Your policy text…" className={TEXTAREA} />
+          <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={10} placeholder="Your policy text…" />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

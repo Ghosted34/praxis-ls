@@ -18,7 +18,21 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(dirname, "src") },
+    alias: {
+      "@": path.resolve(dirname, "src"),
+      // Mirrors vite.config.ts: packages/shared holds the Zod schemas the
+      // Express API validates with, so the form tests exercise the SAME schema
+      // objects the backend parses with rather than a copy (audit F12).
+      "@shared": path.resolve(dirname, "../packages/shared"),
+      // ONE zod instance. packages/shared is CommonJS: Node's own loader
+      // resolves its `require("zod")` from the repo root, and no bundler flag
+      // changes that (dedupe and ssr.noExternal both leave CJS interop alone).
+      // So the client is pointed at that same root copy — two copies would make
+      // `instanceof z.ZodType` false across the boundary and hand zodResolver a
+      // schema from the "wrong" zod. This requires the root install; CI's
+      // frontend job does it explicitly for the client.
+      zod: path.resolve(dirname, "../node_modules/zod"),
+    },
   },
   test: {
     environment: "jsdom",

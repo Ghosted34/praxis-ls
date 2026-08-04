@@ -15,6 +15,15 @@ const base = (p: P) => ({
   ...p,
 });
 
+/** Disclosure chevron (points down; rotate with a class for open state).
+ *  Promoted here from `app/layout/app-shell.tsx:194`, one of the 26 icons that
+ *  file defines inline against this shared set's 20 (F6). */
+export const ChevronIcon = (p: P) => (
+  <svg {...base(p)} width={p.width ?? 14} height={p.height ?? 14}>
+    <path d="m6 9 6 6 6-6" />
+  </svg>
+);
+
 export const MailIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="3" y="5" width="18" height="14" rx="2" />

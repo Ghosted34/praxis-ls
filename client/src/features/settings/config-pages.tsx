@@ -8,6 +8,7 @@
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
 import { cell, dateFmt } from "@/lib/format";
 import { Pill } from "@/components/ui/pill";
@@ -293,8 +294,7 @@ function GatewayForm({ open, onClose, onSaved, editing }: { open: boolean; onClo
           </Field>
         </div>
         <Field label="Credentials" hint={isEdit ? "Leave blank to keep the current key. JSON or token string." : "JSON or token string — stored encrypted."}>
-          <textarea
-            className="flex min-h-20 w-full rounded-md border border-input bg-transparent px-3 py-2 font-mono text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          <Textarea className="min-h-20 font-mono"
             value={credentials}
             onChange={(e) => setCredentials(e.target.value)}
             placeholder={isEdit && editing?.has_credentials ? "•••••• (unchanged)" : '{"public_key":"…","secret_key":"…"}'}

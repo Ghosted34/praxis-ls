@@ -3,6 +3,7 @@
  *  hub imports are stable. SOPs and Talent pool are light reference lists. */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -148,7 +149,7 @@ function NewChecklistForm({ employees, onClose, onSaved }: { employees: Employee
           </Select>
         </Field>
         <Field label="Items (one per line)" hint="Optional — you can add more later.">
-          <textarea value={itemsText} onChange={(e) => setItemsText(e.target.value)} rows={5} className="flex w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px]" placeholder={"Sign contract\nIT account setup\nSafety briefing"} />
+          <Textarea value={itemsText} onChange={(e) => setItemsText(e.target.value)} rows={5} placeholder={"Sign contract\nIT account setup\nSafety briefing"} />
         </Field>
         {error && <ErrorState message={error} />}
         <div className="flex justify-end gap-2 pt-2">

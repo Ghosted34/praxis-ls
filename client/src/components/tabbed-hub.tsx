@@ -9,6 +9,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { TabList, TabsRoot, TabsContent } from "@/components/ui/tabs";
 
 export type HubTab = { key: string; label: string; Component: React.ComponentType };
 
@@ -38,37 +39,33 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   const Active = active.Component;
   const go = (key: string) => (inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`));
 
-  const tabsNode = (
-    <div aria-label={`${eyebrow} sections`} className="mb-4 flex flex-wrap gap-x-5 border-b">
-      {tabs.map((t) => (
-        <button
-          key={t.key}
-          onClick={() => go(t.key)}
-          className={cn(
-            "-mb-px whitespace-nowrap border-b-2 px-0.5 pb-2.5 text-sm transition-colors",
-            active.key === t.key
-              ? "border-primary font-semibold text-foreground"
-              : "border-transparent text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {t.label}
-        </button>
-      ))}
-    </div>
-  );
+  // Was a bare <div> of <button>s: no role="tablist", no role="tab", no
+  // aria-selected and no arrow keys (audit F13, "Tabs are not tabs"). A screen
+  // reader announced a row of unrelated buttons with no indication of which
+  // view was showing, and a keyboard user tabbed through every tab to reach the
+  // content.
+  //
+  // The strip is published on CONTEXT and drawn by each page, so it sits far
+  // from its panel in the DOM. Radix needs both inside one Root — hence the Root
+  // around the whole hub, with a single Content keyed on the active tab rather
+  // than one Content per tab (only the active page is mounted, which is what
+  // keeps a hub from fetching every tab's data at once).
+  const tabsNode = <TabList label={`${eyebrow} sections`} tabs={tabs.map((t) => ({ value: t.key, label: t.label }))} />;
 
   return (
-    <HubTabsContext.Provider value={tabsNode}>
-      {inlineTabs && (
-        <div className={cn("mb-4", pageShell.wide)}>
-          <div className="micro mb-2">{eyebrow}</div>
-          {tabsNode}
-        </div>
-      )}
-      <div key={active.key} className="animate-fade-in">
-        <Active />
-      </div>
-    </HubTabsContext.Provider>
+    <TabsRoot value={active.key} onValueChange={go} activationMode="manual">
+      <HubTabsContext.Provider value={tabsNode}>
+        {inlineTabs && (
+          <div className={cn("mb-4", pageShell.wide)}>
+            <div className="micro mb-2">{eyebrow}</div>
+            {tabsNode}
+          </div>
+        )}
+        <TabsContent key={active.key} value={active.key} className="animate-fade-in focus-visible:outline-none">
+          <Active />
+        </TabsContent>
+      </HubTabsContext.Provider>
+    </TabsRoot>
   );
 }
 

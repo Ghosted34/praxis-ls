@@ -7,6 +7,7 @@
  * doc/FE_IA_HANDOFF.md).
  */
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { uploadImage } from "@/lib/branding";
 import { ApiError } from "@/lib/api-client";
 import { Input } from "@/components/ui/input";
@@ -73,11 +74,11 @@ export function Field({
   );
 }
 
-const TEXTAREA_CLASS =
-  "flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background";
-
+/** @deprecated Import `Textarea` from `@/components/ui/textarea` instead. This
+ *  was one of the three local class constants F6 counted; it now just forwards,
+ *  so existing settings screens keep working while they migrate. */
 export function TextArea(props: React.TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return <textarea {...props} className={cn(TEXTAREA_CLASS, props.className)} />;
+  return <Textarea {...props} />;
 }
 
 export function Toggle({

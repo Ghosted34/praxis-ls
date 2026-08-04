@@ -5,6 +5,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -78,8 +79,8 @@ function NewQuery({ onClose, onSaved }: { onClose: () => void; onSaved: () => vo
         </Field>
         <Field label="Subject" required><Input value={f.subject} onChange={(e) => set("subject", e.target.value)} placeholder="Late arrivals" /></Field>
         <Field label="Details" required>
-          <textarea value={f.body} onChange={(e) => set("body", e.target.value)} rows={4}
-            className="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)]" />
+          <Textarea value={f.body} onChange={(e) => set("body", e.target.value)} rows={4}
+            />
         </Field>
         <Field label="Severity" required>
           <Select value={f.severity} onChange={(e) => set("severity", e.target.value)}>
@@ -189,8 +190,8 @@ function NewSanction({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
           </Select>
         </Field>
         <Field label="Reason" required>
-          <textarea value={f.reason} onChange={(e) => set("reason", e.target.value)} rows={3}
-            className="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)]" />
+          <Textarea value={f.reason} onChange={(e) => set("reason", e.target.value)} rows={3}
+            />
         </Field>
         <div className="grid gap-4 sm:grid-cols-2">
           <Field label="Amount (XAF)" hint="For fines"><Input type="number" min="0" className="num text-right" value={f.amount_xaf} onChange={(e) => set("amount_xaf", e.target.value)} placeholder="0" /></Field>

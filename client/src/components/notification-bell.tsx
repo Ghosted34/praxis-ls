@@ -7,6 +7,7 @@
  */
 import * as React from "react";
 import { Link } from "react-router-dom";
+import { Popover } from "@/components/ui/popover";
 import { tenant } from "@/lib/api-client";
 
 type Notif = {
@@ -38,16 +39,9 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
   const [open, setOpen] = React.useState(false);
   const [rows, setRows] = React.useState<Notif[] | null>(null);
   const [busy, setBusy] = React.useState<string | null>(null);
-  const ref = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (!open) return;
-    function onDown(e: MouseEvent) {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    }
-    document.addEventListener("mousedown", onDown);
-    return () => document.removeEventListener("mousedown", onDown);
-  }, [open]);
+  // The hand-rolled outside-click listener that used to live here is gone:
+  // Radix dismisses on outside pointer-down AND on Escape, and restores focus
+  // to the trigger — none of which the manual version did.
 
   const load = React.useCallback(async () => {
     try {
@@ -88,85 +82,99 @@ export function NotificationBell({ count = 0, onChange }: { count?: number; onCh
     }
   }
 
+  // This popup was the third role="menu" in the audit (F13) — and it was never a
+  // menu at all. A menuitem may not contain interactive children, and every row
+  // here carries its own mark-read button. So it declared menu keyboard
+  // semantics it did not implement AND nested controls where the role forbids
+  // them. A Popover is the correct pattern: Tab moves through the rows as
+  // ordinary content, Escape closes, and focus returns to the bell.
   return (
-    <div className="relative" ref={ref} data-navarea>
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        aria-label={count > 0 ? `Notifications (${count} unread)` : "Notifications"}
-        aria-haspopup="menu"
-        aria-expanded={open}
-        className="relative hidden h-9 w-9 place-items-center rounded-xl border text-muted-foreground transition-colors hover:text-foreground sm:grid"
-      >
-        <BellGlyph />
-        {count > 0 && (
-          <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground">
-            {count > 99 ? "99+" : count}
-          </span>
-        )}
-      </button>
-
-      {open && (
-        <div
-          role="menu"
-          style={{ background: "var(--popover)" }}
-          className="absolute right-0 top-[calc(100%+8px)] z-50 w-80 animate-fade-in overflow-hidden rounded-xl border bg-popover shadow-l"
-        >
-          <div className="flex items-center justify-between border-b px-3 py-2.5">
-            <span className="text-sm font-semibold text-foreground">Notifications</span>
-            {count > 0 && (
-              <button
-                type="button"
-                onClick={markAll}
-                disabled={busy === "__all"}
-                className="text-xs font-medium text-[rgb(var(--primary))] transition-opacity hover:opacity-80 disabled:opacity-50"
-              >
-                Mark all read
-              </button>
-            )}
-          </div>
-
-          <div className="max-h-[22rem] overflow-y-auto">
-            {rows === null ? (
-              <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading…</div>
-            ) : rows.length === 0 ? (
-              <div className="px-3 py-8 text-center text-xs text-muted-foreground">You're all caught up.</div>
-            ) : (
-              rows.map((n) => (
-                <button
-                  type="button"
-                  key={n.notification_id}
-                  onClick={() => !n.read_at && markRead(n.notification_id)}
-                  disabled={busy === n.notification_id}
-                  className="flex w-full gap-2.5 border-b px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-accent/50"
-                >
-                  <span
-                    className={`mt-1.5 h-2 w-2 flex-none rounded-full ${
-                      n.read_at ? "bg-transparent" : String(n.priority).toUpperCase() === "HIGH" ? "bg-[rgb(var(--bad))]" : "bg-[rgb(var(--primary))]"
-                    }`}
-                    aria-hidden
-                  />
-                  <span className="min-w-0 flex-1">
-                    <span className={`block truncate text-sm ${n.read_at ? "text-muted-foreground" : "font-semibold text-foreground"}`}>
-                      {n.title}
-                    </span>
-                    {n.body && <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{n.body}</span>}
-                    <span className="mt-0.5 block text-[11px] text-muted-foreground">{timeAgo(n.created_at)}</span>
-                  </span>
-                </button>
-              ))
-            )}
-          </div>
-
-          <Link
-            to="/notifications"
-            onClick={() => setOpen(false)}
-            className="block border-t px-3 py-2.5 text-center text-sm font-medium text-[rgb(var(--primary))] transition-colors hover:bg-accent/50"
+    <div data-navarea>
+      <Popover
+        label="Notifications"
+        open={open}
+        onOpenChange={setOpen}
+        className="w-80"
+        trigger={
+          <button
+            type="button"
+            aria-label={count > 0 ? `Notifications (${count} unread)` : "Notifications"}
+            className="relative hidden h-9 w-9 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground sm:grid"
           >
-            View all notifications
-          </Link>
+            <BellGlyph />
+            {count > 0 && (
+              <span
+                aria-hidden
+                className="absolute -right-1.5 -top-1.5 grid h-4 min-w-[16px] place-items-center rounded-full bg-primary px-1 text-[9px] font-bold leading-none text-primary-foreground"
+              >
+                {count > 99 ? "99+" : count}
+              </span>
+            )}
+          </button>
+        }
+      >
+        <div className="flex items-center justify-between border-b px-3 py-2.5">
+          <h2 className="text-sm font-semibold text-foreground">Notifications</h2>
+          {count > 0 && (
+            <button
+              type="button"
+              onClick={markAll}
+              disabled={busy === "__all"}
+              className="text-xs font-medium text-primary-ink transition-opacity hover:opacity-80 disabled:opacity-50"
+            >
+              Mark all read
+            </button>
+          )}
         </div>
-      )}
+
+        {/* aria-live so an arriving notification is announced, not just drawn.
+            The audit found 3 live regions in ~40,000 lines (F13). */}
+        <div className="max-h-[22rem] overflow-y-auto" aria-live="polite" aria-busy={rows === null}>
+          {rows === null ? (
+            <div className="px-3 py-6 text-center text-xs text-muted-foreground">Loading…</div>
+          ) : rows.length === 0 ? (
+            <div className="px-3 py-8 text-center text-xs text-muted-foreground">You're all caught up.</div>
+          ) : (
+            <ul className="m-0 list-none p-0">
+              {rows.map((n) => (
+                <li key={n.notification_id}>
+                  <button
+                    type="button"
+                    onClick={() => !n.read_at && markRead(n.notification_id)}
+                    disabled={busy === n.notification_id}
+                    className="flex w-full gap-2.5 border-b px-3 py-2.5 text-left transition-colors last:border-0 hover:bg-accent/50"
+                  >
+                    <span
+                      aria-hidden
+                      className={`mt-1.5 h-2 w-2 flex-none rounded-full ${
+                        n.read_at ? "bg-transparent" : String(n.priority).toUpperCase() === "HIGH" ? "bg-[rgb(var(--bad))]" : "bg-[rgb(var(--primary))]"
+                      }`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      {/* The unread state was conveyed by a coloured dot and bold
+                          weight only — both invisible to a screen reader. */}
+                      {!n.read_at && <span className="sr-only">Unread. </span>}
+                      <span className={`block truncate text-sm ${n.read_at ? "text-muted-foreground" : "font-semibold text-foreground"}`}>
+                        {n.title}
+                      </span>
+                      {n.body && <span className="mt-0.5 block line-clamp-2 text-xs text-muted-foreground">{n.body}</span>}
+                      <span className="mt-0.5 block text-micro text-muted-foreground">{timeAgo(n.created_at)}</span>
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <Link
+          to="/notifications"
+          onClick={() => setOpen(false)}
+          className="block border-t px-3 py-2.5 text-center text-sm font-medium text-primary-ink transition-colors hover:bg-accent/50"
+        >
+          View all notifications
+        </Link>
+      </Popover>
     </div>
   );
 }

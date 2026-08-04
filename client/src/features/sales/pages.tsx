@@ -17,6 +17,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
@@ -744,8 +745,7 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
 
         <div className="space-y-2 border-t pt-4">
           <Field label="Add note">
-            <textarea
-              value={body}
+            <Textarea value={body}
               onChange={(e) => setBody(e.target.value)}
               rows={3}
               className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
@@ -1484,8 +1484,7 @@ function ProposalForm({ open, editing, leads, clients, opportunities, onClose, o
                   ✕
                 </Button>
               </div>
-              <textarea
-                value={n.body}
+              <Textarea value={n.body}
                 onChange={(e) => setNarr(i, { body: e.target.value })}
                 rows={2}
                 className="mt-2 flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
@@ -2096,7 +2095,7 @@ function TemplateForm({ open, editing, senders, onClose, onSaved, onReloadSender
             </div>
           </Field>
           <Field label="Body" className="sm:col-span-2" hint="HTML or plain text">
-            <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="<p>Hello {{name}},…</p>" className="w-full rounded-lg border bg-background px-3 py-2 text-sm" />
+            <Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="<p>Hello {{name}},…</p>" />
           </Field>
           {/* Mirrors MERGE_FIELDS in marketing_campaign.service.js. Unknown tokens
               are left as written so a typo shows up in a test send. */}
@@ -2459,8 +2458,7 @@ function StoryForm({ open, editing, onClose, onSaved }: { open: boolean; editing
           <Input value={summary} onChange={(e) => setSummary(e.target.value)} placeholder="How we streamlined a multi-modal import lane." />
         </Field>
         <Field label="Body">
-          <textarea
-            value={body}
+          <Textarea value={body}
             onChange={(e) => setBody(e.target.value)}
             rows={6}
             className="flex w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"

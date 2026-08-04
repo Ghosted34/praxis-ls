@@ -905,3 +905,81 @@ contrast retune it partly resolves anyway — the two touch the same tokens.
 One caveat worth stating plainly: the orange is presumably a brand asset, and
 demoting it from UI primary to brand-mark-only is a business decision, not an
 engineering one. That is question 2 in §5, and it needs an owner's answer.
+
+---
+
+# Addendum 3 — Phase 2 implementation notes (2026-08-04)
+
+Written while implementing Phase 2, not during the audit. Everything here is a
+**correction or addition to the findings above**, discovered by changing the
+code rather than reading it. Recorded so the baseline table stays honest.
+
+## Counts that were wrong — all in the same direction
+
+grep undercounts duplication, because copies drift and stop matching each other.
+
+| Item | Audit said | Actual |
+|---|---|---|
+| `FormButtons` copies | 3 | **7** |
+| `Panel` copies | 5 | **6** |
+| `Stat` copies | 3 (+ `MetricTile`) | **4** |
+| `cell` copies | — (not counted) | **4** |
+| Inlined shadow `useList` | 1 (config-pages) | **4** |
+| Local textarea class constants | 3 | **6 distinct class strings** |
+| `<Field>` render sites | 569 | **565** |
+
+None of these changes a conclusion. F6's point — "the same UI reimplemented
+instead of shared" — was if anything understated.
+
+## A correctness defect F8 describes as a performance problem
+
+F8 says the hubs do "unpaginated fetch-everything-then-filter". That is not what
+happens, and what does happen is worse.
+
+The API's shared pagination helper (`src/shared/db/query-helpers.js:47`)
+**defaults to `limit 50`**, capped at 200. A screen calling `/final-invoices`
+with no query parameters gets the fifty most recent invoices — not all of them —
+and then filters those client-side (`features/finance/hub.tsx:257`, `hit()`).
+
+So on any tenant with more than fifty invoices, **the Finance hub's search box
+cannot find an older one, and reports nothing wrong.** It shows "No invoices
+match" for a record that exists. The same shape applies to `/operations`,
+`/receivables` and `/journal-entries` on that hub.
+
+The endpoint already supports `?q=` (ILIKE on `doc_number`), `?status=` and
+`?client_id=`, so the fix is server-side filtering plus `?limit=&offset=`, not
+new API work. Phase 2 ships the `<Pagination>` primitive and documents the rule;
+wiring the hubs is Phase 3 screen work and should be treated as a **correctness**
+item there, not a performance one.
+
+## Where a library disagreed with an assumption
+
+Two behaviours worth recording because the obvious expectation is wrong:
+
+- **Radix names a `DropdownMenu` from its TRIGGER**, via `aria-labelledby`,
+  which beats any `aria-label` passed to the content. That is the correct
+  WAI-ARIA menu-button pattern. An unnamed menu is a symptom of an unnamed
+  trigger — label the button, not the menu.
+- **`new Date("2026-02-31")` does not return `NaN`.** JavaScript rolls it over
+  to 3 March and reports success, so the obvious `!Number.isNaN(...)` date
+  refinement accepts every impossible date in the calendar. On an `entry_date`
+  that means a journal entry posting silently to the wrong period. The shared
+  schema round-trips the parse instead.
+
+## Scope explicitly NOT taken in Phase 2
+
+Stated so the next phase does not assume it is done:
+
+- **The nine requests on the Finance hub still fire on a cold load.** Query makes
+  them cached, shared and deduplicated across screens and revisits; it does not
+  paginate them. See above.
+- **`features/dashboard.tsx` is untouched** — the iframe (F1) is Phase 3.
+- **Raw palette colours: 122 → 56.** The `Badge` map was the single largest
+  source and is gone; the remainder is genuine scatter across feature screens
+  and belongs to the per-area sweep in Phase 4.
+- **`useList`/`useResource` remain in use at 161 sites.** They are now shims over
+  TanStack Query rather than hand-rolled effects, which was the point — but no
+  screen has been migrated to `useQuery` directly, and none needs to be yet.
+- **Only one domain's schemas live in `packages/shared`** (final invoice). The
+  package, the wiring and the pattern are real and the backend consumes them;
+  moving the rest is per-module work.

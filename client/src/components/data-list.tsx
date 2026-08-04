@@ -80,14 +80,25 @@ export function DataList<T extends Record<string, unknown>>({
   rows: T[] | null;
   error: string | null;
   loading: boolean;
-  empty?: { title: string; hint?: string };
+  /** `action` is the F11 fix: no empty state in the app offered a primary
+   *  control, which is what turns an empty table into an onboarding step. */
+  empty?: { title: string; hint?: string; action?: React.ReactNode };
   rowKey: (row: T, i: number) => string;
   onRowClick?: (row: T) => void;
 }) {
   if (error) return <ErrorState message={error} />;
   if (loading || rows === null) return <SkeletonTable cols={columns.length} />;
   if (rows.length === 0)
-    return <EmptyState title={empty?.title || "Nothing here yet"} hint={empty?.hint || "No records returned."} />;
+    return (
+      <EmptyState
+        title={empty?.title || "Nothing here yet"}
+        // "No records returned." was the default — a developer's sentence that
+        // tells an operator nothing (F11). Still a fallback, but every screen
+        // should be passing real copy.
+        hint={empty?.hint || "No records returned."}
+        action={empty?.action}
+      />
+    );
 
   return (
     <>

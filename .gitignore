@@ -8,6 +8,9 @@ node_modules/
 dist/
 build/
 *.tsbuildinfo
+# Ladle component workbench (client/.ladle, `npm run workbench`)
+workbench-dist/
+.ladle/build/
 
 # Environment
 .env

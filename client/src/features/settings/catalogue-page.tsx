@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataList, PageHeader, type Column } from "@/components/data-list";
 import { fetchModules, type Module } from "@/lib/rbac";
-import { errMsg, Chips, MetricTile } from "@/features/sales/ui";
+import { errMsg } from "@/lib/use-resource";
+import { Chips } from "@/components/ui/chips";
+import { Stat } from "@/components/ui/stat";
 
 /** "security" → "Security", "master_data" → "Master data". */
 function groupLabel(key: string): string {
@@ -71,13 +73,13 @@ export function ModuleCataloguePage() {
       />
 
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
-        <MetricTile label="Modules" value={rows === null ? "…" : String(rows.length)} accent />
-        <MetricTile label="Groups" value={rows === null ? "…" : String(Math.max(groups.length - 1, 0))} />
-        <MetricTile label="Showing" value={rows === null ? "…" : String(shown.length)} />
+        <Stat label="Modules" value={rows === null ? "…" : String(rows.length)} tone="accent" />
+        <Stat label="Groups" value={rows === null ? "…" : String(Math.max(groups.length - 1, 0))} />
+        <Stat label="Showing" value={rows === null ? "…" : String(shown.length)} />
       </div>
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Chips value={group} options={groups} onChange={setGroup} />
+        <Chips label="Filter by module group" value={group} options={groups} onChange={setGroup} />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code, name or group…" className="max-w-xs" />
       </div>
 

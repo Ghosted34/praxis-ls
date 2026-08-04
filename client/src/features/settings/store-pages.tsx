@@ -22,7 +22,9 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { Row, cell, errMsg, useList, Badge } from "@/features/sales/ui";
+import { errMsg, useList, type Row } from "@/lib/use-resource";
+import { cell } from "@/lib/format";
+import { StatusPill } from "@/components/ui/pill";
 
 const TEXTAREA = "w-full rounded-lg border bg-background px-3 py-2 text-sm";
 
@@ -140,9 +142,7 @@ function TemplateForm({ open, editing, onClose, onSaved }: { open: boolean; edit
 }
 
 export function DocumentTemplatesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/settings/document_template", nonce);
+  const { rows, error, reload } = useList("/settings/document_template");
   const [editing, setEditing] = React.useState<Entry | null>(null);
   const [open, setOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -196,7 +196,7 @@ export function DocumentTemplatesPage() {
                   <TD className="text-sm font-medium">{cell(v.name)}</TD>
                   <TD className="num text-sm">{key}</TD>
                   <TD className="text-sm">
-                    <Badge label={String(v.status ?? "draft")} />
+                    <StatusPill status={String(v.status ?? "draft")} />
                   </TD>
                   <TD>
                     <div className="flex gap-2">
@@ -334,9 +334,7 @@ function CustomFieldForm({ open, editing, onClose, onSaved }: { open: boolean; e
 }
 
 export function CustomFieldsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/settings/custom_field", nonce);
+  const { rows, error, reload } = useList("/settings/custom_field");
   const [editing, setEditing] = React.useState<Entry | null>(null);
   const [open, setOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -413,9 +411,7 @@ export function CustomFieldsPage() {
 /* ═══════════════════════════════ Email signature ═══════════════════════════════ */
 
 export function EmailSignaturesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/settings/email_signature", nonce);
+  const { rows, error, reload } = useList("/settings/email_signature");
   const [html, setHtml] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [saveError, setSaveError] = React.useState<string | null>(null);
@@ -533,9 +529,7 @@ function PolicyForm({ open, editing, onClose, onSaved }: { open: boolean; editin
 }
 
 export function BusinessPoliciesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/settings/policy", nonce);
+  const { rows, error, reload } = useList("/settings/policy");
   const [editing, setEditing] = React.useState<Entry | null>(null);
   const [open, setOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);

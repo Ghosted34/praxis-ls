@@ -1,11 +1,23 @@
 /** Display formatters. Money is grouped, 2dp, currency-suffixed (pair with the
  *  `.num` tabular class); dates are short + unambiguous. */
 
-export function money(amount: number | string | null | undefined, currency = "XAF"): string {
+/**
+ * THE money formatter (F6 — there were five: this one plus
+ * `components/document-view.tsx:67`, `features/sales/ui.tsx:31` (`fmtMoney`),
+ * `features/finance/pages.tsx:106` and `features/portal/portal-app.tsx:225`,
+ * which disagreed on locale, currency default and fraction digits — so the same
+ * amount rendered differently on two screens of the same ERP).
+ *
+ * `currency` is intentionally loose: rows carry it as an untyped column off the
+ * API, and the shadow `fmtMoney` it replaces accepted `unknown`. A null/empty
+ * currency falls back to XAF rather than rendering "1,000.00 null".
+ */
+export function money(amount: unknown, currency: unknown = "XAF"): string {
   if (amount === null || amount === undefined || amount === "") return "—";
-  const n = typeof amount === "string" ? Number(amount) : amount;
+  const n = typeof amount === "number" ? amount : Number(amount);
   if (!Number.isFinite(n)) return "—";
-  return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
+  const cur = currency === null || currency === undefined || currency === "" ? "XAF" : String(currency);
+  return `${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${cur}`;
 }
 
 /** Money for table columns whose HEADER carries the currency ("Costing · XAF"):
@@ -25,9 +37,19 @@ export function num(value: number | string | null | undefined): string {
   return Number.isFinite(n) ? n.toLocaleString("en-US") : "—";
 }
 
-export function dateFmt(d: string | Date | null | undefined): string {
+/**
+ * Short unambiguous date, e.g. "21 Jul 2026".
+ *
+ * Absorbs `when()` from the deleted `features/sales/ui.tsx:25` (F6), which
+ * produced the same shape but through the browser's default locale rather than
+ * en-GB — so the same timestamp rendered "21 Jul 2026" on one screen and
+ * "Jul 21, 2026" on another for a US-locale operator. `unknown` is accepted
+ * because that is what `when` took: these are `Row` values off the API, not
+ * pre-narrowed strings.
+ */
+export function dateFmt(d: unknown): string {
   if (!d) return "—";
-  const dt = typeof d === "string" ? new Date(d) : d;
+  const dt = d instanceof Date ? d : new Date(String(d));
   if (Number.isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 }

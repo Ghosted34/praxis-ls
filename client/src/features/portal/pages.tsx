@@ -4,7 +4,7 @@
  * data views are feature-gated (portal.client / portal.investor / portal.audit);
  * previews degrade gracefully when a flag is off.
  *
- * Shared primitives from features/sales/ui.tsx; AI panel gated globally.
+ * Shared primitives from components/ui/*; AI panel gated globally.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -18,7 +18,9 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, useList, SearchSelect } from "@/features/sales/ui";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell, dateFmt } from "@/lib/format";
+import { SearchSelect } from "@/components/ui/search-select";
 
 const PORTAL_AI: AiAction[] = [
   { label: "Review access", kind: "read", describe: "Summarise who currently has portal access and when grants expire." },
@@ -211,15 +213,14 @@ function PreviewModal({ open, title, path, onClose }: { open: boolean; title: st
 }
 
 export function PortalAccessPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/portals/access", nonce);
-  const { rows: clients } = useList("/clients", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/portals/access");
+  const { rows: clients } = useList("/clients");
   // Logins, so a grant can say whether the person can actually sign in. Matched
   // in the CLIENT rather than joined server-side: portal_access is per-environment
   // business data while portal_user is identity (live) data, and a cross-schema
   // join is exactly the trap that broke TEST-mode writes for fourteen sessions.
-  const { rows: portalUsers } = useList("/portal/users", nonce);
+  const { rows: portalUsers } = useList("/portal/users");
   const [grantOpen, setGrantOpen] = React.useState(false);
   const [preview, setPreview] = React.useState<{ title: string; path: string } | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -322,11 +323,11 @@ export function PortalAccessPage() {
                     ) : !signedInBefore ? (
                       <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">invited</span>
                     ) : null}
-                    {g.expires_at ? <span className="text-xs text-muted-foreground">expires {when(g.expires_at)}</span> : null}
+                    {g.expires_at ? <span className="text-xs text-muted-foreground">expires {dateFmt(g.expires_at)}</span> : null}
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
-                    {g.client_id ? `Scope: ${clientName.get(String(g.client_id)) ?? "client"} · ` : ""}granted {when(g.created_at)}
-                    {signedInBefore ? ` · last signed in ${when(login.last_login_at)}` : ""}
+                    {g.client_id ? `Scope: ${clientName.get(String(g.client_id)) ?? "client"} · ` : ""}granted {dateFmt(g.created_at)}
+                    {signedInBefore ? ` · last signed in ${dateFmt(login.last_login_at)}` : ""}
                   </p>
                 </div>
                 {portal === "CLIENT" && !!g.client_id && (

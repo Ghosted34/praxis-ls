@@ -19,7 +19,7 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { SearchSelect } from "@/features/sales/ui";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   loadEntities,
   loadClients,

@@ -21,7 +21,8 @@ import * as api from "@/lib/operations-api";
 import { AiActions } from "@/components/ai-actions";
 import { ScreenAi } from "@/components/screen-ai";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
-import { Segmented, SearchSelect } from "@/features/sales/ui";
+import { Segmented } from "@/components/ui/segmented";
+import { SearchSelect } from "@/components/ui/search-select";
 import { useSearchParams } from "react-router-dom";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 
@@ -314,7 +315,7 @@ function Dossier360Modal({ dossier, clientLabel, onClose }: { dossier: api.Dossi
           {d.readiness && (d.readiness.ready_to_complete || d.readiness.fully_collected || d.dossier.status === "COMPLETED") && (
             <ReadinessBanner readiness={d.readiness} status={d.dossier.status} dossierId={dossier.dossier_id} onChanged={() => ov.reload()} />
           )}
-          <Segmented value={tab} options={TABS_360} onChange={setTab} />
+          <Segmented label="Dossier 360 section" value={tab} options={TABS_360} onChange={setTab} />
 
           {tab === "milestones" && (
             chain.loading ? (

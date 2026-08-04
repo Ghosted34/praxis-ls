@@ -17,7 +17,7 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { SearchSelect } from "@/features/sales/ui";
+import { SearchSelect } from "@/components/ui/search-select";
 
 type Row = Record<string, unknown>;
 

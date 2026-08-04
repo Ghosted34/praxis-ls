@@ -76,12 +76,31 @@ function buildInfo() {
   };
 }
 
+/**
+ * Probe the PLATFORM database — the pool this process actually uses.
+ *
+ * The first version of this probe called `config/database.js`'s `query()`. That
+ * module exports `initDatabase()`, which is **never called anywhere in src/**,
+ * so its pool is permanently null and every query throws
+ * "db pool not initialised". The probe therefore reported Postgres down on a
+ * perfectly healthy server, returned 503, and failed the deploy at the
+ * readiness gate — a false negative that looked exactly like a real outage.
+ *
+ * What the API genuinely depends on is `services/platform/db.js`: the lazily
+ * created pool behind host→tenant resolution and platform auth. If that is
+ * unreachable, no request can be routed to a tenant and the process cannot
+ * serve, which is precisely the condition readiness should report.
+ *
+ * Per-tenant pools (registry.service.js) are deliberately NOT probed: they are
+ * created on demand per tenant, and opening one here would mean choosing a
+ * tenant arbitrarily and paying a connection against the ~12-tenant ceiling
+ * (PERF S1) on every health check.
+ */
 async function probePostgres() {
-  // Required lazily: config/database.js opens a pool at require-time in some
-  // entrypoints, and health must not be the thing that creates it.
-  const db = require("../config/database");
+  // Required lazily so importing this module never opens a connection.
+  const platformDb = require("../services/platform/db");
   const started = Date.now();
-  await withTimeout(db.query("SELECT 1"), PROBE_TIMEOUT_MS, "postgres");
+  await withTimeout(platformDb.query("SELECT 1"), PROBE_TIMEOUT_MS, "postgres");
   return { status: "up", latency_ms: Date.now() - started };
 }
 

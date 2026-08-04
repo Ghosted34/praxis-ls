@@ -257,18 +257,33 @@ docker compose up -d --no-deps worker
 echo "── verifying readiness"
 READY=0
 for attempt in $(seq 1 10); do
-  if curl -fsS --max-time 5 "$HEALTH_URL" > "$STATE_DIR/last-health.json" 2>/dev/null; then
+  # NOT `curl -f`: -f makes curl exit non-zero AND discard the body on a 4xx/5xx,
+  # so a 503 readiness response — the one case where the body explains exactly
+  # which dependency is down — was thrown away. The first real failure of this
+  # gate printed "Last probe response:" followed by nothing, which is worse than
+  # useless. Capture the body and the status separately.
+  HTTP_CODE="$(curl -sS --max-time 5 -o "$STATE_DIR/last-health.json" -w '%{http_code}' "$HEALTH_URL" 2>"$STATE_DIR/last-health.err" || echo 000)"
+  if [ "$HTTP_CODE" = "200" ]; then
     READY=1
     break
   fi
-  echo "   not ready yet (attempt $attempt/10)…"
+  echo "   not ready yet (attempt $attempt/10, HTTP $HTTP_CODE)…"
   sleep 3
 done
 
 if [ "$READY" -ne 1 ]; then
   echo "!! DEPLOY FAILED READINESS CHECK"
-  echo "   The new build is running but cannot serve. Last probe response:"
-  cat "$STATE_DIR/last-health.json" 2>/dev/null || echo "   (no response at all)"
+  echo "   The new build is running but cannot serve. Last probe (HTTP $HTTP_CODE):"
+  if [ -s "$STATE_DIR/last-health.json" ]; then
+    sed 's/^/     /' "$STATE_DIR/last-health.json"
+    echo
+  else
+    echo "     (empty body)"
+    [ -s "$STATE_DIR/last-health.err" ] && sed 's/^/     curl: /' "$STATE_DIR/last-health.err"
+    echo "     Nothing answered on $HEALTH_URL. Check the container is up and listening:"
+    echo "       docker compose ps"
+    echo "       docker compose logs --tail=50 api"
+  fi
   echo
   echo "   Roll back:  bash scripts/rollback.sh $PREVIOUS_SHA"
   echo "   Backup:     $(cat "$STATE_DIR/last-backup" 2>/dev/null || echo 'none taken')"

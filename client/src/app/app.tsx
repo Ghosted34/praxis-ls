@@ -74,10 +74,10 @@ const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data
 const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
 
 // Governance leaf screens — all four live in one module, so they share a chunk.
-const AuditPage = lazyNamed(() => import("@/features/governance/pages"), "AuditPage");
-const NotificationsPage = lazyNamed(() => import("@/features/governance/pages"), "NotificationsPage");
-const WorkflowsPage = lazyNamed(() => import("@/features/governance/pages"), "WorkflowsPage");
-const ApprovalsPage = lazyNamed(() => import("@/features/governance/pages"), "ApprovalsPage");
+const AuditPage = lazyNamed(() => import("@/features/governance/audit"), "AuditPage");
+const NotificationsPage = lazyNamed(() => import("@/features/governance/notifications"), "NotificationsPage");
+const WorkflowsPage = lazyNamed(() => import("@/features/governance/workflows"), "WorkflowsPage");
+const ApprovalsPage = lazyNamed(() => import("@/features/governance/approvals"), "ApprovalsPage");
 
 // Settings leaf editors.
 const AppearancePage = lazyNamed(() => import("@/features/settings/appearance-page"), "AppearancePage");

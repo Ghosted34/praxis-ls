@@ -49,10 +49,23 @@ import { OpportunitiesPage } from "./sales/opportunities";
 import { ProposalsPage } from "./sales/proposals";
 import { CampaignsPage } from "./sales/campaigns";
 import { SuccessStoriesPage } from "./sales/success-stories";
-import * as security from "./security/pages";
-import * as vault from "./vault/pages";
-import * as commercial from "./commercial/pages";
-import * as governance from "./governance/pages";
+import { UsersPage } from "./security/users";
+import { RolesPage } from "./security/roles";
+import { CapabilitiesPage } from "./security/capabilities";
+import { FieldVisibilityPage } from "./security/field-visibility";
+import { SessionsPage } from "./security/sessions";
+import { ReportsPage } from "./vault/reports";
+import { ComplianceFlagsPage } from "./vault/compliance-flags";
+import { DocumentsPage } from "./vault/documents";
+import { SignaturesPage } from "./vault/signatures";
+import { QuotationsPage } from "./commercial/quotations";
+import { MarginSimulationsPage } from "./commercial/margin-simulations";
+import { ExtraChargeSimulationsPage } from "./commercial/extra-charge-simulations";
+import { PricingVariancePage } from "./commercial/pricing-variance";
+import { AuditPage } from "./governance/audit";
+import { NotificationsPage } from "./governance/notifications";
+import { WorkflowsPage } from "./governance/workflows";
+import { ApprovalsPage } from "./governance/approvals";
 import * as master from "./master/pages";
 import * as masterdata from "./masterdata/pages";
 import * as procurement from "./procurement/pages";
@@ -202,26 +215,26 @@ const AREAS: Area[] = [
   {
     area: "Security",
     screens: [
-      { name: "Users", render: () => <security.UsersPage />, routes: { "/users": USERS, "/roles": [{ role_id: "r1", name: "Ops", code: "OPS" }] } },
-      { name: "Roles", render: () => <security.RolesPage />, routes: { "/roles": [{ role_id: "r1", name: "Ops", code: "OPS", description: "Operations" }] } },
-      { name: "Capabilities", render: () => <security.CapabilitiesPage />, routes: { "/capabilities": [{ capability_id: "cap1", code: "ops.read", description: "Read ops" }] } },
-      { name: "Field visibility", render: () => <security.FieldVisibilityPage />, routes: { "/field-visibility": [{ id: "fv1", table_name: "clients", column_name: "credit_limit", visibility: "masked" }], "/roles": [] } },
-      { name: "Sessions", render: () => <security.SessionsPage />, routes: { "/sessions": [{ session_id: "s1", user_id: "u1", created_at: "2026-07-01", ip: "10.0.0.1" }] } },
+      { name: "Users", render: () => <UsersPage />, routes: { "/users": USERS, "/roles": [{ role_id: "r1", name: "Ops", code: "OPS" }] } },
+      { name: "Roles", render: () => <RolesPage />, routes: { "/roles": [{ role_id: "r1", name: "Ops", code: "OPS", description: "Operations" }] } },
+      { name: "Capabilities", render: () => <CapabilitiesPage />, routes: { "/capabilities": [{ capability_id: "cap1", code: "ops.read", description: "Read ops" }] } },
+      { name: "Field visibility", render: () => <FieldVisibilityPage />, routes: { "/field-visibility": [{ id: "fv1", table_name: "clients", column_name: "credit_limit", visibility: "masked" }], "/roles": [] } },
+      { name: "Sessions", render: () => <SessionsPage />, routes: { "/sessions": [{ session_id: "s1", user_id: "u1", created_at: "2026-07-01", ip: "10.0.0.1" }] } },
     ],
   },
   {
     area: "Vault",
     screens: [
-      { name: "Reports", render: () => <vault.ReportsPage />, routes: { "/reports/catalogue": [{ report_key: "ar_ageing", name: "AR ageing", describe: "Receivables by bucket" }], "/reports/saved": [], "/reports/tiles": [] } },
-      { name: "Compliance flags", render: () => <vault.ComplianceFlagsPage />, routes: { "/compliance": [{ flag_id: "f1", severity: "HIGH", status: "OPEN", describe: "Missing BL" }], "/compliance/catalogue": [] } },
-      { name: "Documents", render: () => <vault.DocumentsPage />, routes: { "/documents": [{ document_id: "d1", filename: "bl.pdf", entity_ref: "OPS-1", created_at: "2026-07-01" }] } },
+      { name: "Reports", render: () => <ReportsPage />, routes: { "/reports/catalogue": [{ report_key: "ar_ageing", name: "AR ageing", describe: "Receivables by bucket" }], "/reports/saved": [], "/reports/tiles": [] } },
+      { name: "Compliance flags", render: () => <ComplianceFlagsPage />, routes: { "/compliance": [{ flag_id: "f1", severity: "HIGH", status: "OPEN", describe: "Missing BL" }], "/compliance/catalogue": [] } },
+      { name: "Documents", render: () => <DocumentsPage />, routes: { "/documents": [{ document_id: "d1", filename: "bl.pdf", entity_ref: "OPS-1", created_at: "2026-07-01" }] } },
       {
         // Search-first: nothing is fetched until a document reference is typed,
         // so on arrival there is no request to be loading or to fail. Its
         // "empty" IS its initial state, which is the correct design for a lookup
         // screen and is why `states` narrows what this case asserts.
         name: "Signatures",
-        render: () => <vault.SignaturesPage />,
+        render: () => <SignaturesPage />,
         routes: { "/signatures": [{ signature_id: "sg1", entity_ref: "OPS-1", signer: "Amina", signed_at: "2026-07-02" }] },
         states: ["empty", "populated"],
       },
@@ -232,7 +245,7 @@ const AREAS: Area[] = [
     screens: [
       {
         name: "Quotations",
-        render: () => <commercial.QuotationsPage />,
+        render: () => <QuotationsPage />,
         routes: {
           "/quotations": [{ quotation_id: "q1", ref: "QT-2026-001", client_id: "c1", status: "DRAFT", total: 8_000_000 }],
           "/clients": CLIENTS,
@@ -240,18 +253,18 @@ const AREAS: Area[] = [
           "/opportunities": [],
         },
       },
-      { name: "Margin simulations", render: () => <commercial.MarginSimulationsPage />, routes: { "/margin-simulations": [{ simulation_id: "ms1", name: "Corridor", margin_percent: 18 }] } },
-      { name: "Extra-charge simulations", render: () => <commercial.ExtraChargeSimulationsPage />, routes: { "/extra-charge-simulations": [{ simulation_id: "es1", name: "Demurrage" }] } },
-      { name: "Pricing variance", render: () => <commercial.PricingVariancePage />, routes: { "/pricing-variance": [{ variance_id: "v1", operation_id: "o1", delta: -120000 }], "/operations": [], "/quotations": [] } },
+      { name: "Margin simulations", render: () => <MarginSimulationsPage />, routes: { "/margin-simulations": [{ simulation_id: "ms1", name: "Corridor", margin_percent: 18 }] } },
+      { name: "Extra-charge simulations", render: () => <ExtraChargeSimulationsPage />, routes: { "/extra-charge-simulations": [{ simulation_id: "es1", name: "Demurrage" }] } },
+      { name: "Pricing variance", render: () => <PricingVariancePage />, routes: { "/pricing-variance": [{ variance_id: "v1", operation_id: "o1", delta: -120000 }], "/operations": [], "/quotations": [] } },
     ],
   },
   {
     area: "Governance",
     screens: [
-      { name: "Audit", render: () => <governance.AuditPage />, routes: { "/audit": [{ ledger_id: "al1", action: "UPDATE", table_name: "clients", actor_id: "u1", created_at: "2026-07-01" }], "/users": USERS } },
-      { name: "Notifications", render: () => <governance.NotificationsPage />, routes: { "/notifications": [{ notification_id: "n1", title: "Approval needed", channel: "IN_APP", created_at: "2026-07-01" }] } },
-      { name: "Workflows", render: () => <governance.WorkflowsPage />, routes: { "/workflows": [{ workflow_id: "w1", name: "Invoice approval", event_type_key: "INVOICE_SUBMIT", step_count: 2, is_active: true }] } },
-      { name: "Approvals", render: () => <governance.ApprovalsPage />, routes: { "/approvals": [{ task_id: "t1", step_kind: "APPROVE", status: "PENDING", entity_ref: "INV-1" }] } },
+      { name: "Audit", render: () => <AuditPage />, routes: { "/audit": [{ ledger_id: "al1", action: "UPDATE", table_name: "clients", actor_id: "u1", created_at: "2026-07-01" }], "/users": USERS } },
+      { name: "Notifications", render: () => <NotificationsPage />, routes: { "/notifications": [{ notification_id: "n1", title: "Approval needed", channel: "IN_APP", created_at: "2026-07-01" }] } },
+      { name: "Workflows", render: () => <WorkflowsPage />, routes: { "/workflows": [{ workflow_id: "w1", name: "Invoice approval", event_type_key: "INVOICE_SUBMIT", step_count: 2, is_active: true }] } },
+      { name: "Approvals", render: () => <ApprovalsPage />, routes: { "/approvals": [{ task_id: "t1", step_kind: "APPROVE", status: "PENDING", entity_ref: "INV-1" }] } },
     ],
   },
   {
@@ -368,14 +381,14 @@ describe("403 vs FEATURE_DISABLED (Vault reports)", () => {
 
   it("a missing GRANT reports a permission problem, not a feature flag", async () => {
     const routes = Object.fromEntries(Object.keys(paths).map((k) => [k, apiError(403, "You don't have permission to do this.", "FORBIDDEN")]));
-    const { container } = renderScreen(<vault.ReportsPage />, { routes });
+    const { container } = renderScreen(<ReportsPage />, { routes });
     await waitFor(() => expect(container.textContent).toMatch(/permission/i));
     expect(container.textContent).not.toMatch(/isn't enabled|feature flag/i);
   });
 
   it("a genuinely disabled FEATURE still says so, and names the remedy", async () => {
     const routes = Object.fromEntries(Object.keys(paths).map((k) => [k, apiError(403, "Feature 'reports' is off for this tenant", "FEATURE_DISABLED")]));
-    const { container } = renderScreen(<vault.ReportsPage />, { routes });
+    const { container } = renderScreen(<ReportsPage />, { routes });
     await waitFor(() => expect(container.textContent).toMatch(/isn't enabled/i));
     expect(container.textContent).toMatch(/developer dashboard/i);
   });

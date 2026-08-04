@@ -8,6 +8,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -78,8 +79,7 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
           <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="One line describing it" autoFocus maxLength={200} />
         </Field>
         <Field label="Details" hint="What happened, what you expected, where in the app (optional).">
-          <textarea
-            className="flex min-h-[110px] w-full rounded-md border border-input bg-transparent px-3 py-2 text-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background"
+          <Textarea className="min-h-[110px]"
             value={body}
             onChange={(e) => setBody(e.target.value)}
             placeholder="Add any detail that would help us…"

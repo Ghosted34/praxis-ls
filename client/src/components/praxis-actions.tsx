@@ -8,6 +8,7 @@
  * This is per-screen and screen-scoped — distinct from any general chat.
  */
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -141,8 +142,7 @@ function PraxisPanel({
         )}
 
         <div className="flex items-end gap-2">
-          <textarea
-            value={message}
+          <Textarea value={message}
             onChange={(e) => setMessage(e.target.value)}
             onKeyDown={(e) => { if ((e.key === "Enter" && (e.metaKey || e.ctrlKey))) void ask(message); }}
             rows={2}

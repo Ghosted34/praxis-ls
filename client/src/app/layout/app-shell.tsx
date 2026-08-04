@@ -22,6 +22,7 @@ import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
+import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { ActionErrorBanner } from "@/components/action-error-banner";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
@@ -886,7 +887,13 @@ export function AppShell() {
         key={env}
         className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
       >
-        <Outlet />
+        {/* Per-route boundary, keyed on the path so navigating away from a
+            crashed screen clears the error rather than stranding the user on it.
+            The root boundary in main.tsx is the backstop; this one keeps the
+            shell, the nav and the copilot alive when a single screen throws. */}
+        <ErrorBoundary key={location.pathname} name="This screen">
+          <Outlet />
+        </ErrorBoundary>
       </main>
 
       <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />

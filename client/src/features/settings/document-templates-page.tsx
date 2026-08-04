@@ -7,6 +7,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/modal";
@@ -172,7 +173,7 @@ export function TemplateStudioPage() {
             <div className="micro mb-2">Content</div>
             <div className="space-y-2">
               <Field label="Footer text"><Input value={s(cfg.footer_text)} onChange={(e) => set({ footer_text: e.target.value })} placeholder="Thank you for your business" /></Field>
-              <Field label="Terms & conditions"><textarea value={s(cfg.terms)} onChange={(e) => set({ terms: e.target.value })} rows={3} className="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px]" placeholder="Payable under 30 days…" /></Field>
+              <Field label="Terms & conditions"><Textarea value={s(cfg.terms)} onChange={(e) => set({ terms: e.target.value })} rows={3} placeholder="Payable under 30 days…" /></Field>
               <div className="grid grid-cols-2 gap-2">
                 <Field label="Signatory name"><Input value={s(sig.name)} onChange={(e) => setNested("signature", { name: e.target.value })} /></Field>
                 <Field label="Signatory title"><Input value={s(sig.title)} onChange={(e) => setNested("signature", { title: e.target.value })} /></Field>

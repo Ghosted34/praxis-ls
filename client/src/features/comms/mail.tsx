@@ -7,6 +7,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -90,8 +91,8 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
           <div className="border-t border-border pt-3">
             {m.email_connection_id ? (
               <>
-                <textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} placeholder="Write a reply…"
-                  className="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-[13px] placeholder:text-muted-foreground focus-visible:outline-none" />
+                <Textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} placeholder="Write a reply…"
+                  />
                 {error && <div className="mt-2"><ErrorState message={error} /></div>}
                 <div className="mt-2 flex items-center justify-end gap-3">
                   {sent && <span className="micro text-[rgb(var(--ok))]">✓ Reply sent</span>}

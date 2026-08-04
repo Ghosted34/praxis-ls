@@ -5,6 +5,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Textarea } from "@/components/ui/textarea";
 import { tenant } from "@/lib/api-client";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { Pill, type Tone } from "@/components/ui/pill";
@@ -117,11 +118,10 @@ function RespondModal({ query, onClose, onDone }: { query: Query; onClose: () =>
       <form onSubmit={submit} className="space-y-4">
         <div className="rounded-lg border bg-muted/30 p-3 text-sm text-muted-foreground">{query.body}</div>
         <Field label="Your response" required>
-          <textarea
-            value={text}
+          <Textarea value={text}
             onChange={(e) => setText(e.target.value)}
             rows={5}
-            className="w-full rounded-[10px] border border-input bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:border-[color-mix(in_srgb,var(--primary)_50%,transparent)]"
+           
             placeholder="Explain your side…"
           />
         </Field>

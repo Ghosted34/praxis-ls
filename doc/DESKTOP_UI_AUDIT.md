@@ -1472,3 +1472,215 @@ Stated so Phase 4 does not assume it is done.
   taken with a throwaway harness and deleted. Standing that up in CI needs
   Playwright and browsers in the frontend job, which the roadmap puts in Phase 5.
 - **`platform-console/` remains out of scope**, as it has been throughout.
+
+---
+
+# Addendum 7 — Phase 4 implementation notes (2026-08-04)
+
+Written while implementing Phase 4, not during the audit. As with Addenda 3 and
+6, everything here is a **correction or addition** to the findings above,
+discovered by changing the code rather than by reading it.
+
+Phase 4's deliverables are met: every remaining area is on the shared
+primitives, the god files are decomposed, raw-palette colours are at zero, and
+route-level `React.lazy` was already delivered in Addendum 4. The tracked
+checklist the phase asks for is `doc/PHASE4_CHECKLIST.md`, which also states
+plainly what was **not** taken.
+
+## The single most useful thing built this phase was a test harness
+
+Everything the client tested before Phase 4 was a **primitive**. That is the
+right place to start — fixing `Field` repairs 565 call sites at once — but a
+primitive's test cannot see the defects that only exist once a screen is
+assembled. `src/test/screen-harness.tsx` renders a real routed screen with its
+network faked, and `features/screens.axe.test.tsx` puts 66 screens across 18
+areas through all four of their states on every CI run.
+
+It found a defect **on its first execution, against one already-migrated
+screen**, and kept finding them:
+
+1. **Every list table in the app shipped an empty `<th>`.** Each screen ends its
+   columns with `{ key: "_a", label: "" }` for row actions, which rendered a
+   literally empty header — axe `empty-table-header`, on roughly ninety screens.
+   Navigating by column, a screen reader announces "Approve" and "Reject" with no
+   idea which column they are in. Invisible to every primitive test, because it
+   only exists where a column spec meets a table.
+
+2. **A missing GRANT was reported to the user as a DISABLED FEATURE.**
+   `vault/pages.tsx` chose between "you lack access" and "this tenant doesn't
+   have the feature" by regexing the error *sentence*:
+
+   ```
+   /feature|not enabled|disabled|forbidden|permission/i.test(msg)
+   ```
+
+   `errMsg` renders every 403 as "You don't have permission to do this.", which
+   matches `/permission/`. So a user missing the reports grant was told
+   **"Reporting isn't enabled for this tenant"** and pointed at a developer-
+   dashboard flag that was already on. They would ask an admin to enable
+   something already enabled; the admin would look in the wrong place; the real
+   cause — their role — was never mentioned to either of them.
+
+   The backend has always distinguished these properly (`FEATURE_DISABLED` from
+   `middleware/feature-gate.js` versus `FORBIDDEN`). The discriminator was being
+   discarded one layer from the screen, because `useList` returns only a
+   formatted string. It now also returns `errorCode`; `error` is unchanged, so
+   the 161 sites that merely display it are untouched.
+
+   This is the same shape as Addendum 6's Control Tower defect, where any 403
+   fell into an empty state that told the user everything was fine. **Twice now,
+   in two unrelated modules, a permission failure has rendered as reassurance.**
+   That is a pattern, not a coincidence: `errMsg` flattens every 403 to one
+   sentence, and screens then try to recover the distinction from prose.
+
+3. **Thirteen unlabelled `<select>` controls**, across Fleet, Costing, Finance,
+   Settings, Security, Master data and the shared `CountrySelect` — every one
+   announced as "combo box" with no indication of what it selects.
+
+4. **WMS Equipment had no loading state.** With data still null its kanban
+   rendered four *empty columns*, which does not read as "loading" — it reads as
+   "this warehouse owns no equipment". A different and more alarming statement to
+   make to a warehouse manager.
+
+## A correction to F14: the cause was ergonomics, not discipline
+
+The audit records 122 raw-palette colours as a discipline problem — rule #1 of
+`FE_DESIGN_RULES.md` is "never hardcode colours", and 122 sites ignored it.
+
+That is not quite what was happening. The semantic tones existed in `index.css`
+from Phase 1 but were **never exposed to Tailwind**, so the correct spelling was
+
+```
+text-[rgb(var(--ok))]        vs        text-emerald-600
+bg-[rgb(var(--ok)_/_0.12)]   vs        bg-emerald-500/10
+```
+
+The wrong thing was shorter to type than the right one, and 46 remaining sites
+took the shortcut. `ok` / `warn` / `bad` / `brand-*` are now real Tailwind
+colours with `<alpha-value>`, so `border-ok/40` resolves. Making the right thing
+the short thing did more than the rule ever did.
+
+## Two gates that were wrong when first written
+
+Both found by running them rather than by reasoning about them, and both worth
+recording because each failed in the way that gets a gate *disabled*:
+
+- **The palette gate flagged its own evidence.** `ui/pill.tsx` and its test both
+  QUOTE the deleted shadow `Badge` map in their header comments, as the record of
+  what they replaced. A checker that reports the documentation of a fix as an
+  instance of the bug teaches people it is noise. It now blanks comments first.
+
+- **The palette gate did not scan new files.** It used `git ls-files`, which
+  lists only what is already committed — so a brand-new component, the likeliest
+  place for a fresh violation, was not checked at all. Caught when the gate
+  passed its own new file. It also threw `ENOENT` on files deleted-but-unstaged,
+  which is the normal state mid-refactor; a checker that looks broken rather than
+  clean is one nobody trusts.
+
+Both are verified to exit 1 on a reintroduced violation, including in an
+untracked file.
+
+## The lint rules are now errors, one phase early
+
+The config said `jsx-a11y`'s backlog rules "flip to error in Phase 5 once the
+count is zero". The count reached zero here, and a satisfied rule left at `warn`
+only invites the backlog back. `react-hooks/exhaustive-deps` is an error too.
+
+Neither was reached by suppression. The two biggest clusters were real:
+
+- **Eleven `autoFocus` props were dead code.** They sit inside `<Modal>`, which
+  has been Radix `Dialog` since Phase 2 and focuses its first control already.
+  Deleted, not disabled. Three remain, each with a written reason — and each is
+  focus *recovery*, where the element the user was on has just been unmounted.
+
+- **Ten `exhaustive-deps` warnings were one bug, ten times.** `const rows =
+  query.data || []` mints a fresh array every render, so any effect depending on
+  it re-runs every render. On the four 360 screens (client, vehicle, employee,
+  location) that effect calls `setSelId` — the loop was bounded only by an
+  `if (!selId)` guard happening to be false after the first pass.
+
+Every remaining exception is an `eslint-disable-next-line` carrying a reason at
+the call site, which is reviewable. A blanket `warn` is not.
+
+## Two defects fixed that the audit did not name
+
+- **`DataList`'s clickable row was mouse-only** (F9 names the mobile card; the
+  desktop `<tr>` had the same problem). The fix is not `<tr role="button">` —
+  that would work for the keyboard and destroy row/column position and header
+  association on a 200-row table. Column 0 now renders a real `<button>` named by
+  the record, so the row keeps table semantics *and* is keyboard-reachable.
+
+- **The Sales kanban could not be operated without a mouse.** Drag-and-drop with
+  no alternative, on the CRM's primary screen. Each card now carries a "Move"
+  menu calling the same endpoint, named per deal.
+
+## What the decomposition actually surfaced
+
+Files over 400 lines: **15 → 4**. Sales alone went from 2,596 lines in one file
+to eleven. But the useful part was what only became visible once the files were
+separate:
+
+- `settings/store-pages.tsx` carried a **byte-identical second copy** of
+  `PageError`.
+- `shell` was declared independently in **ten** HR files; the split would have
+  made an eleventh. F14's "`const shell` defined independently in 28 files",
+  caught mid-regrowth.
+- `hr/pages.tsx` was a **barrel** re-exporting nine sibling screens while also
+  holding two of its own — which is why nobody had noticed it was a god file.
+
+A note on the counts in §4's baseline table: `const shell` now appears 42 times,
+*higher* than the audit's 28. That is not a regression. Every one is
+`= pageShell.wide` — an alias for the shared token — where the audit's 28 were
+the hardcoded literal `"mx-auto max-w-6xl animate-fade-in"`. Changing the token
+moves all of them. The metric got worse while the property it was measuring got
+fixed, which is worth knowing before anyone re-runs the table.
+
+## Verified in a browser, not inferred
+
+Headless Chromium against the built `dist/`, at 1280 / 1440 / 1920 / 2560:
+
+| | 1280 | 1440 | 1920 | 2560 |
+|---|---|---|---|---|
+| content column | 1232px | 1392px | 1664px | 1664px |
+| `<h1>` count | 1 | 1 | 1 | 1 |
+| horizontal scroll | none | none | none | none |
+
+Six screens across Control Tower, Finance, Sales, Security, Master data and
+Settings. Zero page errors. Settings → Numbering correctly holds 768px at every
+width: it is `reading`, and a 1664px-wide form is not a feature.
+
+One thing this run corrected about my own expectations. The seeded session had
+to go through `/auth/refresh` — the access token is in-memory by design and only
+the refresh token is persisted — so the first run measured the *landing page* at
+four widths and reported one `<h1>` and no horizontal scroll, all of it true and
+all of it meaningless. A harness that renders the wrong screen still produces a
+confident table.
+
+## The 2560px case, restated
+
+`max-w-wide` is 1664px, so 1920 and 2560 render the same column. Addendum 6
+called this "addressed rather than solved"; this phase measured it again and did
+not change it. It is a **token** decision — one number — and it belongs with the
+Phase 5 density work, where row height, compact tables and the fluid upper tier
+are the same conversation.
+
+Relatedly, and worth stating because the raw number looks alarming: `xl:` appears
+6 times and `2xl:` once, against F2's target of "desktop tiers on every layout
+screen". After Phase 1 the *container* carries the desktop behaviour, and the
+dominant content is tables, which fill their container. The remaining
+`sm:grid-cols-2` sites are overwhelmingly form grids **inside width-capped
+modals**, where two columns is correct at every viewport. Widening those would be
+a regression dressed up as a metric improvement.
+
+## Scope explicitly NOT taken in Phase 4
+
+- **Forms are still not on `<Form>` + shared Zod schemas.** The forms in the
+  files split this phase were moved, not rewritten. `useZodForm` is reachable and
+  gated (`check:shared`), so the first adopter will not break the image build —
+  that was the blocker and it is gone.
+- **Raw `<table>` remains in 9 feature files** (14 total, of which 5 ARE the
+  primitives). These are bespoke layouts — the permission matrix, portal
+  terminals, 360 side panels — where the shared `<Table>` is the wrong shape.
+- **No visual-regression baseline was committed**, as in Phase 3. CI needs
+  Playwright and browsers in the frontend job; Phase 5.
+- **`platform-console/` remains out of scope**, as throughout.

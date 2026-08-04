@@ -20,6 +20,7 @@ import { tenant } from "@/lib/api-client";
 import { num } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import { shell, type EmployeeLite } from "./shared";
+import { LoadingRow } from "@/components/ui/states";
 
 export const READINESS: { value: string; label: string; tone: Tone }[] = [
   { value: "ready_now", label: "Ready now", tone: "ok" },
@@ -176,7 +177,7 @@ function OnboardingDetail({ id, onClose, onChanged }: { id: string; onClose: () 
 
   return (
     <Modal open onClose={onClose} size="lg" title={c?.employee_name ? `Onboarding · ${c.employee_name}` : "Onboarding checklist"} description={c ? `${done}/${(c.items || []).length} done` : undefined}>
-      {detail.error ? <ErrorState message={detail.error} /> : !c ? <div className="py-6 text-center micro">Loading…</div> : (
+      {detail.error ? <ErrorState message={detail.error} /> : !c ? <LoadingRow /> : (
         <div className="space-y-4">
           <div className="space-y-1.5">
             {(c.items || []).length === 0 ? <div className="micro">No items yet — add the first step below.</div> : c.items.map((item) => (

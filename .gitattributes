@@ -1,0 +1,59 @@
+# Line-ending policy.
+#
+# ADDED 2026-08-04, after a CRLF `scripts/rollback.sh` failed to parse at all
+# on the Linux server:
+#
+#     scripts/rollback.sh: line 137: syntax error near unexpected token $'do\r'
+#
+# The repository has no .gitattributes and every blob is stored LF, but the
+# working tree on Windows is CRLF. Editing a shell script there and committing
+# it produced a file that bash cannot execute — and the two scripts most
+# affected are deploy.sh and rollback.sh, i.e. the recovery path you only find
+# out about during an incident.
+#
+# `text=auto eol=lf` normalises on commit and checks out LF everywhere. Windows
+# editors have handled LF fine for years; a shell interpreter does not handle
+# CR at all.
+#
+# NOTE: applying this will show the whole tree as modified the first time
+# someone runs `git add --renormalize .`. That is a separate, deliberate commit
+# — do not fold it into a feature change, or the diff becomes unreviewable.
+# It is also why `git status` on this repo has been slow and noisy.
+
+* text=auto eol=lf
+
+# Executables and anything an interpreter reads: LF is not negotiable.
+*.sh   text eol=lf
+*.bash text eol=lf
+*.js   text eol=lf
+*.cjs  text eol=lf
+*.mjs  text eol=lf
+*.ts   text eol=lf
+*.tsx  text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml  text eol=lf
+*.sql  text eol=lf
+*.md   text eol=lf
+Dockerfile      text eol=lf
+.env.example    text eol=lf
+
+# Windows-native tooling that genuinely wants CRLF.
+*.bat  text eol=crlf
+*.cmd  text eol=crlf
+*.ps1  text eol=crlf
+
+# Binary — never touch, never diff as text.
+*.png  binary
+*.jpg  binary
+*.jpeg binary
+*.gif  binary
+*.ico  binary
+*.pdf  binary
+*.woff binary
+*.woff2 binary
+*.xlsx binary
+*.docx binary
+*.pptx binary
+*.mmdb binary
+*.node binary

@@ -116,14 +116,50 @@ announce "Deploy started on ${HOSTNAME_S} by ${DEPLOYER}: ${PREVIOUS_SHA:0:8} �
 echo "── backing up the database (pre-migration)"
 mkdir -p "$BACKUP_DIR"
 BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${BUILD_SHA:0:8}.sql.gz"
-if docker compose exec -T postgres pg_dumpall -U "${POSTGRES_USER:-postgres}" | gzip > "$BACKUP_FILE"; then
-  echo "   wrote $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
-  echo "$BACKUP_FILE" > "$STATE_DIR/last-backup"
+
+# The superuser is read from INSIDE the container, not guessed out here.
+#
+# First run of this step failed with `role "postgres" does not exist`: it
+# defaulted to -U postgres, but docker-compose.yml sets
+# `POSTGRES_USER: ${DB_USER:-praxis-admin}`, so the superuser is whatever DB_USER
+# says. Resolving it host-side means duplicating that default and drifting from
+# it; `sh -c` inside the container reads the value compose actually injected, so
+# there is exactly one source of truth.
+#
+# pg_dumpall (not pg_dump) is deliberate: tenancy is database-per-tenant, so a
+# single-database dump would back up the platform registry and none of the
+# tenant data. It also captures roles, which a tenant restore needs.
+#
+# `set -o pipefail` at the top is what makes this `if` honest — without it the
+# exit status would be gzip's, and gzip happily succeeds on an empty stream.
+if docker compose exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' | gzip > "$BACKUP_FILE"; then
+  BACKUP_BYTES="$(wc -c < "$BACKUP_FILE" | tr -d ' ')"
+  # A dump that "succeeded" but is a few hundred bytes is an empty cluster or a
+  # silently truncated stream. Treat it as a failure — the point of this step is
+  # to have something to restore, not to have a file.
+  if [ "${BACKUP_BYTES:-0}" -lt 4096 ]; then
+    echo "!! BACKUP SUSPICIOUSLY SMALL (${BACKUP_BYTES} bytes) — treating as failed."
+    rm -f "$BACKUP_FILE"
+    if [ "${SKIP_BACKUP:-0}" != "1" ]; then
+      announce "DEPLOY ABORTED on ${HOSTNAME_S}: pre-migration backup was only ${BACKUP_BYTES} bytes"
+      exit 1
+    fi
+  else
+    echo "   wrote $BACKUP_FILE ($(du -h "$BACKUP_FILE" | cut -f1))"
+    echo "$BACKUP_FILE" > "$STATE_DIR/last-backup"
+  fi
 else
   rm -f "$BACKUP_FILE"
   echo "!! BACKUP FAILED — refusing to run migrations without one."
-  echo "   Migrations have no down path. Fix the backup first."
-  if [ "${SKIP_BACKUP:-0}" != "1" ]; then exit 1; fi
+  echo "   Migrations have no down path (DATA 3.5). Fix the backup first."
+  echo
+  echo "   Check the superuser compose injected:"
+  echo "     docker compose exec -T postgres sh -c 'echo \$POSTGRES_USER'"
+  echo "   and that it matches DB_USER in .env on this host."
+  if [ "${SKIP_BACKUP:-0}" != "1" ]; then
+    announce "DEPLOY ABORTED on ${HOSTNAME_S}: pre-migration backup failed, nothing was migrated"
+    exit 1
+  fi
   echo "   SKIP_BACKUP=1 set — continuing anyway. State where your backup is."
 fi
 

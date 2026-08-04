@@ -34,6 +34,32 @@ jobs:
         run: |
           find src scripts -name '*.js' -print0 | xargs -0 -n1 node --check
 
+      - name: Shell scripts parse and are LF
+        # Added 2026-08-04 after a CRLF rollback.sh failed to parse on the
+        # server — `syntax error near unexpected token $'do\r'`. Nothing caught
+        # it, because nothing had ever executed that script: deploy and rollback
+        # are exactly the code you only run when things are already going wrong.
+        #
+        # .gitattributes now enforces LF on commit; this asserts the RESULT,
+        # because a policy nobody verifies is the failure mode this whole
+        # workstream is about. `bash -n` additionally catches syntax errors in
+        # scripts no test ever executes.
+        run: |
+          set -uo pipefail
+          fail=0
+          while IFS= read -r f; do
+            if grep -qU $'\r' "$f"; then
+              echo "::error file=$f::CRLF line endings — this script will not run on Linux"
+              fail=1
+            fi
+            if ! bash -n "$f" 2>&1; then
+              echo "::error file=$f::bash syntax error"
+              fail=1
+            fi
+          done < <(git ls-files '*.sh')
+          if [ "$fail" -eq 0 ]; then echo "All shell scripts parse and are LF."; fi
+          exit "$fail"
+
       - name: Lint
         run: npm run lint
 

@@ -117,6 +117,17 @@ jobs:
         # doc/SESSION_HANDOFF.md "Sandbox gotcha".
         run: npm install --no-audit --no-fund --prefix ${{ matrix.app }}
 
+      - name: Install root dependencies (for packages/shared)
+        # The client imports packages/shared, the CommonJS Zod schemas the API
+        # validates with. Node resolves that package's `require("zod")` from the
+        # repo root, so a client-only install leaves it unresolvable and every
+        # shared-schema import fails. Installing zod INTO packages/shared would
+        # fix resolution by creating a second Zod instance, which breaks
+        # `instanceof` across the FE/BE boundary — so the root copy is the one
+        # both halves point at (see the alias in client/vite.config.ts).
+        if: matrix.app == 'client'
+        run: npm install --no-audit --no-fund
+
       - name: Lint
         run: npm run lint --prefix ${{ matrix.app }}
 

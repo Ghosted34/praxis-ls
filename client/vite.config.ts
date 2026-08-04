@@ -49,11 +49,13 @@ export default defineConfig({
       // (audit F12). CommonJS on purpose: the backend requires it with no build
       // step. See packages/shared/README.md.
       "@shared": path.resolve(__dirname, "../packages/shared"),
-      // ONE zod instance. packages/shared is CommonJS and resolves `zod` from the
-      // repo root, while client code imports its own — two copies means
-      // `instanceof z.ZodType` is false across the boundary and zodResolver can
-      // be handed a schema from the "wrong" zod. Deduping is not an optimisation
-      // here, it is what makes the shared schemas work at all.
+      // ONE zod instance. packages/shared is CommonJS: Node's own loader
+      // resolves its `require("zod")` from the repo root, and no bundler flag
+      // changes that (dedupe and ssr.noExternal both leave CJS interop alone).
+      // So the client is pointed at that same root copy — two copies would make
+      // `instanceof z.ZodType` false across the boundary and hand zodResolver a
+      // schema from the "wrong" zod. This requires the root install; CI's
+      // frontend job does it explicitly for the client.
       zod: path.resolve(__dirname, "../node_modules/zod"),
     },
   },

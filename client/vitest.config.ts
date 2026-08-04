@@ -18,7 +18,19 @@ const dirname = path.dirname(fileURLToPath(import.meta.url));
 export default defineConfig({
   plugins: [react()],
   resolve: {
-    alias: { "@": path.resolve(dirname, "src") },
+    alias: {
+      "@": path.resolve(dirname, "src"),
+      // Mirrors vite.config.ts: packages/shared holds the Zod schemas the
+      // Express API validates with, so the form tests exercise the SAME schema
+      // objects the backend parses with rather than a copy (audit F12).
+      "@shared": path.resolve(dirname, "../packages/shared"),
+      // ONE zod instance. packages/shared is CommonJS and resolves `zod` from the
+      // repo root, while client code imports its own — two copies means
+      // `instanceof z.ZodType` is false across the boundary and zodResolver can
+      // be handed a schema from the "wrong" zod. Deduping is not an optimisation
+      // here, it is what makes the shared schemas work at all.
+      zod: path.resolve(dirname, "../node_modules/zod"),
+    },
   },
   test: {
     environment: "jsdom",

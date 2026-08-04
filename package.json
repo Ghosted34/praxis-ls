@@ -2,7 +2,7 @@
   "name": "praxis-ls",
   "version": "0.1.0",
   "private": true,
-  "description": "Praxis LS — white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
+  "description": "Praxis LS \u2014 white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
   "license": "UNLICENSED",
   "engines": {
     "node": ">=20 <21"
@@ -69,7 +69,8 @@
     "socket.io": "^4.8.1",
     "uuid": "^11.0.3",
     "web-push": "^3.6.7",
-    "zod": "^3.23.8"
+    "zod": "^3.23.8",
+    "@praxis/shared": "file:packages/shared"
   },
   "devDependencies": {
     "eslint": "^9.15.0",
@@ -80,5 +81,5 @@
     "supertest": "^7.0.0"
   },
   "//puppeteer": "Chromium is installed by the Docker image (apt) and located via PUPPETEER_EXECUTABLE_PATH; set PUPPETEER_SKIP_DOWNLOAD=1 in CI to avoid the bundled download.",
-  "//deepseek": "DeepSeek is OpenAI-API-compatible — the 'openai' SDK is pointed at DEEPSEEK_BASE_URL. Gemini uses @google/generative-ai; Groq uses groq-sdk (voice-to-text)."
+  "//deepseek": "DeepSeek is OpenAI-API-compatible \u2014 the 'openai' SDK is pointed at DEEPSEEK_BASE_URL. Gemini uses @google/generative-ai; Groq uses groq-sdk (voice-to-text)."
 }

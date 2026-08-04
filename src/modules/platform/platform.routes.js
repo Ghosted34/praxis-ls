@@ -11,12 +11,17 @@ const express = require("express");
 const c = require("./platform.controller");
 const { validate } = require("./platform.validator");
 const { platformAuth, requireCap } = require("../../middleware/platform-auth");
+// SEC-C3, 2026-08-04. The platform tier is the highest-privilege login in the
+// product — it reaches tenant provisioning, the credential store and God Mode —
+// and it had no rate limiting at all. It also has no session store, no
+// revocation and no 2FA (SEC-M6), so guessing here is the whole attack.
+const { loginLimiter, refreshLimiter } = require("../../shared/http/rate-limit");
 
 const router = express.Router();
 
 // Public — this is how a platform token is obtained in the first place.
-router.post("/auth/login", validate("login"), c.login);
-router.post("/auth/refresh", validate("refresh"), c.refresh);
+router.post("/auth/login", loginLimiter, validate("login"), c.login);
+router.post("/auth/refresh", refreshLimiter, validate("refresh"), c.refresh);
 
 router.use(platformAuth);
 
@@ -72,15 +77,30 @@ router.patch("/support/tickets/:id", requireCap("support.write"), validate("tick
 
 // Deploy-wide integrations (S3 / Geoapify / VAPID) — set + live test. Secrets
 // are encrypted at rest; reads return presence + last4 only.
-router.get("/settings", c.settingsList);
-router.post("/settings/push/vapid/generate", validate("vapidGenerate"), c.vapidGenerate);
-router.get("/settings/:section/:key", c.settingGet);
-router.put("/settings/:section/:key", validate("platformSetting"), c.settingPut);
-router.post("/settings/:section/:key/test", c.settingTest);
+//
+// GATED 2026-08-04 (audit SEC-H2 / API F-20). These eight routes carried
+// platformAuth but no requireCap, so ANY authenticated platform user of ANY
+// role passed — including PLATFORM_SUPPORT, whose entire matrix is
+// support.read/write + a few reads. That user could rotate the deployment's S3
+// credentials and the AI vendor keys every tenant's runtime uses, and read back
+// presence + last4 of every secret. The other 35 routes in this file were gated
+// correctly; these were missed, which is why two separate audits found it.
+//
+// `settings.*` are NEW capabilities (migration 0032). No built-in role except
+// Root Admin is granted them, and Root bypasses requireCap anyway — so this is
+// a real behaviour change for any non-root role that was relying on the gap.
+// That is the point of the fix, not a side effect of it.
+router.get("/settings", requireCap("settings.read"), c.settingsList);
+router.post("/settings/push/vapid/generate", requireCap("settings.write"), validate("vapidGenerate"), c.vapidGenerate);
+router.get("/settings/:section/:key", requireCap("settings.read"), c.settingGet);
+router.put("/settings/:section/:key", requireCap("settings.write"), validate("platformSetting"), c.settingPut);
+// `test` sends the stored credential to the live provider, so it is a write-tier
+// action even though it mutates nothing locally.
+router.post("/settings/:section/:key/test", requireCap("settings.write"), c.settingTest);
 
 // Deploy-wide AI vendor keys — one shared set every tenant's AI runtime uses.
-router.get("/ai-vendors", c.aiVendorsList);
-router.put("/ai-vendors/:vendor", validate("aiVendorSet"), c.aiVendorSet);
-router.post("/ai-vendors/:vendor/test", c.aiVendorTest);
+router.get("/ai-vendors", requireCap("settings.read"), c.aiVendorsList);
+router.put("/ai-vendors/:vendor", requireCap("settings.write"), validate("aiVendorSet"), c.aiVendorSet);
+router.post("/ai-vendors/:vendor/test", requireCap("settings.write"), c.aiVendorTest);
 
 module.exports = router;

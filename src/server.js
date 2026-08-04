@@ -20,6 +20,8 @@ const { initRedis } = require("./config/redis");
 const routes = require("./routes");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
+const { buildAccessLog } = require("./middleware/access-log");
+const { initRateLimitStore } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
 const storage = require("./services/storage.service");
 
@@ -73,7 +75,12 @@ function buildCorsOptions() {
 function buildApp() {
   const app = express();
   app.disable("x-powered-by");
-  app.set("trust proxy", true);
+  // SEC-H5 (2026-08-04): was `true`, i.e. "trust the entire X-Forwarded-For
+  // chain". The left of that chain is written by the client, so req.ip — and
+  // therefore every IP-keyed rate limiter and every audit row's `ip` — was
+  // attacker-controlled. A hop count makes Express take the address the proxy we
+  // actually run appended. See TRUST_PROXY_HOPS in config/env.js.
+  app.set("trust proxy", config.TRUST_PROXY_HOPS > 0 ? config.TRUST_PROXY_HOPS : false);
   // Helmet with the default CSP relaxed on exactly two knobs. The Control Tower
   // renders the Lovable mock in an <iframe srcDoc> whose document INHERITS this
   // page's CSP: its live-data bridge is an inline <script> (needs
@@ -98,6 +105,11 @@ function buildApp() {
   );
   app.use(cors(buildCorsOptions()));
   app.use(requestIdMiddleware);
+  // OBS-L1/L3/T2: the HTTP access log. pino-http was a declared dependency
+  // mounted nowhere, so there was no record of who called what, with what
+  // status, or how long it took — and no log line anywhere carried a tenant.
+  // Mounted after requestIdMiddleware so every line shares that correlation id.
+  app.use(buildAccessLog());
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
 
@@ -213,15 +225,59 @@ function installProcessGuards() {
   process.on("unhandledRejection", (reason) => {
     logger.error({ err: reason }, "unhandledRejection (kept alive)");
   });
+
+  // OBS-E4. This used to swallow uncaughtException and keep going, which is
+  // the one case where staying up is worse than falling over: after an
+  // uncaught throw the process's state is undefined — a half-finished
+  // transaction, a released-twice pool client, a module mid-initialisation —
+  // and it will keep accepting traffic and serving wrong answers rather than
+  // failing where someone can see it.
+  //
+  // Exit non-zero and let the supervisor restart a clean process. That needs
+  // `restart: unless-stopped` on the compose services (OBS-A4, see
+  // doc/MONITORING_SETUP.md §3); without it this trades a poisoned process for
+  // a dead one, which is still the better trade — a dead process fails the
+  // readiness probe and pages someone, whereas a poisoned one does not.
+  //
+  // The flush delay exists because pino's transport is asynchronous: exiting
+  // immediately loses the very log line explaining why.
   process.on("uncaughtException", (err) => {
-    logger.error({ err }, "uncaughtException (kept alive)");
+    logger.error({ err }, "uncaughtException — exiting so the supervisor restarts a clean process");
+    setTimeout(() => process.exit(1), 100).unref();
   });
+}
+
+/**
+ * OBS-A1. There is no alerting in this system. The repo side is wired (see
+ * doc/MONITORING_SETUP.md), but it needs a webhook or an address, and neither
+ * can be committed. Say so loudly at boot rather than looking healthy: an
+ * unconfigured alert channel and a working one are indistinguishable right up
+ * until the night they aren't.
+ */
+function warnIfUnmonitored() {
+  if (!config.ALERT_WEBHOOK_URL && !config.ALERT_EMAIL) {
+    logger.warn(
+      {},
+      "NO ALERT DESTINATION CONFIGURED — set ALERT_WEBHOOK_URL or ALERT_EMAIL. " +
+        "Nothing will notify anyone when this process fails. See doc/MONITORING_SETUP.md",
+    );
+  }
 }
 
 function start() {
   installProcessGuards();
+  warnIfUnmonitored();
   const app = buildApp();
-  initRedis().catch((err) => logger.warn({ err: err.message }, "redis unavailable at boot — continuing without it"));
+  initRedis()
+    // SEC-C3/H5: the auth limiters are Redis-backed so a limit of N means N
+    // across the api + api-standby pair, not N per container. Wired after the
+    // connection is up; falls back to an in-process store with a loud warning
+    // if Redis is down (see shared/http/rate-limit.js).
+    .then(() => initRateLimitStore())
+    .catch((err) => {
+      logger.warn({ err: err.message }, "redis unavailable at boot — continuing without it");
+      initRateLimitStore();
+    });
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );

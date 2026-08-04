@@ -1,4 +1,6 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 /*
  * ======================================================================================
  * SMART LS ENTERPRISE - SUCCESS STORIES & PORTFOLIO API
@@ -95,7 +97,7 @@ try {
                 // AI Follow-up Logic: If the user spoke less than 20 words, ask a probing question
                 $followUpQuestion = null;
                 if ($wordCount > 0 && $wordCount < 20) {
-                    $gemini_api_key = 'AIzaSyD5-sd_MX-feoIGhYdK4zdNfO8PnQbSFHU'; // Replace with Gemini Key
+                    $gemini_api_key = '__REMOVED_ROTATE_ME__'; // Replace with Gemini Key
                     $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $gemini_api_key;
                     
                     $prompt = "A logistics sales rep just dictated notes for a case study about a '$serviceType' operation, but it was very brief: '$transcribedText'. Ask exactly ONE short, punchy follow-up question to extract a specific metric or challenge overcome to make the case study better. Do not use quotes.";
@@ -141,7 +143,7 @@ try {
 
             $aggregatedDataJson = json_encode($opsData);
 
-            $gemini_api_key = 'AIzaSyD5-sd_MX-feoIGhYdK4zdNfO8PnQbSFHU'; 
+            $gemini_api_key = '__REMOVED_ROTATE_ME__'; 
             $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $gemini_api_key;
 
             $prompt = "You are an expert B2B Logistics Marketing Copywriter.

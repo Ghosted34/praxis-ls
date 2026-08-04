@@ -83,12 +83,57 @@ jobs:
         # Catches a key pasted into a commit. The repo has real history here: the
         # kickoff shared provider keys in plaintext (Gemini/DeepSeek/Groq/
         # exchangerate) and they had to be rotated. `.env` ships placeholders like
-        # __rotate_me__, which are deliberately NOT matched below.
+        # __rotate_me__, which are deliberately NOT matched (see PLACEHOLDER).
+        #
+        # 2026-08-04 (audit SEC-C1 / TC-CI5). Two independent defects were fixed
+        # here, and BOTH were needed — either alone leaves the scan useless:
+        #
+        #   1. ':!doc/reference' excluded the one directory that actually held
+        #      live credentials. Five files: three legacy `config/db.php`, an
+        #      inline `new mysqli(...)` in administration/index.php, and an
+        #      Office365 SMTP user/password in a test view. Exclusion removed.
+        #      Vendor trees are still skipped — they are third-party source, and
+        #      phpmailer's own README carries example credentials.
+        #
+        #   2. The pattern set only matched provider API keys (sk-, AIza, gsk_,
+        #      PEM, AKIA). NONE of it matches `$DB_PASS = '…'`. So even scanning
+        #      doc/reference would have passed those five files clean. Database
+        #      credentials, SMTP credentials and URL-embedded passwords are now
+        #      matched too.
+        #
+        # Adding a pattern here is cheap. Leaving one out is how the last set got
+        # committed — so if you find a credential shape this misses, add it in
+        # the same commit as the fix.
         run: |
           set -euo pipefail
-          PATTERN='(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|gsk_[A-Za-z0-9]{40,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})'
-          if git grep -nIE "$PATTERN" -- . ':!doc/reference' ':!*.lock' ':!package-lock.json'; then
-            echo "::error::Possible secret committed — rotate it and purge from history."
+          PATTERNS=(
+            # provider API keys / private keys
+            'sk-[A-Za-z0-9]{20,}'
+            'AIza[0-9A-Za-z_-]{35}'
+            'gsk_[A-Za-z0-9]{40,}'
+            '-----BEGIN [A-Z ]*PRIVATE KEY-----'
+            'AKIA[0-9A-Z]{16}'
+            # database credentials assigned inline (PHP/JS/shell)
+            '\$DB_(PASS|PASSWORD)[[:space:]]*=[[:space:]]*.[^"'"'"']'
+            'new mysqli\([[:space:]]*.[a-zA-Z0-9]'
+            # SMTP credentials
+            '(SMTPPassword|->Password)[[:space:]]*=[[:space:]]*.[^"'"'"']'
+            # passwords embedded in connection strings
+            '(postgres(ql)?|mysql|mongodb|redis|amqp)://[^[:space:]:/@]+:[^[:space:]@]+@'
+          )
+          # Values that are obviously not real. Keep this list tight: every entry
+          # is a hole, and a scanner that matches nothing is worse than none.
+          PLACEHOLDER='(__rotate_me__|__REMOVED_ROTATE_ME__|changeme|change-me|dev-[a-z-]*secret|YOUR_|example\.com|<[a-z_]+>|placeholder|xxxx)'
+          FOUND=0
+          for p in "${PATTERNS[@]}"; do
+            if git grep -nIE "$p" -- . ':!*.lock' ':!package-lock.json' \
+                 ':!**/vendor/**' ':!**/node_modules/**' \
+               | grep -vEi "$PLACEHOLDER"; then
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "::error::Possible secret committed — rotate it at the provider, THEN remove it. Deleting the file is not the fix."
             exit 1
           fi
           echo "No secret patterns found."

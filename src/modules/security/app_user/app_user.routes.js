@@ -7,18 +7,22 @@
  */
 "use strict";
 const express = require("express");
-const rateLimit = require("express-rate-limit");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./app_user.controller");
 const validator = require("./app_user.validator");
-
-// Abuse guards on the PUBLIC recovery endpoints. forgot-password is the
-// enumeration/spam surface (per IP); reset-password is a token-guessing surface
-// (per IP). Both fail with a generic 429 so they leak nothing.
-const RL = { windowMs: 15 * 60 * 1000, standardHeaders: true, legacyHeaders: false, message: { error: { code: "RATE_LIMITED", message: "Too many attempts. Please try again later." } } };
-const forgotLimiter = rateLimit({ ...RL, max: 5 });
-const resetLimiter = rateLimit({ ...RL, max: 10 });
+// Abuse guards. Moved to shared/http/rate-limit.js on 2026-08-04 (audit SEC-C3
+// + SEC-H5): the limiters that existed here were in-memory (so a two-container
+// deploy allowed 2x the configured max) and covered only the recovery
+// endpoints, leaving login, refresh, 2FA verify and PIN login unthrottled.
+const {
+  loginLimiter,
+  refreshLimiter,
+  totpLimiter,
+  pinLimiter,
+  forgotLimiter,
+  resetLimiter,
+} = require("../../../shared/http/rate-limit");
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
 // one deliberately-ungated security module, see doc/WORK_TO_BE_DONE.md Phase 0).
@@ -49,8 +53,11 @@ usersRouter.put("/:id/email-signature", requirePermission(MODULE, "edit"), valid
 // need for a session on the /2fa/verify leg); logout and the 2FA
 // enroll/enable/disable lifecycle require a valid access token.
 const authRouter = express.Router();
-authRouter.post("/login", validator.login, controller.login);
-authRouter.post("/refresh", validator.refresh, controller.refresh);
+// SEC-C3: every one of the four public token-obtaining routes below was
+// unthrottled until 2026-08-04. The limiter goes BEFORE the validator so a
+// malformed flood is cheap to reject.
+authRouter.post("/login", loginLimiter, validator.login, controller.login);
+authRouter.post("/refresh", refreshLimiter, validator.refresh, controller.refresh);
 // Self-service password recovery (public: this is how a locked-out user gets
 // back in). forgot-password always returns { ok: true } (no user enumeration).
 authRouter.post("/forgot-password", forgotLimiter, validator.forgotPassword, controller.forgotPassword);
@@ -59,7 +66,8 @@ authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
 // Self-service profile picture upload (base64 data URL → /media, sets avatar_ref).
 authRouter.post("/avatar", authMiddleware, validator.avatar, controller.setAvatar);
-authRouter.post("/2fa/verify", validator.verifyTotp, controller.verifyTotp);
+// A 6-digit TOTP is a 10^6 space on a ~30s window — the tightest limiter here.
+authRouter.post("/2fa/verify", totpLimiter, validator.verifyTotp, controller.verifyTotp);
 authRouter.post("/2fa/setup", authMiddleware, controller.setupTotp);
 authRouter.post("/2fa/enable", authMiddleware, validator.totpCode, controller.enableTotp);
 authRouter.post("/2fa/disable", authMiddleware, validator.totpCode, controller.disableTotp);
@@ -67,7 +75,7 @@ authRouter.post("/2fa/disable", authMiddleware, validator.totpCode, controller.d
 // Device-bound quick PIN login. /pin/login is public (it's a way to obtain a
 // token); register/list/revoke require a valid access token (the device is
 // trusted precisely because the user was fully signed in when registering it).
-authRouter.post("/pin/login", validator.pinLogin, controller.pinLogin);
+authRouter.post("/pin/login", pinLimiter, validator.pinLogin, controller.pinLogin);
 authRouter.post("/pin/register", authMiddleware, validator.pinRegister, controller.pinRegister);
 authRouter.get("/pin/devices", authMiddleware, controller.pinDevices);
 authRouter.delete("/pin/devices/:deviceId", authMiddleware, controller.pinRevoke);

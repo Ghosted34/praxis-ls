@@ -51,25 +51,113 @@ function discover() {
   return found;
 }
 
+/**
+ * basePaths that more than one module is allowed to share.
+ *
+ * Nothing should be added here without a reason written next to it. The point
+ * of the guard below is that a collision becomes a decision instead of an
+ * accident.
+ *
+ * "/inbound" — GRANDFATHERED 2026-08-04, must not be extended.
+ *   `sales/inbound_intake` (MOD-25, feature:null) and `wms/inbound` (MOD-33,
+ *   feature:"wms") both mount here. Today the path sets are disjoint — sales
+ *   owns /enquiries* and /partnerships*, WMS owns /, /:id, /:id/qa — so
+ *   requests fall through the first router into the second and land correctly.
+ *   It works by accident of discovery order, and it is already observably
+ *   wrong: with WMS disabled for a tenant, GET /inbound 403s FEATURE_DISABLED
+ *   while GET /inbound/enquiries returns 200 on the same namespace.
+ *
+ *   The fix is to move one of them (API F-6 suggests sales → /intake/*), which
+ *   changes a public URL and needs the client updated in the same release. That
+ *   is a deliberate breaking change, not a Phase 1 item, so it is NOT done here.
+ *   What IS done here: the collision can no longer grow silently, and the next
+ *   one fails at boot.
+ *
+ *   Tracked as API F-6. Remove this entry when the move lands.
+ */
+const ALLOWED_SHARED_BASEPATHS = new Set(["/inbound"]);
+
+/**
+ * The last mount result, for the readiness probe and the CI manifest check.
+ * @type {{ mounted: string[], skipped: Array<{module: string, error: string}> }}
+ */
+let lastMount = { mounted: [], skipped: [] };
+
+/** What the loader actually mounted on the most recent call. */
+function mountReport() {
+  return lastMount;
+}
+
 function mountTenantModules(tenantRouter) {
   const mounted = [];
+  const skipped = [];
+  const byBasePath = new Map();
+
   for (const m of discover()) {
+    const name = `${m.group}/${m.module}`;
     let def;
     try {
       // dynamic require: module path is discovered at runtime (trusted, local)
       def = require(m.routesFile);
     } catch (err) {
-      logger.warn({ module: `${m.group}/${m.module}`, err: err.message }, "skipped module (load error)");
+      // API F-19 (2026-08-04): this used to warn and continue, silently. A typo
+      // in one module's dependency chain removed its ENTIRE route family from a
+      // running deployment, and consumers got 404 NOT_FOUND — indistinguishable
+      // from "you got the URL wrong". The rationale (one bad module must not
+      // crash boot) is sound and is kept; the missing half was that nothing
+      // recorded the loss. It is now recorded, surfaced on /api/health/ready,
+      // and logged at ERROR rather than WARN, because a missing module IS an
+      // outage of that module.
+      logger.error({ module: name, err: err.message }, "SKIPPED MODULE (load error) — its routes are absent from this process");
+      skipped.push({ module: name, error: err.message });
       continue;
     }
     if (!def || !def.router) continue;
+
     const basePath = def.basePath || `/${m.module}`;
+
+    // API F-6 (2026-08-04): `sales/inbound_intake` and `wms/inbound` BOTH
+    // declared basePath "/inbound". Express mounts each in discovery order and
+    // falls through from the first router to the second, so it worked purely
+    // because their path sets happened to be disjoint — while enforcing
+    // different permission modules (MOD-25 vs MOD-33) and different feature
+    // gates (feature:null vs feature:"wms") on one namespace. The day either
+    // module adds a route the other already has, one silently shadows the other.
+    //
+    // Fail at boot, not in production. A collision is a five-second fix while
+    // you are looking at it and a very expensive one six months later.
+    const prior = byBasePath.get(basePath);
+    if (prior && !ALLOWED_SHARED_BASEPATHS.has(basePath)) {
+      throw new Error(
+        `Duplicate tenant basePath "${basePath}": ${prior} and ${name} both mount it. ` +
+          "Two modules on one namespace shadow each other's routes and enforce different " +
+          "permissions on the same URL. Give one of them its own basePath, or add the path " +
+          "to ALLOWED_SHARED_BASEPATHS with a reason.",
+      );
+    }
+    byBasePath.set(basePath, name);
+
     const chain = def.feature ? [requireFeature(def.feature)] : [];
     tenantRouter.use(basePath, ...chain, def.router);
-    mounted.push(`${m.group}/${m.module}`);
+    mounted.push(name);
     logger.info({ group: m.group, module: m.module, basePath }, "mounted tenant module");
   }
+
+  if (skipped.length) {
+    logger.error(
+      { skipped: skipped.map((s) => s.module), count: skipped.length },
+      "one or more tenant modules failed to load — this process is serving an INCOMPLETE API",
+    );
+  }
+
+  lastMount = { mounted, skipped };
   return mounted;
 }
 
-module.exports = { discover, mountTenantModules, MODULES_DIR };
+module.exports = {
+  discover,
+  mountTenantModules,
+  mountReport,
+  ALLOWED_SHARED_BASEPATHS,
+  MODULES_DIR,
+};

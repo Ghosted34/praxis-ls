@@ -91,11 +91,59 @@ const REDACT_PATHS = [
   "error.detail",
 ];
 
+/**
+ * Attach the ambient tenant/user to EVERY log line (audit OBS-L3, Critical).
+ *
+ * The audit found that of ~120 logger call sites, not one carried a tenant
+ * identifier and only a handful carried a user. In a database-per-tenant ERP
+ * that means an error spike cannot answer the first question anyone asks in an
+ * incident — "is one tenant broken, or is everyone broken?"
+ *
+ * The obvious fix is to add `{ tenant }` to 120 call sites. That is the wrong
+ * fix twice over: it is a large mechanical diff that will miss some, and every
+ * log line written afterwards has to remember. A pino `mixin` runs on every
+ * line and reads the AsyncLocalStorage that `config/request-context.js` already
+ * populates for RLS — so existing call sites need no edit, and new ones cannot
+ * forget.
+ *
+ * Notes:
+ *   - `require` is inside the function to avoid a require-time cycle:
+ *     request-context is dependency-free, but logger is required extremely
+ *     early (env.js, boot) and this keeps the edge one-directional.
+ *   - Nothing is emitted when there is no context — background workers, crons
+ *     and boot legitimately have none, and `tenant: null` on every line of a
+ *     worker log is noise, not signal.
+ *   - Explicit fields WIN. `mixinMergeStrategy` puts the call site's own object
+ *     last, so `logger.info({ tenant: other }, …)` is not silently overwritten
+ *     by the ambient value.
+ *   - `cross_tenant` is surfaced rather than hidden: a CEO/group request reading
+ *     across tenants is exactly what you want to be able to find later.
+ */
+function contextMixin() {
+  let ctx;
+  try {
+    ctx = require("./request-context").get();
+  } catch {
+    return {};
+  }
+  if (!ctx) return {};
+  const out = {};
+  if (ctx.tenant) out.tenant = ctx.tenant;
+  if (ctx.userId) out.user_id = ctx.userId;
+  if (ctx.crossTenant) out.cross_tenant = true;
+  return out;
+}
+
 const baseConfig = {
   level: process.env.LOG_LEVEL || "info",
   base: {
     app: process.env.APP_NAME || "praxis-ls-api",
     env: process.env.NODE_ENV || "development",
+  },
+  mixin: contextMixin,
+  // Call-site fields take precedence over the ambient ones.
+  mixinMergeStrategy(mergeObject, mixinObject) {
+    return Object.assign({}, mixinObject, mergeObject);
   },
   redact: {
     paths: REDACT_PATHS,
@@ -118,4 +166,4 @@ const logger = isDev
     })
   : pino(baseConfig);
 
-module.exports = { logger, REDACT_PATHS };
+module.exports = { logger, REDACT_PATHS, contextMixin };

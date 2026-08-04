@@ -28,6 +28,7 @@ const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
 const identityCache = require("../shared/cache/identity-cache");
+const requestContext = require("../config/request-context");
 
 async function authMiddleware(req, _res, next) {
   const header = req.headers.authorization;
@@ -79,6 +80,15 @@ async function authMiddleware(req, _res, next) {
     jwt_iat: payload.iat,
     jwt_jti: payload.jti,
   };
+
+  // OBS-L3. `tenantContext` binds the ambient request-context BEFORE auth runs,
+  // so the userId it captured was always null — every log line would have
+  // carried a tenant and an empty user. The AsyncLocalStorage store is a live
+  // object for the remainder of the request, so filling it in here means the
+  // logger mixin (config/logger.js) and every downstream `SET LOCAL
+  // app.current_user_id` see the real actor.
+  const ctx = requestContext.get();
+  if (ctx) ctx.userId = user.user_id;
 
   return next();
 }

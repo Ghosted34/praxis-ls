@@ -18,6 +18,8 @@
  * portal token. Neither can borrow the other's credentials by accident.
  */
 import * as React from "react";
+import { Panel } from "@/components/ui/panel";
+import { num, dateFmt } from "@/lib/format";
 import { Routes, Route, Navigate, useNavigate, useSearchParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -222,22 +224,8 @@ function PortalSetPassword() {
 
 /* ── the portal itself ──────────────────────────────────────────────────── */
 
-const money = (v: string | number | null) => {
-  if (v === null || v === undefined || v === "") return "—";
-  const n = Number(v);
-  return Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 0 }) : String(v);
-};
-const day = (v: string | null) => (v ? new Date(v).toLocaleDateString() : "—");
 const label = (s: string) => (s || "").replace(/_/g, " ").toLowerCase().replace(/^./, (c) => c.toUpperCase());
 
-function Panel({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h2 className="mb-3 font-display text-lg text-foreground">{title}</h2>
-      {children}
-    </section>
-  );
-}
 
 /* ── investor terminal ──────────────────────────────────────────────────── */
 
@@ -245,7 +233,7 @@ function Kpi({ label: k, value, hint }: { label: string; value: number; hint?: s
   return (
     <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
       <p className="text-xs uppercase tracking-[0.14em] text-muted-foreground">{k}</p>
-      <p className="num mt-2 text-2xl text-foreground">{money(value)}</p>
+      <p className="num mt-2 text-2xl text-foreground">{num(value)}</p>
       {hint ? <p className="mt-1 text-xs text-muted-foreground">{hint}</p> : null}
     </div>
   );
@@ -255,7 +243,7 @@ function Line({ label: k, value, strong = false }: { label: string; value: numbe
   return (
     <div className={`flex items-center justify-between py-2 ${strong ? "border-t border-border font-semibold" : ""}`}>
       <span className={strong ? "text-sm text-foreground" : "text-sm text-muted-foreground"}>{k}</span>
-      <span className="num text-sm text-foreground">{money(value)}</span>
+      <span className="num text-sm text-foreground">{num(value)}</span>
     </div>
   );
 }
@@ -285,7 +273,7 @@ function InvestorTerminal({ me }: { me: PortalMe }) {
         Financial position{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {day(view.period.from)} to {day(view.period.to)} · {view.basis} basis
+        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis} basis
       </p>
 
       <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -366,8 +354,8 @@ function AuditorTerminal({ me }: { me: PortalMe }) {
         Audit room{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {day(view.period.from)} to {day(view.period.to)} · {view.basis} basis
-        {me.grants.AUDITOR?.expires_at ? ` · access to ${day(me.grants.AUDITOR.expires_at)}` : ""}
+        {dateFmt(view.period.from)} to {dateFmt(view.period.to)} · {view.basis} basis
+        {me.grants.AUDITOR?.expires_at ? ` · access to ${dateFmt(me.grants.AUDITOR.expires_at)}` : ""}
       </p>
       <p className="mt-3 rounded-xl border border-border bg-card p-3 text-xs text-muted-foreground">{view.disclosure}</p>
 
@@ -405,16 +393,16 @@ function AuditorTerminal({ me }: { me: PortalMe }) {
                   {tb.rows.map((r) => (
                     <tr key={r.account_code}>
                       <td className="py-2 text-foreground">{r.account_code}</td>
-                      <td className="num py-2 text-right text-foreground">{money(r.debit)}</td>
-                      <td className="num py-2 text-right text-foreground">{money(r.credit)}</td>
+                      <td className="num py-2 text-right text-foreground">{num(r.debit)}</td>
+                      <td className="num py-2 text-right text-foreground">{num(r.credit)}</td>
                     </tr>
                   ))}
                 </tbody>
                 <tfoot className="border-t border-border">
                   <tr>
                     <td className="py-2 font-semibold text-foreground">Total</td>
-                    <td className="num py-2 text-right font-semibold text-foreground">{money(tb.totals.debit)}</td>
-                    <td className="num py-2 text-right font-semibold text-foreground">{money(tb.totals.credit)}</td>
+                    <td className="num py-2 text-right font-semibold text-foreground">{num(tb.totals.debit)}</td>
+                    <td className="num py-2 text-right font-semibold text-foreground">{num(tb.totals.credit)}</td>
                   </tr>
                 </tfoot>
               </table>
@@ -438,7 +426,7 @@ function AuditorTerminal({ me }: { me: PortalMe }) {
                     </div>
                     <div className="shrink-0 text-right">
                       <p className="text-sm text-foreground">{t.actor_name || "System"}</p>
-                      <p className="text-xs text-muted-foreground">{day(t.created_at)}</p>
+                      <p className="text-xs text-muted-foreground">{dateFmt(t.created_at)}</p>
                     </div>
                   </li>
                 ))}
@@ -482,7 +470,7 @@ function ClientTerminal({ me }: { me: PortalMe }) {
         Welcome{me.portal_user.full_name ? `, ${me.portal_user.full_name.split(" ")[0]}` : ""}
       </h1>
       <p className="mt-1 text-sm text-muted-foreground">
-        {me.grants.CLIENT.expires_at ? `Your access runs to ${day(me.grants.CLIENT.expires_at)}.` : "Your current shipments and invoices."}
+        {me.grants.CLIENT.expires_at ? `Your access runs to ${dateFmt(me.grants.CLIENT.expires_at)}.` : "Your current shipments and invoices."}
       </p>
 
       <div className="mt-8 grid gap-6 lg:grid-cols-2">
@@ -497,7 +485,7 @@ function ClientTerminal({ me }: { me: PortalMe }) {
                 <li key={d.dossier_id} className="flex items-center justify-between py-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">{d.ref}</p>
-                    <p className="text-xs text-muted-foreground">Opened {day(d.created_at)}</p>
+                    <p className="text-xs text-muted-foreground">Opened {dateFmt(d.created_at)}</p>
                   </div>
                   <span className="status">{label(d.status)}</span>
                 </li>
@@ -517,10 +505,10 @@ function ClientTerminal({ me }: { me: PortalMe }) {
                 <li key={i.invoice_id} className="flex items-center justify-between py-3">
                   <div>
                     <p className="text-sm font-medium text-foreground">{i.doc_number || "—"}</p>
-                    <p className="text-xs text-muted-foreground">Due {day(i.payment_due_on)}</p>
+                    <p className="text-xs text-muted-foreground">Due {dateFmt(i.payment_due_on)}</p>
                   </div>
                   <div className="text-right">
-                    <p className="num text-sm text-foreground">{money(i.total_ttc)}</p>
+                    <p className="num text-sm text-foreground">{num(i.total_ttc)}</p>
                     <span className="status">{label(i.status)}</span>
                   </div>
                 </li>

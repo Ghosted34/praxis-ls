@@ -6,7 +6,8 @@
  *   - ExtraChargeSimulationsPage→ /extra-charge-simulations  (demurrage)
  *   - PricingVariancePage       → /pricing-variance  (Sales R/Y/G view + compute)
  *
- * Shared primitives + Pixie-tinted design come from features/sales/ui.tsx.
+ * Shared primitives come from components/ui/* (the shadow features/sales/ui.tsx
+ * they used to live in was deleted in Phase 2 — audit A2).
  * AI panels are gated globally (components/ai-actions.tsx).
  */
 import { pageShell } from "@/lib/layout";
@@ -21,7 +22,12 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Chips, MetricTile, SearchSelect } from "@/features/sales/ui";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell, dateFmt, money } from "@/lib/format";
+import { StatusPill } from "@/components/ui/pill";
+import { Chips } from "@/components/ui/chips";
+import { Stat } from "@/components/ui/stat";
+import { SearchSelect } from "@/components/ui/search-select";
 import { DocButton } from "@/components/doc-button";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
@@ -212,7 +218,7 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
                 </div>
                 <Input type="number" min="0" step="1" className="num w-16 text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="qty" />
                 <Input type="number" min="0" step="1" className="num w-28 text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="unit price" />
-                <span className="w-28 text-right text-sm text-muted-foreground">{fmtMoney(qLineTotal(l), currency)}</span>
+                <span className="w-28 text-right text-sm text-muted-foreground">{money(qLineTotal(l), currency)}</span>
                 <Button size="sm" variant="ghost" onClick={() => setLines((rs) => rs.filter((_, idx) => idx !== i))}>
                   ✕
                 </Button>
@@ -241,7 +247,7 @@ function QuotationForm({ open, editing, entities, clients, opportunities, onClos
               </div>
             </div>
           ))}
-          <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {fmtMoney(total, currency)}</div>
+          <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {money(total, currency)}</div>
           <p className="text-right text-xs text-muted-foreground">VAT is applied server-side from each line's tax code (débours lines are never taxed); totals refresh on save.</p>
         </div>
 
@@ -312,9 +318,9 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge label={status || "DRAFT"} />
+              <StatusPill status={status || "DRAFT"} />
               {data?.client_id ? <span className="text-xs text-muted-foreground">{clientName.get(String(data.client_id)) ?? "Client"}</span> : null}
-              {data?.valid_until ? <span className="text-xs text-muted-foreground">valid until {when(data.valid_until)}</span> : null}
+              {data?.valid_until ? <span className="text-xs text-muted-foreground">valid until {dateFmt(data.valid_until)}</span> : null}
               <span className="ml-auto"><DocButton docType="QUOTATION" id={id} title={quotation?.doc_number ? String(quotation.doc_number) : "Quotation"} /></span>
             </div>
 
@@ -333,15 +339,15 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
                       {l.is_debours ? <span className="ml-1 text-xs text-muted-foreground">(débours)</span> : null}
                     </span>
                     <span className="w-12 text-right">{cell(l.qty)}</span>
-                    <span className="w-24 text-right">{fmtMoney(l.unit_price, data?.currency)}</span>
-                    <span className="w-28 text-right">{fmtMoney(qLineTotal(l), data?.currency)}</span>
+                    <span className="w-24 text-right">{money(l.unit_price, data?.currency)}</span>
+                    <span className="w-28 text-right">{money(qLineTotal(l), data?.currency)}</span>
                   </div>
                 ))}
               </div>
             )}
             <div className="flex flex-col items-end gap-0.5 text-sm">
-              <span className="text-muted-foreground">Total HT: {fmtMoney(data?.total_ht, data?.currency)}</span>
-              <span className="font-semibold">Total TTC: {fmtMoney(data?.total_ttc, data?.currency)}</span>
+              <span className="text-muted-foreground">Total HT: {money(data?.total_ht, data?.currency)}</span>
+              <span className="font-semibold">Total TTC: {money(data?.total_ttc, data?.currency)}</span>
             </div>
 
             {action === "send" && (
@@ -423,12 +429,11 @@ function QuotationDetail({ quotation, entities, clientName, onClose, onChanged, 
 }
 
 export function QuotationsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/quotations", nonce);
-  const { rows: entities } = useList("/entities", nonce);
-  const { rows: clients } = useList("/clients", nonce);
-  const { rows: opportunities } = useList("/opportunities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/quotations");
+  const { rows: entities } = useList("/entities");
+  const { rows: clients } = useList("/clients");
+  const { rows: opportunities } = useList("/opportunities");
   const [filter, setFilter] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
@@ -449,7 +454,7 @@ export function QuotationsPage() {
       <HubTabs />
 
       <div className="mb-4">
-        <Chips value={filter} options={QUOTE_FILTERS} onChange={setFilter} />
+        <Chips label="Filter quotations by status" value={filter} options={QUOTE_FILTERS} onChange={setFilter} />
       </div>
 
       {error ? (
@@ -469,13 +474,13 @@ export function QuotationsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{r.doc_number ? `№ ${cell(r.doc_number)}` : "Draft"}</p>
-                  <Badge label={String(r.status || "DRAFT")} />
+                  <StatusPill status={String(r.status || "DRAFT")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
-                  {r.client_id ? clientName.get(String(r.client_id)) ?? "Client" : "No client"} · {when(r.created_at)}
+                  {r.client_id ? clientName.get(String(r.client_id)) ?? "Client" : "No client"} · {dateFmt(r.created_at)}
                 </p>
               </div>
-              <span className="text-sm font-semibold text-foreground">{fmtMoney(r.total_ttc ?? r.total_ht, r.currency)}</span>
+              <span className="text-sm font-semibold text-foreground">{money(r.total_ttc ?? r.total_ht, r.currency)}</span>
             </button>
           ))}
         </div>
@@ -596,10 +601,10 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
 
         {totals && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <MetricTile label="Total cost" value={fmtMoney(totals.total_cost, currency)} />
-            <MetricTile label="Total price" value={fmtMoney(totals.total_price, currency)} />
-            <MetricTile label="Margin" value={fmtMoney(totals.margin_amount, currency)} accent />
-            <MetricTile label="Margin %" value={totals.margin_percent != null ? `${cell(totals.margin_percent)}%` : "—"} accent />
+            <Stat label="Total cost" value={money(totals.total_cost, currency)} />
+            <Stat label="Total price" value={money(totals.total_price, currency)} />
+            <Stat label="Margin" value={money(totals.margin_amount, currency)} tone="accent" />
+            <Stat label="Margin %" value={totals.margin_percent != null ? `${cell(totals.margin_percent)}%` : "—"} tone="accent" />
           </div>
         )}
 
@@ -618,9 +623,8 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
 }
 
 export function MarginSimulationsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/margin-simulations", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/margin-simulations");
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
@@ -644,11 +648,11 @@ export function MarginSimulationsPage() {
           {rows.map((r) => (
             <div key={String(r.margin_simulation_id)} className="lux-card p-4">
               <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">{when(r.created_at)}</span>
+                <span className="text-xs text-muted-foreground">{dateFmt(r.created_at)}</span>
                 <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{r.margin_percent != null ? `${cell(r.margin_percent)}%` : "—"}</span>
               </div>
-              <p className="mt-2 text-sm font-semibold text-foreground">{fmtMoney(r.total_price, r.currency)}</p>
-              <p className="text-xs text-muted-foreground">cost {fmtMoney(r.total_cost, r.currency)}</p>
+              <p className="mt-2 text-sm font-semibold text-foreground">{money(r.total_price, r.currency)}</p>
+              <p className="text-xs text-muted-foreground">cost {money(r.total_cost, r.currency)}</p>
             </div>
           ))}
         </div>
@@ -789,16 +793,16 @@ function ExtraSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () =
         {computed && (
           <div className="space-y-2">
             <div className="grid grid-cols-3 gap-3">
-              <MetricTile label="Chargeable days" value={String(computed.chargeable_days ?? "—")} />
-              <MetricTile label="Free days" value={String(computed.free_days ?? "—")} />
-              <MetricTile label="Total" value={fmtMoney(computed.total_amount, currency)} accent />
+              <Stat label="Chargeable days" value={String(computed.chargeable_days ?? "—")} />
+              <Stat label="Free days" value={String(computed.free_days ?? "—")} />
+              <Stat label="Total" value={money(computed.total_amount, currency)} tone="accent" />
             </div>
             {breakdown.length > 0 && (
               <div className="max-h-40 overflow-y-auto rounded-lg border text-sm">
                 {breakdown.map((b) => (
                   <div key={String(b.day)} className="flex justify-between border-b px-3 py-1 last:border-0">
                     <span className="text-muted-foreground">Day {cell(b.day)}</span>
-                    <span>{fmtMoney(b.rate, currency)}</span>
+                    <span>{money(b.rate, currency)}</span>
                   </div>
                 ))}
               </div>
@@ -821,9 +825,8 @@ function ExtraSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () =
 }
 
 export function ExtraChargeSimulationsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/extra-charge-simulations", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/extra-charge-simulations");
   const [formOpen, setFormOpen] = React.useState(false);
 
   return (
@@ -848,10 +851,10 @@ export function ExtraChargeSimulationsPage() {
             <div key={String(r.extra_charge_simulation_id)} className="lux-card p-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-semibold text-foreground">{cell(r.shipping_line) === "—" ? "Demurrage" : cell(r.shipping_line)}</span>
-                <span className="text-xs text-muted-foreground">{when(r.created_at)}</span>
+                <span className="text-xs text-muted-foreground">{dateFmt(r.created_at)}</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{cell(r.container_variant)} · {r.free_days != null ? `${cell(r.free_days)} free days` : "—"}</p>
-              <p className="mt-2 text-sm font-semibold text-primary">{fmtMoney(r.total_amount, r.currency)}</p>
+              <p className="mt-2 text-sm font-semibold text-primary">{money(r.total_amount, r.currency)}</p>
             </div>
           ))}
         </div>
@@ -929,7 +932,7 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
   })();
   const quotationLabel = (() => {
     const q = (quotations || []).find((x) => String(x.quotation_id) === quotationId);
-    return q ? (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${fmtMoney(q.total_ht, q.currency)}`) : null;
+    return q ? (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${money(q.total_ht, q.currency)}`) : null;
   })();
 
   return (
@@ -950,7 +953,7 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
             path="/quotations"
             value={quotationLabel}
             placeholder="Search quotations…"
-            getLabel={(q) => (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${fmtMoney(q.total_ht, q.currency)}`)}
+            getLabel={(q) => (q.doc_number ? `№ ${cell(q.doc_number)}` : `Draft · ${money(q.total_ht, q.currency)}`)}
             getKey={(q) => String(q.quotation_id)}
             onSelect={(q) => setQuotationId(String(q.quotation_id))}
           />
@@ -978,11 +981,10 @@ function ComputeVarianceModal({ open, dossiers, quotations, onClose, onDone }: {
 }
 
 export function PricingVariancePage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/pricing-variance", nonce);
-  const { rows: dossiers } = useList("/operations", nonce);
-  const { rows: quotations } = useList("/quotations", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/pricing-variance");
+  const { rows: dossiers } = useList("/operations");
+  const { rows: quotations } = useList("/quotations");
   const [filter, setFilter] = React.useState("");
   const [computeOpen, setComputeOpen] = React.useState(false);
 
@@ -1000,7 +1002,7 @@ export function PricingVariancePage() {
       <HubTabs />
 
       <div className="mb-4">
-        <Chips value={filter} options={PV_FILTERS} onChange={setFilter} />
+        <Chips label="Filter variances by flag" value={filter} options={PV_FILTERS} onChange={setFilter} />
       </div>
 
       {error ? (
@@ -1016,13 +1018,13 @@ export function PricingVariancePage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{dossierRef.get(String(r.dossier_id)) ?? `Dossier ${String(r.dossier_id).slice(0, 8)}`}</p>
-                  <Badge label={String(r.flag || "—")} />
+                  <StatusPill status={String(r.flag || "—")} />
                 </div>
-                <p className="truncate text-xs text-muted-foreground">Computed {when(r.computed_at)}</p>
+                <p className="truncate text-xs text-muted-foreground">Computed {dateFmt(r.computed_at)}</p>
               </div>
               <div className="text-right">
                 <p className="text-sm font-semibold text-foreground">{r.variance_percent != null ? `${cell(r.variance_percent)}%` : "—"}</p>
-                <p className="text-xs text-muted-foreground">quote {fmtMoney(r.quoted_price)}</p>
+                <p className="text-xs text-muted-foreground">quote {money(r.quoted_price)}</p>
               </div>
             </div>
           ))}

@@ -5,13 +5,13 @@
  * resolve to --primary.
  */
 import { pageShell } from "@/lib/layout";
-import * as React from "react";
+import { Panel } from "@/components/ui/panel";
 import { Link } from "react-router-dom";
 import { PageHeader } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
-import { useResource, errMsg } from "@/lib/use-resource";
+import { useResource } from "@/lib/use-resource";
 import { money, num, dateFmt, humanizeEvent, humanizeRef } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
@@ -27,17 +27,6 @@ const prioTone = (p?: string | null): Tone => {
   return "mute";
 };
 
-function Panel({ title, cta, children }: { title: string; cta?: React.ReactNode; children: React.ReactNode }) {
-  return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <h3 className="font-display text-lg">{title}</h3>
-        {cta}
-      </div>
-      {children}
-    </div>
-  );
-}
 
 export function WorkspacePage() {
   const r = useResource(() => tenant<Mine>("/workspace"), []);
@@ -52,7 +41,7 @@ export function WorkspacePage() {
       {r.loading ? (
         <div className="py-10 text-center micro">Loading…</div>
       ) : r.error ? (
-        <ErrorState message={errMsg(r.error)} />
+        <ErrorState message={r.error} />
       ) : (
         <>
           <KpiRow>
@@ -62,7 +51,7 @@ export function WorkspacePage() {
           </KpiRow>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Awaiting me" cta={<Link to="/approvals" className="text-sm text-muted-foreground transition-colors hover:text-primary">Open queue →</Link>}>
+            <Panel title="Awaiting me" action={<Link to="/approvals" className="text-sm text-muted-foreground transition-colors hover:text-primary">Open queue →</Link>}>
               {approvals.length ? (
                 <ul className="space-y-2">
                   {approvals.slice(0, 8).map((a, i) => (
@@ -78,7 +67,7 @@ export function WorkspacePage() {
               ) : <p className="micro">Nothing awaiting your validation or approval.</p>}
             </Panel>
 
-            <Panel title="Unread alerts" cta={<Link to="/notifications" className="text-sm text-muted-foreground transition-colors hover:text-primary">All notifications →</Link>}>
+            <Panel title="Unread alerts" action={<Link to="/notifications" className="text-sm text-muted-foreground transition-colors hover:text-primary">All notifications →</Link>}>
               {notes.length ? (
                 <ul className="space-y-2">
                   {notes.slice(0, 8).map((n, i) => (
@@ -96,7 +85,7 @@ export function WorkspacePage() {
           </div>
 
           <div className="mt-4">
-            <Panel title="Recent activity" cta={<Link to="/audit" className="text-sm text-muted-foreground transition-colors hover:text-primary">Audit ledger →</Link>}>
+            <Panel title="Recent activity" action={<Link to="/audit" className="text-sm text-muted-foreground transition-colors hover:text-primary">Audit ledger →</Link>}>
               {activity.length ? (
                 <ol className="space-y-1.5">
                   {activity.slice(0, 12).map((e, i) => (

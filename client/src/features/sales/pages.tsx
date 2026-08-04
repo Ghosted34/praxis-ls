@@ -28,7 +28,14 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, fmtMoney, useList, Badge, Segmented, Chips, Avatar, MetricTile, SearchSelect } from "./ui";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell, dateFmt, money } from "@/lib/format";
+import { StatusPill } from "@/components/ui/pill";
+import { Segmented } from "@/components/ui/segmented";
+import { Chips } from "@/components/ui/chips";
+import { Avatar } from "@/components/ui/avatar";
+import { Stat } from "@/components/ui/stat";
+import { SearchSelect } from "@/components/ui/search-select";
 
 /* ═══════════════════════════════════ LEADS ═══════════════════════════════════ */
 
@@ -214,9 +221,8 @@ function ConvertModal({ lead, onClose, onDone }: { lead: Row | null; onClose: ()
 }
 
 function LeadsTab() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/leads", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/leads");
   const [filter, setFilter] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
@@ -262,7 +268,7 @@ function LeadsTab() {
           Capture lead
         </Button>
       </div>
-      <Chips value={filter} options={LEAD_FILTERS} onChange={setFilter} />
+      <Chips label="Filter leads by status" value={filter} options={LEAD_FILTERS} onChange={setFilter} />
 
       {rowError && <ErrorState message={rowError} />}
 
@@ -285,7 +291,7 @@ function LeadsTab() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-semibold text-foreground">{cell(r.company_name)}</p>
-                    <Badge label={status} />
+                    <StatusPill status={status} />
                   </div>
                   <p className="truncate text-xs text-muted-foreground">
                     {[cell(r.contact_name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "No contact details"}
@@ -456,16 +462,16 @@ function ReviewModal({ partnership, onClose, onDone }: { partnership: Row | null
 
 function IntakeTab() {
   const [sub, setSub] = React.useState<"enquiries" | "partnerships">("enquiries");
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows: enquiries, error: enqErr } = useList("/inbound/enquiries", nonce, sub === "enquiries");
-  const { rows: partnerships, error: partErr } = useList("/inbound/partnerships", nonce, sub === "partnerships");
+  const reload = useRefresh();
+  const { rows: enquiries, error: enqErr } = useList(sub === "enquiries" ? "/inbound/enquiries" : null);
+  const { rows: partnerships, error: partErr } = useList(sub === "partnerships" ? "/inbound/partnerships" : null);
   const [triaging, setTriaging] = React.useState<Row | null>(null);
   const [reviewing, setReviewing] = React.useState<Row | null>(null);
 
   return (
     <div className="space-y-4">
       <Segmented
+        label="Inbound intake type"
         value={sub}
         onChange={setSub}
         options={[
@@ -491,10 +497,10 @@ function IntakeTab() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold text-foreground">{cell(r.subject) === "—" ? "(no subject)" : cell(r.subject)}</p>
-                      <Badge label={String(r.status || "NEW")} />
+                      <StatusPill status={String(r.status || "NEW")} />
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
-                      {[cell(r.name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "Anonymous"} · {cell(r.source).toLowerCase()} · {when(r.created_at)}
+                      {[cell(r.name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "Anonymous"} · {cell(r.source).toLowerCase()} · {dateFmt(r.created_at)}
                     </p>
                   </div>
                   {!done && (
@@ -521,10 +527,10 @@ function IntakeTab() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{cell(r.company_name)}</p>
-                  <Badge label={String(r.status || "NEW")} />
+                  <StatusPill status={String(r.status || "NEW")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
-                  {[cell(r.contact_name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "—"} · {when(r.created_at)}
+                  {[cell(r.contact_name), cell(r.email)].filter((x) => x !== "—").join(" · ") || "—"} · {dateFmt(r.created_at)}
                 </p>
               </div>
               <Button size="sm" variant="outline" onClick={() => setReviewing(r)}>
@@ -554,6 +560,7 @@ export function LeadsPage() {
 
       <div className="mb-5">
         <Segmented
+          label="Lead pipeline section"
           value={tab}
           onChange={setTab}
           options={[
@@ -725,8 +732,8 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
               notes.map((n) => (
                 <div key={String(n.meeting_note_id)} className="rounded-lg border bg-muted/30 p-3">
                   <div className="mb-1 flex items-center gap-2">
-                    {n.is_minutes ? <Badge label="minutes" /> : <span className="text-xs text-muted-foreground">note</span>}
-                    <span className="text-xs text-muted-foreground">{when(n.created_at)}</span>
+                    {n.is_minutes ? <StatusPill status="minutes" /> : <span className="text-xs text-muted-foreground">note</span>}
+                    <span className="text-xs text-muted-foreground">{dateFmt(n.created_at)}</span>
                   </div>
                   <p className="whitespace-pre-wrap text-sm text-foreground">{cell(n.body)}</p>
                 </div>
@@ -764,11 +771,10 @@ function MeetingDetail({ meeting, onClose, onChanged }: { meeting: Row | null; o
 }
 
 export function MeetingsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/meetings", nonce);
-  const { rows: leads } = useList("/leads", nonce);
-  const { rows: clients } = useList("/clients", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/meetings");
+  const { rows: leads } = useList("/leads");
+  const { rows: clients } = useList("/clients");
   const [formOpen, setFormOpen] = React.useState(false);
   const [detail, setDetail] = React.useState<Row | null>(null);
 
@@ -1022,7 +1028,7 @@ function WinModal({ opp, entities, onClose, onDone }: { opp: Row | null; entitie
         {opp && (
           <div className="rounded-lg border bg-muted/30 p-3 text-sm">
             <p className="font-medium">{cell(opp.name)}</p>
-            <p className="mt-1 text-xs text-muted-foreground">{fmtMoney(opp.estimated_value, opp.currency)}</p>
+            <p className="mt-1 text-xs text-muted-foreground">{money(opp.estimated_value, opp.currency)}</p>
           </div>
         )}
         <label className="flex items-center gap-2 text-sm">
@@ -1056,13 +1062,12 @@ function WinModal({ opp, entities, onClose, onDone }: { opp: Row | null; entitie
 }
 
 export function OpportunitiesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows: stages, error: stErr } = useList("/opportunities/stages", nonce);
-  const { rows: opps, error: oppErr } = useList("/opportunities", nonce);
-  const { rows: leads } = useList("/leads", nonce);
-  const { rows: clients } = useList("/clients", nonce);
-  const { rows: entities } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows: stages, error: stErr } = useList("/opportunities/stages");
+  const { rows: opps, error: oppErr } = useList("/opportunities");
+  const { rows: leads } = useList("/leads");
+  const { rows: clients } = useList("/clients");
+  const { rows: entities } = useList("/entities");
 
   const [view, setView] = React.useState<"board" | "list">("board");
   const [formOpen, setFormOpen] = React.useState(false);
@@ -1128,6 +1133,7 @@ export function OpportunitiesPage() {
         action={(
         <div className="flex items-center gap-3">
           <Segmented
+            label="Opportunity layout"
             value={view}
             onChange={setView}
             options={[
@@ -1150,10 +1156,10 @@ export function OpportunitiesPage() {
 
       {/* Forecast strip (Pixie "Today" metric row) */}
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetricTile label="Open pipeline" value={fmtMoney(forecast.value)} />
-        <MetricTile label="Weighted forecast" value={fmtMoney(forecast.weighted)} accent />
-        <MetricTile label="Open deals" value={String(forecast.open)} />
-        <MetricTile label="Win rate" value={forecast.winRate === null ? "—" : `${forecast.winRate}%`} />
+        <Stat label="Open pipeline" value={money(forecast.value)} />
+        <Stat label="Weighted forecast" value={money(forecast.weighted)} tone="accent" />
+        <Stat label="Open deals" value={String(forecast.open)} />
+        <Stat label="Win rate" value={forecast.winRate === null ? "—" : `${forecast.winRate}%`} />
       </div>
 
       {rowError && (
@@ -1196,7 +1202,7 @@ export function OpportunitiesPage() {
                     <span className="text-sm font-semibold text-foreground">{cell(s.name)}</span>
                     <span className="text-xs text-muted-foreground">{cards.length}</span>
                   </div>
-                  <span className="text-xs text-muted-foreground">{fmtMoney(colValue)}</span>
+                  <span className="text-xs text-muted-foreground">{money(colValue)}</span>
                 </div>
                 <div className="flex min-h-[8rem] flex-1 flex-col gap-2 p-2">
                   {cards.length === 0 ? (
@@ -1217,7 +1223,7 @@ export function OpportunitiesPage() {
                             {o.probability != null && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{cell(o.probability)}%</span>}
                           </div>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">{withLabel(o)}</p>
-                          <p className="mt-1 text-xs font-semibold text-foreground">{fmtMoney(o.estimated_value, o.currency)}</p>
+                          <p className="mt-1 text-xs font-semibold text-foreground">{money(o.estimated_value, o.currency)}</p>
                           <div className="mt-2 flex gap-1">
                             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" disabled={rowBusy === id} onClick={() => setWinning(o)}>
                               Win
@@ -1260,13 +1266,13 @@ export function OpportunitiesPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2">
                       <p className="truncate text-sm font-semibold text-foreground">{cell(o.name)}</p>
-                      <Badge label={String(o.status || "OPEN")} />
+                      <StatusPill status={String(o.status || "OPEN")} />
                     </div>
                     <p className="truncate text-xs text-muted-foreground">
                       {withLabel(o)} · {cell(o.stage_name)} · {o.probability != null ? `${cell(o.probability)}%` : "—"}
                     </p>
                   </div>
-                  <span className="text-sm font-semibold text-foreground">{fmtMoney(o.estimated_value, o.currency)}</span>
+                  <span className="text-sm font-semibold text-foreground">{money(o.estimated_value, o.currency)}</span>
                   {!settled && (
                     <div className="flex items-center gap-2">
                       <Select
@@ -1502,13 +1508,13 @@ function ProposalForm({ open, editing, leads, clients, opportunities, onClose, o
               <Input value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} placeholder="Service / description" className="flex-1" />
               <Input type="number" min="0" step="1" className="num w-20 text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="qty" />
               <Input type="number" min="0" step="1" className="num w-28 text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="unit price" />
-              <span className="w-28 text-right text-sm text-muted-foreground">{fmtMoney(lineTotal(l))}</span>
+              <span className="w-28 text-right text-sm text-muted-foreground">{money(lineTotal(l))}</span>
               <Button size="sm" variant="ghost" onClick={() => setLines((rs) => rs.filter((_, idx) => idx !== i))}>
                 ✕
               </Button>
             </div>
           ))}
-          <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {fmtMoney(total)}</div>
+          <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {money(total)}</div>
         </div>
 
         {!editing && (
@@ -1590,7 +1596,7 @@ function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit }: { pr
         ) : (
           <>
             <div className="flex flex-wrap items-center gap-3">
-              <Badge label={status || "DRAFT"} />
+              <StatusPill status={status || "DRAFT"} />
               {data?.doc_number ? <span className="text-xs text-muted-foreground">№ {cell(data.doc_number)}</span> : null}
               {data?.ai_generated ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">AI-drafted</span> : null}
               <span className="ml-auto"><DocButton docType="PROPOSAL" id={id} title={proposal?.title ? String(proposal.title) : "Proposal"} /></span>
@@ -1619,11 +1625,11 @@ function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit }: { pr
                   <div key={String(l.proposal_line_id)} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm">
                     <span>{cell(l.label)}</span>
                     <span className="w-12 text-right">{cell(l.qty)}</span>
-                    <span className="w-24 text-right">{fmtMoney(l.unit_price)}</span>
-                    <span className="w-28 text-right">{fmtMoney(lineTotal(l))}</span>
+                    <span className="w-24 text-right">{money(l.unit_price)}</span>
+                    <span className="w-28 text-right">{money(lineTotal(l))}</span>
                   </div>
                 ))}
-                <div className="border-t px-3 py-2 text-right text-sm font-semibold">Total (HT): {fmtMoney(total)}</div>
+                <div className="border-t px-3 py-2 text-right text-sm font-semibold">Total (HT): {money(total)}</div>
               </div>
             )}
 
@@ -1721,13 +1727,12 @@ function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit }: { pr
 }
 
 export function ProposalsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/proposals", nonce);
-  const { rows: leads } = useList("/leads", nonce);
-  const { rows: clients } = useList("/clients", nonce);
-  const { rows: opportunities } = useList("/opportunities", nonce);
-  const { rows: entities } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/proposals");
+  const { rows: leads } = useList("/leads");
+  const { rows: clients } = useList("/clients");
+  const { rows: opportunities } = useList("/opportunities");
+  const { rows: entities } = useList("/entities");
   const [filter, setFilter] = React.useState("");
   const [search, setSearch] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
@@ -1762,7 +1767,7 @@ export function ProposalsPage() {
       <HubTabs />
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Chips value={filter} options={PROPOSAL_FILTERS} onChange={setFilter} />
+        <Chips label="Filter proposals by status" value={filter} options={PROPOSAL_FILTERS} onChange={setFilter} />
         <div className="w-full sm:max-w-xs">
           <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search proposals…" />
         </div>
@@ -1781,11 +1786,11 @@ export function ProposalsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{cell(r.title)}</p>
-                  <Badge label={String(r.status || "DRAFT")} />
+                  <StatusPill status={String(r.status || "DRAFT")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">
                   {withLabel(r)}
-                  {r.doc_number ? ` · № ${cell(r.doc_number)}` : ""} · {when(r.created_at)}
+                  {r.doc_number ? ` · № ${cell(r.doc_number)}` : ""} · {dateFmt(r.created_at)}
                 </p>
               </div>
             </button>
@@ -2184,12 +2189,11 @@ function SendCampaignModal({ campaign, templates, onClose, onSent }: { campaign:
 
 export function CampaignsPage() {
   const [tab, setTab] = React.useState<"campaigns" | "subscribers" | "templates">("campaigns");
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows: campaigns, error } = useList("/campaigns", nonce);
-  const { rows: subscribers } = useList("/campaigns/subscribers", nonce);
-  const { rows: templates } = useList(CAMPAIGN_TEMPLATES, nonce);
-  const { rows: senders } = useList(CAMPAIGN_SENDERS, nonce);
+  const reload = useRefresh();
+  const { rows: campaigns, error } = useList("/campaigns");
+  const { rows: subscribers } = useList("/campaigns/subscribers");
+  const { rows: templates } = useList(CAMPAIGN_TEMPLATES);
+  const { rows: senders } = useList(CAMPAIGN_SENDERS);
   const [formOpen, setFormOpen] = React.useState(false);
   const [subOpen, setSubOpen] = React.useState(false);
   const [tplEditing, setTplEditing] = React.useState<Row | null>(null);
@@ -2238,6 +2242,7 @@ export function CampaignsPage() {
         action={(
         <div className="flex items-center gap-3">
           <Segmented
+            label="Campaign section"
             value={tab}
             onChange={setTab}
             options={[
@@ -2259,10 +2264,10 @@ export function CampaignsPage() {
       <HubTabs />
 
       <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <MetricTile label="Active" value={String(counts.active)} accent />
-        <MetricTile label="Draft" value={String(counts.draft)} />
-        <MetricTile label="Ended" value={String(counts.ended)} />
-        <MetricTile label="Subscribers" value={subscribers === null ? "…" : String(subscribers.length)} />
+        <Stat label="Active" value={String(counts.active)} tone="accent" />
+        <Stat label="Draft" value={String(counts.draft)} />
+        <Stat label="Ended" value={String(counts.ended)} />
+        <Stat label="Subscribers" value={subscribers === null ? "…" : String(subscribers.length)} />
       </div>
 
       {notice && (
@@ -2291,11 +2296,11 @@ export function CampaignsPage() {
                 <div key={id} className="lux-card flex flex-col p-4">
                   <div className="flex items-start justify-between gap-2">
                     <p className="text-sm font-semibold text-foreground">{cell(c.name)}</p>
-                    <Badge label={status} />
+                    <StatusPill status={status} />
                   </div>
                   <p className="mt-1 text-xs text-muted-foreground">{cell(c.channel)}</p>
                   <p className="mt-1 text-xs text-muted-foreground">
-                    {c.starts_on || c.ends_on ? `${when(c.starts_on)} → ${when(c.ends_on)}` : "No dates set"}
+                    {c.starts_on || c.ends_on ? `${dateFmt(c.starts_on)} → ${dateFmt(c.ends_on)}` : "No dates set"}
                   </p>
                   {actions.length > 0 && (
                     <div className="mt-3 flex gap-2">
@@ -2333,7 +2338,7 @@ export function CampaignsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-sm font-medium text-foreground">{cell(s.name) === "—" ? email : cell(s.name)}</p>
                   <p className="truncate text-xs text-muted-foreground">
-                    {cell(s.name) === "—" ? cell(s.source) : `${email} · ${cell(s.source)}`} · {when(s.subscribed_at)}
+                    {cell(s.name) === "—" ? cell(s.source) : `${email} · ${cell(s.source)}`} · {dateFmt(s.subscribed_at)}
                   </p>
                 </div>
                 <Button size="sm" variant="ghost" loading={rowBusy === email} onClick={() => unsubscribe(email)}>
@@ -2483,9 +2488,8 @@ function StoryForm({ open, editing, onClose, onSaved }: { open: boolean; editing
 }
 
 export function SuccessStoriesPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/success-stories", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/success-stories");
   const [filter, setFilter] = React.useState("");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
@@ -2521,7 +2525,7 @@ export function SuccessStoriesPage() {
       <HubTabs />
 
       <div className="mb-4">
-        <Chips value={filter} options={STORY_FILTERS} onChange={setFilter} />
+        <Chips label="Filter stories by status" value={filter} options={STORY_FILTERS} onChange={setFilter} />
       </div>
 
       {rowError && (
@@ -2545,10 +2549,10 @@ export function SuccessStoriesPage() {
               <div key={id} className="lux-card flex flex-col p-4">
                 <div className="flex items-start justify-between gap-2">
                   <p className="text-sm font-semibold text-foreground">{cell(r.title)}</p>
-                  <Badge label={status} />
+                  <StatusPill status={status} />
                 </div>
                 {r.summary ? <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{cell(r.summary)}</p> : null}
-                <p className="mt-1 text-xs text-muted-foreground">{r.is_published ? `Published ${when(r.published_at)}` : `Created ${when(r.created_at)}`}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{r.is_published ? `Published ${dateFmt(r.published_at)}` : `Created ${dateFmt(r.created_at)}`}</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {!r.is_published && (
                     <Button

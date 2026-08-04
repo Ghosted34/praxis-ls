@@ -157,7 +157,7 @@ export function AiBudgetPage() {
     <section className={shell}>
       <PageHeader eyebrow={<HubCrumb area="AI Control" to="/ai-control" />} title="Spend caps" description="Monthly AI budget — soft cap warns, hard cap blocks all AI calls." action={<Button onClick={() => setOpen(true)}>Set budget</Button>} />
       <HubTabs />
-      {b.loading ? <div className="py-8 text-center micro">Loading…</div> : b.error ? <ErrorState message={errMsg(b.error)} /> : (
+      {b.loading ? <div className="py-8 text-center micro">Loading…</div> : b.error ? <ErrorState message={b.error} /> : (
         <KpiRow>
           <KpiTile label="Spent this period" value={money(d?.spent_xaf)} />
           <KpiTile label="Soft cap" value={money(d?.soft_cap_xaf)} />

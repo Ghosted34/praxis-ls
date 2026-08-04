@@ -122,7 +122,7 @@ function RunDetail({ runId, onClose, onChanged }: { runId: string; onClose: () =
       {run.loading ? (
         <div className="py-10 text-center micro">Loading run…</div>
       ) : run.error ? (
-        <ErrorState message={errMsg(run.error)} />
+        <ErrorState message={run.error} />
       ) : d ? (
         <div className="space-y-5">
           <KpiRow>

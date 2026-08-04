@@ -16,7 +16,7 @@ import { useAuth } from "@/app/auth/auth-context";
 import { tenant } from "@/lib/api-client";
 import { ErrorState } from "@/components/ui/states";
 import { PageSkeleton } from "@/components/ui/skeleton";
-import { errMsg } from "@/features/sales/ui";
+import { errMsg } from "@/lib/use-resource";
 import { dateFmt, enumLabel } from "@/lib/format";
 import { tokenStore } from "@/lib/token-store";
 // Natural Earth 110m land, ~100 kB. Imported (not fetched) so the map works

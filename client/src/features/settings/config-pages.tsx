@@ -8,7 +8,10 @@
  *  Same primitives + patterns as features/settings/master-data-pages.tsx. */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
-import { tenant, ApiError } from "@/lib/api-client";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell, dateFmt } from "@/lib/format";
+import { Pill } from "@/components/ui/pill";
+import { tenant } from "@/lib/api-client";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable, PageSkeleton } from "@/components/ui/skeleton";
@@ -17,57 +20,7 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { SearchSelect } from "@/features/sales/ui";
-
-type Row = Record<string, unknown>;
-
-function errMsg(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 403) return "You don't have permission to do this.";
-    return e.message || "Something went wrong.";
-  }
-  return "Something went wrong.";
-}
-
-function cell(v: unknown): string {
-  if (v === null || v === undefined || v === "") return "—";
-  if (typeof v === "boolean") return v ? "yes" : "no";
-  if (Array.isArray(v)) return v.length ? v.join(", ") : "—";
-  if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
-}
-
-function fmtDate(v: unknown): string {
-  if (!v) return "—";
-  const d = new Date(String(v));
-  return Number.isNaN(d.getTime()) ? cell(v) : d.toLocaleDateString();
-}
-
-/** Load a resource into state, keyed on a reload nonce. */
-function useList(path: string, nonce: number) {
-  const [rows, setRows] = React.useState<Row[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  React.useEffect(() => {
-    let live = true;
-    setRows(null);
-    setError(null);
-    tenant<Row[]>(path)
-      .then((d) => live && setRows(Array.isArray(d) ? d : []))
-      .catch((e) => live && setError(errMsg(e)));
-    return () => {
-      live = false;
-    };
-  }, [path, nonce]);
-  return { rows, error };
-}
-
-function StatusPill({ active, on = "active", off = "inactive" }: { active: boolean; on?: string; off?: string }) {
-  return active ? (
-    <span className="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-600 dark:text-emerald-400">{on}</span>
-  ) : (
-    <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">{off}</span>
-  );
-}
+import { SearchSelect } from "@/components/ui/search-select";
 
 function PageError({ message }: { message: string | null }) {
   if (!message) return null;
@@ -194,10 +147,9 @@ function NewAccountForm({ open, onClose, onCreated, entities }: { open: boolean;
 }
 
 export function BankAccountsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/treasury-accounts", nonce);
-  const { rows: entities } = useList("/entities", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/treasury-accounts");
+  const { rows: entities } = useList("/entities");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
@@ -261,7 +213,7 @@ export function BankAccountsPage() {
                   <TD className="num text-sm">{cell(r.coa_code)}</TD>
                   <TD className="text-sm">{cell(r.currency)}</TD>
                   <TD className="text-sm">
-                    <StatusPill active={active} />
+                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Inactive"}</Pill>
                   </TD>
                   <TD>
                     <Button size="sm" variant={active ? "outline" : "default"} loading={rowBusy === id} onClick={() => setActive(id, !active)}>
@@ -367,9 +319,8 @@ function GatewayForm({ open, onClose, onSaved, editing }: { open: boolean; onClo
 }
 
 export function PaymentGatewaysPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/payment-gateways", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/payment-gateways");
   const [formOpen, setFormOpen] = React.useState(false);
   const [editing, setEditing] = React.useState<Row | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -443,11 +394,11 @@ export function PaymentGatewaysPage() {
                 <TR key={provider}>
                   <TD className="text-sm font-medium">{cell(r.provider)}</TD>
                   <TD className="text-sm">{cell(r.role)}</TD>
-                  <TD className="text-sm">{r.has_credentials ? <StatusPill active on="set" off="—" /> : "—"}</TD>
+                  <TD className="text-sm">{r.has_credentials ? <Pill tone="ok">Set</Pill> : "—"}</TD>
                   <TD className="text-sm">
-                    <StatusPill active={active} on="active" off="disabled" />
+                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Disabled"}</Pill>
                   </TD>
-                  <TD className="text-sm">{fmtDate(r.updated_at)}</TD>
+                  <TD className="text-sm">{dateFmt(r.updated_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
                       <Button size="sm" variant="ghost" onClick={() => openEdit(r)}>
@@ -597,10 +548,9 @@ function ScheduleForm({ open, onClose, onCreated, catalogue }: { open: boolean; 
 }
 
 export function ScheduledReportsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/reports/scheduled", nonce);
-  const { rows: catalogue } = useList("/reports/catalogue", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/reports/scheduled");
+  const { rows: catalogue } = useList("/reports/catalogue");
   const [createOpen, setCreateOpen] = React.useState(false);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
   const [rowError, setRowError] = React.useState<string | null>(null);
@@ -669,9 +619,9 @@ export function ScheduledReportsPage() {
                   <TD className="text-sm">{cell(r.cadence)}</TD>
                   <TD className="text-sm">{cell(r.recipients)}</TD>
                   <TD className="text-sm">{cell(r.formats)}</TD>
-                  <TD className="text-sm">{fmtDate(r.next_run_at)}</TD>
+                  <TD className="text-sm">{dateFmt(r.next_run_at)}</TD>
                   <TD className="text-sm">
-                    <StatusPill active={active} on="active" off="paused" />
+                    <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Paused"}</Pill>
                   </TD>
                   <TD>
                     <div className="flex gap-2">
@@ -786,9 +736,8 @@ function KeyForm({ open, onClose, onSaved, initial }: { open: boolean; onClose: 
 }
 
 export function ApiKeysPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/settings/integration_secret", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/settings/integration_secret");
   const [formOpen, setFormOpen] = React.useState(false);
   const [initial, setInitial] = React.useState<KeyInit | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
@@ -879,8 +828,8 @@ export function ApiKeysPage() {
                     {d.hint && <div className="text-xs font-normal text-muted-foreground">{d.hint}</div>}
                   </TD>
                   <TD className="text-sm">{cell(d.provider)}</TD>
-                  <TD className="text-sm">{isSet ? <StatusPill active on={`set · …${v.last4}`} off="—" /> : <StatusPill active={false} on="" off="not set" />}</TD>
-                  <TD className="text-sm">{fmtDate(d.row?.updated_at)}</TD>
+                  <TD className="text-sm">{isSet ? <Pill tone="ok">{`Set · …${v.last4}`}</Pill> : <Pill tone="mute">Not set</Pill>}</TD>
+                  <TD className="text-sm">{dateFmt(d.row?.updated_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
                       <Button size="sm" variant="ghost" onClick={() => openConfigure(d)}>
@@ -908,7 +857,7 @@ export function ApiKeysPage() {
 /* ─────────────────────── Pipeline stages ─────────────────────── */
 
 export function PipelineStagesPage() {
-  const { rows, error } = useList("/opportunities/stages", 0);
+  const { rows, error } = useList("/opportunities/stages");
 
   return (
     <section className={pageShell.wide}>

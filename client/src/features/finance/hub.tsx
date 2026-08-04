@@ -8,6 +8,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Panel } from "@/components/ui/panel";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,9 +69,7 @@ function AgeingPanel({ a }: { a: api.Ageing | null }) {
   ];
   const max = Math.max(1, ...rows.map((r) => Number(r.v || 0)));
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg">Receivables ageing</h3>
-      <div className="micro mb-4 uppercase tracking-wide">Smart receivables ledger · XAF</div>
+    <Panel title="Receivables ageing" subtitle="Smart receivables ledger · XAF">
       <div className="space-y-3">
         {rows.map((r) => (
           <div key={r.label} className="flex items-center gap-3 text-sm">
@@ -82,7 +81,7 @@ function AgeingPanel({ a }: { a: api.Ageing | null }) {
           </div>
         ))}
       </div>
-    </div>
+    </Panel>
   );
 }
 
@@ -113,9 +112,7 @@ function CashPanel({ tb, accts }: { tb: api.TrialBalance | null; accts: api.Trea
   const gradient = stops.length ? `conic-gradient(${stops.join(", ")})` : "";
 
   return (
-    <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-lg">Cash position</h3>
-      <div className="micro mb-4 uppercase tracking-wide">Treasury · bank · cash · mobile money</div>
+    <Panel title="Cash position" subtitle="Treasury · bank · cash · mobile money">
       {groups.length ? (
         <div className="flex flex-wrap items-center gap-6">
           <div className="relative h-36 w-36 shrink-0 rounded-full" style={{ background: gradient }}>
@@ -137,7 +134,7 @@ function CashPanel({ tb, accts }: { tb: api.TrialBalance | null; accts: api.Trea
           </ul>
         </div>
       ) : <span className="micro">No treasury movement posted yet.</span>}
-    </div>
+    </Panel>
   );
 }
 

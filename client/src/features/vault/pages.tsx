@@ -3,7 +3,8 @@
  *   - ReportsPage         → /reports  (feature-gated `reporting`)
  *   - ComplianceFlagsPage → /compliance
  *
- * Shared primitives + Pixie-tinted design from features/sales/ui.tsx.
+ * Shared primitives come from components/ui/* (the shadow features/sales/ui.tsx
+ * they used to live in was deleted in Phase 2 — audit A2).
  * AI panels are gated globally (components/ai-actions.tsx).
  */
 import { pageShell } from "@/lib/layout";
@@ -19,48 +20,18 @@ import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
-import { Row, errMsg, cell, when, Badge, Chips, Segmented, useList } from "@/features/sales/ui";
+import { errMsg, useList, useRefresh, type Row } from "@/lib/use-resource";
+import { cell, dateFmt, smartCell } from "@/lib/format";
+import { StatusPill } from "@/components/ui/pill";
+import { Chips } from "@/components/ui/chips";
+import { DataView } from "@/components/ui/data-view";
+import { Segmented } from "@/components/ui/segmented";
 import { tokenStore } from "@/lib/token-store";
 
 function isGated(msg: string | null): boolean {
   return !!msg && /feature|not enabled|disabled|forbidden|permission/i.test(msg);
 }
 
-/** Generic renderer for an arbitrary report/portal payload. */
-function ResultBlock({ data }: { data: unknown }) {
-  if (Array.isArray(data) && data.length > 0 && typeof data[0] === "object" && data[0] !== null) {
-    const rows = data as Row[];
-    const cols = Array.from(new Set(rows.flatMap((r) => Object.keys(r))));
-    return (
-      <div className="max-h-96 overflow-auto rounded-lg border">
-        <table className="w-full text-sm">
-          <thead className="sticky top-0 bg-muted/60">
-            <tr>
-              {cols.map((c) => (
-                <th key={c} className="px-3 py-2 text-left text-xs font-medium text-muted-foreground">
-                  {c}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={i} className="border-t">
-                {cols.map((c) => (
-                  <td key={c} className="px-3 py-1.5">
-                    {cell(r[c])}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    );
-  }
-  if (data === null || data === undefined) return <EmptyState title="No data" />;
-  return <pre className="max-h-96 overflow-auto rounded-lg border bg-muted/30 p-3 text-xs">{JSON.stringify(data, null, 2)}</pre>;
-}
 
 /* ═══════════════════════════════════ REPORTS ═══════════════════════════════════ */
 
@@ -163,7 +134,7 @@ function RunReportModal({ report, onClose, onSaved }: { report: Row | null; onCl
         {error && <ErrorState message={error} />}
         {result !== undefined && (
           <div className="space-y-3">
-            <ResultBlock data={result} />
+            <DataView data={result} emptyTitle="This report returned no rows" emptyHint="Adjust the parameters above and run it again." />
             <div className="flex flex-wrap items-end gap-2 border-t pt-3">
               <Field label="Save as" className="flex-1">
                 <Input value={saveName} onChange={(e) => setSaveName(e.target.value)} placeholder="My Q1 income statement" />
@@ -203,7 +174,7 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
   return (
     <Modal open={open} onClose={onClose} title={title} description="Report result." size="xl">
       <div className="space-y-4">
-        {error ? <ErrorState message={error} /> : data === undefined ? <LoadingRow label="Running…" /> : <ResultBlock data={data} />}
+        {error ? <ErrorState message={error} /> : data === undefined ? <LoadingRow label="Running…" /> : <DataView data={data} emptyTitle="This saved report returned no rows" />}
         <div className="flex justify-end">
           <Button variant="outline" onClick={onClose}>
             Close
@@ -216,34 +187,24 @@ function ResultModal({ open, title, path, onClose }: { open: boolean; title: str
 
 export function ReportsPage() {
   const [tab, setTab] = React.useState<"catalogue" | "saved" | "tiles">("catalogue");
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const [catalogue, setCatalogue] = React.useState<Row[] | null>(null);
-  const [saved, setSaved] = React.useState<Row[] | null>(null);
-  const [tiles, setTiles] = React.useState<Row[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const reload = useRefresh();
+  // Was one hand-rolled useEffect + Promise.all keyed on a local nonce, which
+  // refetched all three lists on every mount with no cache (F8). As three
+  // useList calls they are deduplicated, cached and revalidated independently —
+  // and /reports/catalogue is now shared with every other screen that reads it.
+  const { rows: catalogue, error: catalogueError } = useList<Row>("/reports/catalogue");
+  const { rows: saved, error: savedError } = useList<Row>("/reports/saved");
+  // Tiles are optional: the endpoint 403s for roles without dashboard config,
+  // and that must not blank the page. The original swallowed it with
+  // `.catch(() => [])`; here its error is simply not surfaced.
+  const { rows: tiles } = useList<Row>("/reports/tiles");
+  const [actionError, setActionError] = React.useState<string | null>(null);
   const [running, setRunning] = React.useState<Row | null>(null);
   const [savedResult, setSavedResult] = React.useState<{ title: string; path: string } | null>(null);
   const [tileBusy, setTileBusy] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let live = true;
-    setError(null);
-    setCatalogue(null);
-    setSaved(null);
-    setTiles(null);
-    Promise.all([tenant<Row[]>("/reports/catalogue"), tenant<Row[]>("/reports/saved"), tenant<Row[]>("/reports/tiles").catch(() => [])])
-      .then(([c, s, t]) => {
-        if (!live) return;
-        setCatalogue(Array.isArray(c) ? c : []);
-        setSaved(Array.isArray(s) ? s : []);
-        setTiles(Array.isArray(t) ? t : []);
-      })
-      .catch((e) => live && setError(errMsg(e)));
-    return () => {
-      live = false;
-    };
-  }, [nonce]);
+  const error = actionError ?? catalogueError ?? savedError;
+  const setError = setActionError;
 
   async function del(id: string) {
     try {
@@ -269,8 +230,9 @@ export function ReportsPage() {
     };
     try {
       await tenant("/reports/tiles", { method: "PUT", body });
-      const t = await tenant<Row[]>("/reports/tiles").catch(() => tiles || []);
-      setTiles(Array.isArray(t) ? t : []);
+      // Was a manual refetch into local state. Invalidating the cache instead
+      // means every screen showing tiles updates, not just this one.
+      reload();
     } catch (e) {
       setError(errMsg(e));
     } finally {
@@ -286,6 +248,7 @@ export function ReportsPage() {
         description="Run finance, receivables and cross-module reports; save the ones you use."
         action={(
           <Segmented
+            label="Reports section"
             value={tab}
             onChange={setTab}
             options={[
@@ -372,9 +335,9 @@ export function ReportsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{cell(s.name)}</p>
-                  {s.is_shared ? <Badge label="shared" /> : null}
+                  {s.is_shared ? <StatusPill status="shared" /> : null}
                 </div>
-                <p className="truncate text-xs text-muted-foreground">{cell(s.report_key)} · {when(s.created_at)}</p>
+                <p className="truncate text-xs text-muted-foreground">{cell(s.report_key)} · {dateFmt(s.created_at)}</p>
               </div>
               <Button size="sm" variant="outline" onClick={() => setSavedResult({ title: String(s.name), path: `/reports/saved/${String(s.saved_report_id)}/run` })}>
                 Run
@@ -410,33 +373,23 @@ const SEVERITY_FILTERS = [
 
 export function ComplianceFlagsPage() {
   const [tab, setTab] = React.useState<"flags" | "rules">("flags");
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const [flags, setFlags] = React.useState<Row[] | null>(null);
-  const [rules, setRules] = React.useState<Row[] | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const reload = useRefresh();
   const [severity, setSeverity] = React.useState("");
   const [includeResolved, setIncludeResolved] = React.useState(false);
   const [running, setRunning] = React.useState(false);
   const [summary, setSummary] = React.useState<string | null>(null);
   const [rowBusy, setRowBusy] = React.useState<string | null>(null);
+  const [actionError, setActionError] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    let live = true;
-    setError(null);
-    setFlags(null);
-    const q = includeResolved ? "?include_resolved=true" : "";
-    Promise.all([tenant<Row[]>(`/compliance${q}`), tenant<Row[]>("/compliance/catalogue")])
-      .then(([f, c]) => {
-        if (!live) return;
-        setFlags(Array.isArray(f) ? f : []);
-        setRules(Array.isArray(c) ? c : []);
-      })
-      .catch((e) => live && setError(errMsg(e)));
-    return () => {
-      live = false;
-    };
-  }, [nonce, includeResolved]);
+  // Was a Promise.all in a useEffect keyed on a local nonce (F8). Toggling
+  // "include resolved" refetched BOTH lists, including the catalogue that never
+  // changes; as separate cached queries only the flags list moves, and flipping
+  // the toggle back is instant because the previous URL is still in cache.
+  const { rows: flags, error: flagsError } = useList<Row>(`/compliance${includeResolved ? "?include_resolved=true" : ""}`);
+  const { rows: rules, error: rulesError } = useList<Row>("/compliance/catalogue");
+
+  const error = actionError ?? flagsError ?? rulesError;
+  const setError = setActionError;
 
   async function runChecks() {
     setRunning(true);
@@ -445,7 +398,7 @@ export function ComplianceFlagsPage() {
     try {
       const res = await tenant<Row>("/compliance/run", { method: "POST", body: {} });
       const s = (res && typeof res === "object" ? (res as Row).summary : null) ?? res;
-      setSummary(typeof s === "string" ? s : JSON.stringify(s));
+      setSummary(typeof s === "string" ? s : smartCell(s));
       reload();
     } catch (e) {
       setError(errMsg(e));
@@ -476,6 +429,7 @@ export function ComplianceFlagsPage() {
         action={(
           <div className="flex items-center gap-3">
             <Segmented
+              label="Compliance section"
               value={tab}
               onChange={setTab}
               options={[
@@ -499,7 +453,7 @@ export function ComplianceFlagsPage() {
       {tab === "flags" ? (
         <>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <Chips value={severity} options={SEVERITY_FILTERS} onChange={setSeverity} />
+            <Chips label="Filter flags by severity" value={severity} options={SEVERITY_FILTERS} onChange={setSeverity} />
             <label className="flex items-center gap-2 text-sm text-muted-foreground">
               <input type="checkbox" checked={includeResolved} onChange={(e) => setIncludeResolved(e.target.checked)} />
               Include resolved
@@ -519,7 +473,7 @@ export function ComplianceFlagsPage() {
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <p className="truncate text-sm font-semibold text-foreground">{cell(f.rule_key)}</p>
-                        <Badge label={String(f.severity || "—")} />
+                        <StatusPill status={String(f.severity || "—")} />
                         {resolved ? <span className="text-xs text-muted-foreground">resolved</span> : null}
                       </div>
                       <p className="truncate text-xs text-muted-foreground">{cell(f.message)} · {cell(f.entity_ref)}</p>
@@ -544,7 +498,7 @@ export function ComplianceFlagsPage() {
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
                   <p className="truncate text-sm font-semibold text-foreground">{cell(r.rule_key)}</p>
-                  <Badge label={String(r.severity || "—")} />
+                  <StatusPill status={String(r.severity || "—")} />
                 </div>
                 <p className="truncate text-xs text-muted-foreground">{cell(r.describe)}</p>
               </div>
@@ -694,9 +648,8 @@ const DOC_FILTERS = [
 ];
 
 export function DocumentsPage() {
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList("/documents", nonce);
+  const reload = useRefresh();
+  const { rows, error } = useList("/documents");
   const [uploadOpen, setUploadOpen] = React.useState(false);
   const [filter, setFilter] = React.useState("");
   const [q, setQ] = React.useState("");
@@ -737,7 +690,7 @@ export function DocumentsPage() {
       <HubTabs />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <Chips value={filter} options={DOC_FILTERS} onChange={setFilter} />
+        <Chips label="Filter documents by status" value={filter} options={DOC_FILTERS} onChange={setFilter} />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search type / reference…" className="max-w-xs" />
       </div>
 
@@ -775,9 +728,9 @@ export function DocumentsPage() {
                   <TD className="text-sm">{cell(r.entity_ref)}</TD>
                   <TD className="num text-sm">{cell(r.version_no)}</TD>
                   <TD className="text-sm">
-                    <Badge label={String(r.status ?? "—")} />
+                    <StatusPill status={String(r.status ?? "—")} />
                   </TD>
-                  <TD className="text-sm">{when(r.created_at)}</TD>
+                  <TD className="text-sm">{dateFmt(r.created_at)}</TD>
                   <TD>
                     <div className="flex gap-2">
                       <Button size="sm" variant="outline" loading={rowBusy === id} onClick={() => download(id)}>
@@ -878,9 +831,8 @@ function SignForm({ open, entityRef, onClose, onSaved }: { open: boolean; entity
 export function SignaturesPage() {
   const [refInput, setRefInput] = React.useState("");
   const [activeRef, setActiveRef] = React.useState("");
-  const [nonce, setNonce] = React.useState(0);
-  const reload = () => setNonce((n) => n + 1);
-  const { rows, error } = useList(`/signatures?entity_ref=${encodeURIComponent(activeRef)}`, nonce, !!activeRef);
+  const reload = useRefresh();
+  const { rows, error } = useList(activeRef ? `/signatures?entity_ref=${encodeURIComponent(activeRef)}` : null);
   const [signOpen, setSignOpen] = React.useState(false);
   const gated = isGated(error);
 
@@ -938,9 +890,9 @@ export function SignaturesPage() {
                   <TR key={String(r.signature_id ?? r.document_signature_id ?? `${r.entity_ref}-${r.signed_at}`)}>
                     <TD className="text-sm font-medium">{cell(r.signer_name ?? r.signer_user_id)}</TD>
                     <TD className="text-sm">
-                      <Badge label={String(r.method ?? "—")} />
+                      <StatusPill status={String(r.method ?? "—")} />
                     </TD>
-                    <TD className="text-sm">{when(r.signed_at ?? r.created_at)}</TD>
+                    <TD className="text-sm">{dateFmt(r.signed_at ?? r.created_at)}</TD>
                     <TD className="text-sm">{cell(r.signature_ref)}</TD>
                   </TR>
                 ))}
@@ -999,6 +951,7 @@ export function VerificationPage() {
       >
         <Field label="Look up by">
           <Segmented
+            label="Look up by"
             value={kind}
             onChange={(v) => setKind(v)}
             options={[

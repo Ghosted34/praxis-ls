@@ -4,6 +4,8 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Segmented } from "@/components/ui/segmented";
+import { DataView } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -25,20 +27,6 @@ import { PushOptIn } from "@/components/pwa/push-opt-in";
 
 const shell = pageShell.wide;
 
-function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { key: T; label: string }[] }) {
-  return (
-    <div className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
-      {options.map((o) => (
-        <button key={o.key} onClick={() => onChange(o.key)}
-          className={value === o.key
-            ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-            : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"}>
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 function Acts({ children }: { children: React.ReactNode }) {
   return <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>{children}</div>;
@@ -112,13 +100,10 @@ const decisionTone = (d?: string | null): Tone =>
   d === "approved" ? "ok" : d === "revoked" ? "bad" : d === "flagged" ? "warn" : "mute";
 
 /** Pretty-print a jsonb column without exploding on a null/primitive. */
+/** An audit-ledger before/after snapshot. These are arbitrary row shapes, so
+ *  DataView renders them as a labelled field list rather than raw JSON (A4). */
 function Json({ value }: { value: unknown }) {
-  if (value === null || value === undefined) return <span className="micro">—</span>;
-  return (
-    <pre className="max-h-64 overflow-auto rounded-lg border bg-muted/40 p-3 text-xs leading-relaxed">
-      {typeof value === "string" ? value : JSON.stringify(value, null, 2)}
-    </pre>
-  );
+  return <DataView data={value} emptyTitle="—" className="max-h-64 overflow-auto" />;
 }
 
 function LedgerDetail({ row, actorName, onClose }: { row: LedgerEntry; actorName: Record<string, string>; onClose: () => void }) {
@@ -337,13 +322,16 @@ export function AuditPage() {
         action={tab === "reviews" ? <Button onClick={() => setNewReview(true)}>New review</Button> : undefined}
       />
       <Segmented
+        label="Audit section"
+        variant="solid"
+        className="mb-4"
         value={tab}
         onChange={setTab}
         options={[
-          { key: "ledger", label: "Ledger" },
-          { key: "events", label: "Security events" },
-          { key: "reviews", label: "Access reviews" },
-          { key: "restores", label: "Restore queue" },
+          { value: "ledger", label: "Ledger" },
+          { value: "events", label: "Security events" },
+          { value: "reviews", label: "Access reviews" },
+          { value: "restores", label: "Restore queue" },
         ]}
       />
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
@@ -600,9 +588,12 @@ export function NotificationsPage() {
         action={tab === "inbox" && unread.length > 0 ? <Button variant="outline" onClick={markAll} loading={busy === "__all"}>Mark all read</Button> : undefined}
       />
       <Segmented
+        label="Notifications section"
+        variant="solid"
+        className="mb-4"
         value={tab}
         onChange={setTab}
-        options={[{ key: "inbox", label: `Inbox${unread.length ? ` (${unread.length})` : ""}` }, { key: "preferences", label: "Preferences" }]}
+        options={[{ value: "inbox", label: `Inbox${unread.length ? ` (${unread.length})` : ""}` }, { value: "preferences", label: "Preferences" }]}
       />
       {actionError && <div className="mb-3"><ErrorState message={actionError} /></div>}
 
@@ -764,7 +755,7 @@ function WorkflowDrawer({ workflow, onClose, onChanged }: { workflow: wf.Workflo
           <span className="micro uppercase tracking-wide">Approval chain</span>
           <Button size="sm" onClick={() => setAdding(true)}>Add step</Button>
         </div>
-        {steps.loading ? <div className="py-6 text-center micro">Loading…</div> : steps.error ? <ErrorState message={errMsg(steps.error)} /> : chain.length ? (
+        {steps.loading ? <div className="py-6 text-center micro">Loading…</div> : steps.error ? <ErrorState message={steps.error} /> : chain.length ? (
           <ol className="space-y-2">
             {chain.map((s) => (
               <li key={s.workflow_step_id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">

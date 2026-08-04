@@ -5,6 +5,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Stat } from "@/components/ui/stat";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -19,14 +20,6 @@ import * as api from "@/lib/fleet-api";
 const shell = pageShell.wide;
 type Dossier = { dossier_id: string; ref?: string | null };
 
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border bg-card px-4 py-3">
-      <div className="micro">{label}</div>
-      <div className="num mt-0.5 text-lg font-semibold text-foreground">{value}</div>
-    </div>
-  );
-}
 
 function LogFillForm({ vehicles, presetVehicle, onClose, onSaved }: {
   vehicles: api.Vehicle[]; presetVehicle: string; onClose: () => void; onSaved: () => void;

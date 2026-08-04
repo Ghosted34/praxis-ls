@@ -62,7 +62,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
 
   return (
     <Modal open onClose={onClose} size="lg" title={m?.subject || "(no subject)"} description={m ? `${m.direction === "OUT" ? "To" : "From"} ${m.direction === "OUT" ? m.to_address : m.from_address}` : ""}>
-      {msg.error && <ErrorState message={errMsg(msg.error)} />}
+      {msg.error && <ErrorState message={msg.error} />}
       {m && (
         <div className="space-y-3 text-sm">
           <div className="grid grid-cols-2 gap-y-1">
@@ -145,7 +145,7 @@ function ThreadsSection() {
         </div>
         <Button size="sm" variant="outline" onClick={() => thread.reload()}>Refresh</Button>
       </div>
-      <DataList columns={cols} rows={thread.data} error={thread.error ? errMsg(thread.error) : null} loading={thread.loading}
+      <DataList columns={cols} rows={thread.data} error={thread.error} loading={thread.loading}
         rowKey={(m) => m.email_inbound_id} onRowClick={(m) => setViewId(m.email_inbound_id)}
         empty={{ title: "No messages yet", hint: "Connect a mailbox under Mailboxes, then messages sync in here." }} />
       {viewId && <ThreadMessage id={viewId} onClose={() => setViewId(null)} onChanged={() => thread.reload()} />}
@@ -237,7 +237,7 @@ function MailboxesSection() {
         {note && <span className="micro">{note}</span>}
       </div>
 
-      {conns.error && <ErrorState message={errMsg(conns.error)} />}
+      {conns.error && <ErrorState message={conns.error} />}
       <div className="grid gap-3">
         {(conns.data || []).map((c) => (
           <div key={c.email_connection_id} className="flex items-center justify-between gap-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
@@ -303,8 +303,8 @@ function LegacyLog() {
         ))}
       </div>
       {dir === "out"
-        ? <DataList columns={outCols} rows={sent.data} error={sent.error ? errMsg(sent.error) : null} loading={sent.loading} rowKey={(m) => m.email_send_id} empty={{ title: "No mail sent yet", hint: "Outgoing mail from each section appears here." }} />
-        : <DataList columns={inCols} rows={inbox.data} error={inbox.error ? errMsg(inbox.error) : null} loading={inbox.loading} rowKey={(m) => m.email_inbound_id} empty={{ title: "Inbox empty", hint: "Replies into these mailboxes appear here." }} />}
+        ? <DataList columns={outCols} rows={sent.data} error={sent.error} loading={sent.loading} rowKey={(m) => m.email_send_id} empty={{ title: "No mail sent yet", hint: "Outgoing mail from each section appears here." }} />
+        : <DataList columns={inCols} rows={inbox.data} error={inbox.error} loading={inbox.loading} rowKey={(m) => m.email_inbound_id} empty={{ title: "Inbox empty", hint: "Replies into these mailboxes appear here." }} />}
     </>
   );
 }

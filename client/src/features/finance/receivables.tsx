@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -29,14 +30,6 @@ const nameMap = (rows: Client[] | null) => {
   return m;
 };
 
-function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button type="submit" loading={busy} disabled={disabled}>{saveLabel}</Button>
-    </div>
-  );
-}
 
 /* ── create receipt ── */
 const KIND_FOR_METHOD: Record<string, string> = { BANK: "BANK", CHEQUE: "BANK", MOBILE_MONEY: "MOMO", CASH: "CASH" };
@@ -144,7 +137,7 @@ function ReceiptDrawer({ receipt, clientLabel, onClose }: { receipt: api.Receipt
   }, [invoices]);
   return (
     <Modal open onClose={onClose} size="lg" title={`Receipt · ${money(receipt.amount)}`} description={`${clientLabel} · ${enumLabel(receipt.method)}`}>
-      {d.loading ? <div className="py-8 text-center micro">Loading…</div> : d.error ? <ErrorState message={errMsg(d.error)} /> : rec ? (
+      {d.loading ? <div className="py-8 text-center micro">Loading…</div> : d.error ? <ErrorState message={d.error} /> : rec ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Amount</div><div className="num text-lg font-medium text-[rgb(var(--primary))]">{money(rec.amount)}</div></div>

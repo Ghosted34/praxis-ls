@@ -20,6 +20,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Segmented } from "@/components/ui/segmented";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -90,26 +91,6 @@ const statusTone = (s?: string | null): Tone => {
   return "mute";
 };
 
-/** Small local segmented control (sales/ui.tsx's is scoped to that feature). */
-function Segmented<T extends string>({ value, onChange, options }: { value: T; onChange: (v: T) => void; options: { key: T; label: string }[] }) {
-  return (
-    <div className="mb-4 inline-flex flex-wrap gap-1 rounded-xl border bg-muted p-1">
-      {options.map((o) => (
-        <button
-          key={o.key}
-          onClick={() => onChange(o.key)}
-          className={
-            value === o.key
-              ? "whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm"
-              : "whitespace-nowrap rounded-lg px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-          }
-        >
-          {o.label}
-        </button>
-      ))}
-    </div>
-  );
-}
 
 /** Right-aligned row-action cell that doesn't trigger the row's onClick. */
 function Actions({ children }: { children: React.ReactNode }) {
@@ -1047,9 +1028,12 @@ export function SessionsPage() {
       />
       <HubTabs />
       <Segmented
+        label="Session scope"
+        variant="solid"
+        className="mb-4"
         value={tab}
         onChange={setTab}
-        options={[{ key: "mine", label: "My sessions" }, { key: "all", label: "All sessions" }]}
+        options={[{ value: "mine", label: "My sessions" }, { value: "all", label: "All sessions" }]}
       />
       {error && <div className="mb-3"><ErrorState message={error} /></div>}
       {tab === "mine" ? (

@@ -6,6 +6,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -25,14 +26,6 @@ const TONES: Record<string, Tone> = { DRAFT: "mute", COMPUTED: "blue", APPROVED:
 const tone = (s?: string | null): Tone => TONES[String(s || "").toUpperCase()] || "mute";
 const refOf = (rows: Dossier[] | null) => { const m: Record<string, string> = {}; (rows || []).forEach((d) => { m[d.dossier_id] = d.ref; }); return m; };
 
-function FormButtons({ busy, disabled, onCancel, saveLabel }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>Cancel</Button>
-      <Button type="submit" loading={busy} disabled={disabled}>{saveLabel}</Button>
-    </div>
-  );
-}
 
 /* ═══════════════════ Costing sheets ═══════════════════ */
 

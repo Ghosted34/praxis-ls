@@ -5,7 +5,8 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
-import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
+import { dateFmt, money as moneyFmt, amount, enumLabel, smartCell } from "@/lib/format";
+import { errMsg } from "@/lib/use-resource";
 import { useNavigate } from "react-router-dom";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -19,7 +20,7 @@ import { DocButton } from "@/components/doc-button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/cn";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { SearchSelect } from "@/features/sales/ui";
+import { SearchSelect } from "@/components/ui/search-select";
 import {
   loadEntities,
   loadClients,
@@ -90,23 +91,6 @@ function optionLabel(o: Option) {
   return o.extra ? `${o.extra} — ${o.label}` : o.label;
 }
 
-function errMessage(e: unknown): string {
-  if (e instanceof ApiError) {
-    if (e.status === 403) return "You don't have permission to do this.";
-    if (e.status === 422 && e.details && typeof e.details === "object") {
-      const parts = Object.entries(e.details as Record<string, string[]>).map(
-        ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`,
-      );
-      if (parts.length) return parts.join("; ");
-    }
-    return e.message;
-  }
-  return "Something went wrong. Try again.";
-}
-
-const money = (n: number) =>
-  n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-
 /* ── Journals: post a manual journal entry ──────────────────────── */
 
 type LineRow = { account_code: string; debit: string; credit: string };
@@ -170,7 +154,7 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
       onPosted();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -262,10 +246,10 @@ function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose:
           </div>
           <div className="flex items-center justify-between border-t pt-2 text-sm">
             <span className={balanced ? "text-muted-foreground" : "font-medium text-destructive"}>
-              {balanced ? "Balanced" : `Out of balance by ${money(Math.abs(totalDebit - totalCredit))}`}
+              {balanced ? "Balanced" : `Out of balance by ${amount(Math.abs(totalDebit - totalCredit))}`}
             </span>
             <span className="num tabular-nums text-muted-foreground">
-              Dr {money(totalDebit)} &nbsp;·&nbsp; Cr {money(totalCredit)}
+              Dr {amount(totalDebit)} &nbsp;·&nbsp; Cr {amount(totalCredit)}
             </span>
           </div>
         </div>
@@ -321,7 +305,7 @@ function JournalReverseForm({
       onReversed();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -489,7 +473,7 @@ function AdvancePaymentForm({ open, onClose, onPaid }: { open: boolean; onClose:
       onPaid();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -688,7 +672,7 @@ function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; onClose
       onCreated();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -828,7 +812,7 @@ function InvoiceSubmitForm({
       onSubmitted();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -849,11 +833,11 @@ function InvoiceSubmitForm({
           <div className="rounded-lg border border-border bg-card/40 p-3 text-sm">
             <div className="micro mb-2 uppercase tracking-wide">Computed before posting</div>
             <div className="grid grid-cols-2 gap-y-1">
-              <span className="text-muted-foreground">Service (HT)</span><span className="num text-right">{money(totals.totals.subtotal_ht)}</span>
-              <span className="text-muted-foreground">Débours (pass-through)</span><span className="num text-right">{money(totals.totals.debours_total)}</span>
-              <span className="text-muted-foreground">TVA</span><span className="num text-right">{money(totals.totals.tax_total)}</span>
-              <span className="font-medium text-foreground">Total TTC</span><span className="num text-right font-medium text-[rgb(var(--primary))]">{money(totals.totals.total)}</span>
-              {totals.advance_open > 0 && (<><span className="text-muted-foreground">Customer advance to apply</span><span className="num text-right">−{money(totals.advance_open)}</span></>)}
+              <span className="text-muted-foreground">Service (HT)</span><span className="num text-right">{amount(totals.totals.subtotal_ht)}</span>
+              <span className="text-muted-foreground">Débours (pass-through)</span><span className="num text-right">{amount(totals.totals.debours_total)}</span>
+              <span className="text-muted-foreground">TVA</span><span className="num text-right">{amount(totals.totals.tax_total)}</span>
+              <span className="font-medium text-foreground">Total TTC</span><span className="num text-right font-medium text-[rgb(var(--primary))]">{amount(totals.totals.total)}</span>
+              {totals.advance_open > 0 && (<><span className="text-muted-foreground">Customer advance to apply</span><span className="num text-right">−{amount(totals.advance_open)}</span></>)}
             </div>
           </div>
         )}
@@ -907,7 +891,7 @@ function InvoiceEditForm({
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
-      .catch((e) => live && setError(errMessage(e)))
+      .catch((e) => live && setError(errMsg(e)))
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
@@ -936,7 +920,7 @@ function InvoiceEditForm({
       onSaved();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -1251,7 +1235,7 @@ function AssetCreateForm({ open, onClose, onCreated }: { open: boolean; onClose:
       onCreated();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -1331,7 +1315,7 @@ function AssetDepreciateForm({ asset, onClose, onDone }: { asset: Asset | null; 
         setNextDue(next ? next.period_code : null);
         setPeriod(next ? next.period_code : "");
       })
-      .catch((e) => live && setError(errMessage(e)))
+      .catch((e) => live && setError(errMsg(e)))
       .finally(() => live && setLoading(false));
     return () => { live = false; };
   }, [asset]);
@@ -1346,7 +1330,7 @@ function AssetDepreciateForm({ asset, onClose, onDone }: { asset: Asset | null; 
       setNote(r?.posted_to_gl ? "Posted to the ledger." : "Recorded (ledger not configured — no GL entry).");
       onDone();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -1398,7 +1382,7 @@ function AssetDisposeForm({ asset, onClose, onDone }: { asset: Asset | null; onC
       setResult({ net_book_value: r.net_book_value, gain_loss: r.gain_loss });
       onDone();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -1447,7 +1431,7 @@ function AssetDetailModal({ assetId, onClose, onChanged }: { assetId: string | n
     setError(null);
     getAsset(assetId)
       .then((d) => live && setDetail(d))
-      .catch((e) => live && setError(errMessage(e)));
+      .catch((e) => live && setError(errMsg(e)));
     return () => { live = false; };
   }, [assetId, nonce]);
 
@@ -1460,7 +1444,7 @@ function AssetDetailModal({ assetId, onClose, onChanged }: { assetId: string | n
       setNonce((n) => n + 1);
       onChanged();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setPosting(null);
     }
@@ -1669,7 +1653,7 @@ function PeriodsPanel() {
       setPending(null);
       reload();
     } catch (e) {
-      setActionError(errMessage(e));
+      setActionError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -1978,7 +1962,7 @@ function FileDeclarationForm({ open, onClose, onFiled }: { open: boolean; onClos
       onFiled();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -2054,7 +2038,7 @@ function SubmitDeclarationForm({ declaration, onClose, onSubmitted }: { declarat
       onSubmitted();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -2113,7 +2097,7 @@ function DeclarationsPanel() {
       await approveDeclaration(id);
       reload();
     } catch (e) {
-      setRowError(errMessage(e));
+      setRowError(errMsg(e));
     } finally {
       setApprovingId(null);
     }
@@ -2289,7 +2273,7 @@ function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boolean; onC
       onCreated();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -2384,7 +2368,7 @@ function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: 
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
-      .catch((e) => live && setError(errMessage(e)))
+      .catch((e) => live && setError(errMsg(e)))
       .finally(() => live && setLoading(false));
     return () => {
       live = false;
@@ -2404,7 +2388,7 @@ function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: 
       onSaved();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }
@@ -2486,7 +2470,7 @@ function CreditNotePostForm({ creditNote, onClose, onPosted }: { creditNote: Cre
       onPosted();
       onClose();
     } catch (e) {
-      setError(errMessage(e));
+      setError(errMsg(e));
     } finally {
       setBusy(false);
     }

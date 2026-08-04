@@ -9,6 +9,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
@@ -23,18 +24,6 @@ import * as api from "@/lib/masterdata-api";
 import { reportActionError } from "@/lib/action-error";
 
 /* Shared modal footer. */
-function FormButtons({ busy, disabled, onCancel, saveLabel = "Save" }: { busy: boolean; disabled?: boolean; onCancel: () => void; saveLabel?: string }) {
-  return (
-    <div className="flex justify-end gap-2 pt-2">
-      <Button type="button" variant="outline" onClick={onCancel} disabled={busy}>
-        Cancel
-      </Button>
-      <Button type="submit" loading={busy} disabled={disabled}>
-        {saveLabel}
-      </Button>
-    </div>
-  );
-}
 
 const shell = pageShell.wide;
 

@@ -43,7 +43,12 @@ import { ChartOfAccountsPage } from "./finance/chart-of-accounts";
 import { JournalsPage } from "./finance/journals";
 import { OperationsFilesPage } from "./operations/operation-files";
 import { ServiceTypesPage } from "./operations/service-types";
-import * as sales from "./sales/pages";
+import { LeadsPage } from "./sales/leads";
+import { MeetingsPage } from "./sales/meetings";
+import { OpportunitiesPage } from "./sales/opportunities";
+import { ProposalsPage } from "./sales/proposals";
+import { CampaignsPage } from "./sales/campaigns";
+import { SuccessStoriesPage } from "./sales/success-stories";
 import * as security from "./security/pages";
 import * as vault from "./vault/pages";
 import * as commercial from "./commercial/pages";
@@ -141,7 +146,7 @@ const AREAS: Area[] = [
     screens: [
       {
         name: "Leads",
-        render: () => <sales.LeadsPage />,
+        render: () => <LeadsPage />,
         routes: {
           "/leads": [{ lead_id: "l1", company_name: "Cimencam", contact_name: "Paul M.", status: "NEW", source: "WEBSITE", created_at: "2026-07-02" }],
           "/intake": [],
@@ -149,7 +154,7 @@ const AREAS: Area[] = [
       },
       {
         name: "Meetings",
-        render: () => <sales.MeetingsPage />,
+        render: () => <MeetingsPage />,
         routes: {
           "/meetings": [{ meeting_id: "m1", subject: "Kick-off", scheduled_at: "2026-07-10T09:00:00Z", status: "SCHEDULED" }],
           "/leads": [],
@@ -158,7 +163,7 @@ const AREAS: Area[] = [
       },
       {
         name: "Opportunities",
-        render: () => <sales.OpportunitiesPage />,
+        render: () => <OpportunitiesPage />,
         routes: {
           "/opportunities/stages": [{ pipeline_stage_id: "p1", name: "Qualified", sort_order: 1 }],
           "/opportunities": [{ opportunity_id: "op1", name: "Douala corridor", pipeline_stage_id: "p1", status: "OPEN", estimated_value: 12_000_000, probability: 40 }],
@@ -169,7 +174,7 @@ const AREAS: Area[] = [
       },
       {
         name: "Proposals",
-        render: () => <sales.ProposalsPage />,
+        render: () => <ProposalsPage />,
         routes: {
           "/proposals": [{ proposal_id: "pr1", title: "Corridor proposal", status: "DRAFT", total: 3_000_000 }],
           "/leads": [],
@@ -179,7 +184,7 @@ const AREAS: Area[] = [
       },
       {
         name: "Campaigns",
-        render: () => <sales.CampaignsPage />,
+        render: () => <CampaignsPage />,
         routes: {
           "/campaigns": [{ campaign_id: "ca1", name: "Q3 push", channel: "EMAIL", status: "DRAFT" }],
           "/subscribers": [],
@@ -189,7 +194,7 @@ const AREAS: Area[] = [
       },
       {
         name: "Success stories",
-        render: () => <sales.SuccessStoriesPage />,
+        render: () => <SuccessStoriesPage />,
         routes: { "/success-stories": [{ story_id: "st1", title: "Port turnaround", is_published: true }] },
       },
     ],

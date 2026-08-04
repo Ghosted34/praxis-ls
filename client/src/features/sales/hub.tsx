@@ -1,7 +1,12 @@
 /** Sales & CRM — one hub, deep-linkable tabs (old /sales/<screen> paths resolve
  *  as sections). Leads keeps its own internal intake tab. */
 import { TabbedHub } from "@/components/tabbed-hub";
-import { LeadsPage, OpportunitiesPage, ProposalsPage, MeetingsPage, CampaignsPage, SuccessStoriesPage } from "./pages";
+import { LeadsPage } from "./leads";
+import { OpportunitiesPage } from "./opportunities";
+import { ProposalsPage } from "./proposals";
+import { MeetingsPage } from "./meetings";
+import { CampaignsPage } from "./campaigns";
+import { SuccessStoriesPage } from "./success-stories";
 
 export function SalesHub() {
   return (

@@ -1,9 +1,11 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 // test_gemini.php - Standalone Gemini API Tester
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-$api_key = 'AIzaSyD5-sd_MX-feoIGhYdK4zdNfO8PnQbSFHU'; // <-- PASTE YOUR FULL KEY HERE
+$api_key = '__REMOVED_ROTATE_ME__'; // <-- PASTE YOUR FULL KEY HERE
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $api_key;
 
 $payload = json_encode([

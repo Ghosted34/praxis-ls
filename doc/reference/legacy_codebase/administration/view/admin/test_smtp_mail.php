@@ -1,4 +1,6 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 require_once __DIR__ . '/../../api/composer/vendor/autoload.php';
 require_once __DIR__ . '/../../api/composer/mail.php';
 
@@ -16,8 +18,8 @@ try {
     $mail->Host = MAIL_HOST;            // smtp.office365.com
     $mail->Port = MAIL_PORT;            // 587
     $mail->SMTPAuth = true;
-    $mail->Username = 'no-reply@smartls.cm';
-    $mail->Password = 'Water@2025norep';
+    $mail->Username = '__REMOVED_ROTATE_ME__';
+    $mail->Password = '__REMOVED_ROTATE_ME__';
     $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
 
     // TEMPORARY: bypass cert verification (for debug only)

@@ -140,8 +140,80 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
   };
 }
 
+/**
+ * Per-account login cooldown (audit SEC-C3, second half).
+ *
+ * `failed_logins` has been counted since migration 0100 and never read. The IP
+ * limiter added on 2026-08-04 stops one address hammering the endpoint; this
+ * stops a distributed attempt on ONE account, which an IP limiter cannot see.
+ *
+ * Deliberately a decaying cooldown, NOT a lockout:
+ *
+ *   - A lockout is a denial-of-service lever. Anyone who knows a colleague's
+ *     email could disable their account by failing ten logins, and if clearing
+ *     it needs an administrator, one attacker takes out the finance team before
+ *     lunch. That swaps a brute-force problem for a worse availability one.
+ *   - This never latches. The delay is a function of the failure count and the
+ *     time since the last failure, so it expires on its own and a successful
+ *     login clears it. Nothing needs an admin.
+ *   - The first 5 failures cost nothing, so an ordinary mistyped password is
+ *     unaffected. Beyond that the wait doubles: 6th → 2s, 8th → 8s, 10th → 32s,
+ *     capped at 15 minutes. Against automated guessing that is decisive;
+ *     against a human who forgot their password it is barely noticeable.
+ *
+ * `status = 'LOCKED'` remains the deliberate administrative lockout and is
+ * untouched by any of this.
+ *
+ * @returns {number} seconds the caller must wait; 0 when not throttled.
+ */
+const THROTTLE_FREE_ATTEMPTS = 5;
+const THROTTLE_MAX_SECONDS = 15 * 60;
+
+function throttleFor(user, now = Date.now()) {
+  const failures = Number(user && user.failed_logins) || 0;
+  if (failures <= THROTTLE_FREE_ATTEMPTS) return 0;
+  if (!user.last_failed_login_at) return 0;
+
+  const required = Math.min(
+    2 ** (failures - THROTTLE_FREE_ATTEMPTS),
+    THROTTLE_MAX_SECONDS,
+  );
+  const elapsed = (now - new Date(user.last_failed_login_at).getTime()) / 1000;
+  const remaining = Math.ceil(required - elapsed);
+  return remaining > 0 ? remaining : 0;
+}
+
 async function login(client, { email, password, ip, userAgent, environment, keepSignedIn }) {
   const user = await repo.findByEmail(client, String(email || "").toLowerCase());
+
+  // SEC-C3. Checked BEFORE argon2.verify: verification is deliberately
+  // expensive (that is the point of argon2), so an unthrottled attacker gets a
+  // free CPU-exhaustion vector on top of the guessing.
+  //
+  // This answers with a distinct code rather than the generic
+  // INVALID_CREDENTIALS. It does confirm the account exists — but the IP
+  // limiter already caps an enumerator at 10 attempts per 15 minutes, and this
+  // path is only reachable after 6 failures against one specific address, so it
+  // is a poor enumeration oracle. The trade buys a real answer for the
+  // legitimate user who has since remembered their password and would otherwise
+  // be told, wrongly, that it is invalid.
+  if (user) {
+    const wait = throttleFor(user);
+    if (wait > 0) {
+      await emitEvent(client, {
+        eventTypeKey: events.LOGIN_FAILED,
+        moduleKey: events.MODULE,
+        entityRef: `app_user:${user.user_id}`,
+        payload: { email, reason: "throttled", failed_logins: user.failed_logins },
+      });
+      throw new AppError(
+        "LOGIN_THROTTLED",
+        `Too many failed attempts. Try again in ${wait} second${wait === 1 ? "" : "s"}.`,
+        429,
+        { retry_after_seconds: wait },
+      );
+    }
+  }
 
   // Same error for "no such user" and "wrong password" — don't leak which.
   const fail = async (reason) => {
@@ -716,6 +788,9 @@ module.exports = {
   getSignature, setSignature,
   registerPinDevice, pinLogin, listPinDevices, revokePinDevice,
   login,
+  // Exported for tests: the throttle curve is the security-relevant decision
+  // here, and it should be assertable without standing up a database.
+  throttleFor,
   verifyTotp,
   setupTotp,
   enableTotp,

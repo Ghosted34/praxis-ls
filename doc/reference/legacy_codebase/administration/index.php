@@ -1,4 +1,6 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 declare(strict_types=1);
 
 session_start();
@@ -6,10 +8,10 @@ session_start();
 /* =========================
    DATABASE CONNECTION
    ========================= */
-$DB_HOST = '127.0.0.1';
-$DB_NAME = 'smart';
-$DB_USER = 'root';
-$DB_PASS = '';
+$DB_HOST = '__REMOVED_ROTATE_ME__';
+$DB_NAME = '__REMOVED_ROTATE_ME__';
+$DB_USER = '__REMOVED_ROTATE_ME__';
+$DB_PASS = '__REMOVED_ROTATE_ME__';
 
 mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
 

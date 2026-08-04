@@ -40,6 +40,47 @@ const Schema = z.object({
   LOG_LEVEL: z.string().default("info"),
   APP_NAME: z.string().default("praxis-ls-api"),
   CORS_ORIGINS: z.string().default(""),
+
+  /**
+   * How many reverse-proxy hops sit in front of this process (audit SEC-H5).
+   *
+   * `app.set("trust proxy", true)` used to be unconditional, which tells Express
+   * to believe the whole X-Forwarded-For chain — including the part the client
+   * wrote. Every IP-keyed control downstream (rate limiting, audit `ip`) then
+   * keyed on an attacker-chosen value, so a limiter could be reset per request
+   * by rotating the header.
+   *
+   * A hop COUNT makes Express take the Nth address from the right, which is the
+   * one the proxy you actually control appended. Default 1 = the single nginx in
+   * front of the api/api-standby containers (see docker-compose.yml). Raise it
+   * only if you genuinely add a trusted hop — a CDN in front of nginx makes it
+   * 2. Setting it too high re-opens the spoof; too low keys everyone behind the
+   * proxy onto one bucket.
+   *
+   * 0 disables proxy trust entirely (direct-to-Node, no proxy).
+   */
+  TRUST_PROXY_HOPS: int(1),
+
+  /**
+   * Build identity, surfaced on the readiness probe (audit TC-R2 / OBS-I5).
+   * Injected at image build time; unset means "not built by CI", which the probe
+   * reports honestly rather than hiding.
+   */
+  BUILD_SHA: z.string().default(""),
+  BUILD_TIME: z.string().default(""),
+
+  /**
+   * Where alerts go (audit OBS-A1 — there is no alerting of any kind).
+   *
+   * Either is enough; neither is required to boot. When both are empty the app
+   * logs a warning at startup rather than staying quiet, because "nobody
+   * configured alerting" should be visible — a silent absence of alerting is
+   * indistinguishable from working alerting right up until the night it isn't.
+   *
+   * See doc/MONITORING_SETUP.md.
+   */
+  ALERT_WEBHOOK_URL: z.string().default(""),
+  ALERT_EMAIL: z.string().default(""),
   // Dedicated host for the Praxis-side Platform Console (e.g. admin.praxisls.com).
   // The console static app is served ONLY when the request Host matches this, at
   // the root of that host; tenant hosts never serve it. Empty (default) = the

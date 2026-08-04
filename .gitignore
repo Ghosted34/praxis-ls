@@ -62,6 +62,11 @@ data/
 *.sql.gz
 backups/
 
+# Deploy state written on the server by scripts/deploy.sh — records the running
+# and previous build so scripts/rollback.sh has something to point at. Host
+# state, not source (audit TEST-D1).
+.deploy-state/
+
 # AI / Vector stores (if any local cache)
 .embeddings-cache/
 

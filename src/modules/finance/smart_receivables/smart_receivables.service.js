@@ -145,6 +145,11 @@ async function get(client, id) {
   return receipt;
 }
 
-const list = (client, q) => repo.listReceipts(client, { clientId: q.client_id, limit: q.limit, offset: q.offset });
+/** One page of receipts plus the filter total, for `X-Total-Count`. */
+const listPaged = (client, q) =>
+  repo.listReceipts(client, { clientId: q.client_id, limit: q.limit, offset: q.offset, q: q.q });
 
-module.exports = { createDraft, post, ageing, overdue, reminders, get, list };
+/** Bare array — kept for non-HTTP callers that expect a list, not an envelope. */
+const list = async (client, q) => (await listPaged(client, q)).rows;
+
+module.exports = { createDraft, post, ageing, overdue, reminders, get, list, listPaged };

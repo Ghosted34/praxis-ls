@@ -14,7 +14,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { DataList, type Column } from "@/components/data-list";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { useList, useResource } from "@/lib/use-resource";
+import { useList, useListPaged, useResource } from "@/lib/use-resource";
+import { Pagination } from "@/components/ui/pagination";
+import { useDebounced } from "@/lib/use-debounced";
 import { money, dateFmt, enumLabel } from "@/lib/format";
 import type { Client } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
@@ -154,18 +156,42 @@ function CommandCenter() {
   const treasury = useList<api.TreasuryAccount>("/treasury-accounts");
   const [chip, setChip] = React.useState<ChipKey>("invoices");
   const [q, setQ] = React.useState("");
+  const [page, setPage] = React.useState(0);
+  // Search hits the API now, so it is debounced — see useDebounced.
+  const search = useDebounced(q, 300);
 
-  const invoices = useList<api.InvoiceRow>("/final-invoices");
-  const proformas = useList<api.ProformaRow>("/proformas/advances");
-  const receipts = useList<api.Receipt>("/receivables");
-  const journals = useList<api.JournalRow>("/journal-entries");
+  // A new search or a new tab must restart at page 1. Without this, searching
+  // while on page 3 asks for offset 50 of a result set that may hold 2 rows,
+  // and the table renders empty for a query that matched.
+  React.useEffect(() => { setPage(0); }, [search, chip]);
 
+  // SERVER-PAGED AND SERVER-SEARCHED (audit F8).
+  //
+  // These were four unpaginated `useList` calls whose results were filtered in
+  // the browser. The API clamps every list to 50 rows, so the hub was filtering
+  // the 50 most recent records and reporting "No invoices match" for records
+  // that existed further down — wrong data, not just slow data. Both the paging
+  // and the text search now happen in SQL; see the repo `q` clauses.
+  //
+  // All four are still fetched, as before, because the chip counts show all
+  // four at once. Only the ACTIVE tab pages — the others sit on page 1, since
+  // nothing but their total is read.
+  const pageSize = 25;
+  const at = (k: ChipKey) => ({ page: chip === k ? page : 0, pageSize, q: search });
+  const invoices = useListPaged<api.InvoiceRow>("/final-invoices", at("invoices"));
+  const proformas = useListPaged<api.ProformaRow>("/proformas/advances", at("proformas"));
+  const receipts = useListPaged<api.Receipt>("/receivables", at("receipts"));
+  const journals = useListPaged<api.JournalRow>("/journal-entries", at("journals"));
+
+  // These are now TRUE totals from X-Total-Count. They previously read
+  // `rows.length` off a response the API had already clamped to 50, so a tenant
+  // with 300 invoices saw the chip claim "50".
   const counts: Record<ChipKey, number> = {
-    invoices: (invoices.rows || []).length, proformas: (proformas.rows || []).length,
-    receipts: (receipts.rows || []).length, journals: (journals.rows || []).length,
+    invoices: invoices.total, proformas: proformas.total,
+    receipts: receipts.total, journals: journals.total,
   };
+  const activeList = { invoices, proformas, receipts, journals }[chip];
   const clientOf = (id?: string | null) => (id ? clientName[id] || "—" : "—");
-  const hit = (s: string) => !q.trim() || s.toLowerCase().includes(q.trim().toLowerCase());
   const active = CHIP_META[chip];
 
   const invCols: Column<api.InvoiceRow>[] = [
@@ -253,18 +279,24 @@ function CommandCenter() {
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search invoice, client, dossier…" className="w-full max-w-xs" />
       </div>
 
+      {/* No `.filter(...)` on any of these: the server has already applied the
+          search across the WHOLE table, so what arrives is the answer rather
+          than a prefix of it. The empty-state hint distinguishes "nothing here"
+          from "nothing matched", which the old client-side filter could not. */}
       {chip === "invoices" && (
-        <DataList columns={invCols} rows={(invoices.rows || []).filter((r) => hit(`${r.doc_number || ""} ${clientOf(r.client_id)} ${(r.dossier_id && dossierRef[r.dossier_id]) || r.dossier_id || ""}`))} error={invoices.error} loading={invoices.loading} rowKey={(r) => r.invoice_id} onRowClick={() => navigate("/finance/invoices")} empty={{ title: "No invoices", hint: "Issue a final invoice from an approved costing." }} />
+        <DataList columns={invCols} rows={invoices.rows} error={invoices.error} loading={invoices.loading} rowKey={(r) => r.invoice_id} onRowClick={() => navigate("/finance/invoices")} empty={search ? { title: "No invoices match", hint: `Nothing matches “${search}”.` } : { title: "No invoices", hint: "Issue a final invoice from an approved costing." }} />
       )}
       {chip === "proformas" && (
-        <DataList columns={pfCols} rows={(proformas.rows || []).filter((r) => hit(clientOf(r.client_id)))} error={proformas.error} loading={proformas.loading} rowKey={(r) => r.advance_id} onRowClick={() => navigate("/finance/proformas")} empty={{ title: "No proformas", hint: "Raise a proforma / advance request." }} />
+        <DataList columns={pfCols} rows={proformas.rows} error={proformas.error} loading={proformas.loading} rowKey={(r) => r.advance_id} onRowClick={() => navigate("/finance/proformas")} empty={search ? { title: "No proformas match", hint: `Nothing matches “${search}”.` } : { title: "No proformas", hint: "Raise a proforma / advance request." }} />
       )}
       {chip === "receipts" && (
-        <DataList columns={rcCols} rows={(receipts.rows || []).filter((r) => hit(clientOf(r.client_id)))} error={receipts.error} loading={receipts.loading} rowKey={(r) => r.receipt_id} onRowClick={() => navigate("/finance/receivables")} empty={{ title: "No receipts", hint: "Log a customer payment." }} />
+        <DataList columns={rcCols} rows={receipts.rows} error={receipts.error} loading={receipts.loading} rowKey={(r) => r.receipt_id} onRowClick={() => navigate("/finance/receivables")} empty={search ? { title: "No receipts match", hint: `Nothing matches “${search}”.` } : { title: "No receipts", hint: "Log a customer payment." }} />
       )}
       {chip === "journals" && (
-        <DataList columns={jnCols} rows={(journals.rows || []).filter((r) => hit(`${r.source_doc_ref || ""} ${r.source || ""}`))} error={journals.error} loading={journals.loading} rowKey={(r) => r.entry_id} onRowClick={() => navigate("/finance/journals")} empty={{ title: "No journal entries", hint: "Postings land here as documents are locked." }} />
+        <DataList columns={jnCols} rows={journals.rows} error={journals.error} loading={journals.loading} rowKey={(r) => r.entry_id} onRowClick={() => navigate("/finance/journals")} empty={search ? { title: "No journal entries match", hint: `Nothing matches “${search}”.` } : { title: "No journal entries", hint: "Postings land here as documents are locked." }} />
       )}
+
+      <Pagination page={activeList.page} pageSize={activeList.pageSize} total={activeList.total} onPageChange={setPage} />
     </section>
   );
 }

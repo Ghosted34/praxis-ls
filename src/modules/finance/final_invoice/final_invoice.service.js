@@ -167,7 +167,18 @@ async function postApproved(client, { id, actor = {} }) {
   return postCore(client, { invoice, econLines: econLinesFrom(lineRows, invoice.dossier_id), entryDate, sourceDocRef: "approval:" + id, actor });
 }
 
-const list = (client, q) => repo.listInvoices(client, q);
+/**
+ * One page of invoices plus the total matching the filter, for the HTTP layer
+ * to surface as `X-Total-Count`.
+ */
+const listPaged = (client, q) => repo.listInvoices(client, q);
+
+/**
+ * Bare array of invoices. Kept as-is for the AI tool registry, which describes
+ * `list` as returning a list and would otherwise start handing the model a
+ * `{rows, total}` envelope it has no schema for.
+ */
+const list = async (client, q) => (await repo.listInvoices(client, q)).rows;
 
 async function get(client, id) {
   const invoice = await repo.getInvoice(client, id);
@@ -197,4 +208,4 @@ async function previewTotals(client, { invoiceId, entryDate = null }) {
   return { totals: determined.totals, advance_open: advanceOpen, line_count: lineRows.length };
 }
 
-module.exports = { createDraft, createDraftCore, ensureDraftForCosting, updateDraft, submit, postApproved, previewTotals, list, get };
+module.exports = { createDraft, createDraftCore, ensureDraftForCosting, updateDraft, submit, postApproved, previewTotals, list, listPaged, get };

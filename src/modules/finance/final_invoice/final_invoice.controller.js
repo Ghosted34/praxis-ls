@@ -2,9 +2,11 @@
 const service = require("./final_invoice.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { enqueueDocument } = require("../../../services/documents/generate");
+const { sendPaged } = require("../../../shared/http/paged");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
-  list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
+  list: asyncHandler(async (req, res) =>
+    sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query)))),
   get: asyncHandler(async (req, res) => {
     const row = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!row) throw new AppError("NOT_FOUND", "Invoice not found", 404);

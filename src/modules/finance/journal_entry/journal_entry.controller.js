@@ -1,12 +1,13 @@
 "use strict";
 const service = require("./journal_entry.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+const { sendPaged } = require("../../../shared/http/paged");
 
 const actor = (req) => req.user || { user_id: null };
 
 module.exports = {
   list: asyncHandler(async (req, res) =>
-    res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) }),
+    sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query))),
   ),
 
   get: asyncHandler(async (req, res) => {

@@ -87,15 +87,50 @@ announce() {
 DEPLOYER="$(git config user.name 2>/dev/null || echo "${USER:-unknown}")"
 HOSTNAME_S="$(hostname 2>/dev/null || echo unknown)"
 
-echo "── recording the currently-running build (for rollback)"
-PREVIOUS_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-if [ -f "$STATE_DIR/current" ]; then
-  PREVIOUS_SHA="$(cat "$STATE_DIR/current")"
-fi
-echo "   previous: $PREVIOUS_SHA"
+# ===========================================================================
+# PHASE 1 — pull, then RE-EXEC into the script we just pulled.
+#
+# This script `git pull`s the repository that contains this script. Bash reads a
+# script incrementally from an open file descriptor, and git applies an update by
+# writing a temp file and renaming it into place — which leaves the ORIGINAL
+# inode intact for anyone already reading it. So bash carries on executing the
+# OLD deploy.sh for the rest of the run, and the version just pulled does not
+# take effect until the NEXT deploy.
+#
+# This is not theoretical. On 2026-08-04 a fix to the backup step was pulled and
+# the run failed with the exact bug that had just been fixed; the giveaway was
+# that the error text was the old wording. Every previous change to this file has
+# silently had the same one-deploy lag.
+#
+# Re-exec closes it: pull, then hand over to the new file. PREVIOUS_SHA is passed
+# through the environment because after the pull `git rev-parse HEAD` is the NEW
+# commit, and the whole point of that value is to name what we are replacing.
+# ===========================================================================
+if [ "${PRAXIS_DEPLOY_REEXEC:-0}" != "1" ]; then
+  echo "── recording the currently-running build (for rollback)"
+  PREVIOUS_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+  if [ -f "$STATE_DIR/current" ]; then
+    PREVIOUS_SHA="$(cat "$STATE_DIR/current")"
+  fi
+  echo "   previous: $PREVIOUS_SHA"
 
-echo "── pulling latest"
-git pull --ff-only
+  echo "── pulling latest"
+  git pull --ff-only
+
+  PULLED_SHA="$(git rev-parse HEAD)"
+  if [ "$PULLED_SHA" != "$PREVIOUS_SHA" ]; then
+    echo "── re-executing the deploy script from $PULLED_SHA (it may have changed)"
+  fi
+  export PRAXIS_DEPLOY_REEXEC=1
+  export PRAXIS_PREVIOUS_SHA="$PREVIOUS_SHA"
+  exec bash "$0" "$@"
+fi
+
+# ===========================================================================
+# PHASE 2 — running the freshly pulled script. Everything below is the deploy.
+# ===========================================================================
+PREVIOUS_SHA="${PRAXIS_PREVIOUS_SHA:-unknown}"
+echo "   previous: $PREVIOUS_SHA"
 BUILD_SHA="$(git rev-parse HEAD)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "   deploying: $BUILD_SHA"
@@ -132,7 +167,21 @@ BACKUP_FILE="$BACKUP_DIR/pre-deploy-$(date -u +%Y%m%dT%H%M%SZ)-${BUILD_SHA:0:8}.
 #
 # `set -o pipefail` at the top is what makes this `if` honest — without it the
 # exit status would be gzip's, and gzip happily succeeds on an empty stream.
-if docker compose exec -T postgres sh -c 'pg_dumpall -U "$POSTGRES_USER"' | gzip > "$BACKUP_FILE"; then
+# Resolve the superuser first and PRINT it. When this step failed on 2026-08-04
+# the log said only `role "postgres" does not exist`, which tells you the guess
+# was wrong but not what the right answer is. One echo turns the next failure
+# into a five-second diagnosis.
+PG_SUPERUSER="$(docker compose exec -T postgres sh -c 'printf %s "${POSTGRES_USER:-}"' 2>/dev/null | tr -d '\r' || true)"
+if [ -z "$PG_SUPERUSER" ]; then
+  echo "!! Could not read POSTGRES_USER from the postgres container."
+  echo "   docker-compose.yml sets it from \${DB_USER:-praxis-admin}; check DB_USER in .env"
+  echo "   and that the postgres service is actually running:  docker compose ps"
+  announce "DEPLOY ABORTED on ${HOSTNAME_S}: cannot resolve the Postgres superuser for the pre-migration backup"
+  exit 1
+fi
+echo "   superuser: $PG_SUPERUSER"
+
+if docker compose exec -T postgres pg_dumpall -U "$PG_SUPERUSER" | gzip > "$BACKUP_FILE"; then
   BACKUP_BYTES="$(wc -c < "$BACKUP_FILE" | tr -d ' ')"
   # A dump that "succeeded" but is a few hundred bytes is an empty cluster or a
   # silently truncated stream. Treat it as a failure — the point of this step is

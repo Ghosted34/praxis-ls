@@ -34,7 +34,13 @@ ReactDOM.createRoot(document.getElementById("root")!).render(
       <QueryClientProvider client={queryClient}>
         <ToastProvider>
           <TooltipProvider>
-            <BrowserRouter>
+            {/* v7_startTransition: routes are lazy (app/app.tsx), and without
+                this every navigation would unmount the current screen and paint
+                the Suspense skeleton while the next chunk downloads. Routing
+                inside a transition instead keeps the screen you are on until the
+                new one is ready — so a cached chunk navigates with no visible
+                loading state at all. */}
+            <BrowserRouter future={{ v7_startTransition: true }}>
               <BrandingProvider>
                 <AuthProvider>
                   <App />

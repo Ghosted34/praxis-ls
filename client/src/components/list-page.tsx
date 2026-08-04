@@ -86,6 +86,7 @@ export function ListPage<T extends Record<string, unknown>>({
   description,
   eyebrow,
   action,
+  tabs,
   toolbar,
   kpis,
   columns,
@@ -107,6 +108,17 @@ export function ListPage<T extends Record<string, unknown>>({
   eyebrow?: React.ReactNode;
   /** One primary control, right of the header. */
   action?: React.ReactNode;
+  /**
+   * A hub's tab bar — `<HubTabs/>` — which must sit DIRECTLY under the header.
+   *
+   * `TabbedHub` publishes its strip on context and relies on each page to draw
+   * it in the right place, with an `inlineTabs` escape hatch for hubs whose
+   * pages forgot (audit F7 calls this the one genuine anti-pattern in the
+   * component architecture: whether a hub's tabs appear depends on a convention
+   * no type signature enforces). A named slot at least makes the position part
+   * of the scaffold rather than of each screen's layout.
+   */
+  tabs?: React.ReactNode;
   /** Filters and search. Sits between the KPIs and the table. */
   toolbar?: React.ReactNode;
   /** A `<KpiRow>`, above the toolbar. */
@@ -136,6 +148,7 @@ export function ListPage<T extends Record<string, unknown>>({
     <PageContainer width={width}>
       <PageHeader title={title} description={description} eyebrow={eyebrow} action={action} />
 
+      {tabs}
       {kpis}
       {toolbar && <div className="mb-4 flex flex-wrap items-center justify-between gap-3">{toolbar}</div>}
 

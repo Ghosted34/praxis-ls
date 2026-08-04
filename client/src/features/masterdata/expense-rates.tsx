@@ -77,7 +77,14 @@ export function ExpenseRatesPage() {
   const { rows: dict } = useList<api.DictItem>("/financial-dictionary");
   const [editing, setEditing] = React.useState<api.ExpenseRate | "new" | null>(null);
   const [busyId, setBusyId] = React.useState<string | null>(null);
-  const dictLabel = (id: string) => { const d = (dict || []).find((x) => x.dictionary_item_id === id); return d ? d.code : id.slice(0, 8); };
+  // `id` is typed non-null, but an unguarded `.slice()` on it means one null FK
+  // takes down the whole screen instead of rendering a dash in one cell. Not a
+  // defect anyone has hit — a cheap bound on how badly one bad row can fail.
+  const dictLabel = (id: string | null | undefined) => {
+    const d = (dict || []).find((x) => x.dictionary_item_id === id);
+    if (d) return d.code;
+    return id ? id.slice(0, 8) : "—";
+  };
 
   async function remove(r: api.ExpenseRate) {
     if (!window.confirm("Delete this expense rate?")) return;

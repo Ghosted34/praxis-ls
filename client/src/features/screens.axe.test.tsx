@@ -130,6 +130,13 @@ type ScreenCase = {
    * needs a comment saying which it is.
    */
   states?: ("loading" | "error" | "empty" | "populated")[];
+  /**
+   * Set false for a screen that legitimately renders an empty state even with
+   * data — a side panel with nothing in it beside a populated list, a board
+   * with an empty column. Every use needs a reason: the default exists to catch
+   * a fixture that never reached the screen.
+   */
+  rendersRows?: boolean;
 };
 
 type Area = { area: string; screens: ScreenCase[] };
@@ -266,6 +273,10 @@ const AREAS: Area[] = [
         render: () => <SignaturesPage />,
         routes: { "/signatures": [{ signature_id: "sg1", entity_ref: "OPS-1", signer: "Amina", signed_at: "2026-07-02" }] },
         states: ["empty", "populated"],
+        // "Enter a reference" IS the arrival state here — the screen fetches
+        // nothing until one is typed, so an empty state with data available is
+        // correct rather than a fixture that failed to land.
+        rendersRows: false,
       },
     ],
   },
@@ -302,7 +313,7 @@ const AREAS: Area[] = [
       { name: "Clients", render: () => <MasterClientsPage />, routes: { "/clients": CLIENTS, "/entities": ENTITIES } },
       { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
       { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
-      { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", code: "PERDIEM", amount: 25000, currency: "XAF" }] } },
+      { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", dictionary_item_id: "dddddddd-4444", shipping_line: "MAERSK", rate: 25000, currency: "XAF" }], "/financial-dictionary": [] }, populatedProof: /MAERSK/ },
       { name: "Financial dictionary", render: () => <FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
     ],
   },
@@ -348,16 +359,16 @@ const AREAS: Area[] = [
     screens: [
       { name: "Cycle counts", render: () => <CycleCountsPage />, routes: { "/cycle-counts": [{ cycle_count_id: "cc1", ref: "CC-001", status: "OPEN", location_id: "loc1" }], "/warehouse-locations": [] } },
       { name: "Equipment", render: () => <EquipmentPage />, routes: { "/equipment": [{ equipment_id: "eq1", code: "FL-01", kind: "FORKLIFT", is_active: true }] } },
-      { name: "Inbound", render: () => <InboundPage />, routes: { "/inbound": [{ inbound_id: "in1", ref: "IN-001", status: "EXPECTED" }] } },
+      { name: "Inbound", render: () => <InboundPage />, routes: { "/inbound": [{ grn_inbound_id: "aaaaaaaa-1111", qa_status: "HOLD", putaway_location: "A-01", created_at: "2026-07-01" }] }, populatedProof: /aaaaaaaa/ },
       { name: "Inventory", render: () => <InventoryPage />, routes: { "/inventory": [{ inventory_item_id: "it1", sku: "SKU-1", description: "Pallet", qty_on_hand: 12 }] } },
-      { name: "Outbound", render: () => <OutboundPage />, routes: { "/outbound": [{ outbound_id: "o1", ref: "OUT-001", status: "PICKING" }] } },
+      { name: "Outbound", render: () => <OutboundPage />, routes: { "/outbound": [{ outbound_order_id: "bbbbbbbb-2222", status: "PICKING", created_at: "2026-07-01" }] }, populatedProof: /bbbbbbbb/ },
     ],
   },
   {
     area: "Fleet",
     screens: [
       { name: "Compliance", render: () => <VehicleCompliancePage />, routes: { "/vehicle-compliance": [{ compliance_id: "vc1", vehicle_id: "v1", registration: "LT-1234-AB", kind: "INSURANCE", expires_on: "2026-12-31" }], "/vehicles": [] } },
-      { name: "Dispatch", render: () => <DispatchPage />, routes: { "/dispatch": [{ dispatch_id: "d1", ref: "DSP-001", status: "PLANNED" }], "/vehicles": [], "/drivers": [] } },
+      { name: "Dispatch", render: () => <DispatchPage />, routes: { "/dispatch": [{ fleet_dispatch_id: "cccccccc-3333", registration: "LT-1234-AB", driver_name: "Jean K.", status: "ASSIGNED" }], "/vehicles": [], "/drivers": [] }, populatedProof: /LT-1234-AB/ },
       { name: "Drivers", render: () => <DriversPage />, routes: { "/drivers": [{ driver_id: "dr1", full_name: "Jean K.", licence_no: "CM-001", is_active: true }] } },
       { name: "Fuel log", render: () => <FuelLogPage />, routes: { "/fuel": [{ fuel_log_id: "f1", vehicle_id: "v1", litres: 60, cost: 45000, logged_on: "2026-07-01" }], "/vehicles": [] } },
       { name: "Incidents", render: () => <IncidentsPage />, routes: { "/incidents": [{ incident_id: "i1", ref: "INC-001", severity: "LOW", status: "OPEN" }], "/vehicles": [] } },
@@ -368,7 +379,7 @@ const AREAS: Area[] = [
     area: "HR",
     screens: [
       { name: "SOPs", render: () => <SopsPage />, routes: { "/sops": [{ sop_document_id: "s1", title: "Cargo handling", category: "Ops", version_no: 2, is_active: true }], "/onboarding": [], "/employees": [] } },
-      { name: "Talent pool", render: () => <TalentPoolPage />, routes: { "/talent-pool": [{ talent_pool_id: "t1", full_name: "Marie N.", skills: "Customs" }], "/succession": [], "/employees": [] } },
+      { name: "Talent pool", render: () => <TalentPoolPage />, routes: { "/talent-pool": [{ talent_pool_id: "t1", full_name: "Marie N.", skills: "Customs" }], "/succession": [{ succession_id: "sc1", role_title: "Head of Ops", employee_id: "e1", readiness: "ready_now" }], "/employees": [{ employee_id: "e1", full_name: "Marie N." }] }, populatedProof: /Marie N\./ },
     ],
   },
   {
@@ -393,7 +404,7 @@ const AREAS: Area[] = [
 
 const CASES = AREAS.flatMap((a) => a.screens.map((s) => ({ ...s, area: a.area })));
 
-describe.each(CASES)("$area › $name", ({ render: renderCase, routes, populatedProof, states }) => {
+describe.each(CASES)("$area › $name", ({ render: renderCase, routes, populatedProof, states, rendersRows }) => {
   const has = (s: string) => !states || states.includes(s as never);
 
   it.runIf(has("loading"))("loading state is clean and announced", async () => {
@@ -427,6 +438,32 @@ describe.each(CASES)("$area › $name", ({ render: renderCase, routes, populated
   it("populated state is clean, with exactly one h1", async () => {
     const { container } = renderScreen(renderCase(), { routes });
     if (populatedProof) await waitFor(() => expect(container.textContent).toMatch(populatedProof));
+
+    /*
+     * THE FIXTURE ACTUALLY REACHED THE SCREEN.
+     *
+     * This is the guard this file most needed, and it is here because the same
+     * mistake was made SEVEN times while building the register: a fixture keyed
+     * on a path the screen does not call (`/godmode` for `/god-mode/soft-deletes`,
+     * `/scheduled-reports` for `/reports/scheduled`, `/vehicles` for
+     * `/vehicle-compliance`). Nothing arrives, the screen renders its EMPTY
+     * state, and all four assertions pass — an axe-clean empty table is
+     * axe-clean and completely worthless as coverage.
+     *
+     * So: if the fixture supplied rows, the screen must not be sitting in its
+     * empty state. `border-dashed` is EmptyState's own marker. Screens that
+     * legitimately show one (a panel with no data beside a populated list) opt
+     * out via `rendersRows: false`, with a reason.
+     */
+    const suppliedRows = Object.values(routes ?? {}).some((v) => Array.isArray(v) && v.length > 0);
+    if (suppliedRows && rendersRows !== false) {
+      await waitFor(() =>
+        expect(
+          container.querySelector(".border-dashed"),
+          "fixture supplied rows but the screen is showing an empty state — the fixture path probably does not match what this screen fetches",
+        ).toBeNull(),
+      );
+    }
     // F13: 116 of 117 pages had no h1 at all. Two competing h1s is the other
     // failure mode, and just as wrong.
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);

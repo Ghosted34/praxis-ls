@@ -49,6 +49,18 @@ jobs:
         # to renumber. See scripts/db/check-migration-numbers.js.
         run: node scripts/db/check-migration-numbers.js
 
+      - name: Migration reversibility
+        # Audit DATA 3.5 / TEST-D2: there is not one down-migration in this
+        # repo, which is half of why a bad deploy was unrecoverable (the other
+        # half — no pre-migration backup — is fixed in scripts/deploy.sh).
+        #
+        # This does NOT retro-fit the 92 existing migrations; an untested DROP
+        # written for a migration that already ran in production looks like a
+        # recovery path and is not one. It requires every NEW migration to carry
+        # a commented `-- DOWN` block or an explicit `-- IRREVERSIBLE: <reason>`.
+        # Stops the backlog growing while DATA 3.5 is worked.
+        run: node scripts/db/check-migration-reversibility.js
+
   security:
     runs-on: ubuntu-latest
     steps:
@@ -83,12 +95,95 @@ jobs:
         # Catches a key pasted into a commit. The repo has real history here: the
         # kickoff shared provider keys in plaintext (Gemini/DeepSeek/Groq/
         # exchangerate) and they had to be rotated. `.env` ships placeholders like
-        # __rotate_me__, which are deliberately NOT matched below.
+        # __rotate_me__, which are deliberately NOT matched (see PLACEHOLDER).
+        #
+        # 2026-08-04 (audit SEC-C1 / TC-CI5). Two independent defects were fixed
+        # here, and BOTH were needed — either alone leaves the scan useless:
+        #
+        #   1. ':!doc/reference' excluded the one directory that actually held
+        #      live credentials. Five files: three legacy `config/db.php`, an
+        #      inline `new mysqli(...)` in administration/index.php, and an
+        #      Office365 SMTP user/password in a test view. Exclusion removed.
+        #      Vendor trees are still skipped — they are third-party source, and
+        #      phpmailer's own README carries example credentials.
+        #
+        #   2. The pattern set only matched provider API keys (sk-, AIza, gsk_,
+        #      PEM, AKIA). NONE of it matches `$DB_PASS = '…'`. So even scanning
+        #      doc/reference would have passed those five files clean. Database
+        #      credentials, SMTP credentials and URL-embedded passwords are now
+        #      matched too.
+        #
+        # Adding a pattern here is cheap. Leaving one out is how the last set got
+        # committed — so if you find a credential shape this misses, add it in
+        # the same commit as the fix.
+        #
+        # Third pass, same day. The second pass FAILED ITS FIRST CI RUN, which is
+        # the point of it existing, and produced three more lessons:
+        #
+        #   a. It found a live Groq key in two more files. `gsk_` was in the
+        #      ORIGINAL pattern list — the key was invisible for months purely
+        #      because of the path exclusion, exactly like the Gemini ones.
+        #      That is now seven credential files found where the audit cited one.
+        #   b. `git grep -E "-----BEGIN…"` parses the leading dashes as options.
+        #      The pattern silently errored instead of scanning. Every pattern is
+        #      now passed with `-e`.
+        #   c. Two patterns matched prose, not secrets: a `new mysqli($DB_HOST,
+        #      $DB_USER, …)` call passing VARIABLES, this file's own comment, and
+        #      two audit documents quoting a redacted URI. A scanner that cries
+        #      wolf gets disabled, so those are tightened to require a quoted
+        #      literal rather than any following character.
+        #
+        # The scan runs over the WORKING TREE only. Git history is not covered —
+        # tracked as TC-E4, and blocked on the purge decision in
+        # doc/reference/README.md.
         run: |
-          set -euo pipefail
-          PATTERN='(sk-[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{35}|gsk_[A-Za-z0-9]{40,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|AKIA[0-9A-Z]{16})'
-          if git grep -nIE "$PATTERN" -- . ':!doc/reference' ':!*.lock' ':!package-lock.json'; then
-            echo "::error::Possible secret committed — rotate it and purge from history."
+          set -uo pipefail
+          # Each entry must match an actual SECRET VALUE, not a mention of one.
+          # The recurring false-positive shape is a variable or a doc reference,
+          # so literal-quote anchors are load-bearing here.
+          PATTERNS=(
+            # provider API keys / private keys
+            'sk-[A-Za-z0-9]{20,}'
+            'AIza[0-9A-Za-z_-]{35}'
+            'gsk_[A-Za-z0-9]{40,}'
+            'xox[baprs]-[A-Za-z0-9-]{10,}'
+            'ghp_[A-Za-z0-9]{36}'
+            'AKIA[0-9A-Z]{16}'
+            'BEGIN [A-Z ]*PRIVATE KEY'
+            # DB/SMTP credentials assigned a QUOTED LITERAL. Requiring the quote
+            # is what stops `$DB_PASS` used as an argument from matching.
+            '\$DB_(PASS|PASSWORD)[[:space:]]*=[[:space:]]*['"'"'"][^'"'"'"]{3,}'
+            '(SMTPPassword|->Password)[[:space:]]*=[[:space:]]*['"'"'"][^'"'"'"]{3,}'
+            # Passwords embedded in connection strings. The user and password
+            # must both be plausible literals — `redis://[:pass@]` in a comment
+            # and `***host` in an audit quote are not.
+            '(postgres(ql)?|mysql|mongodb|amqp)://[A-Za-z0-9_.-]+:[A-Za-z0-9_%.!*-]{4,}@'
+          )
+          # Values that are obviously not real. Keep this list tight: every entry
+          # is a hole, and a scanner that matches nothing is worse than none.
+          # `__anything__` covers the repo's established placeholder convention
+          # (__rotate_me__, __pw__, __host__, __REMOVED_ROTATE_ME__) in one rule
+          # rather than a list that has to be extended every time someone coins a
+          # new one. `user:pass` and friends are the shapes documentation uses
+          # when it is *describing* a connection string.
+          PLACEHOLDER='(__[A-Za-z_]+__|changeme|change-me|dev-[a-z-]*secret|YOUR_|example\.com|<[a-z_]+>|placeholder|xxxx|\*\*\*|user:pass|user:password|username:password)'
+          FOUND=0
+          for p in "${PATTERNS[@]}"; do
+            # -e is REQUIRED: a pattern starting with '-' is otherwise parsed as
+            # an option and the scan silently does nothing.
+            HITS="$(git grep -nIE -e "$p" -- . \
+                      ':!*.lock' ':!package-lock.json' \
+                      ':!**/vendor/**' ':!**/node_modules/**' \
+                      ':!.github/workflows/ci.yaml' \
+                      ':!doc/*_AUDIT_*.md' ':!doc/reference/README.md' \
+                    | grep -vEi "$PLACEHOLDER" || true)"
+            if [ -n "$HITS" ]; then
+              echo "$HITS"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -eq 1 ]; then
+            echo "::error::Possible secret committed — rotate it at the provider, THEN remove it. Deleting the file is not the fix."
             exit 1
           fi
           echo "No secret patterns found."

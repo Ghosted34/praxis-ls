@@ -2,6 +2,15 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: praxis_postgres
+    # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
+    # container stayed down until a human noticed — and nothing notified anyone
+    # (OBS-A1). This also pairs with the uncaughtException change in server.js:
+    # the API now EXITS on an uncaught throw rather than continuing in an
+    # undefined state, which is only an improvement if something restarts it.
+    #
+    # `unless-stopped`, not `always`: it will not resurrect a container you
+    # deliberately stopped during an incident.
+    restart: unless-stopped
     environment:
       POSTGRES_DB: ${DB_NAME:-praxislsdata}
       POSTGRES_USER: ${DB_USER:-praxis-admin}
@@ -20,6 +29,15 @@ services:
   redis:
     image: redis:7-alpine
     container_name: praxis_redis
+    # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
+    # container stayed down until a human noticed — and nothing notified anyone
+    # (OBS-A1). This also pairs with the uncaughtException change in server.js:
+    # the API now EXITS on an uncaught throw rather than continuing in an
+    # undefined state, which is only an improvement if something restarts it.
+    #
+    # `unless-stopped`, not `always`: it will not resurrect a container you
+    # deliberately stopped during an incident.
+    restart: unless-stopped
     ports:
       # loopback only — never expose Redis to the public interface
       - "127.0.0.1:6379:6379"
@@ -57,6 +75,15 @@ services:
       context: .
       target: runtime
     container_name: praxis-ls
+    # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
+    # container stayed down until a human noticed — and nothing notified anyone
+    # (OBS-A1). This also pairs with the uncaughtException change in server.js:
+    # the API now EXITS on an uncaught throw rather than continuing in an
+    # undefined state, which is only an improvement if something restarts it.
+    #
+    # `unless-stopped`, not `always`: it will not resurrect a container you
+    # deliberately stopped during an incident.
+    restart: unless-stopped
     depends_on:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
@@ -98,6 +125,15 @@ services:
       context: .
       target: runtime
     container_name: praxis-ls-standby
+    # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
+    # container stayed down until a human noticed — and nothing notified anyone
+    # (OBS-A1). This also pairs with the uncaughtException change in server.js:
+    # the API now EXITS on an uncaught throw rather than continuing in an
+    # undefined state, which is only an improvement if something restarts it.
+    #
+    # `unless-stopped`, not `always`: it will not resurrect a container you
+    # deliberately stopped during an incident.
+    restart: unless-stopped
     depends_on:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }
@@ -129,6 +165,15 @@ services:
       context: .
       target: worker
     container_name: praxis_worker
+    # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
+    # container stayed down until a human noticed — and nothing notified anyone
+    # (OBS-A1). This also pairs with the uncaughtException change in server.js:
+    # the API now EXITS on an uncaught throw rather than continuing in an
+    # undefined state, which is only an improvement if something restarts it.
+    #
+    # `unless-stopped`, not `always`: it will not resurrect a container you
+    # deliberately stopped during an incident.
+    restart: unless-stopped
     depends_on:
       migrate: { condition: service_completed_successfully }
       postgres: { condition: service_healthy }

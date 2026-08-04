@@ -1,4 +1,6 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 /*
  * ======================================================================================
  * SMART LS ENTERPRISE - PRE-SALES & LEADS API (Phase 4)
@@ -138,7 +140,7 @@ try {
             $data = json_decode(file_get_contents('php://input'), true);
             
             // NOTE: Ensure your valid Gemini API Key is here
-            $gemini_api_key = 'AIzaSyD5-sd_MX-feoIGhYdK4zdNfO8PnQbSFHU...'; 
+            $gemini_api_key = '__REMOVED_ROTATE_ME__'; 
             $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $gemini_api_key;
 
             $tone = $data['tone'] ?? 'Consultative/Advisory';
@@ -483,7 +485,7 @@ try {
             file_put_contents($tmpFilePath, $audioData);
 
             // TODO: Insert your generated Groq API Key here
-            $groq_api_key = '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'; 
+            $groq_api_key = '__REMOVED_ROTATE_ME__'; 
             
             $cFile = new CURLFile($tmpFilePath, 'audio/webm', 'audio.webm');
             

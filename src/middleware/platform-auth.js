@@ -72,6 +72,12 @@ const CAP_CATALOGUE = [
   "roles.read", "roles.write",
   "support.read", "support.write",
   "audit.read", "catalogue.read",
+  // Deploy-wide credential store: S3, Geoapify, VAPID and the AI vendor keys
+  // (audit SEC-H2 / API F-20, 2026-08-04). Added with migration 0032, which
+  // grants them to PLATFORM_ROOT_ADMIN only. Highest-privilege capability in
+  // the catalogue — anything holding settings.write can rotate the credentials
+  // the whole deployment runs on.
+  "settings.read", "settings.write",
 ];
 
 // Root Admin is the built-in superuser: it bypasses capability checks entirely

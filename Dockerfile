@@ -50,6 +50,16 @@ COPY . .
 COPY --from=clientbuild /app/client/dist ./client/dist
 COPY --from=consolebuild /app/platform-console/dist ./platform-console/dist
 ENV NODE_ENV=production
+# Build identity (audit TEST-R2 / OBS-I5). A running container could not say
+# which commit it was, so "is the fix deployed?" and "which image do I roll back
+# to?" were both unanswerable from the running system. Surfaced on
+# /api/health and /api/health/ready; passed in by scripts/deploy.sh.
+ARG BUILD_SHA=""
+ARG BUILD_TIME=""
+ENV BUILD_SHA=$BUILD_SHA \
+    BUILD_TIME=$BUILD_TIME
+LABEL org.opencontainers.image.revision=$BUILD_SHA \
+      org.opencontainers.image.created=$BUILD_TIME
 EXPOSE 8080
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "src/server.js"]

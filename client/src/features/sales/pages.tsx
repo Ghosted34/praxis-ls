@@ -1,6 +1,8 @@
 /**
  * Sales & CRM — funnel screens wired to live endpoints.
- *   - LeadsPage         → /leads  (+ folded-in Inbound intake, /inbound)
+ *   - LeadsPage         → /leads  (+ folded-in Inbound intake, /intake)
+ *     NOTE: the API prefix moved /inbound → /intake on 2026-08-04 (audit
+ *     API F-6) because wms/inbound already owned /inbound.
  *   - MeetingsPage      → /meetings (+ /:id notes)
  *   - OpportunitiesPage → /opportunities (Kanban board + list; move/win/lose)
  *
@@ -359,7 +361,7 @@ function TriageModal({ enquiry, onClose, onDone }: { enquiry: Row | null; onClos
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/inbound/enquiries/${String(enquiry.contact_enquiry_id)}/triage`, { method: "POST", body: { to_lead: toLead, close } });
+      await tenant(`/intake/enquiries/${String(enquiry.contact_enquiry_id)}/triage`, { method: "POST", body: { to_lead: toLead, close } });
       onDone();
       onClose();
     } catch (e) {
@@ -420,7 +422,7 @@ function ReviewModal({ partnership, onClose, onDone }: { partnership: Row | null
     setBusy(true);
     setError(null);
     try {
-      await tenant(`/inbound/partnerships/${String(partnership.partnership_request_id)}/review`, { method: "POST", body: { status } });
+      await tenant(`/intake/partnerships/${String(partnership.partnership_request_id)}/review`, { method: "POST", body: { status } });
       onDone();
       onClose();
     } catch (e) {
@@ -464,8 +466,8 @@ function ReviewModal({ partnership, onClose, onDone }: { partnership: Row | null
 function IntakeTab() {
   const [sub, setSub] = React.useState<"enquiries" | "partnerships">("enquiries");
   const reload = useRefresh();
-  const { rows: enquiries, error: enqErr } = useList(sub === "enquiries" ? "/inbound/enquiries" : null);
-  const { rows: partnerships, error: partErr } = useList(sub === "partnerships" ? "/inbound/partnerships" : null);
+  const { rows: enquiries, error: enqErr } = useList(sub === "enquiries" ? "/intake/enquiries" : null);
+  const { rows: partnerships, error: partErr } = useList(sub === "partnerships" ? "/intake/partnerships" : null);
   const [triaging, setTriaging] = React.useState<Row | null>(null);
   const [reviewing, setReviewing] = React.useState<Row | null>(null);
 

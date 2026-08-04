@@ -1,4 +1,6 @@
 <?php
+// SECURITY 2026-08-04: credential removed from version control (audit SEC-C1).
+// The value that was here is COMPROMISED and must be rotated at the provider.
 /*
  * ======================================================================================
  * SMART LS ENTERPRISE - PRAXIS COMMAND ENGINE (Phase 2)
@@ -83,7 +85,7 @@ User Command: $command
 // ======================================================================================
 // STEP 3: CALL GEMINI API (Strict JSON Mode)
 // ======================================================================================
-$gemini_api_key = 'AIzaSyD5-sd_MX-feoIGhYdK4zdNfO8PnQbSFHU'; 
+$gemini_api_key = '__REMOVED_ROTATE_ME__'; 
 $url = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' . $gemini_api_key;
 
 $ch = curl_init($url);

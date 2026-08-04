@@ -14,6 +14,7 @@ const invoiceRepo = require("../../src/modules/finance/final_invoice/final_invoi
 const journalRepo = require("../../src/modules/finance/journal_entry/journal_entry.repo");
 const receiptRepo = require("../../src/modules/finance/smart_receivables/smart_receivables.repo");
 const proformaRepo = require("../../src/modules/finance/proforma/proforma.repo");
+const dossierRepo = require("../../src/modules/operations/operations_file/operations_file.repo");
 const { sendPaged } = require("../../src/shared/http/paged");
 
 /** A pg client that records the SQL it was handed and replays canned rows. */
@@ -131,6 +132,67 @@ describe("the other three hub lists", () => {
     expect(c.calls[0].sql).toContain(TOTAL_COL);
     expect(c.calls[0].sql).toMatch(/c\.name ILIKE/);
     expect(out.total).toBe(3);
+  });
+});
+
+/**
+ * The Operations files list, brought onto the same footing in Phase 3.
+ *
+ * Exactly the Finance defect, one module over: the screen advertised "Search by
+ * ref, client, BL/MAWB, vessel…" while the endpoint matched `ref` only and
+ * reported no total, so the screen filtered the fifty most recent dossiers in
+ * the browser and said "No operation files" for a file that existed.
+ */
+describe("dossier list: total + the four fields the screen advertises", () => {
+  test("asks for the window-function total and strips it off the rows", async () => {
+    const c = fakeClient([{ dossier_id: "d1", _total: "128" }]);
+    const out = await dossierRepo.listPaged(c, {});
+    expect(c.calls[0].sql).toContain(TOTAL_COL);
+    expect(out.total).toBe(128);
+    expect(out.rows).toEqual([{ dossier_id: "d1" }]);
+  });
+
+  test("q matches ref, client name, BL/MAWB and vessel on one placeholder", async () => {
+    const c = fakeClient([]);
+    await dossierRepo.listPaged(c, { q: "MAEU" });
+    const { sql, params } = c.calls[0];
+    expect(sql).toMatch(/d\.ref ILIKE/);
+    expect(sql).toMatch(/cm\.name ILIKE/);
+    expect(sql).toMatch(/d\.bl_mawb ILIKE/);
+    expect(sql).toMatch(/d\.vessel_flight ILIKE/);
+    expect(params.filter((x) => x === "%MAEU%")).toHaveLength(1);
+  });
+
+  test("keeps the joins LEFT so a dossier with no client or service type lists", async () => {
+    const c = fakeClient([]);
+    await dossierRepo.listPaged(c, {});
+    expect(c.calls[0].sql).toMatch(/LEFT JOIN client_master/);
+    expect(c.calls[0].sql).toMatch(/LEFT JOIN service_type/);
+    expect(c.calls[0].sql).not.toMatch(/\bINNER JOIN\b/);
+  });
+
+  test("status and service_type_id filter in SQL, qualified to the dossier", async () => {
+    const c = fakeClient([]);
+    await dossierRepo.listPaged(c, { status: "OPEN", service_type_id: "st-1" });
+    const { sql, params } = c.calls[0];
+    // Qualified: the SELECT joins two tables, and an unqualified `status` would
+    // be ambiguous the moment either of them grows one.
+    expect(sql).toMatch(/d\.status = \$/);
+    expect(sql).toMatch(/d\.service_type_id = \$/);
+    expect(params).toContain("OPEN");
+    expect(params).toContain("st-1");
+  });
+
+  test("limit/offset are clamped by page(), not taken raw off the query string", async () => {
+    const c = fakeClient([]);
+    await dossierRepo.listPaged(c, { limit: "9999", offset: "25" });
+    expect(c.calls[0].params[0]).toBe(200);
+    expect(c.calls[0].params[1]).toBe(25);
+  });
+
+  test("list() still hands back a bare array for its non-paging callers", async () => {
+    const c = fakeClient([{ dossier_id: "d1", _total: "1" }]);
+    await expect(dossierRepo.list(c, {})).resolves.toEqual([{ dossier_id: "d1" }]);
   });
 });
 

@@ -185,7 +185,11 @@ export function ReceivablesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{enumLabel(r.status)}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        // A click SHIELD, not a control: it stops a row action reaching the
+        // row's own onRowClick. The real controls inside are buttons and are
+        // keyboard-reachable, so role="presentation" is accurate — F13 targets
+        // handlers that ARE the interaction, which this is not.
+        <div className="flex justify-end" role="presentation" onClick={(e) => e.stopPropagation()}>
           {r.status === "DRAFT" && <Button size="sm" variant="outline" onClick={() => setPosting(r)}>Post</Button>}
         </div>
       ),

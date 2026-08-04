@@ -1,5 +1,8 @@
 import { TabbedHub } from "@/components/tabbed-hub";
-import { OperationsFilesPage, MilestonesPage, TransitOrdersPage, DeliveryNotesPage } from "./pages";
+import { OperationsFilesPage } from "./operation-files";
+import { MilestonesPage } from "./milestones";
+import { TransitOrdersPage } from "./transit-orders";
+import { DeliveryNotesPage } from "./delivery-notes";
 import { ServiceTypesPage } from "./service-types";
 
 export function OperationsHub() {

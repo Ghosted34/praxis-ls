@@ -232,4 +232,6 @@ async function overview(client, id) {
 
 const get = (client, id) => repo.get(client, id);
 const list = (client, q) => repo.list(client, q);
-module.exports = { create, update, transition, get, list, overview };
+/** One page plus the true match count, for the paged list endpoint. */
+const listPaged = (client, q) => repo.listPaged(client, q);
+module.exports = { create, update, transition, get, list, listPaged, overview };

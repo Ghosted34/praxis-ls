@@ -110,7 +110,11 @@ export function ChartOfAccountsPage() {
     { key: "requires_analytic", label: "Analytic", render: (a) => (a.requires_analytic ? <Pill tone="warn">Dossier</Pill> : <span className="text-muted-foreground">—</span>) },
     {
       key: "_a", label: "", render: (a) => (
-        <div className="flex justify-end" onClick={(e) => e.stopPropagation()}>
+        // A click SHIELD, not a control: it stops a row action reaching the
+        // row's own onRowClick. The real controls inside are buttons and are
+        // keyboard-reachable, so role="presentation" is accurate — F13 targets
+        // handlers that ARE the interaction, which this is not.
+        <div className="flex justify-end" role="presentation" onClick={(e) => e.stopPropagation()}>
           <Button size="sm" variant="ghost" onClick={() => setEditing(a)}>Edit</Button>
         </div>
       ),

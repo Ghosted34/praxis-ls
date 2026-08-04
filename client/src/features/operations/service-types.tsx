@@ -312,7 +312,12 @@ export function ServiceTypesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        <div className="flex justify-end gap-2" onClick={(e) => e.stopPropagation()}>
+        // `role="presentation"` because this wrapper is a click SHIELD, not a
+        // control: it stops a row-action reaching the row's own onRowClick. The
+        // real controls inside are buttons and are keyboard-reachable, so there
+        // is nothing here for a keyboard user to miss (F13's "onClick on a
+        // non-interactive element" is about handlers that ARE the interaction).
+        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
           <Button size="sm" variant="outline" onClick={() => setTemplating(r)}>
             {r.has_active_template ? "New version" : "Add milestones"}
           </Button>

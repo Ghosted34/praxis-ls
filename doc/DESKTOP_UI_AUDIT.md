@@ -1258,3 +1258,217 @@ CI still runs `npm install` at the repo root for the client job. Vitest resolves
 root copy is genuinely required for the test path. `deps.inline` was tried and
 does not change it. A frontend-only contributor can build, lint and run the dev
 server without a root install; running the full suite still needs one.
+
+---
+
+# Addendum 6 — Phase 3 implementation notes (2026-08-04)
+
+Written while implementing Phase 3, not during the audit. As with Addendum 3,
+everything here is a **correction or addition** to the findings above,
+discovered by changing the code rather than by reading it.
+
+Phase 3's three scope items are done: the Control Tower is React, desktop
+navigation reaches all sixteen areas without an overlay, and Finance and
+Operations are decomposed one screen per file. The `<h1>` and skip-link items
+listed under Phase 3 were already delivered in Phase 1.
+
+## The open questions in §5, answered by the work
+
+**Q3 — Control Tower fidelity.** Pixel-identical was the wrong target, and the
+question contains its own answer: the mock's desktop layout is *frozen above
+1180px*, and the whole point of the phase is that the app has no desktop tier.
+So: the **information design is preserved exactly** — KPI band, drill-downs,
+live-shipment list with milestone progress, route map, launcher, briefing, in
+the mock's order — and the **layout is rebuilt with real `xl`/`2xl` behaviour**.
+Everything else about the mock's visual language was already superseded by Phase
+1's token pass, which the frame could only track by being hand-patched twice.
+
+**Q1 — minimum desktop width.** Answered in practice at 1280px: the top bar
+seats four areas at `md`, five at `lg`, seven at `xl` and ten at `2xl`, so 1024px
+laptops stay first-class without the 2560px case being designed for the 1024px
+one.
+
+## Defects found by rebuilding — all of them live in production
+
+Reading the iframe found F1. Rebuilding it found five things the reading could
+not, because each is a mismatch between two files that were never compared.
+
+1. **The revenue KPI is badged "MTD" over an all-time figure.** The mock's
+   markup hardcodes the badge; the live-data injection script rewrites the card's
+   *value* and *caption* and never touches it. `revenue_final_ttc` is
+   `SUM(total_ttc)` over every locked FINAL invoice with **no period predicate at
+   all** (`dashboard.repo.js`). A month-to-date label on an all-time total, in the
+   revenue tile of a finance product.
+2. **The briefing has never mentioned unposted journals.** It read
+   `kpis.unposted_journals`; the repo sends `unposted_journal_entries`. Not a key
+   the payload has ever carried, so the clause was silently always absent.
+3. **`current_milestone` was computed and never read.** The repo has returned the
+   in-progress (or next pending) milestone label since the milestone engine
+   landed. The live-shipment rows printed the vessel string instead. "Costing
+   approval" is what an operator scanning that list wants; "MSC Lucia" is not.
+4. **A failed drill-down said "All clear".** Any source that 403'd fell into the
+   mock's empty state, so a user without the fleet grant was told the fleet was
+   fine. In a finance context a reassuring answer to a question that was never
+   asked is worse than an error. It now reports the permission message.
+5. **The revenue drill-down did not reconcile with its own card.** The card sums
+   every locked invoice in SQL; the drill summed one API page, which `page()`
+   clamps. On a tenant past that clamp the two disagreed on screen — precisely the
+   failure MOD-52 rewired the receivables card to avoid. The headline is now the
+   authoritative figure, the ranking states its basis when it is a sample, and the
+   sample is the API's 200-row ceiling rather than the 50-row default.
+
+## A sixth, in Operations, of the shape Addendum 3 predicted
+
+`/operations` had the Finance hub's defect one module over. The screen advertised
+*"Search by ref, client, BL/MAWB, vessel…"*; the endpoint matched `ref` only and
+reported no total, so the screen filtered the fifty most recent dossiers in the
+browser and answered **"No operation files yet"** for a file that exists.
+
+Fixed at the source: `listPaged` adds the `COUNT(*) OVER()` total, `q` covers all
+four advertised fields on one placeholder, and the status/service filters are
+qualified now that two tables are joined. `list()` still returns a bare array for
+the callers that want one.
+
+Two consequences worth stating:
+
+- **The chip counts are real.** Each is a one-row request read for its
+  `X-Total-Count`, so a chip says how many dossiers match across the tenant, not
+  how many happen to be on the loaded page. Four small cached requests where
+  there was previously one number that was wrong.
+- **The service-FAMILY chips are gone, deliberately.** They bucketed rows by
+  substring-matching `service_key` against four hardcoded families and filed
+  anything else under "OTHER" — a guess that could only ever be made over the rows
+  already loaded. A service-type select is exact, server-side, and reflects the
+  types the tenant actually configured.
+
+## What the iframe cost, measured
+
+| | Before | After |
+|---|---|---|
+| Control Tower route chunk | **196.70 kB** raw / 59.07 kB gzip | **31.71 kB** / 11.25 kB |
+| Natural Earth land + topojson | in that chunk, blocking first paint | own chunks (55.3 + 6.9 kB), fetched after paint |
+| Requests on a cold load | 7 | **3** |
+| Lines of source | 1,196 (`dashboard.tsx`) + 1,440 (`dashboard-mock/*`) = **2,636** | **1,985** across 14 files |
+| Frontend tests covering it | **0** | 76 |
+| Axe scan | impossible — axe cannot cross an iframe boundary | clean |
+
+The request drop is the drill-down sources. `/final-invoices`, `/clients`,
+`/operations` and `/vehicles` were fetched on *every* mount to pre-build four
+modals that are usually never opened; they now load on demand and are then shared
+from the Query cache with the Finance hub, Operations and Fleet.
+
+## Verified in a browser, not inferred
+
+Headless Chromium against a built page, at 1280 / 1440 / 1920 / 2560, light and
+dark:
+
+| Viewport | Content column | Tower grid | KPI band | Launcher | `<h1>` | Horizontal scroll |
+|---|---|---|---|---|---|---|
+| 1280 | 1232px | 2 col | 4 | 6 | 1 | none |
+| 1440 | 1392px | 2 col | 4 | 6 | 1 | none |
+| 1920 | 1664px | 2 col | 4 | 6 | 1 | none |
+| 2560 | 1664px | 2 col | 4 | 6 | 1 | none |
+
+Zero page errors at any width. Two layout faults were found this way and only
+this way — both invisible until the two cards sit side by side and the taller one
+drives the row height:
+
+- the shipments list's fixed `max-h` sliced its sixth row against a taller map;
+- the map's ocean was an SVG `<rect>` on a fixed aspect ratio, so a stretched
+  card showed a waterline with bare card beneath it.
+
+## The white-label smoke test found a seventh defect
+
+Phase 3's validation asks: *change `--primary`, confirm the Control Tower
+re-tints (it cannot today)*. Run against a teal tenant, mimicking exactly what
+`lib/theme.ts` `applyBrand()` writes at runtime:
+
+| | default tenant | teal tenant |
+|---|---|---|
+| map road-corridor stroke | `rgb(245 130 31)` | `rgb(13 148 136)` |
+| map destination node | `rgb(245 130 31)` | `rgb(13 148 136)` |
+| shipment reference | `rgb(190 86 14)` | `rgb(13 148 136)` |
+| hero primary CTA | `rgb(245 130 31)` | `rgb(13 148 136)` |
+| accent status pill — text | `rgb(190 86 14)` | `rgb(190 86 14)` ✗ |
+| accent status pill — ground | `rgb(245 130 31 / .14)` | `rgb(13 148 136 / .14)` |
+
+The last two rows are the finding, and it is **app-wide, not a Control Tower
+issue**. `.st-orange` took its GROUND from `--brand-orange`, which `applyBrand`
+does set from `brand.primary` — and its TEXT from `--brand-orange-ink`, which
+`applyBrand` never sets. Every non-orange tenant has therefore been rendering
+that pill as a tenant-tinted ground with SmartLS brown-orange text on it: the
+wrong brand, and a contrast pair nobody had measured because neither half was
+chosen against the other.
+
+`.st-orange` now takes its text from `--primary-ink`, which is byte-identical for
+the default tenant (both are `rgb(190 86 14)` light / `rgb(250 158 78)` dark) and
+is DERIVED to clear 4.5:1 against the surface by `toAccessibleInk` for every
+other one. Zero visual change for SmartLS; correct for everyone else.
+
+Worth noting how this surfaced: not by reading `index.css`, where the rule looks
+entirely reasonable, but by rendering the page under a second tenant. The
+white-label promise is only testable by exercising it.
+
+**An observation for Phase 5, not a defect:** `max-w-wide` is 1664px, so a 2560px
+display renders the same column as a 1920px one with ~900px of margin. Phase 1
+chose that value deliberately ("so a 1920px display is actually used") and this
+phase did not second-guess it — but the 2560px case the audit opens with is now
+*addressed* rather than *solved*, and a genuinely fluid upper tier is a token
+decision that belongs with the density work.
+
+## Files over 400 lines: 18 → 15
+
+Measured as `.tsx` under `client/src`, excluding tests and stories. §4's baseline
+table says 17; that measure is not reproducible from the tree, so this is the
+count re-derived at the pre-Phase-3 commit and at HEAD — the delta is −3 on any
+of the three obvious variants (`.tsx` only, `.tsx`+`.ts`, either including tests).
+
+The three removed are the three largest the audit named:
+`finance/pages.tsx` (2,581), `dashboard.tsx` (1,196), `operations/pages.tsx`
+(928). Finance became twelve files, Operations eight, none over 400.
+
+`report-view.tsx` is the split that matters beyond tidiness: the report viewer
+and its tabbed shell are mounted by **both** Statements and the Tax centre, and
+were private to a module neither could import from.
+
+`app-shell.tsx` went 924 → 702. Its twenty-six inline icons (F6's "three icon
+systems") moved to `nav-icons.tsx` and its nav table to `nav-model.ts` — where a
+test can now assert the F9 claim directly: *every one of the sixteen areas is
+reachable on desktop without opening an overlay*. That is the test that fails if
+someone adds a seventeenth area and does not notice it exists only behind a
+scrim. Merging the two icon sets is Phase 4's sweep; this is its precondition.
+
+## Two small structural fixes taken while adjacent
+
+- **`ListPage` gained a `tabs` slot.** F7 names `tabbed-hub`'s
+  publish-on-context / draw-in-each-page arrangement as the one genuine
+  anti-pattern in the component architecture — whether a hub's tabs appear
+  depends on a convention no type signature enforces. A named slot at least makes
+  the position part of the scaffold rather than of each screen's layout.
+- **The command palette is reachable through context.** The Control Tower used to
+  open it by dispatching a synthetic `⌘K` `KeyboardEvent` at `document`, which the
+  old code itself flagged as wanting exactly this fix if anything else ever needed
+  it. Something did.
+
+## Scope explicitly NOT taken in Phase 3
+
+Stated so Phase 4 does not assume it is done.
+
+- **Finance and Operations forms are not on `<Form>` + shared Zod schemas.** They
+  were moved, not rewritten: same hand-rolled state, same `canSubmit` booleans.
+  Only `finalInvoice` has schemas in `packages/shared`, and moving the rest is
+  per-module work. `useZodForm` is now genuinely reachable from a routed screen
+  (Addendum 5's open item), so the first form to adopt it will not break the
+  image build.
+- **The remaining fourteen files over 400 lines are untouched** — Sales (2,594),
+  Settings, Security, Vault, Commercial, Governance, Master data, HR. That is
+  Phase 4's per-area sweep, which parallelises.
+- **Raw palette colours: 56 → 46.** The shell's own `emerald`/`amber` in the
+  environment switch and the sandbox banner are gone, as is the last of it in
+  Finance and Operations; the remaining 46 are genuine scatter across the feature
+  screens Phase 4 sweeps. (Addendum 3's "122 → 56" reproduces exactly at the
+  pre-Phase-3 commit, so this is the same measure.)
+- **No visual-regression baseline was committed.** The four-width run above was
+  taken with a throwaway harness and deleted. Standing that up in CI needs
+  Playwright and browsers in the frontend job, which the roadmap puts in Phase 5.
+- **`platform-console/` remains out of scope**, as it has been throughout.

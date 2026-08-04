@@ -57,4 +57,19 @@ const positiveAmount = amount.refine((n) => n > 0, "Must be greater than zero.")
 /** ISO-4217-ish currency code. Cameroon/OHADA defaults to XAF. */
 const currency = z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase();
 
-module.exports = { uuid, isoDate, requiredText, amount, positiveAmount, currency };
+// Named `exports.x =` assignments, NOT `module.exports = { x }`.
+//
+// Both are identical to Node, so the API is unaffected — but the client is
+// BUNDLED, and cjs-module-lexer (which esbuild and Rollup both use to discover
+// a CommonJS module's named exports) cannot see through the object-literal
+// form. With `module.exports = { … }` the bundlers found no named exports at
+// all: `vite build` failed with `"finalInvoice" is not exported by
+// packages/shared/index.js`, and in dev the import silently resolved to
+// `undefined` — a form arrived at with no validation and a blank screen when
+// zodResolver was handed it. See client/config/shared-alias.ts.
+exports.uuid = uuid;
+exports.isoDate = isoDate;
+exports.requiredText = requiredText;
+exports.amount = amount;
+exports.positiveAmount = positiveAmount;
+exports.currency = currency;

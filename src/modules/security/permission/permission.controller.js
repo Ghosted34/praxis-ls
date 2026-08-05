@@ -20,4 +20,12 @@ const upsertGrant = asyncHandler(async (req, res) => {
   res.json({ data });
 });
 
-module.exports = { ...base, matrix, upsertGrant };
+// The caller's own navigation access. `identityDb` for the same reason the
+// matrix uses it: grants are identity data, and the shell must agree with the
+// enforcement path (rbac.js) rather than with whichever environment the user
+// happens to be looking at.
+const mine = asyncHandler(async (req, res) => {
+  res.json({ data: await req.identityDb((c) => service.navAccess(c, req.user)) });
+});
+
+module.exports = { ...base, matrix, upsertGrant, mine };

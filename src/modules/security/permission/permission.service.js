@@ -15,15 +15,81 @@
  * unconditional — that pinning is what the old "needs req.env" note predated.
  */
 "use strict";
+
+const repo = require("./permission.repo");
+const crypto = require("crypto");
+const catalogueRepo = require("../../catalogue/catalogue.repo");
+
+/**
+ * What the navigation shell may render for the CALLER.
+ *
+ * WHY THE SHELL NEEDS AN ENDPOINT AT ALL. Until now the client knew nothing
+ * about permissions — `/auth/me` returns a name, a role label and two feature
+ * flags — so every user saw every destination and found out what they could not
+ * do by clicking it and getting a 403. A ribbon whose tabs differ per role
+ * cannot be built on that.
+ *
+ * SHAPE. `{ modules, groups, isCeo, version }`:
+ *   modules  the MOD-xx keys this caller can read
+ *   groups   the six workflow verbs those keys fall into, in catalogue order —
+ *            resolved here rather than in the browser so the taxonomy has one
+ *            definition (platform.module_catalogue.group_key) and the client
+ *            has no second mapping to drift from it
+ *   isCeo    the CEO bypass rbac.js already applies, surfaced so the shell
+ *            agrees with the enforcement path instead of showing a CEO an empty
+ *            ribbon
+ *   version  a short digest of the resolved set
+ *
+ * WHAT `version` IS FOR. The client renders its LAST KNOWN ribbon immediately
+ * from cache and revalidates in the background, so switching pages never
+ * flashes an empty header. Comparing versions is how it learns the cache is
+ * stale — and, because the digest covers the exact key set, a REVOCATION is
+ * distinguishable from a GRANT by comparing the sets themselves. That
+ * distinction is the point: losing access has to take effect at once, whereas
+ * forcing a reload to tell someone they have gained a module would throw away
+ * whatever they were typing to deliver news that cannot expose anything.
+ */
+async function navAccess(client, user) {
+  const catalogue = await catalogueRepo.listModules();
+
+  // The CEO bypass is not a shortcut here — rbac.js grants the CEO every module
+  // regardless of the permission table, so resolving from grants alone would
+  // hand a CEO with no explicit rows an empty ribbon over an app that lets them
+  // do everything.
+  const modules = user.is_ceo
+    ? catalogue.map((m) => m.module_key)
+    : await repo.visibleModuleKeys(client, user.role_ids || []);
+
+  const visible = new Set(modules.map((k) => String(k).toUpperCase()));
+  const groups = [];
+  const seen = new Set();
+  for (const m of catalogue) {
+    if (!visible.has(String(m.module_key).toUpperCase())) continue;
+    if (seen.has(m.group_key)) continue;
+    seen.add(m.group_key);
+    groups.push(m.group_key);
+  }
+
+  // Sorted before hashing: the digest must describe the SET, not the order the
+  // database happened to return it in, or every request would look like a change.
+  const version = crypto
+    .createHash("sha1")
+    .update([...visible].sort().join(","))
+    .digest("hex")
+    .slice(0, 12);
+
+  return { modules: [...visible].sort(), groups, isCeo: Boolean(user.is_ceo), version };
+}
+
 const { makeService } = require("../../../shared/crud/resource");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const identityCache = require("../../../shared/cache/identity-cache");
-const repo = require("./permission.repo");
 const events = require("./permission.events");
 
 const base = makeService({ repo, moduleKey: events.MODULE, entity: "permission", events, deleteMode: "hard"});
 
 module.exports = {
+  navAccess,
   ...base,
   // Unpaginated read for the matrix editor — see permission.repo.listAll for
   // why the paginated list() is unsafe there.

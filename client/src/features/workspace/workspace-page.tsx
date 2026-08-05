@@ -51,7 +51,7 @@ export function WorkspacePage() {
           </KpiRow>
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <Panel title="Awaiting me" action={<Link to="/approvals" className="text-sm text-muted-foreground transition-colors hover:text-primary">Open queue →</Link>}>
+            <Panel title="Awaiting me" action={<Link to="/approvals" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">Open queue →</Link>}>
               {approvals.length ? (
                 <ul className="space-y-2">
                   {approvals.slice(0, 8).map((a, i) => (
@@ -67,7 +67,7 @@ export function WorkspacePage() {
               ) : <p className="micro">Nothing awaiting your validation or approval.</p>}
             </Panel>
 
-            <Panel title="Unread alerts" action={<Link to="/notifications" className="text-sm text-muted-foreground transition-colors hover:text-primary">All notifications →</Link>}>
+            <Panel title="Unread alerts" action={<Link to="/notifications" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">All notifications →</Link>}>
               {notes.length ? (
                 <ul className="space-y-2">
                   {notes.slice(0, 8).map((n, i) => (
@@ -85,7 +85,7 @@ export function WorkspacePage() {
           </div>
 
           <div className="mt-4">
-            <Panel title="Recent activity" action={<Link to="/audit" className="text-sm text-muted-foreground transition-colors hover:text-primary">Audit ledger →</Link>}>
+            <Panel title="Recent activity" action={<Link to="/audit" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">Audit ledger →</Link>}>
               {activity.length ? (
                 <ol className="space-y-1.5">
                   {activity.slice(0, 12).map((e, i) => (

@@ -188,7 +188,7 @@ export function ScopesPage() {
   }, [all]);
 
   const columns: Column<Scope>[] = [
-    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.code}</span> },
+    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-primary-ink">{r.code}</span> },
     { key: "name", label: "Name", render: (r) => <span className="font-medium text-foreground">{r.name}</span> },
     { key: "entity_id", label: "Entity", render: (r) => (r.entity_id ? entityName[r.entity_id] || "—" : <span className="text-muted-foreground">Tenant-wide</span>) },
     { key: "parent_scope_id", label: "Parent", render: (r) => (r.parent_scope_id ? scopeName[r.parent_scope_id] || "—" : "—") },

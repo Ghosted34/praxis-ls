@@ -192,7 +192,7 @@ export const ProformasPage = () => {
         description="Advance payments received against a proforma — posts to 4191 (customer advances), not revenue. Priced offers with line items live in Quotations."
         action={(
           <div className="flex items-center gap-3">
-            <Link to="/commercial/quotations" className="text-sm text-muted-foreground transition-colors hover:text-primary">View quotations →</Link>
+            <Link to="/commercial/quotations" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">View quotations →</Link>
             <Button onClick={() => setOpen(true)}>Record advance</Button>
           </div>
         )}

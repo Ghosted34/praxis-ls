@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -126,7 +127,7 @@ function DebtDrawer({ debt, onClose, onRepay }: { debt: api.DebtEngagement; onCl
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Principal</div><div className="num text-lg font-medium">{money(x.principal)}</div></div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Repaid</div><div className="num text-lg font-medium">{money(x.repaid?.principal)}</div></div>
-            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Outstanding</div><div className="num text-lg font-medium text-[rgb(var(--primary))]">{money(x.outstanding_principal)}</div></div>
+            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Outstanding</div><div className="num text-lg font-medium text-primary-ink">{money(x.outstanding_principal)}</div></div>
           </div>
           <div className="flex justify-end">
             {x.status === "ACTIVE" && <Button size="sm" onClick={onRepay}>Record repayment</Button>}
@@ -138,7 +139,7 @@ function DebtDrawer({ debt, onClose, onRepay }: { debt: api.DebtEngagement; onCl
                 {(x.repayments || []).map((rp) => (
                   <li key={rp.debt_repayment_id} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm">
                     <span className="num">{dateFmt(rp.paid_on)}</span>
-                    <span className="flex items-center gap-4"><span className="micro">int {money(rp.interest_part)}</span><span className="num text-[rgb(var(--primary))]">{money(rp.principal_part)}</span></span>
+                    <span className="flex items-center gap-4"><span className="micro">int {money(rp.interest_part)}</span><span className="num text-primary-ink">{money(rp.principal_part)}</span></span>
                   </li>
                 ))}
               </ol>
@@ -168,14 +169,14 @@ export function DebtPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{r.status}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        // A click SHIELD, not a control: it stops a row action reaching the
-        // row's own onRowClick. The real controls inside are buttons and are
-        // keyboard-reachable, so role="presentation" is accurate — F13 targets
-        // handlers that ARE the interaction, which this is not.
-        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
           {r.status === "ACTIVE" && <Button size="sm" variant="outline" onClick={() => setRepay(r)}>Repay</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];

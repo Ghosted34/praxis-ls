@@ -13,7 +13,9 @@
  *
  * WHICH ONE:
  *   wide      dense data screens — lists, tables, dashboards, hubs. The default.
- *             1664px, so a 1920px display is actually used.
+ *             2160px (Phase 5, up from 1664): 1664 filled a 1920 display but
+ *             left a 2560 one rendering the same column with ~450px of margin
+ *             each side, which is the case F2 opens the audit with.
  *   standard  detail and mixed screens — a record with side panels, 360 views.
  *   reading   prose and single-column forms — settings, help, editors. Capping
  *             measure is correct here; a 1600px-wide form is not a feature.

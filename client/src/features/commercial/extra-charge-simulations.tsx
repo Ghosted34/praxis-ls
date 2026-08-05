@@ -210,7 +210,7 @@ export function ExtraChargeSimulationsPage() {
                 <span className="text-xs text-muted-foreground">{dateFmt(r.created_at)}</span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{cell(r.container_variant)} · {r.free_days != null ? `${cell(r.free_days)} free days` : "—"}</p>
-              <p className="mt-2 text-sm font-semibold text-primary">{money(r.total_amount, r.currency)}</p>
+              <p className="mt-2 text-sm font-semibold text-primary-ink">{money(r.total_amount, r.currency)}</p>
             </div>
           ))}
         </div>

@@ -156,7 +156,7 @@ function ArrayField({
           </div>
         ))}
       </div>
-      <button type="button" onClick={() => setRows([...rows, {}])} className="mt-1.5 micro text-primary hover:underline">
+      <button type="button" onClick={() => setRows([...rows, {}])} className="mt-1.5 micro text-primary-ink hover:underline">
         + Add {singular.toLowerCase()}
       </button>
     </div>

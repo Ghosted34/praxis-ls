@@ -200,7 +200,7 @@ export function CurrenciesPage() {
                 <TD className="text-sm font-medium">{smartCell(c.code)}</TD>
                 <TD className="text-sm">{smartCell(c.name)}</TD>
                 <TD className="text-sm">{smartCell(c.symbol)}</TD>
-                <TD className="text-sm">{c.is_base ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">base</span> : "—"}</TD>
+                <TD className="text-sm">{c.is_base ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-ink">base</span> : "—"}</TD>
               </TR>
             ))}
           </TBody>

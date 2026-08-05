@@ -80,7 +80,7 @@ export function ProposalDetail({ proposal, entities, onClose, onChanged, onEdit 
             <div className="flex flex-wrap items-center gap-3">
               <StatusPill status={status || "DRAFT"} />
               {data?.doc_number ? <span className="text-xs text-muted-foreground">№ {cell(data.doc_number)}</span> : null}
-              {data?.ai_generated ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">AI-drafted</span> : null}
+              {data?.ai_generated ? <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">AI-drafted</span> : null}
               <span className="ml-auto"><DocButton docType="PROPOSAL" id={id} title={proposal?.title ? String(proposal.title) : "Proposal"} /></span>
             </div>
 

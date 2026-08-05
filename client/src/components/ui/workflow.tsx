@@ -37,9 +37,9 @@ export function StepBar({ steps, current }: { steps: Step[]; current: string }) 
               className={cn(
                 "inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 font-semibold transition-colors",
                 isCurrent
-                  ? "bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary"
+                  ? "bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary-ink"
                   : reached
-                    ? "text-primary"
+                    ? "text-primary-ink"
                     : "text-muted-foreground",
               )}
               aria-current={isCurrent ? "step" : undefined}

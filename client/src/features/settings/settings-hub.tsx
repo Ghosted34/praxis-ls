@@ -132,7 +132,7 @@ export function SettingsHub() {
                   to={c.to}
                   className="lux-card group flex items-start gap-3 p-4 transition-colors hover:bg-accent/50"
                 >
-                  <span className="mt-0.5 text-primary">
+                  <span className="mt-0.5 text-primary-ink">
                     <Glyph name={c.icon} />
                   </span>
                   <span className="min-w-0 flex-1">

@@ -78,7 +78,7 @@ export function RolesPage() {
   const all = React.useMemo(() => rows || [], [rows]);
 
   const columns: Column<Role>[] = [
-    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.code}</span> },
+    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-primary-ink">{r.code}</span> },
     { key: "name", label: "Name", render: (r) => <span className="font-medium text-foreground">{r.name}</span> },
     { key: "description", label: "Description", render: (r) => <span className="text-muted-foreground">{r.description || "—"}</span> },
     { key: "is_line_manager", label: "Authority", render: (r) => (r.is_line_manager ? <Pill tone="blue">Line manager</Pill> : "—") },

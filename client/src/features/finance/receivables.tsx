@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -140,7 +141,7 @@ function ReceiptDrawer({ receipt, clientLabel, onClose }: { receipt: api.Receipt
       {d.loading ? <div className="py-8 text-center micro">Loading…</div> : d.error ? <ErrorState message={d.error} /> : rec ? (
         <div className="space-y-4">
           <div className="grid gap-3 sm:grid-cols-3">
-            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Amount</div><div className="num text-lg font-medium text-[rgb(var(--primary))]">{money(rec.amount)}</div></div>
+            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Amount</div><div className="num text-lg font-medium text-primary-ink">{money(rec.amount)}</div></div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Received</div><div className="num text-lg font-medium">{dateFmt(rec.received_on)}</div></div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Status</div><div className="mt-1"><Pill tone={tone(rec.status)}>{enumLabel(rec.status)}</Pill></div></div>
           </div>
@@ -151,7 +152,7 @@ function ReceiptDrawer({ receipt, clientLabel, onClose }: { receipt: api.Receipt
                 {(rec.allocations || []).map((a, i) => (
                   <li key={a.allocation_id || i} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
                     <span className="num text-sm">{a.invoice_id ? invoiceNo[a.invoice_id] || `Invoice ${a.invoice_id.slice(0, 8)}` : "—"}</span>
-                    <span className="num text-sm text-[rgb(var(--primary))]">{money(a.amount)}</span>
+                    <span className="num text-sm text-primary-ink">{money(a.amount)}</span>
                   </li>
                 ))}
               </ol>
@@ -185,13 +186,13 @@ export function ReceivablesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{enumLabel(r.status)}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        // A click SHIELD, not a control: it stops a row action reaching the
-        // row's own onRowClick. The real controls inside are buttons and are
-        // keyboard-reachable, so role="presentation" is accurate — F13 targets
-        // handlers that ARE the interaction, which this is not.
-        <div className="flex justify-end" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           {r.status === "DRAFT" && <Button size="sm" variant="outline" onClick={() => setPosting(r)}>Post</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];

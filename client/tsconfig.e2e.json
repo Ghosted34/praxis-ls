@@ -1,0 +1,27 @@
+{
+  // The Playwright specs, typechecked.
+  //
+  // WHY A SEPARATE PROJECT. The root tsconfig includes `src` only, and
+  // Playwright compiles its specs with esbuild — which STRIPS types without
+  // checking them. So without this the e2e suite is the one part of the client
+  // where a type error is invisible until the assertion it broke happens to
+  // run, which is the opposite of what a gate should be.
+  //
+  // It cannot simply be added to the root project's `include`: these files
+  // import `@playwright/test`, which brings Node types the browser project
+  // deliberately does not carry, and they are not part of the app bundle.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "composite": true,
+    // Same trap as tsconfig.node.json: a composite project must emit, and with
+    // no outDir `tsc -b` writes .js next to the source. `noEmit` is inherited
+    // from the root project and a referenced project may not disable emit, so
+    // it is turned back on here and sent somewhere harmless.
+    "noEmit": false,
+    "emitDeclarationOnly": true,
+    "outDir": "./node_modules/.tmp/tsconfig-e2e",
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"]
+  },
+  "include": ["e2e", "playwright.config.ts"]
+}

@@ -154,3 +154,105 @@ export function DropdownSeparator({ className }: { className?: string }) {
 export function DropdownGroup({ children }: { children: React.ReactNode }) {
   return <RadixMenu.Group>{children}</RadixMenu.Group>;
 }
+
+/**
+ * An independently on/off entry — a column's visibility, a filter toggle.
+ *
+ * Same reasoning as `DropdownRadioItem`: `menuitemcheckbox` carries
+ * `aria-checked` as a fact rather than as a tick glyph, so a screen reader says
+ * "Client, checked" instead of announcing a command whose name happens to start
+ * with a mark. `onSelect` is prevented so the menu stays open — toggling six
+ * columns should be six clicks, not six clicks and six re-openings.
+ */
+export function DropdownCheckboxItem({
+  checked,
+  onCheckedChange,
+  children,
+  className,
+}: {
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <RadixMenu.CheckboxItem
+      checked={checked}
+      onCheckedChange={onCheckedChange}
+      onSelect={(e) => e.preventDefault()}
+      className={cn(ITEM_CLASS, className)}
+    >
+      <span aria-hidden className="grid h-3.5 w-3.5 shrink-0 place-items-center rounded-[3px] border border-input">
+        <RadixMenu.ItemIndicator>
+          <svg viewBox="0 0 24 24" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth={3.5} strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 6L9 17l-5-5" />
+          </svg>
+        </RadixMenu.ItemIndicator>
+      </span>
+      <span className="min-w-0 truncate">{children}</span>
+    </RadixMenu.CheckboxItem>
+  );
+}
+
+/**
+ * A set of mutually exclusive choices inside a menu — row density, sort order,
+ * a view mode.
+ *
+ * WHY NOT JUST `DropdownItem`s WITH A TICK. Because a tick is a picture and
+ * `aria-checked` is a fact. `menuitemradio` is what tells assistive tech that
+ * these N entries are one choice, which of them is current, and that picking one
+ * releases the others — "Compact, radio button, 1 of 3" instead of three
+ * unrelated commands one of which happens to be drawn with a mark next to it.
+ * Radix emits the role and the state; this only has to style them.
+ *
+ * @example
+ * <DropdownRadioGroup value={density} onValueChange={setDensity}>
+ *   <DropdownRadioItem value="compact">Compact</DropdownRadioItem>
+ *   <DropdownRadioItem value="default">Default</DropdownRadioItem>
+ * </DropdownRadioGroup>
+ */
+export function DropdownRadioGroup({
+  value,
+  onValueChange,
+  children,
+}: {
+  value: string;
+  onValueChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <RadixMenu.RadioGroup value={value} onValueChange={onValueChange}>
+      {children}
+    </RadixMenu.RadioGroup>
+  );
+}
+
+export function DropdownRadioItem({
+  value,
+  children,
+  hint,
+  className,
+}: {
+  value: string;
+  children: React.ReactNode;
+  /** A line of explanation under the label. Not announced separately — it is
+   *  inside the item, so it is part of the item's accessible name. */
+  hint?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <RadixMenu.RadioItem value={value} className={cn(ITEM_CLASS, "items-start", className)}>
+      {/* The indicator slot is reserved whether or not it is filled, so the
+          labels stay on one left edge instead of shifting as the choice moves. */}
+      <span aria-hidden className="mt-[3px] grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border border-input">
+        <RadixMenu.ItemIndicator>
+          <span className="block h-1.5 w-1.5 rounded-full bg-primary" />
+        </RadixMenu.ItemIndicator>
+      </span>
+      <span className="min-w-0">
+        <span className="block">{children}</span>
+        {hint && <span className="block text-micro normal-case text-muted-foreground">{hint}</span>}
+      </span>
+    </RadixMenu.RadioItem>
+  );
+}

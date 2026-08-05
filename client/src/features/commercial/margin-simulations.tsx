@@ -164,7 +164,7 @@ export function MarginSimulationsPage() {
             <div key={String(r.margin_simulation_id)} className="lux-card p-4">
               <div className="flex items-center justify-between">
                 <span className="text-xs text-muted-foreground">{dateFmt(r.created_at)}</span>
-                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">{r.margin_percent != null ? `${cell(r.margin_percent)}%` : "—"}</span>
+                <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary-ink">{r.margin_percent != null ? `${cell(r.margin_percent)}%` : "—"}</span>
               </div>
               <p className="mt-2 text-sm font-semibold text-foreground">{money(r.total_price, r.currency)}</p>
               <p className="text-xs text-muted-foreground">cost {money(r.total_cost, r.currency)}</p>

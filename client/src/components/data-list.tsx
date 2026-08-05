@@ -9,7 +9,11 @@ import { cn } from "@/lib/cn";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cell } from "@/lib/format";
+import { useRovingRows } from "@/lib/use-roving-rows";
+import type { Density } from "@/lib/density";
+import type { RowSelection } from "@/lib/use-row-selection";
 
 export type Column<T> = {
   key: string;
@@ -131,7 +135,16 @@ function RowActivator({ children, onClick }: { children: React.ReactNode; onClic
         e.stopPropagation();
         onClick();
       }}
-      className="-mx-1 -my-0.5 rounded px-1 py-0.5 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      // `align-middle` for the same reason `.status` carries it (index.css): a
+      // <button> is an inline-block and aligns on the TEXT BASELINE, so its box
+      // hangs below the baseline and the line box grows by however far the
+      // current font's descender drops — making row height a function of the
+      // typeface. The pill was the element actually pushing the 32px row to
+      // 34.5px once --font-body was fixed to load Inter; this one's negative
+      // margins were keeping it just inside the tolerance. Pinned anyway,
+      // because with a fifteen-font picker "just inside" is a property of the
+      // font that happens to be selected, not of the layout.
+      className="-mx-1 -my-0.5 rounded px-1 py-0.5 text-left align-middle hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
     </button>
@@ -146,6 +159,12 @@ export function DataList<T extends Record<string, unknown>>({
   empty,
   rowKey,
   onRowClick,
+  selection,
+  selectionLabel,
+  density,
+  sticky,
+  freezeFirstColumn,
+  maxHeight,
 }: {
   columns: Column<T>[];
   rows: T[] | null;
@@ -157,10 +176,27 @@ export function DataList<T extends Record<string, unknown>>({
   rowKey: (row: T, i: number) => string;
   /**
    * Click-anywhere row navigation. The first column becomes a real button so
-   * this is reachable without a mouse — see `RowActivator`.
+   * this is reachable without a mouse — see `RowActivator`. It also switches on
+   * keyboard row navigation (`useRovingRows`), because it is the thing that
+   * created the one-tab-stop-per-row problem that hook exists to undo.
    */
   onRowClick?: (row: T) => void;
+  /** From `useRowSelection`. Prepends a checkbox column and a select-all header. */
+  selection?: RowSelection<T>;
+  /** How a row names itself in the checkbox's accessible name. Defaults to
+   *  column 0's rendered text, which is the record's identity on every screen. */
+  selectionLabel?: (row: T) => string;
+  /** Pin a row density for this table, overriding the user's preference. */
+  density?: Density;
+  /** Keep the headings visible while the body scrolls. Bounds the height. */
+  sticky?: boolean;
+  /** Keep the record's identity visible while scrolling a wide table right. */
+  freezeFirstColumn?: boolean;
+  maxHeight?: string;
 }) {
+  const shiftRef = React.useRef(false);
+  const roving = useRovingRows(rows?.length ?? 0, !!onRowClick);
+
   if (error) return <ErrorState message={error} />;
   if (loading || rows === null) return <SkeletonTable cols={columns.length} />;
   if (rows.length === 0)
@@ -175,35 +211,85 @@ export function DataList<T extends Record<string, unknown>>({
       />
     );
 
+  const rowName = (r: T, i: number) =>
+    selectionLabel?.(r) ?? String(columns[0] ? (r[columns[0].key] ?? rowKey(r, i)) : rowKey(r, i));
+
   return (
     <>
       {/* Table — sm and up. Below that it would overflow, so we swap to cards. */}
       <div className="hidden sm:block">
-        <Table>
+        <Table density={density} sticky={sticky} freezeFirstColumn={freezeFirstColumn} maxHeight={maxHeight}>
           <THead>
             <TR>
+              {selection && (
+                <TH className="w-10">
+                  <Checkbox
+                    // The primitive offsets its box by 2px to sit on a text
+                    // label's baseline; in a cell there is no visible label to
+                    // align to, so the offset is just a nudge off centre.
+                    className="[&>button]:mt-0"
+                    checked={selection.headerState}
+                    onCheckedChange={selection.toggleAll}
+                    disabled={!selection.selectable}
+                    // A visible "Select all" heading would take a column's worth
+                    // of width to say what the control already says. sr-only is
+                    // the same trade `headerLabel` makes for the actions column.
+                    label={<span className="sr-only">Select all rows on this page</span>}
+                  />
+                </TH>
+              )}
               {columns.map((c) => (
                 <TH key={c.key}>{headerLabel(c)}</TH>
               ))}
             </TR>
           </THead>
-          <TBody>
-            {rows.map((r, i) => (
-              <TR
-                key={rowKey(r, i)}
-                className={onRowClick ? "cursor-pointer" : undefined}
-                onClick={onRowClick ? () => onRowClick(r) : undefined}
-              >
-                {columns.map((c, ci) => {
-                  const val = c.render ? c.render(r) : cell(r[c.key]);
-                  return (
-                    <TD key={c.key} className={c.className}>
-                      {onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{val}</RowActivator> : val}
+          <TBody ref={roving.bodyRef} onKeyDown={roving.onKeyDown} onFocus={roving.onFocus}>
+            {rows.map((r, i) => {
+              const key = rowKey(r, i);
+              const selected = selection?.isSelected(key) ?? false;
+              return (
+                <TR
+                  key={key}
+                  className={cn(
+                    onRowClick && "cursor-pointer",
+                    // Selected rows need a persistent ground, not just a ticked
+                    // box: on a scrolled table the checkbox column may be the
+                    // part that is off screen.
+                    selected && "bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]",
+                  )}
+                  onClick={onRowClick ? () => onRowClick(r) : undefined}
+                >
+                  {selection && (
+                    // Capture phase: React's bubble-phase onClick on this cell
+                    // would run AFTER the checkbox's own handler, so the shift
+                    // state would arrive one click late. Capture reads the
+                    // modifier before the toggle needs it.
+                    <TD
+                      className="w-10"
+                      onClickCapture={(e) => {
+                        shiftRef.current = e.shiftKey;
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <Checkbox
+                        className="[&>button]:mt-0"
+                        checked={selected}
+                        onCheckedChange={() => selection.toggle(key, { shift: shiftRef.current })}
+                        label={<span className="sr-only">Select {rowName(r, i)}</span>}
+                      />
                     </TD>
-                  );
-                })}
-              </TR>
-            ))}
+                  )}
+                  {columns.map((c, ci) => {
+                    const val = c.render ? c.render(r) : cell(r[c.key]);
+                    return (
+                      <TD key={c.key} className={c.className}>
+                        {onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{val}</RowActivator> : val}
+                      </TD>
+                    );
+                  })}
+                </TR>
+              );
+            })}
           </TBody>
         </Table>
       </div>

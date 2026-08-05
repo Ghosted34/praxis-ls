@@ -74,8 +74,8 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
 export function HubCrumb({ area, to }: { area: string; to?: string }) {
   return (
     <span className="micro">
-      <Link to="/" className="transition-colors hover:text-primary">Hub</Link> ›{" "}
-      {to ? <Link to={to} className="transition-colors hover:text-primary">{area}</Link> : area}
+      <Link to="/" className="transition-colors hover:text-primary-ink">Hub</Link> ›{" "}
+      {to ? <Link to={to} className="transition-colors hover:text-primary-ink">{area}</Link> : area}
     </span>
   );
 }

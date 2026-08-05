@@ -201,7 +201,7 @@ function CommandCenter() {
   const active = CHIP_META[chip];
 
   const invCols: Column<api.InvoiceRow>[] = [
-    { key: "doc", label: "Invoice", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.doc_number || r.invoice_id.slice(0, 8)}</span> },
+    { key: "doc", label: "Invoice", render: (r) => <span className="num font-medium text-primary-ink">{r.doc_number || r.invoice_id.slice(0, 8)}</span> },
     { key: "client", label: "Client", render: (r) => <span className="font-medium text-foreground">{clientOf(r.client_id)}</span> },
     { key: "dossier", label: "Dossier", render: (r) => (r.dossier_id ? <span className="num text-muted-foreground">{dossierRef[r.dossier_id] || r.dossier_id.slice(0, 8)}</span> : "—") },
     { key: "amt", label: "Amount · XAF", className: "num text-right", render: (r) => money(r.total_ttc) },
@@ -209,7 +209,7 @@ function CommandCenter() {
     { key: "status", label: "Status", render: (r) => <Pill tone={statusTone(r.status)}>{enumLabel(r.status)}</Pill> },
   ];
   const pfCols: Column<api.ProformaRow>[] = [
-    { key: "created", label: "Created", render: (r) => <span className="num font-medium text-[rgb(var(--primary))]">{r.created_at ? dateFmt(r.created_at) : `Advance ${r.advance_id.slice(0, 8)}`}</span> },
+    { key: "created", label: "Created", render: (r) => <span className="num font-medium text-primary-ink">{r.created_at ? dateFmt(r.created_at) : `Advance ${r.advance_id.slice(0, 8)}`}</span> },
     { key: "client", label: "Client", render: (r) => clientOf(r.client_id) },
     { key: "amt", label: "Amount · XAF", className: "num text-right", render: (r) => money(r.amount) },
     { key: "applied", label: "Applied", className: "num text-right", render: (r) => money(r.applied_amount) },

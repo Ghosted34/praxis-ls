@@ -13,6 +13,7 @@ import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import * as fin from "@/lib/finance-api";
 import type { Asset } from "@/lib/finance-api";
 import { AssetCreateForm, AssetDepreciateForm, AssetDisposeForm, AssetDetailModal } from "./asset-forms";
@@ -65,11 +66,11 @@ export function AssetsPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={assetStatusTone(r.status)}>{enumLabel(String(r.status))}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        // A click SHIELD, not a control: it stops a row action reaching the
-        // row's own onRowClick. The real controls inside are buttons and are
-        // keyboard-reachable, so role="presentation" is accurate — F13 targets
-        // handlers that ARE the interaction, which this is not.
-        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           <Button size="sm" variant="ghost" onClick={() => setDetailId(String(r.asset_id))}>Schedule</Button>
           {String(r.status).toUpperCase() === "ACTIVE" && (
             <>
@@ -77,7 +78,7 @@ export function AssetsPage() {
               <Button size="sm" variant="outline" onClick={() => setDisposeTarget(r)}>Dispose</Button>
             </>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

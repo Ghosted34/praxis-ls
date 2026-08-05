@@ -17,6 +17,7 @@ import { App } from "@/app/app";
 // offline, which the Google-Fonts link could not do (audit F17).
 import "@fontsource-variable/inter";
 import "./index.css";
+import { clearChunkReloadFlag } from "@/lib/chunk-reload";
 
 // Apply the saved light/dark/system preference before first paint.
 initThemeMode();
@@ -57,6 +58,12 @@ initDensity();
 // The pre-boot bar has done its job the moment the shell can draw its own.
 // Removed rather than hidden so assistive technology never finds two title bars.
 document.getElementById("pre-boot-titlebar")?.remove();
+
+// The app is loading, so whatever stale build a previous session recovered from
+// is behind us. Cleared here rather than inside the recovery itself: leaving the
+// flag set would mean the NEXT deploy's stale chunk goes straight to the error
+// screen, having "already retried" in a session that succeeded hours ago.
+clearChunkReloadFlag();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

@@ -20,6 +20,29 @@ import "./index.css";
 
 // Apply the saved light/dark/system preference before first paint.
 initThemeMode();
+
+/**
+ * Colour the pre-boot title bar (index.html) from the last session, before
+ * anything is fetched.
+ *
+ * The bar's real colour comes from the tenant's App & PWA settings, which
+ * arrive over the network — so the first frame of a cold start would otherwise
+ * paint the light-theme fallback regardless of what the workspace actually
+ * looks like. On a dark-themed tenant that is a white flash across the top of
+ * the window, in the very first thing anyone sees of the app.
+ *
+ * Runs after initThemeMode() so `.dark` is already decided. If nothing is
+ * cached (first ever launch, or private mode) the inline fallback stands, which
+ * is the honest outcome rather than a guess.
+ */
+try {
+  const cached = localStorage.getItem(
+    `praxis.titlebar.${document.documentElement.classList.contains("dark") ? "dark" : "light"}`,
+  );
+  if (cached) document.documentElement.style.setProperty("--titlebar-bg", cached);
+} catch {
+  /* private mode — keep the inline fallback */
+}
 // Same, for row density. Both write an attribute on <html> rather than render
 // anything, so doing it here — before createRoot — means the first paint is
 // already correct instead of flashing the default and correcting itself.
@@ -31,6 +54,10 @@ initDensity();
 // QueryClientProvider wraps everything (audit F8): the shared server-state cache
 // backing lib/use-resource. It sits outside BrandingProvider because the public
 // /branding fetch is itself a candidate for caching.
+// The pre-boot bar has done its job the moment the shell can draw its own.
+// Removed rather than hidden so assistive technology never finds two title bars.
+document.getElementById("pre-boot-titlebar")?.remove();
+
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     {/* Outermost: a render throw anywhere below used to blank the whole SPA —

@@ -106,6 +106,16 @@ export function applyPwaDocument(cfg: EffectivePwa) {
   meta.content = bar.base;
 
   root.style.setProperty("--titlebar-bg", bar.base);
+  // Remembered per theme so the NEXT cold start paints the right colour before
+  // any network call resolves. Without it the pre-boot bar in index.html can
+  // only guess, and guessing white on a dark-themed workspace is a flash of the
+  // wrong colour in the first thing anyone sees. Per theme rather than one
+  // value because the user may switch between sessions.
+  try {
+    localStorage.setItem(`praxis.titlebar.${root.classList.contains("dark") ? "dark" : "light"}`, bar.base);
+  } catch {
+    /* private mode — the pre-boot bar falls back to the token default */
+  }
   root.style.setProperty("--titlebar-image", bar.imageUrl ? `url("${cssUrl(bar.imageUrl)}")` : "none");
   root.style.setProperty("--titlebar-image-opacity", bar.imageUrl ? String(bar.opacity) : "0");
   root.style.setProperty("--titlebar-image-blur", `${bar.blur}px`);

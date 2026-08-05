@@ -32,6 +32,42 @@
     <title>Praxis LS</title>
   </head>
   <body>
+    <!--
+      PRE-BOOT TITLE BAR.
+
+      The real strip is drawn by React (app/layout/app-shell.tsx), which means
+      that between the window opening and the bundle booting there is nothing in
+      the overlay region at all. On a cold start that is a visible gap where the
+      title bar should be, and it is the first thing anyone sees of the app.
+
+      This paints the bar's surface immediately, before a single byte of
+      JavaScript runs, so the window is structurally correct from the first
+      frame and the real strip replaces it in place rather than appearing from
+      nothing. Same reason the shell has no layout shift: the height and the
+      insets are identical to `.wco`, so nothing moves when React takes over.
+
+      Inline styles, not a class: index.css is a separate request, and a
+      stylesheet that has not arrived yet cannot paint the frame this exists to
+      cover. The colour is the same custom property applyPwaDocument writes, with
+      the light-theme surface as the literal fallback for the very first paint
+      of a session, before the tenant's own value is known.
+
+      aria-hidden and removed the moment the shell mounts — it is scaffolding,
+      never a second copy of the bar for a screen reader to find.
+    -->
+    <div
+      id="pre-boot-titlebar"
+      aria-hidden="true"
+      style="
+        min-height: 44px;
+        padding-left: env(titlebar-area-x, 0px);
+        padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
+        background: var(--titlebar-bg, #ffffff);
+        border-bottom: 1px solid rgb(16 30 52 / 0.09);
+        -webkit-app-region: drag;
+        app-region: drag;
+      "
+    ></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

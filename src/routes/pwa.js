@@ -177,7 +177,11 @@ async function renderIcon({ size, maskable, cfg, logoBuf }) {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${px}" height="${px}" viewBox="0 0 ${px} ${px}">` +
       `<rect width="${px}" height="${px}" rx="${Math.round((px * radiusPct) / 100)}" ` +
       `ry="${Math.round((px * radiusPct) / 100)}" fill="${cfg.themeColor}"/>` +
-      `<text x="50%" y="50%" font-family="Montserrat, Arial, sans-serif" font-size="${Math.round(px * 0.5)}" ` +
+      // Library face over a generic keyword — "Arial" was named here and is not
+      // one of ours. This is rasterised by sharp/librsvg against the fonts
+      // installed in the container, so a single monogram letter is all it is
+      // asked to do and the generic fallback is an acceptable outcome.
+      `<text x="50%" y="50%" font-family="Montserrat, sans-serif" font-size="${Math.round(px * 0.5)}" ` +
       `font-weight="700" fill="#ffffff" text-anchor="middle" dominant-baseline="central">${letter}</text>` +
       `</svg>`,
   );

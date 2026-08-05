@@ -77,7 +77,13 @@ function addTitleBlock(ws, title, subtitle, meta = []) {
   ws.mergeCells("A1:D1");
   const cell = ws.getCell("A1");
   cell.value = title;
-  cell.font = { name: "Playfair Display", size: 20, bold: true, color: { argb: CREAM } };
+  // Montserrat, from the shipped font library (client/src/lib/fonts.ts). This
+  // said "Playfair Display" — a face the product does not ship and never has,
+  // so Excel silently substituted whatever it had. Note the hard limit of the
+  // format: a workbook names a font, it cannot embed one, so this renders as
+  // Montserrat only where Montserrat is installed. Naming a library face is the
+  // most this surface can honestly promise.
+  cell.font = { name: "Montserrat", size: 20, bold: true, color: { argb: CREAM } };
   cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: TITLE_FILL } };
   cell.alignment = { vertical: "middle", indent: 1 };
   ws.getRow(1).height = 34;

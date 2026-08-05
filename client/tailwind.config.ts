@@ -112,6 +112,20 @@ export default {
       },
 
       /**
+       * Bind the utilities to the brand tokens. Without this, `font-sans` and
+       * `font-mono` used Tailwind's OWN defaults — ui-sans-serif/system-ui and
+       * Menlo/Consolas/"Courier New" — so a tenant could pick JetBrains Mono in
+       * Appearance and every `font-mono` element carried on rendering in
+       * whatever the operating system supplied. The tokens are what the picker
+       * writes to, so the utilities must read from them.
+       */
+      fontFamily: {
+        sans: "var(--font-body)",
+        display: "var(--font-display)",
+        mono: "var(--font-mono)",
+      },
+
+      /**
        * Type ramp. Extends rather than replaces, so `text-xs`/`text-xl`/`2xl`/
        * `3xl` keep their defaults while the migration runs; `sm`/`base`/`lg` are
        * retuned one step down for data density.

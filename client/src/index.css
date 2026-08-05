@@ -110,8 +110,24 @@
      --font-display is retained as a token so the 35 `font-display` call sites
      keep working; it now resolves to the display optical size of the same
      family rather than a second typeface. */
-  --font-display: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* "Inter Variable", WITH the space. @fontsource-variable/inter declares the
+     family as `'Inter Variable'`; this token asked for "InterVariable", which
+     matches nothing, so every unbranded tenant has been rendering in system-ui
+     since the font was bundled — the woff2 downloaded on every load and was
+     never used. The static "Inter" stays as the second entry for anyone who has
+     the family installed locally. */
+  /* Fallbacks are BARE GENERIC KEYWORDS. Naming system-ui / Arial / Georgia
+     here would put a different typeface on screen per operating system, which
+     is the inconsistency the font library exists to remove — see the note in
+     lib/fonts.ts. The generic keyword covers only the swap window, and after
+     the first load the real face is served from the service worker's cache. */
+  --font-display: "Inter Variable", "Inter", sans-serif;
+  --font-body: "Inter Variable", "Inter", sans-serif;
+  /* --font-mono had NO default. Nothing declared it, so every `font-mono`
+     utility and `.num` cell fell through to Tailwind's built-in stack — Menlo,
+     Consolas, Courier New — i.e. three fonts from outside the library, chosen
+     by the OS, on every screen that shows a document reference or an amount. */
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
   /* Flatter. The previous ramp paired a soft ambient shadow with a large
      coloured drop; combined with the glow on .btn-primary it read as a Dribbble
      shot. Enterprise surfaces carry a hairline border and minimal elevation. */
@@ -391,6 +407,15 @@
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
+    /* An inline-flex box aligns on ITS OWN baseline by default, so the pill
+       hangs off the text baseline and the line box grows by however far the
+       current font's descender drops — making the row height a function of the
+       typeface. That was invisible while --font-body silently fell back to
+       system-ui; fixing the font to actually load Inter moved a 32px row to
+       34.5px and the desktop layout gate caught it. With a fifteen-font picker
+       the row must measure the same whichever family a tenant chooses, so the
+       box is centred on the text instead of hung from its baseline. */
+    vertical-align: middle;
     gap: 5px;
   }
   .status::before {

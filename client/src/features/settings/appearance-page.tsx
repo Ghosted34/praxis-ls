@@ -16,6 +16,8 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
 import { SettingsCard, Field, Segmented, ColorRow, ImageField } from "@/components/settings/controls";
+import { FontPicker } from "@/components/settings/font-picker";
+import { fontByValue } from "@/lib/fonts";
 import { cn } from "@/lib/cn";
 
 /**
@@ -171,16 +173,19 @@ export function AppearancePage() {
           </p>
         </SettingsCard>
 
-        <SettingsCard title="Typography & shape" desc="Font families (CSS names) and corner radius.">
+        <SettingsCard
+          title="Typography & shape"
+          desc="Fifteen self-hosted families — every user sees exactly what you pick here, on any device. Each user can override these for themselves under My appearance."
+        >
           <div className="grid gap-4 sm:grid-cols-2">
             <Field label="Display font">
-              <Input value={fontDisplay} onChange={(e) => setFontDisplay(e.target.value)} placeholder="Playfair Display, serif" />
+              <FontPicker slot="display" value={fontDisplay} onChange={setFontDisplay} aria-label="Display font" />
             </Field>
             <Field label="Body font">
-              <Input value={fontBody} onChange={(e) => setFontBody(e.target.value)} placeholder="Montserrat, sans-serif" />
+              <FontPicker slot="body" value={fontBody} onChange={setFontBody} aria-label="Body font" />
             </Field>
             <Field label="Mono font">
-              <Input value={fontMono} onChange={(e) => setFontMono(e.target.value)} placeholder="JetBrains Mono, monospace" />
+              <FontPicker slot="mono" value={fontMono} onChange={setFontMono} aria-label="Mono font" />
             </Field>
             <Field label="Corner radius">
               <Input value={radius} onChange={(e) => setRadius(e.target.value)} placeholder="18px" />
@@ -244,11 +249,16 @@ export function AppearancePage() {
 
                 {/* Typography samples */}
                 <div className="space-y-1">
+                  {/* Name the FAMILY, not the stack. This printed the whole CSS
+                      value — `"Montserrat", Georgia, serif` — which is noise,
+                      and worse, it listed fallbacks the viewer might have been
+                      looking at without knowing it. */}
                   <div className="text-base font-semibold" style={{ fontFamily: fontDisplay || "inherit" }}>
-                    Display heading — {fontDisplay || "default"}
+                    Display heading — {fontByValue(fontDisplay)?.name ?? (fontDisplay ? "custom" : "default")}
                   </div>
                   <p className="text-sm opacity-80" style={{ fontFamily: fontBody || "inherit" }}>
-                    Body text in {fontBody || "the default font"}. The quick brown fox clears customs at Douala.
+                    Body text in {fontByValue(fontBody)?.name ?? (fontBody ? "a custom font" : "the default font")}. The
+                    quick brown fox clears customs at Douala.
                   </p>
                   <code className="text-xs opacity-80" style={{ fontFamily: fontMono || "monospace" }}>
                     SLAS-2026-0142 · 12,000,000 XAF

@@ -55,6 +55,37 @@ export function brandSource(b: Branding): PwaBrandSource {
   return { name: b.name, primary: b.primary, logoUrl: b.logoUrl, theme: b.theme };
 }
 
+/**
+ * Apply the document-level parts of the installed-app identity.
+ *
+ * THE TITLE BAR IS A META TAG, NOT THE MANIFEST. An installed PWA paints its
+ * window title bar (the Window Controls Overlay on desktop, the status bar on
+ * Android) from the PAGE's `<meta name="theme-color">`, and that overrides the
+ * manifest's `theme_color` the moment the page loads. index.html ships a static
+ * placeholder for the pre-boot frame; leaving it there meant every tenant got
+ * that same off-white bar around their own app, no matter what the manifest
+ * said. Nothing in the app updated it — this does.
+ *
+ * Called on every branding change, so the editor's colour picker moves the real
+ * title bar while you drag it, not after a reinstall.
+ */
+export function applyPwaDocument(cfg: EffectivePwa) {
+  if (typeof document === "undefined") return;
+
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = cfg.themeColor;
+
+  // iOS home-screen label. Static "Praxis LS" in index.html, so every tenant's
+  // icon was captioned with the vendor's name until now.
+  const title = document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]');
+  if (title) title.content = cfg.shortName;
+}
+
 /** Public — resolved by Host, no auth. The boot splash reads this pre-login. */
 export const fetchPwaConfig = () => tenant<PwaConfig>("/branding/pwa", { auth: false });
 

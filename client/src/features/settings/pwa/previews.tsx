@@ -19,6 +19,7 @@
  */
 import * as React from "react";
 import { iconLayout, type EffectivePwa } from "@/lib/pwa-config";
+import { contrast, parseHex } from "@/lib/theme";
 import { cn } from "@/lib/cn";
 
 export type MaskShape = "circle" | "squircle" | "rounded";
@@ -113,6 +114,47 @@ export function AppIcon({
         />
       )}
     </div>
+  );
+}
+
+/**
+ * The desktop window's title bar, in the theme colour.
+ *
+ * WORTH A PREVIEW BECAUSE NOTHING ELSE SHOWS IT. `theme_color` is the one
+ * manifest field whose effect is invisible inside the browser — it paints the
+ * installed window's title bar (the Window Controls Overlay) and Android's
+ * status bar, neither of which exists on the screen you are editing from. A
+ * tenant picking it blind finds out after installing.
+ *
+ * The window glyphs flip between dark and light the way the OS does it, by the
+ * bar's luminance — which is also the fastest way to see that a mid-tone choice
+ * leaves them hard to make out.
+ */
+export function TitleBarPreview({ cfg }: { cfg: EffectivePwa }) {
+  const bar = parseHex(cfg.themeColor) ?? [244, 247, 251];
+  const onDark = contrast([255, 255, 255], bar) >= contrast([17, 20, 24], bar);
+  const ink = onDark ? "rgb(255 255 255 / 0.92)" : "rgb(0 0 0 / 0.75)";
+
+  return (
+    <figure className="m-0 w-full">
+      <div className="overflow-hidden rounded-lg border shadow-m">
+        <div className="flex items-center gap-2 px-2.5 py-2" style={{ background: cfg.themeColor }}>
+          <AppIcon cfg={cfg} size={16} />
+          <span className="min-w-0 flex-1 truncate text-[11px] font-medium" style={{ color: ink }}>
+            {cfg.name}
+          </span>
+          {/* Minimise / maximise / close, as glyphs rather than an image so they
+              take the computed ink colour. */}
+          <span aria-hidden className="flex items-center gap-2 text-[10px] leading-none" style={{ color: ink }}>
+            <span>&#8211;</span>
+            <span>&#9633;</span>
+            <span>&#10005;</span>
+          </span>
+        </div>
+        <div className="h-11 bg-background" />
+      </div>
+      <figcaption className="micro mt-2 text-center">Desktop title bar</figcaption>
+    </figure>
   );
 }
 

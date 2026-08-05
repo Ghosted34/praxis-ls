@@ -27,7 +27,7 @@ import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
 
-import { effectivePwa, EMPTY_PWA_CONFIG, iconLayout, type PwaConfig } from "@/lib/pwa-config";
+import { applyPwaDocument, effectivePwa, EMPTY_PWA_CONFIG, iconLayout, type PwaConfig } from "@/lib/pwa-config";
 import { escapesSafeZone, iconWarnings, splashWarnings, manifestWarnings } from "./validation";
 import { AppIcon } from "./previews";
 
@@ -69,6 +69,59 @@ describe("AppIcon — positioned by the same function the server composites with
     const cfg = effectivePwa({ iconRadius: 40 }, BRAND);
     const { container } = render(<AppIcon cfg={cfg} maskable size={64} />);
     expect((container.firstChild as HTMLElement).style.borderRadius).toBe("0%");
+  });
+});
+
+/* ── the title bar ────────────────────────────────────────────────────────── */
+
+/**
+ * REGRESSION GUARD FOR A SHIPPED BUG. index.html carries a static
+ * `<meta name="theme-color" content="#f4f7fb">`, and an installed PWA paints its
+ * window title bar from THAT tag, not from the manifest — the meta overrides
+ * `theme_color` as soon as the page loads. So every tenant's installed app wore
+ * the same off-white bar regardless of what they configured, and the manifest
+ * being correct was no help at all. The failure is invisible in a browser tab:
+ * you only see it in an installed window.
+ */
+describe("applyPwaDocument — the title bar is a meta tag, not the manifest", () => {
+  beforeEach(() => {
+    document.head.innerHTML =
+      '<meta name="theme-color" content="#f4f7fb">' +
+      '<meta name="apple-mobile-web-app-title" content="Praxis LS">';
+  });
+
+  const themeColor = () => document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content;
+  const iosTitle = () =>
+    document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')!.content;
+
+  it("replaces the static placeholder with the tenant's colour", () => {
+    expect(themeColor()).toBe("#f4f7fb"); // the bug, before
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(themeColor()).toBe(BRAND.primary);
+  });
+
+  it("uses an explicit theme colour over the inherited brand one", () => {
+    applyPwaDocument(effectivePwa({ themeColor: "#0b0f10" }, BRAND));
+    expect(themeColor()).toBe("#0b0f10");
+  });
+
+  it("captions the iOS home-screen icon with the tenant, not the vendor", () => {
+    expect(iosTitle()).toBe("Praxis LS"); // also hardcoded, also wrong per tenant
+    applyPwaDocument(effectivePwa({ shortName: "Acme Go" }, BRAND));
+    expect(iosTitle()).toBe("Acme Go");
+  });
+
+  it("creates the meta tag if the document has none, rather than silently doing nothing", () => {
+    document.head.innerHTML = "";
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(themeColor()).toBe(BRAND.primary);
+  });
+
+  it("repaints on every call, so the editor's picker moves the real bar live", () => {
+    applyPwaDocument(effectivePwa({ themeColor: "#111111" }, BRAND));
+    applyPwaDocument(effectivePwa({ themeColor: "#222222" }, BRAND));
+    expect(themeColor()).toBe("#222222");
+    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1); // no stacking
   });
 });
 

@@ -309,6 +309,57 @@ describe("GET /manifest.webmanifest and /icons — resolved by Host, never cross
     expect(res.body.scope).toBe("/");
   });
 
+  /**
+   * THE FIX FOR "I CHANGED THE ICON AND NOTHING CHANGED". The icon paths are
+   * fixed, so without a version in the URL a redesign is invisible to every
+   * cache between the server and the launcher — the bytes changed, but nothing
+   * had any reason to ask again.
+   */
+  describe("icon URLs carry a version, so a redesign actually propagates", () => {
+    it("fingerprints every icon URL in the manifest", async () => {
+      const res = await request(app).get("/manifest.webmanifest").set("Host", "acme.praxis.test");
+      for (const icon of res.body.icons) expect(icon.src).toMatch(/\?v=[0-9a-f]{12}$/);
+    });
+
+    it("changes the fingerprint when the design changes, and only then", async () => {
+      const base = effectivePwa({ iconUrl: "/media/tenant_acme/branding/a.png" }, DATA.acme.brand);
+      const same = effectivePwa({ iconUrl: "/media/tenant_acme/branding/a.png" }, DATA.acme.brand);
+      const newIcon = effectivePwa({ iconUrl: "/media/tenant_acme/branding/b.png" }, DATA.acme.brand);
+      const nudged = effectivePwa({ iconUrl: "/media/tenant_acme/branding/a.png", iconZoom: 120 }, DATA.acme.brand);
+
+      const v = (c) => require("../../src/routes/pwa").iconVersion(c);
+      expect(v(base)).toBe(v(same)); // stable — a redeploy must not orphan caches
+      expect(v(base)).not.toBe(v(newIcon)); // a new upload
+      expect(v(base)).not.toBe(v(nudged)); // a slider move, which also changes the bytes
+    });
+
+    it("keeps `id` stable across a redesign, so it stays the same installed app", async () => {
+      const before = await request(app).get("/manifest.webmanifest").set("Host", "acme.praxis.test");
+      const after = await request(app).get("/manifest.webmanifest").set("Host", "globex.praxis.test");
+      expect(before.body.id).toBe("/");
+      expect(after.body.id).toBe("/");
+    });
+
+    it("caches a versioned icon hard and an unversioned one briefly", async () => {
+      const versioned = await request(app).get("/icons/app-icon-192.png?v=abc123").set("Host", "acme.praxis.test");
+      expect(versioned.headers["cache-control"]).toMatch(/immutable/);
+
+      // No version = an old link someone still holds. It must expire soon, or
+      // that link pins the previous icon for a year.
+      const bare = await request(app).get("/icons/app-icon-192.png").set("Host", "acme.praxis.test");
+      expect(bare.headers["cache-control"]).toBe("public, max-age=300");
+    });
+
+    it("serves the icon regardless of the version value — the URL is the cache key, not a lookup", async () => {
+      // The fingerprint exists to make the URL unique, not to select anything.
+      // A stale `?v=` must still render the CURRENT icon rather than 404.
+      const res = await request(app).get("/icons/app-icon-192.png?v=stale0000000").set("Host", "acme.praxis.test");
+      expect(res.status).toBe(200);
+      const { data, info } = await sharp(res.body).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
+      expect(isRed(pixelAt(data, info, 0.5, 0.5))).toBe(true);
+    });
+  });
+
   it("never reads one tenant's storage while serving another's origin", async () => {
     await request(app).get("/icons/app-icon-192.png").set("Host", "acme.praxis.test");
     expect(storageReads).toEqual(["tenant_acme/branding/logo.png"]);
@@ -464,6 +515,104 @@ describe("setPwa — what the API accepts from the editor", () => {
     const c = fakeClient();
     await svc.setPwa(c, { actorId: "u1", appName: "Acme", tenant_id: "somebody-elses", section: "appearance" });
     expect(Object.keys(c.written)).toEqual(["app_name"]);
+  });
+});
+
+/**
+ * The App & PWA screen is environment-independent, and that is load-bearing.
+ *
+ * `src/routes/pwa.js` reads `live` unconditionally, because a device fetching a
+ * manifest sends no `X-Praxis-Env` header. So a sandbox-scoped write here would
+ * produce a configuration nothing could ever read — and the editor, overlaying
+ * sandbox on live, would show it back as if it had saved. Someone would upload
+ * an icon in TEST, watch the preview render it, save, and conclude the feature
+ * was broken. These pin both halves to the live binding so that cannot recur.
+ */
+describe("PWA config is live-only, in both directions", () => {
+  const controller = require("../../src/modules/branding/branding.controller");
+
+  /** A request in TEST mode: `tenantDb` is the sandbox schema, `identityDb` is
+   *  live. Exactly the shape tenant-context.js builds. */
+  function testModeReq(body) {
+    const seen = [];
+    return {
+      req: {
+        env: "sandbox",
+        user: { user_id: "u1" },
+        body,
+        tenant: { slug: "acme" },
+        tenantDb: (fn) => {
+          seen.push("sandbox");
+          return fn({ __env: "sandbox" });
+        },
+        identityDb: (fn) => {
+          seen.push("live");
+          return fn({ __env: "live" });
+        },
+      },
+      seen,
+    };
+  }
+
+  const res = () => {
+    const out = {};
+    return { json: (b) => Object.assign(out, b), body: out };
+  };
+
+  beforeEach(() => {
+    jest.resetModules();
+    jest.dontMock("../../src/modules/branding/branding.service");
+  });
+  afterEach(() => jest.resetModules());
+
+  it("reads live even when the request is in TEST mode", async () => {
+    jest.doMock("../../src/modules/branding/branding.service", () => ({
+      getPwa: (c) => Promise.resolve({ __from: c.__env }),
+    }));
+    const c = require("../../src/modules/branding/branding.controller");
+    const { req, seen } = testModeReq(null);
+    const r = res();
+    await c.getPwa(req, r, () => {});
+    expect(seen).toEqual(["live"]);
+    expect(r.body.data.__from).toBe("live");
+  });
+
+  it("writes live even when the request is in TEST mode", async () => {
+    jest.doMock("../../src/modules/branding/branding.service", () => ({
+      setPwa: (c, fields) => Promise.resolve({ __to: c.__env, ...fields }),
+    }));
+    const c = require("../../src/modules/branding/branding.controller");
+    const { req, seen } = testModeReq({ appName: "Acme Go" });
+    const r = res();
+    await c.putPwa(req, r, () => {});
+    expect(seen).toEqual(["live"]);
+    expect(r.body.data.__to).toBe("live");
+    expect(r.body.data.appName).toBe("Acme Go");
+  });
+
+  it("still works on a request with no identity binding", async () => {
+    // Defensive: `identityDb` is set by tenant-context, but the fallback keeps
+    // this from being a 500 if a route is ever mounted without it.
+    jest.doMock("../../src/modules/branding/branding.service", () => ({
+      getPwa: () => Promise.resolve({ ok: true }),
+    }));
+    const c = require("../../src/modules/branding/branding.controller");
+    const r = res();
+    await c.getPwa({ env: "live", tenantDb: (fn) => fn({}), tenant: { slug: "acme" } }, r, () => {});
+    expect(r.body.data.ok).toBe(true);
+  });
+
+  it("leaves APPEARANCE env-scoped — this change is scoped to the PWA section", async () => {
+    // The sandbox override exists for a real reason there (try a palette against
+    // test data), and narrowing that was not the intent.
+    jest.doMock("../../src/modules/branding/branding.service", () => ({
+      setBranding: (c) => Promise.resolve({ __to: c.__env }),
+    }));
+    const c = require("../../src/modules/branding/branding.controller");
+    const { req, seen } = testModeReq({ primary: "#123456" });
+    const r = res();
+    await c.put(req, r, () => {});
+    expect(seen).toEqual(["sandbox"]);
   });
 });
 

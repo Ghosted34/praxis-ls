@@ -50,7 +50,7 @@ import {
   type EffectivePwa,
 } from "@/lib/pwa-config";
 import { cn } from "@/lib/cn";
-import { AppIcon, HomeScreenPreview, MaskRow, MaskLegend } from "./pwa/previews";
+import { AppIcon, HomeScreenPreview, MaskRow, MaskLegend, TitleBarPreview } from "./pwa/previews";
 import { SplashPreview } from "./pwa/splash-preview";
 import { iconWarnings, splashWarnings, manifestWarnings, type PwaWarning, type SourceMeta } from "./pwa/validation";
 
@@ -304,6 +304,7 @@ export function PwaPage() {
         <Split
           preview={
             <>
+              <TitleBarPreview cfg={cfg} />
               <AppIcon cfg={cfg} size={84} />
               <div className="text-center">
                 <p className="font-display text-base">{cfg.name}</p>
@@ -387,7 +388,21 @@ export function PwaPage() {
                   <Button type="button" variant="ghost" size="sm" onClick={() => set("themeColor", null)}>
                     Use brand colour
                   </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => set("themeColor", cfg.backgroundColor)}
+                  >
+                    Match app
+                  </Button>
                 </div>
+                {/* This is the one manifest field whose effect is invisible from
+                    inside a browser tab, so say where it lands. */}
+                <p className="text-[11px] text-muted-foreground">
+                  Paints the desktop title bar and the Android status bar. Your brand colour is bold there; matching
+                  the app background makes the window look continuous instead.
+                </p>
               </Field>
               <Field label="Launch background">
                 <div className="flex items-center gap-2">
@@ -644,6 +659,18 @@ export function PwaPage() {
           </Button>
         }
       />
+
+      {/* There is one installed app per workspace, so this screen is the same in
+          Test and Live (see branding.controller.js). Said here, unprompted,
+          because the environment banner sits directly above it and "I am in
+          TEST" would otherwise imply "this is not real" — the opposite of the
+          truth. */}
+      <div className="mb-4">
+        <Callout tone="info" title="Same in Test and Live.">
+          A workspace has one installed app, so there is nothing to sandbox here — saving applies to the real app in
+          both environments.
+        </Callout>
+      </div>
 
       {msg && (
         <div className="mb-4">

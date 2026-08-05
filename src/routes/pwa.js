@@ -188,8 +188,23 @@ async function renderIcon({ size, maskable, cfg, logoBuf }) {
   return sharp(svg).png().toBuffer();
 }
 
-/** Everything that changes the rendered bytes, in one short key. */
-function iconCacheKey(cfg, size, maskable) {
+/**
+ * A short fingerprint of everything that changes the rendered bytes.
+ *
+ * THIS IS WHAT MAKES A NEW ICON REACH A DEVICE. The icon paths are fixed
+ * (`/icons/app-icon-192.png`), so without a version in the URL a changed icon is
+ * invisible to every cache between here and the launcher: the bytes at that URL
+ * changed, but nothing had any reason to ask again. The manifest carries this as
+ * `?v=`, so saving a new icon changes the manifest (short TTL), which yields URLs
+ * nothing has ever seen, which are fetched immediately — and lets the icons
+ * themselves be cached hard, because now they really are immutable.
+ *
+ * It does NOT fix an already-installed desktop app: Chrome and Edge write the
+ * icon into the OS shortcut at install time and do not revisit it, so an
+ * existing desktop installation needs reinstalling once. Android regenerates its
+ * icon from the manifest, so it picks this up on its own.
+ */
+function iconVersion(cfg) {
   const transform = [
     cfg.iconUrl,
     cfg.iconBackground,
@@ -203,8 +218,11 @@ function iconCacheKey(cfg, size, maskable) {
     cfg.themeColor,
     cfg.shortName,
   ].join("|");
-  const hash = crypto.createHash("sha1").update(transform).digest("hex").slice(0, 12);
-  return `${cfg.slug}:${size}:${maskable ? "m" : "a"}:${hash}`;
+  return crypto.createHash("sha1").update(transform).digest("hex").slice(0, 12);
+}
+
+function iconCacheKey(cfg, size, maskable) {
+  return `${cfg.slug}:${size}:${maskable ? "m" : "a"}:${iconVersion(cfg)}`;
 }
 
 async function iconHandler(req, res, size, maskable) {
@@ -217,7 +235,11 @@ async function iconHandler(req, res, size, maskable) {
     iconCacheSet(key, png);
   }
   res.type("image/png");
-  res.set("Cache-Control", "public, max-age=3600");
+  // Cached hard, because the manifest addresses these with a `?v=` fingerprint
+  // (iconVersion) — a design change produces a URL nothing has seen rather than
+  // a stale hit on this one. A request WITHOUT a version is someone (or some
+  // cache) holding an old link, so it gets a short TTL instead.
+  res.set("Cache-Control", req.query.v ? "public, max-age=31536000, immutable" : "public, max-age=300");
   res.send(png);
 }
 
@@ -228,7 +250,12 @@ router.get(
   hostTenantResolver,
   asyncHandler(async (req, res) => {
     const cfg = await resolvePwaConfig(req);
+    const v = iconVersion(cfg);
     const manifest = {
+      // `id` is what the browser uses to decide whether this is the SAME app it
+      // already installed. It must stay "/" through every design change —
+      // versioning it would make every save look like a brand-new app and
+      // orphan the installed one.
       id: "/",
       name: cfg.name,
       short_name: cfg.shortName,
@@ -240,9 +267,9 @@ router.get(
       theme_color: cfg.themeColor,
       background_color: cfg.backgroundColor,
       icons: [
-        { src: "/icons/app-icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
-        { src: "/icons/app-icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
-        { src: "/icons/app-icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
+        { src: `/icons/app-icon-192.png?v=${v}`, sizes: "192x192", type: "image/png", purpose: "any" },
+        { src: `/icons/app-icon-512.png?v=${v}`, sizes: "512x512", type: "image/png", purpose: "any" },
+        { src: `/icons/app-icon-maskable-512.png?v=${v}`, sizes: "512x512", type: "image/png", purpose: "maskable" },
       ],
     };
     res.type("application/manifest+json");
@@ -262,4 +289,4 @@ router.get(
   asyncHandler((req, res) => iconHandler(req, res, Number(req.params.size), false)),
 );
 
-module.exports = { router, resolvePwaConfig, renderIcon, clearIconCache };
+module.exports = { router, resolvePwaConfig, renderIcon, clearIconCache, iconVersion };

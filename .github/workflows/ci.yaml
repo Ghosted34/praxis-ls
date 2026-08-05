@@ -373,6 +373,20 @@ jobs:
           path: client/playwright-report
           retention-days: 7
 
+      - name: Shared schemas are actually shared
+        # check:shared proves the package RESOLVES and gives both halves one Zod
+        # instance. It cannot see the failure this catches, which is
+        # organisational: a schema lands in packages/shared, one side imports it,
+        # and the other keeps its own copy — so there are now THREE definitions
+        # instead of two. packages/shared existed for two phases with exactly one
+        # domain in it and nothing anywhere said so.
+        #
+        # It also fails if a migrated validator declares a `z.object` again. A
+        # migrated validator is an adapter; a schema in it means a rule was added
+        # on one side only, which is the drift the package exists to stop.
+        if: matrix.app == 'client'
+        run: npm run check:schemas --prefix client
+
       - name: Bundle graph
         # The 2026-08-04 blank page: `manualChunks` split `vendor-react` out of
         # `vendor`, but react-dom needs `scheduler` and react-router-dom needs

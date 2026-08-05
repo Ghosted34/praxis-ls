@@ -160,3 +160,65 @@ export declare namespace ledger {
   function checkPostable(lines: ProposedLine[]): Result;
   function totals(lines: ProposedLine[]): { debitMinor: number; creditMinor: number };
 }
+
+/**
+ * An optional text field as a FORM sends it: `""` in, `undefined` out.
+ *
+ * The declaration matters as much as the runtime here — a caller must be able to
+ * pass `""` (which every untouched input does) and must NOT be able to read `""`
+ * back out, because normalising blanks to `undefined` is the point.
+ */
+type Blankable<T> = z.ZodEffects<
+  z.ZodOptional<z.ZodUnion<[z.ZodType<T>, z.ZodLiteral<"">]>>,
+  T | undefined,
+  T | "" | undefined
+>;
+
+/**
+ * The numeric version. Its INPUT accepts a string, because that is what an
+ * `<input type="number">` holds — declaring it as `number | ""` compiled and
+ * then rejected `defaultValues: { credit_limit: String(row.credit_limit) }`,
+ * which is the only way a form can seed one.
+ */
+type BlankableNumeric = z.ZodEffects<
+  z.ZodOptional<z.ZodUnion<[z.ZodUnion<[z.ZodNumber, z.ZodString]>, z.ZodLiteral<"">]>>,
+  number | undefined,
+  number | string | undefined
+>;
+
+export declare namespace clientMaster {
+  const create: z.ZodObject<{
+    entity_id: Blankable<string>;
+    name: z.ZodString;
+    client_type_id: Blankable<string>;
+    niu: Blankable<string>;
+    rccm: Blankable<string>;
+    email: Blankable<string>;
+    address: Blankable<string>;
+    city: Blankable<string>;
+    country_code: Blankable<string>;
+    payment_terms_days: BlankableNumeric;
+    credit_limit: BlankableNumeric;
+    kyc_docs: z.ZodOptional<z.ZodArray<z.ZodAny>>;
+    is_withholding_agent: z.ZodOptional<z.ZodBoolean>;
+  }>;
+
+  const update: z.ZodObject<{
+    entity_id: Blankable<string>;
+    name: z.ZodOptional<z.ZodString>;
+    client_type_id: Blankable<string>;
+    niu: Blankable<string>;
+    rccm: Blankable<string>;
+    email: Blankable<string>;
+    address: Blankable<string>;
+    city: Blankable<string>;
+    country_code: Blankable<string>;
+    payment_terms_days: BlankableNumeric;
+    credit_limit: BlankableNumeric;
+    kyc_docs: z.ZodOptional<z.ZodArray<z.ZodAny>>;
+    is_withholding_agent: z.ZodOptional<z.ZodBoolean>;
+    is_active: z.ZodOptional<z.ZodBoolean>;
+  }>;
+
+  const aiUpdate: typeof update;
+}

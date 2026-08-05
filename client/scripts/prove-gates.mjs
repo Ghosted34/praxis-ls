@@ -137,6 +137,22 @@ const CASES = [
     to: "  void d;",
   },
   {
+    name: "schemas (one-sided)",
+    defect: "a shared schema the client stops importing — drift with an extra file",
+    cmd: ["npm", ["run", "check:schemas"]],
+    file: "src/features/masterdata/clients.tsx",
+    from: 'import { clientMaster } from "@shared";',
+    to: "const clientMaster = { create: null, update: null };",
+  },
+  {
+    name: "schemas (validator regression)",
+    defect: "a migrated validator declares its own z.object again",
+    cmd: ["npm", ["run", "check:schemas"]],
+    file: "../src/modules/finance/journal_entry/journal_entry.validator.js",
+    from: 'const { journalEntry: schemas } = require("@praxis/shared");',
+    to: 'const { journalEntry: schemas } = require("@praxis/shared");\nconst { z } = require("zod");\nconst sneaky = z.object({ extra: z.string() });\nvoid sneaky;',
+  },
+  {
     name: "layout gate (e2e)",
     defect: "F9 — a 36px row-action button puts the row back to 48px",
     cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "default rows"]],

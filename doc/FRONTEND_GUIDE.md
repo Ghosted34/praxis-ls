@@ -24,8 +24,10 @@ others now carries a banner saying so, and each is kept for the history it holds
 | `FE_WIRING_PLAN.md` | wire scaffolds to APIs | done through Phases 3-4 |
 
 Phase records, which are history rather than instruction, stay where they are:
-`DESKTOP_UI_AUDIT.md` (the audit and its seven addenda), `PHASE4_CHECKLIST.md`,
-`PHASE5_CHECKLIST.md`.
+`DESKTOP_UI_AUDIT.md` (the audit and its addenda), `PHASE4_CHECKLIST.md`,
+`PHASE5_CHECKLIST.md`. `FORMS_MIGRATION.md` is a live worklist rather than a
+plan: it carries the pattern for moving a module's validation into
+`packages/shared` and the count of what is left.
 
 **`npm run check:docs` fails the build if this file names a component that does not
 exist.** That is not decoration — it is F5, the audit's root-cause finding, made
@@ -435,7 +437,7 @@ it needs a formatter before it reaches the DOM.
 - [ ] No raw `<table>` / `<input>` / `<textarea>` / `role="menu"` — use the primitives (§3.5).
 - [ ] New shared component? Add a story, a usage example, a best-practices note and a test.
 - [ ] Row actions go in `<RowActions>` — that is what keeps the row at its density height (§7.1).
-- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`.
+- [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`.
 - [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).
 - [ ] Route added in `app.tsx` + `NAV`; `screen-registry.json` updated only when the page is real.

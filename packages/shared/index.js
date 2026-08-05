@@ -7,6 +7,7 @@
 const common = require("./schemas/common");
 const finalInvoice = require("./schemas/final-invoice");
 const journalEntry = require("./schemas/journal-entry");
+const clientMaster = require("./schemas/client-master");
 const ledger = require("./rules/ledger");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
@@ -22,6 +23,7 @@ const ledger = require("./rules/ledger");
 exports.common = common;
 exports.finalInvoice = finalInvoice;
 exports.journalEntry = journalEntry;
+exports.clientMaster = clientMaster;
 // Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
 // Zod refinement.
 exports.ledger = ledger;

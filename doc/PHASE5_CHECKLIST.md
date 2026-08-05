@@ -10,7 +10,7 @@ This is the tracked record, in the shape of `PHASE4_CHECKLIST.md`. It exists so 
 
 ## 1. The gates
 
-Ten now, up from seven. Each fails the build.
+Eleven now, up from seven. Each fails the build.
 
 | Gate | Command | What it holds |
 |---|---|---|
@@ -24,8 +24,9 @@ Ten now, up from seven. Each fails the build.
 | Palette | `npm run check:palette` | zero raw Tailwind palette colours |
 | Bundle | `npm run check:bundle` | no circular chunks |
 | Shared schemas | `npm run check:shared` | `packages/shared` resolves, parses, one Zod instance |
+| **Schema sharing** | `npm run check:schemas` | **new** — every shared domain is imported by BOTH sides; no migrated validator re-declares one |
 
-All ten run in CI (`.github/workflows/ci.yaml`, `frontend` job).
+All eleven run in CI (`.github/workflows/ci.yaml`, `frontend` job).
 
 An eleventh command, `npm run prove:gates`, is **not** in CI: it deliberately breaks the working tree. See §4.
 
@@ -98,7 +99,7 @@ Fixed at two shared sources — `--row-control-h` (20px) applied by `<RowActions
 
 ## 4. How the gates were verified
 
-`npm run prove:gates` injects a real regression per gated class, asserts a non-zero exit, restores, and asserts a zero exit. **13/13 pass** (the thirteenth is the phone tap target). Output is in the commit message for `Phase 5 (6/n)`.
+`npm run prove:gates` injects a real regression per gated class, asserts a non-zero exit, restores, and asserts a zero exit. **15/15 pass** (the last three are the phone tap target and the two schema-sharing classes). Output is in the commit message for `Phase 5 (6/n)`.
 
 This is not ceremony. A gate nobody has seen fail is a gate nobody knows works, and this repo has three separate records of that (Addendum 4's circular-chunk warning; Addendum 7's two wrong-when-written gates; Phase 5's own doc gate passing a reintroduced `<CrudResource>` on its first attempt).
 
@@ -161,9 +162,13 @@ Well inside a frame, and the walk is defensive: no deps means a re-render cannot
 
 Stated explicitly so nobody assumes it is done.
 
-### 5.1 Forms are still not on `<Form>` + shared Zod schemas
+### 5.1 Forms: started, and tracked in its own file
 
-Unchanged from Phases 3 and 4. Only `finalInvoice` has schemas in `packages/shared`. `useZodForm` is reachable and gated (`check:shared`), and the generator's form stub documents the target shape — but moving each module's schemas is per-module work with a backend counterpart, and Phase 5's scope does not include it.
+**Updated after Phase 5.** The pattern is established end-to-end and gated; `doc/FORMS_MIGRATION.md` carries it and the count.
+
+Three validators are on `packages/shared` (`final_invoice`, `journal_entry`, `client_master`) of 99, and two client forms are on `useZodForm`. `npm run check:schemas` fails the build if a shared domain is imported by only one side, or if a migrated validator declares its own `z.object` again.
+
+The first module through justified the whole exercise: the client's `canSubmit` was not merely a duplicate of the ledger's rules, it was **wrong** three ways — it accepted a line with both debit and credit filled, never checked the two-decimal limit, and never checked §23.6. In each case the form said "postable" and the server refused. That is why this is per-module work rather than a sweep.
 
 ### 5.2 Pixel screenshot baselines are deliberately not committed
 

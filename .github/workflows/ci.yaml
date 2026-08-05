@@ -339,7 +339,7 @@ jobs:
         # is pinned by @playwright/test in package.json (exact, not caret) so the
         # browser and the runner cannot drift apart between builds.
         if: matrix.app == 'client'
-        run: npx --prefix client playwright install --with-deps chromium
+        run: npm run e2e:install --prefix client
 
       - name: Desktop layout gate
         # Phase 5. Phases 3 and 4 BOTH measured the app in a real browser at

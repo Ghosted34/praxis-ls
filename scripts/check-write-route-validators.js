@@ -112,6 +112,12 @@ for (const routesFile of walk(MODULES)) {
     const looksValidated =
       /\b(validator|validate|v)\.\w+/.test(chainText) ||
       /\bvalidate\(/.test(chainText) ||
+      // A bare `validateSomething` identifier. preference.routes.js mounts
+      // `validateAppearance`, a real zod validator, and the member-access
+      // patterns above did not see it — a FALSE NEGATIVE in this checker, not a
+      // gap in that route. Requires the camelCase suffix so it cannot match
+      // `passthrough`, which is the no-op this whole guard exists to catch.
+      /\bvalidate[A-Z]\w*\b/.test(chainText) ||
       /\bbody\(/.test(chainText);
     const isPassthrough = /\b(passthrough|noop)\b/.test(chainText);
     if (looksValidated && !isPassthrough) continue;

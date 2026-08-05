@@ -60,7 +60,14 @@ function apiVersionHeaders(req, res, next) {
   if (!versioned) {
     res.set(
       "X-API-Deprecation-Notice",
-      `Unversioned /api paths are an alias for /${CURRENT} and will be retired. Call /api/${CURRENT}/… instead.`,
+      // ASCII ONLY. Node's setHeader accepts Latin-1 and nothing else, so the
+      // "…" that used to end this line threw ERR_INVALID_CHAR — on EVERY
+      // unversioned request, i.e. every request the product actually serves.
+      // It surfaced as an unhandled error and the container never answered
+      // /api/health, so the docker smoke test caught it only once the smoke
+      // test itself started running.
+      `Unversioned /api paths are an alias for /${CURRENT} and will be retired. `
+      + `Call /api/${CURRENT}/... instead.`,
     );
   }
   try {

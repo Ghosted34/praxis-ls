@@ -221,3 +221,21 @@ BEGIN
   RAISE NOTICE '[0504] trigram indexes: % created, % skipped, in schema %',
     made, skipped, current_schema();
 END $$;
+
+-- DOWN
+-- Indexes only; no data is touched.
+-- DROP INDEX IF EXISTS idx_invoice_status_type;
+-- DROP INDEX IF EXISTS idx_payment_allocation_invoice_id;
+-- DROP INDEX IF EXISTS idx_journal_line_account_entry;
+-- DROP INDEX IF EXISTS idx_journal_entry_entity_period_status;
+-- DROP INDEX IF EXISTS idx_stock_movement_item_moved_at;
+-- DROP INDEX IF EXISTS idx_depreciation_schedule_asset_posted;
+-- DROP INDEX IF EXISTS idx_accounting_period_entity_dates;
+-- -- and each idx_trgm_<table>_<column> created by the second DO block:
+-- DO $$ DECLARE i record; BEGIN
+--   FOR i IN SELECT indexname FROM pg_indexes
+--             WHERE schemaname = current_schema() AND indexname LIKE 'idx_trgm_%' LOOP
+--     EXECUTE format('DROP INDEX IF EXISTS %I', i.indexname);
+--   END LOOP; END $$;
+-- -- pg_trgm is left installed: other things may use it, and DROP EXTENSION
+-- -- would cascade to their indexes too.

@@ -130,3 +130,15 @@ EXCEPTION WHEN OTHERS THEN
   RAISE WARNING '[0506] %: leave-approval repair FAILED: % (SQLSTATE %). Leave requests on this tenant may never reach the approvals queue. Investigate before the next deploy.',
                 current_schema(), SQLERRM, SQLSTATE;
 END $$;
+
+-- DOWN
+-- This file only creates what 0467/0468 were supposed to and inserts approval
+-- tasks that should already have existed, so undoing it re-opens the gap.
+-- DELETE FROM approval_task
+--  WHERE entity_ref LIKE 'leave_allowance:%' AND status = 'PENDING';
+-- DELETE FROM workflow_step WHERE workflow_id IN (
+--   SELECT w.workflow_id FROM workflow w
+--     JOIN event_type et ON et.event_type_id = w.event_type_id
+--    WHERE et.key = 'leave_allowance.created');
+-- DELETE FROM workflow WHERE event_type_id IN (
+--   SELECT event_type_id FROM event_type WHERE key = 'leave_allowance.created');

@@ -145,3 +145,11 @@ BEGIN
     );
   END IF;
 END $$;
+
+-- DOWN
+-- DROP TRIGGER IF EXISTS trg_postrule_keeps_dict_rule ON posting_rule;
+-- DROP FUNCTION IF EXISTS assert_dictionary_still_has_rule();
+-- COMMENT ON COLUMN chart_of_accounts.code IS NULL;
+-- COMMENT ON COLUMN currency.code IS NULL;
+-- Dropping the trigger re-opens the one-directional §23.14 invariant (DATA 1.7):
+-- deleting the last posting_rule for an item silently orphans it again.

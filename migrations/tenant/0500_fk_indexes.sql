@@ -359,3 +359,11 @@ BEGIN
   END IF;
   RAISE NOTICE '[0500] %: % FK index(es) created, % skipped.', current_schema(), made, skipped;
 END $$;
+
+-- DOWN
+-- Indexes only. Dropping them restores the sequential scans on FK checks that
+-- DATA 2.2 measured; it loses nothing.
+-- DO $$ DECLARE s text[]; BEGIN
+--   FOREACH s SLICE 1 IN ARRAY ARRAY[ARRAY['idx_advance_client_id'] /* … */] LOOP
+--     EXECUTE format('DROP INDEX IF EXISTS %I', s[1]);
+--   END LOOP; END $$;

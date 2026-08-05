@@ -142,3 +142,11 @@ BEGIN
   RAISE NOTICE '[0496] %: % created_at index(es) created, % skipped.',
     current_schema(), made, skipped;
 END $$;
+
+-- DOWN
+-- Every object in this file is an index; dropping them loses no data and only
+-- returns the generic list path to the sequential scan PERF S3 measured.
+-- DO $$ DECLARE t text; BEGIN
+--   FOREACH t IN ARRAY ARRAY['access_review','accounting_period','advance' /* … */] LOOP
+--     EXECUTE format('DROP INDEX IF EXISTS %I', 'idx_' || t || '_created_at');
+--   END LOOP; END $$;

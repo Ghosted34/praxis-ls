@@ -6,6 +6,7 @@
  */
 const common = require("./schemas/common");
 const finalInvoice = require("./schemas/final-invoice");
+const pwaDesign = require("./pwa-design");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
 //
@@ -19,3 +20,7 @@ const finalInvoice = require("./schemas/final-invoice");
 // zodResolver was handed it. See client/config/shared-alias.ts.
 exports.common = common;
 exports.finalInvoice = finalInvoice;
+// Not a Zod schema — the shared *resolution* of the installed-app design (see
+// pwa-design.js). It crosses the same boundary for the same reason: the API
+// renders the home-screen PNG from it and the client renders the preview.
+exports.pwaDesign = pwaDesign;

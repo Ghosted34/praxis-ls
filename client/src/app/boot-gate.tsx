@@ -15,13 +15,19 @@ import { useBranding } from "@/app/branding/branding-context";
 import { SplashScreen } from "@/components/splash-screen";
 import { bootSignal } from "@/lib/boot-signal";
 
-const MIN_MS = 600; // keep the splash up at least this long so it doesn't flicker
 const FADE_MS = 400;
 
 export function BootGate({ children }: { children: React.ReactNode }) {
-  const { branding, ready: brandingReady } = useBranding();
+  const { ready: brandingReady, pwa } = useBranding();
   const { status } = useAuth();
   const bootDone = brandingReady && status !== "loading";
+
+  // How long the splash stays up at minimum, so it doesn't flicker on a warm
+  // cache. Tenant-configurable (Settings › App & PWA › Splash) because it is the
+  // difference between "the app blinked" and "the app introduced itself" — and
+  // because a tenant who wants NO splash sets 0 and gets straight to work. It is
+  // wall time, not motion: the animations themselves are fixed by their preset.
+  const MIN_MS = pwa.splashEnabled ? pwa.splashDuration : 0;
 
   const [mounted, setMounted] = React.useState(true);
   const [fading, setFading] = React.useState(false);
@@ -37,34 +43,31 @@ export function BootGate({ children }: { children: React.ReactNode }) {
     return () => window.clearInterval(id);
   }, [bootDone]);
 
-  // On completion: fill, honour the minimum, fade, unmount.
+  // On completion: fill, honour the minimum, fade, unmount. With the splash
+  // turned off there is nothing to fade, so the boot signal fires immediately
+  // rather than making the login wait 400ms to autofocus for an invisible
+  // element's benefit.
   React.useEffect(() => {
     if (!bootDone) return;
     setProgress(100);
+    const fadeMs = pwa.splashEnabled ? FADE_MS : 0;
     const wait = Math.max(0, MIN_MS - (Date.now() - startRef.current));
     const t1 = window.setTimeout(() => setFading(true), wait);
     const t2 = window.setTimeout(() => {
       setMounted(false);
       bootSignal.markDone();
-    }, wait + FADE_MS);
+    }, wait + fadeMs);
     return () => {
       window.clearTimeout(t1);
       window.clearTimeout(t2);
     };
-  }, [bootDone]);
+  }, [bootDone, MIN_MS, pwa.splashEnabled]);
 
   return (
     <>
       {children}
-      {mounted && (
-        <SplashScreen
-          name={branding.name || "Praxis LS"}
-          logoUrl={branding.logoUrl}
-          primary={branding.primary || "#0f766e"}
-          ready={brandingReady}
-          progress={progress}
-          fading={fading}
-        />
+      {mounted && pwa.splashEnabled && (
+        <SplashScreen cfg={pwa} ready={brandingReady} progress={progress} fading={fading} />
       )}
     </>
   );

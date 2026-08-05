@@ -95,4 +95,24 @@ module.exports = {
     const data = await service.uploadLoginBackground({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
     res.json({ data });
   }),
+
+  // Installed-app (PWA) design. GET is PUBLIC for the same reason branding is:
+  // the boot splash renders BEFORE anyone signs in, so it needs the tenant's
+  // splash preset and colours pre-auth. Same live-base/sandbox-override model.
+  //
+  // Note the manifest itself (GET /manifest.webmanifest, src/routes/pwa.js) does
+  // NOT go through here — it resolves the tenant from the Host header and reads
+  // `live` directly, because a device fetching a manifest carries no env header
+  // and must always get the real installed identity, never a sandbox experiment.
+  getPwa: asyncHandler(async (req, res) => {
+    res.json({ data: await resolveEnvOverlay(req, (c) => service.getPwa(c)) });
+  }),
+  putPwa: asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.setPwa(c, { ...(req.body || {}), actorId: req.user.user_id }));
+    res.json({ data });
+  }),
+  uploadAppIcon: asyncHandler(async (req, res) => {
+    const data = await service.uploadAppIcon({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
+    res.json({ data });
+  }),
 };

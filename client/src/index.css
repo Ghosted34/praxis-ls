@@ -1066,6 +1066,87 @@
   }
 }
 
+/**
+ * BOOT SPLASH PRESETS — Settings › App & PWA › Splash.
+ *
+ * These are the animations a tenant chooses between for the screen shown while
+ * the app boots. They are deliberately longer than the 250ms in-app motion
+ * budget and `scripts/check-motion.mjs` exempts the `.splash-` prefix for it,
+ * on the same grounds as `.landing` and `.login`: this is the door, not the
+ * workstation. It is seen once per session, before any work has started, and
+ * the whole point of the editor is that a tenant gets to decide what their
+ * app's first half-second looks like.
+ *
+ * They are driven by CLASS, not by inline styles, so the tenant's choice cannot
+ * introduce a duration — the preset list is closed (pwa-design.js PWA_ENUMS).
+ * What the tenant does control is which preset, the colours, and how long the
+ * splash stays up (`splashDuration`), which is wall time, not motion.
+ *
+ * The global prefers-reduced-motion kill above applies to all of them, so the
+ * reduced-motion experience is the static composition with no animation — which
+ * is why every preset is legible at rest, and why the identity block's own
+ * reveal is a plain opacity transition rather than part of the preset.
+ */
+@keyframes splash-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes splash-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.045); filter: brightness(1.12); }
+}
+@keyframes splash-sweep {
+  from { transform: translateX(-140%) skewX(-18deg); }
+  to { transform: translateX(240%) skewX(-18deg); }
+}
+@keyframes splash-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes splash-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(3%, -2.5%, 0) scale(1.12); opacity: 1; }
+}
+
+/* fade — one-shot entrance. The quiet default. */
+.splash-fade { animation: splash-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* pulse — the mark breathes while the app loads. Loops because it is a
+   progress signal: it stops when the splash lifts. */
+.splash-pulse { animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both, splash-breathe 2.2s ease-in-out 0.5s infinite; }
+
+/* shimmer — a light sweep crossing the mark. The sweep is a pseudo-element so
+   it clips to the mark's box and never touches layout. */
+.splash-shimmer { position: relative; overflow: hidden; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.42), transparent);
+  animation: splash-sweep 1.8s ease-in-out 0.4s infinite;
+  pointer-events: none;
+}
+
+/* ring — a brand-coloured arc orbits the mark. `--splash-accent` is set inline
+   from the tenant's theme colour. */
+.splash-ring { position: relative; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-ring::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  border-top-color: var(--splash-accent, currentColor);
+  border-right-color: color-mix(in srgb, var(--splash-accent, currentColor) 35%, transparent);
+  animation: splash-orbit 1.15s linear infinite;
+  pointer-events: none;
+}
+
+/* mesh — the BACKDROP animates instead of the mark: two soft brand-coloured
+   blooms drifting behind a still logo. Applied to the splash backdrop, so it
+   composes with any of the marks above. */
+.splash-mesh-layer { animation: splash-drift 6s ease-in-out infinite; }
+
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */
 .shadow-l { box-shadow: var(--shadow-l); }
 @keyframes lux-slide-in-left {

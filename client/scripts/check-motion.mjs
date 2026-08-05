@@ -64,6 +64,7 @@ const BUDGET_MS = 250;
 const EXEMPT = [
   [/^\.landing/, "marketing front door — seen once per session, before any work"],
   [/^\.login/, "sign-in card — same surface, same reason"],
+  [/^\.splash/, "boot splash — the door, not the workstation: shown once per session before any work, and it is the surface a tenant designs in Settings › App & PWA"],
 ];
 
 /** Tailwind `animation` entries that may loop forever, and why. */

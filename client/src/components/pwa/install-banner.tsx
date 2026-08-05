@@ -45,8 +45,8 @@ function ShareGlyph() {
 
 export function InstallBanner() {
   const { canInstall, isIOS, isStandalone, openSignal, promptInstall } = usePwaInstall();
-  const { branding } = useBranding();
-  const brandName = branding.name || "Praxis LS";
+  const { pwa } = useBranding();
+  const brandName = pwa.name;
 
   // "forced" = the user re-opened the banner from the menu; overrides dismissal.
   const [forced, setForced] = React.useState(false);
@@ -62,8 +62,14 @@ export function InstallBanner() {
     }
   }, [openSignal]);
 
-  // Already installed / running as an app → never show.
+  // Already installed / running as an app → never show. A tenant can also turn
+  // the prompt off entirely (Settings › App & PWA › Install): some deployments
+  // hand out managed devices with the app already installed, and a banner
+  // offering to install it again is just noise. The `forced` path — the user
+  // choosing "Install app" from the account menu — still works, because that is
+  // an explicit request, not a prompt.
   if (isStandalone) return null;
+  if (!pwa.installEnabled && !forced) return null;
 
   const iosMode = isIOS;
   const androidMode = !isIOS && canInstall;
@@ -98,24 +104,31 @@ export function InstallBanner() {
       className="fixed inset-x-0 bottom-0 z-[60] flex justify-center px-3 pb-[calc(env(safe-area-inset-bottom)+12px)]"
     >
       <div className="pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border bg-popover p-4 shadow-l">
-        {branding.logoUrl ? (
-          <img src={branding.logoUrl} alt={brandName} className="h-10 w-auto max-w-[7rem] flex-none rounded-lg object-contain" />
+        {/* The APP ICON, not the sidebar logo: this banner is offering to put
+            that exact mark on the user's home screen, so showing anything else
+            here mis-sells the thing being installed. */}
+        {pwa.iconUrl ? (
+          <img src={pwa.iconUrl} alt={brandName} className="h-10 w-auto max-w-[7rem] flex-none rounded-lg object-contain" />
         ) : (
           <div className="grid h-10 w-10 flex-none place-items-center rounded-xl bg-primary text-sm font-bold text-primary-foreground">
             {brandName.charAt(0)}
           </div>
         )}
         <div className="min-w-0 flex-1">
-          <p className="text-sm font-semibold text-foreground">Install {brandName}</p>
+          <p className="text-sm font-semibold text-foreground">{pwa.installTitle || `Install ${brandName}`}</p>
           {iosMode ? (
             <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-              Tap <ShareGlyph /> <span className="font-medium text-foreground">Share</span>, then{" "}
-              <span className="font-medium text-foreground">Add to Home Screen</span> to use {brandName} like an app —
-              full screen, on your home screen.
+              {pwa.installIosBody || (
+                <>
+                  Tap <ShareGlyph /> <span className="font-medium text-foreground">Share</span>, then{" "}
+                  <span className="font-medium text-foreground">Add to Home Screen</span> to use {brandName} like an
+                  app — full screen, on your home screen.
+                </>
+              )}
             </p>
           ) : (
             <p className="mt-0.5 text-[13px] leading-snug text-muted-foreground">
-              Add {brandName} to your device for a faster, full-screen app that works offline.
+              {pwa.installBody || `Add ${brandName} to your device for a faster, full-screen app that works offline.`}
             </p>
           )}
 
@@ -127,7 +140,7 @@ export function InstallBanner() {
                 disabled={busy || !canInstall}
                 className="rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-50"
               >
-                {busy ? "Installing…" : "Install"}
+                {busy ? "Installing…" : pwa.installButton || "Install"}
               </button>
               <button
                 type="button"

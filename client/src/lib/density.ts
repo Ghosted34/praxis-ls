@@ -43,7 +43,20 @@ export const DENSITY_PY: Record<Density, string> = {
   comfortable: "0.625rem", // 10px → 40px rows
 };
 
-/** Resulting row height in px, for tests and for the docs table. */
+/**
+ * The resulting row height in px — the CELL BOX, which is what the padding
+ * controls. A rendered `<tr>` measures about 1px more, because it carries a
+ * hairline bottom border; the browser gate allows for that explicitly rather
+ * than fudging these numbers, so the figures here stay the ones the design is
+ * stated in.
+ *
+ * The 20px term is the tallest thing a row is allowed to contain, and it is not
+ * an observation — it is enforced. `--row-control-h` bounds a row-action button
+ * to 20px and `.status` sets its own 16px line box. Before Phase 5 neither was
+ * true: `<Button size="sm">` is 36px, so a real list row stood at 48px however
+ * small the padding was, and the density work looked done for two phases while
+ * the number it existed to change had not moved.
+ */
 export const DENSITY_ROW_PX: Record<Density, number> = {
   compact: 28,
   default: 32,

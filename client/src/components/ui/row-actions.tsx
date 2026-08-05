@@ -38,7 +38,29 @@ import { cn } from "@/lib/cn";
 export function RowActions({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
     // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
-    <div className={cn("flex flex-wrap justify-end gap-2", className)} onClick={(e) => e.stopPropagation()}>
+    <div
+      className={cn(
+        "flex flex-wrap justify-end gap-1.5",
+        /*
+         * ROW ACTIONS SET THE ROW HEIGHT, and this is where that is fixed
+         * (Phase 5). `<Button size="sm">` is `h-9` — 36px — so a row carrying
+         * one stood at 48px no matter what `--row-py` said. F17's "~46px rows"
+         * was diagnosed as padding and Phase 1 changed the padding; the number
+         * did not move, because a table row is as tall as its tallest cell and
+         * 67 screens put a 36px button in the last one.
+         *
+         * Sized here rather than by editing 67 call sites, and by descendant
+         * selector rather than child, so a Radix trigger rendered through
+         * `asChild` is covered too. `--row-control-h` is the same 20px the
+         * density arithmetic assumes; portalled menu CONTENT is outside this
+         * subtree and keeps its normal sizing.
+         */
+        "[&_button]:h-[var(--row-control-h)] [&_button]:min-h-0 [&_button]:gap-1 [&_button]:px-2 [&_button]:text-micro [&_button]:font-semibold",
+        "[&_svg]:h-3 [&_svg]:w-3",
+        className,
+      )}
+      onClick={(e) => e.stopPropagation()}
+    >
       {children}
     </div>
   );

@@ -16,6 +16,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
@@ -329,12 +330,11 @@ export function ServiceTypesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        // `role="presentation"` because this wrapper is a click SHIELD, not a
-        // control: it stops a row-action reaching the row's own onRowClick. The
-        // real controls inside are buttons and are keyboard-reachable, so there
-        // is nothing here for a keyboard user to miss (F13's "onClick on a
-        // non-interactive element" is about handlers that ARE the interaction).
-        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setTemplating(r)}>
             {r.has_active_template ? "New version" : "Add milestones"}
           </Button>
@@ -344,7 +344,7 @@ export function ServiceTypesPage() {
               Archive
             </Button>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

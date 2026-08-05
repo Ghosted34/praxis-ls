@@ -131,12 +131,37 @@ export default {
         h1: ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.02em" }], // 28
       },
 
-      // Named page containers — the replacement for `mx-auto max-w-6xl` (F3).
-      // `wide` is the default for data screens; `reading` caps prose/settings.
+      /**
+       * Named page containers — the replacement for `mx-auto max-w-6xl` (F3).
+       * `wide` is the default for data screens; `reading` caps prose/settings.
+       *
+       * PHASE 5 — `wide` was 104rem (1664px) and is now 135rem (2160px).
+       *
+       * This is the item the audit opens with and that three phases deferred.
+       * F2's first sentence is that the app "renders identically at 1280px,
+       * 1920px and 2560px"; Phase 1 fixed 1280 and 1440 and left 1664 as the
+       * ceiling, "so a 1920px display is actually used". It is — 1920 minus the
+       * shell's padding is 1856, so 1664 nearly fills it. 2560 does not: it
+       * rendered the same column as 1920 with ~450px of margin on each side, and
+       * Addenda 6 and 7 both called that "addressed rather than solved" and
+       * pointed here, at the density work, because it is one number and it is
+       * the same conversation as row height.
+       *
+       * WHY 2160 AND NOT NO CAP. A table row is read left to right, and the
+       * distance from the record's name to its last column is the cost of every
+       * lookup. Uncapped, a 2560px display puts 2.5 metres of pixels between
+       * "SBX-OPS-2026-0142" and its status. 2160 gives a 2560px display ~30%
+       * more content than it had while keeping the row scannable — and the
+       * frozen first column (Phase 5) covers the tables that genuinely need to
+       * be wider than that.
+       *
+       * `standard` and `reading` are unchanged on purpose. A settings form does
+       * not want more width at any viewport; that was never the complaint.
+       */
       maxWidth: {
         reading: "48rem", // 768  — settings, forms, docs
         standard: "80rem", // 1280 — detail + mixed screens
-        wide: "104rem", // 1664 — dense tables, dashboards
+        wide: "135rem", // 2160 — dense tables, dashboards
       },
 
       borderRadius: {

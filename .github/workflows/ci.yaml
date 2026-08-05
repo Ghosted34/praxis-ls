@@ -319,6 +319,46 @@ jobs:
         if: matrix.app == 'client'
         run: npm run check:shared --prefix client
 
+      - name: Install Chromium for the layout gate
+        # Only the browser, and only for the client. `--with-deps` pulls the
+        # shared libraries headless Chromium needs on a bare runner; the version
+        # is pinned by @playwright/test in package.json (exact, not caret) so the
+        # browser and the runner cannot drift apart between builds.
+        if: matrix.app == 'client'
+        run: npx --prefix client playwright install --with-deps chromium
+
+      - name: Desktop layout gate
+        # Phase 5. Phases 3 and 4 BOTH measured the app in a real browser at
+        # 1280/1440/1920/2560 and BOTH threw the harness away, deferring "stand
+        # it up in CI" to the next phase. This is that harness.
+        #
+        # It asserts NUMBERS, not pixels, and that is deliberate. A committed
+        # screenshot baseline differs between this runner and a developer's
+        # machine on font hinting alone, so its first run is red for a reason
+        # nobody can act on — and this repo has already written down what happens
+        # to a gate like that. What actually regressed in the findings this audit
+        # is about was never a pixel: it was a content column that would not grow
+        # past 1152px, a row 46px tall instead of 32, a page that scrolled
+        # sideways. Those are deterministic across platforms.
+        #
+        # It earned its place immediately: it found that the density work from
+        # Phase 1 had never landed on a real list screen. Rows measured 49px
+        # however small the padding was, because `<Button size="sm">` is 36px and
+        # 67 screens put one in the actions column. Invisible to jsdom (no layout
+        # engine) and not what the Phase 3/4 runs measured.
+        if: matrix.app == 'client'
+        run: npm run test:e2e --prefix client
+
+      - name: Upload layout-gate report
+        # Screenshots and traces are EVIDENCE, not the assertion — they exist so
+        # a human can see what a failed measurement looked like.
+        if: ${{ failure() && matrix.app == 'client' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: client/playwright-report
+          retention-days: 7
+
       - name: Bundle graph
         # The 2026-08-04 blank page: `manualChunks` split `vendor-react` out of
         # `vendor`, but react-dom needs `scheduler` and react-router-dom needs

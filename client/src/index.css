@@ -258,6 +258,29 @@
     --row-py: 0.625rem;
   }
 
+  /*
+   * The height of a control INSIDE a row — a row-action button, mainly.
+   *
+   * THIS IS THE PART PHASE 1 MISSED, and the browser gate is what found it.
+   * F17 measured "~46px rows" and diagnosed the padding: `px-4 py-3.5`. Phase 1
+   * changed the padding, every unit test agreed, and the row on a real list
+   * screen stayed at 49px — because a table row is as tall as its tallest cell,
+   * and every list screen in this app ends with `<Button size="sm">` in the
+   * actions column. `size="sm"` is `h-9`: 36px, which with 6px of padding is 48.
+   *
+   * The padding was never what set the height. It could not be seen in jsdom
+   * (no layout engine) and was not what the Phase 3 and 4 browser runs measured
+   * (content column, h1 count), so the density work looked done for two phases
+   * while the number it existed to change had not moved.
+   *
+   * 20px is the deliberate figure: 2 × --row-py + 20 gives exactly the 28 / 32 /
+   * 40px rows in lib/density.ts, and it is the control height dense grids
+   * actually ship (Retool, Palantir, Bloomberg terminals).
+   */
+  :root {
+    --row-control-h: 1.25rem;
+  }
+
   /* Keyboard focus, globally. Previously .chip, .lux-navlink and
      .lux-botnav-btn had no focus indicator at all, so the primary navigation
      and every filter chip were invisible to keyboard users (F13, WCAG 2.4.7).
@@ -359,6 +382,11 @@
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
+    /* Explicit, not inherited. Inside a `text-sm` cell the pill inherited a 20px
+       line box and stood 24px tall — the second thing (after the row-action
+       button) keeping a 32px row at 48px. 16px + 2×2px padding is 20px, which is
+       --row-control-h. */
+    line-height: 1rem;
     font-weight: 600;
     white-space: nowrap;
     display: inline-flex;

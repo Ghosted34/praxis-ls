@@ -6,6 +6,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -185,13 +186,13 @@ export function ReceivablesPage() {
     { key: "status", label: "Status", render: (r) => <Pill tone={tone(r.status)}>{enumLabel(r.status)}</Pill> },
     {
       key: "_a", label: "", render: (r) => (
-        // A click SHIELD, not a control: it stops a row action reaching the
-        // row's own onRowClick. The real controls inside are buttons and are
-        // keyboard-reachable, so role="presentation" is accurate — F13 targets
-        // handlers that ARE the interaction, which this is not.
-        <div className="flex justify-end" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           {r.status === "DRAFT" && <Button size="sm" variant="outline" onClick={() => setPosting(r)}>Post</Button>}
-        </div>
+        </RowActions>
       ),
     },
   ];

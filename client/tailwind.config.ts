@@ -89,6 +89,17 @@ export default {
         bad: "rgb(var(--bad) / <alpha-value>)",
         "bad-fill": "rgb(var(--bad-fill) / <alpha-value>)",
         "brand-blue": "rgb(var(--brand-blue) / <alpha-value>)",
+        /**
+         * Blue as TYPE. Same ink/fill split as `--primary` vs `--primary-ink`,
+         * and added for the same reason one phase later: `text-brand-blue` over
+         * `bg-brand-blue/10` measured 3.27:1 — text on a tint OF ITSELF is the
+         * pattern that is failing by construction, and it appeared at eight
+         * sites (the KPI tile, three Control Tower components, the callout, the
+         * AI action chip and both blue status pills).
+         *
+         * Rule of thumb: `brand-blue` fills, `brand-blue-ink` writes.
+         */
+        "brand-blue-ink": "rgb(var(--brand-blue-ink) / <alpha-value>)",
         "brand-orange": "rgb(var(--brand-orange) / <alpha-value>)",
 
         sidebar: {

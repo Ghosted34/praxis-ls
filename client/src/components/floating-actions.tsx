@@ -145,7 +145,7 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
                 onClick={a.onSelect}
                 title={a.label}
                 aria-label={a.label}
-                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-[rgb(var(--primary-ink))]"
+                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-primary-ink"
               >
                 <a.Icon />
               </button>

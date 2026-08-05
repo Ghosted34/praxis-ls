@@ -213,7 +213,7 @@ function TemplateForm({ svc, onClose, onSaved }: { svc: api.ServiceType; onClose
               key={p}
               type="button"
               onClick={() => setStages(PRESETS[p].map((s) => ({ ...s })))}
-              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary-ink"
             >
               {p}
             </button>

@@ -40,7 +40,7 @@ export function Briefing({
     <Card className="mb-5 flex items-start gap-4 bg-[linear-gradient(120deg,color-mix(in_srgb,rgb(var(--brand-blue-bright))_9%,var(--card)),var(--card))] p-4">
       <span
         aria-hidden
-        className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[rgb(var(--brand-blue)_/_0.14)] text-[rgb(var(--brand-blue))]"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[rgb(var(--brand-blue)_/_0.14)] text-[rgb(var(--brand-blue-ink))]"
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" width={18} height={18}>
           <circle cx="12" cy="12" r="4" />

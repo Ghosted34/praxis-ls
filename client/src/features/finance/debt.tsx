@@ -126,7 +126,7 @@ function DebtDrawer({ debt, onClose, onRepay }: { debt: api.DebtEngagement; onCl
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Principal</div><div className="num text-lg font-medium">{money(x.principal)}</div></div>
             <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Repaid</div><div className="num text-lg font-medium">{money(x.repaid?.principal)}</div></div>
-            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Outstanding</div><div className="num text-lg font-medium text-[rgb(var(--primary))]">{money(x.outstanding_principal)}</div></div>
+            <div className="rounded-lg border border-border bg-card/40 px-3.5 py-2.5"><div className="micro mb-1">Outstanding</div><div className="num text-lg font-medium text-primary-ink">{money(x.outstanding_principal)}</div></div>
           </div>
           <div className="flex justify-end">
             {x.status === "ACTIVE" && <Button size="sm" onClick={onRepay}>Record repayment</Button>}
@@ -138,7 +138,7 @@ function DebtDrawer({ debt, onClose, onRepay }: { debt: api.DebtEngagement; onCl
                 {(x.repayments || []).map((rp) => (
                   <li key={rp.debt_repayment_id} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5 text-sm">
                     <span className="num">{dateFmt(rp.paid_on)}</span>
-                    <span className="flex items-center gap-4"><span className="micro">int {money(rp.interest_part)}</span><span className="num text-[rgb(var(--primary))]">{money(rp.principal_part)}</span></span>
+                    <span className="flex items-center gap-4"><span className="micro">int {money(rp.interest_part)}</span><span className="num text-primary-ink">{money(rp.principal_part)}</span></span>
                   </li>
                 ))}
               </ol>

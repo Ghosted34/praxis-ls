@@ -30,9 +30,9 @@ export function AiGate({ children }: { children: React.ReactNode }) {
 
 const AI_LABEL: Record<AiKind, string> = { read: "read", write: "action", assist: "AI-assist" };
 const AI_CLASS: Record<AiKind, string> = {
-  read: "bg-brand-blue/10 text-brand-blue",
+  read: "bg-brand-blue/10 text-brand-blue-ink",
   write: "bg-warn-fill/12 text-warn",
-  assist: "bg-primary/10 text-primary",
+  assist: "bg-primary/10 text-primary-ink",
 };
 
 function SparkIcon() {
@@ -54,7 +54,7 @@ export function AiActions({ actions }: { actions?: AiAction[] }) {
   return (
     <div className="mt-6">
       <div className="mb-2 flex items-center gap-2">
-        <span className="text-primary">
+        <span className="text-primary-ink">
           <SparkIcon />
         </span>
         <h2 className="text-sm font-semibold text-foreground">AI actions on this screen</h2>

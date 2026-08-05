@@ -22,7 +22,7 @@ function PeriodStatusPill({ status }: { status: string }) {
   const s = status.toUpperCase();
   const tone =
     s === "OPEN"
-      ? "bg-primary/10 text-primary"
+      ? "bg-primary/10 text-primary-ink"
       : s === "FROZEN"
         ? "bg-[rgb(var(--warn)/0.15)] text-[rgb(var(--warn))]"
         : "bg-muted text-muted-foreground";

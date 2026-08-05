@@ -23,7 +23,7 @@ function DeclStatusPill({ status }: { status: string }) {
   const s = status.toUpperCase();
   const tone =
     s === "FILED"
-      ? "bg-primary/10 text-primary"
+      ? "bg-primary/10 text-primary-ink"
       : s === "APPROVED"
         ? "bg-[rgb(var(--ok)/0.15)] text-[rgb(var(--ok))]"
         : s === "COMPUTED"

@@ -77,7 +77,7 @@ export function PortalLogin() {
         <Button type="submit" className="w-full" disabled={busy}>
           {busy ? "Signing in…" : "Sign in"}
         </Button>
-        <button type="button" onClick={forgot} className="w-full text-sm text-muted-foreground transition-colors hover:text-primary">
+        <button type="button" onClick={forgot} className="w-full text-sm text-muted-foreground transition-colors hover:text-primary-ink">
           Forgot your password?
         </button>
       </form>
@@ -121,7 +121,7 @@ export function PortalSetPassword() {
       <PortalFrame>
         <ErrorState message="That link is incomplete. Please use the link exactly as it appears in your email." />
         <p className="mt-4 text-sm">
-          <Link to="/client-portal/login" className="text-primary">Back to sign in</Link>
+          <Link to="/client-portal/login" className="text-primary-ink">Back to sign in</Link>
         </p>
       </PortalFrame>
     );

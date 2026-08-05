@@ -88,7 +88,7 @@ export function ClockPunch() {
         disabled={busy}
         title={action}
         aria-label={action}
-        className="relative grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-[rgb(var(--primary-ink))] disabled:opacity-60"
+        className="relative grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-primary-ink disabled:opacity-60"
       >
         <ClockIcon />
         {canPunch && (

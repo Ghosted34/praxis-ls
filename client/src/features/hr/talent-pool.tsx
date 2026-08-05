@@ -166,7 +166,7 @@ export function TalentPoolPage() {
         </div>
       )}
 
-      <div className="sec"><h2>Talent pool</h2><span className="ln" /><button className="text-[color:var(--primary)]" onClick={() => setCreating(true)}>Add candidate</button></div>
+      <div className="sec"><h2>Talent pool</h2><span className="ln" /><button className="text-primary-ink" onClick={() => setCreating(true)}>Add candidate</button></div>
       <DataList columns={cols} rows={rows} error={error} loading={loading} rowKey={(r) => r.talent_pool_id} empty={{ title: "Talent pool is empty", hint: "Add promising candidates to revisit later." }} />
 
       {creating && <TalentForm onClose={() => setCreating(false)} onSaved={reload} />}

@@ -114,10 +114,10 @@ function ChannelRow({ c, active, onClick }: { c: api.Channel; active: boolean; o
         <span className="flex items-baseline justify-between gap-1">
           <span className={cn("flex items-center gap-1 truncate text-[12.5px]", unread > 0 ? "font-medium text-foreground" : "text-muted-foreground")}>
             <span className="truncate">{c.name}</span>
-            {c.is_pinned && <span className="shrink-0 text-[rgb(var(--primary))]"><PinIcon /></span>}
+            {c.is_pinned && <span className="shrink-0 text-primary-ink"><PinIcon /></span>}
             {c.is_muted && <span className="shrink-0 text-muted-foreground"><MuteIcon /></span>}
           </span>
-          <span className={cn("shrink-0 text-[10px]", unread > 0 ? "font-semibold text-[rgb(var(--primary))]" : "text-muted-foreground")}>{fmtRelative(c.last_message?.created_at)}</span>
+          <span className={cn("shrink-0 text-[10px]", unread > 0 ? "font-semibold text-primary-ink" : "text-muted-foreground")}>{fmtRelative(c.last_message?.created_at)}</span>
         </span>
         <span className="mt-0.5 flex items-center justify-between gap-1">
           <span className={cn("truncate text-[11.5px]", unread > 0 ? "text-foreground" : "text-muted-foreground")}>{c.last_message?.body || "No messages yet"}</span>
@@ -305,7 +305,7 @@ function Thread({ channelId, meId, nameOf, onBack, onSent }: { channelId: string
           return (
             <div key={m.message_id} className={mine ? "flex justify-end" : "flex justify-start"}>
               <div className={cn("max-w-[78%] rounded-2xl px-3 py-2 text-sm", mine ? "bg-primary text-primary-foreground" : "border border-border bg-card")}>
-                {!mine && m.sender_user_id && <div className="mb-0.5 text-[11px] font-medium text-[rgb(var(--primary))]">{nameOf[m.sender_user_id] || "Someone"}</div>}
+                {!mine && m.sender_user_id && <div className="mb-0.5 text-[11px] font-medium text-primary-ink">{nameOf[m.sender_user_id] || "Someone"}</div>}
                 <div className="whitespace-pre-wrap">{m.body || (m.media_vault_id ? "(attachment)" : "")}</div>
                 <div className={cn("mt-0.5 text-[10px]", mine ? "text-primary-foreground/70" : "text-muted-foreground")}>{timeShort(m.created_at)}</div>
               </div>

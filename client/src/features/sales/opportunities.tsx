@@ -204,7 +204,7 @@ export function OpportunitiesPage() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <p className="text-sm font-medium text-foreground">{cell(o.name)}</p>
-                            {o.probability != null && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{cell(o.probability)}%</span>}
+                            {o.probability != null && <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">{cell(o.probability)}%</span>}
                           </div>
                           <p className="mt-0.5 truncate text-xs text-muted-foreground">{withLabel(o)}</p>
                           <p className="mt-1 text-xs font-semibold text-foreground">{money(o.estimated_value, o.currency)}</p>

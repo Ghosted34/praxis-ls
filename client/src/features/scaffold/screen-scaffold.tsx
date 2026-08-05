@@ -97,7 +97,7 @@ export function ScreenScaffold({ spec }: { spec: ScreenSpec }) {
       <AiActions actions={spec.ai} />
 
       <p className="mt-6 text-sm">
-        <Link to="/" className="text-primary underline-offset-4 hover:underline">
+        <Link to="/" className="text-primary-ink underline-offset-4 hover:underline">
           &larr; Back to Control Tower
         </Link>
       </p>

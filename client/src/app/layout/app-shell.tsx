@@ -33,6 +33,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
+import { QuickActionsMenu } from "@/components/quick-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
 import { getDensity, setDensity, isDensity, DENSITY_LABEL, DENSITY_HINT, type Density } from "@/lib/density";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
@@ -656,8 +657,20 @@ export function AppShell() {
             </button>
           </div>
           <ThemeToggle />
-          {/* Messages lives on the Smart Comms floating pin, so it's intentionally
-              not duplicated here — only Notifications stays in the top bar. */}
+          {/*
+            Quick actions — the desktop home for what the floating cluster
+            carries on touch (Phase 5, F9). `hidden md:flex` is the mirror of
+            FloatingActions' `md:hidden`: exactly one of the two is mounted at
+            any width, so neither surface duplicates the other.
+
+            It carries the MESSAGES count, not the notifications one. Messages
+            was deliberately never duplicated into the top bar because it lived
+            on the floating pin — so retiring that pin from desktop would have
+            left a desktop user with no unread-messages indicator at all.
+          */}
+          <span className="hidden md:inline-flex">
+            <QuickActionsMenu badge={unread.messages} />
+          </span>
           <NotificationBell count={unread.notifications} onChange={unread.reload} />
           <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>

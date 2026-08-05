@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { InlineEdit } from "@/components/ui/inline-edit";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
@@ -289,7 +290,23 @@ export function ServiceTypesPage() {
       label: "Service",
       render: (r) => (
         <div>
-          <div className="font-medium text-foreground">{r.name_en || r.name_fr}</div>
+          {/*
+            Phase 5 — the one place inline edit clearly fits on this screen.
+            Renaming a service costs a six-field modal today to change one word,
+            and the display name is descriptive master data: nothing is posted
+            against it, so there is no reversal-not-edit rule to break. The KEY
+            below it stays modal-only on purpose — dossiers are classified by it.
+          */}
+          <InlineEdit
+            className="font-medium text-foreground"
+            label="Service name"
+            required
+            value={r.name_en || r.name_fr}
+            onSave={async (next) => {
+              await api.updateServiceType(r.service_type_id, { name_en: next });
+              list.reload();
+            }}
+          />
           <div className="micro">{r.key}</div>
         </div>
       ),

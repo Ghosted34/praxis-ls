@@ -14,6 +14,7 @@
     "preview": "vite preview",
     "lint": "eslint .",
     "check:contrast": "node scripts/check-contrast.mjs",
+    "check:motion": "node scripts/check-motion.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "check:palette": "node scripts/check-palette.mjs",
     "check:shared": "node scripts/check-shared.mjs",

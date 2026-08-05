@@ -16,7 +16,16 @@ const ClockIcon = (p: React.SVGProps<SVGSVGElement>) => (
   </svg>
 );
 
-export function ClockPunch() {
+/**
+ * The clock state and the punch action, without a presentation.
+ *
+ * Extracted in Phase 5 because the FAB that used to be the only home for this
+ * is now touch-only (audit F9), and the desktop quick-actions menu needs the
+ * same behaviour in a completely different shape — a menu item, not a round
+ * button with a floating chip. Two renderings, one source of truth for whether
+ * the user is on shift.
+ */
+export function useClockPunch() {
   const [now, setNow] = React.useState(() => new Date());
   const [punch, setPunch] = React.useState<api.AttendanceRow | null>(null);
   const [canPunch, setCanPunch] = React.useState(true); // false = no employee linked
@@ -61,6 +70,13 @@ export function ClockPunch() {
 
   const timeStr = now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const label = msg ? msg.text : clockedIn ? "On the clock" : timeStr;
+  const action = canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time";
+
+  return { label, action, clockedIn, canPunch, busy, toggle, msg, timeStr };
+}
+
+export function ClockPunch() {
+  const { label, action, clockedIn, canPunch, busy, toggle, msg } = useClockPunch();
 
   return (
     <div className="flex items-center gap-2 animate-fade-in">
@@ -70,9 +86,9 @@ export function ClockPunch() {
       <button
         onClick={toggle}
         disabled={busy}
-        title={canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time"}
-        aria-label={canPunch ? (clockedIn ? "Clock out" : "Clock in") : "Time"}
-        className="relative grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 hover:text-[rgb(var(--primary))] disabled:opacity-60"
+        title={action}
+        aria-label={action}
+        className="relative grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-[rgb(var(--primary-ink))] disabled:opacity-60"
       >
         <ClockIcon />
         {canPunch && (

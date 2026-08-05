@@ -4,8 +4,21 @@
  * Messages (Smart Comms), and Help. The primary button carries an unread badge.
  * The AI action only appears when the tenant's AI is enabled.
  *
+ * TOUCH ONLY, as of Phase 5 (audit F9). The cluster is `md:hidden`; on desktop
+ * its job belongs to `<QuickActionsMenu>` in the top bar.
+ *
+ * The audit's objection was not that a FAB is ugly. It is that this one sits at
+ * `fixed bottom-24 right-5` — precisely where a list screen's last rows and its
+ * pager are — and that being draggable was the workaround for that rather than a
+ * feature. Worse, the dragged position PERSISTS: moving it out of the way on one
+ * screen moved it into the way on every other one, permanently. On a phone the
+ * trade is different and the pattern is right: the thumb is at the bottom right,
+ * there is no chrome to spare, and there is nothing underneath at that moment
+ * that a tap is competing with.
+ *
  * Praxis AI opens the copilot via the `praxis:open-copilot` window event, so this
- * stays decoupled from the copilot component (which owns the panel).
+ * stays decoupled from the copilot component (which owns the panel). The action
+ * list itself comes from `useQuickActions` so the two surfaces cannot drift.
  *
  * The cluster is draggable: press-and-drag the primary FAB to move it anywhere on
  * screen; the drop position is remembered (localStorage) across reloads. A small
@@ -14,21 +27,15 @@
  */
 import * as React from "react";
 import { createPortal } from "react-dom";
-import { useNavigate } from "react-router-dom";
-import { useAiEnabled } from "@/components/ai-actions";
 import { ClockPunch } from "@/components/clock-punch";
+import { useQuickActions } from "@/components/quick-actions";
 import { cn } from "@/lib/cn";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const s = (p: IP) => ({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: 1.8, strokeLinecap: "round" as const, strokeLinejoin: "round" as const, width: 20, height: 20, "aria-hidden": true, ...p });
-const AiIcon = (p: IP) => (<svg {...s(p)}><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>);
-const ChatIcon = (p: IP) => (<svg {...s(p)}><path d="M21 12a8 8 0 01-11.6 7.1L4 20l1-4.4A8 8 0 1121 12z" /></svg>);
-const HelpIcon = (p: IP) => (<svg {...s(p)}><circle cx="12" cy="12" r="9" /><path d="M9.5 9a2.5 2.5 0 013.5-1.8c1 .5 1.5 1.6 1 2.6-.4.9-1.5 1.2-2 2-.2.4-.2.8-.2 1.2" /><circle cx="12" cy="17" r="0.6" fill="currentColor" /></svg>);
 const BurstIcon = (p: IP) => (<svg {...s(p)} width={24} height={24}><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M18 6l-2.5 2.5M8.5 15.5L6 18" /><circle cx="12" cy="12" r="2.5" /></svg>);
 
 export function FloatingActions({ badge = 0 }: { badge?: number }) {
-  const aiEnabled = useAiEnabled();
-  const navigate = useNavigate();
   const [open, setOpen] = React.useState(false);
   const ref = React.useRef<HTMLDivElement>(null);
   const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -94,16 +101,8 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
     };
   }, []);
 
-  const actions = [
-    aiEnabled && {
-      key: "ai",
-      label: "Praxis AI",
-      Icon: AiIcon,
-      onClick: () => { window.dispatchEvent(new CustomEvent("praxis:open-copilot")); setOpen(false); },
-    },
-    { key: "msg", label: "Messages", Icon: ChatIcon, onClick: () => { navigate("/comms"); setOpen(false); } },
-    { key: "help", label: "Help", Icon: HelpIcon, onClick: () => { navigate("/help"); setOpen(false); } },
-  ].filter(Boolean) as { key: string; label: string; Icon: (p: IP) => React.JSX.Element; onClick: () => void }[];
+  const close = React.useCallback(() => setOpen(false), []);
+  const actions = useQuickActions(close);
 
   // Portal to <body> so position:fixed is viewport-relative. A transformed page
   // ancestor would otherwise become the containing block, so the drag math (which
@@ -132,7 +131,10 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
       onMouseLeave={closeSoon}
       onFocus={openNow}
       onBlur={closeSoon}
-      className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:bottom-6"
+      // md:hidden is the Phase 5 change: on desktop this cluster covered the
+      // bottom-right of every table, and dragging it was the workaround rather
+      // than the fix. <QuickActionsMenu> in the top bar is the desktop home.
+      className="fixed bottom-24 right-5 z-50 flex flex-col items-end gap-3 md:hidden"
     >
       {open && (
         <>
@@ -140,10 +142,10 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
             <div key={a.key} className="flex items-center gap-2 animate-fade-in" style={{ animationDelay: `${i * 30}ms` }}>
               <span className="rounded-md border bg-popover px-2 py-1 text-xs font-medium text-foreground shadow-md">{a.label}</span>
               <button
-                onClick={a.onClick}
+                onClick={a.onSelect}
                 title={a.label}
                 aria-label={a.label}
-                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-transform hover:scale-105 hover:text-[rgb(var(--primary))]"
+                className="grid h-11 w-11 place-items-center rounded-full border bg-card text-foreground shadow-lg transition-colors duration-150 hover:bg-accent hover:text-[rgb(var(--primary-ink))]"
               >
                 <a.Icon />
               </button>
@@ -159,7 +161,10 @@ export function FloatingActions({ badge = 0 }: { badge?: number }) {
         aria-label="Quick actions (drag to move)"
         aria-expanded={open}
         className={cn(
-          "relative grid h-14 w-14 cursor-grab touch-none select-none place-items-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform hover:scale-105 active:cursor-grabbing",
+          // `hover:scale-105` removed (F17). The rotation stays — it is not
+          // decoration, it turns the burst into a close glyph and is the only
+          // thing telling you the button's meaning has changed.
+          "relative grid h-14 w-14 cursor-grab touch-none select-none place-items-center rounded-full bg-primary text-primary-foreground shadow-xl transition-transform duration-150 active:cursor-grabbing",
           open && "rotate-45",
         )}
       >

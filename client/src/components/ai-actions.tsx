@@ -66,7 +66,11 @@ export function AiActions({ actions }: { actions?: AiAction[] }) {
             key={a.label}
             type="button"
             onClick={() => window.dispatchEvent(new CustomEvent("praxis:open-copilot", { detail: { prompt: a.describe } }))}
-            className="lux-card flex items-start gap-3 p-3 text-left transition-all hover:-translate-y-0.5 hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:shadow-[var(--shadow-m)]"
+            // Was `hover:-translate-y-0.5` (F17: hover lift is a landing-page
+            // micro-interaction). The affordance is now a border and shadow
+            // state change — the card says "pressable" without moving away
+            // from the pointer.
+            className="lux-card flex items-start gap-3 p-3 text-left transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:shadow-[var(--shadow-m)]"
           >
             <span className={`mt-0.5 rounded-full px-2 py-0.5 text-[11px] font-medium ${AI_CLASS[a.kind]}`}>{AI_LABEL[a.kind]}</span>
             <div className="min-w-0">

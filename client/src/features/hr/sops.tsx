@@ -225,7 +225,7 @@ function OnboardingView() {
           {list.map((c) => {
             const pct = c.total_items ? Math.round((c.done_items / c.total_items) * 100) : 0;
             return (
-              <button key={c.onboarding_checklist_id} onClick={() => setOpenId(c.onboarding_checklist_id)} className="lux-card p-4 text-left transition-all hover:-translate-y-0.5 hover:shadow-[var(--shadow-m)]">
+              <button key={c.onboarding_checklist_id} onClick={() => setOpenId(c.onboarding_checklist_id)} className="lux-card p-4 text-left transition-[border-color,box-shadow] duration-150 hover:border-[color-mix(in_srgb,var(--primary)_40%,transparent)] hover:shadow-[var(--shadow-m)]">
                 <div className="flex items-start justify-between gap-2">
                   <div className="font-medium text-foreground">{c.employee_name || "Unassigned"}</div>
                   <Pill tone={c.status === "COMPLETED" ? "ok" : "warn"}>{c.status === "COMPLETED" ? "Completed" : "In progress"}</Pill>

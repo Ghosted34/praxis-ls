@@ -27,7 +27,8 @@
     "new:screen": "node scripts/new-screen.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "prove:gates": "node scripts/prove-gates.mjs",
-    "e2e:install": "playwright install --with-deps chromium"
+    "e2e:install": "playwright install --with-deps chromium",
+    "check:schemas": "node scripts/check-schemas.mjs"
   },
   "dependencies": {
     "@fontsource-variable/cascadia-code": "^5.3.0",

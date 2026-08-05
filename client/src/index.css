@@ -292,9 +292,54 @@
    * 20px is the deliberate figure: 2 × --row-py + 20 gives exactly the 28 / 32 /
    * 40px rows in lib/density.ts, and it is the control height dense grids
    * actually ship (Retool, Palantir, Bloomberg terminals).
+   *
+   * IT IS SCOPED TO THE TABLE, and that scoping is the fix for a defect this
+   * bound SHIPPED. It was originally set on `:root`, and `<RowActions>` is
+   * rendered by both of DataList's branches — the table AND the phone card
+   * fallback. So the 20px meant for a dense desktop row became the tap target on
+   * every phone: under WCAG 2.2 §2.5.8's 24×24px AA minimum, and less than half
+   * the 44/48px iOS/Android guidance. A desktop density decision leaked onto the
+   * one surface where it is exactly wrong.
+   *
+   * The default is now the TOUCH value, and the table opts down. That direction
+   * matters: a new surface that forgets to declare itself inherits the safe
+   * number, not the 20px one. Same reasoning as `--row-py` living on `:root` —
+   * a tree with no attribute must still render something sane.
    */
   :root {
-    --row-control-h: 1.25rem;
+    --row-control-h: 2.75rem; /* 44px — the platform touch guidance */
+  }
+  .table-density {
+    --row-control-h: 1.25rem; /* 20px — set by <Table>, the dense surface */
+  }
+
+  /**
+   * Expand a small control's TAP TARGET without changing what it looks like.
+   *
+   * A 16px checkbox is 16px of hit area. WCAG 2.2 §2.5.8 wants 24×24 CSS px;
+   * iOS HIG and Material want 44/48. Growing the box would destroy the density
+   * the tables are tuned for, so the target grows and the ink does not — a
+   * transparent ::before, which is what every design system does here.
+   *
+   * Two sizes because the constraint genuinely differs. In a 28px table row a
+   * 44px target would overlap the rows above and below, so their targets would
+   * fight; 24px clears the normative minimum and fits. On a card there is room,
+   * and a finger is the pointer.
+   */
+  .tap-24,
+  .tap-44 {
+    position: relative;
+  }
+  .tap-24::before,
+  .tap-44::before {
+    content: "";
+    position: absolute;
+  }
+  .tap-24::before {
+    inset: -4px;
+  }
+  .tap-44::before {
+    inset: -14px;
   }
 
   /* Keyboard focus, globally. Previously .chip, .lux-navlink and

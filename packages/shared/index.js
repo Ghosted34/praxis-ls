@@ -6,6 +6,9 @@
  */
 const common = require("./schemas/common");
 const finalInvoice = require("./schemas/final-invoice");
+const journalEntry = require("./schemas/journal-entry");
+const clientMaster = require("./schemas/client-master");
+const ledger = require("./rules/ledger");
 const pwaDesign = require("./pwa-design");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
@@ -20,6 +23,11 @@ const pwaDesign = require("./pwa-design");
 // zodResolver was handed it. See client/config/shared-alias.ts.
 exports.common = common;
 exports.finalInvoice = finalInvoice;
+exports.journalEntry = journalEntry;
+exports.clientMaster = clientMaster;
+// Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
+// Zod refinement.
+exports.ledger = ledger;
 // Not a Zod schema — the shared *resolution* of the installed-app design (see
 // pwa-design.js). It crosses the same boundary for the same reason: the API
 // renders the home-screen PNG from it and the client renders the preview.

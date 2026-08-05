@@ -7,7 +7,7 @@
   "type": "commonjs",
   "main": "index.js",
   "types": "index.d.ts",
-  "files": ["index.js", "index.d.ts", "schemas", "pwa-design.js"],
+  "files": ["index.js", "index.d.ts", "schemas", "rules", "pwa-design.js"],
   "peerDependencies": {
     "zod": "^3.23.8"
   }

@@ -10,24 +10,25 @@ This is the tracked record, in the shape of `PHASE4_CHECKLIST.md`. It exists so 
 
 ## 1. The gates
 
-Ten now, up from seven. Each fails the build.
+Eleven now, up from seven. Each fails the build.
 
 | Gate | Command | What it holds |
 |---|---|---|
 | Typecheck | `tsc -b` | strict, `noUnusedLocals`, `noUnusedParameters` — and now the e2e specs too |
 | Lint | `npm run lint` | **0 errors.** `jsx-a11y` and `react-hooks/exhaustive-deps` at `error` |
-| Tests | `npm test` | **648 passing**, up from 563 |
+| Tests | `npm test` | **729 passing**, up from 563 |
 | **Contrast** | `npm run check:contrast` | every text pair, **composited** — pills measured on their own tinted ground, and no fill token used as type |
 | **Motion** | `npm run check:motion` | **new** — 250ms in-app budget; `prefers-reduced-motion` still honoured |
 | **Docs** | `npm run check:docs` | **new** — the guide may not name a component that does not exist (F5) |
-| **Layout** | `npm run test:e2e` | **new** — four desktop widths, row height, sticky/frozen columns, in a real browser |
+| **Layout** | `npm run test:e2e` | **new** — four desktop widths **and a phone**, row height, tap targets, sticky/frozen columns, in a real browser |
 | Palette | `npm run check:palette` | zero raw Tailwind palette colours |
 | Bundle | `npm run check:bundle` | no circular chunks |
 | Shared schemas | `npm run check:shared` | `packages/shared` resolves, parses, one Zod instance |
+| **Schema sharing** | `npm run check:schemas` | **new** — every shared domain is imported by BOTH sides; no migrated validator re-declares one |
 
-All ten run in CI (`.github/workflows/ci.yaml`, `frontend` job).
+All eleven run in CI (`.github/workflows/ci.yaml`, `frontend` job).
 
-An eleventh command, `npm run prove:gates`, is **not** in CI: it deliberately breaks the working tree. See §4.
+A twelfth command, `npm run prove:gates`, is **not** in CI: it deliberately breaks the working tree. See §4.
 
 ---
 
@@ -98,7 +99,7 @@ Fixed at two shared sources — `--row-control-h` (20px) applied by `<RowActions
 
 ## 4. How the gates were verified
 
-`npm run prove:gates` injects a real regression per gated class, asserts a non-zero exit, restores, and asserts a zero exit. **12/12 pass.** Output is in the commit message for `Phase 5 (6/n)`.
+`npm run prove:gates` injects a real regression per gated class, asserts a non-zero exit, restores, and asserts a zero exit. **15/15 pass** (the last three are the phone tap target and the two schema-sharing classes). Output is in the commit message for `Phase 5 (6/n)`.
 
 This is not ceremony. A gate nobody has seen fail is a gate nobody knows works, and this repo has three separate records of that (Addendum 4's circular-chunk warning; Addendum 7's two wrong-when-written gates; Phase 5's own doc gate passing a reintroduced `<CrudResource>` on its first attempt).
 
@@ -106,13 +107,68 @@ The run itself found a twelfth defect: the palette gate was flagging the proof h
 
 ---
 
+## 4a. Mobile, and what it cost
+
+Phase 5's work was desktop-shaped and its browser gate was written at desktop widths. That combination shipped one defect and left one gap; both are closed, and the gate now measures a phone.
+
+### 4a.1 A desktop density number was setting every phone tap target
+
+`--row-control-h: 20px` sat on `:root`, and `<RowActions>` is rendered by **both** of `DataList`'s branches. So the height chosen to keep a dense desktop row at 32px became the tap target on every phone — under WCAG 2.2 §2.5.8's 24×24px AA minimum, and less than half the 44/48px platform guidance. Sixty of them on the chart of accounts alone.
+
+`:root` now carries the **touch** value and `<Table>` opts down via `.table-density`. The direction matters: a surface that forgets to declare itself inherits the safe number.
+
+Checkboxes needed a separate fix — a 16px box is a 16px target however it is scoped. `.tap-24` / `.tap-44` expand the hit area with a transparent `::before` and leave the ink alone. Two sizes because 44px in a 28px compact row would overlap the neighbouring rows' targets.
+
+### 4a.2 Multi-select did not exist below 640px
+
+The checkbox lived in a `<th>`. The card list now has a per-card checkbox and its own select-all — a card list has no header row to put one in. Shift-ranges are deliberately not offered on touch.
+
+### 4a.3 The gate now measures a phone
+
+`e2e/layout.spec.ts` (renamed from `desktop-layout`) carries four phone assertions: the card fallback renders, **every** tap target clears 24px, row actions are touch-sized, and multi-select works. The tap-target assertion reads the **hit** area rather than the border box — reading the wrong one would report a false failure on exactly the `::before` fix it verifies.
+
+---
+
+## 4b. Measured cost
+
+Numbers, not adjectives. Both were open questions at the end of Phase 5.
+
+**Bundle** — built at the Phase 4 merge and at Phase 5 HEAD, same `node_modules`:
+
+| | Phase 4 | Phase 5 | delta |
+|---|---|---|---|
+| JS chunks emitted | 86 | 86 | 0 |
+| **first load (entry + vendor), gzip** | **164.5 kB** | **167.0 kB** | **+2.6 kB** |
+| entry chunk, gzip | 47.9 kB | 49.0 kB | +1.1 kB |
+| vendor chunk, gzip | 116.6 kB | 118.1 kB | +1.5 kB |
+| all chunks, gzip | 423.6 kB | 431.4 kB | +7.9 kB |
+
++1.6% on first load. The vendor growth is the Radix `DropdownMenu` sub-components the density and column menus newly reach (`RadioGroup`, `RadioItem`, `CheckboxItem`, `ItemIndicator`) — previously tree-shaken out.
+
+**Roving tabindex** — the one thing added that scales with row count. It walks the `<tbody>` after every render, deliberately without a deps array:
+
+| Rows | Per walk |
+|---|---|
+| 60 (a real page) | 0.20 ms |
+| 500 (past the API's 200-row cap) | 1.43 ms |
+
+Well inside a frame, and the walk is defensive: no deps means a re-render cannot leave a stale tabindex that would be invisible until a keyboard user hit it.
+
+**The obvious optimisation is not one.** Replacing N per-row queries with a single `querySelectorAll` over the body plus `closest("tr")` measured 0.16 ms at 60 rows and **1.47 ms at 500** — indistinguishable at realistic sizes and slightly worse at the extreme, because the cost is dominated by touching elements, not by query count. Recorded in the hook so nobody spends an afternoon on it.
+
+---
+
 ## 5. What was NOT taken, and why
 
 Stated explicitly so nobody assumes it is done.
 
-### 5.1 Forms are still not on `<Form>` + shared Zod schemas
+### 5.1 Forms: started, and tracked in its own file
 
-Unchanged from Phases 3 and 4. Only `finalInvoice` has schemas in `packages/shared`. `useZodForm` is reachable and gated (`check:shared`), and the generator's form stub documents the target shape — but moving each module's schemas is per-module work with a backend counterpart, and Phase 5's scope does not include it.
+**Updated after Phase 5.** The pattern is established end-to-end and gated; `doc/FORMS_MIGRATION.md` carries it and the count.
+
+Three validators are on `packages/shared` (`final_invoice`, `journal_entry`, `client_master`) of 99, and two client forms are on `useZodForm`. `npm run check:schemas` fails the build if a shared domain is imported by only one side, or if a migrated validator declares its own `z.object` again.
+
+The first module through justified the whole exercise: the client's `canSubmit` was not merely a duplicate of the ledger's rules, it was **wrong** three ways — it accepted a line with both debit and credit filled, never checked the two-decimal limit, and never checked §23.6. In each case the form said "postable" and the server refused. That is why this is per-module work rather than a sweep.
 
 ### 5.2 Pixel screenshot baselines are deliberately not committed
 

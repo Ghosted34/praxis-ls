@@ -275,6 +275,31 @@
   }
 
   /*
+   * The icon rail's width, as a variable rather than a number in `.rail`.
+   *
+   * IT IS READ FROM OUTSIDE THE RAIL. The app mark in the title bar sits on the
+   * rail's centre line — the mark and the rail's Home button are the top two
+   * things down the left edge, and two round marks a few pixels off the same
+   * axis read as a mistake rather than as a decision. Centring one on the other
+   * means the title bar has to know how wide the rail is, and a second `52px`
+   * written over there would be a copy that nothing keeps in step: change the
+   * rail and the mark drifts, with no test that can see it.
+   *
+   * On `:root` rather than on `.rail` for the same reason `--row-py` is: it is
+   * consumed in a different subtree, so it has to be inherited rather than
+   * scoped. Two rules, not three, because `comfortable` takes the same rail as
+   * `default` — only `compact` narrows it.
+   */
+  :root,
+  [data-density="default"],
+  [data-density="comfortable"] {
+    --rail-w: 52px;
+  }
+  [data-density="compact"] {
+    --rail-w: 46px;
+  }
+
+  /*
    * The height of a control INSIDE a row — a row-action button, mainly.
    *
    * THIS IS THE PART PHASE 1 MISSED, and the browser gate is what found it.
@@ -1236,6 +1261,30 @@
 [data-density="comfortable"] .wco { --wco-h: 52px; }
 
 /**
+ * THE APP MARK SITS ON THE ICON RAIL'S CENTRE LINE.
+ *
+ * The mark and the rail's Home button are the top two things down the left edge
+ * of the window, one directly above the other. A few pixels of horizontal
+ * disagreement between them reads as a mistake rather than as a decision — and
+ * they did disagree: the strip's own `padding-left` is `env(titlebar-area-x)`,
+ * which is 0 in any window without an overlay, so the mark started flush at the
+ * edge with its axis at 10px while the rail's button sat at 26px.
+ *
+ * DERIVED, NOT MEASURED. Both halves of the sum are variables — the rail's width
+ * and the mark's own size, which `AppMark` publishes as `--wco-mark-size` from
+ * the same constant it passes to `<AppIcon>`. So resizing either one keeps them
+ * aligned, which a hand-tuned `16px` here would not.
+ *
+ * Only at `md` and up, because that is where the rail exists. Below it the strip
+ * leads with the hamburger and there is nothing underneath to align to.
+ */
+@media (min-width: 768px) {
+  .wco-mark {
+    margin-left: calc((var(--rail-w) - var(--wco-mark-size)) / 2);
+  }
+}
+
+/**
  * DRAG REGIONS. The strip drags the window; every interactive descendant must
  * opt out or it becomes unclickable. Stated as a rule over element types rather
  * than a class on each control, because the failure mode of forgetting one is a
@@ -1483,7 +1532,7 @@
    * tooltip, which moves nothing.
    */
   .rail {
-    width: 52px;
+    width: var(--rail-w);
     gap: 2px;
     padding: 8px 0;
     background: var(--card);
@@ -1491,7 +1540,8 @@
     overflow-y: auto;
     overscroll-behavior: contain;
   }
-  [data-density="compact"] .rail { width: 46px; }
+  /* Density now lives on `--rail-w` (see the density block above), because the
+     title bar's app mark centres itself on this width too. */
   .rail-btn {
     display: grid;
     place-items: center;

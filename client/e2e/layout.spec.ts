@@ -125,6 +125,33 @@ test.describe("the ribbon's chrome budget", () => {
   });
 
   /**
+   * THE APP MARK SITS ON THE RAIL'S CENTRE LINE, and only a browser can say so.
+   *
+   * The mark and the rail's Control Tower button are the top two things down the
+   * left edge, one directly above the other, so a few pixels of disagreement
+   * between them reads as a mistake. The offset is `(--rail-w -
+   * --wco-mark-size) / 2` in `.wco-mark`, which is a computed style over two
+   * custom properties and a media query — jsdom evaluates none of that, and the
+   * unit test can therefore only pin that the component publishes its size. The
+   * sum itself is measurable here and nowhere else.
+   *
+   * Half a pixel of tolerance for sub-pixel rounding; anything that has actually
+   * drifted is off by whole pixels.
+   */
+  test("the title bar's app mark is centred on the rail below it", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const markBox = await page.locator(".wco .wco-mark > :first-child").boundingBox();
+    const homeBox = await page.locator('.rail .rail-btn[aria-label="Control Tower"]').boundingBox();
+    expect(markBox, "the app mark should be in the title bar").not.toBeNull();
+    expect(homeBox, "the rail should carry a Control Tower button").not.toBeNull();
+
+    const centre = (b: { x: number; width: number }) => b.x + b.width / 2;
+    expect(centre(markBox!)).toBeCloseTo(centre(homeBox!), 0);
+  });
+
+  /**
    * ROW B REVEALS PROGRESSIVELY, and this is the only place that can be
    * checked. The row hides its tail with `hidden` / `2xl:inline-flex`, which
    * jsdom cannot evaluate — it applies no media queries and loads no

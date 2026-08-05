@@ -434,9 +434,16 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
  * It is the same component the editor's title-bar preview draws with, so that
  * preview now predicts the real bar instead of merely resembling it.
  */
+/** The mark's icon size. Published to CSS as `--wco-mark-size` so `.wco-mark`
+ *  can centre it on the rail without a second copy of this number. */
+const APP_MARK_SIZE = 20;
+
 function AppMark({ cfg }: { cfg: EffectivePwa }) {
   return (
-    <div className="flex min-w-0 flex-none items-center gap-2">
+    <div
+      className="wco-mark flex min-w-0 flex-none items-center gap-2"
+      style={{ "--wco-mark-size": `${APP_MARK_SIZE}px` } as React.CSSProperties}
+    >
       {/* `AppIcon`, not a bare <img src={cfg.iconUrl}>. The raw field is the
           UPLOAD, and when a tenant has not uploaded a dedicated app icon it
           resolves to the brand logo — the wide lockup this component exists to
@@ -444,7 +451,7 @@ function AppMark({ cfg }: { cfg: EffectivePwa }) {
           it the way the API does: contained inside a square, on the configured
           plate, at the configured rounding. So whatever the taskbar shows, this
           shows. */}
-      <AppIcon cfg={cfg} size={20} />
+      <AppIcon cfg={cfg} size={APP_MARK_SIZE} />
       {/* `truncate` because the name is tenant-supplied and the bar is shared
           with the window controls — a long one must give way rather than push
           the search field off the row. */}

@@ -15,7 +15,7 @@ const events = require("./governance.events");
 const { estimateCostXaf, capState, canUse } = require("./governance.rules");
 const encryption = require("../../../services/encryption.service");
 const axios = require("axios");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 const today = () => new Date().toISOString().slice(0, 10);
@@ -40,7 +40,7 @@ async function setFeature(client, { featureKey, patch = {}, actor = {} }) {
 async function grantAccess(client, { userId, featureKey, monthlyCapXaf = null, actor = {} }) {
   const existing = await repo.grantFor(client, userId, featureKey);
   if (existing && !existing.revoked_at) throw new AppError("ALREADY_GRANTED", "User already has this grant", 409);
-  const row = await repo.insertGrant(client, { user_id: userId, feature_key: featureKey, monthly_cap_xaf: monthlyCapXaf, granted_by: actor.user_id || null });
+  const row = await repo.insertGrant(client, { user_id: userId, feature_key: featureKey, monthly_cap_xaf: monthlyCapXaf, granted_by: await resolveActorId(client, actor.user_id) });
   await emitEvent(client, { eventTypeKey: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "ai_grant:" + row.grant_id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.ACCESS_GRANTED, moduleKey: events.MODULE, entityRef: "ai_grant:" + row.grant_id, after: row });
   return row;
@@ -67,7 +67,7 @@ async function budgetStatus(client, { onDate = null } = {}) {
 
 async function setBudget(client, { periodStart, periodEnd, softCapXaf = null, hardCapXaf = null, actor = {} }) {
   if (Date.parse(periodEnd) < Date.parse(periodStart)) throw new AppError("BAD_WINDOW", "period_end must be >= period_start", 422);
-  const row = await repo.insertBudget(client, { period_start: periodStart, period_end: periodEnd, soft_cap_xaf: softCapXaf, hard_cap_xaf: hardCapXaf, set_by: actor.user_id || null });
+  const row = await repo.insertBudget(client, { period_start: periodStart, period_end: periodEnd, soft_cap_xaf: softCapXaf, hard_cap_xaf: hardCapXaf, set_by: await resolveActorId(client, actor.user_id) });
   await emitEvent(client, { eventTypeKey: events.BUDGET_SET, moduleKey: events.MODULE, entityRef: "ai_budget:" + row.period_id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.BUDGET_SET, moduleKey: events.MODULE, entityRef: "ai_budget:" + row.period_id, after: row });
   return row;

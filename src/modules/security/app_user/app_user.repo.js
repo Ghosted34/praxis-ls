@@ -9,6 +9,7 @@
 "use strict";
 
 const { makeRepo } = require("../../../shared/crud/resource");
+const { updateOne } = require("../../../shared/db/query-helpers");
 
 const crud = makeRepo({
   // SEC H3. app_user is on the passthrough validator, so PATCH /users/:id reached
@@ -24,6 +25,11 @@ const crud = makeRepo({
   activeColumn: null,
   searchColumn: null,
   orderBy: "created_at DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 async function findByEmail(client, email) {
@@ -157,11 +163,10 @@ async function listUsersSafe(client, { limit = 50, offset = 0, status = null, q 
   return rows;
 }
 async function updateUserFields(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getUserSafe(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE app_user SET " + set + ", updated_at = now() WHERE user_id = $1 RETURNING " + SAFE_COLS, [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getUserSafe(client, id);
+  return updateOne(client, "app_user", "user_id", id, fields, SAFE_COLS, null, { touch: "updated_at" });
 }
 async function employeeExists(client, employeeId) {
   const { rows } = await client.query("SELECT 1 FROM employee WHERE employee_id = $1", [employeeId]);

@@ -613,7 +613,7 @@ async function requestPasswordReset(client, { email, ip, origin }) {
     } catch (err) {
       // Mail failure must not change the response (no enumeration) — the token
       // stays valid so a retry/resend can still deliver. Surface it in logs.
-      logger.error({ err: err.message, user_id: user.user_id }, "[auth] password-reset email failed to send");
+      logger.error({ err, user_id: user.user_id }, "[auth] password-reset email failed to send");
     }
   }
   return { ok: true };

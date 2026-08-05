@@ -1,7 +1,7 @@
 /** AI Governance repository. All SQL for feature flags, grants, budgets, usage
  *  and vendor credentials lives here (tenant-scoped ai_* tables, 0400_ai.sql). */
 "use strict";
-const { insertOne, page } = require("../../../shared/db/query-helpers");
+const { insertOne, page, updateOne } = require("../../../shared/db/query-helpers");
 
 // ── Feature flags ──
 async function listFlags(client) {
@@ -13,10 +13,9 @@ async function getFlag(client, key) {
   return rows[0] || null;
 }
 async function setFlag(client, key, fields) {
-  const keys = Object.keys(fields);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE ai_feature_flag SET " + set + ", updated_at = now() WHERE feature_key = $1 RETURNING *", [key, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "ai_feature_flag", "feature_key", key, fields, "*", null, { touch: "updated_at" });
 }
 /** Level-1 entitlement: is `key` switched ON in the platform-projected
  *  feature_state (the ceiling the platform console controls)? feature_state is

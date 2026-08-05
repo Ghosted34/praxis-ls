@@ -14,7 +14,7 @@ const journalEntry = require("../journal_entry/journal_entry.service");
 const determination = require("../../../services/accounting/determination");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { withMoneyLog } = require("../../../shared/observability/money-log");
 
@@ -47,7 +47,7 @@ async function createDraft(client, opts) {
     }
     const cn = await repo.insertInvoice(client, {
       entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "CREDIT_NOTE",
-      status: "DRAFT", reverses_invoice_id: reversesInvoiceId, issued_by: actor.user_id || null,
+      status: "DRAFT", reverses_invoice_id: reversesInvoiceId, issued_by: await resolveActorId(client, actor.user_id),
     });
     if (lines.length) await replaceLines(client, cn.invoice_id, lines);
     await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(cn.invoice_id), after: cn });

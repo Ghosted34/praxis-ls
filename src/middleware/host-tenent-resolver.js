@@ -8,6 +8,7 @@
 
 const { config } = require("../config/env");
 const registry = require("../services/tenant/registry.service");
+const { AppError } = require("../utils/errors");
 
 const PLATFORM_HOSTS = new Set([
   `admin.${config.APP_BASE_DOMAIN}`,
@@ -46,23 +47,26 @@ async function hostTenantResolver(req, res, next) {
   return resolveTenant(req, res, next, host);
 }
 
+/**
+ * API-F3: these three answered with `res.status(...).json(...)` directly, so
+ * they never passed through the error handler and their bodies carried no
+ * `request_id`. That made the tenant gate the one part of the stack a customer
+ * could not quote a correlation id for — and "unknown workspace" / "workspace
+ * suspended" are exactly the failures a customer calls about. Routing them
+ * through `next(AppError)` produces the same status and code with the standard
+ * envelope, plus the log line the gate never had.
+ */
 async function resolveTenant(req, res, next, host) {
   try {
     const meta = await registry.resolveByHost(host);
     if (!meta) {
-      return res.status(404).json({
-        error: { code: "TENANT_NOT_FOUND", message: `No tenant for host '${host}'` },
-      });
+      return next(new AppError("TENANT_NOT_FOUND", `No tenant for host '${host}'`, 404));
     }
     if (meta.status === "SUSPENDED") {
-      return res.status(403).json({
-        error: { code: "TENANT_SUSPENDED", message: "This workspace is suspended." },
-      });
+      return next(new AppError("TENANT_SUSPENDED", "This workspace is suspended.", 403));
     }
     if (meta.status !== "LIVE") {
-      return res.status(423).json({
-        error: { code: "TENANT_NOT_READY", message: "This workspace is being provisioned." },
-      });
+      return next(new AppError("TENANT_NOT_READY", "This workspace is being provisioned.", 423));
     }
     req.tenant = meta;
     return next();

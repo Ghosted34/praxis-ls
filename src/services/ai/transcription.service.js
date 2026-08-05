@@ -31,7 +31,7 @@ async function transcribe({ audio, mimeType = "audio/mpeg", vendor = null }) {
     });
     return { text: (res && res.text) || "", audio_seconds: res.duration || 0, provider: "groq" };
   } catch (err) {
-    logger.warn({ err: err.message }, "transcription failed");
+    logger.warn({ err }, "transcription failed");
     throw err;
   }
 }

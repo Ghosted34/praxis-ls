@@ -6,7 +6,7 @@
  */
 "use strict";
 
-const { insertOne, updateOne, getById, page, TOTAL_COL, splitTotal } = require("../db/query-helpers");
+const { insertOne, updateOne, getById, page, TOTAL_COL, splitTotal, ident } = require("../db/query-helpers");
 const { atomically } = require("../db/tx");
 const { emitEvent, audit } = require("../events/emit");
 const { asyncHandler, AppError } = require("../../utils/errors");
@@ -20,11 +20,77 @@ const { requirePermission } = require("../../middleware/rbac");
  *  passes a non-null scopeIds array (req.scope_ids from requirePermission).
  *  Not set (the default, and every existing module today) → no behavior
  *  change at all. */
+/**
+ * Resolve `?sort=` into a safe ORDER BY (API F-29).
+ *
+ * Sorting was not exposed anywhere: order was fixed at config time, so every
+ * consumer wanting a different order had to fetch and sort client-side — and by
+ * F-26/F-27 that meant sorting a truncated 50-row window, i.e. sorting the
+ * wrong rows.
+ *
+ * `cfg.sortable` is an explicit allow-list of column names. Without one the
+ * parameter is refused rather than ignored, because an ORDER BY built from
+ * user input is precisely the injection this codebase spent SEC H3 closing.
+ *
+ * Syntax: `?sort=created_at` or `?sort=-created_at` for descending, mirroring
+ * the widely-used JSON:API convention.
+ */
+function resolveSort(cfg, q, fallback) {
+  if (!q || q.sort === undefined || q.sort === "") return fallback;
+  const raw = String(q.sort);
+  const desc = raw.startsWith("-");
+  const col = desc ? raw.slice(1) : raw;
+  const allowed = cfg.sortable || [];
+  if (!allowed.includes(col)) {
+    throw new AppError(
+      "INVALID_SORT",
+      allowed.length
+        ? `Cannot sort by "${col}". Sortable fields: ${allowed.join(", ")}.`
+        : `Sorting is not available on this resource.`,
+      422,
+      { sort: [`unsupported sort field "${col}"`] },
+    );
+  }
+  return `${ident(col)} ${desc ? "DESC" : "ASC"}`;
+}
+
+/**
+ * Reject an unrecognised filter instead of silently dropping it (API F-28).
+ *
+ * Unknown query keys used to be ignored, so `?stat=OPEN` returned the unfiltered
+ * list and looked like it had worked — a typo in a filter silently widened the
+ * result set, which on a permissions or receivables screen means showing rows
+ * the caller meant to exclude.
+ *
+ * Only enforced when `cfg.filterable` is declared, so a module that has not
+ * been through this yet behaves exactly as before. `limit`, `offset`, `q` and
+ * `sort` are always accepted — they are the shared list vocabulary.
+ */
+const LIST_PARAMS = new Set(["limit", "offset", "q", "sort"]);
+
+function assertKnownFilters(cfg, q) {
+  if (!cfg.filterable || !q) return;
+  const allowed = new Set([...cfg.filterable, ...LIST_PARAMS]);
+  const bad = Object.keys(q).filter((k) => !allowed.has(k));
+  if (bad.length) {
+    throw new AppError(
+      "UNKNOWN_FILTER",
+      `${bad.length === 1 ? "Filter" : "Filters"} ${bad.map((b) => `"${b}"`).join(", ")} `
+      + `${bad.length === 1 ? "is" : "are"} not supported here. `
+      + `Available: ${[...cfg.filterable].sort().join(", ") || "none"}.`,
+      422,
+      bad.reduce((a, b) => ({ ...a, [b]: ["unknown filter"] }), {}),
+    );
+  }
+}
+
 function makeRepo(cfg) {
   const orderBy = cfg.orderBy || "created_at DESC";
   return {
     cfg,
     async list(client, q = {}, scopeIds = null) {
+      assertKnownFilters(cfg, q);
+      const order = resolveSort(cfg, q, orderBy);
       const { limit, offset } = page(q);
       const params = [limit, offset];
       const wh = [];
@@ -58,7 +124,7 @@ function makeRepo(cfg) {
       // trip, one WHERE clause. A separate SELECT COUNT(*) would duplicate the
       // filter and the two copies would drift.
       const { rows } = await client.query(
-        `SELECT *, ${TOTAL_COL} FROM ${cfg.table} ${where} ORDER BY ${orderBy} LIMIT $1 OFFSET $2`,
+        `SELECT *, ${TOTAL_COL} FROM ${cfg.table} ${where} ORDER BY ${order} LIMIT $1 OFFSET $2`,
         params,
       );
       const split = splitTotal(rows);

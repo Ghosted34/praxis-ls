@@ -208,7 +208,7 @@ async function inviteUser(client, { email, fullName, ip, origin, tenantName = "y
     await sendInviteEmail(client, { to: normalized, name: fullName || user.full_name, token, origin, purpose: "INVITE", tenantName });
   } catch (err) {
     emailed = false;
-    logger.error({ err: err.message, email: normalized }, "[portal] invite email failed to send");
+    logger.error({ err, email: normalized }, "[portal] invite email failed to send");
   }
   return { portal_user_id: user.portal_user_id, email: normalized, created, emailed };
 }
@@ -226,7 +226,7 @@ async function requestReset(client, { email, ip, origin, tenantName }) {
     try {
       await sendInviteEmail(client, { to: user.email, name: user.full_name, token, origin, purpose: "RESET", tenantName });
     } catch (err) {
-      logger.error({ err: err.message, portal_user_id: user.portal_user_id }, "[portal] reset email failed to send");
+      logger.error({ err, portal_user_id: user.portal_user_id }, "[portal] reset email failed to send");
     }
   }
   return { ok: true };

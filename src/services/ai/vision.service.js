@@ -35,7 +35,7 @@ async function extract({ image, mimeType = "image/jpeg", prompt, vendor = null }
     try { fields = JSON.parse(raw.replace(/^```json\s*|\s*```$/g, "").trim()); } catch { fields = {}; }
     return { fields, raw, provider: "gemini" };
   } catch (err) {
-    logger.warn({ err: err.message }, "vision extract failed");
+    logger.warn({ err }, "vision extract failed");
     throw err;
   }
 }

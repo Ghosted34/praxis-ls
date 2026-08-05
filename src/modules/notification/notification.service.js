@@ -60,7 +60,7 @@ async function deliverEmail(client, { userId, category, isSecurity, title, body 
       moduleKey: events.MODULE,
     });
   } catch (err) {
-    logger.warn({ err: err.message, user_id: userId }, "[notify] email delivery skipped/failed");
+    logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
   }
 }
 
@@ -75,7 +75,7 @@ async function deliverPush(client, { userId, title, body }) {
   try {
     await pushService.sendToUser(client, { user_id: userId, title, body, url: "/notifications", tag: userId });
   } catch (err) {
-    logger.warn({ err: err.message, user_id: userId }, "[notify] push delivery skipped/failed");
+    logger.error({ err, user_id: userId }, "[notify] push delivery skipped/failed");
   }
 }
 
@@ -89,6 +89,88 @@ async function deliverPush(client, { userId, title, body }) {
  * suppressed by pref. Runs on the caller's connection so the in-app write can
  * join the triggering transaction; email/push are best-effort side effects.
  */
+/**
+ * PERF S5. Notify many users with a fixed number of round-trips.
+ *
+ * The fan-out loop called `notify()` once per recipient, and each call issued
+ * ~4-5 further queries: isChannelEnabled(IN_APP), insertForUser,
+ * isChannelEnabled(EMAIL), a SELECT on app_user, then the send. For an event
+ * notifying 50 finance users — `invoice.posted`, `payment.received` and
+ * `dossier.created` are all on the allowlist, so this is the normal path — that
+ * is ~250 SEQUENTIAL round-trips WHILE HOLDING A WRITE TRANSACTION OPEN,
+ * pinning one of the eight pooled connections and extending the lock window on
+ * the business row for the whole duration.
+ *
+ * This is four queries regardless of recipient count:
+ *   1. preferences for everyone, both channels, one statement
+ *   2. one multi-row INSERT for the in-app rows
+ *   3. addresses for everyone who wants email
+ *   4. …then the sends, which are external I/O, not database work
+ *
+ * The sends stay inside the caller's transaction rather than being deferred.
+ * That is a deliberate limit on the scope of this change: moving them out means
+ * deciding what happens when the transaction rolls back after an email has
+ * gone, which is a correctness question, not a performance one. The queue
+ * already exists (BullMQ) and is the right home for them; this change removes
+ * the ~246 unnecessary DATABASE round-trips without touching that question.
+ */
+async function notifyMany(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+  const ids = [...new Set((userIds || []).filter(Boolean))];
+  if (ids.length === 0 || !title) return 0;
+
+  const cat = category || categoryFor(eventTypeKey);
+  const isSecurity = isSecurityCategory(cat);
+
+  // 1. every preference for every recipient, one query.
+  const prefs = isSecurity ? new Map() : await repo.preferencesFor(client, ids, ["IN_APP", "EMAIL"], cat);
+  // Absence of a row means enabled for IN_APP and disabled for EMAIL — matching
+  // the per-user defaults isChannelEnabled was called with.
+  const wantsInApp = (u) => isSecurity || prefs.get(`${u}:IN_APP`) !== false;
+  const wantsEmail = (u) => isSecurity || prefs.get(`${u}:EMAIL`) === true;
+
+  // 2. one INSERT for all in-app rows.
+  const inAppUsers = ids.filter(wantsInApp);
+  const inserted = await repo.insertForUsers(client, inAppUsers, {
+    eventTypeKey, title, body, entityRef, priority, category: cat,
+  });
+
+  // 3. one lookup for all the addresses.
+  const emailUsers = ids.filter(wantsEmail);
+  const people = await repo.activeEmailsFor(client, emailUsers);
+
+  // 4. external I/O, per recipient by necessity. Best-effort, exactly as
+  //    before: one bad address must not roll back a posted invoice.
+  for (const userId of emailUsers) {
+    const person = people.get(userId);
+    if (!person || !person.email) continue;
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await emailService.send(client, {
+        to: person.email,
+        subject: title,
+        html: notificationEmailHtml({ name: person.full_name, title, body }),
+        text: body ? `${title}\n\n${body}` : title,
+        purpose: "NOTIFICATIONS",
+        moduleKey: events.MODULE,
+      });
+    } catch (err) {
+      logger.error({ err, user_id: userId }, "[notify] email delivery skipped/failed");
+    }
+  }
+
+  const pushUsers = ids.filter((u) => isSecurity || inAppUsers.includes(u));
+  for (const userId of pushUsers) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await deliverPush(client, { userId, title, body });
+    } catch (err) {
+      logger.error({ err, user_id: userId }, "[notify] push delivery skipped/failed");
+    }
+  }
+
+  return inserted.length;
+}
+
 async function notify(client, { userId, eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
   if (!userId || !title) return null;
   const cat = category || categoryFor(eventTypeKey);
@@ -148,6 +230,7 @@ async function unsubscribePush(client, actor, { endpoint }) {
 }
 
 module.exports = {
+  notifyMany,
   mine, notify, listCategories, unreadCount, markRead, markAllRead, getPreferences, setPreferences,
   pushPublicKey, subscribePush, unsubscribePush,
 };

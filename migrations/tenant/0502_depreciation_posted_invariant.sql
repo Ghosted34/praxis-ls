@@ -26,10 +26,21 @@
 --
 --   ALTER TABLE depreciation_schedule VALIDATE CONSTRAINT chk_depreciation_posted_has_entry;
 
-ALTER TABLE depreciation_schedule
-  ADD CONSTRAINT chk_depreciation_posted_has_entry
-  CHECK (posted = false OR entry_id IS NOT NULL) NOT VALID;
-
+-- Guarded like 0499: re-runnable, and a drifted schema is reported by name
+-- rather than rolling the file back (DATA 3.3).
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_constraint
+              WHERE conname = 'chk_depreciation_posted_has_entry'
+                AND connamespace = current_schema()::regnamespace) THEN
+    RETURN;
+  END IF;
+  EXECUTE 'ALTER TABLE depreciation_schedule ADD CONSTRAINT chk_depreciation_posted_has_entry
+  CHECK (posted = false OR entry_id IS NOT NULL) NOT VALID';
+EXCEPTION
+  WHEN undefined_table OR undefined_column THEN
+    RAISE WARNING '[0502] %: chk_depreciation_posted_has_entry skipped — %', current_schema(), SQLERRM;
+END $$;
 COMMENT ON CONSTRAINT chk_depreciation_posted_has_entry ON depreciation_schedule IS
   'A row marked posted must name its journal entry. Guards the DATA 5.5 ordering bug (NEW-05).';
 

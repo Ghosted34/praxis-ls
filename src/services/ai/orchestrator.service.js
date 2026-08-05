@@ -66,7 +66,7 @@ const history_ = {
         summary: state.summary || null,
       };
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation history unavailable");
+      logger.warn({ err }, "[ai] conversation history unavailable");
       return { conversationId: conversationId || null, turns: [], summary: null };
     }
   },
@@ -76,7 +76,7 @@ const history_ = {
       await convo.addMessage(client, { conversationId, role: "user", content: question });
       if (answer) await convo.addMessage(client, { conversationId, role: "assistant", content: answer });
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation turn not persisted");
+      logger.warn({ err }, "[ai] conversation turn not persisted");
     }
   },
 
@@ -138,7 +138,7 @@ const history_ = {
       // so the spend dashboard can show what summarisation costs.
       await recordUsage(client, { user, conversationId, res, feature, callType: "summary" });
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation summarisation skipped");
+      logger.warn({ err }, "[ai] conversation summarisation skipped");
     }
   },
 };
@@ -518,7 +518,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       });
     }
   } catch (err) {
-    logger.warn({ err: err.message, actionRunId }, "[ai] execution note not recorded in conversation");
+    logger.warn({ err, actionRunId }, "[ai] execution note not recorded in conversation");
   }
 
   // Step-by-step narration. After a confirmed action we generate a short message
@@ -549,7 +549,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       if (message) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: message });
     }
   } catch (err) {
-    logger.warn({ err: err.message, actionRunId }, "[ai] post-action narration skipped");
+    logger.warn({ err, actionRunId }, "[ai] post-action narration skipped");
   }
 
   return { ok: true, result, message };
@@ -597,7 +597,7 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
       wasSuccessful: true,
     });
   } catch (err) {
-    logger.warn({ err: err.message }, "ai usage log failed");
+    logger.error({ err }, "ai usage log failed");
   }
 }
 

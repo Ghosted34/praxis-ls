@@ -54,6 +54,7 @@ function load({ postImpl } = {}) {
   jest.doMock("../../src/shared/events/emit", () => ({
     emitEvent: jest.fn(async () => {}),
     audit: jest.fn(async () => {}),
+    resolveActorId: jest.fn(async (c, id) => id || null),
   }));
 
   const service = require(SERVICE);
@@ -157,7 +158,7 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
       markPosted: jest.fn(),
       accumulatedPosted: async () => 0,
     }));
-    jest.doMock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn(), audit: jest.fn() }));
+    jest.doMock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn(), audit: jest.fn(), resolveActorId: jest.fn(async (c, id) => id || null) }));
     const service = require(SERVICE);
 
     const out = await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });

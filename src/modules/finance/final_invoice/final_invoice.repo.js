@@ -3,20 +3,16 @@
  * this module lives here (CONVENTIONS: the repo is the only place with SQL).
  */
 "use strict";
-const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertInvoice = (client, data) => insertOne(client, "invoice", data);
 const getInvoice = (client, id) => getById(client, "invoice", "invoice_id", id);
 
 async function updateInvoice(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getInvoice(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE invoice SET " + set + ", updated_at = now() WHERE invoice_id = $1 RETURNING *",
-    [id, ...keys.map((k) => fields[k])],
-  );
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getInvoice(client, id);
+  return updateOne(client, "invoice", "invoice_id", id, fields, "*", null, { touch: "updated_at" });
 }
 
 async function deleteLines(client, invoiceId) {

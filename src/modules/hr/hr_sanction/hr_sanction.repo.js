@@ -7,7 +7,13 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 const { page } = require("../../../shared/db/query-helpers");
 
-const crud = makeRepo({ table: "hr_sanction", pk: "hr_sanction_id", activeColumn: null, orderBy: "effective_date DESC" });
+const crud = makeRepo({ table: "hr_sanction", pk: "hr_sanction_id", activeColumn: null, orderBy: "effective_date DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
+});
 
 async function list(client, q = {}) {
   const { limit, offset } = page(q);

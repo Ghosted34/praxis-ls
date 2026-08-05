@@ -40,6 +40,7 @@
 const counters = new Map();
 /** name -> { help, buckets, values: Map<labelKey, {counts:[], sum, count}> } */
 const histograms = new Map();
+const gauges = new Map();
 
 const STARTED_AT = Date.now();
 
@@ -60,6 +61,27 @@ function parseKey(key) {
     out[pair.slice(0, i)] = pair.slice(i + 1);
   }
   return out;
+}
+
+/**
+ * OBS-M2. Gauges — a value that goes UP AND DOWN.
+ *
+ * The registry had counters and histograms only, which is the right pair for
+ * "how much traffic and how slow". Business facts are not that shape: approvals
+ * pending, events undelivered, depreciation rows in a broken state. Those are
+ * levels, not rates, and modelling a level as a counter makes every query
+ * wrong — `rate()` on a gauge is meaningless, and a counter that decreases
+ * reads to Prometheus as a process restart.
+ */
+function gauge(name, help) {
+  if (!gauges.has(name)) gauges.set(name, { help, values: new Map() });
+  return gauges.get(name);
+}
+
+/** Set a gauge to an absolute value. Creates it on first use. */
+function setGauge(name, labels = {}, value = 0, help = "") {
+  const g = gauge(name, help);
+  g.values.set(labelKey(labels), Number(value) || 0);
 }
 
 function counter(name, help) {
@@ -140,6 +162,12 @@ function render() {
     for (const [k, v] of c.values) out.push(`${name}${renderLabels(parseKey(k))} ${v}`);
   }
 
+  for (const [name, g] of gauges) {
+    if (g.help) out.push(`# HELP ${name} ${esc(g.help)}`);
+    out.push(`# TYPE ${name} gauge`);
+    for (const [k, v] of g.values) out.push(`${name}${renderLabels(parseKey(k))} ${v}`);
+  }
+
   for (const [name, h] of histograms) {
     if (h.help) out.push(`# HELP ${name} ${esc(h.help)}`);
     out.push(`# TYPE ${name} histogram`);
@@ -159,9 +187,12 @@ function render() {
 
 /** Snapshot for the readiness probe and tests. */
 function snapshot() {
-  const out = { counters: {}, histograms: {} };
+  const out = { counters: {}, gauges: {}, histograms: {} };
   for (const [name, c] of counters) {
     out.counters[name] = Object.fromEntries(c.values);
+  }
+  for (const [name, g] of gauges) {
+    out.gauges[name] = Object.fromEntries(g.values);
   }
   for (const [name, h] of histograms) {
     out.histograms[name] = Object.fromEntries(
@@ -173,11 +204,13 @@ function snapshot() {
 
 function __reset() {
   counters.clear();
+  gauges.clear();
   histograms.clear();
 }
 
 module.exports = {
   inc,
+  setGauge,
   observe,
   render,
   snapshot,

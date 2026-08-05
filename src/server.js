@@ -226,7 +226,7 @@ function buildApp() {
           res.redirect(302, url);
         })
         .catch((err) => {
-          logger.warn({ err: err.message, key }, "media presign failed");
+          logger.warn({ err, key }, "media presign failed");
           res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
         });
     });
@@ -344,7 +344,7 @@ function start() {
       // cache into a total outage — but it is now an ERROR, it reports, and
       // /api/health/ready marks the process `degraded` so a monitor sees it.
       logger.error(
-        { err: err.message },
+        { err },
         "REDIS UNAVAILABLE AT BOOT — sessions, rate limiting, the identity cache and ALL job enqueueing are degraded",
       );
       report(err, {
@@ -357,6 +357,17 @@ function start() {
       });
       initRateLimitStore();
     });
+  // OBS-M2. The business-metric collector. Started after the app is built so a
+  // collection can never race the module loader, and on a timer rather than per
+  // scrape — a 15-second Prometheus poll across the fleet would be its own load
+  // problem, and PERF S1 is about a connection budget.
+  //
+  // These are the metrics that catch a failure the process-level ones cannot:
+  // up, returning 200, and silently doing nothing. The depreciation bug had
+  // 100% uptime and a zero error rate; the only symptom was a number that
+  // should have been rising and was flat.
+  require("./shared/observability/business-metrics").start();
+
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );

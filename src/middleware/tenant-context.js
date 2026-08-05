@@ -8,12 +8,35 @@
 
 const requestContext = require("../config/request-context");
 const registry = require("../services/tenant/registry.service");
+const { AppError } = require("../utils/errors");
 
 function tenantContext(req, res, next) {
   if (!req.tenant) {
-    return res.status(500).json({
-      error: { code: "NO_TENANT_CONTEXT", message: "hostTenantResolver must run first" },
-    });
+    // API-F4. Two different causes reached this line and both answered 500.
+    //
+    // `req.isPlatform` means hostTenantResolver DID run and deliberately did
+    // not set a tenant, because the request arrived on a platform host
+    // (localhost, api.*, admin.*, the apex). Asking the tenant API for tenant
+    // data over the platform host is a CLIENT error — the wrong Host header —
+    // and it is a documented footgun: postman/README.md warns that "localhost
+    // is the platform host". Answering 500 told the caller the server was
+    // broken when the request was.
+    //
+    // The message names the fix, because the whole reason this is worth a
+    // finding is that the 500 gave the caller nowhere to go.
+    if (req.isPlatform) {
+      return next(new AppError(
+        "WRONG_HOST",
+        "This is the tenant API, and the request arrived on a platform host. "
+        + "Send it to the tenant's own host (e.g. <slug>.<app-domain>); "
+        + "in development, set X-Praxis-Tenant: <slug>.",
+        400,
+      ));
+    }
+    // No tenant AND not a platform host means the resolver never ran at all —
+    // a misordered middleware chain, which is a programming error and stays a
+    // loud, logged, reported 500 (API-F3).
+    return next(new AppError("NO_TENANT_CONTEXT", "hostTenantResolver must run first", 500));
   }
   const requested = String(req.headers["x-praxis-env"] || "").toLowerCase();
   const env = !req.tenant.is_live && requested === "sandbox" ? "sandbox" : "live";

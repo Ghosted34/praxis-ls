@@ -135,9 +135,20 @@ describe("OBS-E1 — the channel stays usable", () => {
 });
 
 describe("OBS-E1 — only real failures page anyone", () => {
-  const { errorHandler } = require("../../src/middleware/error-handler");
-
   function appThrowing(err) {
+    // errorHandler is required HERE, not at describe-time.
+    //
+    // `freshReporter()` calls jest.resetModules() to get a clean capture array.
+    // A handler required before that still closes over the OLD error-reporter
+    // instance, so it reported into a module nothing was watching and
+    // `received` stayed empty — the test read as "the 500 was not reported"
+    // when the product was reporting it perfectly.
+    //
+    // The same identity trap explains the ZodError case below: `instanceof`
+    // against a class from a different module instance is always false, so a
+    // validation error fell through to the 500 branch.
+    // eslint-disable-next-line global-require
+    const { errorHandler } = require("../../src/middleware/error-handler");
     const app = express();
     app.use((req, _res, next) => { req.request_id = "rid-500"; next(); });
     app.get("/boom", () => { throw err; });
@@ -168,13 +179,22 @@ describe("OBS-E1 — only real failures page anyone", () => {
   });
 
   it("does NOT report a validation error", async () => {
-    const { ZodError } = require("zod");
+    // AFTER freshReporter(), so this is the same zod instance the freshly
+    // required errorHandler will `instanceof` against.
     freshReporter();
+    // eslint-disable-next-line global-require
+    const { ZodError } = require("zod");
     const res = await request(
       appThrowing(new ZodError([{ code: "custom", path: ["x"], message: "bad" }])),
     ).get("/boom");
     await settle();
-    expect(res.status).toBe(400);
+    // 422, not 400: API F-2 standardised validation failures on 422 to match the
+    // 90 module validators that already used it. This assertion predates that
+    // and only surfaced once the module-identity bug above stopped masking it
+    // by sending every ZodError down the 500 branch.
+    expect(res.status).toBe(422);
+    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    // The point of the test is unchanged: a client error pages nobody.
     expect(received).toHaveLength(0);
   });
 });

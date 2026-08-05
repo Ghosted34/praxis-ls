@@ -18,7 +18,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const { withMoneyLog } = require("../../../shared/observability/money-log");
 
@@ -46,7 +46,7 @@ async function createDraftCore(client, opts) {
   const { entityId, clientId = null, dossierId = null, lines = [], actor = {} } = opts;
   const invoice = await repo.insertInvoice(client, {
     entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "FINAL",
-    status: "DRAFT", issued_by: actor.user_id || null,
+    status: "DRAFT", issued_by: await resolveActorId(client, actor.user_id),
   });
   if (lines.length) await replaceLines(client, invoice.invoice_id, lines);
   await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(invoice.invoice_id), after: invoice });

@@ -85,7 +85,7 @@ module.exports = async function orchestrationDispatch(job) {
     } catch (err) {
       // The census failing must not fail the drain.
       logger.error(
-        { err: err.message, tenant: tenantMeta.slug, env },
+        { err, tenant: tenantMeta.slug, env },
         "[orchestration] dead-letter census failed",
       );
     }

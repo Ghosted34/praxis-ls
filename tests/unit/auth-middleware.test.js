@@ -36,14 +36,14 @@ const ACTIVE_USER = {
   is_ceo: false,
 };
 
-let cacheUser = ACTIVE_USER;
-let ctxStore = null;
+let mockCacheUser = ACTIVE_USER;
+let mockCtxStore = null;
 
 jest.mock("../../src/shared/cache/identity-cache", () => ({
-  getAuthUser: async () => cacheUser,
+  getAuthUser: async () => mockCacheUser,
 }));
 jest.mock("../../src/config/request-context", () => ({
-  get: () => ctxStore,
+  get: () => mockCtxStore,
   run: (ctx, fn) => fn(),
 }));
 
@@ -74,8 +74,8 @@ async function run(req) {
 
 describe("authMiddleware (TC-C2)", () => {
   beforeEach(() => {
-    cacheUser = ACTIVE_USER;
-    ctxStore = { tenant: "smartls", userId: null };
+    mockCacheUser = ACTIVE_USER;
+    mockCtxStore = { tenant: "smartls", userId: null };
     jest.resetModules();
     ({ authMiddleware } = require("../../src/middleware/auth"));
     ({ config } = require("../../src/config/env"));
@@ -161,13 +161,13 @@ describe("authMiddleware (TC-C2)", () => {
 
   describe("account state", () => {
     it("refuses a suspended user holding a perfectly valid token", async () => {
-      cacheUser = { ...ACTIVE_USER, status: "SUSPENDED" };
+      mockCacheUser = { ...ACTIVE_USER, status: "SUSPENDED" };
       const { error } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })));
       expect(error.code).toBe("USER_INACTIVE");
     });
 
     it("refuses a token whose subject no longer exists", async () => {
-      cacheUser = null;
+      mockCacheUser = null;
       const { error } = await run(makeReq(sign({ sub: "deleted-user", typ: "access" })));
       expect(error.code).toBe("USER_INACTIVE");
     });
@@ -188,7 +188,7 @@ describe("authMiddleware (TC-C2)", () => {
       // tenantContext binds the context BEFORE auth runs, so userId was always
       // null and every log line carried a tenant with an empty user.
       await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })));
-      expect(ctxStore.userId).toBe(ACTIVE_USER.user_id);
+      expect(mockCtxStore.userId).toBe(ACTIVE_USER.user_id);
     });
 
     it("carries the session id so logout can revoke without being told (SEC-C2)", async () => {
@@ -204,7 +204,7 @@ describe("authMiddleware (TC-C2)", () => {
     });
 
     it("never copies a password hash or secret onto req.user", async () => {
-      cacheUser = { ...ACTIVE_USER, password_hash: "$argon2id$leak", totp_secret_enc: "leak" };
+      mockCacheUser = { ...ACTIVE_USER, password_hash: "$argon2id$leak", totp_secret_enc: "leak" };
       const req = makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" }));
       await run(req);
       expect(JSON.stringify(req.user)).not.toContain("leak");

@@ -138,7 +138,7 @@ async function reembedEntity(client, { entityRef } = {}) {
     const res = await ingestTenantCards(client, cards, { force: true });
     return { reembedded: res.cards, entity: prefix };
   } catch (err) {
-    logger.warn({ err: err.message, entityRef }, "re-embed failed (best-effort)");
+    logger.warn({ err, entityRef }, "re-embed failed (best-effort)");
     return { reembedded: 0, error: err.message };
   }
 }

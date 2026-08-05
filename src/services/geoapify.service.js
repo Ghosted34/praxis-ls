@@ -67,7 +67,7 @@ async function reverseGeocode(lat, lng) {
       null
     );
   } catch (err) {
-    logger.warn({ err: err.message }, "[geoapify] reverse geocode failed");
+    logger.warn({ err }, "[geoapify] reverse geocode failed");
     return null;
   }
 }
@@ -113,7 +113,7 @@ async function forwardGeocode(place, { bias = null, countryCodes = null } = {}) 
       country: hit.country_code ? String(hit.country_code).toUpperCase() : null,
     };
   } catch (err) {
-    logger.warn({ err: err.message, place: text }, "[geoapify] forward geocode failed");
+    logger.warn({ err, place: text }, "[geoapify] forward geocode failed");
     return null;
   }
 }

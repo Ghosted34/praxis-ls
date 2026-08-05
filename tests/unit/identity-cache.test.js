@@ -34,7 +34,7 @@
 const store = new Map();
 const commands = [];
 
-const fakeRedis = {
+const mockFakeRedis = {
   async get(k) {
     commands.push(["GET", k]);
     return store.has(k) ? store.get(k) : null;
@@ -71,17 +71,17 @@ const fakeRedis = {
   },
 };
 
-let REDIS_UP = true;
-let CTX = { tenant: "smartls" };
+let MOCK_REDIS_UP = true;
+let mockCTX = { tenant: "smartls" };
 
 jest.mock("../../src/config/redis", () => ({
   getClient: () => {
-    if (!REDIS_UP) throw new Error("redis not initialised");
-    return fakeRedis;
+    if (!MOCK_REDIS_UP) throw new Error("redis not initialised");
+    return mockFakeRedis;
   },
 }));
 jest.mock("../../src/config/request-context", () => ({
-  get: () => CTX,
+  get: () => mockCTX,
   run: (c, fn) => fn(),
 }));
 
@@ -105,8 +105,8 @@ describe("identity cache (TC-C4)", () => {
   beforeEach(() => {
     store.clear();
     commands.length = 0;
-    REDIS_UP = true;
-    CTX = { tenant: "smartls" };
+    MOCK_REDIS_UP = true;
+    mockCTX = { tenant: "smartls" };
     jest.resetModules();
     cache = require("../../src/shared/cache/identity-cache");
   });
@@ -150,7 +150,7 @@ describe("identity cache (TC-C4)", () => {
     });
 
     it("still answers correctly with Redis down (best-effort, PERF S9)", async () => {
-      REDIS_UP = false;
+      MOCK_REDIS_UP = false;
       const client = makeClient([{ can_update: true }]);
       const grants = await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       expect(grants).toEqual([{ can_update: true }]);
@@ -163,9 +163,9 @@ describe("identity cache (TC-C4)", () => {
   describe("tenant namespacing (PERF S9)", () => {
     it("gives two tenants separate keys for identical inputs", async () => {
       const client = makeClient([{ can_read: true }]);
-      CTX = { tenant: "smartls" };
+      mockCTX = { tenant: "smartls" };
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
-      CTX = { tenant: "acme" };
+      mockCTX = { tenant: "acme" };
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       expect(client.count).toBe(2);
       expect(keysMatching(":smartls:grants:")).toHaveLength(1);
@@ -173,7 +173,7 @@ describe("identity cache (TC-C4)", () => {
     });
 
     it("files work with no tenant context under a reserved namespace", async () => {
-      CTX = null; // a background job
+      mockCTX = null; // a background job
       const client = makeClient([{ can_read: true }]);
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       expect(keysMatching("identity:_:grants:")).toHaveLength(1);
@@ -184,10 +184,10 @@ describe("identity cache (TC-C4)", () => {
     it("clears only the current tenant", async () => {
       const client = makeClient([{ can_read: true }]);
       for (const t of ["smartls", "acme"]) {
-        CTX = { tenant: t };
+        mockCTX = { tenant: t };
         await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       }
-      CTX = { tenant: "smartls" };
+      mockCTX = { tenant: "smartls" };
       await cache.invalidateGrants();
       expect(keysMatching(":smartls:grants:")).toHaveLength(0);
       expect(keysMatching(":acme:grants:")).toHaveLength(1);
@@ -205,7 +205,7 @@ describe("identity cache (TC-C4)", () => {
     it("clears every tenant only when explicitly asked", async () => {
       const client = makeClient([{ can_read: true }]);
       for (const t of ["smartls", "acme"]) {
-        CTX = { tenant: t };
+        mockCTX = { tenant: t };
         await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
       }
       await cache.invalidateGrants({ allTenants: true });
@@ -213,7 +213,7 @@ describe("identity cache (TC-C4)", () => {
     });
 
     it("does not throw when Redis is down", async () => {
-      REDIS_UP = false;
+      MOCK_REDIS_UP = false;
       await cache.invalidateGrants();
     });
   });
@@ -255,10 +255,10 @@ describe("identity cache (TC-C4)", () => {
 
     it("does not bump another tenant's tree", async () => {
       const client = makeClient([{ scope_id: "hq" }]);
-      CTX = { tenant: "acme" };
+      mockCTX = { tenant: "acme" };
       await cache.getUserScopeClosure(client, "u1");
       const acmeKeys = keysMatching(":acme:scope:closure:");
-      CTX = { tenant: "smartls" };
+      mockCTX = { tenant: "smartls" };
       await cache.bumpScopeVersion();
       expect(keysMatching(":acme:scope:closure:")).toEqual(acmeKeys);
     });
@@ -270,7 +270,7 @@ describe("identity cache (TC-C4)", () => {
     });
 
     it("still resolves with Redis down", async () => {
-      REDIS_UP = false;
+      MOCK_REDIS_UP = false;
       const client = makeClient([{ scope_id: "hq" }]);
       expect(await cache.getUserScopeClosure(client, "u1")).toEqual(["hq"]);
     });
@@ -286,7 +286,7 @@ describe("identity cache (TC-C4)", () => {
     });
 
     it("does not throw when Redis is down", async () => {
-      REDIS_UP = false;
+      MOCK_REDIS_UP = false;
       await cache.invalidateUser("u1");
     });
   });

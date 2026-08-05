@@ -49,7 +49,7 @@ async function seedMilestones(client, dossier, actor) {
     });
   } catch (err) {
     logger.warn(
-      { dossier: dossier.ref, err: err.message },
+      { dossier: dossier.ref, err },
       "[operations] milestone chain not seeded (dossier created regardless)",
     );
   }
@@ -93,7 +93,7 @@ async function resolvePlaces(client, dossier) {
     return await repo.update(client, dossier.dossier_id, patch);
   } catch (err) {
     logger.warn(
-      { dossier: dossier.ref, err: err.message },
+      { dossier: dossier.ref, err },
       "[operations] port references unresolved (dossier saved regardless)",
     );
     return dossier;

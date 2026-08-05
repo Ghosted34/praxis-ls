@@ -25,6 +25,8 @@ import {
   GridIcon, HrIcon, LogoutIcon, MenuIcon, MoreIcon, PaletteIcon, SearchIcon, SecurityIcon,
   TowerIcon, type IP,
 } from "@/app/layout/nav-icons";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { TENANT_KEY } from "@/lib/query-client";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -63,43 +65,79 @@ function initialsOf(nameOrEmail?: string | null): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
-/** Unread counts for the messages + notifications badges. Polls gently and
- *  refetches when the data environment flips. Failures (feature off, 403) → 0. */
+/**
+ * Unread counts for the messages + notifications badges.
+ *
+ * PERF S15 (second half). This was a raw `setInterval(load, 60000)` outside the
+ * query cache, firing two requests per user per minute forever. The audit's
+ * arithmetic: at 1,000 concurrent users that is ~33 req/s of pure badge
+ * polling, and because each costs several DB round-trips it works out at
+ * roughly 230 round-trips per second for unread counts alone — on a topology
+ * with a 12-connection-per-tenant ceiling (S1).
+ *
+ * Three things change, none of which alter what the badges show:
+ *
+ *   1. It goes through TanStack Query, so the two requests are DEDUPLICATED
+ *      across every component that wants a badge instead of being one timer per
+ *      mount.
+ *   2. `refetchIntervalInBackground: false` — the browser stops polling when
+ *      the tab is not visible. Most of that 33 req/s was tabs nobody was
+ *      looking at.
+ *   3. `refetchOnWindowFocus` (on by default here) means coming back to the tab
+ *      refreshes immediately, so the badge is FRESHER on return than the old
+ *      timer made it while costing less in between.
+ *
+ * Failures (feature off, 403) still resolve to 0 rather than surfacing —
+ * `Promise.allSettled` is kept for exactly that reason.
+ */
 function useUnreadCounts(env: string): { messages: number; notifications: number; reload: () => void } {
-  const [counts, setCounts] = React.useState({ messages: 0, notifications: 0 });
-  const [tick, setTick] = React.useState(0);
-  const reload = React.useCallback(() => setTick((t) => t + 1), []);
-  React.useEffect(() => {
-    let live = true;
-    const num = (v: unknown): number => {
-      if (typeof v === "number") return v;
-      if (v && typeof v === "object") {
-        const o = v as Record<string, unknown>;
-        const n = o.count ?? o.unread ?? o.total ?? o.n;
-        return typeof n === "number" ? n : 0;
-      }
-      return 0;
-    };
-    // /smartcomm/unread returns per-channel rows [{group_id, unread}] → sum them;
-    // /notifications/unread-count returns { unread: N }.
-    const sumUnread = (v: unknown): number =>
-      Array.isArray(v) ? v.reduce((s, r) => s + (Number((r as { unread?: unknown })?.unread) || 0), 0) : num(v);
-    async function load() {
-      const [m, n] = await Promise.allSettled([tenant("/smartcomm/unread"), tenant("/notifications/unread-count")]);
-      if (!live) return;
-      setCounts({
+  const qc = useQueryClient();
+
+  const num = (v: unknown): number => {
+    if (typeof v === "number") return v;
+    if (v && typeof v === "object") {
+      const o = v as Record<string, unknown>;
+      const n = o.count ?? o.unread ?? o.total ?? o.n;
+      return typeof n === "number" ? n : 0;
+    }
+    return 0;
+  };
+  // /smartcomm/unread returns per-channel rows [{group_id, unread}] → sum them;
+  // /notifications/unread-count returns { unread: N }.
+  const sumUnread = (v: unknown): number =>
+    Array.isArray(v) ? v.reduce((s, r) => s + (Number((r as { unread?: unknown })?.unread) || 0), 0) : num(v);
+
+  // `env` is in the key so flipping LIVE/TEST reads the other environment's
+  // counts rather than showing stale ones.
+  const key = [TENANT_KEY, "unread-counts", env] as const;
+
+  const q = useQuery({
+    queryKey: key,
+    queryFn: async () => {
+      const [m, n] = await Promise.allSettled([
+        tenant("/smartcomm/unread"),
+        tenant("/notifications/unread-count"),
+      ]);
+      return {
         messages: m.status === "fulfilled" ? sumUnread(m.value) : 0,
         notifications: n.status === "fulfilled" ? num(n.value) : 0,
-      });
-    }
-    load();
-    const id = setInterval(load, 60000);
-    return () => {
-      live = false;
-      clearInterval(id);
-    };
-  }, [env, tick]);
-  return { ...counts, reload };
+      };
+    },
+    refetchInterval: 60_000,
+    refetchIntervalInBackground: false,
+    staleTime: 30_000,
+  });
+
+  const reload = React.useCallback(() => {
+    void qc.invalidateQueries({ queryKey: key });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [qc, env]);
+
+  return {
+    messages: q.data?.messages ?? 0,
+    notifications: q.data?.notifications ?? 0,
+    reload,
+  };
 }
 
 /** User avatar + dropdown (role · My HR · My security · Sign out). */

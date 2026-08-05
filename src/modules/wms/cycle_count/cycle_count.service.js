@@ -8,7 +8,7 @@
 const repo = require("./cycle_count.repo");
 const events = require("./cycle_count.events");
 const { summariseDiscrepancy } = require("./cycle_count.rules");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 
 const ref = (id) => "cycle_count:" + id;
 
@@ -26,7 +26,13 @@ module.exports = {
 
   async create(client, { data, actor = {} }) {
     const payload = { ...data };
-    if (actor.user_id && !payload.counted_by) payload.counted_by = actor.user_id;
+    // DATA 2.4: counted_by is REFERENCES app_user(user_id). Identity is pinned
+    // to the LIVE schema while this write goes to whichever schema the request
+    // selected, so a valid live user id raises 23503 beside sandbox data. Same
+    // guard emit.js applies to its own actor columns.
+    if (actor.user_id && !payload.counted_by) {
+      payload.counted_by = await resolveActorId(client, actor.user_id);
+    }
     // discrepancy is a jsonb column: an array/object must be sent as JSON text,
     // otherwise node-pg serialises a JS array as a Postgres array literal ("{…}")
     // and the jsonb cast fails (22P02). summariseDiscrepancy reads it back fine.

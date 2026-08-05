@@ -83,7 +83,17 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     paint(b);
   }, []);
 
-  return <BrandingCtx.Provider value={{ branding, setBranding, ready }}>{children}</BrandingCtx.Provider>;
+  // PERF S14: an inline object literal is a NEW context value on every render,
+  // which re-renders every consumer in the tree whether or not anything
+  // changed. `setBranding` is already stable via useCallback, so memoising the
+  // wrapper makes the identity change only when the branding or ready flag
+  // actually does.
+  const value = React.useMemo(
+    () => ({ branding, setBranding, ready }),
+    [branding, setBranding, ready],
+  );
+
+  return <BrandingCtx.Provider value={value}>{children}</BrandingCtx.Provider>;
 }
 
 export function useBranding() {

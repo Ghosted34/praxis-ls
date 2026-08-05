@@ -42,6 +42,7 @@ function load() {
   jest.doMock("../../src/shared/events/emit", () => ({
     emitEvent: jest.fn(async () => {}),
     audit: jest.fn(async () => {}),
+    resolveActorId: jest.fn(async (c, id) => id || null),
   }));
 
   return { service: require(SERVICE), killed, removed };

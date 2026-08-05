@@ -1,6 +1,6 @@
 /** Transit-order repository (MOD-30). All SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertTO = (client, data) => insertOne(client, "transit_order", data);
 const getTO = (client, id) => getById(client, "transit_order", "transit_order_id", id);
@@ -9,11 +9,10 @@ const listLines = async (client, id) =>
   (await client.query("SELECT * FROM transit_order_line WHERE transit_order_id = $1 ORDER BY transit_order_line_id", [id])).rows;
 
 async function update(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getTO(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE transit_order SET " + set + " WHERE transit_order_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getTO(client, id);
+  return updateOne(client, "transit_order", "transit_order_id", id, fields, "*", null);
 }
 async function listTO(client, q = {}) {
   const { limit, offset } = page(q);

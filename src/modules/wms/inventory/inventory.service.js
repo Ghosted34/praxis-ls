@@ -1,7 +1,7 @@
 "use strict";
 const { makeService } = require("../../../shared/crud/resource");
 const { atomically } = require("../../../shared/db/tx");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./inventory.repo");
 const events = require("./inventory.events");
@@ -90,7 +90,7 @@ module.exports = {
         qty: delta,
         from_location: from_location || before.location_id || null,
         to_location: to_location || null,
-        moved_by: actor.user_id,
+        moved_by: await resolveActorId(client, actor.user_id),
       });
       const entityRef = `inventory:${id}`;
       await emitEvent(client, { eventTypeKey: events.MOVED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id });

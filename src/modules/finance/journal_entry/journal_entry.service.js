@@ -14,7 +14,7 @@
 const repo = require("./journal_entry.repo");
 const events = require("./journal_entry.events");
 const { assertBalanced, assertNoCompensation } = require("./journal_entry.rules");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { withMoneyLog } = require("../../../shared/observability/money-log");
 const { AppError } = require("../../../utils/errors");
 
@@ -57,7 +57,7 @@ async function buildAndInsert(client, input) {
     source,
     corrects_entry_id: correctsEntryId,
     reversal_reason: reversalReason,
-    created_by: actor.user_id || null,
+    created_by: await resolveActorId(client, actor.user_id),
     ip,
   });
 

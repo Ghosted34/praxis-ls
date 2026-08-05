@@ -140,7 +140,7 @@ function mountTenantModules(tenantRouter) {
       // recorded the loss. It is now recorded, surfaced on /api/health/ready,
       // and logged at ERROR rather than WARN, because a missing module IS an
       // outage of that module.
-      logger.error({ module: name, err: err.message }, "SKIPPED MODULE (load error) — its routes are absent from this process");
+      logger.error({ module: name, err }, "SKIPPED MODULE (load error) — its routes are absent from this process");
       skipped.push({ module: name, error: err.message });
       continue;
     }

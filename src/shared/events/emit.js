@@ -60,20 +60,71 @@ function currentRequestId() {
   return (ctx && ctx.requestId) || null;
 }
 
-async function emitEvent(client, e) {
-  const key = e.eventTypeKey;
+/**
+ * PERF S6. In-process cache for the `event_type` catalogue.
+ *
+ * `emitEvent` runs on every create, update and archive across all 93 modules,
+ * and its first act was a `SELECT … FROM event_type WHERE key = $1`. That table
+ * is a STATIC SEEDED CATALOGUE (migrations/seeds/9020_seed_rbac_events.sql) —
+ * it was read on every single write and never cached. A per-write round-trip
+ * became a map lookup, with no behaviour change.
+ *
+ * Keyed by (tenant, event key), because event_type is a TENANT table: caching
+ * it globally would let one tenant's catalogue answer another tenant's
+ * question. That is the same mistake PERF S9 was about, and it is cheaper to
+ * avoid here than to find later.
+ *
+ * A 5-minute TTL rather than forever. The catalogue only changes when a
+ * migration seeds a new event type, and a process that has been running since
+ * before that migration should notice within a deploy cycle rather than never.
+ * A miss costs exactly what every call used to cost.
+ */
+const EVENT_TYPE_TTL_MS = 5 * 60 * 1000;
+const eventTypeCache = new Map(); // "<tenant>:<key>" -> { row, expires }
 
-  // Is this event type flagged security-critical? One small lookup. Resolving
-  // it in JS (rather than an in-SQL subquery on the same INSERT) keeps every
-  // statement below using each parameter in exactly one place — reusing a
-  // placeholder across an INSERT value AND a subquery made Postgres fail to
-  // deduce a single type for it (SQLSTATE 42P08).
-  const crit = await client.query(
+function eventTypeCacheKey(key) {
+  const ctx = requestContext.get();
+  return `${(ctx && ctx.tenant) || "_"}:${key}`;
+}
+
+async function lookupEventType(client, key) {
+  const cacheKey = eventTypeCacheKey(key);
+  const hit = eventTypeCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return hit.row;
+
+  const { rows } = await client.query(
     `SELECT is_security_critical, is_approvable FROM event_type WHERE key = $1`,
     [key],
   );
-  const isCritical = crit.rows[0] ? crit.rows[0].is_security_critical === true : false;
-  const isApprovable = crit.rows[0] ? crit.rows[0].is_approvable === true : false;
+  // An unknown key caches as null too — an event type that does not exist is a
+  // stable fact, and not caching it would leave the hot path uncached for
+  // exactly the keys someone typo'd.
+  const row = rows[0] || null;
+  eventTypeCache.set(cacheKey, { row, expires: Date.now() + EVENT_TYPE_TTL_MS });
+  // Bounded: a tenant count times a catalogue size, but a runaway key space
+  // (a caller generating keys) must not grow this without limit.
+  if (eventTypeCache.size > 5000) {
+    eventTypeCache.delete(eventTypeCache.keys().next().value);
+  }
+  return row;
+}
+
+/** Exposed so a seeding migration or a test can force a re-read. */
+function clearEventTypeCache() {
+  eventTypeCache.clear();
+}
+
+async function emitEvent(client, e) {
+  const key = e.eventTypeKey;
+
+  // Is this event type flagged security-critical? Cached — see lookupEventType.
+  // Resolving it in JS (rather than an in-SQL subquery on the same INSERT)
+  // keeps every statement below using each parameter in exactly one place —
+  // reusing a placeholder across an INSERT value AND a subquery made Postgres
+  // fail to deduce a single type for it (SQLSTATE 42P08).
+  const critRow = await lookupEventType(client, key);
+  const isCritical = critRow ? critRow.is_security_critical === true : false;
+  const isApprovable = critRow ? critRow.is_approvable === true : false;
 
   // priority: caller override wins; else HIGH for security-critical, else NORMAL.
   const priority = e.priority || (isCritical ? "HIGH" : "NORMAL");
@@ -226,4 +277,5 @@ async function resolveActorId(client, userId) {
   return rows[0] ? rows[0].user_id : null;
 }
 
-module.exports = { emitEvent, audit, resolveActorId, WATCHER_ROLE_CODES };
+module.exports = {
+  clearEventTypeCache, emitEvent, audit, resolveActorId, WATCHER_ROLE_CODES };

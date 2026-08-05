@@ -4,20 +4,16 @@
  * alerts (mirrors vehicle_compliance).
  */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "driver_license", data);
 const findById = (client, id) => getById(client, "driver_license", "driver_license_id", id);
 
 async function update(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return findById(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE driver_license SET " + set + " WHERE driver_license_id = $1 RETURNING *",
-    [id, ...keys.map((k) => fields[k])],
-  );
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return findById(client, id);
+  return updateOne(client, "driver_license", "driver_license_id", id, fields, "*", null);
 }
 
 async function list(client, q = {}) {

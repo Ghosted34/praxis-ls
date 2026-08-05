@@ -104,22 +104,42 @@ async function insertOne(client, table, data, returning = "*", allow = null) {
   return rows[0];
 }
 
-/** UPDATE one row by pk from a patch object → RETURNING * (or null if absent). */
-async function updateOne(client, table, pk, id, patch, returning = "*", allow = null) {
+/**
+ * UPDATE one row by pk from a patch object → RETURNING * (or null if absent).
+ *
+ * `opts.touch` names a timestamp column to set to `now()` in the same
+ * statement. It exists because 46 module repos hand-rolled this builder for the
+ * sole purpose of appending `, updated_at = now()`, and in doing so bypassed
+ * every protection in this file (PERF S19 / S20 — see the note on `ident`).
+ * The column is validated like any other identifier and is deliberately NOT
+ * subject to the allow-list: it is code-provided, never body-provided.
+ */
+async function updateOne(client, table, pk, id, patch, returning = "*", allow = null, opts = {}) {
   const keys = Object.keys(patch);
-  if (keys.length === 0) return getById(client, table, pk, id);
+  if (keys.length === 0 && !opts.touch) return getById(client, table, pk, id);
   assertWritable(keys, allow, table);
-  const set = keys.map((k, i) => `${ident(k)} = $${i + 2}`).join(", ");
+  const set = keys.map((k, i) => `${ident(k)} = $${i + 2}`);
+  if (opts.touch) set.push(`${ident(opts.touch)} = now()`);
   const { rows } = await client.query(
-    `UPDATE ${table} SET ${set} WHERE ${ident(pk)} = $1 RETURNING ${returning}`,
+    `UPDATE ${table} SET ${set.join(", ")} WHERE ${ident(pk)} = $1 RETURNING ${returning}`,
     [id, ...keys.map((k) => patch[k])],
   );
   return rows[0] || null;
 }
 
+/**
+ * `pk` is validated and quoted here too.
+ *
+ * It was the one identifier in this file still interpolated raw. Every current
+ * caller passes a literal from a module's `cfg`, so there is no live path from
+ * a request to it — but that is exactly the argument the header of this file
+ * used to make about the column list, and PERF S20's point is that the helper
+ * should not depend on every caller being careful. One unvalidated identifier
+ * in a shared helper is one forgotten whitelist away from being the live one.
+ */
 async function getById(client, table, pk, id, cols = "*") {
   const { rows } = await client.query(
-    `SELECT ${cols} FROM ${table} WHERE ${pk} = $1`,
+    `SELECT ${cols} FROM ${table} WHERE ${ident(pk)} = $1`,
     [id],
   );
   return rows[0] || null;

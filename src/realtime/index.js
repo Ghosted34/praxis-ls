@@ -131,7 +131,7 @@ function initSocket(httpServer) {
     logger.info("socket.io redis adapter attached — realtime is cross-process");
   } catch (err) {
     logger.warn(
-      { err: err.message },
+      { err },
       "socket.io redis adapter NOT attached — realtime events reach only this process; " +
         "install @socket.io/redis-adapter before running more than one API replica (PERF S12)",
     );
@@ -189,7 +189,7 @@ function attachMailBridge(attempt = 0) {
   }
   // eslint-disable-next-line global-require
   const { CHANNEL } = require("./mail-bus");
-  subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err: err.message }, "[mail-bus] subscribe failed"));
+  subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err }, "[mail-bus] subscribe failed"));
   subscriber.on("message", (channel, message) => {
     if (channel !== CHANNEL || !io) return;
     try {

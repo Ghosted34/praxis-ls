@@ -31,7 +31,7 @@
 
 const POOLS = [];
 
-class FakePool {
+class mockFakePool {
   constructor(opts) {
     this.opts = opts;
     this.handlers = {};
@@ -89,7 +89,7 @@ class FakePool {
   }
 }
 
-jest.mock("pg", () => ({ Pool: FakePool }));
+jest.mock("pg", () => ({ Pool: mockFakePool }));
 jest.mock("pgvector/pg", () => ({ registerType: async () => {} }));
 
 const SCHEMA = Symbol.for("praxis.conn.schema");

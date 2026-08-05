@@ -15,6 +15,11 @@ const base = makeRepo({
   // The permission table has no created_at/updated_at — order by its real
   // columns (was "created_at DESC", which 500'd GET /permissions).
   orderBy: "role_id, module_key",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 /**

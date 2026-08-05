@@ -18,6 +18,11 @@ const base = makeRepo({
   // beneath it (the closure). A user with no assignment is unrestricted, as
   // before, and a vacancy with no scope stays visible to everyone.
   scopeColumn: "scope_id",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at", "title"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 module.exports = {

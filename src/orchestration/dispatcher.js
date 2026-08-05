@@ -145,7 +145,7 @@ async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS
       // dropped and only a human can put it right.
       if (status === "DEAD") {
         logger.error(
-          { err: err.message, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
+          { err, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
           "[orchestration] handler DEAD — giving up, this business event will never be processed",
         );
         report(err, {
@@ -163,7 +163,7 @@ async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS
         dead += 1;
       } else {
         logger.warn(
-          { err: err.message, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
+          { err, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
           "[orchestration] handler failed — will retry",
         );
       }

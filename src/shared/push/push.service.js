@@ -111,7 +111,7 @@ async function sendToUser(a, b) {
         // expired/gone subscription — prune it
         await q(`DELETE FROM ${table} WHERE endpoint = $1`, [s.endpoint]).catch(() => {});
       } else {
-        logger.warn({ err: err.message }, "[push] send failed");
+        logger.warn({ err }, "[push] send failed");
       }
     }
   }

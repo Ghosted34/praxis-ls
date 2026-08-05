@@ -13,7 +13,7 @@ const crypto = require("crypto");
 const repo = require("./smartcomm.repo");
 const events = require("./smartcomm.events");
 const documents = require("../../services/documents/document.service");
-const { emitEvent, audit } = require("../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
 const realtime = require("../../realtime");
 const requestContext = require("../../config/request-context");
@@ -48,7 +48,7 @@ async function createChannel(client, { data, actor = {} }) {
       const existing = await repo.findDirectChannel(client, actor.user_id, data.member_ids[0]);
       if (existing) { await client.query("COMMIT"); return existing; }
     }
-    const g = await repo.insertChannel(client, { name: data.name, kind: data.kind || "DIRECT", dossier_id: data.dossier_id || null, client_id: data.client_id || null, topic: data.topic || null, created_by: actor.user_id || null });
+    const g = await repo.insertChannel(client, { name: data.name, kind: data.kind || "DIRECT", dossier_id: data.dossier_id || null, client_id: data.client_id || null, topic: data.topic || null, created_by: await resolveActorId(client, actor.user_id) });
     await repo.addMember(client, { groupId: g.group_id, userId: actor.user_id, memberRole: "OWNER" });
     for (const uid of data.member_ids || []) {
       if (uid === actor.user_id) continue;
@@ -75,7 +75,15 @@ async function removeMember(client, { groupId, userId, actor }) {
   await assertMember(client, groupId, actor.user_id);
   return { removed: await repo.removeMember(client, groupId, userId) };
 }
-const listMembers = (client, { groupId }) => repo.listMembers(client, groupId);
+/**
+ * API F-22: this had no membership assert, so `GET /channels/:id/members`
+ * disclosed the roster of ANY channel to anyone holding MOD-64 `view` — who is
+ * in a private conversation is itself the sensitive part.
+ */
+async function listMembers(client, { groupId, actor }) {
+  await assertMember(client, groupId, actor.user_id);
+  return repo.listMembers(client, groupId);
+}
 async function setPinned(client, { groupId, actor, pinned }) { await assertMember(client, groupId, actor.user_id); return repo.setMemberFlag(client, groupId, actor.user_id, "is_pinned", pinned === true); }
 async function setMuted(client, { groupId, actor, muted }) { await assertMember(client, groupId, actor.user_id); return repo.setMemberFlag(client, groupId, actor.user_id, "is_muted", muted === true); }
 
@@ -121,14 +129,43 @@ async function thread(client, { groupId, actor, limit, before }) {
 }
 
 // ── Reactions / stars / search ──
+
+/**
+ * Membership check for an operation addressed by MESSAGE id rather than channel
+ * id (API F-22).
+ *
+ * `react` and `star` took a bare `messageId` and never checked anything, so any
+ * user holding MOD-64 `view` could react to or star ANY message in ANY channel
+ * — including channels they are not a member of and cannot otherwise see. A
+ * reaction is broadcast over the realtime channel, so it was also a way to
+ * announce your presence in a private conversation.
+ *
+ * Resolving the message to its channel first is what makes the existing
+ * `assertMember` reachable from these two.
+ *
+ * Returns the message, since both callers need it anyway.
+ */
+async function assertMessageMember(client, messageId, userId) {
+  const msg = await repo.getMessage(client, messageId);
+  // Same error as a non-member on a channel: not disclosing whether the message
+  // id exists is the point.
+  if (!msg) throw new AppError("NOT_A_MEMBER", "You are not a member of this channel", 403);
+  await assertMember(client, msg.group_id, userId);
+  return msg;
+}
+
 async function react(client, { messageId, emoji, actor }) {
+  const msg = await assertMessageMember(client, messageId, actor.user_id);
   const r = await repo.toggleReaction(client, { messageId, userId: actor.user_id, emoji });
   const reactions = await repo.listReactions(client, messageId);
-  const msg = await repo.getMessage(client, messageId);
-  if (msg) rtPublish(msg.group_id, "comms:reaction", { group_id: msg.group_id, message_id: messageId, reactions });
+  rtPublish(msg.group_id, "comms:reaction", { group_id: msg.group_id, message_id: messageId, reactions });
   return { ...r, reactions };
 }
-async function star(client, { messageId, actor }) { return repo.toggleStar(client, { messageId, userId: actor.user_id }); }
+
+async function star(client, { messageId, actor }) {
+  await assertMessageMember(client, messageId, actor.user_id);
+  return repo.toggleStar(client, { messageId, userId: actor.user_id });
+}
 const starred = (client, actor) => repo.listStarredForUser(client, actor.user_id);
 async function search(client, { actor, term }) { if (!term || term.length < 2) throw new AppError("BAD_SEARCH", "search term too short", 422); return repo.searchMessages(client, actor.user_id, term); }
 

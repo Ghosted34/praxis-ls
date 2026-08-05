@@ -33,7 +33,7 @@ function buildOptions() {
     maxRetriesPerRequest: null, // BullMQ requires null
     enableReadyCheck: true,
     reconnectOnError(err) {
-      logger.warn({ err: err.message }, "redis reconnecting");
+      logger.warn({ err }, "redis reconnecting");
       return true;
     },
   };

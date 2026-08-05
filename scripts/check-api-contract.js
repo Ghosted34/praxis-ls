@@ -130,83 +130,93 @@ function diffSurface(before = {}, after = {}) {
 module.exports = { diffSurface, buildSurface };
 
 // Required as a module by the tests; only run the check when invoked directly.
-if (require.main !== module) return;
+//
+// This was `if (require.main !== module) return;` — a TOP-LEVEL return, which
+// node tolerates (a CommonJS module is wrapped in a function) and babel does
+// not. Jest transforms every required file through babel, so the moment
+// tests/unit/api-contract.test.js required this for `diffSurface`, the whole
+// suite failed to parse with "'return' outside of function". The script itself
+// worked perfectly from the CLI, which is why nothing noticed.
+function main() {
 
-let surface;
-try {
-  surface = buildSurface();
-} catch (err) {
-  console.error(`Could not mount the API to inspect it: ${err.message}`);
-  process.exit(2);
-}
+  let surface;
+  try {
+    surface = buildSurface();
+  } catch (err) {
+    console.error(`Could not mount the API to inspect it: ${err.message}`);
+    process.exit(2);
+  }
 
-if (UPDATE) {
-  fs.mkdirSync(path.dirname(SNAPSHOT), { recursive: true });
-  fs.writeFileSync(SNAPSHOT, `${JSON.stringify(surface, null, 2)}\n`);
-  console.log(
-    `Wrote ${path.relative(ROOT, SNAPSHOT)} — ` +
-      `${surface.route_count} routes across ${surface.modules_mounted} modules. Commit it.`,
-  );
-  process.exit(0);
-}
+  if (UPDATE) {
+    fs.mkdirSync(path.dirname(SNAPSHOT), { recursive: true });
+    fs.writeFileSync(SNAPSHOT, `${JSON.stringify(surface, null, 2)}\n`);
+    console.log(
+      `Wrote ${path.relative(ROOT, SNAPSHOT)} — ` +
+        `${surface.route_count} routes across ${surface.modules_mounted} modules. Commit it.`,
+    );
+    process.exit(0);
+  }
 
-if (!fs.existsSync(SNAPSHOT)) {
-  // Deliberately a FAILURE, not a silent bootstrap. If a missing snapshot were
-  // written and the run passed, CI would regenerate it on every build, compare
-  // it against nothing, and report success forever — a green tick over an
-  // unguarded contract, which is precisely the state F-30 describes.
-  console.error(`No contract snapshot at ${path.relative(ROOT, SNAPSHOT)}.
+  if (!fs.existsSync(SNAPSHOT)) {
+    // Deliberately a FAILURE, not a silent bootstrap. If a missing snapshot were
+    // written and the run passed, CI would regenerate it on every build, compare
+    // it against nothing, and report success forever — a green tick over an
+    // unguarded contract, which is precisely the state F-30 describes.
+    console.error(`No contract snapshot at ${path.relative(ROOT, SNAPSHOT)}.
 
-Generate it once and commit the result:
+  Generate it once and commit the result:
 
-    node scripts/check-api-contract.js --update
+      node scripts/check-api-contract.js --update
 
-It is a snapshot of ${surface.route_count} routes across ${surface.modules_mounted} modules.
-Reviewing that first diff is the point — it is the only time anyone reads the
-whole surface at once.`);
+  It is a snapshot of ${surface.route_count} routes across ${surface.modules_mounted} modules.
+  Reviewing that first diff is the point — it is the only time anyone reads the
+  whole surface at once.`);
+    process.exit(1);
+  }
+
+  const prev = JSON.parse(fs.readFileSync(SNAPSHOT, "utf8"));
+  const before = prev.routes || {};
+  const after = surface.routes;
+
+  const { removed, added, weakened, breaking } = diffSurface(before, after);
+
+  if (added.length) {
+    console.log(`${added.length} route(s) added (not a failure):`);
+    for (const k of added.slice(0, 20)) console.log(`   + ${k}`);
+    if (added.length > 20) console.log(`   … and ${added.length - 20} more`);
+    console.log("");
+  }
+
+  if (breaking === 0) {
+    console.log(
+      `API contract: ${surface.route_count} routes, no removals and no weakened gates` +
+        `${added.length ? ` (${added.length} added)` : ""}.`,
+    );
+    if (added.length) {
+      console.log("Run with --update to record the additions.");
+    }
+    process.exit(0);
+  }
+
+  console.log("API CONTRACT REGRESSION\n");
+  if (removed.length) {
+    console.log(`${removed.length} route(s) REMOVED — every existing consumer of these breaks:`);
+    for (const k of removed) console.log(`   - ${k}`);
+    console.log("");
+  }
+  if (weakened.length) {
+    console.log(`${weakened.length} route(s) LOST A SECURITY GATE:`);
+    for (const w of weakened) console.log(`   ! ${w}`);
+    console.log("");
+  }
+  console.log(`If this is deliberate, say so explicitly:
+
+      node scripts/check-api-contract.js --update
+
+  and put the reason in the commit message. A removed route needs a deprecation
+  window first — middleware/api-version.js exports deprecate({ sunset, replacement })
+  for exactly that (API F-18).`);
   process.exit(1);
 }
 
-const prev = JSON.parse(fs.readFileSync(SNAPSHOT, "utf8"));
-const before = prev.routes || {};
-const after = surface.routes;
-
-const { removed, added, weakened, breaking } = diffSurface(before, after);
-
-if (added.length) {
-  console.log(`${added.length} route(s) added (not a failure):`);
-  for (const k of added.slice(0, 20)) console.log(`   + ${k}`);
-  if (added.length > 20) console.log(`   … and ${added.length - 20} more`);
-  console.log("");
-}
-
-if (breaking === 0) {
-  console.log(
-    `API contract: ${surface.route_count} routes, no removals and no weakened gates` +
-      `${added.length ? ` (${added.length} added)` : ""}.`,
-  );
-  if (added.length) {
-    console.log("Run with --update to record the additions.");
-  }
-  process.exit(0);
-}
-
-console.log("API CONTRACT REGRESSION\n");
-if (removed.length) {
-  console.log(`${removed.length} route(s) REMOVED — every existing consumer of these breaks:`);
-  for (const k of removed) console.log(`   - ${k}`);
-  console.log("");
-}
-if (weakened.length) {
-  console.log(`${weakened.length} route(s) LOST A SECURITY GATE:`);
-  for (const w of weakened) console.log(`   ! ${w}`);
-  console.log("");
-}
-console.log(`If this is deliberate, say so explicitly:
-
-    node scripts/check-api-contract.js --update
-
-and put the reason in the commit message. A removed route needs a deprecation
-window first — middleware/api-version.js exports deprecate({ sunset, replacement })
-for exactly that (API F-18).`);
-process.exit(1);
+if (require.main === module) main();

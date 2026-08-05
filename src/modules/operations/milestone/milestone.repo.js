@@ -1,6 +1,6 @@
 /** Milestone repository (MOD-31). template/stage/instance SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 function insertTemplate(client, data) { return insertOne(client, "milestone_template", data); }
 function insertStage(client, data) { return insertOne(client, "milestone_template_stage", data); }
@@ -28,10 +28,9 @@ const getTemplate = (client, id) => getById(client, "milestone_template", "miles
 function insertInstance(client, data) { return insertOne(client, "milestone_instance", data); }
 const getInstance = (client, id) => getById(client, "milestone_instance", "milestone_instance_id", id);
 async function updateInstance(client, id, fields) {
-  const keys = Object.keys(fields);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE milestone_instance SET " + set + " WHERE milestone_instance_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "milestone_instance", "milestone_instance_id", id, fields, "*", null);
 }
 async function listByDossier(client, dossierId) {
   const { rows } = await client.query("SELECT * FROM milestone_instance WHERE dossier_id = $1 ORDER BY stage_seq", [dossierId]);

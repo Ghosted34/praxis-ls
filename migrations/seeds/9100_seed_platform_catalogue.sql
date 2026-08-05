@@ -78,7 +78,14 @@ INSERT INTO platform.module_catalogue (module_key, group_key, name, sort_order, 
  ('MOD-73','configure','File Repository (Vault)',73,false),
  ('MOD-74','monitor','Support & Feedback',74,true),
  ('MOD-75','configure','Governance & Approvals',75,true),
- ('MOD-70','configure','Settings',123,true);
+ ('MOD-70','configure','Settings',123,true)
+-- Idempotent: migration 0070_module_taxonomy.sql already inserts MOD-73/74/75
+-- (with ON CONFLICT DO UPDATE), and migrations run BEFORE seeds. On a fresh
+-- database those three rows therefore exist before this seed runs, so a plain
+-- INSERT here trips module_catalogue_module_key_key. It didn't reproduce on
+-- dev machines because their long-lived DB applied this seed (tracked once)
+-- before 0070 existed. Guard it so the order can't matter.
+ON CONFLICT (module_key) DO NOTHING;
 
 -- Features & plans are seeded in 9110_seed_platform_features.sql (split to keep files small). depends_on gates dependencies.
 --
@@ -119,19 +126,26 @@ INSERT INTO platform.feature_catalogue (feature_key, module_key, name, default_s
  ('reporting','MOD-63','Reporting & insights','on','{}'),
  ('portal.client','MOD-29','Client portal','off','{operations}'),
  ('portal.investor','MOD-56','Investor / board terminal','off','{accounting.core}'),
- ('portal.audit','MOD-69','Audit terminal','off','{}');
+ ('portal.audit','MOD-69','Audit terminal','off','{}')
+-- Non-authoritative (9110 upserts these same rows to their final values right
+-- after). Guarded so a re-run can't trip feature_catalogue_feature_key_key.
+ON CONFLICT (feature_key) DO NOTHING;
 
 INSERT INTO platform.plan (plan_id, code, name, price_setup_xaf, price_yearly_xaf) VALUES
  ('22222222-2222-2222-2222-222222222221','starter','Starter (accounting + ops)',0,0),
  ('22222222-2222-2222-2222-222222222222','full','Full suite',3000000,500000),
- ('22222222-2222-2222-2222-222222222223','enterprise','Enterprise (own DB access)',3000000,500000);
+ ('22222222-2222-2222-2222-222222222223','enterprise','Enterprise (own DB access)',3000000,500000)
+ON CONFLICT (plan_id) DO NOTHING;
 
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
-SELECT '22222222-2222-2222-2222-222222222222', feature_key, true FROM platform.feature_catalogue;
+SELECT '22222222-2222-2222-2222-222222222222', feature_key, true FROM platform.feature_catalogue
+ON CONFLICT (plan_id, feature_key) DO NOTHING;
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
-SELECT '22222222-2222-2222-2222-222222222223', feature_key, true FROM platform.feature_catalogue;
+SELECT '22222222-2222-2222-2222-222222222223', feature_key, true FROM platform.feature_catalogue
+ON CONFLICT (plan_id, feature_key) DO NOTHING;
 INSERT INTO platform.plan_feature (plan_id, feature_key, included)
 SELECT '22222222-2222-2222-2222-222222222221', feature_key, true FROM platform.feature_catalogue
  WHERE feature_key IN ('accounting.core','accounting.statements','accounting.tax','finance.fx',
                        'operations','costing','commercial.simulators','commercial.quotation',
-                       'procurement','hr.payroll','comms','signatures','reporting');
+                       'procurement','hr.payroll','comms','signatures','reporting')
+ON CONFLICT (plan_id, feature_key) DO NOTHING;

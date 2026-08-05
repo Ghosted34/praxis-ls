@@ -45,8 +45,13 @@ jobs:
       # a warning on a deploy that already happened is not a control. Use
       # workflow_dispatch for a deliberate manual deploy — that is a person
       # choosing, which is the thing being asked for.
+      # TEMPORARILY DISABLED 2026-08-05 (by request). The PR-review gate below is
+      # turned off: `if: false` means it never runs, so auto-deploy no longer
+      # requires a commit to have arrived via pull request.
+      # RE-ENABLE by restoring the condition to:
+      #   if: ${{ github.event_name == 'workflow_run' }}
       - name: Refuse to deploy an unreviewed commit
-        if: ${{ github.event_name == 'workflow_run' }}
+        if: ${{ false }}
         env:
           GH_TOKEN: ${{ github.token }}
           SHA: ${{ github.event.workflow_run.head_sha }}

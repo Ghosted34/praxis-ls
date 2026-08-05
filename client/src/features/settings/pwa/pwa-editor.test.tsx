@@ -88,21 +88,94 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
     document.head.innerHTML =
       '<meta name="theme-color" content="#f4f7fb">' +
       '<meta name="apple-mobile-web-app-title" content="Praxis LS">';
+    document.documentElement.classList.remove("dark");
+    document.documentElement.removeAttribute("style");
   });
 
   const themeColor = () => document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content;
   const iosTitle = () =>
     document.querySelector<HTMLMetaElement>('meta[name="apple-mobile-web-app-title"]')!.content;
+  const cssVar = (n: string) => document.documentElement.style.getPropertyValue(n);
 
-  it("replaces the static placeholder with the tenant's colour", () => {
+  it("replaces the static placeholder with the resolved title bar colour", () => {
     expect(themeColor()).toBe("#f4f7fb"); // the bug, before
     applyPwaDocument(effectivePwa(null, BRAND));
+    expect(themeColor()).toBe("#ffffff"); // light surface, not the brand accent
+  });
+
+  /**
+   * The colour is per THEME, and this is the assertion that matters most: a
+   * single value cannot serve both, and the failure it prevents — a white bar
+   * welded to the top of a dark app — is the one a tenant would report.
+   */
+  it("follows the live theme rather than a single stored colour", () => {
+    const cfg = effectivePwa(null, BRAND);
+    applyPwaDocument(cfg);
+    expect(themeColor()).toBe("#ffffff");
+
+    document.documentElement.classList.add("dark");
+    applyPwaDocument(cfg);
+    expect(themeColor()).toBe("#12161e");
+  });
+
+  it("uses the brand accent only when the tenant asks for it", () => {
+    applyPwaDocument(effectivePwa({ titlebarMode: "brand" }, BRAND));
     expect(themeColor()).toBe(BRAND.primary);
   });
 
-  it("uses an explicit theme colour over the inherited brand one", () => {
-    applyPwaDocument(effectivePwa({ themeColor: "#0b0f10" }, BRAND));
-    expect(themeColor()).toBe("#0b0f10");
+  it("uses explicit custom colours, one per theme", () => {
+    const cfg = effectivePwa({ titlebarMode: "custom", titlebarLight: "#eeeeee", titlebarDark: "#101010" }, BRAND);
+    applyPwaDocument(cfg);
+    expect(themeColor()).toBe("#eeeeee");
+    document.documentElement.classList.add("dark");
+    applyPwaDocument(cfg);
+    expect(themeColor()).toBe("#101010");
+  });
+
+  it("publishes the same colour to CSS as to the meta tag — a mismatch is a visible seam", () => {
+    // The page paints `--titlebar-bg`; the OS paints the meta colour behind the
+    // caption buttons. They meet a few hundred pixels from the window's right
+    // edge, so any disagreement shows up as a line there.
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(cssVar("--titlebar-bg")).toBe(themeColor());
+  });
+
+  it("publishes the artwork layer as CSS custom properties", () => {
+    applyPwaDocument(
+      effectivePwa({ titlebarImageUrl: "/media/tenant_acme/branding/bar.png", titlebarImageOpacity: 25, titlebarBlur: 4 }, BRAND),
+    );
+    expect(cssVar("--titlebar-image")).toBe('url("/media/tenant_acme/branding/bar.png")');
+    expect(cssVar("--titlebar-image-opacity")).toBe("0.25");
+    expect(cssVar("--titlebar-image-blur")).toBe("4px");
+  });
+
+  it("escapes a quote in the image URL rather than letting it close the declaration", () => {
+    // The field accepts a PASTED url, so the value is not necessarily one this
+    // app minted. An unescaped `")` would terminate the url() and let whatever
+    // follows be parsed as further declarations.
+    //
+    // The check is that the quote is ESCAPED, not that the payload is absent:
+    // `\"` inside a CSS string is a literal quote, so hostile text survives as
+    // inert characters inside a single url() token — which is the correct
+    // outcome. Asserting `not.toContain("--evil")` would be asserting the wrong
+    // thing and would pass just as well on a value that had been silently
+    // truncated.
+    applyPwaDocument(effectivePwa({ titlebarImageUrl: '/x.png") ;--evil:1;background:url("y' }, BRAND));
+    const value = cssVar("--titlebar-image");
+
+    expect(value.startsWith('url("')).toBe(true);
+    expect(value.endsWith('")')).toBe(true);
+    // No bare quote between the wrapping pair — every one is backslash-escaped,
+    // so nothing can close the string early.
+    const inner = value.slice('url("'.length, -'")'.length);
+    expect(inner.replace(/\\"/g, "")).not.toContain('"');
+  });
+
+  it("clears the artwork when no image is set, rather than leaving the last one", () => {
+    applyPwaDocument(effectivePwa({ titlebarImageUrl: "/a.png" }, BRAND));
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(cssVar("--titlebar-image")).toBe("none");
+    expect(cssVar("--titlebar-image-opacity")).toBe("0");
   });
 
   it("captions the iOS home-screen icon with the tenant, not the vendor", () => {
@@ -114,14 +187,14 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
   it("creates the meta tag if the document has none, rather than silently doing nothing", () => {
     document.head.innerHTML = "";
     applyPwaDocument(effectivePwa(null, BRAND));
-    expect(themeColor()).toBe(BRAND.primary);
+    expect(themeColor()).toBe("#ffffff");
   });
 
-  it("repaints on every call, so the editor's picker moves the real bar live", () => {
-    applyPwaDocument(effectivePwa({ themeColor: "#111111" }, BRAND));
-    applyPwaDocument(effectivePwa({ themeColor: "#222222" }, BRAND));
+  it("repaints on every call, and never stacks a second meta tag", () => {
+    applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#111111" }, BRAND));
+    applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#222222" }, BRAND));
     expect(themeColor()).toBe("#222222");
-    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1); // no stacking
+    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
   });
 });
 

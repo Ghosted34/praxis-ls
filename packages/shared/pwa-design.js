@@ -25,6 +25,7 @@ const PWA_ENUMS = {
   display: ["standalone", "fullscreen", "minimal-ui", "browser"],
   orientation: ["any", "portrait", "landscape"],
   splashPreset: ["none", "fade", "pulse", "shimmer", "ring", "mesh"],
+  titlebarMode: ["surface", "brand", "custom"],
 };
 
 /**
@@ -40,6 +41,8 @@ const PWA_RANGES = {
   iconRadius: [0, 50],
   maskablePadding: [10, 35],
   splashDuration: [0, 4000],
+  titlebarImageOpacity: [0, 60],
+  titlebarBlur: [0, 24],
 };
 
 const PWA_BOOLS = ["splashEnabled", "splashShowProgress", "installEnabled"];
@@ -66,12 +69,72 @@ const PWA_DEFAULTS = {
   splashTagline: "LOADING YOUR WORKSPACE",
   splashShowProgress: true,
   installEnabled: true,
+  titlebarMode: "surface",
+  titlebarLight: "#ffffff",
+  titlebarDark: "#12161e",
+  titlebarImageOpacity: 18,
+  titlebarBlur: 0,
 };
 
 /** The dark plate the boot splash falls back to when no colour is chosen. It is
  *  deliberately NOT the app background: the splash fades into the app, and a
  *  near-black plate reads as "the app is starting" in either theme. */
 const SPLASH_FALLBACK_BG = "#0b0f10";
+
+/**
+ * The installed window's title bar.
+ *
+ * WHAT WINDOW-CONTROLS-OVERLAY ACTUALLY CHANGES. With `display_override:
+ * ["window-controls-overlay"]` the operating system stops drawing a title bar
+ * and hands that strip to the page. So the bar becomes ordinary HTML — it can
+ * carry the logo, search, anything — and `theme_color` shrinks to painting only
+ * the small area behind the minimise/maximise/close buttons, which the page is
+ * not allowed to draw in.
+ *
+ * That split is why these two values must agree. The page paints
+ * `titlebar.base` (plus any artwork over it); the OS paints `theme_color`
+ * beside the caption buttons. Set them independently and there is a visible
+ * seam a few hundred pixels from the right edge of the window, which is exactly
+ * the "bolted-on" look the whole exercise is trying to remove.
+ *
+ * MODES. `surface` (the default) tracks the app's own card surface per theme,
+ * so the window reads as one continuous instrument. `brand` is the old
+ * behaviour — the accent, which as a full-width window frame is very loud.
+ * `custom` is two explicit hexes, one per theme, because a single value cannot
+ * serve both and a light bar on a dark app is the thing to avoid.
+ */
+const TITLEBAR_MODES = ["surface", "brand", "custom"];
+
+/** Mirrors `--card` in client/src/index.css. Duplicated rather than read from
+ *  the stylesheet because the API renders a manifest with no DOM at all. */
+const SURFACE_LIGHT = "#ffffff";
+const SURFACE_DARK = "#12161e";
+
+/**
+ * Resolve the title bar for ONE theme. Called with the live theme in the
+ * browser (so the bar follows a light/dark toggle immediately) and with the
+ * tenant's default theme on the server (so the manifest declares something
+ * sensible before any of our code runs).
+ *
+ * @param {object} cfg   effectivePwa() output
+ * @param {"dark"|"light"} theme
+ */
+function resolveTitlebar(cfg, theme) {
+  const dark = theme === "dark";
+  let base;
+  if (cfg.titlebarMode === "brand") base = cfg.themeColor;
+  else if (cfg.titlebarMode === "custom") base = dark ? cfg.titlebarDark : cfg.titlebarLight;
+  else base = dark ? SURFACE_DARK : SURFACE_LIGHT;
+
+  return {
+    base,
+    imageUrl: cfg.titlebarImageUrl || null,
+    // Artwork in a title bar is texture, not decoration — it has to survive
+    // small text sitting on top of it, so the opacity ceiling is low by design.
+    opacity: Math.min(60, Math.max(0, Number(cfg.titlebarImageOpacity))) / 100,
+    blur: Math.min(24, Math.max(0, Number(cfg.titlebarBlur))),
+  };
+}
 
 const pick = (val, fallback) => (val === null || val === undefined || val === "" ? fallback : val);
 const bool = (val, fallback) => (val === null || val === undefined ? fallback : Boolean(val));
@@ -131,6 +194,14 @@ function effectivePwa(pwa, brand) {
     // boot matches what they installed; the wordmark logo is the fallback.
     splashLogoUrl: pick(p.iconUrl, pick(b.logoUrl, null)),
 
+    // installed window title bar (window-controls-overlay)
+    titlebarMode: pick(p.titlebarMode, PWA_DEFAULTS.titlebarMode),
+    titlebarLight: pick(p.titlebarLight, PWA_DEFAULTS.titlebarLight),
+    titlebarDark: pick(p.titlebarDark, PWA_DEFAULTS.titlebarDark),
+    titlebarImageUrl: pick(p.titlebarImageUrl, null),
+    titlebarImageOpacity: Number(pick(p.titlebarImageOpacity, PWA_DEFAULTS.titlebarImageOpacity)),
+    titlebarBlur: Number(pick(p.titlebarBlur, PWA_DEFAULTS.titlebarBlur)),
+
     // install / offline / update copy — null means "use the built-in string",
     // which is localised in the component rather than stored per tenant.
     installEnabled: bool(p.installEnabled, PWA_DEFAULTS.installEnabled),
@@ -174,6 +245,10 @@ exports.PWA_TEXT_MAX = PWA_TEXT_MAX;
 exports.PWA_TEXT_DEFAULT_MAX = PWA_TEXT_DEFAULT_MAX;
 exports.PWA_DEFAULTS = PWA_DEFAULTS;
 exports.SPLASH_FALLBACK_BG = SPLASH_FALLBACK_BG;
+exports.TITLEBAR_MODES = TITLEBAR_MODES;
+exports.SURFACE_LIGHT = SURFACE_LIGHT;
+exports.SURFACE_DARK = SURFACE_DARK;
+exports.resolveTitlebar = resolveTitlebar;
 exports.effectivePwa = effectivePwa;
 exports.iconLayout = iconLayout;
 exports.clamp = clamp;

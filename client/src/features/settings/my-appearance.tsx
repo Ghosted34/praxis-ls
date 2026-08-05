@@ -96,13 +96,29 @@ export function MyAppearancePage() {
   };
 
   return (
-    <section className={pageShell.reading}>
+    /*
+     * WIDE PAGE, NARROW MEASURE. This screen used `pageShell.reading`, which
+     * caps the whole PAGE at reading width — so on a desktop it sat as a narrow
+     * column with several hundred pixels of dead space beside it, while every
+     * data screen in the app fills the viewport. Inside a desktop shell that
+     * reads as a web page embedded in an application rather than as part of it.
+     *
+     * The fix is not to stretch the form: a 1600px-wide select is worse than a
+     * narrow one, and capping measure was the right instinct. It is that the
+     * page should be wide and its CONTENT should be a composition — controls at
+     * a readable width on the left, the live preview holding the right. The
+     * preview was already here and stacked underneath, where it competed with
+     * the controls for vertical space and left the horizontal space empty.
+     * Same treatment as the App & PWA editor, for the same reason.
+     */
+    <section className={pageShell.wide}>
       <PageHeader
         title="My appearance"
         description="Your own typography. Applies to you across every device you sign in on, and to nobody else."
       />
 
-      <div className="mt-2 flex flex-col gap-5">
+      <div className="mt-2 grid gap-6 lg:grid-cols-[minmax(0,32rem)_minmax(0,1fr)]">
+        <div className="flex min-w-0 flex-col gap-5">
         <SettingsCard
           title="Typography"
           desc="Fifteen self-hosted families. Leave a field on the workspace default to keep following your organisation's brand."
@@ -144,6 +160,23 @@ export function MyAppearancePage() {
           </div>
         </SettingsCard>
 
+        {msg && (
+          <p
+            className={
+              msg.kind === "ok"
+                ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
+                : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+            }
+          >
+            {msg.text}
+          </p>
+        )}
+        </div>
+
+        {/* The preview column. Sticky, so it stays in view while the pickers are
+            worked — the whole point of choosing a typeface is watching real
+            copy re-set in it. */}
+        <div className="lg:sticky lg:top-4 lg:self-start">
         <SettingsCard title="Preview" desc="How the app will read for you once saved.">
           <div className="space-y-2 rounded-lg border p-4">
             <div className="text-lg font-semibold" style={{ fontFamily: effective.display || "var(--font-display)" }}>
@@ -159,19 +192,7 @@ export function MyAppearancePage() {
           </div>
         </SettingsCard>
 
-        {msg && (
-          <p
-            className={
-              msg.kind === "ok"
-                ? "rounded-md border border-primary/30 bg-primary/5 px-3 py-2 text-sm"
-                : "rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive"
-            }
-          >
-            {msg.text}
-          </p>
-        )}
-
-        <div className="flex items-center justify-end gap-3">
+        <div className="mt-5 flex items-center justify-end gap-3">
           {/* Only offered when there is something to clear — a reset button that
               does nothing is a button that teaches people not to trust buttons. */}
           {hasOverrides && (
@@ -182,6 +203,7 @@ export function MyAppearancePage() {
           <Button loading={busy} onClick={onSave}>
             {busy ? "Saving…" : "Save changes"}
           </Button>
+        </div>
         </div>
       </div>
     </section>

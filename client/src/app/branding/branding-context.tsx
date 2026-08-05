@@ -182,11 +182,25 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   // choice does not change what the operating system shows on a home screen.
   const pwa = React.useMemo(() => effectivePwa(pwaConfig, brandSource(branding)), [pwaConfig, branding]);
 
-  // The installed app's document-level identity — the title-bar colour and the
-  // iOS label. Kept in an effect rather than inside `paint` because it depends
-  // on the RESOLVED pwa config, which is derived from branding rather than
-  // being branding, and because it must re-run when either layer changes.
-  React.useEffect(() => applyPwaDocument(pwa), [pwa]);
+  /**
+   * The installed app's document-level identity — the title-bar colour, its
+   * artwork, and the iOS label. In an effect rather than inside `paint` because
+   * it depends on the RESOLVED pwa config, which is derived from branding
+   * rather than being branding.
+   *
+   * It also has to re-run on a THEME change, because the title bar tracks the
+   * app's surface per theme. `lib/theme-mode.ts` publishes no change event — it
+   * just toggles `.dark` on <html>, including when the OS preference moves
+   * under a user on "system" — so this observes the class rather than making
+   * the two modules import each other. One observer, no polling, and it catches
+   * the OS-driven case that a click handler on the toggle would miss.
+   */
+  React.useEffect(() => {
+    applyPwaDocument(pwa);
+    const observer = new MutationObserver(() => applyPwaDocument(pwa));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, [pwa]);
 
   const value = React.useMemo(
     () => ({ branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig }),

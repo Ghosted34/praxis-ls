@@ -91,6 +91,28 @@ describe("navAccess — the shell agrees with the enforcement path", () => {
     expect(out.groups).toEqual([]);
   });
 
+  /**
+   * `groups` says which tabs exist; `byGroup` says what goes under one. The
+   * ribbon's second row needs the second, and the only alternative to shipping
+   * it is a copy of the taxonomy in the browser that nothing keeps honest.
+   */
+  it("spells out which modules belong to each tab", async () => {
+    const svc = load({ granted: ["MOD-29", "MOD-33", "MOD-51"] });
+    const out = await svc.navAccess(CLIENT, { role_ids: ["r1"] });
+    expect(out.byGroup).toEqual({ fulfill: ["MOD-29", "MOD-33"], transact: ["MOD-51"] });
+  });
+
+  it("keeps byGroup and groups describing the same set", async () => {
+    // Two views of one partition. A refactor that filters one and not the other
+    // produces a tab with nothing under it — the exact state the shell is meant
+    // to be incapable of rendering.
+    const svc = load({ granted: ["MOD-00A", "MOD-51"] });
+    const out = await svc.navAccess(CLIENT, { role_ids: ["r1"] });
+    expect(Object.keys(out.byGroup)).toEqual(out.groups);
+    expect(Object.values(out.byGroup).flat().sort()).toEqual(out.modules);
+    expect(Object.values(out.byGroup).every((keys) => keys.length > 0)).toBe(true);
+  });
+
   it("ignores a granted key the catalogue does not know", async () => {
     // A stale grant against a retired module must not invent a tab. It stays in
     // `modules` (it is a real grant) but contributes no group, because there is
@@ -98,6 +120,7 @@ describe("navAccess — the shell agrees with the enforcement path", () => {
     const svc = load({ granted: ["MOD-29", "MOD-999"] });
     const out = await svc.navAccess(CLIENT, { role_ids: ["r1"] });
     expect(out.groups).toEqual(["fulfill"]);
+    expect(out.byGroup).toEqual({ fulfill: ["MOD-29"] });
   });
 });
 

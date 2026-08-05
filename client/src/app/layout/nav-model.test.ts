@@ -1,13 +1,18 @@
 /**
- * The F9 claim, asserted.
+ * The grouped nav map, asserted.
  *
- * "Desktop navigation reaching all 16 areas without an overlay" is the Phase 3
- * deliverable. It is a property of the nav table, so it can be a test rather
- * than a screenshot — and this is the one that fails if someone adds a
- * seventeenth area and forgets that it now exists only behind a scrim.
+ * WHAT THIS PINS NOW. `NAV` no longer drives the desktop menubar — the ribbon
+ * does, from the server's taxonomy, and `ribbon.test.tsx` covers that. What
+ * still reads this table is the ⌘K palette and the phone drawer, and both are
+ * COMPLETE indexes: every area, whether or not it fits somewhere else. The
+ * failure this catches is a seventeenth area added to the product and reachable
+ * from neither.
+ *
+ * The old `TOPBAR` tier assertions went with the menubar they described. The
+ * ribbon's progressive reveal is its own table and its own tests.
  */
 import { describe, expect, it } from "vitest";
-import { areaEntries, NAV, TIER_CLASS, TOPBAR } from "./nav-model";
+import { areaEntries, NAV } from "./nav-model";
 
 describe("NAV", () => {
   it("covers the sixteen top-level areas the audit counted", () => {
@@ -26,13 +31,11 @@ describe("NAV", () => {
 });
 
 describe("areaEntries", () => {
-  it("reaches EVERY area without opening the mobile drawer", () => {
-    // This is the finding: twelve of sixteen areas used to be drawer-only at
-    // every viewport width, 2560px included.
+  it("reaches EVERY area, so the index is complete rather than an overflow bin", () => {
     const reachable = new Set(areaEntries(NAV).map((e) => e.to));
     NAV.forEach((g) => {
       const anyReachable = g.items.some((i) => reachable.has(i.to));
-      expect(anyReachable, `${g.heading} is unreachable from the desktop menubar`).toBe(true);
+      expect(anyReachable, `${g.heading} is in no index — neither ⌘K nor the drawer lists it`).toBe(true);
     });
   });
 
@@ -53,34 +56,5 @@ describe("areaEntries", () => {
   it("drops an area the tenant cannot see", () => {
     const withoutFleet = NAV.filter((g) => g.heading !== "Fleet");
     expect(areaEntries(withoutFleet).some((e) => e.to === "/fleet")).toBe(false);
-  });
-});
-
-describe("TOPBAR", () => {
-  it("names only real areas", () => {
-    const headings = new Set(NAV.map((g) => g.heading));
-    TOPBAR.forEach((t) => expect(headings.has(t.heading), `${t.heading} is not a NAV group`).toBe(true));
-  });
-
-  it("reveals areas progressively, never hiding one that a narrower tier showed", () => {
-    const order: Record<string, number> = { md: 0, lg: 1, xl: 2, "2xl": 3 };
-    const tiers = TOPBAR.map((t) => order[t.from]);
-    expect(tiers).toEqual([...tiers].sort((a, b) => a - b));
-  });
-
-  it("keeps the md row short enough to sit beside the brand and the tools", () => {
-    expect(TOPBAR.filter((t) => t.from === "md")).toHaveLength(4);
-  });
-
-  it("uses the real desktop tiers the app never had — xl and 2xl", () => {
-    // F2: 216 `sm:` prefixes, zero `xl:`/`2xl:`. The nav is one of the places
-    // that gap was most visible.
-    const used = new Set(TOPBAR.map((t) => t.from));
-    expect(used.has("xl")).toBe(true);
-    expect(used.has("2xl")).toBe(true);
-  });
-
-  it("has a spelled-out class per tier, so Tailwind can see them", () => {
-    TOPBAR.forEach((t) => expect(TIER_CLASS[t.from]).toMatch(/^hidden \S+:inline-flex$/));
   });
 });

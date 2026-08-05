@@ -16,7 +16,8 @@ import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
-import { TabbedHub, HubCrumb, HubTabs, type HubTab } from "@/components/tabbed-hub";
+import { TabbedHub, HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -174,14 +175,14 @@ function Overview() {
   );
 }
 
-const TABS: HubTab[] = [
-  { key: "overview", label: "Overview", Component: Overview },
-  { key: "documents", label: "Documents", Component: DocumentsPage },
-  { key: "signatures", label: "Signatures", Component: SignaturesPage },
-  { key: "verification", label: "Verification", Component: VerificationPage },
-  { key: "compliance-flags", label: "Compliance flags", Component: ComplianceFlagsPage },
-  { key: "reports", label: "Reports", Component: ReportsPage },
-];
+const TABS = hubTabs("/vault", {
+  overview: Overview,
+  documents: DocumentsPage,
+  signatures: SignaturesPage,
+  verification: VerificationPage,
+  "compliance-flags": ComplianceFlagsPage,
+  reports: ReportsPage,
+});
 
 export function VaultHub() {
   return <TabbedHub eyebrow="Vault & compliance" basePath="/vault" tabs={TABS} />;

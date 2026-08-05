@@ -14,7 +14,8 @@ import { Panel } from "@/components/ui/panel";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
-import { TabbedHub, HubCrumb, HubTabs, type HubTab } from "@/components/tabbed-hub";
+import { TabbedHub, HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -157,17 +158,17 @@ function Overview() {
   );
 }
 
-const TABS: HubTab[] = [
-  { key: "overview", label: "Overview", Component: Overview },
-  { key: "users", label: "Users", Component: UsersPage },
-  { key: "roles", label: "Roles", Component: RolesPage },
-  { key: "permissions", label: "Permission matrix", Component: PermissionMatrixPage },
-  { key: "capabilities", label: "Capabilities", Component: CapabilitiesPage },
-  { key: "scopes", label: "Scopes", Component: ScopesPage },
-  { key: "field-visibility", label: "Field visibility", Component: FieldVisibilityPage },
-  { key: "sessions", label: "Sessions", Component: SessionsPage },
-  { key: "my-security", label: "My security", Component: MySecurityPage },
-];
+const TABS = hubTabs("/security", {
+  overview: Overview,
+  users: UsersPage,
+  roles: RolesPage,
+  permissions: PermissionMatrixPage,
+  capabilities: CapabilitiesPage,
+  scopes: ScopesPage,
+  "field-visibility": FieldVisibilityPage,
+  sessions: SessionsPage,
+  "my-security": MySecurityPage,
+});
 
 export function SecurityHub() {
   return <TabbedHub eyebrow="Security & access" basePath="/security" tabs={TABS} />;

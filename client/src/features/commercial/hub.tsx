@@ -1,6 +1,7 @@
 /** Commercial — one hub, deep-linkable tabs (old /commercial/<screen> paths
  *  resolve as sections). Mirrors FinanceHub / FleetHub. */
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { QuotationsPage } from "./quotations";
 import { MarginSimulationsPage } from "./margin-simulations";
 import { ExtraChargeSimulationsPage } from "./extra-charge-simulations";
@@ -11,12 +12,12 @@ export function CommercialHub() {
     <TabbedHub
       eyebrow="Commercial"
       basePath="/commercial"
-      tabs={[
-        { key: "quotations", label: "Quotations", Component: QuotationsPage },
-        { key: "margin-simulation", label: "Margin simulation", Component: MarginSimulationsPage },
-        { key: "extra-charge-simulation", label: "Extra-charge simulation", Component: ExtraChargeSimulationsPage },
-        { key: "pricing-variance", label: "Pricing variance", Component: PricingVariancePage },
-      ]}
+      tabs={hubTabs("/commercial", {
+        quotations: QuotationsPage,
+        "margin-simulation": MarginSimulationsPage,
+        "extra-charge-simulation": ExtraChargeSimulationsPage,
+        "pricing-variance": PricingVariancePage,
+      })}
     />
   );
 }

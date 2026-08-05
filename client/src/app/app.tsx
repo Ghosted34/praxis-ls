@@ -3,6 +3,7 @@ import type { ComponentType } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
 import { AppShell } from "@/app/layout/app-shell";
+import { ShellProvider } from "@/app/layout/shell-providers";
 import { LandingPage } from "@/features/landing/landing-page";
 import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
@@ -150,10 +151,16 @@ export function App() {
             Separate prefix, no overlap, and it reads better in an invite email. */}
         <Route path="/client-portal/*" element={<PortalApp />} />
 
+      {/* ShellProvider sits INSIDE RequireAuth (its two reads need a token) and
+          OUTSIDE AppShell, so the routed screens are inside it too — the rail
+          editor on My appearance reads and writes the same preferences the rail
+          itself does, from one fetch. */}
       <Route
         element={
           <RequireAuth>
-            <AppShell />
+            <ShellProvider>
+              <AppShell />
+            </ShellProvider>
           </RequireAuth>
         }
       >

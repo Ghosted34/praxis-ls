@@ -29,16 +29,27 @@ const catalogueRepo = require("../../catalogue/catalogue.repo");
  * do by clicking it and getting a 403. A ribbon whose tabs differ per role
  * cannot be built on that.
  *
- * SHAPE. `{ modules, groups, isCeo, version }`:
+ * SHAPE. `{ modules, groups, byGroup, isCeo, version }`:
  *   modules  the MOD-xx keys this caller can read
  *   groups   the six workflow verbs those keys fall into, in catalogue order —
  *            resolved here rather than in the browser so the taxonomy has one
  *            definition (platform.module_catalogue.group_key) and the client
  *            has no second mapping to drift from it
+ *   byGroup  the same partition, spelled out: verb → its visible module keys
  *   isCeo    the CEO bypass rbac.js already applies, surfaced so the shell
  *            agrees with the enforcement path instead of showing a CEO an empty
  *            ribbon
  *   version  a short digest of the resolved set
+ *
+ * WHY `byGroup` AND NOT JUST `groups`. `groups` says which tabs exist; it does
+ * not say what belongs under one. The ribbon's second row has to place a
+ * destination under a verb, and the only two ways to do that are to ship the
+ * membership with the response or to write the taxonomy a second time in the
+ * browser. The second is the thing this endpoint exists to prevent — a client
+ * map would be a copy of `module_catalogue.group_key` that nothing keeps honest,
+ * and it would go stale silently the first time a module is regrouped. So the
+ * partition travels with the answer. The client still owns which ICON and which
+ * ROUTE a key gets, because those are drawings and URLs, not taxonomy.
  *
  * WHAT `version` IS FOR. The client renders its LAST KNOWN ribbon immediately
  * from cache and revalidates in the background, so switching pages never
@@ -62,12 +73,16 @@ async function navAccess(client, user) {
 
   const visible = new Set(modules.map((k) => String(k).toUpperCase()));
   const groups = [];
-  const seen = new Set();
+  const byGroup = {};
   for (const m of catalogue) {
     if (!visible.has(String(m.module_key).toUpperCase())) continue;
-    if (seen.has(m.group_key)) continue;
-    seen.add(m.group_key);
-    groups.push(m.group_key);
+    if (!byGroup[m.group_key]) {
+      byGroup[m.group_key] = [];
+      groups.push(m.group_key);
+    }
+    // Uppercased like `modules`, so the client can compare the two sets without
+    // knowing that one came from a grant row and the other from the catalogue.
+    byGroup[m.group_key].push(String(m.module_key).toUpperCase());
   }
 
   // Sorted before hashing: the digest must describe the SET, not the order the
@@ -78,7 +93,7 @@ async function navAccess(client, user) {
     .digest("hex")
     .slice(0, 12);
 
-  return { modules: [...visible].sort(), groups, isCeo: Boolean(user.is_ceo), version };
+  return { modules: [...visible].sort(), groups, byGroup, isCeo: Boolean(user.is_ceo), version };
 }
 
 const { makeService } = require("../../../shared/crud/resource");

@@ -51,6 +51,39 @@ function accounts(n: number) {
  * path (after `/api`) → payload. Longest-prefix matched, as the vitest harness
  * does, so `/tenant/chart-of-accounts?limit=50` resolves from the bare key.
  */
+/**
+ * The navigation access the shell renders from.
+ *
+ * WITHOUT THIS THE GATE MEASURES THE WRONG SHELL. An unmocked read resolves to
+ * `[]`, which the client coerces to "no access" — so the ribbon renders nothing
+ * and every width below would be measured against an app with no navigation in
+ * it. That is the Addendum 7 failure this file's own header describes, one level
+ * down: a harness that renders the wrong screen still produces a confident
+ * table.
+ *
+ * All six families, because a layout gate should measure the WIDEST chrome the
+ * product can produce, not the narrowest. `byGroup` is the server's partition of
+ * the visible modules — the client never invents it, so the fixture has to
+ * carry it in the shape the endpoint returns.
+ */
+const NAV_ACCESS = (() => {
+  const byGroup: Record<string, string[]> = {
+    monitor: ["MOD-00A", "MOD-64", "MOD-74"],
+    engage: ["MOD-20", "MOD-21", "MOD-23", "MOD-24", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
+    fulfill: ["MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-39", "MOD-41", "MOD-42"],
+    transact: ["MOD-46", "MOD-47", "MOD-49", "MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59"],
+    empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-14", "MOD-15", "MOD-17"],
+    configure: ["MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65", "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75"],
+  };
+  return {
+    modules: Object.values(byGroup).flat().sort(),
+    groups: Object.keys(byGroup),
+    byGroup,
+    isCeo: false,
+    version: "e2efixture01",
+  };
+})();
+
 const ROUTES: Record<string, unknown> = {
   "/tenant/auth/refresh": { access_token: "at", refresh_token: "rt", user: USER },
   "/tenant/auth/me": USER,
@@ -59,6 +92,14 @@ const ROUTES: Record<string, unknown> = {
   "/tenant/notifications/unread-count": { count: 0 },
   "/tenant/comms/unread-count": { count: 0 },
   "/tenant/ai/status": { enabled: false },
+  "/tenant/permissions/mine": NAV_ACCESS,
+  /*
+   * Pinned open (the default), and the rail's one-time hint already spent.
+   * `railHintSeen: false` would leave a 240ms shake running while the first
+   * measurements are taken, which is a gate whose numbers depend on when the
+   * screenshot happened to land.
+   */
+  "/tenant/me/preferences/shell": { ribbonPinned: true, railPins: null, railHintSeen: true },
 };
 
 function payloadFor(pathname: string): unknown {
@@ -138,3 +179,34 @@ export async function hasHorizontalScroll(page: Page) {
 
 /** Desktop widths the audit measures at. 2560 is the case F2 opens with. */
 export const DESKTOP_WIDTHS = [1280, 1440, 1920, 2560] as const;
+
+/**
+ * The icon rail's width — chrome the content column does not get.
+ *
+ * Stated here rather than measured from the page, because the point of the
+ * column assertions is to catch the column changing width for a reason nobody
+ * intended. Reading the rail's real width and subtracting it would make that
+ * assertion true by construction: widen the rail by 40px and the test would
+ * still pass while every table lost 40px. `ribbonHeight`/the rail test below
+ * pin the constant against what actually renders, so the two together say
+ * "the rail is this wide AND the column accounts for exactly that".
+ *
+ * Mirrors `.rail { width: 52px }` in index.css (46px at compact density).
+ */
+export const RAIL_PX = 52;
+
+/** The rail's rendered width, or -1 when it is not there (below `md`). */
+export async function railWidth(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector(".rail");
+    return el ? Math.round(el.getBoundingClientRect().width) : -1;
+  });
+}
+
+/** The ribbon's rendered height, or -1 when it is not there. */
+export async function ribbonHeight(page: Page) {
+  return page.evaluate(() => {
+    const el = document.querySelector(".ribbon");
+    return el ? Math.round(el.getBoundingClientRect().height) : -1;
+  });
+}

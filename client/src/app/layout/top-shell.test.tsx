@@ -168,6 +168,16 @@ describe("title bar strip", () => {
     expect(strip.getByRole("button", { name: /search/i })).toBeInTheDocument();
   });
 
+  it("mounts the icon rail beside the content, not inside the strip", () => {
+    // The rail is app-level chrome with its own contents; nesting it in the
+    // title bar would make it read as part of the window furniture and would
+    // put it inside the drag region.
+    const { container } = renderShell();
+    const rail = container.querySelector(".rail");
+    expect(rail).not.toBeNull();
+    expect(container.querySelector(".wco")!.contains(rail)).toBe(false);
+  });
+
   it("is free of accessibility violations", async () => {
     const { container } = renderShell();
     const strip = container.querySelector(".wco")!;

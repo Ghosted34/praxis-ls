@@ -14,7 +14,8 @@
  * hub (operations / procurement / costing / ai-control / master data) shares one
  * implementation and one active-tab style.
  */
-import { TabbedHub, type HubTab } from "@/components/tabbed-hub";
+import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { ClientsPage } from "./client-360"; // customer 360 (replaces the flat clients CRUD)
 import { SuppliersPage } from "./suppliers";
 import { CorporateEntitiesPage } from "./corporate-entities";
@@ -24,16 +25,16 @@ import { CurrenciesPage } from "@/features/settings/currencies";
 import { TaxJurisdictionsPage } from "@/features/settings/tax-jurisdictions";
 import { BankAccountsPage } from "@/features/settings/bank-accounts";
 
-const TABS: HubTab[] = [
-  { key: "clients", label: "Clients", Component: ClientsPage },
-  { key: "suppliers", label: "Suppliers", Component: SuppliersPage },
-  { key: "corporate-entities", label: "Corporate entities", Component: CorporateEntitiesPage },
-  { key: "treasury-accounts", label: "Treasury", Component: BankAccountsPage },
-  { key: "currencies", label: "Currencies", Component: CurrenciesPage },
-  { key: "expense-rates", label: "Expense rates", Component: ExpenseRatesPage },
-  { key: "financial-dictionary", label: "Financial dictionary", Component: FinancialDictionaryPage },
-  { key: "tax-jurisdictions", label: "Tax", Component: TaxJurisdictionsPage },
-];
+const TABS = hubTabs("/master", {
+  clients: ClientsPage,
+  suppliers: SuppliersPage,
+  "corporate-entities": CorporateEntitiesPage,
+  "treasury-accounts": BankAccountsPage,
+  currencies: CurrenciesPage,
+  "expense-rates": ExpenseRatesPage,
+  "financial-dictionary": FinancialDictionaryPage,
+  "tax-jurisdictions": TaxJurisdictionsPage,
+});
 
 export function MasterDataPage() {
   // Costing pattern: each tab page renders its own PageHeader then the HubTabs

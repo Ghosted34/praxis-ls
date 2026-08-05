@@ -1306,3 +1306,239 @@
 @media (prefers-reduced-motion: reduce) {
   .lux-sidebar-in { animation: none; }
 }
+
+/*
+ * WHY THIS WHOLE BLOCK IS IN `@layer components`.
+ *
+ * `.ribbon-item` sets `display: inline-flex`, and the ribbon's second row hides
+ * its overflow with Tailwind's `hidden` / `2xl:inline-flex`. Written as plain
+ * CSS at the end of this file, `.ribbon-item` came AFTER the utilities in source
+ * order and won on equal specificity — so `hidden` did nothing and every one of
+ * a hub's ten sections rendered at 1280px. Nothing failed: no test could see it
+ * (jsdom applies no media queries and loads no stylesheet), the row simply got
+ * crowded. Declaring the layer puts these back under the utilities, which is
+ * where a component class belongs and is what the rest of this file does.
+ */
+@layer components {
+  /**
+   * ── THE RIBBON ────────────────────────────────────────────────────────────────
+   *
+   * Two rows of chrome, and a hard budget on how much of the window they may take.
+   * The height is DENSITY-LINKED for the same reason `.wco` is: a dispatcher who
+   * asked for compact rows did not ask for compact rows and a fat header, and the
+   * preference is the one place a user says how much of the screen they want spent
+   * on furniture. 46px × 2 + the hairline is 93px at the default level.
+   *
+   * `--ribbon-row-h` rather than a fixed padding so the two rows are guaranteed
+   * equal — an unpinned ribbon's floating second row is positioned from the first
+   * row's height, and a mismatch there shows as a seam over the content.
+   */
+  .ribbon {
+    --ribbon-row-h: 46px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+  }
+  [data-density="compact"] .ribbon { --ribbon-row-h: 40px; }
+  [data-density="comfortable"] .ribbon { --ribbon-row-h: 54px; }
+
+  .ribbon-row {
+    min-height: var(--ribbon-row-h);
+  }
+  .ribbon-row + .ribbon-row {
+    border-top: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  }
+
+  /**
+   * The family track. A bounded, recessed group — NOT a row of links.
+   *
+   * This is the whole answer to "the ribbon must look intentional at any tab
+   * count". Access is per-role: one user has six families, another has two. Two
+   * links floating at the left of a 1600px bar read as a bar with four missing;
+   * two segments in a track that is sized to its contents read as a control with
+   * two options. Same markup, same data, and the difference is entirely this box.
+   */
+  .ribbon-track {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 3px;
+    border-radius: 11px;
+    background: rgb(var(--ink) / 0.05);
+    border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  }
+  .ribbon-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .ribbon-tab:hover {
+    color: var(--foreground);
+  }
+  .ribbon-tab.active {
+    background: var(--card);
+    color: var(--foreground);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgb(var(--ink) / 0.12);
+  }
+
+  /* The pin. Holds the right end of row A at every tab count, which is what keeps
+     a two-family ribbon from reading as left-weighted. */
+  .ribbon-pin {
+    display: inline-grid;
+    place-items: center;
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+    color: var(--muted-foreground);
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .ribbon-pin:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  .ribbon-pin.active {
+    color: var(--primary-ink);
+  }
+
+  /* Row B's destinations. Flatter and quieter than row A — this row is a list of
+     places, and it must not compete with the family you are in. */
+  .ribbon-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 10px;
+    border-radius: 8px;
+    font-size: 13px;
+    white-space: nowrap;
+    color: var(--muted-foreground);
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .ribbon-item:hover {
+    background: rgb(var(--ink) / 0.04);
+    color: var(--foreground);
+  }
+  .ribbon-item.active {
+    color: var(--foreground);
+    font-weight: 600;
+    background: rgb(var(--ink) / 0.05);
+  }
+  .ribbon-area {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    max-width: 12rem;
+    padding: 5px 9px;
+    margin-right: 4px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--foreground);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .ribbon-area:hover {
+    background: var(--accent);
+  }
+  /* A screen's own command, right-aligned. `primary` is the one filled control. */
+  .ribbon-cmd {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--card);
+    font-size: 13px;
+    font-weight: 500;
+    white-space: nowrap;
+    color: var(--foreground);
+    transition: background-color var(--dur) var(--ease);
+  }
+  .ribbon-cmd:hover {
+    background: var(--accent);
+  }
+  .ribbon-cmd.primary {
+    background: var(--primary);
+    border-color: transparent;
+    color: var(--primary-foreground);
+  }
+  .ribbon-cmd.primary:hover {
+    background: color-mix(in srgb, var(--primary) 88%, #000);
+  }
+
+  /**
+   * ── THE ICON RAIL ─────────────────────────────────────────────────────────────
+   *
+   * Fixed width, and it stays fixed. The expand-on-hover rail is the obvious
+   * pattern and the wrong one here: the thing beside it is a table, and widening
+   * the rail reflows every column in that table because a pointer crossed the
+   * left edge of the window on its way to somewhere else. Labels come from a
+   * tooltip, which moves nothing.
+   */
+  .rail {
+    width: 52px;
+    gap: 2px;
+    padding: 8px 0;
+    background: var(--card);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  [data-density="compact"] .rail { width: 46px; }
+  .rail-btn {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    flex: none;
+    border-radius: 10px;
+    color: var(--muted-foreground);
+    transition: background-color var(--dur) var(--ease), color var(--dur) var(--ease);
+  }
+  .rail-btn:hover {
+    background: var(--accent);
+    color: var(--foreground);
+  }
+  .rail-btn.active {
+    background: rgb(var(--ink) / 0.06);
+    color: var(--primary-ink);
+  }
+  .rail-rule {
+    width: 22px;
+    height: 1px;
+    flex: none;
+    margin: 6px 0;
+    background: var(--border);
+  }
+  .rail-edit {
+    border: 1px dashed var(--border);
+  }
+
+  /**
+   * The one-time nudge on the rail's edit affordance.
+   *
+   * 240ms, once — a buzz, not a dance. It fires on a user's first session only
+   * (recorded server-side as `railHintSeen`), because a customisable rail nobody
+   * knows is customisable is not customisable, and because a hint that repeats is
+   * a tic. The global reduced-motion kill above already neutralises it; the rail
+   * ALSO declines to apply the class under that preference, so the one time it was
+   * allowed to fire is not spent invisibly.
+   */
+}
+
+@keyframes rail-jiggle {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  45% { transform: translateX(3px); }
+  70% { transform: translateX(-2px); }
+}
+.rail-jiggle {
+  animation: rail-jiggle 240ms ease-in-out both;
+}

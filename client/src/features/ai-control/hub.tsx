@@ -1,5 +1,6 @@
 import { Navigate } from "react-router-dom";
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { useAiEnabled } from "@/components/ai-actions";
 import { AiFeaturesPage, AiGrantsPage, AiBudgetPage, AiUsagePage } from "./pages";
 
@@ -11,13 +12,13 @@ export function AiControlHub() {
     <TabbedHub
       eyebrow="AI Control"
       basePath="/ai-control"
-      tabs={[
-        { key: "features", label: "Features", Component: AiFeaturesPage },
-        { key: "access", label: "Access", Component: AiGrantsPage },
-        { key: "budget", label: "Budget", Component: AiBudgetPage },
-        // Vendor keys moved to the platform console (one shared deploy-wide set).
-        { key: "usage", label: "Usage", Component: AiUsagePage },
-      ]}
+      // Vendor keys moved to the platform console (one shared deploy-wide set).
+      tabs={hubTabs("/ai-control", {
+        features: AiFeaturesPage,
+        access: AiGrantsPage,
+        budget: AiBudgetPage,
+        usage: AiUsagePage,
+      })}
     />
   );
 }

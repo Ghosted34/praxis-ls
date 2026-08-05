@@ -1,30 +1,45 @@
 /**
- * Protected app shell — Lovable "Control Tower" look on the app's real nav.
+ * Protected app shell.
  *
- * NAVIGATION (audit F9, Phase 3). Twelve of the sixteen top-level areas used to
- * be reachable ONLY through a "More" button that opened a `fixed inset-0` scrim
- * plus a 288px drawer — a phone pattern, on a 2560px screen with several hundred
- * pixels of unused top bar. Desktop users paid two clicks and a full-screen
- * overlay to reach three quarters of the product.
+ * THREE BANDS OF CHROME, EACH DOING ONE JOB:
  *
- * The top bar is now a real menubar that widens with the viewport: four areas
- * inline at `md`, five at `lg`, seven at `xl`, ten at `2xl`, and an "All areas"
- * button that opens every one of the sixteen in a single in-place panel — no
- * scrim, no drawer, Escape and arrow keys handled by Radix. The overlay drawer
- * survives for `< md` only, driven by the hamburger, which is where that pattern
- * belongs.
+ *   `.wco`      the title bar. In an installed window this IS the OS title bar
+ *               (Window Controls Overlay); everywhere else it is the utility
+ *               strip. Logo, search, environment, theme, alerts, account.
+ *   `<Ribbon>`  navigation and screen commands — the workflow families this
+ *               user can see, and the destinations inside the one they are in.
+ *   `<IconRail>` a constant strip of shortcuts down the left edge.
+ *
+ * WHAT THE RIBBON REPLACED, and why this is fewer rows rather than more. The
+ * nav row here used to be a menubar of sixteen areas, and every one of those
+ * areas is a hub that drew its OWN tab strip inside the page. So a desktop user
+ * opening an operations file crossed three bands of navigation before the first
+ * row of data. The ribbon's second row IS the hub's tab strip — hoisted into
+ * the chrome, drawn from the same definitions (`areas.ts`), and removed from
+ * the page (`tabbed-hub.tsx` keeps it below `md`, where there is no ribbon).
+ *
+ * The ribbon is also PERMISSION-AWARE, which the menubar never was: it renders
+ * from `GET /permissions/mine`, so a family whose modules this user cannot read
+ * is not there at all — not greyed, not locked, not a 403 waiting to happen.
+ *
+ * BELOW `md` none of that applies: the bottom bar carries the same families and
+ * opens each into a sheet (`mobile-nav.tsx`), and the hamburger drawer survives
+ * for the full grouped index.
  */
 import * as React from "react";
-import { Link, NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
+import { NavLink, Outlet, useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/app/auth/auth-context";
 import { useBranding } from "@/app/branding/branding-context";
 import { CommandPaletteProvider } from "@/app/layout/command-palette-context";
-import { areaEntries, NAV, TIER_CLASS, TOPBAR, type NavGroup } from "@/app/layout/nav-model";
+import { NAV, type NavGroup } from "@/app/layout/nav-model";
 import {
-  AREA_ICON, CHILD_ICON, AlertIcon, ChevronIcon, DotIcon, DownloadIcon, FilesIcon, FinanceIcon,
-  GridIcon, HrIcon, LogoutIcon, MenuIcon, MoreIcon, PaletteIcon, SearchIcon, SecurityIcon,
-  TowerIcon, type IP,
+  AREA_ICON, CHILD_ICON, AlertIcon, ChevronIcon, DotIcon, DownloadIcon,
+  HrIcon, LogoutIcon, MenuIcon, MoreIcon, PaletteIcon, SearchIcon, SecurityIcon,
 } from "@/app/layout/nav-icons";
+import { Ribbon } from "@/app/layout/ribbon";
+import { IconRail } from "@/app/layout/icon-rail";
+import { BottomNav } from "@/app/layout/mobile-nav";
+import { RibbonCommandsProvider } from "@/app/layout/shell-providers";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";
 import { tokenStore } from "@/lib/token-store";
@@ -301,131 +316,6 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
   );
 }
 
-/** A top-bar area: a direct link (single item) or a hover/click dropdown. */
-function NavArea({
-  group,
-  active,
-  open,
-  onToggle,
-  onNavigate,
-  onHoverOpen,
-  onHoverClose,
-  className,
-}: {
-  group: NavGroup;
-  active: boolean;
-  open: boolean;
-  onToggle: () => void;
-  onNavigate: () => void;
-  onHoverOpen: () => void;
-  onHoverClose: () => void;
-  /** Which viewport tier reveals this area — see TOPBAR. */
-  className?: string;
-}) {
-  const Icon = AREA_ICON[group.heading] || MoreIcon;
-  const label = group.heading;
-
-  // Single-item area → direct link, no dropdown. Hovering it should still
-  // dismiss any open sibling dropdown.
-  if (group.items.length === 1) {
-    return (
-      <NavLink
-        to={group.items[0].to}
-        end
-        className={cn("lux-navlink", className, active && "active")}
-        onClick={onNavigate}
-        onMouseEnter={onHoverClose}
-      >
-        <Icon />
-        <span>{label}</span>
-      </NavLink>
-    );
-  }
-
-  // Second hand-rolled role="menu" (audit F13). Same defect as UserMenu: menu
-  // semantics declared with zero keyboard handling, and NavLink's link role
-  // stripped by role="menuitem". `modal={false}` keeps the rest of the top bar
-  // interactive so sliding the pointer to a sibling area still works.
-  return (
-    // Pointer-only affordance: hover opens the menu for a mouse, and the Radix
-    // trigger inside is what a keyboard uses. Nothing here is reachable — or
-    // needs to be — by keyboard, so the wrapper is presentational.
-    <div data-navarea role="presentation" className={className} onMouseEnter={onHoverOpen} onMouseLeave={onHoverClose}>
-      <DropdownMenu
-        align="start"
-        modal={false}
-        open={open}
-        onOpenChange={(next) => next !== open && onToggle()}
-        trigger={
-          <button type="button" className={cn("lux-navlink", (active || open) && "active")}>
-            <Icon />
-            <span>{label}</span>
-            <ChevronIcon className={cn("transition-transform", open && "rotate-180")} />
-          </button>
-        }
-      >
-        {group.items.map((it) => {
-          const CIcon = CHILD_ICON[it.to] || DotIcon;
-          return (
-            <DropdownItem key={it.to} to={it.to}>
-              <CIcon />
-              <span>{it.label}</span>
-            </DropdownItem>
-          );
-        })}
-      </DropdownMenu>
-    </div>
-  );
-}
-
-/**
- * "All areas" — every destination in the product, in one in-place panel.
- *
- * This is what replaces the desktop half of the More drawer (F9). It is a real
- * menu button: Radix owns the arrow keys, Home/End, type-ahead, Escape and the
- * focus cycle, and it closes on outside click. Nothing is scrimmed, so the page
- * behind stays readable while you decide — which is most of the difference
- * between an index and an interruption.
- *
- * Flattened deliberately. `Overview` is a grouping, not a destination, so its
- * four screens appear as themselves; the other fifteen areas are hubs and
- * appear once each. Nineteen entries, every one a link.
- */
-function AllAreasMenu() {
-  const nav = useVisibleNav();
-  const entries = areaEntries(nav).map((e) => ({
-    ...e,
-    Icon: AREA_ICON[e.label] || CHILD_ICON[e.to] || DotIcon,
-  }));
-
-  return (
-    // `data-navarea` keeps the shell's outside-click handler from treating a
-    // click inside this menu as "close the open area dropdown".
-    <div data-navarea>
-      <DropdownMenu
-        align="start"
-        // The panel is a grid of links, so Radix's default min-width would
-        // squeeze it; this sizes to the viewport and never overflows it.
-        className="grid w-[min(44rem,calc(100vw-2rem))] grid-cols-2 gap-0.5 sm:grid-cols-3"
-        trigger={
-          <button type="button" className="lux-navlink">
-            <GridIcon />
-            <span>All areas</span>
-            <ChevronIcon />
-          </button>
-        }
-      >
-        {entries.map(({ to, label, Icon }) => (
-          <DropdownItem key={to} to={to}>
-            <Icon />
-            <span className="truncate">{label}</span>
-          </DropdownItem>
-        ))}
-      </DropdownMenu>
-    </div>
-  );
-}
-
 /** The full grouped menu — rendered inside the mobile overlay sidebar. Every
  *  group carries its area icon. Single-screen areas (now hubs) are a single
  *  link; multi-item areas (Overview) are a collapsible section with a chevron. */
@@ -525,36 +415,6 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
   );
 }
 
-/**
- * Mobile bottom nav (Lovable pattern) — shown only below the md breakpoint,
- * where the inline top-bar areas collapse. Four thumb targets: Control Tower,
- * Operations files, Finance, and Search (opens the ⌘K palette). The full 15-group
- * menu stays reachable via the top-bar hamburger, exactly as in the mock. Active
- * state is by route prefix so any screen inside an area lights its tab.
- */
-const BOTTOM_NAV: { to: string; label: string; Icon: (p: IP) => React.JSX.Element; active: (p: string) => boolean }[] = [
-  { to: "/", label: "Tower", Icon: TowerIcon, active: (p) => p === "/" },
-  { to: "/operations/files", label: "Files", Icon: FilesIcon, active: (p) => p.startsWith("/operations") },
-  { to: "/finance", label: "Finance", Icon: FinanceIcon, active: (p) => p.startsWith("/finance") },
-];
-
-function BottomNav({ pathname, onSearch }: { pathname: string; onSearch: () => void }) {
-  return (
-    <nav className="lux-botnav flex md:hidden" aria-label="Primary">
-      {BOTTOM_NAV.map(({ to, label, Icon, active }) => (
-        <Link key={to} to={to} className={cn("lux-botnav-btn", active(pathname) && "active")}>
-          <Icon width={20} height={20} />
-          <span>{label}</span>
-        </Link>
-      ))}
-      <button type="button" className="lux-botnav-btn" onClick={onSearch}>
-        <SearchIcon width={20} height={20} />
-        <span>Search</span>
-      </button>
-    </nav>
-  );
-}
-
 export function AppShell() {
   const { user, logout } = useAuth();
   const { branding } = useBranding();
@@ -563,37 +423,11 @@ export function AppShell() {
   const location = useLocation();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
-  const [openArea, setOpenArea] = React.useState<string | null>(null);
   const [env, setEnvState] = React.useState<string>(tokenStore.getEnv());
   const unread = useUnreadCounts(env);
 
-  // Hover open/close with a grace delay so moving from the button into the
-  // menu (across the small gap) doesn't snap it shut.
-  const closeTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
-  const openAreaNow = React.useCallback((h: string) => {
-    if (closeTimer.current) {
-      clearTimeout(closeTimer.current);
-      closeTimer.current = null;
-    }
-    setOpenArea(h);
-  }, []);
-  const closeAreaDeferred = React.useCallback(() => {
-    if (closeTimer.current) clearTimeout(closeTimer.current);
-    closeTimer.current = setTimeout(() => setOpenArea(null), 180);
-  }, []);
-  React.useEffect(
-    () => () => {
-      if (closeTimer.current) clearTimeout(closeTimer.current);
-    },
-    [],
-  );
-
-  // Close dropdowns on outside-click and Escape; ⌘K / Ctrl-K toggles the
-  // command palette; close everything on navigation.
+  // ⌘K / Ctrl-K toggles the command palette; Escape closes what is open.
   React.useEffect(() => {
-    function onDown(e: MouseEvent) {
-      if (!(e.target as HTMLElement).closest("[data-navarea]")) setOpenArea(null);
-    }
     function onKey(e: KeyboardEvent) {
       if ((e.key === "k" || e.key === "K") && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
@@ -601,29 +435,18 @@ export function AppShell() {
         return;
       }
       if (e.key === "Escape") {
-        setOpenArea(null);
         setSidebarOpen(false);
         setPaletteOpen(false);
       }
     }
-    document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
+    return () => document.removeEventListener("keydown", onKey);
   }, []);
 
   React.useEffect(() => {
-    setOpenArea(null);
     setSidebarOpen(false);
     setPaletteOpen(false);
   }, [location.pathname]);
-
-  function isAreaActive(g: NavGroup): boolean {
-    if (g.heading === "Overview") return location.pathname === "/";
-    return !!g.prefix && location.pathname.startsWith(g.prefix);
-  }
 
   async function onLogout() {
     await logout();
@@ -642,9 +465,6 @@ export function AppShell() {
     setEnvState(next);
   }
 
-  const topbarAreas = TOPBAR.map((t) => ({ ...t, group: NAV.find((g) => g.heading === t.heading) })).filter(
-    (t): t is typeof t & { group: NavGroup } => !!t.group,
-  );
   const visibleNav = useVisibleNav();
 
   // Handed to screens through context so a component can open ⌘K without
@@ -660,6 +480,7 @@ export function AppShell() {
 
   return (
     <CommandPaletteProvider value={paletteApi}>
+    <RibbonCommandsProvider>
     <div className="flex h-full flex-col">
       {/*
         Skip link (audit F13, WCAG 2.4.1). With 12 of 16 areas behind the More
@@ -733,28 +554,6 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Navigation row — nothing but navigation now, and the full width of the
-          window to lay it out in. Hidden below md, where BottomNav owns it. */}
-      <header className="lux-topbar relative z-30 hidden h-[52px] flex-none items-center gap-3 px-4 md:flex md:px-6">
-        <nav className="flex min-w-0 items-center gap-0.5" aria-label="Areas">
-          {topbarAreas.map(({ group, from }) => (
-            <NavArea
-              key={group.heading}
-              group={group}
-              className={TIER_CLASS[from]}
-              active={isAreaActive(group)}
-              open={openArea === group.heading}
-              onToggle={() => setOpenArea((cur) => (cur === group.heading ? null : group.heading))}
-              onNavigate={() => setOpenArea(null)}
-              onHoverOpen={() => openAreaNow(group.heading)}
-              onHoverClose={closeAreaDeferred}
-            />
-          ))}
-          <AllAreasMenu />
-        </nav>
-
-      </header>
-
       {/*
         Mobile overlay sidebar — hamburger only, and `md:hidden` so it cannot
         appear on a desktop viewport even if the state is somehow set (F9: this
@@ -797,39 +596,57 @@ export function AppShell() {
         </div>
       )}
 
-      {/* key={env} remounts the routed screen on an env switch so every screen
-          re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
       {/*
-        Padding scales with the viewport now (was a flat p-6 at every width).
-        Width itself is NOT capped here — each screen picks a deliberate column
-        width via <PageContainer> / pageShell (audit F3), so the shell stays out
-        of that decision and a full-bleed screen stays possible.
-      */}
-      <main
-        id="main-content"
-        tabIndex={-1}
-        key={env}
-        className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
-      >
-        {/* Per-route boundary, keyed on the path so navigating away from a
-            crashed screen clears the error rather than stranding the user on it.
-            The root boundary in main.tsx is the backstop; this one keeps the
-            shell, the nav and the copilot alive when a single screen throws. */}
-        <ErrorBoundary key={location.pathname} name="This screen">
-          {/* Screens are lazy (app.tsx), so the routed element can suspend while
-              its chunk downloads. The boundary sits HERE rather than around the
-              whole app so the nav, topbar and copilot stay painted and only the
-              content column shows the skeleton. Inside the ErrorBoundary so a
-              chunk that fails to load — a stale service worker pointing at a
-              filename a deploy removed — surfaces as the screen error, not a
-              silent dead route. */}
-          <React.Suspense fallback={<PageSkeleton />}>
-            <Outlet />
-          </React.Suspense>
-        </ErrorBoundary>
-      </main>
+        THE BODY: rail beside, ribbon above.
 
-      <BottomNav pathname={location.pathname} onSearch={() => setPaletteOpen(true)} />
+        The rail runs the full height of everything under the title bar rather
+        than starting below the ribbon, because it is not part of the ribbon and
+        must not read as its sidebar — its contents are constant while the
+        ribbon's change with where you are. The ribbon then belongs to the
+        content column, which is what makes "these destinations are inside this
+        family" a spatial fact rather than a caption.
+      */}
+      <div className="flex min-h-0 flex-1">
+        <IconRail />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <Ribbon pathname={location.pathname} />
+
+          {/* key={env} remounts the routed screen on an env switch so every screen
+              re-fetches under the new X-Praxis-Env — the soft-switch mechanism. */}
+          {/*
+            Padding scales with the viewport now (was a flat p-6 at every width).
+            Width itself is NOT capped here — each screen picks a deliberate column
+            width via <PageContainer> / pageShell (audit F3), so the shell stays out
+            of that decision and a full-bleed screen stays possible.
+          */}
+          <main
+            id="main-content"
+            tabIndex={-1}
+            key={env}
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 pb-24 focus:outline-none md:p-6 md:pb-6 2xl:px-8"
+          >
+            {/* Per-route boundary, keyed on the path so navigating away from a
+                crashed screen clears the error rather than stranding the user on it.
+                The root boundary in main.tsx is the backstop; this one keeps the
+                shell, the nav and the copilot alive when a single screen throws. */}
+            <ErrorBoundary key={location.pathname} name="This screen">
+              {/* Screens are lazy (app.tsx), so the routed element can suspend while
+                  its chunk downloads. The boundary sits HERE rather than around the
+                  whole app so the nav, topbar and copilot stay painted and only the
+                  content column shows the skeleton. Inside the ErrorBoundary so a
+                  chunk that fails to load — a stale service worker pointing at a
+                  filename a deploy removed — surfaces as the screen error, not a
+                  silent dead route. */}
+              <React.Suspense fallback={<PageSkeleton />}>
+                <Outlet />
+              </React.Suspense>
+            </ErrorBoundary>
+          </main>
+        </div>
+      </div>
+
+      <BottomNav onSearch={() => setPaletteOpen(true)} />
 
       {/* Surfaces row-action failures reported via lib/action-error. Retrofit
           for screens whose handlers had no catch — see
@@ -839,6 +656,7 @@ export function AppShell() {
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />
     </div>
+    </RibbonCommandsProvider>
     </CommandPaletteProvider>
   );
 }

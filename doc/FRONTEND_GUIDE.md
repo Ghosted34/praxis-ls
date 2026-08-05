@@ -146,10 +146,19 @@ keep their entrance motion. Not for in-app screens.
 
 ### 3.1 Where things live
 
-Screens are components under `client/src/features/<area>/`, exported, routed in
-`client/src/app/app.tsx`, and listed in the `NAV` array in `client/src/app/layout/app-shell.tsx`.
-Register in `client/src/app/screen-registry.json` only once the page and its actions are real.
-Unbuilt screens route to `<Planned/>` (`features/scaffold/screen-scaffold.tsx`).
+Screens are components under `client/src/features/<area>/`, exported, and routed in
+`client/src/app/app.tsx`. Two more files decide whether anyone can *find* them:
+
+- **`client/src/app/layout/areas.ts`** — the area's section list. This is what the ribbon's
+  second row draws AND what `hubTabs()` gives the hub, so a section added here appears in both
+  or in neither. `areas.test.ts` fails if a hub has a page the list does not know about.
+- **`client/src/app/screen-registry.json`** — the route's `module_key`. The ribbon filters on
+  it, so an unregistered route is shown to *everyone* regardless of their grants. Register the
+  route when you add it; `areas.test.ts` enforces this for every section.
+
+`NAV` (`app/layout/nav-model.ts`) is still the ⌘K palette's and the phone drawer's index — a
+complete map of the product's areas, deliberately not permission-filtered. Unbuilt screens route
+to `<Planned/>` (`features/scaffold/screen-scaffold.tsx`).
 
 ### 3.2 A list screen — `<ListPage>`
 
@@ -354,7 +363,44 @@ Two gates enforce this and both run in CI: `vite.config.ts` throws on Rollup's `
 warning (it warned last time, and the build went green anyway), and `npm run check:bundle`
 re-derives the graph from what was actually written to `dist/`.
 
-### 3.8 Shared schemas (`@shared`)
+### 3.8 The shell — ribbon, rail, and where a screen's command goes
+
+Desktop chrome is three bands, each with one job:
+
+| Band | Component | Contents |
+| --- | --- | --- |
+| Title bar | `.wco` in `app-shell.tsx` | logo, search, LIVE/TEST, theme, alerts, account |
+| Ribbon | `<Ribbon>` | row A the workflow families; row B the family's destinations, and the current screen's commands |
+| Rail | `<IconRail>` | a constant strip of shortcuts — never route-dependent |
+
+**The six families come from the server.** `GET /permissions/mine` returns `groups` (which verbs
+this user has modules in, in catalogue order) and `byGroup` (which modules are under each). That
+partition is `platform.module_catalogue.group_key` and there is **no second copy of it in the
+client** — do not add one. What the client owns is presentation: a label and glyph per verb
+(`ribbon-model.ts`) and the route each module gates (`screen-registry.json`).
+
+**A hub does not draw its own tabs on desktop.** `<TabbedHub>` renders the strip below `md` only,
+because that is where there is no ribbon. Build the tabs with `hubTabs()` so the two lists cannot
+diverge:
+
+```tsx
+<TabbedHub eyebrow="Fleet" basePath="/fleet" tabs={hubTabs("/fleet", { vehicles: VehiclesPage, … })} />
+```
+
+**A screen publishes its own commands** into the ribbon's right cluster with `useRibbonCommands`.
+Use it when the command depends on screen state — a create button whose noun follows the active
+view — and keep a `md:hidden` copy in the page header, since a phone has no ribbon:
+
+```tsx
+useRibbonCommands(
+  React.useMemo(() => [{ key: "new", label: `New ${noun}`, primary: true, onSelect: go }], [noun, go]),
+);
+```
+
+Pass a memoised array. The registry re-renders its consumers on publish, so a fresh array literal
+each render publishes on every render.
+
+### 3.9 Shared schemas (`@shared`)
 
 `import { finalInvoice } from "@shared"` gives you the **same Zod objects the
 Express API validates with** — that is the whole point of `packages/shared`, and
@@ -440,7 +486,9 @@ it needs a formatter before it reaches the DOM.
 - [ ] `npm run lint`, `npm test`, `npm run check:contrast`, `npm run check:motion`, `npm run check:palette`, `npm run check:docs`, `npm run check:schemas`, `npm run build`, `npm run check:bundle`, `npm run check:shared` and `npm run test:e2e` all pass in `client/`.
 - [ ] Screen registered in `app.tsx` via `lazyNamed(...)`; **no** new `manualChunks` bucket (§3.7).
 - [ ] RBAC action is **`edit`**, not `update` (matches the backend).
-- [ ] Route added in `app.tsx` + `NAV`; `screen-registry.json` updated only when the page is real.
+- [ ] Route added in `app.tsx`; **`screen-registry.json` updated in the same commit** — the ribbon
+      filters on `module_key`, so an unregistered route is visible to everyone (§3.1, §3.8).
+- [ ] A new hub section is added to `areas.ts` and the hub builds its tabs with `hubTabs()` (§3.8).
 
 ---
 

@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { CostingPage, CostTrackingPage, CashRequestsPage, RegiePage } from "./pages";
 
 export function CostingHub() {
@@ -6,12 +7,12 @@ export function CostingHub() {
     <TabbedHub
       eyebrow="Costing"
       basePath="/costing"
-      tabs={[
-        { key: "costing", label: "Costing", Component: CostingPage },
-        { key: "cost-tracking", label: "Cost tracking", Component: CostTrackingPage },
-        { key: "cash-requests", label: "Cash requests", Component: CashRequestsPage },
-        { key: "regie", label: "Régie", Component: RegiePage },
-      ]}
+      tabs={hubTabs("/costing", {
+        costing: CostingPage,
+        "cost-tracking": CostTrackingPage,
+        "cash-requests": CashRequestsPage,
+        regie: RegiePage,
+      })}
     />
   );
 }

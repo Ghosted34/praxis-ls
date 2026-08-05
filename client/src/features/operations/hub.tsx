@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { OperationsFilesPage } from "./operation-files";
 import { MilestonesPage } from "./milestones";
 import { TransitOrdersPage } from "./transit-orders";
@@ -10,16 +11,17 @@ export function OperationsHub() {
     <TabbedHub
       eyebrow="Operations"
       basePath="/operations"
-      tabs={[
-        { key: "files", label: "Files", Component: OperationsFilesPage },
-        { key: "milestones", label: "Milestones", Component: MilestonesPage },
-        { key: "transit-orders", label: "Transit orders", Component: TransitOrdersPage },
-        { key: "delivery-notes", label: "Delivery notes", Component: DeliveryNotesPage },
-        // Configuration rather than day-to-day work, so it sits last — but inside
-        // Operations, because a service type without a milestone template yields
-        // dossiers with no chain, and that's an operations problem to notice.
-        { key: "service-types", label: "Service types", Component: ServiceTypesPage },
-      ]}
+      // Service types sits last in areas.ts — configuration rather than
+      // day-to-day work, but inside Operations, because a service type without a
+      // milestone template yields dossiers with no chain, and that's an
+      // operations problem to notice.
+      tabs={hubTabs("/operations", {
+        files: OperationsFilesPage,
+        milestones: MilestonesPage,
+        "transit-orders": TransitOrdersPage,
+        "delivery-notes": DeliveryNotesPage,
+        "service-types": ServiceTypesPage,
+      })}
     />
   );
 }

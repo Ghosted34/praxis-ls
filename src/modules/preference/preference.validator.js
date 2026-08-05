@@ -19,22 +19,43 @@ const appearance = z.object({
   fontMono: font,
 });
 
-function validateAppearance(req, res, next) {
-  const parsed = appearance.safeParse(req.body ?? {});
-  if (!parsed.success) {
-    return res.status(422).json({
-      error: {
-        code: "VALIDATION_FAILED",
-        message: "Invalid request body",
-        details: parsed.error.flatten().fieldErrors,
-      },
-    });
-  }
-  // The service distinguishes "absent" (leave alone) from "null" (delete) by
-  // key presence, so guarantee the invariant it relies on rather than inheriting
-  // it: any key whose parsed value is undefined is stripped here.
-  req.body = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined));
-  return next();
+/**
+ * The shell arrangement. `railPins` is bounded on BOTH axes because it is the
+ * one field here a client could grow without limit: the rail is a strip of
+ * icons roughly a dozen tall, so a request carrying two hundred is not a
+ * preference, and the row it would write is billed to the tenant's database
+ * rather than to whoever sent it. The keys are opaque to the server (the client
+ * owns which shortcut a key names), so length is the only check worth making —
+ * an allow-list here would mean redeploying the API to add a shortcut.
+ */
+const shell = z.object({
+  ribbonPinned: z.boolean().nullable().optional(),
+  railPins: z.array(z.string().min(1).max(64)).max(16).nullable().optional(),
+  railHintSeen: z.boolean().nullable().optional(),
+});
+
+/** Parse, reject, and strip absent keys — the shape the services rely on. */
+function validate(schema) {
+  return function validateBody(req, res, next) {
+    const parsed = schema.safeParse(req.body ?? {});
+    if (!parsed.success) {
+      return res.status(422).json({
+        error: {
+          code: "VALIDATION_FAILED",
+          message: "Invalid request body",
+          details: parsed.error.flatten().fieldErrors,
+        },
+      });
+    }
+    // The services distinguish "absent" (leave alone) from "null" (delete) by
+    // key presence, so guarantee the invariant they rely on rather than
+    // inheriting it: any key whose parsed value is undefined is stripped here.
+    req.body = Object.fromEntries(Object.entries(parsed.data).filter(([, v]) => v !== undefined));
+    return next();
+  };
 }
 
-module.exports = { validateAppearance };
+const validateAppearance = validate(appearance);
+const validateShell = validate(shell);
+
+module.exports = { validateAppearance, validateShell };

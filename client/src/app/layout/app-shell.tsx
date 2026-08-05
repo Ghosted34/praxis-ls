@@ -59,6 +59,52 @@ function useVisibleNav(): NavGroup[] {
 }
 
 
+/**
+ * LIVE / TEST. Lifted out of the shell's markup when the utility cluster moved
+ * into the title bar — it is the one control in there whose colours carry
+ * meaning (a sandbox session must never be mistaken for a live one), so it is
+ * worth being a named component rather than forty lines inline.
+ *
+ * `--ok` / `--warn` rather than raw emerald/amber: two of the 122 palette
+ * bypasses F14 counted were in this exact control, in the shell itself.
+ */
+function EnvToggle({ env, onSwitch }: { env: string; onSwitch: (e: "live" | "sandbox") => void }) {
+  return (
+    <div
+      className="hidden items-center rounded-md border p-0.5 text-[11px] font-semibold sm:inline-flex"
+      role="group"
+      aria-label="Data environment"
+    >
+      <button
+        type="button"
+        onClick={() => onSwitch("live")}
+        aria-pressed={env !== "sandbox"}
+        className={cn(
+          "rounded-sm px-2 py-1 transition-colors",
+          env !== "sandbox"
+            ? "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        LIVE
+      </button>
+      <button
+        type="button"
+        onClick={() => onSwitch("sandbox")}
+        aria-pressed={env === "sandbox"}
+        className={cn(
+          "rounded-sm px-2 py-1 transition-colors",
+          env === "sandbox"
+            ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
+            : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        TEST
+      </button>
+    </div>
+  );
+}
+
 /** Initials from a name or email local-part. */
 function initialsOf(nameOrEmail?: string | null): string {
   if (!nameOrEmail) return "?";
@@ -627,22 +673,70 @@ export function AppShell() {
         Skip to main content
       </a>
 
-      {/* Top command bar */}
-      <header className="lux-topbar relative z-40 flex h-[66px] flex-none items-center gap-3 px-4 md:px-6">
+      {/*
+        ── THE TITLE BAR ──────────────────────────────────────────────────────
+        In an installed window this IS the title bar: `display_override:
+        ["window-controls-overlay"]` (src/routes/pwa.js) tells the OS to stop
+        drawing one and hand the strip to the page, and `.wco` insets this row
+        past the caption buttons using env(titlebar-area-*) — which is what
+        makes it correct with the controls on the right (Windows) or the left
+        (macOS) without a line of platform code.
+
+        Everywhere else — a browser tab, and every mobile browser, none of which
+        implement WCO — the env() fallbacks resolve to zero and this is simply
+        the app's utility bar. One component, one code path.
+
+        WHAT MOVED HERE, and why it is worth doing. Search, the environment
+        toggle, notifications and the account menu used to sit in the 66px nav
+        row below. An installed window was therefore spending a whole band of
+        chrome on a title it already knew, while the row that carries the
+        product's actual navigation fought for width. Moving the utility cluster
+        into space the OS was wasting gives the nav row back its full width and
+        is the entire point of adopting WCO.
+
+        The strip drags the window (see `.wco` in index.css); every interactive
+        child opts out via the `:is(button, a, input…)` rule there, which
+        top-shell.test.tsx pins.
+      */}
+      <div className="wco wco-surface relative z-40 flex flex-none items-center gap-2 px-3">
+        <div className="wco-art" aria-hidden />
         <button
           type="button"
-          className="grid h-9 w-9 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
+          className="grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground md:hidden"
           onClick={() => setSidebarOpen(true)}
           aria-label="Open menu"
         >
-          <MenuIcon width={20} height={20} />
+          <MenuIcon width={18} height={18} />
         </button>
         <Brand name={brandName} logoUrl={branding.logoUrl} />
+        {/* The drag handle. An empty flex-1 rather than a padded element: it is
+            the only region a user can reliably grab to move the window, so it
+            gets whatever width is left rather than a fixed amount. */}
+        <div className="flex-1" />
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setPaletteOpen(true)}
+            className="hidden items-center gap-2 rounded-lg border bg-accent/40 px-3 py-1.5 text-muted-foreground transition-colors hover:text-foreground lg:flex"
+            title="Search (⌘K)"
+          >
+            <SearchIcon width={14} height={14} />
+            <span className="text-xs">Search…</span>
+            <span className="ml-4 rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
+          </button>
+          <EnvToggle env={env} onSwitch={switchEnv} />
+          <ThemeToggle />
+          <span className="hidden md:inline-flex">
+            <QuickActionsMenu badge={unread.messages} />
+          </span>
+          <NotificationBell count={unread.notifications} onChange={unread.reload} />
+          <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
+        </div>
+      </div>
 
-        {/* Inline primary nav (desktop) — Control Tower now sits directly beside
-            the logo (the brand text block was removed), so it starts tight to the
-            mark and the rest of the bar has room to align. */}
-        <nav className="ml-2 hidden min-w-0 items-center gap-0.5 md:flex" aria-label="Areas">
+      {/* Navigation row — nothing but navigation now, and the full width of the
+          window to lay it out in. Hidden below md, where BottomNav owns it. */}
+      <header className="lux-topbar relative z-30 hidden h-[52px] flex-none items-center gap-3 px-4 md:flex md:px-6">
+        <nav className="flex min-w-0 items-center gap-0.5" aria-label="Areas">
           {topbarAreas.map(({ group, from }) => (
             <NavArea
               key={group.heading}
@@ -659,65 +753,6 @@ export function AppShell() {
           <AllAreasMenu />
         </nav>
 
-        <div className="ml-auto flex items-center gap-3">
-          <button
-            onClick={() => setPaletteOpen(true)}
-            className="hidden items-center gap-2 rounded-xl border bg-accent/40 px-3 py-2 text-muted-foreground lg:flex"
-            title="Search (⌘K)"
-          >
-            <span className="text-xs">Search…</span>
-            <span className="ml-6 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
-          </button>
-          {/* Raw `emerald-500` / `amber-500` here were two of the 122 palette
-              bypasses F14 counted, in the shell itself. `--ok` / `--warn` are
-              the same decision in tokens, so they follow the AA retune and a
-              tenant's dark theme rather than Tailwind's defaults. */}
-          <div className="hidden items-center rounded-md border p-0.5 text-xs font-semibold sm:inline-flex" role="group" aria-label="Data environment">
-            <button
-              type="button"
-              onClick={() => switchEnv("live")}
-              aria-pressed={env !== "sandbox"}
-              className={cn(
-                "rounded-sm px-2.5 py-1.5 transition-colors",
-                env !== "sandbox"
-                  ? "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              LIVE
-            </button>
-            <button
-              type="button"
-              onClick={() => switchEnv("sandbox")}
-              aria-pressed={env === "sandbox"}
-              className={cn(
-                "rounded-sm px-2.5 py-1.5 transition-colors",
-                env === "sandbox"
-                  ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
-                  : "text-muted-foreground hover:text-foreground",
-              )}
-            >
-              TEST
-            </button>
-          </div>
-          <ThemeToggle />
-          {/*
-            Quick actions — the desktop home for what the floating cluster
-            carries on touch (Phase 5, F9). `hidden md:flex` is the mirror of
-            FloatingActions' `md:hidden`: exactly one of the two is mounted at
-            any width, so neither surface duplicates the other.
-
-            It carries the MESSAGES count, not the notifications one. Messages
-            was deliberately never duplicated into the top bar because it lived
-            on the floating pin — so retiring that pin from desktop would have
-            left a desktop user with no unread-messages indicator at all.
-          */}
-          <span className="hidden md:inline-flex">
-            <QuickActionsMenu badge={unread.messages} />
-          </span>
-          <NotificationBell count={unread.notifications} onChange={unread.reload} />
-          <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
-        </div>
       </header>
 
       {/*

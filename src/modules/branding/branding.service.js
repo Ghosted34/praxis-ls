@@ -214,6 +214,13 @@ const PWA_KEYS = {
   installBody: "install_body",
   installIosBody: "install_ios_body",
   installButton: "install_button",
+  // installed window title bar (window-controls-overlay)
+  titlebarMode: "titlebar_mode",
+  titlebarLight: "titlebar_light",
+  titlebarDark: "titlebar_dark",
+  titlebarImageUrl: "titlebar_image_url",
+  titlebarImageOpacity: "titlebar_image_opacity",
+  titlebarBlur: "titlebar_blur",
   // offline + update
   offlineText: "offline_text",
   offlineReadyText: "offline_ready_text",
@@ -233,6 +240,7 @@ const {
   PWA_TEXT_DEFAULT_MAX,
   PWA_DEFAULTS,
   effectivePwa,
+  resolveTitlebar,
   clamp,
 } = require("@praxis/shared").pwaDesign;
 
@@ -327,6 +335,7 @@ module.exports = {
   setPwa,
   uploadAppIcon,
   effectivePwa,
+  resolveTitlebar,
   PWA_KEYS,
   PWA_ENUMS,
   PWA_RANGES,

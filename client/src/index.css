@@ -1200,6 +1200,102 @@
    composes with any of the marks above. */
 .splash-mesh-layer { animation: splash-drift 6s ease-in-out infinite; }
 
+/**
+ * ── WINDOW CONTROLS OVERLAY ───────────────────────────────────────────────────
+ *
+ * With `display_override: ["window-controls-overlay"]` the OS stops drawing a
+ * title bar and gives the strip to the page. The browser then exposes where the
+ * caption buttons ended up through four env() variables, and the whole layout
+ * problem reduces to: keep our content out of that region.
+ *
+ * WHY PADDING RATHER THAN `position: fixed`. Windows puts the buttons on the
+ * right, macOS on the left, and a fixed element positioned from
+ * `titlebar-area-x` would need the rest of the app pushed down to compensate.
+ * Insetting an ordinary in-flow bar handles both platforms with no JS, no
+ * platform sniffing and no layout offset to keep in sync:
+ *
+ *   left inset  = titlebar-area-x                        (0 on Windows, ~80 on macOS)
+ *   right inset = width − titlebar-area-x − titlebar-area-width  (the buttons)
+ *
+ * Every fallback resolves the insets to zero, so in a browser tab — and on
+ * every mobile browser, none of which implement WCO — this is just a bar.
+ *
+ * HEIGHT is ours, not the OS's. The env height (~33-40px) describes the caption
+ * buttons, not what the strip must be; the whole window client area belongs to
+ * the page. So the bar takes the app's density-linked height and the buttons
+ * sit inside it, which is what Office does and why its title bar can hold a
+ * search field. `max()` keeps it from ever being shorter than the buttons.
+ */
+.wco {
+  --wco-h: 44px;
+  padding-left: env(titlebar-area-x, 0px);
+  padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
+  min-height: max(var(--wco-h), env(titlebar-area-height, 0px));
+}
+[data-density="compact"] .wco { --wco-h: 38px; }
+[data-density="comfortable"] .wco { --wco-h: 52px; }
+
+/**
+ * DRAG REGIONS. The strip drags the window; every interactive descendant must
+ * opt out or it becomes unclickable. Stated as a rule over element types rather
+ * than a class on each control, because the failure mode of forgetting one is a
+ * button that silently moves the window instead of doing its job — and the
+ * inverse failure (a window that cannot be moved at all) is worse still, which
+ * is why the strip itself is `drag` and children are exceptions.
+ *
+ * `client/src/app/layout/top-shell.test.tsx` asserts this holds for every
+ * interactive element actually rendered in the strip.
+ */
+.wco { -webkit-app-region: drag; app-region: drag; }
+.wco :is(button, a, input, select, textarea, [role="button"], [role="tab"], [tabindex]:not([tabindex="-1"])),
+.wco .no-drag {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/**
+ * The title bar's own surface. `--titlebar-bg` is written at runtime from the
+ * tenant's setting for the LIVE theme (lib/pwa-config.ts), which is also what
+ * the `<meta name="theme-color">` carries — so the strip the page paints and
+ * the strip the OS paints behind the caption buttons are the same colour and
+ * there is no seam between them.
+ */
+.wco-surface {
+  position: relative;
+  background: var(--titlebar-bg, var(--card));
+  isolation: isolate;
+}
+
+/**
+ * Optional artwork behind the bar. Deliberately a separate layer at low opacity
+ * with its own blur rather than a background on the bar itself: text and icons
+ * sit above it at full contrast, and the tenant can push the image around
+ * without ever dragging the foreground down with it.
+ */
+.wco-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: var(--titlebar-image, none);
+  background-size: cover;
+  background-position: center;
+  opacity: var(--titlebar-image-opacity, 0);
+  filter: blur(var(--titlebar-image-blur, 0px));
+  pointer-events: none;
+}
+
+/* A hairline under the whole shell, so the chrome reads as one band against the
+   content rather than as a floating strip. */
+.wco-surface::after {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */
 .shadow-l { box-shadow: var(--shadow-l); }
 @keyframes lux-slide-in-left {

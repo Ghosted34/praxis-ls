@@ -12,13 +12,13 @@ spreadsheet cannot hold.
 
 ## 1. Where it stands
 
-**162 of 215 fixed.** Criticals 45/46, Highs 71/80, Mediums 36/66, Lows 10/18.
+**163 of 217 fixed.** Criticals 45/46, Highs 71/80, Mediums 37/68, Lows 10/18.
 
 The most recent batch took the API-contract and data-integrity/perf clusters —
 twenty findings closed, one (API-F23) attempted and deliberately left open; see
 §10.
 
-The register grew from 205 to 215 rows: findings NEW-01…NEW-10 were discovered
+The register grew from 205 to 217 rows: findings NEW-01…NEW-12 were discovered
 during remediation, not by the original audits. NEW-08 is the largest of them
 and is worth reading before anything else — see §12. (There were two rows
 numbered `NEW-06`; the Security one is now `NEW-07`.)
@@ -659,6 +659,60 @@ running anything, and `beforeAll` throws a message naming the missing fixture.
 
 **Not executed here** — no Postgres in the session that wrote it. `ci.yaml` is
 YAML-validated and both suites parse-check; the job is the verification.
+
+---
+
+## 14. The client suite's failures were all about the environment
+
+Two rounds: 726/3 failed, then 735/6 after a new suite landed. **Not one of the
+failures was about the code under test** — which is itself the finding. Full
+detail is NEW-12; the transferable parts:
+
+- **A test that could only ever run on Linux.** `execFileSync("mkdir", ["-p", …])`
+  — there is no `mkdir` binary on Windows, it is a cmd.exe builtin, and
+  `execFileSync` uses no shell. Green on the CI runner nobody reads, red on the
+  machines everybody uses. The same file shelled to `npx` twice, which fails the
+  same way; `shell: true` would have fixed the launch and broken the arguments,
+  re-splitting `--name "Widget orders"` on the space. Both now call `node`
+  against the local bin scripts.
+
+- **A comment that was measurably false, again.** `config/shared-alias.ts` said
+  *"Vitest externalises node_modules and loads them through Node, whose exports
+  map hands BOTH sides ./index.cjs — already one instance."* Node does no such
+  thing: `require("zod")` gets `./index.cjs`, `import "zod"` gets `./index.js`,
+  and `instanceof` between them is false. It held only because vitest 4 put both
+  sides through CJS interop, and broke when the client was pinned to vitest 3
+  (c58b10f). **That is the third thing that pin has cost.** The alias now names
+  `./index.cjs` explicitly, which is one instance by construction whatever the
+  runner does.
+
+- **A shell rendered without the app's providers.** `top-shell.test.tsx` mounted
+  `AppShell` in a bare `MemoryRouter`; `useUnreadCounts` calls
+  `useQueryClient()`, which throws *during render*, so all six tests died before
+  asserting anything about the strip. It uses `renderScreen()` now. Worth
+  noticing that the harness's own comment predicted it — it gained
+  `ToastProvider` after the journal-entry form lost four assertions the same
+  way, and says so: *"the only path that exercised the harness was the only path
+  that could not see what it was missing."* **Anything that renders a shell
+  should go through the harness**, rather than assembling a subset of the root
+  providers and discovering which one is missing one hook at a time.
+
+- **An assertion that depended on where the developer sits.** An ETA rendering
+  `04 Jul 2026` is true at UTC and false in Douala. There is no timestamp that
+  fixes it — for a date to survive UTC-12…UTC+14 the UTC hour must be both `>= 12`
+  and `<= 9`. `vitest.config.ts` pins `TZ=UTC`.
+
+**The bug underneath that last one is real and is NOT fixed** — see **NEW-11**.
+A Postgres `date` leaves a WAT API as `…T23:00:00Z` and is formatted in the
+viewer's zone, so client and API only agree while they share a timezone. It
+needs a decision (serialise `date` as `YYYY-MM-DD` at the API? format with an
+explicit zone — the viewer's, the tenant's, or the *port's*?), not a patch.
+
+**On the vitest pin.** It has now caused two `tsc` errors, a Zod instance split,
+and — via the precise typing that fixed the first — exposed nine incomplete
+fixtures. The last of those was a net win. It is still the right call to stay on
+vite 5 + vitest 3 rather than take a build-tool major nobody can verify, but if
+PERF-S8 is ever done, do the vitest 4 move in the same change.
 
 ---
 

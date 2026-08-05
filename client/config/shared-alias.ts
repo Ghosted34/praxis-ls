@@ -89,6 +89,26 @@ export const SHARED_COMMONJS_INCLUDE = [/node_modules/, /packages[\\/]shared/];
  */
 export type ZodTarget = "bundler" | "node";
 
+/**
+ * One declared entry point out of a package.json, by condition.
+ *
+ * `kind` is `"import"` / `"require"` for the conditional exports map, or
+ * `"module"` / `"main"` for the legacy top-level fields. Returns null when the
+ * package does not declare that shape, so the caller can fall back to the
+ * directory rather than resolving to a path that does not exist.
+ */
+function readEntry(dir: string, kind: "import" | "require" | "module" | "main"): string | null {
+  const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as {
+    main?: string;
+    module?: string;
+    exports?: { "."?: { import?: string; require?: string } | string };
+  };
+  if (kind === "main" || kind === "module") return pkg[kind] ?? null;
+  const dot = pkg.exports?.["."];
+  if (!dot || typeof dot === "string") return null;
+  return dot[kind] ?? null;
+}
+
 export function resolveZod(clientDir: string, target: ZodTarget): string {
   const candidates = [
     path.resolve(clientDir, "../node_modules/zod"),
@@ -117,17 +137,37 @@ export function resolveZod(clientDir: string, target: ZodTarget): string {
   //     the dev server AND the production build. Pinning the file makes both
   //     sides resolve to the same module and the check passes.
   //
-  //   node (Vitest): pin the DIRECTORY. Vitest externalises node_modules and
-  //     loads them through Node, whose exports map hands BOTH sides
-  //     ./index.cjs — already one instance. Forcing the ESM file here instead
-  //     splits them and fails form.test.tsx's toBeInstanceOf(z.ZodType).
-  if (target === "node") return found;
+  //   node (Vitest): pin the CJS entry FILE, for the mirror-image reason.
+  //
+  //     This used to return the DIRECTORY, on the stated grounds that "Vitest
+  //     externalises node_modules and loads them through Node, whose exports
+  //     map hands BOTH sides ./index.cjs — already one instance". That is not
+  //     what Node does, and it is measurable in four lines:
+  //
+  //       require("zod")        -> zod/index.cjs
+  //       await import("zod")   -> zod/index.js
+  //       cjs.z.ZodType === esm.z.ZodType   ->   false
+  //
+  //     The conditional exports map answers `require` with ./index.cjs and
+  //     `import` with ./index.js, so a directory alias gives the test file's
+  //     `import { z } from "zod"` one module and packages/shared's
+  //     `require("zod")` another — two instances, and
+  //     form.test.tsx's `toBeInstanceOf(z.ZodType)` false. It held while the
+  //     client was on vitest 4, whose loader put both sides through CJS
+  //     interop, and stopped when the client was pinned to vitest 3 to match
+  //     vite 5. A resolution rule that depends on the runner's interop is a
+  //     rule that will break again on the next bump.
+  //
+  //     Naming ./index.cjs makes it one instance BY CONSTRUCTION, whatever the
+  //     runner does: Node's ESM-CJS interop hands an `import` of a .cjs file
+  //     the very same module object the CJS cache holds. Also measured —
+  //     with both sides on index.cjs, `instanceof` is true.
+  if (target === "node") {
+    const cjsEntry = readEntry(found, "require") ?? readEntry(found, "main");
+    return cjsEntry ? path.resolve(found, cjsEntry) : found;
+  }
 
-  const pkg = JSON.parse(fs.readFileSync(path.join(found, "package.json"), "utf8")) as {
-    module?: string;
-    exports?: { "."?: { import?: string } };
-  };
-  const esmEntry = pkg.module ?? pkg.exports?.["."]?.import;
+  const esmEntry = readEntry(found, "import") ?? readEntry(found, "module");
   // No ESM entry declared — a future Zod that ships ESM-only would land here,
   // and the directory is then already unambiguous.
   return esmEntry ? path.resolve(found, esmEntry) : found;

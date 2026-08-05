@@ -66,6 +66,7 @@ async function resolvePwaConfig(req) {
   const slug = (req.tenant && req.tenant.slug) || "platform";
   const fallback = () => ({
     slug,
+    brandTheme: "light",
     ...brandingService.effectivePwa(null, { name: req.tenant ? slug : DEFAULTS.name, primary: DEFAULTS.primary }),
   });
   if (!req.tenant) return fallback();
@@ -74,7 +75,14 @@ async function resolvePwaConfig(req) {
       brand: await brandingService.getBranding(c),
       pwa: await brandingService.getPwa(c),
     }));
-    return { slug, ...brandingService.effectivePwa(pwa, { ...brand, name: brand.name || slug }) };
+    // `brandTheme` rides along so the manifest can resolve the title bar for
+    // the tenant's default theme — it is read before any of our code runs, so
+    // there is no live theme to ask.
+    return {
+      slug,
+      brandTheme: brand.theme === "dark" ? "dark" : "light",
+      ...brandingService.effectivePwa(pwa, { ...brand, name: brand.name || slug }),
+    };
   } catch {
     return fallback();
   }
@@ -251,6 +259,7 @@ router.get(
   asyncHandler(async (req, res) => {
     const cfg = await resolvePwaConfig(req);
     const v = iconVersion(cfg);
+    const titlebar = brandingService.resolveTitlebar(cfg, cfg.brandTheme);
     const manifest = {
       // `id` is what the browser uses to decide whether this is the SAME app it
       // already installed. It must stay "/" through every design change —
@@ -263,8 +272,39 @@ router.get(
       start_url: "/",
       scope: "/",
       display: cfg.display,
+      /**
+       * WINDOW CONTROLS OVERLAY. Asks the OS to stop drawing a title bar and
+       * hand that strip to the page, which is what lets the app carry its own
+       * brand row, search and environment toggle up there instead of wasting a
+       * band of chrome on a duplicate of the window title.
+       *
+       * `display_override` is a PREFERENCE LIST, and `display` below stays as
+       * the floor: a browser that does not implement WCO (every mobile one, and
+       * desktop Safari) falls straight through to standalone and loses nothing.
+       * That is also why the CSS uses `env(titlebar-area-*)` with fallbacks
+       * rather than assuming the strip exists.
+       *
+       * Only meaningful for a windowed display mode — a fullscreen or in-browser
+       * app has no window controls to overlay, so we do not claim otherwise.
+       */
+      display_override:
+        cfg.display === "standalone" || cfg.display === "minimal-ui"
+          ? ["window-controls-overlay", cfg.display]
+          : [cfg.display],
       orientation: cfg.orientation,
-      theme_color: cfg.themeColor,
+      /**
+       * With WCO on, this paints ONLY the strip behind the minimise/maximise/
+       * close buttons — the one part of the bar the page may not draw in. So it
+       * has to be the title bar's own base colour, not the brand accent: set it
+       * to the accent (as it was) and an installed window gets a loud coloured
+       * band with the app's real bar butted against it, which is precisely the
+       * bolted-on seam this is meant to remove.
+       *
+       * Resolved against the tenant's DEFAULT theme, because this value is read
+       * before any of our code runs. Once the app boots it re-writes the meta
+       * tag for the live theme (lib/pwa-config.ts, applyPwaDocument).
+       */
+      theme_color: titlebar.base,
       background_color: cfg.backgroundColor,
       icons: [
         { src: `/icons/app-icon-192.png?v=${v}`, sizes: "192x192", type: "image/png", purpose: "any" },

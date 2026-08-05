@@ -281,14 +281,37 @@ jobs:
         run: |
           set -euo pipefail
           export PGPASSWORD=ci-only-not-a-secret
-          entity=$(psql -h localhost -U praxis-admin -d tenant_citenant -tAc "
-            SET search_path = live, public;
-            INSERT INTO corporate_entity (code, legal_name, country_code)
-                 VALUES ('CITEST', 'CI Test Entity', 'CM')
-            ON CONFLICT (code) DO UPDATE SET legal_name = EXCLUDED.legal_name
-              RETURNING entity_id;")
+          # search_path via PGOPTIONS, not a `SET` statement in the -c string.
+          #
+          # `psql -tAc "SET …; INSERT … RETURNING id;"` prints the COMMAND TAG of
+          # every statement alongside the rows, so the capture was not a uuid —
+          # it was the three lines "SET", the uuid, and "INSERT 0 1". Those got
+          # interpolated into the next query and Postgres said exactly that:
+          #
+          #     invalid input syntax for type uuid: "SET
+          #     7487d69c-… INSERT 0 1"
+          #
+          # Wrapping the INSERT in a CTE and SELECTing from it makes the
+          # top-level statement a SELECT, which prints rows and no tag — so -tA
+          # yields the bare uuid and nothing else.
+          export PGOPTIONS='--search_path=live,public'
+          entity=$(psql -h localhost -U praxis-admin -d tenant_citenant \
+            -v ON_ERROR_STOP=1 -tAqc "
+            WITH ins AS (
+              INSERT INTO corporate_entity (code, legal_name, country_code)
+                   VALUES ('CITEST', 'CI Test Entity', 'CM')
+              ON CONFLICT (code) DO UPDATE SET legal_name = EXCLUDED.legal_name
+                RETURNING entity_id
+            ) SELECT entity_id FROM ins;")
+
+          # Fail loudly rather than carrying an empty/garbled id into the next
+          # statement — that is the whole failure mode above.
+          case "$entity" in
+            ????????-????-????-????-????????????) ;;
+            *) echo "::error::expected a uuid from corporate_entity, got: '$entity'"; exit 1 ;;
+          esac
+
           psql -h localhost -U praxis-admin -d tenant_citenant -v ON_ERROR_STOP=1 -c "
-            SET search_path = live, public;
             INSERT INTO journal (code, name, entity_id) VALUES
               ('BQ','Banque','$entity'), ('VT','Ventes','$entity'),
               ('AC','Achats','$entity'), ('OD','Operations diverses','$entity')

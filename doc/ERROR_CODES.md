@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (219)
+## All codes (216)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -51,7 +51,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_DECISION` | 422 | 1× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
 | `BAD_FILE` | 400 | 1× | — |
-| `BAD_IMAGE` | 400 | 4× | — |
+| `BAD_FONT` | 422 | 3× | — |
+| `BAD_IMAGE` | 400 | 5× | — |
 | `BAD_INPUT` | 422 | 4× | — |
 | `BAD_KIND` | 422 | 1× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
@@ -59,6 +60,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_ORIGINAL` | 422 | 1× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
+| `BAD_PWA_VALUE` | 422 | 2× | — |
 | `BAD_RATE` | 422 | 3× | — |
 | `BAD_REPLACEMENT` | 422 | 1× | — |
 | `BAD_ROLE` | 422 | 1× | — |
@@ -84,7 +86,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CLIENT_REQUIRED` | 422 | 2× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
-| `COMPENSATION` | 422 | 1× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 1× | — |
@@ -98,8 +99,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |
-| `ENTRY_TOO_FEW_LINES` | 422 | 1× | — |
-| `ENTRY_UNBALANCED` | 422 | 1× | — |
 | `EXISTS` | 409 | 1× | — |
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
@@ -108,9 +107,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
-| `IMAGE_TOO_LARGE` | 413 | 4× | — |
+| `IMAGE_TOO_LARGE` | 413 | 5× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
-| `INVALID_AMOUNT` | 422 | 8× | — |
+| `INVALID_AMOUNT` | 422 | 7× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
@@ -128,8 +127,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `IN_USE` | 409 | 1× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
-| `LINE_NO_ACCOUNT` | 422 | 1× | — |
-| `LINE_ONE_SIDE` | 422 | 1× | — |
 | `LOCKED` | 422 | 14× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
@@ -236,7 +233,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_REPORT` | 404, 422 | 4× | — |
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
-| `UNSUPPORTED_IMAGE` | 400, 415 | 4× | — |
+| `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `VALIDATION_ERROR` | 422 | 99× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

@@ -35,17 +35,32 @@ import type { ShellPrefs } from "@/lib/preferences";
 const saved: Partial<ShellPrefs>[] = [];
 const access = { current: null as NavAccess | null };
 const stored = { current: { ribbonPinned: null, railPins: null, railHintSeen: true } as ShellPrefs };
+/** Make the preferences read fail, which is NOT the same as it returning
+ *  nothing — see "a failed preferences read" below. */
+const prefsFail = { current: false };
+/** Hold the permissions read open, so the "still loading" state can be asserted
+ *  as itself rather than inferred from a frame that happens to render first. */
+const accessPending = { current: false };
 
 vi.mock("@/lib/nav-access", async () => {
   const actual = await vi.importActual<typeof import("@/lib/nav-access")>("@/lib/nav-access");
-  return { ...actual, fetchNavAccess: async () => access.current ?? actual.NO_ACCESS };
+  return {
+    ...actual,
+    fetchNavAccess: () =>
+      accessPending.current
+        ? new Promise<never>(() => {}) // never settles
+        : Promise.resolve(access.current ?? actual.NO_ACCESS),
+  };
 });
 
 vi.mock("@/lib/preferences", async () => {
   const actual = await vi.importActual<typeof import("@/lib/preferences")>("@/lib/preferences");
   return {
     ...actual,
-    fetchShellPrefs: async () => stored.current,
+    fetchShellPrefs: async () => {
+      if (prefsFail.current) throw new Error("network");
+      return stored.current;
+    },
     saveShellPrefs: async (patch: Partial<ShellPrefs>) => {
       saved.push(patch);
       stored.current = { ...stored.current, ...patch };
@@ -111,6 +126,8 @@ beforeAll(() => {
 
 beforeEach(() => {
   saved.length = 0;
+  prefsFail.current = false;
+  accessPending.current = false;
   access.current = null;
   stored.current = { ribbonPinned: null, railPins: null, railHintSeen: true };
 });
@@ -267,6 +284,30 @@ describe("a screen's commands sit in row B, right-aligned", () => {
     return null;
   }
 
+  /**
+   * Only one screen publishes today, so on an area's landing page and on the
+   * five single-screen areas the cluster had no children and rendered an empty
+   * box. A region reserved for something that never arrives reads as a missing
+   * feature; a nav row with no commands beside it is just a nav row.
+   */
+  it("renders no cluster at all when the screen has nothing to offer", async () => {
+    access.current = SIX_TABS;
+    // The Control Tower: a single-screen area, so there is no "overview" link
+    // to fall back on and nothing has been published.
+    const { container } = renderRibbon("/");
+    await screen.findByRole("navigation", { name: "Workflow" });
+
+    const rowB = container.querySelectorAll(".ribbon-row")[1];
+    expect(rowB).toBeTruthy();
+    expect(rowB.children).toHaveLength(1); // the nav cluster, and nothing beside it
+  });
+
+  it("keeps the area overview within reach from a section, which is not nothing", async () => {
+    access.current = TWO_TABS;
+    renderRibbon("/wms/inventory");
+    expect(await screen.findByRole("link", { name: /Warehouse overview/ })).toBeInTheDocument();
+  });
+
   it("shows what the mounted screen published, and drops it when the screen unmounts", async () => {
     access.current = TWO_TABS;
     const { rerender } = renderChrome(
@@ -358,6 +399,40 @@ describe("the icon rail", () => {
     expect(saved).toEqual([]);
   });
 
+  /**
+   * A FAILED READ IS NOT A FIRST LOGIN, and the two are indistinguishable from
+   * the preference object alone: both leave every key null.
+   *
+   * Get this wrong and a returning user whose preferences read blipped — one
+   * timeout, on a screen they were not looking at — loses the one-time hint
+   * permanently, because the rail fires it and records it. This is the same
+   * defect as the timing one `ready` fixes, reached by a different route: there
+   * the answer had not arrived yet, here it never will.
+   */
+  it("does not spend the hint when the preferences read fails", async () => {
+    access.current = SIX_TABS;
+    prefsFail.current = true;
+    renderChrome(<IconRail />, "/");
+
+    const edit = await screen.findByRole("link", { name: "Edit shortcuts" });
+    // The rail still works — the fixed entries do not depend on preferences.
+    expect(await screen.findByRole("link", { name: "Control Tower" })).toBeInTheDocument();
+    await waitFor(() => expect(edit.className).not.toContain("rail-jiggle"));
+    // And nothing was written, so a real first login still gets its hint once
+    // the read succeeds.
+    expect(saved).toEqual([]);
+  });
+
+  it("falls back to the starter pins when the preferences read fails", async () => {
+    // Suppressing the hint must not also empty the rail: `railPins` is still
+    // null, which the rail answers with its starter set.
+    access.current = SIX_TABS;
+    prefsFail.current = true;
+    renderChrome(<IconRail />, "/");
+    const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
+    await waitFor(() => expect(within(rail).getAllByRole("link").length).toBeGreaterThan(3));
+  });
+
   it("is axe-clean", async () => {
     access.current = SIX_TABS;
     const { container } = renderChrome(<IconRail />, "/");
@@ -372,6 +447,49 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     renderChrome(<BottomNav onSearch={() => {}} />, "/");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
     await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(7)); // six + Search
+  });
+
+  /**
+   * THE BAR MUST SAY WHICH OF THREE THINGS HAPPENED. It only read `access`, and
+   * `buildRibbon(NO_ACCESS)` is empty — so "still loading", "the read failed"
+   * and "you genuinely have nothing" all rendered one Search button and nothing
+   * else. On a phone the bottom bar IS the navigation, so a bar that looks
+   * finished and is empty is the worst of the three to show.
+   */
+  it("reads as unfinished while the permissions read is in flight", async () => {
+    access.current = SIX_TABS;
+    accessPending.current = true;
+    renderChrome(<BottomNav onSearch={() => {}} />, "/");
+
+    const bar = await screen.findByRole("navigation", { name: "Primary" });
+    expect(bar).toHaveAttribute("aria-busy", "true");
+    // Nothing to press but Search — and crucially the placeholders are not
+    // buttons, so a thumb cannot land on a control that does nothing.
+    expect(within(bar).getAllByRole("button")).toHaveLength(1);
+    expect(within(bar).getByText("Loading navigation…")).toBeInTheDocument();
+  });
+
+  it("offers the unfiltered drawer when the read comes back with nothing", async () => {
+    // Whether that is a failure or an honest empty answer, stranding a phone
+    // user with one Search button is not an answer. The drawer lists every area
+    // in the product and is not permission-filtered.
+    const onMenu = vi.fn();
+    access.current = grant({});
+    renderChrome(<BottomNav onSearch={() => {}} onMenu={onMenu} />, "/");
+
+    const bar = await screen.findByRole("navigation", { name: "Primary" });
+    await waitFor(() => expect(bar).not.toHaveAttribute("aria-busy"));
+    await userEvent.click(within(bar).getByRole("button", { name: /All areas/ }));
+    expect(onMenu).toHaveBeenCalled();
+  });
+
+  it("shows the real bar once the read lands, with no placeholders left", async () => {
+    access.current = TWO_TABS;
+    renderChrome(<BottomNav onSearch={() => {}} />, "/");
+    const bar = await screen.findByRole("navigation", { name: "Primary" });
+    await waitFor(() => expect(within(bar).getAllByRole("button")).toHaveLength(3)); // two + Search
+    expect(bar).not.toHaveAttribute("aria-busy");
+    expect(within(bar).queryByText("Loading navigation…")).toBeNull();
   });
 
   it("opens a family into a sheet of its destinations", async () => {

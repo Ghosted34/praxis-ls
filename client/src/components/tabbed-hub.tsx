@@ -12,8 +12,17 @@
  *
  * It survives BELOW `md`, because that is where the ribbon does not exist — a
  * phone gets the bottom nav and a family sheet, and inside an area the strip is
- * still how you move between sections. One `md:hidden` rather than two
+ * still how you move between sections. One conditional class rather than two
  * components, so the two can never disagree about what the sections are.
+ *
+ * AND IT IS A FALLBACK, NOT AN UNCONDITIONAL REMOVAL. The ribbon renders
+ * nothing until the permissions read settles, and nothing at all if that read
+ * failed. Hiding the strip on every desktop regardless therefore had a state
+ * where a user stood inside a hub with no row B and no tabs — unable to reach
+ * another section of the screen they were already looking at, with no error to
+ * explain it. So the strip hides only while the ribbon is demonstrably carrying
+ * this area's sections; the rest of the time it is there. Not a duplicate when
+ * the chrome works, a fallback when it does not.
  *
  * The tab list itself comes from `app/layout/areas.ts`, which is also what the
  * ribbon reads. `areas.test.ts` pins that a hub's tabs and the ribbon's row are
@@ -26,15 +35,44 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { TabList, TabsRoot, TabsContent } from "@/components/ui/tabs";
 import type { HubTab } from "@/app/layout/areas";
+import { buildRibbon } from "@/app/layout/ribbon-model";
+import { useShell } from "@/app/layout/shell-context";
 
 export type { HubTab };
 
 const HubTabsContext = React.createContext<React.ReactNode>(null);
 
 /** Renders the current hub's tab bar. Drop it in a page right under its header.
- *  Below `md` only — see the file header. */
+ *  Below `md`, and on desktop whenever the ribbon is not carrying this area's
+ *  sections — see the file header. */
 export function HubTabs() {
   return <>{React.useContext(HubTabsContext)}</>;
+}
+
+/**
+ * Is the ribbon currently showing this area's sections?
+ *
+ * The answer comes from `buildRibbon`, the same function the ribbon itself
+ * renders from, so the strip and the chrome cannot disagree about it. Deriving
+ * it a second way here — checking `access.modules` against the area's routes —
+ * would be a copy of the ribbon's placement rules that nothing keeps in step,
+ * and the failure mode of that copy is precisely the one this hook exists to
+ * prevent: a user with no tabs anywhere.
+ *
+ * WHILE THE READ IS IN FLIGHT the answer is "yes". The ribbon owns that window
+ * — it is one round trip, and showing the strip through it would mean a visible
+ * strip that disappears a moment later on every hub load, which is worse than
+ * the wait. Once the read settles, `families` is empty on failure and the strip
+ * comes back.
+ */
+function useRibbonCarries(basePath: string): boolean {
+  const { access, ready } = useShell();
+  return React.useMemo(() => {
+    if (!ready) return true;
+    return buildRibbon(access).some((f) =>
+      f.areas.some((a) => a.area.basePath === basePath && a.sections.length > 0),
+    );
+  }, [access, ready, basePath]);
 }
 
 /**
@@ -63,6 +101,11 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
     if (inPlace && section && tabs.some((t) => t.key === section)) setLocalKey(section);
   }, [inPlace, section, tabs]);
 
+  // Hidden on desktop ONLY while the ribbon is actually carrying this area's
+  // sections. Below `md` there is no ribbon, so the class never applies there
+  // and the strip is always the navigation.
+  const carried = useRibbonCarries(basePath);
+
   // Was a bare <div> of <button>s: no role="tablist", no role="tab", no
   // aria-selected and no arrow keys (audit F13, "Tabs are not tabs"). A screen
   // reader announced a row of unrelated buttons with no indication of which
@@ -75,7 +118,7 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   // than one Content per tab (only the active page is mounted, which is what
   // keeps a hub from fetching every tab's data at once).
   const tabsNode = (
-    <div className="md:hidden">
+    <div className={cn(carried && "md:hidden")}>
       <TabList label={`${eyebrow} sections`} tabs={tabs.map((t) => ({ value: t.key, label: t.label }))} />
     </div>
   );
@@ -84,7 +127,7 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
     <TabsRoot value={active.key} onValueChange={go} activationMode="manual">
       <HubTabsContext.Provider value={tabsNode}>
         {inlineTabs && (
-          <div className={cn("mb-4 md:hidden", pageShell.wide)}>
+          <div className={cn("mb-4", pageShell.wide)}>
             <div className="micro mb-2">{eyebrow}</div>
             {tabsNode}
           </div>

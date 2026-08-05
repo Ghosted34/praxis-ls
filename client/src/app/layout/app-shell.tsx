@@ -687,7 +687,9 @@ export function AppShell() {
         </div>
       </div>
 
-      <BottomNav onSearch={() => setPaletteOpen(true)} />
+      {/* `onMenu` is the bar's escape hatch when the permissions read yields no
+          families: the drawer is the complete, unfiltered index. */}
+      <BottomNav onSearch={() => setPaletteOpen(true)} onMenu={() => setSidebarOpen(true)} />
 
       {/* Surfaces row-action failures reported via lib/action-error. Retrofit
           for screens whose handlers had no catch — see

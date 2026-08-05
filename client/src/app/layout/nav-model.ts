@@ -1,11 +1,17 @@
 /**
- * The navigation map — data, not markup.
+ * The grouped nav map — data, not markup.
  *
- * Lifted out of `app-shell.tsx` in Phase 3 so the F9 fix has something to assert
- * against. The claim being made is "every one of the sixteen top-level areas is
- * reachable on desktop without opening an overlay", and that is a property of
- * this table plus `areaEntries` below; a test can pin it, which it could not
- * while the list was interleaved with 26 inline SVGs and a Radix menu.
+ * WHAT STILL READS THIS, now that the ribbon exists. Two surfaces that are
+ * deliberately NOT permission-filtered chrome: the ⌘K command palette, and the
+ * `< md` hamburger drawer. Both are complete indexes of the product's areas
+ * rather than a view of one user's access, and both are grouped by AREA (the
+ * sixteen headings below), not by the six workflow verbs the ribbon partitions
+ * on. The ribbon's own map is `areas.ts` + `GET /permissions/mine`.
+ *
+ * The tiered `TOPBAR` table that used to live here went with the menubar it
+ * described — the ribbon's second row reveals progressively by its own table
+ * (`REVEAL` in ribbon.tsx), and a list nothing renders is a list nobody
+ * maintains.
  *
  * Mirrors the target IA map (doc/FE_IA_HANDOFF.md).
  */
@@ -40,48 +46,14 @@ export const NAV: NavGroup[] = [
   { heading: "Settings & Admin", prefix: "/settings", items: [{ to: "/settings", label: "Settings & admin" }] },
 ];
 
-/** Viewport tiers, narrowest first. */
-export type Tier = "md" | "lg" | "xl" | "2xl";
-
 /**
- * Areas surfaced inline in the top bar, and the width each one earns.
- *
- * This is the F9 fix in one table. The old list was a flat four; the other
- * twelve areas were drawer-only at EVERY width, including 2560px — so desktop
- * users paid two clicks and a full-screen scrim to reach three quarters of the
- * product. Ordered by how often an operator uses the area, so a narrower window
- * loses the least-used one first rather than an arbitrary one.
- */
-export const TOPBAR: { heading: string; from: Tier }[] = [
-  { heading: "Overview", from: "md" },
-  { heading: "Operations", from: "md" },
-  { heading: "Finance", from: "md" },
-  { heading: "Fleet", from: "md" },
-  { heading: "Warehouse", from: "lg" },
-  { heading: "Sales & CRM", from: "xl" },
-  { heading: "Commercial", from: "xl" },
-  { heading: "Procurement", from: "2xl" },
-  { heading: "Costing", from: "2xl" },
-  { heading: "People & HR", from: "2xl" },
-];
-
-/** Tailwind cannot see a class name assembled at runtime, so the four variants
- *  are spelled out rather than templated. */
-export const TIER_CLASS: Record<Tier, string> = {
-  md: "hidden md:inline-flex",
-  lg: "hidden lg:inline-flex",
-  xl: "hidden xl:inline-flex",
-  "2xl": "hidden 2xl:inline-flex",
-};
-
-/**
- * Every destination in the product, flattened for the "All areas" menu.
+ * Every destination in the product, flattened.
  *
  * `Overview` is a grouping, not a destination, so its four screens appear as
- * themselves; the other fifteen areas are hubs and appear once each. The menu
- * lists ALL of them, including the ones already inline — an overflow bin that
- * holds only what did not fit makes the user work out which bucket a
- * destination is in, and a complete map does not.
+ * themselves; the other fifteen areas are hubs and appear once each. The result
+ * is a COMPLETE map — which is the property worth keeping: an index that holds
+ * only what did not fit somewhere else makes a user work out which bucket a
+ * destination is in, and this one never does.
  */
 export function areaEntries(nav: NavGroup[]): NavItem[] {
   return nav.flatMap((g) =>

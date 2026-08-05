@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import { PurchaseRequestsPage } from "./purchase-requests";
 import { PurchaseOrdersPage } from "./purchase-orders";
 import { GoodsReceivedPage } from "./goods-received";
@@ -9,12 +10,12 @@ export function ProcurementHub() {
     <TabbedHub
       eyebrow="Procurement"
       basePath="/procurement"
-      tabs={[
-        { key: "purchase-requests", label: "Requests", Component: PurchaseRequestsPage },
-        { key: "purchase-orders", label: "Purchase orders", Component: PurchaseOrdersPage },
-        { key: "goods-received", label: "Goods received", Component: GoodsReceivedPage },
-        { key: "supplier-invoices", label: "Supplier invoices", Component: SupplierInvoicesPage },
-      ]}
+      tabs={hubTabs("/procurement", {
+        "purchase-requests": PurchaseRequestsPage,
+        "purchase-orders": PurchaseOrdersPage,
+        "goods-received": GoodsReceivedPage,
+        "supplier-invoices": SupplierInvoicesPage,
+      })}
     />
   );
 }

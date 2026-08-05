@@ -1,14 +1,20 @@
 /**
- * Per-user appearance preferences (src/modules/preference).
+ * Per-user preferences (src/modules/preference) — appearance and shell.
  *
- * The behaviours worth pinning are the three that a careless refactor breaks
- * silently: absent ≠ null in the PUT body, only typography is writable, and a
- * font-family string is screened before it is written into a style attribute.
+ * The behaviours worth pinning for APPEARANCE are the three that a careless
+ * refactor breaks silently: absent ≠ null in the PUT body, only typography is
+ * writable, and a font-family string is screened before it is written into a
+ * style attribute.
+ *
+ * For SHELL it is one behaviour, and it is the one the icon rail is built on:
+ * "never chosen" (null) and "deliberately empty" ([]) are different answers,
+ * because the first is what makes the rail arrive pre-populated on a first
+ * login and the second is what lets someone clear it.
  */
 "use strict";
 
 const service = require("../../src/modules/preference/preference.service");
-const { validateAppearance } = require("../../src/modules/preference/preference.validator");
+const { validateAppearance, validateShell } = require("../../src/modules/preference/preference.validator");
 
 /** Minimal in-memory stand-in for the `user_preference` table. */
 function fakeClient() {
@@ -174,5 +180,108 @@ describe("appearance validator", () => {
     const { req, next } = run({});
     expect(next).toHaveBeenCalled();
     expect(req.body).toEqual({});
+  });
+});
+
+describe("shell preferences", () => {
+  it("returns every key as null before the user has arranged anything", async () => {
+    const c = fakeClient();
+    await expect(service.getShell(c, USER)).resolves.toEqual({
+      ribbonPinned: null,
+      railPins: null,
+      railHintSeen: null,
+    });
+  });
+
+  it("round-trips the ribbon's pinned state", async () => {
+    const c = fakeClient();
+    await expect(service.setShell(c, { userId: USER, ribbonPinned: false })).resolves.toMatchObject({
+      ribbonPinned: false,
+    });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ ribbonPinned: false });
+
+    await service.setShell(c, { userId: USER, ribbonPinned: true });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ ribbonPinned: true });
+  });
+
+  /**
+   * `false` is a value, not an absence. A service that tested truthiness rather
+   * than `undefined` would store "pinned" and silently discard every attempt to
+   * collapse the ribbon — a bug that reads as "the button does nothing".
+   */
+  it("stores false rather than treating it as no answer", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, ribbonPinned: false, railHintSeen: false });
+    expect([...c.rows.values()]).toEqual([false, false]);
+  });
+
+  /**
+   * THE DISTINCTION THE RAIL DEPENDS ON. null means "never chosen", and the
+   * client answers that with its starter set; [] means "I cleared it". Collapse
+   * the two and either the rail can never be emptied, or it arrives empty on
+   * everyone's first login.
+   */
+  it("keeps 'never chosen' and 'deliberately empty' apart", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, railPins: [] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ railPins: [] });
+
+    await service.setShell(c, { userId: USER, railPins: null });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({ railPins: null });
+  });
+
+  it("leaves untouched keys alone", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, ribbonPinned: false, railPins: ["finance"], railHintSeen: true });
+    await expect(service.setShell(c, { userId: USER, railPins: ["finance", "fleet"] })).resolves.toEqual({
+      ribbonPinned: false,
+      railPins: ["finance", "fleet"],
+      railHintSeen: true,
+    });
+  });
+
+  it("ignores fields outside the section — this endpoint cannot write a font", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, fontBody: "Lora", theme: "dark" });
+    expect([...c.rows.keys()]).toHaveLength(0);
+  });
+});
+
+describe("shell validator", () => {
+  const run = (body) => {
+    const req = { body };
+    const res = { status: jest.fn().mockReturnThis(), json: jest.fn() };
+    const next = jest.fn();
+    validateShell(req, res, next);
+    return { req, res, next };
+  };
+
+  it("accepts an empty pin list — clearing the rail is a legal request", () => {
+    const { req, next } = run({ railPins: [] });
+    expect(next).toHaveBeenCalled();
+    expect(req.body).toEqual({ railPins: [] });
+  });
+
+  it("keeps an explicit null apart from an absent key", () => {
+    expect(run({ railPins: null }).req.body).toEqual({ railPins: null });
+    expect(run({ ribbonPinned: true }).req.body).toEqual({ ribbonPinned: true });
+  });
+
+  /** The rail is a strip of icons a dozen tall. A request carrying hundreds is
+   *  not a preference, and the row it writes is billed to the tenant. */
+  it("422s an unbounded pin list", () => {
+    const { res, next } = run({ railPins: Array.from({ length: 40 }, (_, i) => `p${i}`) });
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it("422s a pin that is not a string", () => {
+    const { res } = run({ railPins: [{ to: "/finance" }] });
+    expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it("422s a non-boolean pinned state", () => {
+    const { res } = run({ ribbonPinned: "yes" });
+    expect(res.status).toHaveBeenCalledWith(422);
   });
 });

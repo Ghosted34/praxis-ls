@@ -23,6 +23,7 @@ import { PageHeader } from "@/components/data-list";
 import { SettingsCard, Field } from "@/components/settings/controls";
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
+import { RailCard } from "./rail-card";
 
 /** What the tenant set for a slot, named for humans. */
 function inheritedLabel(value: string | null | undefined) {
@@ -171,6 +172,14 @@ export function MyAppearancePage() {
             {msg.text}
           </p>
         )}
+
+        {/* Same column as Typography, and for the same reason: both are personal
+            display preferences that persist through /me/preferences, so they
+            belong together rather than in the tenant's brand editor. It saves on
+            change rather than on this page's Save button — a pinned shortcut is
+            a single toggle, and a toggle that needs confirming is a toggle that
+            gets left half-set. */}
+        <RailCard />
         </div>
 
         {/* The preview column. Sticky, so it stays in view while the pickers are

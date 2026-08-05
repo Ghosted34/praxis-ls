@@ -28,6 +28,7 @@ import { describe, it, expect, vi, beforeAll } from "vitest";
 import { render, within } from "@testing-library/react";
 import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 import { apiClientMock, authContextMock } from "@/test/screen-harness";
 
@@ -88,11 +89,18 @@ beforeAll(() => {
   });
 });
 
+/** `main.tsx` mounts TooltipProvider above the shell, and the shell now uses it
+ *  — the icon rail's labels and the ribbon's pin control are tooltips, because
+ *  neither has room for visible text. Mirroring the real root here rather than
+ *  giving the shell its own nested provider: the shell should not have to carry
+ *  a provider so that a test can render it. */
 function renderShell() {
   return render(
-    <MemoryRouter>
-      <AppShell />
-    </MemoryRouter>,
+    <TooltipProvider>
+      <MemoryRouter>
+        <AppShell />
+      </MemoryRouter>
+    </TooltipProvider>,
   );
 }
 
@@ -152,6 +160,16 @@ describe("title bar strip", () => {
     const strip = within(container.querySelector<HTMLElement>(".wco")!);
     expect(strip.getByRole("group", { name: "Data environment" })).toBeInTheDocument();
     expect(strip.getByRole("button", { name: /search/i })).toBeInTheDocument();
+  });
+
+  it("mounts the icon rail beside the content, not inside the strip", async () => {
+    // The rail is app-level chrome with its own contents; nesting it in the
+    // title bar would make it read as part of the window furniture and would
+    // put it inside the drag region.
+    const { container } = renderShell();
+    const rail = container.querySelector(".rail");
+    expect(rail).not.toBeNull();
+    expect(container.querySelector(".wco")!.contains(rail)).toBe(false);
   });
 
   it("is free of accessibility violations", async () => {

@@ -1,4 +1,5 @@
 import { TabbedHub } from "@/components/tabbed-hub";
+import { hubTabs } from "@/app/layout/areas";
 import {
   LocationsPage,
   InventoryPage,
@@ -14,14 +15,14 @@ export function WarehouseHub() {
       eyebrow="Warehouse"
       basePath="/wms"
       inPlace
-      tabs={[
-        { key: "locations", label: "Locations", Component: LocationsPage },
-        { key: "inventory", label: "Inventory", Component: InventoryPage },
-        { key: "inbound", label: "Inbound / GRN", Component: InboundPage },
-        { key: "outbound", label: "Outbound", Component: OutboundPage },
-        { key: "equipment", label: "Equipment", Component: EquipmentPage },
-        { key: "cycle-counts", label: "Cycle counts", Component: CycleCountsPage },
-      ]}
+      tabs={hubTabs("/wms", {
+        locations: LocationsPage,
+        inventory: InventoryPage,
+        inbound: InboundPage,
+        outbound: OutboundPage,
+        equipment: EquipmentPage,
+        "cycle-counts": CycleCountsPage,
+      })}
     />
   );
 }

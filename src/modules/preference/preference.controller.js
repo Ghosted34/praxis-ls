@@ -30,4 +30,14 @@ module.exports = {
     const data = await req.identityDb((c) => service.resetAppearance(c, req.user.user_id));
     res.json({ data });
   }),
+
+  getShell: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => service.getShell(c, req.user.user_id));
+    res.json({ data });
+  }),
+
+  putShell: asyncHandler(async (req, res) => {
+    const data = await req.identityDb((c) => service.setShell(c, { userId: req.user.user_id, ...req.body }));
+    res.json({ data });
+  }),
 };

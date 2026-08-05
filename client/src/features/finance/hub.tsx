@@ -30,6 +30,8 @@ import { AssetsPage } from "./assets";
 import { ReceivablesPage } from "./receivables";
 import { DebtPage } from "./debt";
 import { ChartOfAccountsPage } from "./chart-of-accounts";
+import { hubTabs } from "@/app/layout/areas";
+import { useRibbonCommands } from "@/app/layout/ribbon-commands";
 
 const shell = pageShell.wide;
 const statusTone = (s?: string | null): Tone => {
@@ -46,17 +48,27 @@ const nameMap = (rows: Client[] | null) => {
   return m;
 };
 
-const DEEP: Record<string, React.ComponentType> = {
+/**
+ * Finance is the one area that is NOT a `TabbedHub` — `/finance` is a command
+ * center, not a tab. It still routes `/finance/<section>` to a deep page, so its
+ * sections go through the same shared list every other area uses: the ribbon's
+ * second row is built from `areas.ts`, and a key here that the list does not
+ * know would be a ribbon entry pointing at the command center.
+ */
+const SECTIONS = hubTabs("/finance", {
   invoices: InvoicesPage, proformas: ProformasPage, receivables: ReceivablesPage, journals: JournalsPage,
   "credit-notes": CreditNotesPage, "chart-of-accounts": ChartOfAccountsPage, statements: StatementsPage,
   tax: TaxCenterPage, assets: AssetsPage, debt: DebtPage,
-};
-/* the deeper modules — links beside the New-X button */
-const MORE = [
-  { slug: "credit-notes", label: "Credit notes" }, { slug: "debt", label: "Financing" },
-  { slug: "chart-of-accounts", label: "Chart of accounts" }, { slug: "statements", label: "Statements" },
-  { slug: "tax", label: "Tax center" }, { slug: "assets", label: "Assets" },
-];
+});
+const DEEP: Record<string, React.ComponentType> = Object.fromEntries(
+  SECTIONS.map((s) => [s.key, s.Component]),
+);
+/* the deeper modules — links beside the New-X button. The four chips below the
+   header already cover invoices/proformas/receipts/journals, so this is the
+   remainder, labelled from the shared list rather than re-typed. */
+const MORE = SECTIONS.filter((s) => !["invoices", "proformas", "receivables", "journals"].includes(s.key)).map(
+  (s) => ({ slug: s.key, label: s.label }),
+);
 
 type ChipKey = "invoices" | "proformas" | "receipts" | "journals";
 /* per-chip: table-switch label + top-right create button noun + create route */
@@ -200,6 +212,24 @@ function CommandCenter() {
   const clientOf = (id?: string | null) => (id ? clientName[id] || "—" : "—");
   const active = CHIP_META[chip];
 
+  /*
+   * The create button lives in the ribbon, not in this header.
+   *
+   * It is the clearest case in the app for a ribbon command: what it creates
+   * depends on which chip is active, so no route table in the shell could have
+   * known its label — the screen has to say. It also stops the header competing
+   * with the chrome for the same control, which is the whole bargain of moving
+   * navigation and commands up into the ribbon.
+   *
+   * Below `md` there is no ribbon, so the header keeps its own button there.
+   */
+  useRibbonCommands(
+    React.useMemo(
+      () => [{ key: "create", label: active.noun, primary: true, onSelect: () => navigate(active.route) }],
+      [active.noun, active.route, navigate],
+    ),
+  );
+
   const invCols: Column<api.InvoiceRow>[] = [
     { key: "doc", label: "Invoice", render: (r) => <span className="num font-medium text-primary-ink">{r.doc_number || r.invoice_id.slice(0, 8)}</span> },
     { key: "client", label: "Client", render: (r) => <span className="font-medium text-foreground">{clientOf(r.client_id)}</span> },
@@ -243,7 +273,8 @@ function CommandCenter() {
               <button key={m.slug} onClick={() => navigate(`/finance/${m.slug}`)} className="chip">{m.label}</button>
             ))}
           </div>
-          <Button onClick={() => navigate(active.route)}>{active.noun}</Button>
+          {/* The ribbon carries this on desktop — see useRibbonCommands above. */}
+          <Button className="md:hidden" onClick={() => navigate(active.route)}>{active.noun}</Button>
         </div>
       </header>
 

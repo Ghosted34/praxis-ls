@@ -1,21 +1,38 @@
 /**
- * TabbedHub — the shared hub shell. The tab bar is provided via context and
- * rendered by each page with <HubTabs/> right under its header, so tabs sit below
- * the title/subtitle (not above the breadcrumb). Deep-linkable via `<basePath>`
- * and `<basePath>/:section`; each tab renders its page unchanged, so per-module
- * RBAC/org-workflow are untouched. Active tab uses the --primary accent.
+ * TabbedHub — the shared hub shell. Deep-linkable via `<basePath>` and
+ * `<basePath>/:section`; each tab renders its page unchanged, so per-module
+ * RBAC/org-workflow are untouched.
+ *
+ * WHERE THE TABS ARE DRAWN, and why that changed. The strip used to be
+ * published on context and rendered by each page under its own header. On a
+ * desktop that put THREE navigation rows above the first row of data: the title
+ * bar, the area nav, and the hub's own tabs. The ribbon (app/layout/ribbon.tsx)
+ * carries the hub's sections in its second row now, so the in-page strip is a
+ * third copy of navigation the user has already been given.
+ *
+ * It survives BELOW `md`, because that is where the ribbon does not exist — a
+ * phone gets the bottom nav and a family sheet, and inside an area the strip is
+ * still how you move between sections. One `md:hidden` rather than two
+ * components, so the two can never disagree about what the sections are.
+ *
+ * The tab list itself comes from `app/layout/areas.ts`, which is also what the
+ * ribbon reads. `areas.test.ts` pins that a hub's tabs and the ribbon's row are
+ * the same list — the failure it exists to catch is a tab added to a hub that
+ * silently never appears in the chrome.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { TabList, TabsRoot, TabsContent } from "@/components/ui/tabs";
+import type { HubTab } from "@/app/layout/areas";
 
-export type HubTab = { key: string; label: string; Component: React.ComponentType };
+export type { HubTab };
 
 const HubTabsContext = React.createContext<React.ReactNode>(null);
 
-/** Renders the current hub's tab bar. Drop it in a page right under its header. */
+/** Renders the current hub's tab bar. Drop it in a page right under its header.
+ *  Below `md` only — see the file header. */
 export function HubTabs() {
   return <>{React.useContext(HubTabsContext)}</>;
 }
@@ -39,6 +56,13 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   const Active = active.Component;
   const go = (key: string) => (inPlace ? setLocalKey(key) : navigate(`${basePath}/${key}`));
 
+  // `inPlace` hubs swap content without a route change, so the ribbon cannot
+  // follow them — it only knows the URL. Keep them in step: a ribbon click
+  // changes the route, and this pulls the local key back onto it.
+  React.useEffect(() => {
+    if (inPlace && section && tabs.some((t) => t.key === section)) setLocalKey(section);
+  }, [inPlace, section, tabs]);
+
   // Was a bare <div> of <button>s: no role="tablist", no role="tab", no
   // aria-selected and no arrow keys (audit F13, "Tabs are not tabs"). A screen
   // reader announced a row of unrelated buttons with no indication of which
@@ -50,13 +74,17 @@ export function TabbedHub({ eyebrow, basePath, tabs, inlineTabs = false, inPlace
   // around the whole hub, with a single Content keyed on the active tab rather
   // than one Content per tab (only the active page is mounted, which is what
   // keeps a hub from fetching every tab's data at once).
-  const tabsNode = <TabList label={`${eyebrow} sections`} tabs={tabs.map((t) => ({ value: t.key, label: t.label }))} />;
+  const tabsNode = (
+    <div className="md:hidden">
+      <TabList label={`${eyebrow} sections`} tabs={tabs.map((t) => ({ value: t.key, label: t.label }))} />
+    </div>
+  );
 
   return (
     <TabsRoot value={active.key} onValueChange={go} activationMode="manual">
       <HubTabsContext.Provider value={tabsNode}>
         {inlineTabs && (
-          <div className={cn("mb-4", pageShell.wide)}>
+          <div className={cn("mb-4 md:hidden", pageShell.wide)}>
             <div className="micro mb-2">{eyebrow}</div>
             {tabsNode}
           </div>

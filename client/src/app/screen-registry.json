@@ -676,7 +676,7 @@
     {
       "id": "fin_financing",
       "title": "Financing & debt",
-      "route": "/finance/financing",
+      "route": "/finance/debt",
       "area": "finance",
       "module_key": "MOD-53",
       "purpose": "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance.",
@@ -1058,6 +1058,105 @@
       "area": "vault",
       "module_key": "MOD-63",
       "purpose": "Saved reports and dashboard tiles.",
+      "actions": []
+    },
+    {
+      "id": "workspace",
+      "title": "My workspace",
+      "route": "/workspace",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "The signed-in user's own queue — tasks, approvals and recent work.",
+      "actions": []
+    },
+    {
+      "id": "comms",
+      "title": "Smart Comms",
+      "route": "/comms",
+      "area": "comms",
+      "module_key": "MOD-64",
+      "purpose": "Unified inbox — team chat and email in one conversation list.",
+      "actions": []
+    },
+    {
+      "id": "support",
+      "title": "Support & feedback",
+      "route": "/support",
+      "area": "support",
+      "module_key": "MOD-74",
+      "purpose": "Raise a support request or send product feedback.",
+      "actions": []
+    },
+    {
+      "id": "help",
+      "title": "Help",
+      "route": "/help",
+      "area": "support",
+      "module_key": null,
+      "purpose": "Product guides and FAQs. Ungated — every signed-in user reaches it.",
+      "actions": []
+    },
+    {
+      "id": "governance",
+      "title": "Governance",
+      "route": "/governance",
+      "area": "governance",
+      "module_key": "MOD-75",
+      "purpose": "Oversight landing — approvals, workflows, audit ledger and notifications.",
+      "actions": []
+    },
+    {
+      "id": "godmode",
+      "title": "God mode",
+      "route": "/godmode",
+      "area": "admin",
+      "module_key": "MOD-00B",
+      "purpose": "CEO purge console — destructive tenant-wide operations.",
+      "actions": []
+    },
+    {
+      "id": "master_currencies",
+      "title": "Currencies",
+      "route": "/master/currencies",
+      "area": "master",
+      "module_key": "MOD-08",
+      "purpose": "Currency catalogue and live FX rates.",
+      "actions": []
+    },
+    {
+      "id": "master_tax_jurisdictions",
+      "title": "Tax jurisdictions",
+      "route": "/master/tax-jurisdictions",
+      "area": "master",
+      "module_key": "MOD-07",
+      "purpose": "VAT, WHT and other rates, enabled system-wide.",
+      "actions": []
+    },
+    {
+      "id": "settings_document_templates",
+      "title": "Document templates",
+      "route": "/settings/document-templates",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Invoice, PO, receipt and contract layouts.",
+      "actions": []
+    },
+    {
+      "id": "settings_custom_fields",
+      "title": "Custom fields",
+      "route": "/settings/custom-fields",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Per-entity field definitions.",
+      "actions": []
+    },
+    {
+      "id": "settings_catalogue",
+      "title": "Module catalogue",
+      "route": "/settings/catalogue",
+      "area": "settings",
+      "module_key": "MOD-70",
+      "purpose": "Modules and features enabled for this tenant's plan.",
       "actions": []
     }
   ]

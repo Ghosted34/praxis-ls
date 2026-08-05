@@ -1684,3 +1684,230 @@ a regression dressed up as a metric improvement.
 - **No visual-regression baseline was committed**, as in Phase 3. CI needs
   Playwright and browsers in the frontend job; Phase 5.
 - **`platform-console/` remains out of scope**, as throughout.
+
+---
+
+# Addendum 8 — Phase 5 implementation notes (2026-08-05)
+
+Written while implementing Phase 5, not during the audit. As with Addenda 3, 6
+and 7, everything here is a **correction or addition** to the findings above,
+discovered by changing the code rather than by reading it.
+
+Phase 5's scope items are done and the tracked record is
+`doc/PHASE5_CHECKLIST.md`, which also states plainly what was not taken. This
+addendum is the part that changes what the audit says.
+
+## The theme of this phase: three gates were measuring the wrong thing
+
+Phases 1-4 built gates and the gates were green. Phase 5 found that three of the
+audit's own findings had been **reported as fixed while the property they
+described was still broken** — not because anyone cut a corner, but because in
+each case the thing that was easy to measure was not the thing that mattered.
+
+That is worth stating as a pattern, because it is the third time this document
+has recorded a version of it. Addendum 6: a pill whose ground came from one
+token and whose text came from another, "a contrast pair nobody had measured
+because neither half was chosen against the other." Addendum 7: a permission
+failure rendering as reassurance, twice, because `errMsg` flattened the
+discriminator one layer from the screen. Now three more.
+
+## F13 was still failing, on every light-theme status pill
+
+**The gate measured status text against `--card`. A status pill does not sit on
+`--card`.** `.st-ok` is `color: rgb(var(--ok))` over
+`background: rgb(var(--ok-fill) / 0.13)`, and F13 says so in as many words:
+*"these pills pair the failing colour with a tinted background, which is worse
+than the white-background figures above, not better."*
+
+Nobody had measured the composite. Measured now, on the worse of the two
+surfaces it can land on:
+
+| Pill | Was | Now |
+|---|---|---|
+| `.st-blue` / `.st-info` | **3.27:1** | 4.55:1 |
+| `.st-orange` | **3.79:1** | 4.57:1 |
+| `.st-ok` | **3.75:1** | 4.55:1 |
+| `.st-warn` | **3.98:1** | 4.60:1 |
+| `.st-bad` | **3.58:1** | 4.58:1 |
+
+Twelve failures in the light theme, on the most semantically loaded text in an
+ERP — how every document announces its state — across four phases of a gate that
+was green throughout. Dark passed.
+
+The inks are retuned along their own hues by the least amount that clears 4.5:1
+(8-14%), and the gate no longer takes a hand-written list of pairs: it **parses
+the `.st-*` rules out of `index.css`**, resolves `var()` chains, composites the
+alpha, and measures every pill on both surfaces in both themes. A pill added
+tomorrow is measured without anyone remembering this exists — which matters,
+because `.st-info` was itself an audit finding (F12: referenced and never
+defined) and is exactly the kind of thing a hand-maintained list does not notice.
+
+**AAA, honestly.** Phase 5's scope says "7:1 for body text, status pills and
+money figures". Body text and money clear it already (~15:1) and are now gated
+there. Pills cannot: 7:1 on a tinted ground forces the tint to near-white or the
+ink to near-black, at which point the tone stops carrying meaning and the pill is
+just text. They are gated at AA and *reported* against AAA. Moving a threshold
+until it passes would have been the other option.
+
+## F13's headline fix was built in Phase 1 and adopted nowhere
+
+The audit's single most-cited number is `--primary` at **2.59:1** as text. Phase
+1 built `--primary-ink` to replace it. Phase 5 found `text-primary` still in use
+across **38 files**.
+
+A ratio check over tokens could never have caught this — every token in the
+matrix was passing. The defect was *which token the JSX reached for*, and the
+reason is the one Addendum 7 records for the raw palette: `text-primary` is what
+Tailwind's `primary.DEFAULT` makes the natural spelling, it is shorter than
+`text-primary-ink`, and it renders a colour that looks brand-correct. Making the
+right thing the short thing did more than the rule ever did; here, nobody had.
+
+The gate now scans source for a fill token in a text position. It found one more
+site after the sweep, in a syntax the sweep did not know about
+(`text-[color:var(--primary)]`) — which is the argument for a gate over a sweep
+in one line.
+
+**`--brand-blue` had the same shape** and needed the same split: it was used as
+type over its own 12% tint at eight sites (the KPI tile, three Control Tower
+components, the callout, the AI action chip, both blue pills). `--brand-blue-ink`
+now exists, mirroring `--primary-ink`. Rule of thumb, now in the guide:
+**`brand-blue` fills, `brand-blue-ink` writes.**
+
+**And the half no gate can see.** `applyBrand` derives `--primary-ink` at runtime
+for every tenant that is not the default, and it had the identical defect —
+derived against `--card`, used on a pill. It now derives against every surface
+the ink can land on, tinted grounds included. The first attempt derived against
+the pill ground *alone* and broke on a near-black brand in dark mode, which the
+test caught: tinting a dark surface with a near-black brand makes the ground
+**darker** than the card, so a light ink clears the ground and fails the card.
+There is no single worst surface; there is a set.
+
+## F17's density fix had never landed on a screen anyone uses
+
+F17 measured the table row at **~46px** against a 28-32px category standard and
+diagnosed the padding: `px-4 py-3.5`. Phase 1 changed the padding to `py-row`
+(6px), every unit test agreed, and the audit's baseline table has recorded it as
+done ever since.
+
+A real list row measured **49px**.
+
+**The padding was never what set the height.** A table row is as tall as its
+tallest cell, and every list screen in this product ends with
+`<Button size="sm">` in the actions column — `h-9`, 36px, which with 12px of
+padding is 48. The status pill was the second offender at 24px, inheriting a 20px
+line box from its `text-sm` cell.
+
+It could not be seen in jsdom, which has no layout engine, and it was not what
+the Phase 3 and 4 browser runs measured (content column, `<h1>` count, horizontal
+scroll). So the number the fix existed to change had not moved for four phases,
+and nothing was wrong with anyone's reasoning — the measurement simply did not
+exist.
+
+Fixed at two shared sources rather than 67 call sites: `--row-control-h` (20px)
+is applied by `<RowActions>`, and `.status` now sets its own 16px line box. Five
+screens carrying a hand-rolled copy of the RowActions click shield were migrated,
+which is also how they inherit the bound.
+
+| Density | Row, before | Row, now |
+|---|---|---|
+| Compact | 49px | 29.5px |
+| Default | 49px | 33.5px |
+| Comfortable | 49px | 41.5px |
+
+*(the extra 1.5px over the design figure is the `<tr>` hairline and a 20.5px line
+box after font metrics; the browser gate allows for it explicitly rather than
+fudging the documented numbers)*
+
+## The 2560px case, finally solved rather than restated
+
+Addenda 6 and 7 both called this "addressed rather than solved" and both pointed
+at the density work. `max-w-wide` was 1664px, so a 2560px display rendered the
+same column as a 1920px one with ~450px of margin each side — the case F2's
+opening sentence describes.
+
+| Viewport | Column, before | Column, now |
+|---|---|---|
+| 1280 | 1232 | 1232 |
+| 1440 | 1392 | 1392 |
+| 1920 | 1664 | 1856 |
+| 2560 | **1664** | **2160** |
+
+2160 rather than uncapped, because a table row is read left to right and the
+distance from a record's name to its last column is the cost of every lookup.
+The frozen first column covers the tables that genuinely need more.
+
+## Two defects the audit did not name, found by writing keyboard tests
+
+Both in `<InlineEdit>`, both about focus, and neither visible without a test that
+uses the keyboard:
+
+1. **Entering edit mode dropped focus on `<body>`.** The button unmounts and the
+   input mounts, and `select()` does not focus an element — it is a selection
+   API. Leaving edit mode did the same in reverse.
+2. **The fix for the first exposed a third.** The button was `disabled` while the
+   save was in flight, and a disabled button cannot hold focus, so restoring
+   focus to it silently did nothing. It carries `aria-busy` now: same state
+   announced, element still focusable.
+
+Worth recording because both are invisible to a mouse and to axe. The component
+was axe-clean in every state throughout.
+
+## A regression Phase 4 created, and paid off here
+
+Phase 4 fixed the mouse-only clickable row by making column 0 a real `<button>`.
+That was right, and it put **one tab stop per row** into the page. On a 200-row
+shipment table, reaching the pager below it costs 200 presses of Tab plus every
+row-action button on the way. A keyboard user went from "cannot open a row" to
+"cannot get past the table", which is not obviously the better failure.
+
+A roving tabindex leaves exactly one row in the tab order, with arrow keys
+between them: 200 tab stops become one. It deliberately does **not** declare
+`role="grid"`, for the same reason Phase 4 refused `<tr role="button">` — a
+screen reader in browse mode navigates a real `<table>` by row and column and
+says "row 4 of 120", and on a financial table that IS the usability. Browse mode
+intercepts arrow keys before the page sees them, so the two models do not collide.
+
+## Retiring the FAB removed something nobody had noticed it carried
+
+F9 says the draggable cluster "covers the bottom-right of every table and
+duplicates the copilot entry point". True, and the sharper point is that the
+drag was the *workaround* for the overlap rather than a feature — and the dragged
+position **persists**, so moving it out of the way on one screen moved it into
+the way on every other one, permanently.
+
+What the audit did not name: the top bar deliberately never duplicated Messages
+("Messages lives on the Smart Comms floating pin" — `app-shell.tsx`). So removing
+the pin from desktop would have left a desktop user with **no unread-messages
+indicator at all**. The replacement carries that count, in its accessible name
+and not only as a coloured circle.
+
+## A correction to §4's baseline table
+
+Two rows need re-reading after this phase.
+
+- **"Files > 400 lines: 17 → target 0"** is now 3, and all three are deliberate
+  keeps documented in `PHASE5_CHECKLIST.md` §5.5. `features/scaffold/screen-specs.ts`
+  (930) is a **data** table, not a component, and counting it was always
+  misleading.
+- **"Token contrast failures (measured): 6 → target 0"** was reported as 0 from
+  Phase 1 onward and was in fact **12**, for the reason at the top of this
+  addendum. It is 0 now, against a measurement that reflects what is on screen.
+
+## Scope explicitly NOT taken in Phase 5
+
+Stated so nobody assumes it is done. Full detail in `doc/PHASE5_CHECKLIST.md` §5.
+
+- **Forms are still not on `<Form>` + shared Zod schemas.** Unchanged from Phases
+  3 and 4; only `finalInvoice` has schemas in `packages/shared`.
+- **No pixel screenshot baselines**, deliberately. The layout gate asserts
+  measured invariants, which are deterministic across platforms; a pixel baseline
+  taken on one machine and compared on another is red on its first CI run for a
+  reason nobody can act on, and this document has twice recorded what happens to
+  a gate like that.
+- **The new affordances are wired into four screens**, not ninety. Density, the
+  row-height bound, the FAB retirement, the motion budget and the contrast
+  retune are app-wide because they are token- or shared-component-level;
+  selection and column visibility are per-screen judgement.
+- **The operator usability session has not happened.** It is the one Phase 5
+  deliverable an engineer cannot produce alone.
+- **`platform-console/` remains out of scope**, as throughout.

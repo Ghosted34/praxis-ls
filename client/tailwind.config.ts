@@ -137,9 +137,24 @@ export default {
       },
 
       spacing: {
-        // Dense table row: 6px vertical against a 13px/20px line gives 32px rows,
-        // down from ~46px — roughly 40% more rows per screen (F17).
-        row: "0.375rem",
+        /**
+         * The table row's vertical padding — now a VARIABLE, not a constant
+         * (Phase 5).
+         *
+         * Phase 1 set this to a literal 6px, giving 32px rows against ~46px
+         * before: roughly 40% more rows per screen (F17). Phase 5 makes the
+         * number a user preference — 28 / 32 / 40px — and the cleanest way to
+         * deliver that was to point this step at `--row-py`, which
+         * `[data-density]` in index.css sets.
+         *
+         * The payoff is that `py-row` did not have to change anywhere. Both
+         * existing call sites (`ui/table.tsx` TD, `ui/data-view.tsx`'s report
+         * table) became density-aware without being touched, and a screen that
+         * writes `py-row` tomorrow gets it for free. A prop threaded through
+         * every cell of a 200-row table would have re-rendered the table to
+         * change a padding the browser can resolve by itself.
+         */
+        row: "var(--row-py)",
         "row-compact": "0.25rem",
       },
 

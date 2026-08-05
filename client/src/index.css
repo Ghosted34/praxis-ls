@@ -205,6 +205,31 @@
      loudest "template" signal in the visual system (F13 / F17). The brand now
      lives in the mark, the accent and the type, not the wallpaper. */
 
+  /*
+   * Row density (Phase 5, audit F9/F17). One variable, set by an attribute, read
+   * by the `row` spacing step in tailwind.config.ts — so every `py-row` in the
+   * app (TD, the report table in ui/data-view) tracks it with no code change.
+   *
+   * The attribute is written to <html> by lib/density.ts from the user's saved
+   * preference, and can be pinned on any subtree by <Table density="…"> for a
+   * screen that knows its own answer. Nearest ancestor wins; that is just the
+   * cascade, which is why this is CSS and not React context.
+   *
+   * :root carries the default so a tree with no attribute at all — a test, a
+   * Ladle story, the first paint before initDensity() runs — still renders the
+   * 32px row rather than collapsing to zero padding.
+   */
+  :root,
+  [data-density="default"] {
+    --row-py: 0.375rem;
+  }
+  [data-density="compact"] {
+    --row-py: 0.25rem;
+  }
+  [data-density="comfortable"] {
+    --row-py: 0.625rem;
+  }
+
   /* Keyboard focus, globally. Previously .chip, .lux-navlink and
      .lux-botnav-btn had no focus indicator at all, so the primary navigation
      and every filter chip were invisible to keyboard users (F13, WCAG 2.4.7).
@@ -245,6 +270,60 @@
     border: 1px solid var(--border);
     border-radius: var(--radius);
     box-shadow: var(--shadow-s);
+  }
+
+  /*
+   * Wide-table affordances (Phase 5, audit F9). Both are opt-in via
+   * <Table sticky freezeFirstColumn>; neither changes a table that doesn't ask.
+   *
+   * STICKY HEADING. `position: sticky` on a <th> works under
+   * `border-collapse: collapse` in every browser we support, but the th's own
+   * BORDER does not travel with it — collapsed borders belong to the table grid,
+   * not the cell, so the heading would scroll away from its own underline. An
+   * inset box-shadow is painted by the cell and therefore sticks with it. This
+   * is the reason not to "just" switch to border-separate: that would break the
+   * collapsed hairlines every other table in the app is drawn with.
+   */
+  .table-sticky thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--secondary);
+    box-shadow: inset 0 -1px 0 var(--border);
+  }
+
+  /*
+   * FROZEN FIRST COLUMN. Column 0 is the record's identity on every list screen
+   * in this app — that convention is already load-bearing for `RowActivator`,
+   * which turns it into the row's keyboard control. Scrolling a fifteen-column
+   * costing table sideways without it means reading numbers that belong to a
+   * row you can no longer name.
+   *
+   * The background is explicit rather than `inherit`: a <tr> has no background
+   * of its own, so an inherited one is transparent and the scrolled body would
+   * show straight through the pinned cell. That also means the row's hover tint
+   * has to be restated here — otherwise the hovered row would highlight
+   * everywhere except the one cell you are pointing at.
+   *
+   * The right-edge shadow only appears while there is content underneath it
+   * (the container scrolls), which is what tells the eye the column is pinned
+   * rather than merely first.
+   */
+  .table-frozen :is(td, th):first-child {
+    position: sticky;
+    left: 0;
+  }
+  .table-frozen thead th:first-child {
+    z-index: 3;
+    background: var(--secondary);
+  }
+  .table-frozen tbody td:first-child {
+    z-index: 1;
+    background: var(--card);
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .table-frozen tbody tr:hover td:first-child {
+    background: color-mix(in srgb, var(--primary) 4%, var(--card));
   }
 
   /* Status pills */

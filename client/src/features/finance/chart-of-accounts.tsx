@@ -2,6 +2,12 @@
  * Chart of accounts (MOD-58) — SYSCOHADA/OHADA statutory chart. Class filter chips,
  * search, and sub-account create/edit. Read-heavy master screen on the locked kit;
  * accents resolve to --primary (settings-driven).
+ *
+ * PHASE 5 — this is the reference screen for the wide-table work, because it is
+ * the shape the whole thing was built for: the seeded statutory chart is ~800
+ * rows across seven columns, and the code in column 0 is the only thing that
+ * identifies a row. So it gets all four affordances — a sticky heading, a frozen
+ * code column, a column-visibility menu, and a selection that exports.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -14,6 +20,10 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
+import { ColumnsMenu, BulkBar } from "@/components/ui/table-controls";
+import { useColumnVisibility } from "@/lib/use-column-visibility";
+import { useRowSelection } from "@/lib/use-row-selection";
+import { exportCsv } from "@/lib/export-csv";
 import { useList, errMsg } from "@/lib/use-resource";
 import { num } from "@/lib/format";
 import * as api from "@/lib/finance-api";
@@ -94,14 +104,22 @@ export function ChartOfAccountsPage() {
     return m;
   }, [accounts]);
 
-  const filtered = accounts.filter((a) => {
-    if (klass !== "ALL" && a.class !== klass) return false;
-    if (!q.trim()) return true;
-    const hay = `${a.code} ${a.label_fr} ${a.label_en || ""}`.toLowerCase();
-    return hay.includes(q.trim().toLowerCase());
-  });
+  const filtered = React.useMemo(
+    () =>
+      accounts.filter((a) => {
+        if (klass !== "ALL" && a.class !== klass) return false;
+        if (!q.trim()) return true;
+        const hay = `${a.code} ${a.label_fr} ${a.label_en || ""}`.toLowerCase();
+        return hay.includes(q.trim().toLowerCase());
+      }),
+    [accounts, klass, q],
+  );
 
-  const columns: Column<api.Account>[] = [
+  // Selection is scoped to `filtered`, so narrowing to Class 6 narrows what
+  // "Export selected" acts on — see useRowSelection for why that matters.
+  const selection = useRowSelection(filtered, (a) => a.code);
+
+  const allColumns: Column<api.Account>[] = [
     { key: "code", label: "Code", render: (a) => <span className="num font-medium text-foreground">{a.code}</span> },
     { key: "label", label: "Label", render: (a) => a.label_fr },
     { key: "class", label: "Class", render: (a) => <Pill tone="mute">{a.class} · {CLASS_NAMES[a.class] || ""}</Pill> },
@@ -120,6 +138,10 @@ export function ChartOfAccountsPage() {
       ),
     },
   ];
+
+  // Code (column 0) and the actions cell are locked; the other five can be
+  // hidden, and the choice is remembered for this browser under this key.
+  const cols = useColumnVisibility("finance.chart-of-accounts", allColumns);
 
   const chips: (number | "ALL")[] = ["ALL", ...Object.keys(CLASS_NAMES).map(Number).filter((c) => (classCounts[c] || 0) > 0)];
 
@@ -142,9 +164,59 @@ export function ChartOfAccountsPage() {
             );
           })}
         </div>
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code or label…" className="w-full max-w-xs" />
+        <div className="flex items-center gap-2">
+          <ColumnsMenu state={cols} />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search code or label…" className="w-full max-w-xs" />
+        </div>
       </div>
-      <DataList columns={columns} rows={filtered} error={error} loading={loading} rowKey={(a) => a.code} onRowClick={(a) => setEditing(a)} empty={{ title: "No accounts", hint: "The statutory chart seeds on tenant bootstrap; add sub-accounts here." }} />
+      <DataList
+        columns={cols.columns}
+        rows={filtered}
+        error={error}
+        loading={loading}
+        rowKey={(a) => a.code}
+        onRowClick={(a) => setEditing(a)}
+        selection={selection}
+        selectionLabel={(a) => `${a.code} ${a.label_fr}`}
+        // The chart is the longest table in the product and the code is the only
+        // thing that identifies a row, so both affordances earn their keep here.
+        sticky
+        freezeFirstColumn
+        empty={{ title: "No accounts", hint: "The statutory chart seeds on tenant bootstrap; add sub-accounts here." }}
+      />
+      <BulkBar
+        count={selection.count}
+        noun="account"
+        onClear={selection.clear}
+        actions={
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() =>
+              exportCsv({
+                filename: "chart-of-accounts",
+                // Exports what the account IS, not what the table happens to be
+                // showing: a hidden column is a reading preference, and silently
+                // dropping it from a file the user will open in Excel is the
+                // kind of surprise that makes people distrust exports.
+                columns: [
+                  { header: "Code", value: (a) => a.code },
+                  { header: "Parent", value: (a) => a.parent_code ?? "" },
+                  { header: "Label (FR)", value: (a) => a.label_fr },
+                  { header: "Label (EN)", value: (a) => a.label_en ?? "" },
+                  { header: "Class", value: (a) => a.class },
+                  { header: "Normal balance", value: (a) => a.normal_balance },
+                  { header: "Postable", value: (a) => (a.is_postable ? "yes" : "no") },
+                  { header: "Requires analytic", value: (a) => (a.requires_analytic ? "yes" : "no") },
+                ],
+                rows: selection.selectedRows,
+              })
+            }
+          >
+            Export selected
+          </Button>
+        }
+      />
       {editing !== null && <AccountForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
     </section>
   );

@@ -54,11 +54,26 @@ export default defineConfig({
    * on demand and does not run the production chunk graph — and the one
    * production incident this audit records (Addendum 4, the blank page) was
    * invisible in dev and fatal in the built bundle.
+   *
+   * `--host 127.0.0.1` IS LOAD-BEARING. `vite preview` defaults to binding
+   * `localhost`, and what that resolves to depends on the machine: this sandbox
+   * has no IPv6, so Node bound 127.0.0.1 and everything passed. A GitHub runner
+   * resolves `localhost` to `::1` first, Node binds there, and Playwright — which
+   * polls the literal `url` below — waits the full two minutes for a server that
+   * is up and listening on an address it is not asking about. The failure it
+   * reports is `Timed out waiting 120000ms from config.webServer`, which says
+   * nothing about why. Binding an explicit address makes both machines agree.
+   *
+   * `stdout: "pipe"` exists because of that same run: the server's own output is
+   * swallowed by default, so the CI log had the timeout and not one line about
+   * the cause. A gate that cannot say why it failed costs more than it saves.
    */
   webServer: {
-    command: "npm run preview -- --port 4173 --strictPort",
+    command: "npm run preview -- --port 4173 --strictPort --host 127.0.0.1",
     url: "http://127.0.0.1:4173",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
+    stdout: "pipe",
+    stderr: "pipe",
   },
 });

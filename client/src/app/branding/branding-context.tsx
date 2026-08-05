@@ -9,6 +9,7 @@ import * as React from "react";
 import { applyBrand } from "@/lib/theme";
 import { fetchBranding, type Branding } from "@/lib/branding";
 import {
+  applyPwaDocument,
   brandSource,
   effectivePwa,
   fetchPwaConfig,
@@ -180,6 +181,12 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   // app's icon and splash are the company's identity, and one user's font
   // choice does not change what the operating system shows on a home screen.
   const pwa = React.useMemo(() => effectivePwa(pwaConfig, brandSource(branding)), [pwaConfig, branding]);
+
+  // The installed app's document-level identity — the title-bar colour and the
+  // iOS label. Kept in an effect rather than inside `paint` because it depends
+  // on the RESOLVED pwa config, which is derived from branding rather than
+  // being branding, and because it must re-run when either layer changes.
+  React.useEffect(() => applyPwaDocument(pwa), [pwa]);
 
   const value = React.useMemo(
     () => ({ branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig }),

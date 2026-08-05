@@ -25,6 +25,20 @@ const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client"];
 
 const inPackage = (id: string, pkg: string) => id.replace(/\\/g, "/").includes(`/node_modules/${pkg}/`);
 
+/**
+ * The font library (lib/fonts.ts) dynamic-imports fifteen @fontsource families
+ * so the picker can render each name in its own face. Left in the `vendor`
+ * bucket they all landed in the eagerly-loaded vendor stylesheet — 96
+ * @font-face rules and 57 kB of render-blocking CSS on every page load, for a
+ * set where a tenant uses three. Excluded here, Rollup attaches each family to
+ * the dynamic import that pulls it, which is what makes the lazy loading real
+ * rather than nominal.
+ *
+ * The same reasoning as ROUTE_LOCAL_VENDOR above; kept separate only because
+ * this is a prefix match over a scope, not a list of package names.
+ */
+const isFontPackage = (id: string) => id.replace(/\\/g, "/").includes("/node_modules/@fontsource");
+
 export default defineConfig({
   plugins: [
     react(),
@@ -48,7 +62,31 @@ export default defineConfig({
         // Cache the app shell for offline; never precache the dynamic manifest.
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/, /^\/media/, /^\/manifest\.webmanifest$/, /^\/icons\//],
-        globPatterns: ["**/*.{js,css,html,svg,woff2}"],
+        // woff2 is NOT precached. The glob used to include it, which was right
+        // when one family was bundled and became wrong the moment fifteen were:
+        // the service worker would have downloaded all 94 files — 2.8 MB — on
+        // install, for every user, to serve the three a tenant actually uses.
+        // That is precisely the eager cost the lazy library exists to avoid,
+        // and it would have been paid on the metered mobile connections this
+        // PWA is built for.
+        globPatterns: ["**/*.{js,css,html,svg}"],
+        // Fonts are cached on first use instead. A family is written to the
+        // cache the first time text is actually rendered in it, so the offline
+        // promise still holds for the fonts a user has in force (audit F17) —
+        // it is just earned on first paint rather than prepaid for all fifteen.
+        // One year, 60 entries: comfortably more than the library, and the
+        // hashed filenames make staleness impossible.
+        runtimeCaching: [
+          {
+            urlPattern: ({ request }: { request: Request }) => request.destination === "font",
+            handler: "CacheFirst",
+            options: {
+              cacheName: "praxis-fonts",
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 365 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
+        ],
         // Add web-push display handlers (push + notificationclick) to the
         // generated SW without switching to a fully custom injectManifest SW.
         // push-handler.js lives in client/public/ so it's served at the root.
@@ -135,6 +173,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
           if (ROUTE_LOCAL_VENDOR.some((pkg) => inPackage(id, pkg))) return undefined;
+          if (isFontPackage(id)) return undefined;
           return "vendor";
         },
       },

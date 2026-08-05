@@ -86,8 +86,14 @@
      --font-display is retained as a token so the 35 `font-display` call sites
      keep working; it now resolves to the display optical size of the same
      family rather than a second typeface. */
-  --font-display: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* "Inter Variable", WITH the space. @fontsource-variable/inter declares the
+     family as `'Inter Variable'`; this token asked for "InterVariable", which
+     matches nothing, so every unbranded tenant has been rendering in system-ui
+     since the font was bundled — the woff2 downloaded on every load and was
+     never used. The static "Inter" stays as the second entry for anyone who has
+     the family installed locally. */
+  --font-display: "Inter Variable", "Inter", system-ui, -apple-system, Arial, sans-serif;
+  --font-body: "Inter Variable", "Inter", system-ui, -apple-system, Arial, sans-serif;
   /* Flatter. The previous ramp paired a soft ambient shadow with a large
      coloured drop; combined with the glow on .btn-primary it read as a Dribbble
      shot. Enterprise surfaces carry a hairline border and minimal elevation. */

@@ -8,7 +8,7 @@
 import * as React from "react";
 import { applyBrand } from "@/lib/theme";
 import { fetchBranding, type Branding } from "@/lib/branding";
-import { loadFonts } from "@/lib/fonts";
+import { loadFonts, DEFAULT_STACK, DEFAULT_MONO_STACK } from "@/lib/fonts";
 import { EMPTY_USER_APPEARANCE, type UserAppearance } from "@/lib/preferences";
 
 const DEFAULT_PRIMARY = import.meta.env.VITE_BRAND_PRIMARY || "#0f766e";
@@ -51,7 +51,17 @@ function paint(b: Branding, u: UserAppearance = EMPTY_USER_APPEARANCE) {
   // `font-display: swap`, so text paints in the fallback now and reflows into
   // the real face when the chunk lands. Awaiting it would block the paint below
   // on the network for no gain.
-  void loadFonts([fonts.fontDisplay, fonts.fontBody, fonts.fontMono]);
+  //
+  // An UNSET slot loads the library default rather than nothing. index.css
+  // declares Inter and JetBrains Mono for the unset case, and a declared family
+  // whose @font-face was never imported renders the generic fallback instead —
+  // which is exactly how `--font-mono` was resolving to the browser's monospace
+  // on every screen that shows a document reference.
+  void loadFonts([
+    fonts.fontDisplay || DEFAULT_STACK,
+    fonts.fontBody || DEFAULT_STACK,
+    fonts.fontMono || DEFAULT_MONO_STACK,
+  ]);
   applyBrand({
     primary: b.primary || DEFAULT_PRIMARY,
     primaryForeground: b.primaryForeground || "#ffffff",

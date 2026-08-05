@@ -54,14 +54,23 @@ export type FontDef = {
  * `font-display: swap`), not as a substitution strategy — the whole point of a
  * self-hosted library is that the real font always arrives.
  */
+/**
+ * GENERIC KEYWORDS ONLY — no named font outside this library appears anywhere
+ * in the product. An earlier draft led these stacks with `system-ui,
+ * -apple-system, Arial`, reasoning that system-ui is the licence-clean way to
+ * reach Segoe UI and SF Pro. That is true, and it still breaks the promise the
+ * library makes: system-ui resolves to a DIFFERENT typeface per operating
+ * system, which is the per-device inconsistency this whole change exists to
+ * remove. A bare generic keyword hands the choice to the browser for the one
+ * moment it matters — the swap window before the real face arrives, which after
+ * the first load is served from cache and is effectively zero.
+ *
+ * `check:fonts` enforces this: any named font outside FONTS fails the build.
+ */
 const FALLBACK: Record<FontRole, string> = {
-  // `system-ui` first is also the licence-clean way to reach the three faces
-  // that had to be dropped: it resolves to Segoe UI on Windows and SF Pro on
-  // Apple platforms, chosen by the OS, without this app redistributing either.
-  // Naming them outright would only have added the proprietary names back.
-  sans: "system-ui, -apple-system, Arial, sans-serif",
-  serif: 'Georgia, "Times New Roman", Times, serif',
-  mono: "ui-monospace, SFMono-Regular, Menlo, Consolas, monospace",
+  sans: "sans-serif",
+  serif: "serif",
+  mono: "monospace",
 };
 
 /**
@@ -211,6 +220,17 @@ export const FONTS: FontDef[] = [
 /** The app's own defaults — what an unset token resolves to in index.css. */
 export const DEFAULT_FONT_ID = "inter";
 export const DEFAULT_MONO_FONT_ID = "jetbrains-mono";
+
+/**
+ * The stacks an unset token falls back to. Exported because the defaults have
+ * to be LOADED, not merely named: index.css can declare JetBrains Mono for
+ * `--font-mono`, but if nothing imports the family the browser finds no
+ * @font-face and renders the generic monospace — the same silent failure the
+ * "InterVariable" typo caused. The branding layer feeds these to loadFonts()
+ * whenever a slot is unset, so the declared default is the rendered one.
+ */
+export const DEFAULT_STACK = FONTS.find((f) => f.id === DEFAULT_FONT_ID)!.stack;
+export const DEFAULT_MONO_STACK = FONTS.find((f) => f.id === DEFAULT_MONO_FONT_ID)!.stack;
 
 /** Which slot a picker is filling. Decides how the groups are ordered. */
 export type FontSlot = "display" | "body" | "mono";

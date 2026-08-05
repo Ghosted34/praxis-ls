@@ -51,9 +51,9 @@ const APPEARANCE = {
   // what carried the reference look, so it keeps the display slot; body goes to
   // Inter, which is the app default and is built for long-form UI text in a way
   // Montserrat is not.
-  font_display: '"Montserrat Variable", "Montserrat", system-ui, -apple-system, Arial, sans-serif',
-  font_body: '"Inter Variable", "Inter", system-ui, -apple-system, Arial, sans-serif',
-  font_mono: '"JetBrains Mono Variable", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace',
+  font_display: '"Montserrat Variable", "Montserrat", sans-serif',
+  font_body: '"Inter Variable", "Inter", sans-serif',
+  font_mono: '"JetBrains Mono Variable", "JetBrains Mono", monospace',
   radius: "0.9rem",
   brand_theme: "light",
 };

@@ -63,6 +63,20 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Font gate
+        # No font from outside client/src/lib/fonts.ts may be NAMED anywhere —
+        # UI, PDF templates, Excel exports, email shells, the platform console.
+        # This is grep-shaped rather than a lint rule because the failure mode is
+        # not a syntax error: a font name that resolves to nothing substitutes
+        # silently. Nine surfaces were doing exactly that when the gate was
+        # written — invoices going to clients came out in FreeSans while the
+        # template said Noto Sans, and the Excel title block asked for a face
+        # (Playfair Display) this product has never shipped.
+        #
+        # It spans both apps and the backend, so it runs here rather than in the
+        # per-app matrix below.
+        run: npm run check:fonts
+
       - name: Test
         # Real specs now live under tests/unit; the empty-suite flag is gone.
         run: npx jest --runInBand

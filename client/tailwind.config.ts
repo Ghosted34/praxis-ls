@@ -109,6 +109,20 @@ export default {
        * measured 3.01:1 (F13). At 11-12px with restrained tracking they clear AA
        * and still read as captions.
        */
+      /**
+       * Bind the utilities to the brand tokens. Without this, `font-sans` and
+       * `font-mono` used Tailwind's OWN defaults — ui-sans-serif/system-ui and
+       * Menlo/Consolas/"Courier New" — so a tenant could pick JetBrains Mono in
+       * Appearance and every `font-mono` element carried on rendering in
+       * whatever the operating system supplied. The tokens are what the picker
+       * writes to, so the utilities must read from them.
+       */
+      fontFamily: {
+        sans: "var(--font-body)",
+        display: "var(--font-display)",
+        mono: "var(--font-mono)",
+      },
+
       fontSize: {
         micro: ["0.6875rem", { lineHeight: "1rem", letterSpacing: "0.06em" }], // 11
         label: ["0.75rem", { lineHeight: "1.125rem", letterSpacing: "0.01em" }], // 12

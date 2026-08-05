@@ -8,6 +8,8 @@
  */
 "use strict";
 
+const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO } = require("../../pdf.fonts");
+
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
 /** Money in a currency (XAF default), fr-FR grouping. */
@@ -35,8 +37,12 @@ function defaults(brand = {}) {
     ink: brand.ink || "#101E34",
     muted: "#6B7A90",
     line: "#E4ECF6",
-    font: "'Noto Sans', 'Segoe UI', Arial, sans-serif",
-    monoFont: "'Noto Sans Mono', ui-monospace, monospace",
+    // Shipped library faces, embedded by pdf.fonts.js. Was
+    // "'Noto Sans', 'Segoe UI', Arial" over "'Noto Sans Mono', ui-monospace":
+    // Segoe UI is proprietary and Noto Sans Mono is not in the library, and none
+    // of the four was present in the rendering container anyway.
+    font: PDF_FONT_BODY,
+    monoFont: PDF_FONT_MONO,
     paper: "A4",
     margin_mm: 16,
     language: "bilingual",
@@ -62,6 +68,7 @@ function mergeCfg(brand, saved = {}) {
 function shell(title, bodyHtml, cfg = {}) {
   const c = { ...defaults(), ...cfg };
   const css = `
+    ${fontFaceCss()}
     @page { size: ${c.paper}; margin: ${c.margin_mm}mm; }
     * { box-sizing: border-box; }
     body { font-family: ${c.font}; color: ${c.ink}; font-size: 12px; line-height: 1.5; margin: 0; }

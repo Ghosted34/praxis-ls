@@ -92,6 +92,20 @@ const GUIDANCE = {
 const ALLOW = [
   // This script's own guidance table names every family by design.
   "scripts/check-palette.mjs",
+  /*
+   * The gate-proof harness holds one example of every defect the gates catch —
+   * a raw palette colour among them — because that is what it exists to inject.
+   *
+   * Worth recording rather than just fixing: this is the SECOND time this gate
+   * has flagged its own evidence. Addendum 7 documents the first, in
+   * `ui/pill.tsx`, and the fix was to blank comments before matching. That
+   * addressed the instance; the class is broader. A checker whose subject is
+   * "strings that look like violations" will always fire on files ABOUT
+   * violations, and here the string is in executable code, not a comment, so
+   * comment-blanking could never have covered it. Two entries is still a short
+   * allowlist, and both are files whose job is to name the thing.
+   */
+  "scripts/prove-gates.mjs",
 ];
 
 /**

@@ -9,115 +9,26 @@
  * keeping two sets of arithmetic in sync. If that ever stops being true, the
  * preview stops being evidence and becomes decoration.
  *
- * WHAT THE MASKS ARE. Android launchers crop a maskable icon to whatever shape
- * the device vendor chose — Pixel uses a circle, Samsung a squircle, others a
- * rounded square — and the icon has no say in it. That is the entire reason the
- * maskable variant exists and the entire reason this screen shows three of them
- * side by side: an icon that reads correctly in a rounded square can lose its
- * descender in a circle, and there is no way to discover that from a file
- * picker.
+ * `AppIcon` itself now lives in `components/ui/app-icon` because the window
+ * title bar renders the same mark; it is re-exported here so this module stays
+ * the one import for everything the editor draws. See that file for the masks
+ * and the safe zone.
  */
 import * as React from "react";
-import { iconLayout, resolveTitlebar, type EffectivePwa } from "@/lib/pwa-config";
+import { resolveTitlebar, type EffectivePwa } from "@/lib/pwa-config";
 import { contrast, parseHex } from "@/lib/theme";
 import { readWcoState, type WcoState } from "@/lib/wco";
+import { AppIcon, type MaskShape } from "@/components/ui/app-icon";
 import { Callout } from "@/components/ui/callout";
 import { cn } from "@/lib/cn";
 
-export type MaskShape = "circle" | "squircle" | "rounded";
-
-/** Border-radius per launcher mask, as a percentage of the icon box. */
-const MASK_RADIUS: Record<MaskShape, string> = {
-  circle: "50%",
-  squircle: "28%",
-  rounded: "22%",
-};
+export { AppIcon, type MaskShape };
 
 const MASK_LABEL: Record<MaskShape, string> = {
   circle: "Circle",
   squircle: "Squircle",
   rounded: "Rounded",
 };
-
-/**
- * The icon exactly as the API will render it, at any display size.
- *
- * `maskable` switches to the safe-zone padding and the opaque brand background;
- * `mask` clips it the way a launcher would; `safeZone` overlays the circle that
- * a maskable icon is guaranteed to keep — content outside it is at the mercy of
- * the device.
- */
-export function AppIcon({
-  cfg,
-  maskable = false,
-  mask,
-  size = 72,
-  safeZone = false,
-  className,
-}: {
-  cfg: EffectivePwa;
-  maskable?: boolean;
-  mask?: MaskShape;
-  size?: number;
-  safeZone?: boolean;
-  className?: string;
-}) {
-  const layout = iconLayout(cfg, maskable);
-  const background = maskable
-    ? cfg.maskableBackground
-    : cfg.iconBackground === "transparent"
-      ? "transparent"
-      : cfg.iconBackground;
-  // A plain icon keeps the tenant's corner rounding; a maskable one must be a
-  // full square, because the launcher supplies the shape and any rounding we
-  // baked in would show as a lighter notch inside the crop.
-  const radius = mask ? MASK_RADIUS[mask] : maskable ? "0%" : `${cfg.iconRadius}%`;
-
-  return (
-    <div
-      className={cn("relative flex-none overflow-hidden", className)}
-      style={{ width: size, height: size, borderRadius: radius, background }}
-    >
-      {cfg.iconUrl ? (
-        <img
-          src={cfg.iconUrl}
-          alt=""
-          style={{
-            position: "absolute",
-            left: `${layout.left * 100}%`,
-            top: `${layout.top * 100}%`,
-            width: `${layout.size * 100}%`,
-            height: `${layout.size * 100}%`,
-            objectFit: "contain",
-          }}
-        />
-      ) : (
-        // Matches the server's monogram fallback: brand colour, white letter.
-        <div
-          className="grid h-full w-full place-items-center font-semibold text-white"
-          style={{ background: cfg.themeColor, fontSize: size * 0.5 }}
-        >
-          {(cfg.shortName || cfg.name || "P").charAt(0).toUpperCase()}
-        </div>
-      )}
-
-      {safeZone && (
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{
-            // The maskable safe zone: the centre circle of diameter 80%.
-            // Anything outside it may be cropped by the launcher.
-            inset: "10%",
-            borderRadius: "50%",
-            border: "1px dashed rgb(255 255 255 / 0.9)",
-            boxShadow: "0 0 0 1px rgb(0 0 0 / 0.35) inset",
-          }}
-        />
-      )}
-    </div>
-  );
-}
 
 /**
  * The desktop window's title bar, in the theme colour.

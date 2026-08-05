@@ -53,6 +53,8 @@ import { FloatingActions } from "@/components/floating-actions";
 import { QuickActionsMenu } from "@/components/quick-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
 import { getDensity, setDensity, isDensity, DENSITY_LABEL, DENSITY_HINT, type Density } from "@/lib/density";
+import { AppIcon } from "@/components/ui/app-icon";
+import { type EffectivePwa } from "@/lib/pwa-config";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { XIcon } from "@/components/ui/icons";
@@ -415,9 +417,48 @@ function Brand({ name, logoUrl }: { name: string; logoUrl?: string | null }) {
   );
 }
 
+/**
+ * The title bar's identity: the square app icon, then the app name as text.
+ *
+ * WHY NOT THE WORDMARK. `Brand` above renders the tenant's logo — typically a
+ * wide lockup with a tagline, which is right for a 288px drawer and wrong for a
+ * 44px bar: it has to shrink until the tagline is unreadable and it crowds out
+ * everything else on the row. Every native desktop app solves this the same way
+ * (WhatsApp, Slack, Teams, VS Code): a small square mark and the app's name in
+ * plain text.
+ *
+ * It also makes the window self-consistent. The icon here is the SAME artwork
+ * the operating system shows in the taskbar and on the home screen, and the
+ * name is the one the install dialog used — both from Settings › App & PWA, so
+ * a tenant configures their installed identity once and the title bar follows.
+ * It is the same component the editor's title-bar preview draws with, so that
+ * preview now predicts the real bar instead of merely resembling it.
+ */
+function AppMark({ cfg }: { cfg: EffectivePwa }) {
+  return (
+    <div className="flex min-w-0 flex-none items-center gap-2">
+      {/* `AppIcon`, not a bare <img src={cfg.iconUrl}>. The raw field is the
+          UPLOAD, and when a tenant has not uploaded a dedicated app icon it
+          resolves to the brand logo — the wide lockup this component exists to
+          avoid — which a 20px box would squash into a smear. AppIcon composites
+          it the way the API does: contained inside a square, on the configured
+          plate, at the configured rounding. So whatever the taskbar shows, this
+          shows. */}
+      <AppIcon cfg={cfg} size={20} />
+      {/* `truncate` because the name is tenant-supplied and the bar is shared
+          with the window controls — a long one must give way rather than push
+          the search field off the row. */}
+      <span className="truncate text-[13px] font-semibold tracking-tight text-foreground">{cfg.name}</span>
+    </div>
+  );
+}
+
 export function AppShell() {
   const { user, logout } = useAuth();
-  const { branding } = useBranding();
+  // `pwa` is the resolved installed-app identity (icon, app name, title-bar
+  // treatment); `branding` is the in-app token layer. The title bar uses the
+  // former, the drawer's wordmark the latter — see AppMark.
+  const { branding, pwa } = useBranding();
   const brandName = branding.name || "Praxis LS";
   const navigate = useNavigate();
   const location = useLocation();
@@ -529,7 +570,7 @@ export function AppShell() {
         >
           <MenuIcon width={18} height={18} />
         </button>
-        <Brand name={brandName} logoUrl={branding.logoUrl} />
+        <AppMark cfg={pwa} />
         {/* The drag handle. An empty flex-1 rather than a padded element: it is
             the only region a user can reliably grab to move the window, so it
             gets whatever width is left rather than a fixed amount. */}

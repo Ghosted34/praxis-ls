@@ -39,7 +39,16 @@ vi.mock("@/app/auth/auth-context", async () => authContextMock());
 vi.mock("@/app/branding/branding-context", async () => {
   const { effectivePwa, EMPTY_PWA_CONFIG } =
     await vi.importActual<typeof import("@/lib/pwa-config")>("@/lib/pwa-config");
-  const branding = { name: "Acme Freight", primary: "#1188ff", primaryForeground: "#fff", logoUrl: null };
+  // A LOGO, deliberately. `effectivePwa` falls back to the brand logo when a
+  // tenant has not uploaded a dedicated app icon — which is the common case and
+  // the one the title bar got wrong, so it is the case these tests default to.
+  // The logo is a wide lockup; the strip must not render it as one.
+  const branding = {
+    name: "Acme Freight",
+    primary: "#1188ff",
+    primaryForeground: "#fff",
+    logoUrl: "/media/tenant_acme/branding/wordmark.png",
+  };
   return {
     useBranding: () => ({
       branding,
@@ -176,6 +185,57 @@ describe("title bar strip", () => {
     const rail = container.querySelector(".rail");
     expect(rail).not.toBeNull();
     expect(container.querySelector(".wco")!.contains(rail)).toBe(false);
+  });
+
+  /**
+   * THE IDENTITY IS THE APP ICON AND THE APP NAME, not the tenant wordmark.
+   *
+   * A wide lockup in a 44px bar shrinks until its tagline is unreadable and
+   * crowds the row it shares with the window controls — which is what the first
+   * version did. Native desktop apps all resolve this the same way: a square
+   * mark plus plain text. It also keeps the window self-consistent, because the
+   * icon here is the same artwork the OS shows in the taskbar.
+   *
+   * Pinned because the failure is purely visual: swapping back to `Brand` would
+   * render, pass every other test, and simply look wrong.
+   */
+  it("shows the app name as text, not only a logo image", () => {
+    const { container } = renderShell();
+    const strip = container.querySelector<HTMLElement>(".wco")!;
+    // `Brand` renders the logo INSTEAD of the name when a tenant has one, so a
+    // revert leaves the bar with no readable name at all. This is that check.
+    expect(within(strip).getByText("Acme Freight")).toBeInTheDocument();
+  });
+
+  /**
+   * THE FALLBACK IS THE TRAP. `effectivePwa` resolves `iconUrl` to the brand
+   * logo when no dedicated app icon is set, so the naive `<img src={iconUrl}>`
+   * puts a wide wordmark in a 20px slot — squashed, or worse, laid out at its
+   * natural width and pushing the row apart. Composited through `AppIcon` it is
+   * contained inside a fixed square, exactly as sharp composites the PNG the
+   * taskbar shows.
+   */
+  it("contains the icon in a fixed square box, so a wide logo cannot stretch the bar", () => {
+    const { container } = renderShell();
+    const strip = container.querySelector<HTMLElement>(".wco")!;
+    const img = within(strip).getAllByRole("presentation", { hidden: true })[0] as HTMLImageElement;
+    expect(img.src).toContain("wordmark.png");
+
+    const box = img.parentElement!;
+    expect(box.style.width).toBe(box.style.height);
+    expect(box).toHaveClass("overflow-hidden");
+    expect(img.style.objectFit).toBe("contain");
+  });
+
+  it("gives the icon an empty alt, so the name is not announced twice", () => {
+    // The name sits beside it as real text. An alt here would make a screen
+    // reader read "Acme Freight Acme Freight" — which is what `Brand` does,
+    // since it labels the logo with the tenant name.
+    const { container } = renderShell();
+    const strip = container.querySelector<HTMLElement>(".wco")!;
+    for (const img of Array.from(strip.querySelectorAll("img"))) {
+      expect(img.getAttribute("alt")).toBe("");
+    }
   });
 
   it("is free of accessibility violations", async () => {

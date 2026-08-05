@@ -30,10 +30,16 @@ const CATALOGUE = [
   { module_key: "MOD-67", group_key: "configure", name: "IAM", sort_order: 67 },
 ];
 
-function load({ granted = [] } = {}) {
+/** The same module, filed under a different verb. Everything else identical —
+ *  which is precisely the edit the digest used to be blind to. */
+function regrouped(moduleKey, verb) {
+  return CATALOGUE.map((m) => (m.module_key === moduleKey ? { ...m, group_key: verb } : m));
+}
+
+function load({ granted = [], catalogue = CATALOGUE } = {}) {
   jest.resetModules();
   jest.doMock("../../src/modules/catalogue/catalogue.repo", () => ({
-    listModules: async () => CATALOGUE,
+    listModules: async () => catalogue,
   }));
   // Spread the REAL repo rather than replacing it: permission.service builds a
   // CRUD service from `repo.cfg`, so a bare object leaves the module unable to
@@ -163,5 +169,52 @@ describe("navAccess — `version` is the client's cache key", () => {
     expect(lost).toEqual(["MOD-33"]);
     expect(gained).toEqual(["MOD-51"]);
     expect(before.modules.filter((m) => !granted.modules.includes(m))).toEqual([]);
+  });
+
+  /**
+   * THE GAP `byGroup` OPENED. Hashing the module keys alone was right while the
+   * key set was the whole answer. It stopped being so the moment the response
+   * started carrying the partition: regrouping a module leaves every key exactly
+   * where it was and rearranges the ribbon completely — a tab gains a section,
+   * another loses one, and an area can move to a different tab altogether.
+   *
+   * A digest that cannot see that reports "nothing changed" for the single edit
+   * whose effect on screen is the most obvious, so the client's revalidation
+   * never fires on it.
+   */
+  it("changes when a module is regrouped, though the module set is identical", async () => {
+    const before = await load({ granted: ["MOD-29", "MOD-33"] }).navAccess(CLIENT, { role_ids: ["r1"] });
+    const after = await load({
+      granted: ["MOD-29", "MOD-33"],
+      catalogue: regrouped("MOD-33", "transact"),
+    }).navAccess(CLIENT, { role_ids: ["r1"] });
+
+    // The thing that did NOT change — which is what makes the digest the only
+    // signal available.
+    expect(after.modules).toEqual(before.modules);
+    // …and the thing that did.
+    expect(after.byGroup).not.toEqual(before.byGroup);
+    expect(after.version).not.toBe(before.version);
+  });
+
+  it("is stable when a regroup moves a module the caller cannot see", async () => {
+    // The digest describes THIS caller's ribbon. A verb change on a module they
+    // were never granted rearranges nothing they can see, so waking their client
+    // for it would be a reload that changes nothing on screen.
+    const before = await load({ granted: ["MOD-29"] }).navAccess(CLIENT, { role_ids: ["r1"] });
+    const after = await load({
+      granted: ["MOD-29"],
+      catalogue: regrouped("MOD-51", "empower"),
+    }).navAccess(CLIENT, { role_ids: ["r1"] });
+
+    expect(after.version).toBe(before.version);
+  });
+
+  it("still moves when a stale grant against a retired module comes or goes", async () => {
+    // A key with no catalogue row has no verb to record, but it is a real grant
+    // and the pair form must not swallow it.
+    const withStale = await forRoles(["MOD-29", "MOD-999"]);
+    const without = await forRoles(["MOD-29"]);
+    expect(withStale.version).not.toBe(without.version);
   });
 });

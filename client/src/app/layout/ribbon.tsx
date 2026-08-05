@@ -172,6 +172,22 @@ function CommandCluster({ area, pathname }: { area?: RibbonArea; pathname: strin
   const landing = area ? areaRoute(area.area) : "";
   const showLanding = !!area && area.sections.length > 0 && pathname !== landing;
 
+  /*
+   * NOTHING TO SAY, SO SAY NOTHING.
+   *
+   * Only one screen publishes commands today, so on an area's landing page —
+   * and on the five areas that are a single screen — this cluster had no
+   * children and rendered an empty box. That is what made the row look
+   * half-built: a region reserved for something that never arrives reads as a
+   * missing feature, whereas a nav row with no commands beside it is simply a
+   * nav row. Office does the same thing with its contextual tabs; they are
+   * absent, not empty.
+   *
+   * Returning null also lets the row's `justify-between` collapse to a plain
+   * left-aligned list rather than holding a spacer against nothing.
+   */
+  if (!showLanding && commands.length === 0) return null;
+
   return (
     <div className="flex flex-none items-center gap-1.5">
       {showLanding && (
@@ -288,7 +304,10 @@ export function Ribbon({ pathname }: { pathname: string }) {
       {showRowB && family && (
         <div
           className={cn(
-            "ribbon-row flex items-center gap-3 px-4 md:px-6",
+            // `justify-between` rather than a spacer div: when the command
+            // cluster has nothing to show it renders null, and a row built
+            // around a spacer would still be holding one against nothing.
+            "ribbon-row flex items-center justify-between gap-3 px-4 md:px-6",
             // Unpinned, the row floats over the content instead of pushing it
             // down — a table that jumps 46px because you glanced at the nav is
             // the thing an unpinned ribbon exists to avoid.
@@ -296,7 +315,6 @@ export function Ribbon({ pathname }: { pathname: string }) {
           )}
         >
           <NavCluster family={family} active={routeArea} />
-          <div className="flex-1" />
           <CommandCluster area={routeArea} pathname={pathname} />
         </div>
       )}

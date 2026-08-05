@@ -192,8 +192,14 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         <DropdownItem to="/security/my-security">
           <SecurityIcon /> My security
         </DropdownItem>
-        <DropdownItem to="/appearance">
-          <PaletteIcon /> Appearance
+        {/* Points at the PERSONAL screen, not the tenant editor. This menu is
+            the "me" menu — My HR, My security — and every user can reach it,
+            but /appearance rewrites the company's brand and needs Settings-edit,
+            so most people who clicked this hit a permission wall on save. The
+            tenant editor is still one click away under Settings → Appearance,
+            where the people who hold that grant look for it. */}
+        <DropdownItem to="/my-appearance">
+          <PaletteIcon /> My appearance
         </DropdownItem>
         {!isStandalone() && (
           <DropdownItem onSelect={openInstallUi}>

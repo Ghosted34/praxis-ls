@@ -128,7 +128,16 @@
       "route": "/appearance",
       "area": "settings",
       "module_key": "MOD-70",
-      "purpose": "White-label theming: colour, logo, display name.",
+      "purpose": "White-label theming for the whole tenant: colour, logo, favicon, typography, corner radius, theme mode. Requires Settings edit.",
+      "actions": []
+    },
+    {
+      "id": "my_appearance",
+      "title": "My appearance",
+      "route": "/my-appearance",
+      "area": "settings",
+      "module_key": null,
+      "purpose": "Each user's own typography, overriding the tenant fonts for themselves only. Self-service — no permission required.",
       "actions": []
     },
     {

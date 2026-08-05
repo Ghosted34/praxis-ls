@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Seed a tenant's appearance (white-label branding) with the Lovable /
- * SmartLS reference palette — orange #F5821F, Playfair Display + Montserrat —
+ * SmartLS reference palette — orange #F5821F, Montserrat display + Inter body —
  * so a fresh tenant paints the reference look instead of the FE's teal
  * fallback (branding-context DEFAULT_PRIMARY).
  *
@@ -14,7 +14,7 @@
  *
  * Deliberately NOT seeded: secondary / accent (raw *surface* tokens in
  * index.css — writing brand colours there tints panel backgrounds), info (no
- * consumer), fontMono (stylesheet default), logos (uploaded via Appearance).
+ * consumer), logos (uploaded via Appearance).
  */
 "use strict";
 
@@ -43,8 +43,17 @@ const APPEARANCE = {
   success: "#28945E",             // --ok  (40 148 94)
   warn: "#B08018",                // --warn (176 128 24)
   danger: "#D2443A",              // --bad  (210 68 58)
-  font_display: '"Playfair Display", Georgia, serif',
-  font_body: '"Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif',
+  // Seeded from the shipped font library (client/src/lib/fonts.ts) — these must
+  // be stacks the app can actually render. The previous pair could not be:
+  // Playfair Display is not bundled at all, and neither was Montserrat, so a
+  // seeded tenant got Georgia and system-ui while every editor and preview
+  // confidently reported the names above. Montserrat's wide geometric caps are
+  // what carried the reference look, so it keeps the display slot; body goes to
+  // Inter, which is the app default and is built for long-form UI text in a way
+  // Montserrat is not.
+  font_display: '"Montserrat Variable", "Montserrat", sans-serif',
+  font_body: '"Inter Variable", "Inter", sans-serif',
+  font_mono: '"JetBrains Mono Variable", "JetBrains Mono", monospace',
   radius: "0.9rem",
   brand_theme: "light",
 };

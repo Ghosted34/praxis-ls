@@ -15,10 +15,20 @@ const { AppError } = require("../../utils/errors");
 
 const mine = (client, actor, q) => repo.mine(client, actor.user_id, q);
 
-/** Minimal branded HTML for a notification email. */
+/**
+ * Minimal branded HTML for a notification email.
+ *
+ * The font stack names library faces only (Roboto, Noto Sans) over a generic
+ * keyword — it used to lead with 'Segoe UI', a proprietary face this product
+ * does not ship. Email is the ONE surface that cannot be guaranteed: Outlook and
+ * most desktop clients ignore @font-face, so an embedded webfont would be
+ * stripped and the recipient's client substitutes regardless. Naming library
+ * faces first is the most this surface can honestly do; the generic keyword is
+ * what most recipients will actually see.
+ */
 function notificationEmailHtml({ name, title, body }) {
   const greeting = name ? `Hi ${String(name).trim().split(/\s+/)[0]},` : "Hi,";
-  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101e34">
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Roboto,'Noto Sans',sans-serif;color:#101e34">
   <div style="max-width:520px;margin:0 auto;padding:32px 24px">
     <div style="background:#fff;border-radius:14px;padding:28px;box-shadow:0 4px 12px rgba(16,30,52,.06)">
       <p style="margin:0 0 12px;font-size:13px;color:#84a0b0">${greeting}</p>

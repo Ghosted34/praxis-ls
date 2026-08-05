@@ -506,7 +506,7 @@ const sha256 = (s) => crypto.createHash("sha256").update(String(s)).digest("hex"
 /** Branded HTML for the reset email. Kept inline (no template engine) and
  *  table-free/simple so it renders in strict mail clients. */
 function resetEmailHtml({ name, link }) {
-  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#101e34">
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Roboto,'Noto Sans',sans-serif;color:#101e34">
   <div style="max-width:520px;margin:0 auto;padding:32px 24px">
     <div style="background:#ffffff;border-radius:14px;padding:32px;box-shadow:0 4px 12px rgba(16,30,52,.06)">
       <h1 style="margin:0 0 12px;font-size:20px;color:#101e34">Reset your password</h1>

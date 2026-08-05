@@ -331,7 +331,24 @@ jobs:
         # exits 0 on a run where every suite self-skipped, so "it passed" and
         # "it ran" are different questions and only one of them was ever asked.
         env:
-          DATABASE_URL: postgresql://praxis-admin:ci-only-not-a-secret@localhost:5432/tenant_citenant
+          # search_path IS PART OF THIS URL, and has to be.
+          #
+          # Every tenant table lives in the `live` schema, never in `public`.
+          # These suites open their own `new Pool({ connectionString })`, so
+          # without it each one resolved against `public` and every query failed
+          # with 42P01 — `relation "journal" does not exist`, `"opportunity"`,
+          # `"event_log"`. The tables were there the whole time; the connection
+          # was looking in the wrong schema.
+          #
+          # journal-posting.test.js says so in its own header — "DATABASE_URL
+          # postgres connection string (search_path = the tenant schema)" — and
+          # the value this job supplied did not honour it. That is the finding
+          # these suites exist to catch, committed by the harness around them.
+          #
+          # `options=-c search_path=...` is libpq's own mechanism and
+          # node-postgres passes it through, so it needs no change in any test.
+          DATABASE_URL: >-
+            postgresql://praxis-admin:ci-only-not-a-secret@localhost:5432/tenant_citenant?options=-c%20search_path%3Dlive%2Cpublic
           TEST_ENTITY_ID: ${{ steps.fixture.outputs.entity_id }}
         run: |
           set -euo pipefail

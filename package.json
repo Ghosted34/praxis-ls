@@ -4,6 +4,7 @@
   "private": true,
   "description": "Praxis LS — white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
   "license": "UNLICENSED",
+  "packageManager": "npm@10.8.2",
   "engines": {
     "node": ">=20 <21"
   },

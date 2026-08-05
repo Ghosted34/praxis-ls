@@ -48,3 +48,20 @@ COMMENT ON TABLE user_preference IS
 -- section", on every authenticated boot. The PK's leading user_id already
 -- serves it, so no additional index is created — a second one would only add
 -- write cost to a table whose whole job is to be read.
+
+-- DOWN
+-- DROP TABLE IF EXISTS user_preference;
+--
+-- Clean to run, and worth being clear about what it costs: this migration only
+-- CREATES, so the undo touches nothing that existed before it — no column is
+-- dropped from app_user, no data outside this table is reachable from here.
+-- What it does discard is every user's saved font choice. That is a preference,
+-- not a record: nobody's work is lost, each person simply falls back to the
+-- tenant's typography and re-picks. The application already treats a missing
+-- row as "inherit the tenant value" (preference.service.js), so the API keeps
+-- answering correctly with the table gone — the reads return null for every
+-- key, which is exactly the pre-0496 behaviour.
+--
+-- The one ordering constraint: run this only after the code that writes to it
+-- is out. A rollback that drops the table while the previous deploy is still
+-- serving PUT /me/preferences/appearance gives users a 500 on save.

@@ -1,5 +1,15 @@
 # Praxis LS — Frontend plan & status
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> The Phase-0 hand-rolled stack. Superseded twice over — first by the Lovable replication, then by Phase 1's token pass. The **platform-console proposal** at the bottom is the one part still open.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 > **Status note (moved to `doc/` per the MD convention).** The frontend direction
 > has since changed: **the FE is being rebuilt to replicate the Lovable mock**
 > (`doc/reference/reference-mock-lovable`). The hand-rolled `client/` described

@@ -259,6 +259,20 @@ jobs:
         if: matrix.app == 'client'
         run: npm run check:contrast --prefix client
 
+      - name: Frontend guide is not lying
+        # Phase 5, closing F5 — the audit's ROOT-CAUSE finding. The onboarding
+        # doc told every new engineer to use <ResourceList> and <CrudResource>:
+        # one had been deleted, the other had zero call sites. The audit's words:
+        # "there is no paved road, so 24 feature areas each paved their own."
+        #
+        # Phase 1 corrected the document. Nothing stopped it drifting again, and
+        # being wrong cost nothing, which is why it stayed wrong for months. This
+        # fails the build if doc/FRONTEND_GUIDE.md names a component that is not
+        # a real export, and if a superseded frontend doc loses the banner
+        # pointing at the guide.
+        if: matrix.app == 'client'
+        run: npm run check:docs --prefix client
+
       - name: Motion budget
         # Phase 5. F17's sharpest finding was `.animate-fade-up` running 500ms on
         # every card and table mount — a dispatcher opening the shipments view

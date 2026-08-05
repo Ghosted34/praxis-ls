@@ -1,5 +1,15 @@
 # Frontend Wiring Plan
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> Done through Phases 3 and 4. Every screen it lists is wired and in the axe register.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 Turning the scaffolded screens into live, data-backed pages. The infrastructure
 already exists; this is about connecting each screen to its API and replacing the
 `<Planned/>` placeholder route with a real page.

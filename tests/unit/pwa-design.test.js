@@ -290,15 +290,48 @@ describe("GET /manifest.webmanifest and /icons — resolved by Host, never cross
     expect(acme.type).toBe("application/manifest+json");
     expect(acme.body.name).toBe("Acme Go");
     expect(acme.body.short_name).toBe("AcmeGo");
-    expect(acme.body.theme_color).toBe("#ff0000");
     expect(acme.body.background_color).toBe("#f3f6fb"); // light theme
     expect(acme.body.display).toBe("standalone");
 
     const globex = await request(app).get("/manifest.webmanifest").set("Host", "globex.praxis.test");
     expect(globex.body.name).toBe("Globex One");
-    expect(globex.body.theme_color).toBe("#0000ff");
     expect(globex.body.background_color).toBe("#071324"); // dark theme
     expect(globex.body.display).toBe("fullscreen");
+  });
+
+  /**
+   * WINDOW CONTROLS OVERLAY. `theme_color` stops being the brand accent here,
+   * and that is the point rather than a regression: with WCO the page draws the
+   * title bar itself, and `theme_color` is left painting only the strip behind
+   * the caption buttons. Set it to the accent and an installed window gets a
+   * loud coloured band butted against the app's own bar — a seam a few hundred
+   * pixels from the right edge, which is the exact "bolted-on" artefact the
+   * feature exists to remove.
+   */
+  describe("window-controls-overlay", () => {
+    it("asks for WCO, keeping the plain display mode as the fallback", async () => {
+      const res = await request(app).get("/manifest.webmanifest").set("Host", "acme.praxis.test");
+      expect(res.body.display_override).toEqual(["window-controls-overlay", "standalone"]);
+      // `display` stays, so a browser with no WCO support loses nothing.
+      expect(res.body.display).toBe("standalone");
+    });
+
+    it("does not claim WCO for a display mode that has no window controls", async () => {
+      // Globex is fullscreen — there are no caption buttons to overlay.
+      const res = await request(app).get("/manifest.webmanifest").set("Host", "globex.praxis.test");
+      expect(res.body.display_override).toEqual(["fullscreen"]);
+    });
+
+    it("paints theme_color as the title bar's own base, per the tenant's theme", async () => {
+      // Light-theme tenant → the light surface; dark-theme tenant → the dark one.
+      // Neither is the brand accent, and that is the fix.
+      const light = await request(app).get("/manifest.webmanifest").set("Host", "acme.praxis.test");
+      expect(light.body.theme_color).toBe("#ffffff");
+      expect(light.body.theme_color).not.toBe(DATA.acme.brand.primary);
+
+      const dark = await request(app).get("/manifest.webmanifest").set("Host", "globex.praxis.test");
+      expect(dark.body.theme_color).toBe("#12161e");
+    });
   });
 
   it("advertises the icon set an installable PWA needs", async () => {

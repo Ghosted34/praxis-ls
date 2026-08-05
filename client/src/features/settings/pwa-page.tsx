@@ -45,6 +45,7 @@ import {
   effectivePwa,
   savePwaConfig,
   uploadAppIcon,
+  uploadTitlebarImage,
   PWA_RANGES,
   type PwaConfig,
   type EffectivePwa,
@@ -57,6 +58,7 @@ import { iconWarnings, splashWarnings, manifestWarnings, type PwaWarning, type S
 const TABS = [
   { value: "icon", label: "Icon" },
   { value: "identity", label: "Identity" },
+  { value: "titlebar", label: "Title bar" },
   { value: "splash", label: "Splash" },
   { value: "install", label: "Install" },
   { value: "offline", label: "Offline" },
@@ -304,7 +306,6 @@ export function PwaPage() {
         <Split
           preview={
             <>
-              <TitleBarPreview cfg={cfg} />
               <AppIcon cfg={cfg} size={84} />
               <div className="text-center">
                 <p className="font-display text-base">{cfg.name}</p>
@@ -639,8 +640,124 @@ export function PwaPage() {
         </Split>
   );
 
+  /**
+   * Title bar. The one surface here that only exists once the app is INSTALLED:
+   * with window-controls-overlay the OS stops drawing a title bar and the page
+   * draws it instead, so this is a real design surface rather than a colour
+   * field — and it is invisible from the browser tab you are configuring it in,
+   * which is why both themes are previewed side by side.
+   */
+  const titlebarPanel = (
+    <Split
+      preview={
+        <div className="flex w-full flex-col gap-4">
+          <TitleBarPreview cfg={cfg} theme="dark" caption="Dark theme" />
+          <TitleBarPreview cfg={cfg} theme="light" caption="Light theme" />
+          <p className="text-[11px] leading-snug text-muted-foreground">
+            Both are shown because the bar follows whichever theme the user is in — it is not one colour for
+            everyone.
+          </p>
+        </div>
+      }
+    >
+      <SettingsCard
+        title="Colour"
+        desc="What the installed window's title bar is painted with. It also colours the small strip the operating system keeps behind the minimise, maximise and close buttons, so the two never disagree."
+      >
+        <div className="flex flex-col gap-4">
+          <Field label="Treatment">
+            <Segmented
+              value={cfg.titlebarMode}
+              onChange={(v) => set("titlebarMode", v)}
+              options={[
+                { value: "surface", label: "Match app" },
+                { value: "brand", label: "Brand colour" },
+                { value: "custom", label: "Custom" },
+              ]}
+            />
+            <p className="text-[11px] text-muted-foreground">
+              {cfg.titlebarMode === "surface"
+                ? "Follows your app's own surface in each theme — the window reads as one continuous instrument."
+                : cfg.titlebarMode === "brand"
+                  ? "Your brand colour, edge to edge. Bold, and the same in both themes — check it against dark below."
+                  : "Two explicit colours, one per theme."}
+            </p>
+          </Field>
+
+          {cfg.titlebarMode === "custom" && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Dark theme">
+                <input
+                  type="color"
+                  aria-label="Title bar colour, dark theme"
+                  value={cfg.titlebarDark}
+                  onChange={(e) => set("titlebarDark", e.target.value)}
+                  className="h-8 w-full cursor-pointer rounded border bg-transparent p-0.5"
+                />
+              </Field>
+              <Field label="Light theme">
+                <input
+                  type="color"
+                  aria-label="Title bar colour, light theme"
+                  value={cfg.titlebarLight}
+                  onChange={(e) => set("titlebarLight", e.target.value)}
+                  className="h-8 w-full cursor-pointer rounded border bg-transparent p-0.5"
+                />
+              </Field>
+            </div>
+          )}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Artwork"
+        desc="An optional image behind the bar. It sits on its own layer under the text, so keep it as texture — a low opacity and a wide, quiet image. Anything busy competes with the controls sitting on top of it."
+      >
+        <div className="flex flex-col gap-4">
+          <ImageField
+            label="Background image"
+            value={draft.titlebarImageUrl || ""}
+            onChange={(url) => set("titlebarImageUrl", url || null)}
+            shape="wide"
+            maxBytes={2_000_000}
+            upload={uploadTitlebarImage}
+            hint="Wide and low — the bar is roughly 1600×44 on a laptop, so a tall image will only ever show its middle band."
+          />
+          {cfg.titlebarImageUrl && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Slider
+                label="Opacity"
+                unit="%"
+                {...num("titlebarImageOpacity", cfg.titlebarImageOpacity)}
+                hint="Capped at 60% — above that, text on the bar starts to lose contrast."
+              />
+              <Slider
+                label="Blur"
+                unit="px"
+                {...num("titlebarBlur", cfg.titlebarBlur)}
+                hint="Softens detail into texture. A little goes a long way."
+              />
+            </div>
+          )}
+        </div>
+      </SettingsCard>
+
+      <SettingsCard
+        title="Where this shows"
+        desc="Installed windows only, on desktop Chromium (Windows, macOS, Linux, ChromeOS)."
+      >
+        <p className="text-sm text-muted-foreground">
+          In a browser tab there is no title bar to take over, so this row renders as the app's ordinary utility bar
+          and the colour applies to the browser's own theming instead. On mobile the same colour tints the status
+          bar. Nothing here can leave the app without a usable header.
+        </p>
+      </SettingsCard>
+    </Split>
+  );
+
   const PANELS: Record<string, React.ReactNode> = {
     icon: iconPanel,
+    titlebar: titlebarPanel,
     identity: identityPanel,
     splash: splashPanel,
     install: installPanel,

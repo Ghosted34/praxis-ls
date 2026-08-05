@@ -18,7 +18,7 @@
  * picker.
  */
 import * as React from "react";
-import { iconLayout, type EffectivePwa } from "@/lib/pwa-config";
+import { iconLayout, resolveTitlebar, type EffectivePwa } from "@/lib/pwa-config";
 import { contrast, parseHex } from "@/lib/theme";
 import { cn } from "@/lib/cn";
 
@@ -130,30 +130,57 @@ export function AppIcon({
  * bar's luminance — which is also the fastest way to see that a mid-tone choice
  * leaves them hard to make out.
  */
-export function TitleBarPreview({ cfg }: { cfg: EffectivePwa }) {
-  const bar = parseHex(cfg.themeColor) ?? [244, 247, 251];
-  const onDark = contrast([255, 255, 255], bar) >= contrast([17, 20, 24], bar);
+export function TitleBarPreview({
+  cfg,
+  theme,
+  caption,
+}: {
+  cfg: EffectivePwa;
+  theme: "dark" | "light";
+  caption?: string;
+}) {
+  const bar = resolveTitlebar(cfg, theme);
+  const rgb = parseHex(bar.base) ?? [244, 247, 251];
+  const onDark = contrast([255, 255, 255], rgb) >= contrast([17, 20, 24], rgb);
   const ink = onDark ? "rgb(255 255 255 / 0.92)" : "rgb(0 0 0 / 0.75)";
+  const app = theme === "dark" ? "#0b0d11" : "#f3f6fb";
 
   return (
     <figure className="m-0 w-full">
       <div className="overflow-hidden rounded-lg border shadow-m">
-        <div className="flex items-center gap-2 px-2.5 py-2" style={{ background: cfg.themeColor }}>
-          <AppIcon cfg={cfg} size={16} />
-          <span className="min-w-0 flex-1 truncate text-[11px] font-medium" style={{ color: ink }}>
+        <div className="relative flex items-center gap-2 px-2.5 py-2" style={{ background: bar.base }}>
+          {/* The artwork layer, rendered exactly as `.wco-art` does in the real
+              shell: a separate low-opacity plane UNDER the content, so the text
+              above it keeps full contrast no matter what image is chosen. */}
+          {bar.imageUrl && (
+            <span
+              aria-hidden
+              className="pointer-events-none absolute inset-0"
+              style={{
+                backgroundImage: `url("${bar.imageUrl}")`,
+                backgroundSize: "cover",
+                backgroundPosition: "center",
+                opacity: bar.opacity,
+                filter: bar.blur ? `blur(${bar.blur}px)` : undefined,
+              }}
+            />
+          )}
+          <AppIcon cfg={cfg} size={16} className="relative" />
+          <span className="relative min-w-0 flex-1 truncate text-[11px] font-medium" style={{ color: ink }}>
             {cfg.name}
           </span>
           {/* Minimise / maximise / close, as glyphs rather than an image so they
-              take the computed ink colour. */}
-          <span aria-hidden className="flex items-center gap-2 text-[10px] leading-none" style={{ color: ink }}>
+              take the computed ink colour — which is also the fastest way to see
+              that a mid-tone bar leaves them hard to make out. */}
+          <span aria-hidden className="relative flex items-center gap-2 text-[10px] leading-none" style={{ color: ink }}>
             <span>&#8211;</span>
             <span>&#9633;</span>
             <span>&#10005;</span>
           </span>
         </div>
-        <div className="h-11 bg-background" />
+        <div className="h-11" style={{ background: app }} />
       </div>
-      <figcaption className="micro mt-2 text-center">Desktop title bar</figcaption>
+      <figcaption className="micro mt-2 text-center">{caption ?? "Desktop title bar"}</figcaption>
     </figure>
   );
 }

@@ -57,6 +57,12 @@ export type PwaConfig = {
   updateTitle: string | null;
   updateBody: string | null;
   updateButton: string | null;
+  titlebarMode: "surface" | "brand" | "custom" | null;
+  titlebarLight: string | null;
+  titlebarDark: string | null;
+  titlebarImageUrl: string | null;
+  titlebarImageOpacity: number | null;
+  titlebarBlur: number | null;
 };
 
 /** What every consumer actually renders: nothing here is null except the two
@@ -95,6 +101,24 @@ export type EffectivePwa = {
   updateTitle: string | null;
   updateBody: string | null;
   updateButton: string | null;
+  titlebarMode: NonNullable<PwaConfig["titlebarMode"]>;
+  titlebarLight: string;
+  titlebarDark: string;
+  titlebarImageUrl: string | null;
+  titlebarImageOpacity: number;
+  titlebarBlur: number;
+};
+
+/** The installed window's title bar, resolved for one theme. `base` is both the
+ *  colour the page paints and the `theme_color` the OS paints behind the caption
+ *  buttons — they must be the same value or the window shows a seam. */
+export type ResolvedTitlebar = {
+  base: string;
+  imageUrl: string | null;
+  /** 0..1 — artwork in a title bar is texture, so the ceiling is low. */
+  opacity: number;
+  /** px */
+  blur: number;
 };
 
 /** Branding fields `effectivePwa` inherits from. A subset of the client's
@@ -122,6 +146,10 @@ export declare namespace pwaDesign {
   function effectivePwa(pwa: Partial<PwaConfig> | null, brand: PwaBrandSource | null): EffectivePwa;
   /** Artwork box inside the icon canvas, as fractions of the canvas (0..1). */
   function iconLayout(cfg: EffectivePwa, maskable: boolean): { size: number; left: number; top: number };
+  function resolveTitlebar(cfg: EffectivePwa, theme: "dark" | "light"): ResolvedTitlebar;
+  const TITLEBAR_MODES: readonly NonNullable<PwaConfig["titlebarMode"]>[];
+  const SURFACE_LIGHT: string;
+  const SURFACE_DARK: string;
   function clamp(n: number, range: [number, number]): number;
 }
 

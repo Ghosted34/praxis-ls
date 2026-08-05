@@ -10,33 +10,56 @@ const { assertBalanced, assertNoCompensation, toMinor } = require("../../src/mod
 
 const L = (account_code, debit, credit) => ({ account_code, debit, credit });
 
+/**
+ * The CODE, not the message.
+ *
+ * These assertions used to match on message text (`/not balanced/i`), and that
+ * broke the moment the rules moved to `packages/shared` and their wording was
+ * rewritten for an OPERATOR rather than a log — because the client now renders
+ * them next to the offending line.
+ *
+ * The code is the stable thing: it is what the 422 body carries, what the AI
+ * tool surface branches on, and what does not change when someone improves a
+ * sentence. Asserting the sentence made a wording improvement look like a
+ * ledger regression, which is the wrong signal to give.
+ */
+const codeOf = (fn) => {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e.code;
+  }
+};
+
+
 describe("assertBalanced (§23.1/§23.2)", () => {
   it("accepts a balanced two-line entry", () => {
     expect(() => assertBalanced([L("521", 1000, 0), L("4191", 0, 1000)])).not.toThrow();
   });
 
   it("rejects an unbalanced entry", () => {
-    expect(() => assertBalanced([L("521", 1000, 0), L("4191", 0, 999)])).toThrow(/not balanced/i);
+    expect(codeOf(() => assertBalanced([L("521", 1000, 0), L("4191", 0, 999)]))).toBe("ENTRY_UNBALANCED");
   });
 
   it("rejects a line with both sides > 0 (§23.2)", () => {
-    expect(() => assertBalanced([L("521", 100, 100), L("4191", 0, 100)])).toThrow(/one of debit\/credit/i);
+    expect(codeOf(() => assertBalanced([L("521", 100, 100), L("4191", 0, 100)]))).toBe("LINE_ONE_SIDE");
   });
 
   it("rejects a line with neither side > 0", () => {
-    expect(() => assertBalanced([L("521", 0, 0), L("4191", 0, 0)])).toThrow(/one of debit\/credit/i);
+    expect(codeOf(() => assertBalanced([L("521", 0, 0), L("4191", 0, 0)]))).toBe("LINE_ONE_SIDE");
   });
 
   it("requires at least two lines", () => {
-    expect(() => assertBalanced([L("521", 1000, 0)])).toThrow(/two lines/i);
+    expect(codeOf(() => assertBalanced([L("521", 1000, 0)]))).toBe("ENTRY_TOO_FEW_LINES");
   });
 
   it("rejects a missing account_code", () => {
-    expect(() => assertBalanced([{ debit: 1000, credit: 0 }, L("4191", 0, 1000)])).toThrow(/account_code/i);
+    expect(codeOf(() => assertBalanced([{ debit: 1000, credit: 0 }, L("4191", 0, 1000)]))).toBe("LINE_NO_ACCOUNT");
   });
 
   it("rejects more than 2 decimals (money precision)", () => {
-    expect(() => assertBalanced([L("521", 10.001, 0), L("4191", 0, 10.001)])).toThrow(/2 decimals/i);
+    expect(codeOf(() => assertBalanced([L("521", 10.001, 0), L("4191", 0, 10.001)]))).toBe("INVALID_AMOUNT");
   });
 
   it("sums in minor units without float drift", () => {
@@ -51,13 +74,13 @@ describe("assertNoCompensation (§23.6)", () => {
   });
 
   it("rejects the same account on both sides of one entry", () => {
-    expect(() => assertNoCompensation([L("521", 1000, 0), L("521", 0, 400), L("4191", 0, 600)])).toThrow(/both debited and credited/i);
+    expect(codeOf(() => assertNoCompensation([L("521", 1000, 0), L("521", 0, 400), L("4191", 0, 600)]))).toBe("COMPENSATION");
   });
 });
 
 describe("toMinor", () => {
   it("rejects negatives and non-numbers", () => {
-    expect(() => toMinor(-1, "x")).toThrow(/non-negative/i);
+    expect(codeOf(() => toMinor(-1, "x"))).toBe("INVALID_AMOUNT");
     expect(() => toMinor("5", "x")).toThrow(/non-negative/i);
   });
   it("converts to centimes", () => {

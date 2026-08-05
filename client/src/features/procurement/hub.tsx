@@ -1,5 +1,8 @@
 import { TabbedHub } from "@/components/tabbed-hub";
-import { PurchaseRequestsPage, PurchaseOrdersPage, GoodsReceivedPage, SupplierInvoicesPage } from "./pages";
+import { PurchaseRequestsPage } from "./purchase-requests";
+import { PurchaseOrdersPage } from "./purchase-orders";
+import { GoodsReceivedPage } from "./goods-received";
+import { SupplierInvoicesPage } from "./supplier-invoices";
 
 export function ProcurementHub() {
   return (

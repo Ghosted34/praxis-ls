@@ -60,6 +60,14 @@ module.exports = [
     },
   },
   {
+    // The backend is CommonJS, but `.mjs` is ESM by definition — Node decides
+    // that from the extension, so the parser must agree or every import is a
+    // syntax error. Only the standalone check scripts use it (check-fonts.mjs),
+    // matching how client/scripts/*.mjs are already written.
+    files: ["**/*.mjs"],
+    languageOptions: { sourceType: "module" },
+  },
+  {
     files: ["tests/**/*.js", "**/*.test.js"],
     languageOptions: {
       globals: {

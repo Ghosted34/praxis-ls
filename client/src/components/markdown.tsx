@@ -41,7 +41,7 @@ function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
       const href = mm[2].trim();
       nodes.push(
         SAFE_HREF.test(href) ? (
-          <a key={k} href={href} target="_blank" rel="noopener noreferrer" className="text-primary underline">
+          <a key={k} href={href} target="_blank" rel="noopener noreferrer" className="text-primary-ink underline">
             {mm[1]}
           </a>
         ) : (

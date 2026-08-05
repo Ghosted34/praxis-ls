@@ -10,8 +10,13 @@
 import * as React from "react";
 import { useRegisterSW } from "virtual:pwa-register/react";
 import { XIcon } from "@/components/ui/icons";
+import { useBranding } from "@/app/branding/branding-context";
 
 export function PwaUpdater() {
+  // Tenant-authored copy (Settings › App & PWA › Offline & updates), falling
+  // back to the built-in strings. Only the wording is configurable — WHEN the
+  // toast appears is the service worker's business, not a design choice.
+  const { pwa } = useBranding();
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
@@ -19,7 +24,7 @@ export function PwaUpdater() {
   } = useRegisterSW({
     onRegisterError(err) {
       // Non-fatal: the app works without the SW, just without offline/install.
-      // eslint-disable-next-line no-console
+       
       console.warn("[pwa] service worker registration failed", err);
     },
   });
@@ -39,11 +44,11 @@ export function PwaUpdater() {
         <div className="min-w-0 flex-1">
           {needRefresh ? (
             <>
-              <p className="text-sm font-semibold text-foreground">New version available</p>
-              <p className="text-[13px] text-muted-foreground">Reload to get the latest update.</p>
+              <p className="text-sm font-semibold text-foreground">{pwa.updateTitle || "New version available"}</p>
+              <p className="text-[13px] text-muted-foreground">{pwa.updateBody || "Reload to get the latest update."}</p>
             </>
           ) : (
-            <p className="text-sm font-medium text-foreground">Ready to work offline.</p>
+            <p className="text-sm font-medium text-foreground">{pwa.offlineReadyText || "Ready to work offline."}</p>
           )}
         </div>
         {needRefresh && (
@@ -52,7 +57,7 @@ export function PwaUpdater() {
             onClick={() => updateServiceWorker(true)}
             className="flex-none rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
           >
-            Reload
+            {pwa.updateButton || "Reload"}
           </button>
         )}
         <button

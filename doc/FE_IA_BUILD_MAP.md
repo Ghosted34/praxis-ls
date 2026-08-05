@@ -1,5 +1,15 @@
 # Praxis LS — FE Build Map & AI-Integration Map
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> Superseded by `client/src/features/scaffold/screen-specs.ts`, which the running app actually renders — a doc listing what is scaffolded drifts the moment a screen is wired.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 _Prepared 2026-07-15. Companion to `doc/FE_IA_HANDOFF.md` (the module→IA mapping) and
 `doc/SESSION_HANDOFF.md` (session history). This doc is the **work-to-be-done** view: every
 screen that is scaffolded but not yet wired to the backend, its intended pages/tabs/columns/

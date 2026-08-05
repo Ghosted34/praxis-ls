@@ -1472,3 +1472,442 @@ Stated so Phase 4 does not assume it is done.
   taken with a throwaway harness and deleted. Standing that up in CI needs
   Playwright and browsers in the frontend job, which the roadmap puts in Phase 5.
 - **`platform-console/` remains out of scope**, as it has been throughout.
+
+---
+
+# Addendum 7 — Phase 4 implementation notes (2026-08-04)
+
+Written while implementing Phase 4, not during the audit. As with Addenda 3 and
+6, everything here is a **correction or addition** to the findings above,
+discovered by changing the code rather than by reading it.
+
+Phase 4's deliverables are met: every remaining area is on the shared
+primitives, the god files are decomposed, raw-palette colours are at zero, and
+route-level `React.lazy` was already delivered in Addendum 4. The tracked
+checklist the phase asks for is `doc/PHASE4_CHECKLIST.md`, which also states
+plainly what was **not** taken.
+
+## The single most useful thing built this phase was a test harness
+
+Everything the client tested before Phase 4 was a **primitive**. That is the
+right place to start — fixing `Field` repairs 565 call sites at once — but a
+primitive's test cannot see the defects that only exist once a screen is
+assembled. `src/test/screen-harness.tsx` renders a real routed screen with its
+network faked, and `features/screens.axe.test.tsx` puts 66 screens across 18
+areas through all four of their states on every CI run.
+
+It found a defect **on its first execution, against one already-migrated
+screen**, and kept finding them:
+
+1. **Every list table in the app shipped an empty `<th>`.** Each screen ends its
+   columns with `{ key: "_a", label: "" }` for row actions, which rendered a
+   literally empty header — axe `empty-table-header`, on roughly ninety screens.
+   Navigating by column, a screen reader announces "Approve" and "Reject" with no
+   idea which column they are in. Invisible to every primitive test, because it
+   only exists where a column spec meets a table.
+
+2. **A missing GRANT was reported to the user as a DISABLED FEATURE.**
+   `vault/pages.tsx` chose between "you lack access" and "this tenant doesn't
+   have the feature" by regexing the error *sentence*:
+
+   ```
+   /feature|not enabled|disabled|forbidden|permission/i.test(msg)
+   ```
+
+   `errMsg` renders every 403 as "You don't have permission to do this.", which
+   matches `/permission/`. So a user missing the reports grant was told
+   **"Reporting isn't enabled for this tenant"** and pointed at a developer-
+   dashboard flag that was already on. They would ask an admin to enable
+   something already enabled; the admin would look in the wrong place; the real
+   cause — their role — was never mentioned to either of them.
+
+   The backend has always distinguished these properly (`FEATURE_DISABLED` from
+   `middleware/feature-gate.js` versus `FORBIDDEN`). The discriminator was being
+   discarded one layer from the screen, because `useList` returns only a
+   formatted string. It now also returns `errorCode`; `error` is unchanged, so
+   the 161 sites that merely display it are untouched.
+
+   This is the same shape as Addendum 6's Control Tower defect, where any 403
+   fell into an empty state that told the user everything was fine. **Twice now,
+   in two unrelated modules, a permission failure has rendered as reassurance.**
+   That is a pattern, not a coincidence: `errMsg` flattens every 403 to one
+   sentence, and screens then try to recover the distinction from prose.
+
+3. **Thirteen unlabelled `<select>` controls**, across Fleet, Costing, Finance,
+   Settings, Security, Master data and the shared `CountrySelect` — every one
+   announced as "combo box" with no indication of what it selects.
+
+4. **WMS Equipment had no loading state.** With data still null its kanban
+   rendered four *empty columns*, which does not read as "loading" — it reads as
+   "this warehouse owns no equipment". A different and more alarming statement to
+   make to a warehouse manager.
+
+## A correction to F14: the cause was ergonomics, not discipline
+
+The audit records 122 raw-palette colours as a discipline problem — rule #1 of
+`FE_DESIGN_RULES.md` is "never hardcode colours", and 122 sites ignored it.
+
+That is not quite what was happening. The semantic tones existed in `index.css`
+from Phase 1 but were **never exposed to Tailwind**, so the correct spelling was
+
+```
+text-[rgb(var(--ok))]        vs        text-emerald-600
+bg-[rgb(var(--ok)_/_0.12)]   vs        bg-emerald-500/10
+```
+
+The wrong thing was shorter to type than the right one, and 46 remaining sites
+took the shortcut. `ok` / `warn` / `bad` / `brand-*` are now real Tailwind
+colours with `<alpha-value>`, so `border-ok/40` resolves. Making the right thing
+the short thing did more than the rule ever did.
+
+## Two gates that were wrong when first written
+
+Both found by running them rather than by reasoning about them, and both worth
+recording because each failed in the way that gets a gate *disabled*:
+
+- **The palette gate flagged its own evidence.** `ui/pill.tsx` and its test both
+  QUOTE the deleted shadow `Badge` map in their header comments, as the record of
+  what they replaced. A checker that reports the documentation of a fix as an
+  instance of the bug teaches people it is noise. It now blanks comments first.
+
+- **The palette gate did not scan new files.** It used `git ls-files`, which
+  lists only what is already committed — so a brand-new component, the likeliest
+  place for a fresh violation, was not checked at all. Caught when the gate
+  passed its own new file. It also threw `ENOENT` on files deleted-but-unstaged,
+  which is the normal state mid-refactor; a checker that looks broken rather than
+  clean is one nobody trusts.
+
+Both are verified to exit 1 on a reintroduced violation, including in an
+untracked file.
+
+## The lint rules are now errors, one phase early
+
+The config said `jsx-a11y`'s backlog rules "flip to error in Phase 5 once the
+count is zero". The count reached zero here, and a satisfied rule left at `warn`
+only invites the backlog back. `react-hooks/exhaustive-deps` is an error too.
+
+Neither was reached by suppression. The two biggest clusters were real:
+
+- **Eleven `autoFocus` props were dead code.** They sit inside `<Modal>`, which
+  has been Radix `Dialog` since Phase 2 and focuses its first control already.
+  Deleted, not disabled. Three remain, each with a written reason — and each is
+  focus *recovery*, where the element the user was on has just been unmounted.
+
+- **Ten `exhaustive-deps` warnings were one bug, ten times.** `const rows =
+  query.data || []` mints a fresh array every render, so any effect depending on
+  it re-runs every render. On the four 360 screens (client, vehicle, employee,
+  location) that effect calls `setSelId` — the loop was bounded only by an
+  `if (!selId)` guard happening to be false after the first pass.
+
+Every remaining exception is an `eslint-disable-next-line` carrying a reason at
+the call site, which is reviewable. A blanket `warn` is not.
+
+## Two defects fixed that the audit did not name
+
+- **`DataList`'s clickable row was mouse-only** (F9 names the mobile card; the
+  desktop `<tr>` had the same problem). The fix is not `<tr role="button">` —
+  that would work for the keyboard and destroy row/column position and header
+  association on a 200-row table. Column 0 now renders a real `<button>` named by
+  the record, so the row keeps table semantics *and* is keyboard-reachable.
+
+- **The Sales kanban could not be operated without a mouse.** Drag-and-drop with
+  no alternative, on the CRM's primary screen. Each card now carries a "Move"
+  menu calling the same endpoint, named per deal.
+
+## What the decomposition actually surfaced
+
+Files over 400 lines: **15 → 4**. Sales alone went from 2,596 lines in one file
+to eleven. But the useful part was what only became visible once the files were
+separate:
+
+- `settings/store-pages.tsx` carried a **byte-identical second copy** of
+  `PageError`.
+- `shell` was declared independently in **ten** HR files; the split would have
+  made an eleventh. F14's "`const shell` defined independently in 28 files",
+  caught mid-regrowth.
+- `hr/pages.tsx` was a **barrel** re-exporting nine sibling screens while also
+  holding two of its own — which is why nobody had noticed it was a god file.
+
+A note on the counts in §4's baseline table: `const shell` now appears 42 times,
+*higher* than the audit's 28. That is not a regression. Every one is
+`= pageShell.wide` — an alias for the shared token — where the audit's 28 were
+the hardcoded literal `"mx-auto max-w-6xl animate-fade-in"`. Changing the token
+moves all of them. The metric got worse while the property it was measuring got
+fixed, which is worth knowing before anyone re-runs the table.
+
+## Verified in a browser, not inferred
+
+Headless Chromium against the built `dist/`, at 1280 / 1440 / 1920 / 2560:
+
+| | 1280 | 1440 | 1920 | 2560 |
+|---|---|---|---|---|
+| content column | 1232px | 1392px | 1664px | 1664px |
+| `<h1>` count | 1 | 1 | 1 | 1 |
+| horizontal scroll | none | none | none | none |
+
+Six screens across Control Tower, Finance, Sales, Security, Master data and
+Settings. Zero page errors. Settings → Numbering correctly holds 768px at every
+width: it is `reading`, and a 1664px-wide form is not a feature.
+
+One thing this run corrected about my own expectations. The seeded session had
+to go through `/auth/refresh` — the access token is in-memory by design and only
+the refresh token is persisted — so the first run measured the *landing page* at
+four widths and reported one `<h1>` and no horizontal scroll, all of it true and
+all of it meaningless. A harness that renders the wrong screen still produces a
+confident table.
+
+## The 2560px case, restated
+
+`max-w-wide` is 1664px, so 1920 and 2560 render the same column. Addendum 6
+called this "addressed rather than solved"; this phase measured it again and did
+not change it. It is a **token** decision — one number — and it belongs with the
+Phase 5 density work, where row height, compact tables and the fluid upper tier
+are the same conversation.
+
+Relatedly, and worth stating because the raw number looks alarming: `xl:` appears
+6 times and `2xl:` once, against F2's target of "desktop tiers on every layout
+screen". After Phase 1 the *container* carries the desktop behaviour, and the
+dominant content is tables, which fill their container. The remaining
+`sm:grid-cols-2` sites are overwhelmingly form grids **inside width-capped
+modals**, where two columns is correct at every viewport. Widening those would be
+a regression dressed up as a metric improvement.
+
+## Scope explicitly NOT taken in Phase 4
+
+- **Forms are still not on `<Form>` + shared Zod schemas.** The forms in the
+  files split this phase were moved, not rewritten. `useZodForm` is reachable and
+  gated (`check:shared`), so the first adopter will not break the image build —
+  that was the blocker and it is gone.
+- **Raw `<table>` remains in 9 feature files** (14 total, of which 5 ARE the
+  primitives). These are bespoke layouts — the permission matrix, portal
+  terminals, 360 side panels — where the shared `<Table>` is the wrong shape.
+- **No visual-regression baseline was committed**, as in Phase 3. CI needs
+  Playwright and browsers in the frontend job; Phase 5.
+- **`platform-console/` remains out of scope**, as throughout.
+
+---
+
+# Addendum 8 — Phase 5 implementation notes (2026-08-05)
+
+Written while implementing Phase 5, not during the audit. As with Addenda 3, 6
+and 7, everything here is a **correction or addition** to the findings above,
+discovered by changing the code rather than by reading it.
+
+Phase 5's scope items are done and the tracked record is
+`doc/PHASE5_CHECKLIST.md`, which also states plainly what was not taken. This
+addendum is the part that changes what the audit says.
+
+## The theme of this phase: three gates were measuring the wrong thing
+
+Phases 1-4 built gates and the gates were green. Phase 5 found that three of the
+audit's own findings had been **reported as fixed while the property they
+described was still broken** — not because anyone cut a corner, but because in
+each case the thing that was easy to measure was not the thing that mattered.
+
+That is worth stating as a pattern, because it is the third time this document
+has recorded a version of it. Addendum 6: a pill whose ground came from one
+token and whose text came from another, "a contrast pair nobody had measured
+because neither half was chosen against the other." Addendum 7: a permission
+failure rendering as reassurance, twice, because `errMsg` flattened the
+discriminator one layer from the screen. Now three more.
+
+## F13 was still failing, on every light-theme status pill
+
+**The gate measured status text against `--card`. A status pill does not sit on
+`--card`.** `.st-ok` is `color: rgb(var(--ok))` over
+`background: rgb(var(--ok-fill) / 0.13)`, and F13 says so in as many words:
+*"these pills pair the failing colour with a tinted background, which is worse
+than the white-background figures above, not better."*
+
+Nobody had measured the composite. Measured now, on the worse of the two
+surfaces it can land on:
+
+| Pill | Was | Now |
+|---|---|---|
+| `.st-blue` / `.st-info` | **3.27:1** | 4.55:1 |
+| `.st-orange` | **3.79:1** | 4.57:1 |
+| `.st-ok` | **3.75:1** | 4.55:1 |
+| `.st-warn` | **3.98:1** | 4.60:1 |
+| `.st-bad` | **3.58:1** | 4.58:1 |
+
+Twelve failures in the light theme, on the most semantically loaded text in an
+ERP — how every document announces its state — across four phases of a gate that
+was green throughout. Dark passed.
+
+The inks are retuned along their own hues by the least amount that clears 4.5:1
+(8-14%), and the gate no longer takes a hand-written list of pairs: it **parses
+the `.st-*` rules out of `index.css`**, resolves `var()` chains, composites the
+alpha, and measures every pill on both surfaces in both themes. A pill added
+tomorrow is measured without anyone remembering this exists — which matters,
+because `.st-info` was itself an audit finding (F12: referenced and never
+defined) and is exactly the kind of thing a hand-maintained list does not notice.
+
+**AAA, honestly.** Phase 5's scope says "7:1 for body text, status pills and
+money figures". Body text and money clear it already (~15:1) and are now gated
+there. Pills cannot: 7:1 on a tinted ground forces the tint to near-white or the
+ink to near-black, at which point the tone stops carrying meaning and the pill is
+just text. They are gated at AA and *reported* against AAA. Moving a threshold
+until it passes would have been the other option.
+
+## F13's headline fix was built in Phase 1 and adopted nowhere
+
+The audit's single most-cited number is `--primary` at **2.59:1** as text. Phase
+1 built `--primary-ink` to replace it. Phase 5 found `text-primary` still in use
+across **38 files**.
+
+A ratio check over tokens could never have caught this — every token in the
+matrix was passing. The defect was *which token the JSX reached for*, and the
+reason is the one Addendum 7 records for the raw palette: `text-primary` is what
+Tailwind's `primary.DEFAULT` makes the natural spelling, it is shorter than
+`text-primary-ink`, and it renders a colour that looks brand-correct. Making the
+right thing the short thing did more than the rule ever did; here, nobody had.
+
+The gate now scans source for a fill token in a text position. It found one more
+site after the sweep, in a syntax the sweep did not know about
+(`text-[color:var(--primary)]`) — which is the argument for a gate over a sweep
+in one line.
+
+**`--brand-blue` had the same shape** and needed the same split: it was used as
+type over its own 12% tint at eight sites (the KPI tile, three Control Tower
+components, the callout, the AI action chip, both blue pills). `--brand-blue-ink`
+now exists, mirroring `--primary-ink`. Rule of thumb, now in the guide:
+**`brand-blue` fills, `brand-blue-ink` writes.**
+
+**And the half no gate can see.** `applyBrand` derives `--primary-ink` at runtime
+for every tenant that is not the default, and it had the identical defect —
+derived against `--card`, used on a pill. It now derives against every surface
+the ink can land on, tinted grounds included. The first attempt derived against
+the pill ground *alone* and broke on a near-black brand in dark mode, which the
+test caught: tinting a dark surface with a near-black brand makes the ground
+**darker** than the card, so a light ink clears the ground and fails the card.
+There is no single worst surface; there is a set.
+
+## F17's density fix had never landed on a screen anyone uses
+
+F17 measured the table row at **~46px** against a 28-32px category standard and
+diagnosed the padding: `px-4 py-3.5`. Phase 1 changed the padding to `py-row`
+(6px), every unit test agreed, and the audit's baseline table has recorded it as
+done ever since.
+
+A real list row measured **49px**.
+
+**The padding was never what set the height.** A table row is as tall as its
+tallest cell, and every list screen in this product ends with
+`<Button size="sm">` in the actions column — `h-9`, 36px, which with 12px of
+padding is 48. The status pill was the second offender at 24px, inheriting a 20px
+line box from its `text-sm` cell.
+
+It could not be seen in jsdom, which has no layout engine, and it was not what
+the Phase 3 and 4 browser runs measured (content column, `<h1>` count, horizontal
+scroll). So the number the fix existed to change had not moved for four phases,
+and nothing was wrong with anyone's reasoning — the measurement simply did not
+exist.
+
+Fixed at two shared sources rather than 67 call sites: `--row-control-h` (20px)
+is applied by `<RowActions>`, and `.status` now sets its own 16px line box. Five
+screens carrying a hand-rolled copy of the RowActions click shield were migrated,
+which is also how they inherit the bound.
+
+| Density | Row, before | Row, now |
+|---|---|---|
+| Compact | 49px | 29.5px |
+| Default | 49px | 33.5px |
+| Comfortable | 49px | 41.5px |
+
+*(the extra 1.5px over the design figure is the `<tr>` hairline and a 20.5px line
+box after font metrics; the browser gate allows for it explicitly rather than
+fudging the documented numbers)*
+
+## The 2560px case, finally solved rather than restated
+
+Addenda 6 and 7 both called this "addressed rather than solved" and both pointed
+at the density work. `max-w-wide` was 1664px, so a 2560px display rendered the
+same column as a 1920px one with ~450px of margin each side — the case F2's
+opening sentence describes.
+
+| Viewport | Column, before | Column, now |
+|---|---|---|
+| 1280 | 1232 | 1232 |
+| 1440 | 1392 | 1392 |
+| 1920 | 1664 | 1856 |
+| 2560 | **1664** | **2160** |
+
+2160 rather than uncapped, because a table row is read left to right and the
+distance from a record's name to its last column is the cost of every lookup.
+The frozen first column covers the tables that genuinely need more.
+
+## Two defects the audit did not name, found by writing keyboard tests
+
+Both in `<InlineEdit>`, both about focus, and neither visible without a test that
+uses the keyboard:
+
+1. **Entering edit mode dropped focus on `<body>`.** The button unmounts and the
+   input mounts, and `select()` does not focus an element — it is a selection
+   API. Leaving edit mode did the same in reverse.
+2. **The fix for the first exposed a third.** The button was `disabled` while the
+   save was in flight, and a disabled button cannot hold focus, so restoring
+   focus to it silently did nothing. It carries `aria-busy` now: same state
+   announced, element still focusable.
+
+Worth recording because both are invisible to a mouse and to axe. The component
+was axe-clean in every state throughout.
+
+## A regression Phase 4 created, and paid off here
+
+Phase 4 fixed the mouse-only clickable row by making column 0 a real `<button>`.
+That was right, and it put **one tab stop per row** into the page. On a 200-row
+shipment table, reaching the pager below it costs 200 presses of Tab plus every
+row-action button on the way. A keyboard user went from "cannot open a row" to
+"cannot get past the table", which is not obviously the better failure.
+
+A roving tabindex leaves exactly one row in the tab order, with arrow keys
+between them: 200 tab stops become one. It deliberately does **not** declare
+`role="grid"`, for the same reason Phase 4 refused `<tr role="button">` — a
+screen reader in browse mode navigates a real `<table>` by row and column and
+says "row 4 of 120", and on a financial table that IS the usability. Browse mode
+intercepts arrow keys before the page sees them, so the two models do not collide.
+
+## Retiring the FAB removed something nobody had noticed it carried
+
+F9 says the draggable cluster "covers the bottom-right of every table and
+duplicates the copilot entry point". True, and the sharper point is that the
+drag was the *workaround* for the overlap rather than a feature — and the dragged
+position **persists**, so moving it out of the way on one screen moved it into
+the way on every other one, permanently.
+
+What the audit did not name: the top bar deliberately never duplicated Messages
+("Messages lives on the Smart Comms floating pin" — `app-shell.tsx`). So removing
+the pin from desktop would have left a desktop user with **no unread-messages
+indicator at all**. The replacement carries that count, in its accessible name
+and not only as a coloured circle.
+
+## A correction to §4's baseline table
+
+Two rows need re-reading after this phase.
+
+- **"Files > 400 lines: 17 → target 0"** is now 3, and all three are deliberate
+  keeps documented in `PHASE5_CHECKLIST.md` §5.5. `features/scaffold/screen-specs.ts`
+  (930) is a **data** table, not a component, and counting it was always
+  misleading.
+- **"Token contrast failures (measured): 6 → target 0"** was reported as 0 from
+  Phase 1 onward and was in fact **12**, for the reason at the top of this
+  addendum. It is 0 now, against a measurement that reflects what is on screen.
+
+## Scope explicitly NOT taken in Phase 5
+
+Stated so nobody assumes it is done. Full detail in `doc/PHASE5_CHECKLIST.md` §5.
+
+- **Forms are still not on `<Form>` + shared Zod schemas.** Unchanged from Phases
+  3 and 4; only `finalInvoice` has schemas in `packages/shared`.
+- **No pixel screenshot baselines**, deliberately. The layout gate asserts
+  measured invariants, which are deterministic across platforms; a pixel baseline
+  taken on one machine and compared on another is red on its first CI run for a
+  reason nobody can act on, and this document has twice recorded what happens to
+  a gate like that.
+- **The new affordances are wired into four screens**, not ninety. Density, the
+  row-height bound, the FAB retirement, the motion budget and the contrast
+  retune are app-wide because they are token- or shared-component-level;
+  selection and column visibility are per-screen judgement.
+- **The operator usability session has not happened.** It is the one Phase 5
+  deliverable an engineer cannot produce alone.
+- **`platform-console/` remains out of scope**, as throughout.

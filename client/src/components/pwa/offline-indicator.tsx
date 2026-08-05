@@ -7,8 +7,13 @@
  * intentionally out of scope for v1 — app-shell-offline only.)
  */
 import * as React from "react";
+import { useBranding } from "@/app/branding/branding-context";
 
 export function OfflineIndicator() {
+  // Wording is tenant-authored (Settings › App & PWA › Offline & updates) — the
+  // default names no product, but a tenant running this as their own app may
+  // want it to.
+  const { pwa } = useBranding();
   const [offline, setOffline] = React.useState(typeof navigator !== "undefined" && !navigator.onLine);
 
   React.useEffect(() => {
@@ -28,7 +33,7 @@ export function OfflineIndicator() {
     <div className="fixed inset-x-0 top-0 z-[65] flex justify-center px-3 pt-[calc(env(safe-area-inset-top)+8px)]">
       <div className="pointer-events-none flex items-center gap-2 rounded-full border bg-popover px-3.5 py-1.5 text-[13px] font-medium text-muted-foreground shadow-m">
         <span className="h-2 w-2 rounded-full bg-[rgb(var(--warn))]" aria-hidden />
-        You're offline — some data may be out of date.
+        {pwa.offlineText || "You're offline — some data may be out of date."}
       </div>
     </div>
   );

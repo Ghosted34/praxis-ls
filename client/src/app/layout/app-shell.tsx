@@ -35,7 +35,9 @@ import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
 import { PraxisCopilot } from "@/components/praxis-copilot";
 import { FloatingActions } from "@/components/floating-actions";
-import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
+import { QuickActionsMenu } from "@/components/quick-actions";
+import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
+import { getDensity, setDensity, isDensity, DENSITY_LABEL, DENSITY_HINT, type Density } from "@/lib/density";
 import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { XIcon } from "@/components/ui/icons";
@@ -140,7 +142,48 @@ function useUnreadCounts(env: string): { messages: number; notifications: number
   };
 }
 
-/** User avatar + dropdown (role · My HR · My security · Sign out). */
+/**
+ * Row density, in the account menu (Phase 5, audit F9).
+ *
+ * WHY HERE AND NOT IN SETTINGS → APPEARANCE. Appearance is the TENANT's
+ * white-label editor: it is admin-gated and it PUTs to `/branding`, so a choice
+ * made there applies to everyone in the organisation. Density is the opposite —
+ * personal, device-shaped, and stored in this browser's localStorage next to the
+ * theme. Putting it in Appearance would have meant one admin deciding how dense
+ * every dispatcher's screen is, which is precisely the decision the preference
+ * exists to devolve.
+ *
+ * The account menu is where the app already keeps the other display preference
+ * the user owns, so this sits with the theme toggle rather than inventing a
+ * second place to look.
+ */
+function DensityChoice() {
+  const [density, setLocal] = React.useState<Density>(getDensity);
+
+  return (
+    <>
+      <DropdownLabel>
+        <span className="micro">Row density</span>
+      </DropdownLabel>
+      <DropdownRadioGroup
+        value={density}
+        onValueChange={(v) => {
+          if (!isDensity(v)) return;
+          setDensity(v);
+          setLocal(v);
+        }}
+      >
+        {(["compact", "default", "comfortable"] as const).map((d) => (
+          <DropdownRadioItem key={d} value={d} hint={DENSITY_HINT[d]}>
+            {DENSITY_LABEL[d]}
+          </DropdownRadioItem>
+        ))}
+      </DropdownRadioGroup>
+    </>
+  );
+}
+
+/** User avatar + dropdown (role · My HR · My security · density · Sign out). */
 function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: string; full_name?: string; avatar_url?: string | null; role?: string | null } | null; onLogout: () => void }) {
   const name = (user?.display_name || user?.full_name || (user?.email ? user.email.split("@")[0] : "") || "Account").replace(/[._-]+/g, " ");
   const email = user?.email || "";
@@ -187,14 +230,22 @@ function UserMenu({ user, onLogout }: { user: { email?: string; display_name?: s
         <DropdownItem to="/security/my-security">
           <SecurityIcon /> My security
         </DropdownItem>
-        <DropdownItem to="/appearance">
-          <PaletteIcon /> Appearance
+        {/* Points at the PERSONAL screen, not the tenant editor. This menu is
+            the "me" menu — My HR, My security — and every user can reach it,
+            but /appearance rewrites the company's brand and needs Settings-edit,
+            so most people who clicked this hit a permission wall on save. The
+            tenant editor is still one click away under Settings → Appearance,
+            where the people who hold that grant look for it. */}
+        <DropdownItem to="/my-appearance">
+          <PaletteIcon /> My appearance
         </DropdownItem>
         {!isStandalone() && (
           <DropdownItem onSelect={openInstallUi}>
             <DownloadIcon /> Install app
           </DropdownItem>
         )}
+        <DropdownSeparator />
+        <DensityChoice />
         <DropdownSeparator />
         <DropdownItem destructive onSelect={onLogout}>
           <LogoutIcon /> Sign out
@@ -650,8 +701,20 @@ export function AppShell() {
             </button>
           </div>
           <ThemeToggle />
-          {/* Messages lives on the Smart Comms floating pin, so it's intentionally
-              not duplicated here — only Notifications stays in the top bar. */}
+          {/*
+            Quick actions — the desktop home for what the floating cluster
+            carries on touch (Phase 5, F9). `hidden md:flex` is the mirror of
+            FloatingActions' `md:hidden`: exactly one of the two is mounted at
+            any width, so neither surface duplicates the other.
+
+            It carries the MESSAGES count, not the notifications one. Messages
+            was deliberately never duplicated into the top bar because it lived
+            on the floating pin — so retiring that pin from desktop would have
+            left a desktop user with no unread-messages indicator at all.
+          */}
+          <span className="hidden md:inline-flex">
+            <QuickActionsMenu badge={unread.messages} />
+          </span>
           <NotificationBell count={unread.notifications} onChange={unread.reload} />
           <UserMenu user={user as { email?: string; display_name?: string; full_name?: string } | null} onLogout={onLogout} />
         </div>

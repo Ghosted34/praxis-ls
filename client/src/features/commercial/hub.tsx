@@ -1,7 +1,10 @@
 /** Commercial — one hub, deep-linkable tabs (old /commercial/<screen> paths
  *  resolve as sections). Mirrors FinanceHub / FleetHub. */
 import { TabbedHub } from "@/components/tabbed-hub";
-import { QuotationsPage, MarginSimulationsPage, ExtraChargeSimulationsPage, PricingVariancePage } from "./pages";
+import { QuotationsPage } from "./quotations";
+import { MarginSimulationsPage } from "./margin-simulations";
+import { ExtraChargeSimulationsPage } from "./extra-charge-simulations";
+import { PricingVariancePage } from "./pricing-variance";
 
 export function CommercialHub() {
   return (

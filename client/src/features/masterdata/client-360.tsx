@@ -9,7 +9,8 @@ import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { EmptyState, ErrorState } from "@/components/ui/states";
+import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
+import { SplitPane } from "@/components/ui/split-pane";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -17,7 +18,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { listDossiers, type Dossier } from "@/lib/operations-api";
-import { ClientForm } from "./pages";
+import { ClientForm } from "./clients";
 
 const shell = pageShell.wide;
 const DOSSIER_TONE: Record<string, Tone> = { DRAFT: "mute", IN_PROGRESS: "blue", COMPLETED: "ok", CANCELLED: "bad" };
@@ -131,7 +132,7 @@ export function ClientsPage() {
   const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Client | "new" | null>(null);
 
-  const rows = clients.data || [];
+  const rows = React.useMemo(() => clients.data || [], [clients.data]);
   const filtered = q ? rows.filter((c) => c.name.toLowerCase().includes(q.toLowerCase())) : rows;
   const selected = rows.find((c) => c.client_id === selId) || null;
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].client_id); }, [rows, selId]);
@@ -141,11 +142,14 @@ export function ClientsPage() {
       <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Clients" description="Customer master with a live 360 — terms, outstanding balance, dossiers and receipts." action={<Button onClick={() => setEditing("new")}>New client</Button>} />
       <HubTabs />
       {clients.error ? <ErrorState message={clients.error} /> : (
-        <div className="grid gap-5 lg:grid-cols-[260px_1fr]">
+        // Phase 5: the index pane was a fixed 260px — too narrow for a column of
+        // French company names at 1280px, and unchanged at 2560px where the
+        // detail has room to spare. The separator is keyboard-operable.
+        <SplitPane storageKey="master.clients" label="Client list width" defaultSize={260} min={200} max={480}>
           <div className="space-y-2">
             <Input placeholder="Search client…" value={q} onChange={(e) => setQ(e.target.value)} />
             <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
-              {clients.loading ? <div className="px-3 py-4 micro">Loading…</div> : filtered.length === 0 ? <div className="px-3 py-4 micro">No clients.</div> : filtered.map((c) => (
+              {clients.loading ? <LoadingRow label="Loading clients…" /> : filtered.length === 0 ? <div className="px-3 py-4 micro">No clients.</div> : filtered.map((c) => (
                 <button key={c.client_id} onClick={() => setSelId(c.client_id)}
                   className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${c.client_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
                   <span className="truncate font-medium">{c.name}</span>
@@ -155,7 +159,7 @@ export function ClientsPage() {
             </div>
           </div>
           {selected ? <ClientDetail client={selected} onChanged={clients.reload} onEdit={() => setEditing(selected)} /> : <EmptyState title="No client selected" hint="Choose a client from the list." />}
-        </div>
+        </SplitPane>
       )}
       {editing !== null && <ClientForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={clients.reload} />}
       <ScreenAi path="master/clients" />

@@ -21,7 +21,7 @@ import { MODE_ICON } from "../mode-icons";
 import type { LiveShipment, ShipmentMode } from "../model";
 
 const MODE_CHIP: Record<ShipmentMode, string> = {
-  sea: "bg-[rgb(var(--brand-blue)_/_0.13)] text-[rgb(var(--brand-blue))]",
+  sea: "bg-[rgb(var(--brand-blue)_/_0.13)] text-[rgb(var(--brand-blue-ink))]",
   air: "bg-[rgb(var(--brand-blue-bright)_/_0.15)] text-[rgb(var(--brand-blue-bright))]",
   road: "bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary-ink",
 };

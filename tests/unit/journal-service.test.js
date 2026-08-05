@@ -49,10 +49,12 @@ describe("posting service", () => {
     expect(c.calls).toContain("COMMIT");
   });
 
+  // Asserts the CODE, not the sentence: the wording moved to packages/shared and
+  // is now written for an operator, while the code is the 422 body's contract.
   it("rolls back and rejects an unbalanced entry", async () => {
     const c = fakeClient();
     const bad = { ...baseInput, lines: [ { account_code: "521", debit: 1000, credit: 0 }, { account_code: "4191", debit: 0, credit: 999 } ] };
-    await expect(service.post(c, bad)).rejects.toThrow(/not balanced/i);
+    await expect(service.post(c, bad)).rejects.toMatchObject({ code: "ENTRY_UNBALANCED" });
     expect(c.calls).toContain("ROLLBACK");
     expect(repo.insertEntry).not.toHaveBeenCalled();
   });

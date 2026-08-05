@@ -109,7 +109,7 @@ export function FuelLogPage() {
       <HubTabs />
 
       <div className="mb-4 max-w-xs">
-        <Select value={veh} onChange={(e) => setVeh(e.target.value)}>
+        <Select aria-label="Filter by vehicle" value={veh} onChange={(e) => setVeh(e.target.value)}>
           <option value="">All vehicles</option>
           {(vehicles.data || []).map((v) => <option key={v.vehicle_id} value={v.vehicle_id}>{v.registration || v.vehicle_id.slice(0, 8)}</option>)}
         </Select>

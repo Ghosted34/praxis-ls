@@ -274,7 +274,7 @@ export function PermissionMatrixPage() {
                   <th
                     key={group}
                     colSpan={items.length}
-                    className="border-b border-l bg-muted/60 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-primary"
+                    className="border-b border-l bg-muted/60 px-2 py-1.5 text-center text-[11px] font-semibold uppercase tracking-wider text-primary-ink"
                   >
                     {GROUP_LABEL(group)}
                   </th>
@@ -308,7 +308,7 @@ export function PermissionMatrixPage() {
                         </span>
                         <span className="font-mono text-xs font-medium">{r.code}</span>
                         {isCeo && (
-                          <span className="text-primary" title="Bypasses RBAC by design">
+                          <span className="text-primary-ink" title="Bypasses RBAC by design">
                             <CrownIcon />
                           </span>
                         )}

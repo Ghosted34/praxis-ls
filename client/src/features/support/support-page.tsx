@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/ui/states";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
+import { RowActions } from "@/components/ui/row-actions";
 import { useList, errMsg } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
@@ -76,7 +77,7 @@ function NewTicketModal({ onClose, onCreated }: { onClose: () => void; onCreated
           </Select>
         </Field>
         <Field label="Summary" required>
-          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="One line describing it" autoFocus maxLength={200} />
+          <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="One line describing it" maxLength={200} />
         </Field>
         <Field label="Details" hint="What happened, what you expected, where in the app (optional).">
           <Textarea className="min-h-[110px]"
@@ -126,7 +127,7 @@ function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () =
                 key={n}
                 type="button"
                 onClick={() => setScore(n)}
-                className={`h-10 w-10 rounded-md border text-lg transition ${n <= score ? "border-primary bg-primary/10 text-primary" : "border-input text-muted-foreground"}`}
+                className={`h-10 w-10 rounded-md border text-lg transition ${n <= score ? "border-primary bg-primary/10 text-primary-ink" : "border-input text-muted-foreground"}`}
                 aria-label={`${n} star${n > 1 ? "s" : ""}`}
               >
                 ★
@@ -167,11 +168,11 @@ export function SupportPage() {
     { key: "created_at", label: "Raised", render: (r) => dateFmt(r.created_at) },
     {
       key: "csat", label: "Rating", render: (r) => {
-        if (r.csat) return <span className="num text-primary">{"★".repeat(r.csat)}<span className="text-muted-foreground">{"★".repeat(5 - r.csat)}</span></span>;
+        if (r.csat) return <span className="num text-primary-ink">{"★".repeat(r.csat)}<span className="text-muted-foreground">{"★".repeat(5 - r.csat)}</span></span>;
         if (isResolved(r.status)) return (
-          <div onClick={(e) => e.stopPropagation()}>
+          <RowActions>
             <Button size="sm" variant="outline" onClick={() => setRating(r)}>Rate</Button>
-          </div>
+          </RowActions>
         );
         return <span className="text-muted-foreground">—</span>;
       },

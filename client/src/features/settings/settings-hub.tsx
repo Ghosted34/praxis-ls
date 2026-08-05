@@ -16,7 +16,9 @@ const SECTIONS: Section[] = [
     cards: [
       { to: "/master/corporate-entities", label: "Business Setup", desc: "Legal entities — profile, NIU/RCCM, fiscal year, bank block", icon: "id" },
       { to: "/appearance", label: "Appearance", desc: "White-label theme, fonts & per-brand colours", icon: "palette" },
+      { to: "/my-appearance", label: "My Appearance", desc: "Your own fonts — overrides the workspace, for you only", icon: "palette" },
       { to: "/settings/login", label: "Login Screen", desc: "Hero copy, quotes, regional welcomes & toggles", icon: "login" },
+      { to: "/settings/pwa", label: "App & PWA", desc: "Home-screen icon, launch screen & install prompts", icon: "palette" },
       { to: "/settings/business-policies", label: "Business Policies", desc: "Privacy, Refund, QMS, Terms & more", icon: "doc" },
     ],
   },
@@ -131,7 +133,7 @@ export function SettingsHub() {
                   to={c.to}
                   className="lux-card group flex items-start gap-3 p-4 transition-colors hover:bg-accent/50"
                 >
-                  <span className="mt-0.5 text-primary">
+                  <span className="mt-0.5 text-primary-ink">
                     <Glyph name={c.icon} />
                   </span>
                   <span className="min-w-0 flex-1">

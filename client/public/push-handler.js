@@ -7,7 +7,7 @@
  * Payload shape is what the server sends (shared/push/push.service.js sendToUser):
  *   { title, body, url, tag }
  */
-/* eslint-disable no-restricted-globals */
+ 
 self.addEventListener("push", (event) => {
   let data = {};
   try {

@@ -121,7 +121,7 @@ function inviteEmailHtml({ name, link, tenantName, isReset }) {
   const lead = isReset
     ? "Use the link below to choose a new password."
     : `${tenantName} has given you access to their client portal, where you can follow your shipments, documents and invoices.`;
-  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Segoe UI,Roboto,Helvetica,Arial,sans-serif">
+  return `<!doctype html><html><body style="margin:0;background:#f3f6fb;font-family:Roboto,'Noto Sans',sans-serif">
   <div style="max-width:520px;margin:32px auto;background:#fff;border-radius:16px;overflow:hidden;border:1px solid #e3e9f2">
     <div style="padding:28px 32px">
       <h1 style="margin:0 0 12px;font-size:20px;color:#0b2030">${heading}</h1>

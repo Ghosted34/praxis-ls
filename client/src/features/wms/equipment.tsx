@@ -17,6 +17,7 @@ import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/wms-api";
 import { reportActionError } from "@/lib/action-error";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const shell = pageShell.wide;
 const COLUMNS = ["AVAILABLE", "IN_USE", "MAINTENANCE", "OUT_OF_SERVICE"];
@@ -124,7 +125,28 @@ export function EquipmentPage() {
     <section className={shell}>
       <PageHeader eyebrow={<HubCrumb area="Warehouse" to="/wms" />} title="Equipment" description="Handling equipment allocation — check out, return, maintain." action={<Button onClick={() => setCreating(true)}>New equipment</Button>} />
       <HubTabs />
-      {equipment.error ? <ErrorState message={equipment.error} /> : (
+      {/*
+        The loading branch used to be absent (found by the Phase 4 screen axe
+        gate, F10). With `data` still null the board rendered four EMPTY columns,
+        which does not read as "loading" — it reads as "this warehouse owns no
+        equipment", which is a different and alarming statement to make to a
+        warehouse manager.
+      */}
+      {equipment.error ? <ErrorState message={equipment.error} /> : equipment.loading ? (
+        // One announced region for the whole board: the bare `Skeleton`
+        // primitive carries no role of its own (only SkeletonTable and
+        // PageSkeleton do), and twelve "Loading" announcements would be worse
+        // than none.
+        <div role="status" aria-label="Loading equipment" className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {COLUMNS.map((col) => (
+            <div key={col} className="space-y-2">
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-24 w-full" />
+              <Skeleton className="h-24 w-full" />
+            </div>
+          ))}
+        </div>
+      ) : (
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {COLUMNS.map((col) => (
             <div key={col}>

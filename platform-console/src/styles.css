@@ -7,8 +7,14 @@
   --brand: #f5821f; --brand-2: #1c9bd7;
   --ok: #28c07a; --warn: #e8a13a; --bad: #e5544b; --info: #4c8dff;
   --radius: 10px;
-  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-  --sans: "Montserrat", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Shipped library faces, self-hosted via @fontsource (imported in main.tsx),
+     over a bare generic keyword. These named Montserrat and a six-deep stack of
+     SF Mono / Menlo / Consolas / Segoe UI — none of which this app bundled, so
+     the console has been rendering in whatever each admin's OS supplied while
+     the stylesheet claimed Montserrat. Same rule as the tenant app: no font
+     from outside client/src/lib/fonts.ts is named anywhere. */
+  --mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
+  --sans: "Montserrat Variable", "Montserrat", sans-serif;
 }
 * { box-sizing: border-box; }
 html, body, #root { height: 100%; }

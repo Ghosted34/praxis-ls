@@ -21,6 +21,7 @@ import { errMsg } from "@/lib/use-resource";
 import { useAiEnabled } from "@/components/ai-actions";
 import { Markdown } from "@/components/markdown";
 import { ActionForm } from "@/components/action-form";
+import { LoadingRow } from "@/components/ui/states";
 
 type Msg = {
   role: "user" | "praxis";
@@ -196,7 +197,7 @@ export function PraxisCopilot() {
         <div className="lux-card fixed bottom-40 right-5 z-50 flex h-[min(70vh,560px)] w-[min(92vw,380px)] flex-col overflow-hidden rounded-2xl border border-border shadow-2xl md:bottom-24">
           {/* header */}
           <div className="flex items-center gap-3 border-b border-border px-4 py-3">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-[rgb(var(--primary))]">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-primary/15 text-primary-ink">
               <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="4" /><path d="M12 2v3M12 19v3M2 12h3M19 12h3" /></svg>
             </span>
             <div className="flex-1">
@@ -208,7 +209,7 @@ export function PraxisCopilot() {
               onClick={toggleHistory}
               aria-label="Conversation history"
               title="History"
-              className={`transition-colors hover:text-foreground ${showHistory ? "text-primary" : "text-muted-foreground"}`}
+              className={`transition-colors hover:text-foreground ${showHistory ? "text-primary-ink" : "text-muted-foreground"}`}
             >
               <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round">
                 <path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 4v4h4" /><path d="M12 8v4l3 2" />
@@ -239,11 +240,11 @@ export function PraxisCopilot() {
             <div className="absolute inset-x-0 bottom-0 top-[57px] z-10 flex flex-col bg-card">
               <div className="flex items-center justify-between border-b border-border px-4 py-2">
                 <span className="text-sm font-semibold">Conversations</span>
-                <button onClick={clearThread} className="text-xs text-primary hover:underline">+ New chat</button>
+                <button onClick={clearThread} className="text-xs text-primary-ink hover:underline">+ New chat</button>
               </div>
               <div className="flex-1 overflow-y-auto p-2">
                 {loadingConvos ? (
-                  <div className="micro px-2 py-2">Loading…</div>
+                  <LoadingRow />
                 ) : convos.length === 0 ? (
                   <div className="micro px-2 py-2 text-muted-foreground">No past conversations yet.</div>
                 ) : (
@@ -275,7 +276,7 @@ export function PraxisCopilot() {
                 <p className="text-sm text-muted-foreground">Ask about anything on your desk — receivables, operation files, costing, procurement. I only act within your permissions.</p>
                 <div className="flex flex-wrap gap-1.5">
                   {STARTERS.map((s) => (
-                    <button key={s} onClick={() => send(s)} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary">{s}</button>
+                    <button key={s} onClick={() => send(s)} className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary-ink">{s}</button>
                   ))}
                 </div>
               </div>

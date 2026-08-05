@@ -76,16 +76,26 @@ export function CountrySelect({
   value,
   onChange,
   allowEmpty = true,
+  label,
 }: {
   value?: string | null;
   onChange: (code: string) => void;
   allowEmpty?: boolean;
+  /**
+   * Accessible name. Defaults to "Country".
+   *
+   * Needed because this control is used both inside a `<Field>` (which names it)
+   * and bare in toolbars (which does not) — and axe correctly refuses to accept
+   * the "—" placeholder option as a name. Pass something specific when a screen
+   * has two of these, e.g. "Country of origin".
+   */
+  label?: string;
 }) {
   const current = (value || "").toUpperCase();
   const known = [...OHADA, ...PARTNERS].some(([c]) => c === current);
 
   return (
-    <Select value={current} onChange={(e) => onChange(e.target.value)}>
+    <Select aria-label={label ?? "Country"} value={current} onChange={(e) => onChange(e.target.value)}>
       {allowEmpty && <option value="">—</option>}
       {/* An existing value we don't list stays selectable, so opening and saving
           an old record can't silently rewrite its country. */}

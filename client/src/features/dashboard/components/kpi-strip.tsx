@@ -66,7 +66,7 @@ const ICON_TONE: Record<Tone, string> = {
   ok: "bg-[rgb(var(--ok-fill)_/_0.13)] text-[rgb(var(--ok))]",
   warn: "bg-[rgb(var(--warn-fill)_/_0.14)] text-[rgb(var(--warn))]",
   bad: "bg-[rgb(var(--bad-fill)_/_0.12)] text-[rgb(var(--bad))]",
-  blue: "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue))]",
+  blue: "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue-ink))]",
   mute: "bg-[rgb(var(--ink)_/_0.06)] text-muted-foreground",
 };
 

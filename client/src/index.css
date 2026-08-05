@@ -40,8 +40,11 @@
      identity is untouched: buttons/marks keep --primary, orange type uses this.
      Split into -light/-dark sources so lib/theme.ts can write BOTH inline for a
      tenant's colour while the theme class still selects the right one — an
-     inline `--primary-ink` would otherwise beat the `.dark` rule. */
-  --primary-ink-light: rgb(190 86 14);
+     inline `--primary-ink` would otherwise beat the `.dark` rule.
+     Retuned in Phase 5 from rgb(190 86 14): as the text of `.st-orange` it sits
+     on a --brand-orange 14% tint, where it measured 3.79:1 rather than the
+     4.64:1 it scores on bare --card. Now 4.93:1 on the pill ground. */
+  --primary-ink-light: rgb(169 77 12);
   --primary-ink-dark: rgb(250 158 78);
   --primary-ink: var(--primary-ink-light);
   --ring: rgb(245 130 31);
@@ -62,13 +65,34 @@
   --brand-blue: 24 132 196;
   --brand-blue-bright: 28 155 215;
   --brand-blue-deep: 12 74 122;
-  /* Status colours are used as TEXT (pills, ledger figures), so they are tuned
-     to clear 4.5:1 on --card rather than to look vivid on a swatch (F13).
-     Measured: ok 4.70:1, warn 4.99:1, bad 4.54:1. The -fill variants below keep
-     the original saturation for backgrounds and chart marks. */
-  --ok: 28 132 82;
-  --warn: 146 104 12;
-  --bad: 210 68 58;
+  /* Blue as TEXT, mirroring --primary-ink. --brand-blue is a FILL (the unread
+     badge, the split-pane rule); on its own 12% tint it measured 3.27:1, so
+     type needs its own value. Theme-aware, unlike --brand-blue-deep — see the
+     .st-info comment for why that one could not be reused. */
+  --brand-blue-ink: 20 108 161;
+  /*
+   * Status colours are used as TEXT (pills, ledger figures), so they are tuned
+   * to clear 4.5:1 rather than to look vivid on a swatch (F13). The -fill
+   * variants below keep the original saturation for backgrounds and chart marks.
+   *
+   * PHASE 5 RETUNE. Phase 1 tuned these against --card, and the gate measured
+   * them against --card, and they passed — but a status pill does NOT sit on
+   * --card. `.st-ok` is this colour over `rgb(var(--ok-fill) / 0.13)`, and F13
+   * said so explicitly: "these pills pair the failing colour with a TINTED
+   * background, which is worse than the white-background figures above, not
+   * better." Measured on the ground they actually sit on, every light-theme
+   * pill failed: ok 3.75:1, warn 3.98:1, bad 3.58:1, blue 3.27:1, orange 3.79:1
+   * (worst surface, --background).
+   *
+   * Each is darkened along its own hue by the least amount that clears 4.5:1 on
+   * BOTH surfaces — 8-14%, hue-preserving, so the palette is recognisably the
+   * same one. check-contrast.mjs now composites the tint, so this cannot be
+   * "fixed" again by measuring the easier pair.
+   * Measured now: ok 4.90/4.55, warn 4.95/4.60, bad 4.94/4.58 (card/background).
+   */
+  --ok: 25 117 73;
+  --warn: 133 95 11;
+  --bad: 181 58 50;
   --ok-fill: 40 148 94;
   --warn-fill: 176 128 24;
   --bad-fill: 210 68 58;
@@ -86,8 +110,24 @@
      --font-display is retained as a token so the 35 `font-display` call sites
      keep working; it now resolves to the display optical size of the same
      family rather than a second typeface. */
-  --font-display: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* "Inter Variable", WITH the space. @fontsource-variable/inter declares the
+     family as `'Inter Variable'`; this token asked for "InterVariable", which
+     matches nothing, so every unbranded tenant has been rendering in system-ui
+     since the font was bundled — the woff2 downloaded on every load and was
+     never used. The static "Inter" stays as the second entry for anyone who has
+     the family installed locally. */
+  /* Fallbacks are BARE GENERIC KEYWORDS. Naming system-ui / Arial / Georgia
+     here would put a different typeface on screen per operating system, which
+     is the inconsistency the font library exists to remove — see the note in
+     lib/fonts.ts. The generic keyword covers only the swap window, and after
+     the first load the real face is served from the service worker's cache. */
+  --font-display: "Inter Variable", "Inter", sans-serif;
+  --font-body: "Inter Variable", "Inter", sans-serif;
+  /* --font-mono had NO default. Nothing declared it, so every `font-mono`
+     utility and `.num` cell fell through to Tailwind's built-in stack — Menlo,
+     Consolas, Courier New — i.e. three fonts from outside the library, chosen
+     by the OS, on every screen that shows a document reference or an amount. */
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
   /* Flatter. The previous ramp paired a soft ambient shadow with a large
      coloured drop; combined with the glow on .btn-primary it read as a Dribbble
      shot. Enterprise surfaces carry a hairline border and minimal elevation. */
@@ -137,6 +177,10 @@
   --sidebar-accent-foreground: rgb(228 233 240);
   --brand-orange-ink: 250 158 78;
   --brand-blue: 82 180 233;
+  /* On a dark surface the fill value is already legible as type (7.07:1 on its
+     own tint), so ink and fill converge — the split exists for the light theme,
+     where they cannot. */
+  --brand-blue-ink: 82 180 233;
   --brand-blue-bright: 98 196 245;
   --ink: 228 233 240;
   /* 100 123 152 measured 3.89:1 on the old card. Now 5.43:1. */
@@ -205,6 +249,99 @@
      loudest "template" signal in the visual system (F13 / F17). The brand now
      lives in the mark, the accent and the type, not the wallpaper. */
 
+  /*
+   * Row density (Phase 5, audit F9/F17). One variable, set by an attribute, read
+   * by the `row` spacing step in tailwind.config.ts — so every `py-row` in the
+   * app (TD, the report table in ui/data-view) tracks it with no code change.
+   *
+   * The attribute is written to <html> by lib/density.ts from the user's saved
+   * preference, and can be pinned on any subtree by <Table density="…"> for a
+   * screen that knows its own answer. Nearest ancestor wins; that is just the
+   * cascade, which is why this is CSS and not React context.
+   *
+   * :root carries the default so a tree with no attribute at all — a test, a
+   * Ladle story, the first paint before initDensity() runs — still renders the
+   * 32px row rather than collapsing to zero padding.
+   */
+  :root,
+  [data-density="default"] {
+    --row-py: 0.375rem;
+  }
+  [data-density="compact"] {
+    --row-py: 0.25rem;
+  }
+  [data-density="comfortable"] {
+    --row-py: 0.625rem;
+  }
+
+  /*
+   * The height of a control INSIDE a row — a row-action button, mainly.
+   *
+   * THIS IS THE PART PHASE 1 MISSED, and the browser gate is what found it.
+   * F17 measured "~46px rows" and diagnosed the padding: `px-4 py-3.5`. Phase 1
+   * changed the padding, every unit test agreed, and the row on a real list
+   * screen stayed at 49px — because a table row is as tall as its tallest cell,
+   * and every list screen in this app ends with `<Button size="sm">` in the
+   * actions column. `size="sm"` is `h-9`: 36px, which with 6px of padding is 48.
+   *
+   * The padding was never what set the height. It could not be seen in jsdom
+   * (no layout engine) and was not what the Phase 3 and 4 browser runs measured
+   * (content column, h1 count), so the density work looked done for two phases
+   * while the number it existed to change had not moved.
+   *
+   * 20px is the deliberate figure: 2 × --row-py + 20 gives exactly the 28 / 32 /
+   * 40px rows in lib/density.ts, and it is the control height dense grids
+   * actually ship (Retool, Palantir, Bloomberg terminals).
+   *
+   * IT IS SCOPED TO THE TABLE, and that scoping is the fix for a defect this
+   * bound SHIPPED. It was originally set on `:root`, and `<RowActions>` is
+   * rendered by both of DataList's branches — the table AND the phone card
+   * fallback. So the 20px meant for a dense desktop row became the tap target on
+   * every phone: under WCAG 2.2 §2.5.8's 24×24px AA minimum, and less than half
+   * the 44/48px iOS/Android guidance. A desktop density decision leaked onto the
+   * one surface where it is exactly wrong.
+   *
+   * The default is now the TOUCH value, and the table opts down. That direction
+   * matters: a new surface that forgets to declare itself inherits the safe
+   * number, not the 20px one. Same reasoning as `--row-py` living on `:root` —
+   * a tree with no attribute must still render something sane.
+   */
+  :root {
+    --row-control-h: 2.75rem; /* 44px — the platform touch guidance */
+  }
+  .table-density {
+    --row-control-h: 1.25rem; /* 20px — set by <Table>, the dense surface */
+  }
+
+  /**
+   * Expand a small control's TAP TARGET without changing what it looks like.
+   *
+   * A 16px checkbox is 16px of hit area. WCAG 2.2 §2.5.8 wants 24×24 CSS px;
+   * iOS HIG and Material want 44/48. Growing the box would destroy the density
+   * the tables are tuned for, so the target grows and the ink does not — a
+   * transparent ::before, which is what every design system does here.
+   *
+   * Two sizes because the constraint genuinely differs. In a 28px table row a
+   * 44px target would overlap the rows above and below, so their targets would
+   * fight; 24px clears the normative minimum and fits. On a card there is room,
+   * and a finger is the pointer.
+   */
+  .tap-24,
+  .tap-44 {
+    position: relative;
+  }
+  .tap-24::before,
+  .tap-44::before {
+    content: "";
+    position: absolute;
+  }
+  .tap-24::before {
+    inset: -4px;
+  }
+  .tap-44::before {
+    inset: -14px;
+  }
+
   /* Keyboard focus, globally. Previously .chip, .lux-navlink and
      .lux-botnav-btn had no focus indicator at all, so the primary navigation
      and every filter chip were invisible to keyboard users (F13, WCAG 2.4.7).
@@ -247,15 +384,83 @@
     box-shadow: var(--shadow-s);
   }
 
+  /*
+   * Wide-table affordances (Phase 5, audit F9). Both are opt-in via
+   * <Table sticky freezeFirstColumn>; neither changes a table that doesn't ask.
+   *
+   * STICKY HEADING. `position: sticky` on a <th> works under
+   * `border-collapse: collapse` in every browser we support, but the th's own
+   * BORDER does not travel with it — collapsed borders belong to the table grid,
+   * not the cell, so the heading would scroll away from its own underline. An
+   * inset box-shadow is painted by the cell and therefore sticks with it. This
+   * is the reason not to "just" switch to border-separate: that would break the
+   * collapsed hairlines every other table in the app is drawn with.
+   */
+  .table-sticky thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--secondary);
+    box-shadow: inset 0 -1px 0 var(--border);
+  }
+
+  /*
+   * FROZEN FIRST COLUMN. Column 0 is the record's identity on every list screen
+   * in this app — that convention is already load-bearing for `RowActivator`,
+   * which turns it into the row's keyboard control. Scrolling a fifteen-column
+   * costing table sideways without it means reading numbers that belong to a
+   * row you can no longer name.
+   *
+   * The background is explicit rather than `inherit`: a <tr> has no background
+   * of its own, so an inherited one is transparent and the scrolled body would
+   * show straight through the pinned cell. That also means the row's hover tint
+   * has to be restated here — otherwise the hovered row would highlight
+   * everywhere except the one cell you are pointing at.
+   *
+   * The right-edge shadow only appears while there is content underneath it
+   * (the container scrolls), which is what tells the eye the column is pinned
+   * rather than merely first.
+   */
+  .table-frozen :is(td, th):first-child {
+    position: sticky;
+    left: 0;
+  }
+  .table-frozen thead th:first-child {
+    z-index: 3;
+    background: var(--secondary);
+  }
+  .table-frozen tbody td:first-child {
+    z-index: 1;
+    background: var(--card);
+    box-shadow: 1px 0 0 var(--border);
+  }
+  .table-frozen tbody tr:hover td:first-child {
+    background: color-mix(in srgb, var(--primary) 4%, var(--card));
+  }
+
   /* Status pills */
   .status {
     padding: 2px 8px;
     border-radius: 4px;
     font-size: 11px;
+    /* Explicit, not inherited. Inside a `text-sm` cell the pill inherited a 20px
+       line box and stood 24px tall — the second thing (after the row-action
+       button) keeping a 32px row at 48px. 16px + 2×2px padding is 20px, which is
+       --row-control-h. */
+    line-height: 1rem;
     font-weight: 600;
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
+    /* An inline-flex box aligns on ITS OWN baseline by default, so the pill
+       hangs off the text baseline and the line box grows by however far the
+       current font's descender drops — making the row height a function of the
+       typeface. That was invisible while --font-body silently fell back to
+       system-ui; fixing the font to actually load Inter moved a 32px row to
+       34.5px and the desktop layout gate caught it. With a fifteen-font picker
+       the row must measure the same whichever family a tenant chooses, so the
+       box is centred on the text instead of hung from its baseline. */
+    vertical-align: middle;
     gap: 5px;
   }
   .status::before {
@@ -267,7 +472,7 @@
   }
   /* Text uses the AA-tuned status token; the ground uses the -fill variant so
      the pill keeps its saturation without dragging the label below 4.5:1. */
-  .st-blue { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
+  .st-blue { color: rgb(var(--brand-blue-ink)); background: rgb(var(--brand-blue) / 0.12); }
   /*
    * The accent status pill. Its GROUND already tracked the tenant — `applyBrand`
    * writes `--brand-orange` from `brand.primary` (lib/theme.ts) — but its TEXT
@@ -289,7 +494,7 @@
      so every read-only scaffold rendered a colourless pill (audit F12).
      Uses --brand-blue, which IS retuned under .dark — --brand-blue-deep is not,
      and would have been unreadable on a dark surface. */
-  .st-info { color: rgb(var(--brand-blue)); background: rgb(var(--brand-blue) / 0.12); }
+  .st-info { color: rgb(var(--brand-blue-ink)); background: rgb(var(--brand-blue) / 0.12); }
 
   /* Filter chips (Lovable) — surface pill, orange-tinted when active. Tint
      tracks --primary via color-mix so tenant re-branding recolours them. */
@@ -785,6 +990,14 @@
   font-size: 0.9rem;
 }
 .login-field input::placeholder { color: rgb(232 220 224 / 0.4); }
+.login-field input:-webkit-autofill,
+.login-field input:-webkit-autofill:hover,
+.login-field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f6eef1;
+  -webkit-box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
+  box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
 .login-field button { color: rgb(232 220 224 / 0.55); }
 .login-field button:hover { color: #fff; }
 .login-check {
@@ -905,6 +1118,87 @@
     transition: none !important;
   }
 }
+
+/**
+ * BOOT SPLASH PRESETS — Settings › App & PWA › Splash.
+ *
+ * These are the animations a tenant chooses between for the screen shown while
+ * the app boots. They are deliberately longer than the 250ms in-app motion
+ * budget and `scripts/check-motion.mjs` exempts the `.splash-` prefix for it,
+ * on the same grounds as `.landing` and `.login`: this is the door, not the
+ * workstation. It is seen once per session, before any work has started, and
+ * the whole point of the editor is that a tenant gets to decide what their
+ * app's first half-second looks like.
+ *
+ * They are driven by CLASS, not by inline styles, so the tenant's choice cannot
+ * introduce a duration — the preset list is closed (pwa-design.js PWA_ENUMS).
+ * What the tenant does control is which preset, the colours, and how long the
+ * splash stays up (`splashDuration`), which is wall time, not motion.
+ *
+ * The global prefers-reduced-motion kill above applies to all of them, so the
+ * reduced-motion experience is the static composition with no animation — which
+ * is why every preset is legible at rest, and why the identity block's own
+ * reveal is a plain opacity transition rather than part of the preset.
+ */
+@keyframes splash-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes splash-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.045); filter: brightness(1.12); }
+}
+@keyframes splash-sweep {
+  from { transform: translateX(-140%) skewX(-18deg); }
+  to { transform: translateX(240%) skewX(-18deg); }
+}
+@keyframes splash-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes splash-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(3%, -2.5%, 0) scale(1.12); opacity: 1; }
+}
+
+/* fade — one-shot entrance. The quiet default. */
+.splash-fade { animation: splash-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* pulse — the mark breathes while the app loads. Loops because it is a
+   progress signal: it stops when the splash lifts. */
+.splash-pulse { animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both, splash-breathe 2.2s ease-in-out 0.5s infinite; }
+
+/* shimmer — a light sweep crossing the mark. The sweep is a pseudo-element so
+   it clips to the mark's box and never touches layout. */
+.splash-shimmer { position: relative; overflow: hidden; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.42), transparent);
+  animation: splash-sweep 1.8s ease-in-out 0.4s infinite;
+  pointer-events: none;
+}
+
+/* ring — a brand-coloured arc orbits the mark. `--splash-accent` is set inline
+   from the tenant's theme colour. */
+.splash-ring { position: relative; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-ring::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  border-top-color: var(--splash-accent, currentColor);
+  border-right-color: color-mix(in srgb, var(--splash-accent, currentColor) 35%, transparent);
+  animation: splash-orbit 1.15s linear infinite;
+  pointer-events: none;
+}
+
+/* mesh — the BACKDROP animates instead of the mark: two soft brand-coloured
+   blooms drifting behind a still logo. Applied to the splash backdrop, so it
+   composes with any of the marks above. */
+.splash-mesh-layer { animation: splash-drift 6s ease-in-out infinite; }
 
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */
 .shadow-l { box-shadow: var(--shadow-l); }

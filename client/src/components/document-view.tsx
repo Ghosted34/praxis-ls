@@ -16,6 +16,7 @@ import { tokenStore } from "@/lib/token-store";
 import { errMsg } from "@/lib/use-resource";
 import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
+import { LoadingRow } from "@/components/ui/states";
 
 /** Auth-gated binary fetch of a vaulted document → open the blob in a new tab.
  *  Used when a signed copy has been uploaded (served instead of regenerating). */
@@ -179,10 +180,13 @@ export function DocumentPage() {
       {note && <div className="mx-auto mb-3 max-w-3xl rounded-lg border border-[rgb(var(--ok))]/40 bg-[rgb(var(--ok)/0.08)] px-3 py-2 text-sm">{note}</div>}
 
       {!pv ? (
-        <div className={cn(pageShell.reading, "py-10 text-center micro")}>Loading…</div>
+        <div className={pageShell.reading}><LoadingRow label="Loading document…" /></div>
       ) : pv.report || !d ? (
         /* Reports have no record shape → show the branded paper preview. */
         <div className="-mx-4 rounded-2xl bg-[rgb(var(--ink)_/_0.06)] px-4 py-6 md:-mx-6 md:px-6">
+          {/* onLoad is a lifecycle event, not a user interaction — the rule
+              matches the handler name and cannot make that distinction. */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
           <iframe title="document" srcDoc={pv.html} sandbox="allow-same-origin"
             onLoad={(e) => { try { const doc = (e.target as HTMLIFrameElement).contentWindow?.document; if (doc && doc.body) setHeight(doc.body.scrollHeight + 48); } catch { /* blocked */ } }}
             style={{ height }} className="mx-auto block w-full max-w-[860px] rounded-md border border-black/5 bg-white shadow-2xl" />

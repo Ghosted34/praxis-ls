@@ -21,7 +21,11 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
 import { num, dateFmt } from "@/lib/format";
-import { DocumentsPage, SignaturesPage, VerificationPage, ComplianceFlagsPage, ReportsPage } from "./pages";
+import { ReportsPage } from "./reports";
+import { ComplianceFlagsPage } from "./compliance-flags";
+import { DocumentsPage } from "./documents";
+import { SignaturesPage } from "./signatures";
+import { VerificationPage } from "./verification";
 
 const shell = pageShell.wide;
 

@@ -16,9 +16,11 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { RowActions } from "@/components/ui/row-actions";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { InlineEdit } from "@/components/ui/inline-edit";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
@@ -212,7 +214,7 @@ function TemplateForm({ svc, onClose, onSaved }: { svc: api.ServiceType; onClose
               key={p}
               type="button"
               onClick={() => setStages(PRESETS[p].map((s) => ({ ...s })))}
-              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary"
+              className="rounded-full border border-border px-3 py-1 text-xs text-muted-foreground transition-colors hover:border-primary hover:text-primary-ink"
             >
               {p}
             </button>
@@ -289,7 +291,23 @@ export function ServiceTypesPage() {
       label: "Service",
       render: (r) => (
         <div>
-          <div className="font-medium text-foreground">{r.name_en || r.name_fr}</div>
+          {/*
+            Phase 5 — the one place inline edit clearly fits on this screen.
+            Renaming a service costs a six-field modal today to change one word,
+            and the display name is descriptive master data: nothing is posted
+            against it, so there is no reversal-not-edit rule to break. The KEY
+            below it stays modal-only on purpose — dossiers are classified by it.
+          */}
+          <InlineEdit
+            className="font-medium text-foreground"
+            label="Service name"
+            required
+            value={r.name_en || r.name_fr}
+            onSave={async (next) => {
+              await api.updateServiceType(r.service_type_id, { name_en: next });
+              list.reload();
+            }}
+          />
           <div className="micro">{r.key}</div>
         </div>
       ),
@@ -312,12 +330,11 @@ export function ServiceTypesPage() {
       key: "_a",
       label: "",
       render: (r) => (
-        // `role="presentation"` because this wrapper is a click SHIELD, not a
-        // control: it stops a row-action reaching the row's own onRowClick. The
-        // real controls inside are buttons and are keyboard-reachable, so there
-        // is nothing here for a keyboard user to miss (F13's "onClick on a
-        // non-interactive element" is about handlers that ARE the interaction).
-        <div className="flex justify-end gap-2" role="presentation" onClick={(e) => e.stopPropagation()}>
+        // <RowActions> rather than the hand-rolled click shield these five
+        // screens carried: it is the same six lines, and it is also where the
+        // row-action button height is bounded so the row honours the density
+        // preference (Phase 5).
+        <RowActions>
           <Button size="sm" variant="outline" onClick={() => setTemplating(r)}>
             {r.has_active_template ? "New version" : "Add milestones"}
           </Button>
@@ -327,7 +344,7 @@ export function ServiceTypesPage() {
               Archive
             </Button>
           )}
-        </div>
+        </RowActions>
       ),
     },
   ];

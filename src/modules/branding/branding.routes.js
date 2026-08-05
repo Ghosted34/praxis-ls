@@ -24,4 +24,11 @@ router.get("/login", controller.getLogin);
 router.put("/login", authMiddleware, requirePermission("MOD-70", "edit"), validator.putLogin, controller.putLogin);
 router.post("/login/background", authMiddleware, requirePermission("MOD-70", "edit"), validator.upload, controller.uploadLoginBackground);
 
+// Installed-app (PWA) design — manifest identity, home-screen icon, boot splash
+// and the install/offline copy. GET is PUBLIC (the boot splash paints pre-auth);
+// write + icon upload are gated exactly like appearance.
+router.get("/pwa", controller.getPwa);
+router.put("/pwa", authMiddleware, requirePermission("MOD-70", "edit"), controller.putPwa);
+router.post("/pwa/icon", authMiddleware, requirePermission("MOD-70", "edit"), controller.uploadAppIcon);
+
 module.exports = { basePath: "/branding", feature: null, router };

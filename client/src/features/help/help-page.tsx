@@ -31,7 +31,7 @@ export function HelpPage() {
     <section className={cn(pageShell.reading, "pb-16")}>
       <header className="mb-6 border-b border-border pb-4">
         <div className="micro mb-1 uppercase tracking-wide">
-          <Link to="/" className="transition-colors hover:text-primary">Hub</Link> › Help center
+          <Link to="/" className="transition-colors hover:text-primary-ink">Hub</Link> › Help center
         </div>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Help center</h1>
         <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Guides, FAQs and shortcuts for getting around the workspace.</p>

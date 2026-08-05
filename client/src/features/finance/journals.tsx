@@ -11,7 +11,15 @@ import * as React from "react";
 import { tenant, ApiError } from "@/lib/api-client";
 import { dateFmt, amount, smartCell } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
+import { cn } from "@/lib/cn";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { Form, FormField, FormError } from "@/components/ui/form";
+import { useZodForm } from "@/lib/use-zod-form";
+import { useFieldArray } from "react-hook-form";
+import { Checkbox } from "@/components/ui/checkbox";
+import { useToast } from "@/components/ui/toast";
+import { XIcon } from "@/components/ui/icons";
+import { journalEntry, ledger } from "@shared";
 import { HubCrumb } from "@/components/tabbed-hub";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { ErrorState } from "@/components/ui/states";
@@ -19,186 +27,263 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import * as fin from "@/lib/finance-api";
-import type { JournalLineInput } from "@/lib/finance-api";
 import { useOptions, optionLabel } from "./shared";
 
+/**
+ * Post a journal entry — the first form on `<Form>` + a shared schema.
+ *
+ * WHY THIS ONE FIRST. F12 names it: *"the client re-implements validation as
+ * ad-hoc booleans (e.g. `finance/pages.tsx:141`'s `canSubmit`)"*. The version
+ * this replaces was that, and it was not merely duplicated — it was WRONG, in
+ * three ways an operator felt:
+ *
+ *     const linesValid = lines.every((l) => l.account_code && (num(l.debit) > 0 || num(l.credit) > 0));
+ *
+ *   1. `||` accepts a line with BOTH sides filled. The ledger requires exactly
+ *      one (KB §23.2). The form said "Balanced", Post was enabled, and the
+ *      server returned LINE_ONE_SIDE.
+ *   2. Nothing checked the two-decimal limit, so `33.333` sailed through the
+ *      form and came back INVALID_AMOUNT.
+ *   3. Nothing checked §23.6 — an account debited AND credited in one entry —
+ *      which comes back COMPENSATION.
+ *
+ * A form that asserts an entry is postable and is then refused is worse than one
+ * that says nothing: it teaches the operator not to trust it.
+ *
+ * WHAT IT USES NOW. `journalEntry.post` from `@praxis/shared` is the SAME object
+ * the Express validator parses with, so shape cannot drift. The posting
+ * INVARIANTS come from `ledger.checkPostable` — the same functions
+ * `journal_entry.rules.js` calls — because they carry their own API error codes
+ * and belong in a rules module rather than a `.refine()`. See
+ * packages/shared/rules/ledger.js for that distinction.
+ */
 type LineRow = { account_code: string; debit: string; credit: string };
 const blankLine = (): LineRow => ({ account_code: "", debit: "", credit: "" });
 
 function JournalEntryForm({ open, onClose, onPosted }: { open: boolean; onClose: () => void; onPosted: () => void }) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: accounts } = useOptions(fin.loadPostableAccounts, open);
+  const toast = useToast();
 
-  const [entityId, setEntityId] = React.useState("");
-  const [journalCode, setJournalCode] = React.useState("");
-  const [entryDate, setEntryDate] = React.useState(fin.today());
-  const [description, setDescription] = React.useState("");
-  const [sourceRef, setSourceRef] = React.useState("");
-  const [validate, setValidate] = React.useState(false);
-  const [lines, setLines] = React.useState<LineRow[]>([blankLine(), blankLine()]);
-  const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const form = useZodForm(journalEntry.post, {
+    defaultValues: {
+      entity_id: "",
+      journal_code: "",
+      entry_date: fin.today(),
+      description: "",
+      source_doc_ref: "",
+      validate: false,
+      lines: [blankLine(), blankLine()],
+    },
+  });
+  const lineFields = useFieldArray({ control: form.control, name: "lines" });
 
+  // Re-arm on each open. `reset()` rather than a pile of setters — one call, and
+  // it clears the touched/dirty/error state the setters used to leave behind.
+  const { reset } = form;
   React.useEffect(() => {
-    if (!open) return;
-    // reset each time it opens
-    setEntityId("");
-    setJournalCode("");
-    setEntryDate(fin.today());
-    setDescription("");
-    setSourceRef("");
-    setValidate(false);
-    setLines([blankLine(), blankLine()]);
-    setError(null);
-  }, [open]);
+    if (open) reset();
+  }, [open, reset]);
 
-  const num = (s: string) => (s.trim() === "" ? 0 : Number(s));
-  const totalDebit = lines.reduce((s, l) => s + (num(l.debit) || 0), 0);
-  const totalCredit = lines.reduce((s, l) => s + (num(l.credit) || 0), 0);
-  const balanced = totalDebit > 0 && Math.abs(totalDebit - totalCredit) < 0.005;
-  const linesValid = lines.every((l) => l.account_code && (num(l.debit) > 0 || num(l.credit) > 0));
-  const canSubmit = !!entityId && !!journalCode && !!entryDate && !!sourceRef && balanced && linesValid && !busy;
-
-  const setLine = (i: number, patch: Partial<LineRow>) =>
-    setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
-
-  async function submit() {
-    setBusy(true);
-    setError(null);
-    try {
-      const payloadLines: JournalLineInput[] = lines.map((l) => {
-        const d = num(l.debit);
-        const c = num(l.credit);
-        return { account_code: l.account_code, ...(d > 0 ? { debit: d } : {}), ...(c > 0 ? { credit: c } : {}) };
-      });
-      await fin.postJournalEntry({
-        entity_id: entityId,
-        journal_code: journalCode,
-        entry_date: entryDate,
-        description: description || undefined,
-        source_doc_ref: sourceRef,
-        validate,
-        lines: payloadLines,
-      });
-      onPosted();
-      onClose();
-    } catch (e) {
-      setError(errMsg(e));
-    } finally {
-      setBusy(false);
-    }
-  }
+  /**
+   * The ledger's answer, live. Watching `lines` re-runs this as the operator
+   * types, so the disabled Post button and the message under the totals always
+   * agree with what the server will actually do.
+   */
+  const lines = form.watch("lines");
+  const proposed = (lines ?? []) as ledger.ProposedLine[];
+  const postable = ledger.checkPostable(proposed);
+  const { debitMinor, creditMinor } = ledger.totals(proposed);
+  const validate = form.watch("validate");
 
   return (
-    <Modal open={open} onClose={onClose} title="Post journal entry" description="Balanced-or-rejected. Validating locks the entry (reversal-not-edit)." size="xl">
-      <div className="space-y-4">
+    <Modal
+      open={open}
+      onClose={onClose}
+      title="Post journal entry"
+      description="Balanced-or-rejected. Validating locks the entry (reversal-not-edit)."
+      size="xl"
+    >
+      <Form
+        form={form}
+        className="space-y-4"
+        onSubmit={async (values) => {
+          // `values` is the SCHEMA'S OUTPUT: debit/credit are already numbers,
+          // the date is round-trip validated, and an empty side is `undefined` —
+          // which is why the hand-rolled payload builder is gone.
+          await fin.postJournalEntry(values as Parameters<typeof fin.postJournalEntry>[0]);
+          toast.success(values.validate ? "Entry validated and posted" : "Draft saved");
+          onPosted();
+          onClose();
+        }}
+      >
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Entity" required>
-            <Select value={entityId} onChange={(e) => setEntityId(e.target.value)}>
-              <option value="">Select entity…</option>
-              {entities.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {optionLabel(o)}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Journal" required hint="OHADA journal code (e.g. VT, AC, BQ, PAIE, OD).">
-            <Input list="journal-codes" value={journalCode} onChange={(e) => setJournalCode(e.target.value)} placeholder="VT" />
-            <datalist id="journal-codes">
-              <option value="VT">Ventes</option>
-              <option value="AC">Achats</option>
-              <option value="BQ">Banque</option>
-              <option value="PAIE">Paie</option>
-              <option value="OD">Opérations diverses</option>
-            </datalist>
-          </Field>
-          <Field label="Entry date" required>
-            <Input type="date" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
-          </Field>
-          <Field label="Source document ref" required hint="Mandatory — the ledger rejects entries without a source ref.">
-            <Input value={sourceRef} onChange={(e) => setSourceRef(e.target.value)} placeholder="INV-2026-0001" />
-          </Field>
+          <FormField form={form} name="entity_id" label="Entity" required>
+            {(field) => (
+              <Select {...field} value={String(field.value ?? "")}>
+                <option value="">Select entity…</option>
+                {entities.map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {optionLabel(o)}
+                  </option>
+                ))}
+              </Select>
+            )}
+          </FormField>
+          <FormField
+            form={form}
+            name="journal_code"
+            label="Journal"
+            required
+            hint="OHADA journal code (e.g. VT, AC, BQ, PAIE, OD)."
+          >
+            {(field) => (
+              <>
+                <Input list="journal-codes" {...field} value={String(field.value ?? "")} placeholder="VT" />
+                <datalist id="journal-codes">
+                  <option value="VT">Ventes</option>
+                  <option value="AC">Achats</option>
+                  <option value="BQ">Banque</option>
+                  <option value="PAIE">Paie</option>
+                  <option value="OD">Opérations diverses</option>
+                </datalist>
+              </>
+            )}
+          </FormField>
+          <FormField form={form} name="entry_date" label="Entry date" required>
+            {(field) => <Input type="date" {...field} value={String(field.value ?? "")} />}
+          </FormField>
+          <FormField
+            form={form}
+            name="source_doc_ref"
+            label="Source document ref"
+            required
+            hint="Mandatory — the ledger rejects entries without a source ref."
+          >
+            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="INV-2026-0001" />}
+          </FormField>
         </div>
-        <Field label="Description">
-          <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Narrative (optional)" />
-        </Field>
+        <FormField form={form} name="description" label="Description">
+          {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Narrative (optional)" />}
+        </FormField>
 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-sm font-medium">Lines</span>
-            <Button type="button" size="sm" variant="outline" onClick={() => setLines((ls) => [...ls, blankLine()])}>
-              + Add line
+            <Button type="button" size="sm" variant="outline" onClick={() => lineFields.append(blankLine())}>
+              Add line
             </Button>
           </div>
           <div className="space-y-2">
-            {lines.map((l, i) => (
-              <div key={i} className="grid grid-cols-[1fr_7rem_7rem_auto] gap-2">
-                <Select value={l.account_code} onChange={(e) => setLine(i, { account_code: e.target.value })}>
-                  <option value="">Account…</option>
-                  {accounts.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {o.label}
-                    </option>
-                  ))}
-                </Select>
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="num text-right"
-                  placeholder="Debit"
-                  value={l.debit}
-                  onChange={(e) => setLine(i, { debit: e.target.value, credit: e.target.value ? "" : l.credit })}
-                />
-                <Input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  className="num text-right"
-                  placeholder="Credit"
-                  value={l.credit}
-                  onChange={(e) => setLine(i, { credit: e.target.value, debit: e.target.value ? "" : l.debit })}
-                />
+            {lineFields.fields.map((f, i) => (
+              <div
+                key={f.id}
+                className={cn(
+                  "grid grid-cols-[1fr_7rem_7rem_auto] items-start gap-2 rounded-md",
+                  // The offending line, marked. `checkPostable` reports the FIRST
+                  // problem and which line it is on, so the operator is pointed
+                  // at one thing rather than handed a list.
+                  !postable.ok && postable.line === i && "ring-1 ring-[rgb(var(--bad))]",
+                )}
+              >
+                <FormField
+                  form={form}
+                  name={`lines.${i}.account_code`}
+                  label={`Account, line ${i + 1}`}
+                  className="[&>label]:sr-only"
+                >
+                  {(field) => (
+                    <Select {...field} value={String(field.value ?? "")}>
+                      <option value="">Account…</option>
+                      {accounts.map((o) => (
+                        <option key={o.id} value={o.id}>
+                          {o.label}
+                        </option>
+                      ))}
+                    </Select>
+                  )}
+                </FormField>
+                <FormField form={form} name={`lines.${i}.debit`} label={`Debit, line ${i + 1}`} className="[&>label]:sr-only">
+                  {(field) => (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="num text-right"
+                      placeholder="Debit"
+                      {...field}
+                      value={String(field.value ?? "")}
+                    />
+                  )}
+                </FormField>
+                <FormField form={form} name={`lines.${i}.credit`} label={`Credit, line ${i + 1}`} className="[&>label]:sr-only">
+                  {(field) => (
+                    <Input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="num text-right"
+                      placeholder="Credit"
+                      {...field}
+                      value={String(field.value ?? "")}
+                    />
+                  )}
+                </FormField>
                 <Button
                   type="button"
                   size="icon"
                   variant="ghost"
-                  disabled={lines.length <= 2}
-                  onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))}
-                  aria-label="Remove line"
+                  disabled={lineFields.fields.length <= 2}
+                  onClick={() => lineFields.remove(i)}
+                  aria-label={`Remove line ${i + 1}`}
                 >
-                  ✕
+                  <XIcon width={16} height={16} />
                 </Button>
               </div>
             ))}
           </div>
           <div className="flex items-center justify-between border-t pt-2 text-sm">
-            <span className={balanced ? "text-muted-foreground" : "font-medium text-destructive"}>
-              {balanced ? "Balanced" : `Out of balance by ${amount(Math.abs(totalDebit - totalCredit))}`}
+            {/*
+              The ledger's own words, live. This used to say "Balanced" or "Out
+              of balance by X" and knew about nothing else; it now reports
+              whichever invariant is actually unmet, in the same sentence the API
+              would have returned.
+            */}
+            <span role="status" className={postable.ok ? "text-muted-foreground" : "font-medium text-[rgb(var(--bad))]"}>
+              {postable.ok ? "Balanced" : postable.message}
             </span>
             <span className="num tabular-nums text-muted-foreground">
-              Dr {amount(totalDebit)} &nbsp;·&nbsp; Cr {amount(totalCredit)}
+              Dr {amount(debitMinor / 100)} &nbsp;·&nbsp; Cr {amount(creditMinor / 100)}
             </span>
           </div>
         </div>
 
-        <label className="flex items-center gap-2 text-sm">
-          <input type="checkbox" checked={validate} onChange={(e) => setValidate(e.target.checked)} />
-          Validate immediately (locks the entry; otherwise saved as a draft)
-        </label>
+        <FormField form={form} name="validate" label="Validate immediately (locks the entry; otherwise saved as a draft)">
+          {(field) => (
+            <Checkbox
+              checked={!!field.value}
+              onCheckedChange={field.onChange}
+              label={<span className="sr-only">Validate immediately</span>}
+            />
+          )}
+        </FormField>
 
-        {error && <ErrorState message={error} />}
+        <FormError form={form} />
 
         <div className="flex justify-end gap-2 pt-2">
-          <Button variant="outline" onClick={onClose} disabled={busy}>
+          <Button type="button" variant="outline" onClick={onClose} disabled={form.formState.isSubmitting}>
             Cancel
           </Button>
-          <Button onClick={submit} loading={busy} disabled={!canSubmit}>
+          {/*
+            Disabled on the LEDGER's answer, not on a local approximation. The
+            schema's own errors are raised by <Form> on submit; this gate is the
+            domain invariant, which Zod deliberately does not carry.
+          */}
+          <Button type="submit" loading={form.formState.isSubmitting} disabled={!postable.ok || form.formState.isSubmitting}>
             {validate ? "Validate & post" : "Save draft"}
           </Button>
         </div>
-      </div>
+      </Form>
     </Modal>
   );
 }

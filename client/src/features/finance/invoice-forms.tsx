@@ -111,7 +111,7 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
           </div>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-              <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+              <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
                 <option value="">Dictionary item…</option>
                 {items.map((o) => (
                   <option key={o.id} value={o.id}>
@@ -224,7 +224,7 @@ export function InvoiceSubmitForm({
               <span className="text-muted-foreground">Service (HT)</span><span className="num text-right">{amount(totals.totals.subtotal_ht)}</span>
               <span className="text-muted-foreground">Débours (pass-through)</span><span className="num text-right">{amount(totals.totals.debours_total)}</span>
               <span className="text-muted-foreground">TVA</span><span className="num text-right">{amount(totals.totals.tax_total)}</span>
-              <span className="font-medium text-foreground">Total TTC</span><span className="num text-right font-medium text-[rgb(var(--primary))]">{amount(totals.totals.total)}</span>
+              <span className="font-medium text-foreground">Total TTC</span><span className="num text-right font-medium text-primary-ink">{amount(totals.totals.total)}</span>
               {totals.advance_open > 0 && (<><span className="text-muted-foreground">Customer advance to apply</span><span className="num text-right">−{amount(totals.advance_open)}</span></>)}
             </div>
           </div>
@@ -340,7 +340,7 @@ export function InvoiceEditForm({
             </div>
             {lines.map((l, i) => (
               <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-                <Select value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
+                <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
                   <option value="">Dictionary item…</option>
                   {items.map((o) => (
                     <option key={o.id} value={o.id}>

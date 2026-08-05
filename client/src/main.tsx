@@ -6,6 +6,7 @@ import { BrandingProvider } from "@/app/branding/branding-context";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { initThemeMode } from "@/lib/theme-mode";
 import { installGlobalErrorReporting } from "@/lib/error-reporting";
+import { initDensity } from "@/lib/density";
 import { queryClient } from "@/lib/query-client";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ToastProvider } from "@/components/ui/toast";
@@ -26,6 +27,10 @@ installGlobalErrorReporting();
 
 // Apply the saved light/dark/system preference before first paint.
 initThemeMode();
+// Same, for row density. Both write an attribute on <html> rather than render
+// anything, so doing it here — before createRoot — means the first paint is
+// already correct instead of flashing the default and correcting itself.
+initDensity();
 
 // BrandingProvider paints the tenant's white-label colour (default until the
 // public /branding fetch resolves) and sits OUTSIDE auth so the login is branded

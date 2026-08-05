@@ -4,13 +4,21 @@
  */
 "use strict";
 
+const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO } = require("./pdf.fonts");
+
 const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
 const xaf = (n) => Number(n || 0).toLocaleString("fr-FR") + " XAF";
 
 function shell(title, bodyHtml) {
+  // The faces are EMBEDDED (pdf.fonts.js), not merely named. 'Noto Sans' and
+  // 'Noto Sans Mono' were named here and neither was present in the rendering
+  // container, so every document came out in FreeSans regardless. Noto Sans Mono
+  // is not in the shipped library either — figures now use JetBrains Mono, which
+  // is, and which the screen uses for the same numbers.
   return "<!doctype html><html><head><meta charset=\"utf-8\"><style>" +
-    "body{font-family:'Noto Sans',Arial,sans-serif;color:#111;margin:32px}" +
-    ".num{font-family:'Noto Sans Mono',monospace;text-align:right}" +
+    fontFaceCss() +
+    "body{font-family:" + PDF_FONT_BODY + ";color:#111;margin:32px}" +
+    ".num{font-family:" + PDF_FONT_MONO + ";text-align:right}" +
     "table{width:100%;border-collapse:collapse}th,td{padding:6px 8px;border-bottom:1px solid #ddd}" +
     "h1{font-size:18px}.muted{color:#666;font-size:12px}</style><title>" + esc(title) + "</title></head><body>" +
     bodyHtml + "</body></html>";

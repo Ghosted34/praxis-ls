@@ -62,7 +62,57 @@ export type SelectOption = {
    *  `label` is not a string. */
   text?: string;
   disabled?: boolean;
+  /** Secondary line under the label, shown only in the open list. Deliberately
+   *  OUTSIDE `ItemText`: Radix clones ItemText into the closed trigger, so a
+   *  hint placed in `label` would follow the selection into the collapsed
+   *  control and turn a one-line field into two. */
+  hint?: React.ReactNode;
+  /** Optional heading this option sits under. Consecutive options sharing a
+   *  `group` render inside one labelled `RadixSelect.Group`, which is what puts
+   *  the heading into the accessibility tree rather than faking it with a
+   *  styled div. Options WITHOUT a group render exactly as before, so every
+   *  existing call site is unaffected. Order the array by group — this splits
+   *  on runs, it does not sort. */
+  group?: string;
 };
+
+/**
+ * Split the flat option list into consecutive runs of the same `group`. An
+ * ungrouped list yields exactly one ungrouped run, so the rendered output is
+ * byte-identical to what it was before grouping existed.
+ */
+function runs(options: SelectOption[]): { group?: string; options: SelectOption[] }[] {
+  const out: { group?: string; options: SelectOption[] }[] = [];
+  for (const o of options) {
+    const last = out[out.length - 1];
+    if (last && last.group === o.group) last.options.push(o);
+    else out.push({ group: o.group, options: [o] });
+  }
+  return out;
+}
+
+function renderItem(o: SelectOption) {
+  return (
+    <RadixSelect.Item
+      key={o.value}
+      value={o.value}
+      disabled={o.disabled}
+      textValue={o.text ?? (typeof o.label === "string" ? o.label : o.value)}
+      className={cn(
+        "flex cursor-pointer select-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm outline-none",
+        "data-[highlighted]:bg-accent/60 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      )}
+    >
+      <span className="min-w-0 flex-1">
+        <RadixSelect.ItemText>{o.label}</RadixSelect.ItemText>
+        {o.hint && <span className="mt-0.5 block text-xs text-muted-foreground">{o.hint}</span>}
+      </span>
+      <RadixSelect.ItemIndicator>
+        <CheckIcon className="text-primary-ink" />
+      </RadixSelect.ItemIndicator>
+    </RadixSelect.Item>
+  );
+}
 
 export function Select({
   value,
@@ -108,23 +158,18 @@ export function Select({
           className="z-50 max-h-64 min-w-[var(--radix-select-trigger-width)] overflow-hidden rounded-lg border bg-popover text-popover-foreground shadow-[var(--shadow-l)]"
         >
           <RadixSelect.Viewport className="p-1">
-            {options.map((o) => (
-              <RadixSelect.Item
-                key={o.value}
-                value={o.value}
-                disabled={o.disabled}
-                textValue={o.text ?? (typeof o.label === "string" ? o.label : o.value)}
-                className={cn(
-                  "flex cursor-pointer select-none items-center justify-between gap-2 rounded-md px-3 py-2 text-sm outline-none",
-                  "data-[highlighted]:bg-accent/60 data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
-                )}
-              >
-                <RadixSelect.ItemText>{o.label}</RadixSelect.ItemText>
-                <RadixSelect.ItemIndicator>
-                  <CheckIcon className="text-primary-ink" />
-                </RadixSelect.ItemIndicator>
-              </RadixSelect.Item>
-            ))}
+            {runs(options).map((run, i) =>
+              run.group ? (
+                <RadixSelect.Group key={`${run.group}-${i}`}>
+                  <RadixSelect.Label className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                    {run.group}
+                  </RadixSelect.Label>
+                  {run.options.map(renderItem)}
+                </RadixSelect.Group>
+              ) : (
+                run.options.map(renderItem)
+              ),
+            )}
           </RadixSelect.Viewport>
         </RadixSelect.Content>
       </RadixSelect.Portal>

@@ -95,4 +95,48 @@ module.exports = {
     const data = await service.uploadLoginBackground({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
     res.json({ data });
   }),
+
+  /**
+   * Installed-app (PWA) design. GET is PUBLIC for the same reason branding is:
+   * the boot splash renders BEFORE anyone signs in, so it needs the tenant's
+   * splash preset and colours pre-auth.
+   *
+   * ENVIRONMENT-INDEPENDENT — LIVE ALWAYS, READ AND WRITE. Unlike appearance,
+   * this section deliberately has no sandbox override, and that is not an
+   * oversight:
+   *
+   *   - There is exactly ONE installed app per tenant origin. You cannot
+   *     install a sandbox copy of it; the manifest is per-origin, and a device
+   *     fetching one sends no `X-Praxis-Env` header to select with.
+   *   - `src/routes/pwa.js` therefore reads `live` unconditionally, which it
+   *     must: an installed app's identity should not be changeable from a
+   *     disposable experiment.
+   *   - So a sandbox-scoped write here produced a configuration that could
+   *     NEVER take effect — and the editor, overlaying sandbox on top of live,
+   *     showed it back as if it had saved. Someone could upload an icon in
+   *     TEST, watch the preview render it, save, and reasonably conclude the
+   *     feature was broken when no device ever showed it. It was stored exactly
+   *     as asked, somewhere nothing reads, and then destroyed by the next
+   *     sandbox wipe.
+   *
+   * Trying a palette against test data (which is what the appearance override
+   * is for, see the header of this file) has no equivalent here. The screen
+   * says so at the top, so "I am in TEST" never implies "this is not real".
+   *
+   * `identityDb` is the same live binding auth/sessions/RBAC already use — the
+   * existing precedent for "this is the same in both environments".
+   */
+  getPwa: asyncHandler(async (req, res) => {
+    res.json({ data: await (req.identityDb || req.tenantDb)((c) => service.getPwa(c)) });
+  }),
+  putPwa: asyncHandler(async (req, res) => {
+    const data = await (req.identityDb || req.tenantDb)((c) =>
+      service.setPwa(c, { ...(req.body || {}), actorId: req.user.user_id }),
+    );
+    res.json({ data });
+  }),
+  uploadAppIcon: asyncHandler(async (req, res) => {
+    const data = await service.uploadAppIcon({ dataUrl: req.body.dataUrl, slug: req.tenant.slug });
+    res.json({ data });
+  }),
 };

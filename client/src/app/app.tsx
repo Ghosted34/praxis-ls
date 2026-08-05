@@ -6,6 +6,7 @@ import { AppShell } from "@/app/layout/app-shell";
 import { LandingPage } from "@/features/landing/landing-page";
 import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
+import { UserAppearanceSync } from "@/app/branding/user-appearance-sync";
 import { Spinner } from "@/components/ui/states";
 
 /**
@@ -74,24 +75,29 @@ const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data
 const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
 
 // Governance leaf screens — all four live in one module, so they share a chunk.
-const AuditPage = lazyNamed(() => import("@/features/governance/pages"), "AuditPage");
-const NotificationsPage = lazyNamed(() => import("@/features/governance/pages"), "NotificationsPage");
-const WorkflowsPage = lazyNamed(() => import("@/features/governance/pages"), "WorkflowsPage");
-const ApprovalsPage = lazyNamed(() => import("@/features/governance/pages"), "ApprovalsPage");
+const AuditPage = lazyNamed(() => import("@/features/governance/audit"), "AuditPage");
+const NotificationsPage = lazyNamed(() => import("@/features/governance/notifications"), "NotificationsPage");
+const WorkflowsPage = lazyNamed(() => import("@/features/governance/workflows"), "WorkflowsPage");
+const ApprovalsPage = lazyNamed(() => import("@/features/governance/approvals"), "ApprovalsPage");
 
 // Settings leaf editors.
 const AppearancePage = lazyNamed(() => import("@/features/settings/appearance-page"), "AppearancePage");
+// Self-service typography. Separate chunk from the tenant editor above: every
+// user can reach this one, only Settings-edit holders reach that one, so they
+// should not share a download.
+const MyAppearancePage = lazyNamed(() => import("@/features/settings/my-appearance"), "MyAppearancePage");
 const LoginEditor = lazyNamed(() => import("@/features/settings/login-editor"), "LoginEditor");
+const PwaPage = lazyNamed(() => import("@/features/settings/pwa-page"), "PwaPage");
 const TemplateStudioPage = lazyNamed(() => import("@/features/settings/document-templates-page"), "TemplateStudioPage");
 const ModuleCataloguePage = lazyNamed(() => import("@/features/settings/catalogue-page"), "ModuleCataloguePage");
-const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/config-pages"), "PaymentGatewaysPage");
-const ScheduledReportsPage = lazyNamed(() => import("@/features/settings/config-pages"), "ScheduledReportsPage");
-const ApiKeysPage = lazyNamed(() => import("@/features/settings/config-pages"), "ApiKeysPage");
-const PipelineStagesPage = lazyNamed(() => import("@/features/settings/config-pages"), "PipelineStagesPage");
-const NumberingPage = lazyNamed(() => import("@/features/settings/config-pages"), "NumberingPage");
-const CustomFieldsPage = lazyNamed(() => import("@/features/settings/store-pages"), "CustomFieldsPage");
-const EmailSignaturesPage = lazyNamed(() => import("@/features/settings/store-pages"), "EmailSignaturesPage");
-const BusinessPoliciesPage = lazyNamed(() => import("@/features/settings/store-pages"), "BusinessPoliciesPage");
+const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/payment-gateways"), "PaymentGatewaysPage");
+const ScheduledReportsPage = lazyNamed(() => import("@/features/settings/scheduled-reports"), "ScheduledReportsPage");
+const ApiKeysPage = lazyNamed(() => import("@/features/settings/api-keys"), "ApiKeysPage");
+const PipelineStagesPage = lazyNamed(() => import("@/features/settings/pipeline-stages"), "PipelineStagesPage");
+const NumberingPage = lazyNamed(() => import("@/features/settings/numbering"), "NumberingPage");
+const CustomFieldsPage = lazyNamed(() => import("@/features/settings/custom-fields"), "CustomFieldsPage");
+const EmailSignaturesPage = lazyNamed(() => import("@/features/settings/email-signatures"), "EmailSignaturesPage");
+const BusinessPoliciesPage = lazyNamed(() => import("@/features/settings/business-policies"), "BusinessPoliciesPage");
 
 /**
  * Fallback for the routes that render OUTSIDE the shell (reset-password, the
@@ -116,6 +122,10 @@ export function App() {
   return (
     <BootGate>
       <PwaLayer />
+      {/* Renders nothing. Sits here because it needs BOTH auth (for the token)
+          and branding (to paint) — BrandingProvider is above AuthProvider in
+          main.tsx, so this is the highest point where both are readable. */}
+      <UserAppearanceSync />
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LandingPage />} />
@@ -167,6 +177,7 @@ export function App() {
         <Route path="workflows" element={<WorkflowsPage />} />
         <Route path="approvals" element={<ApprovalsPage />} />
         <Route path="appearance" element={<AppearancePage />} />
+        <Route path="my-appearance" element={<MyAppearancePage />} />
         <Route path="settings" element={<SettingsHub />} />
 
         {/* --- IA-map screens not yet built → shared placeholder (see doc/FE_IA_HANDOFF.md) --- */}
@@ -217,6 +228,7 @@ export function App() {
             that editor instead. Redirect keeps old links + the Settings hub card working. */}
         <Route path="settings/business-setup" element={<Navigate to="/master/corporate-entities" replace />} />
         <Route path="settings/login" element={<LoginEditor />} />
+        <Route path="settings/pwa" element={<PwaPage />} />
         <Route path="settings/business-policies" element={<BusinessPoliciesPage />} />
         <Route path="settings/payment-gateways" element={<PaymentGatewaysPage />} />
         <Route path="settings/custom-fields" element={<CustomFieldsPage />} />

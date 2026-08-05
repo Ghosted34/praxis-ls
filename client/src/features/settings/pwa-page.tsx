@@ -51,7 +51,7 @@ import {
   type EffectivePwa,
 } from "@/lib/pwa-config";
 import { cn } from "@/lib/cn";
-import { AppIcon, HomeScreenPreview, MaskRow, MaskLegend, TitleBarPreview } from "./pwa/previews";
+import { AppIcon, HomeScreenPreview, MaskRow, MaskLegend, TitleBarPreview, TitleBarStatus } from "./pwa/previews";
 import { SplashPreview } from "./pwa/splash-preview";
 import { iconWarnings, splashWarnings, manifestWarnings, type PwaWarning, type SourceMeta } from "./pwa/validation";
 
@@ -746,11 +746,14 @@ export function PwaPage() {
         title="Where this shows"
         desc="Installed windows only, on desktop Chromium (Windows, macOS, Linux, ChromeOS)."
       >
-        <p className="text-sm text-muted-foreground">
-          In a browser tab there is no title bar to take over, so this row renders as the app's ordinary utility bar
-          and the colour applies to the browser's own theming instead. On mobile the same colour tints the status
-          bar. Nothing here can leave the app without a usable header.
-        </p>
+        <div className="flex flex-col gap-3">
+          <TitleBarStatus />
+          <p className="text-sm text-muted-foreground">
+            In a browser tab there is no title bar to take over, so this row renders as the app's ordinary utility
+            bar and the colour applies to the browser's own theming instead. On mobile the same colour tints the
+            status bar. Nothing here can leave the app without a usable header.
+          </p>
+        </div>
       </SettingsCard>
     </Split>
   );

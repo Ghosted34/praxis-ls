@@ -135,7 +135,16 @@ function RowActivator({ children, onClick }: { children: React.ReactNode; onClic
         e.stopPropagation();
         onClick();
       }}
-      className="-mx-1 -my-0.5 rounded px-1 py-0.5 text-left hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      // `align-middle` for the same reason `.status` carries it (index.css): a
+      // <button> is an inline-block and aligns on the TEXT BASELINE, so its box
+      // hangs below the baseline and the line box grows by however far the
+      // current font's descender drops — making row height a function of the
+      // typeface. The pill was the element actually pushing the 32px row to
+      // 34.5px once --font-body was fixed to load Inter; this one's negative
+      // margins were keeping it just inside the tolerance. Pinned anyway,
+      // because with a fifteen-font picker "just inside" is a property of the
+      // font that happens to be selected, not of the layout.
+      className="-mx-1 -my-0.5 rounded px-1 py-0.5 text-left align-middle hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       {children}
     </button>

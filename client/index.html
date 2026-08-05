@@ -7,6 +7,11 @@
       name="viewport"
       content="width=device-width, initial-scale=1.0, viewport-fit=cover"
     />
+    <!-- PLACEHOLDER ONLY — overwritten at runtime from the tenant's App & PWA
+         settings (lib/pwa-config.ts, applyPwaDocument). This tag, not the
+         manifest, is what paints an installed app's title bar / status bar, so
+         a hardcoded value here silently overrode every tenant's own colour. It
+         stays for the pre-boot frame; keep it neutral. -->
     <meta name="theme-color" content="#f4f7fb" />
     <!-- Per-tenant PWA: manifest + iOS home-screen icon are served dynamically
          by the API from the tenant's branding (Host-resolved). -->

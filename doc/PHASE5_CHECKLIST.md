@@ -16,7 +16,7 @@ Eleven now, up from seven. Each fails the build.
 |---|---|---|
 | Typecheck | `tsc -b` | strict, `noUnusedLocals`, `noUnusedParameters` — and now the e2e specs too |
 | Lint | `npm run lint` | **0 errors.** `jsx-a11y` and `react-hooks/exhaustive-deps` at `error` |
-| Tests | `npm test` | **648 passing**, up from 563 |
+| Tests | `npm test` | **729 passing**, up from 563 |
 | **Contrast** | `npm run check:contrast` | every text pair, **composited** — pills measured on their own tinted ground, and no fill token used as type |
 | **Motion** | `npm run check:motion` | **new** — 250ms in-app budget; `prefers-reduced-motion` still honoured |
 | **Docs** | `npm run check:docs` | **new** — the guide may not name a component that does not exist (F5) |
@@ -28,7 +28,7 @@ Eleven now, up from seven. Each fails the build.
 
 All eleven run in CI (`.github/workflows/ci.yaml`, `frontend` job).
 
-An eleventh command, `npm run prove:gates`, is **not** in CI: it deliberately breaks the working tree. See §4.
+A twelfth command, `npm run prove:gates`, is **not** in CI: it deliberately breaks the working tree. See §4.
 
 ---
 

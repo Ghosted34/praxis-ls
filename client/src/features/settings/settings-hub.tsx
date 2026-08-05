@@ -16,7 +16,9 @@ const SECTIONS: Section[] = [
     cards: [
       { to: "/master/corporate-entities", label: "Business Setup", desc: "Legal entities — profile, NIU/RCCM, fiscal year, bank block", icon: "id" },
       { to: "/appearance", label: "Appearance", desc: "White-label theme, fonts & per-brand colours", icon: "palette" },
+      { to: "/my-appearance", label: "My Appearance", desc: "Your own fonts — overrides the workspace, for you only", icon: "palette" },
       { to: "/settings/login", label: "Login Screen", desc: "Hero copy, quotes, regional welcomes & toggles", icon: "login" },
+      { to: "/settings/pwa", label: "App & PWA", desc: "Home-screen icon, launch screen & install prompts", icon: "palette" },
       { to: "/settings/business-policies", label: "Business Policies", desc: "Privacy, Refund, QMS, Terms & more", icon: "doc" },
     ],
   },

@@ -147,6 +147,60 @@ export function Segmented<T extends string>({
   );
 }
 
+/**
+ * A labelled range input with its live value. Used by the App & PWA editor for
+ * the icon transform, where the control has to be continuous — the whole point
+ * is nudging a mark until it sits right inside a circular crop, which is not a
+ * thing anyone can type.
+ *
+ * Native `<input type="range">` rather than a custom widget: it is already
+ * keyboard-operable, already announces its value, and already respects the
+ * platform's pointer conventions.
+ */
+export function Slider({
+  label,
+  value,
+  onChange,
+  min,
+  max,
+  step = 1,
+  unit = "",
+  hint,
+}: {
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min: number;
+  max: number;
+  step?: number;
+  unit?: string;
+  hint?: string;
+}) {
+  const id = React.useId();
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-baseline justify-between gap-2">
+        <Label htmlFor={id}>{label}</Label>
+        <span className="text-xs tabular-nums text-muted-foreground">
+          {value}
+          {unit}
+        </span>
+      </div>
+      <input
+        id={id}
+        type="range"
+        min={min}
+        max={max}
+        step={step}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="h-5 w-full cursor-pointer accent-primary"
+      />
+      {hint && <p className="text-[11px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 export function ColorRow({
   token,
   value,

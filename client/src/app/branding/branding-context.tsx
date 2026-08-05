@@ -8,18 +8,81 @@
 import * as React from "react";
 import { applyBrand } from "@/lib/theme";
 import { fetchBranding, type Branding } from "@/lib/branding";
+import {
+  applyPwaDocument,
+  brandSource,
+  effectivePwa,
+  fetchPwaConfig,
+  EMPTY_PWA_CONFIG,
+  type EffectivePwa,
+  type PwaConfig,
+} from "@/lib/pwa-config";
+import { loadFonts, DEFAULT_STACK, DEFAULT_MONO_STACK } from "@/lib/fonts";
+import { EMPTY_USER_APPEARANCE, type UserAppearance } from "@/lib/preferences";
 
 const DEFAULT_PRIMARY = import.meta.env.VITE_BRAND_PRIMARY || "#0f766e";
 
 type Ctx = {
   branding: Branding;
   setBranding: (b: Branding) => void;
+  /** The signed-in user's personal typography overrides (see lib/preferences). */
+  userAppearance: UserAppearance;
+  /** Applied on top of the tenant's fonts and repainted immediately. */
+  setUserAppearance: (a: UserAppearance) => void;
   ready: boolean; // true once the public /branding fetch has resolved (or failed)
+  /**
+   * The tenant's installed-app design, already resolved against branding — what
+   * the boot splash, the install banner and the offline/update prompts render.
+   * Fetched HERE, in parallel with branding, rather than by each consumer: the
+   * splash is on screen before the first route mounts, so a second waterfall
+   * would mean the splash animating with the wrong preset and then correcting
+   * itself, which is worse than not animating at all.
+   */
+  pwa: EffectivePwa;
+  /** Raw stored config (nulls = inherit) — what the editor round-trips. */
+  pwaConfig: PwaConfig;
+  setPwaConfig: (c: PwaConfig) => void;
 };
 
 const BrandingCtx = React.createContext<Ctx | null>(null);
 
-function paint(b: Branding) {
+/**
+ * TWO LAYERS, ONE PAINT. The tenant's branding is the base; the user's
+ * typography sits on top. Merging here rather than at either call site means
+ * there is exactly one place that decides precedence, and both the boot fetch
+ * and a live save from either editor go through it.
+ *
+ * Only the three type tokens are user-overridable — a user cannot restyle the
+ * company's colours or logo, which is enforced on the server too
+ * (preference.service.js). An empty-string override is treated as absent so a
+ * cleared field falls back to the tenant value rather than to no font at all.
+ */
+function resolveFonts(b: Branding, u: UserAppearance) {
+  return {
+    fontDisplay: u.fontDisplay || b.fontDisplay,
+    fontBody: u.fontBody || b.fontBody,
+    fontMono: u.fontMono || b.fontMono,
+  };
+}
+
+function paint(b: Branding, u: UserAppearance = EMPTY_USER_APPEARANCE) {
+  const fonts = resolveFonts(b, u);
+  // Fetch the woff2 for whatever is actually in force — at most three families
+  // out of the fifteen in the library. Fire-and-forget: @fontsource ships
+  // `font-display: swap`, so text paints in the fallback now and reflows into
+  // the real face when the chunk lands. Awaiting it would block the paint below
+  // on the network for no gain.
+  //
+  // An UNSET slot loads the library default rather than nothing. index.css
+  // declares Inter and JetBrains Mono for the unset case, and a declared family
+  // whose @font-face was never imported renders the generic fallback instead —
+  // which is exactly how `--font-mono` was resolving to the browser's monospace
+  // on every screen that shows a document reference.
+  void loadFonts([
+    fonts.fontDisplay || DEFAULT_STACK,
+    fonts.fontBody || DEFAULT_STACK,
+    fonts.fontMono || DEFAULT_MONO_STACK,
+  ]);
   applyBrand({
     primary: b.primary || DEFAULT_PRIMARY,
     primaryForeground: b.primaryForeground || "#ffffff",
@@ -30,9 +93,7 @@ function paint(b: Branding) {
     success: b.success,
     warn: b.warn,
     danger: b.danger,
-    fontDisplay: b.fontDisplay,
-    fontBody: b.fontBody,
-    fontMono: b.fontMono,
+    ...fonts,
     radius: b.radius,
   });
   // Reflect the tenant's brand name in the browser tab (falls back to the app
@@ -61,29 +122,78 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     primaryForeground: "#ffffff",
     logoUrl: null,
   });
+  const [pwaConfig, setPwaState] = React.useState<PwaConfig>(EMPTY_PWA_CONFIG);
+  const [userAppearance, setUserState] = React.useState<UserAppearance>(EMPTY_USER_APPEARANCE);
   const [ready, setReady] = React.useState(false);
 
+  // Each setter repaints BOTH layers, so each needs the other's current value.
+  // Refs rather than effect dependencies: a repaint must happen at the moment
+  // the save resolves, and reading the live ref keeps the two setters
+  // independent of render timing — without them, saving branding would repaint
+  // using whatever overrides were captured when the callback was created and
+  // silently drop the user's fonts until the next reload.
+  const brandingRef = React.useRef(branding);
+  const userRef = React.useRef(userAppearance);
+
   // Paint the default immediately, then fetch and re-paint with the tenant's own.
+  //
+  // Both public reads go out together and `ready` waits for BOTH: the splash is
+  // already on screen and is driven by the PWA config, so flipping ready on
+  // branding alone would reveal the identity block under the DEFAULT preset and
+  // then restart it. allSettled, not all — an unconfigured or failing PWA read
+  // must not hold back branding, which is what colours the login.
   React.useEffect(() => {
-    paint(branding);
-    fetchBranding()
-      .then((b) => {
-        setState(b);
-        paint(b);
-      })
-      .catch(() => {
-        /* no branding configured / offline — keep the default */
+    paint(branding, userAppearance);
+    Promise.allSettled([fetchBranding(), fetchPwaConfig()])
+      .then(([b, p]) => {
+        if (b.status === "fulfilled") {
+          brandingRef.current = b.value;
+          setState(b.value);
+          paint(b.value, userRef.current);
+        }
+        // A rejected read is not an error path: an unconfigured or offline
+        // tenant keeps the defaults painted above.
+        if (p.status === "fulfilled" && p.value) setPwaState({ ...EMPTY_PWA_CONFIG, ...p.value });
       })
       .finally(() => setReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const setBranding = React.useCallback((b: Branding) => {
+    brandingRef.current = b;
     setState(b);
-    paint(b);
+    paint(b, userRef.current);
   }, []);
 
-  return <BrandingCtx.Provider value={{ branding, setBranding, ready }}>{children}</BrandingCtx.Provider>;
+  const setUserAppearance = React.useCallback((a: UserAppearance) => {
+    userRef.current = a;
+    setUserState(a);
+    paint(brandingRef.current, a);
+  }, []);
+
+  const setPwaConfig = React.useCallback((c: PwaConfig) => {
+    setPwaState({ ...EMPTY_PWA_CONFIG, ...c });
+  }, []);
+
+  // Resolved once per change rather than per consumer — the install banner, the
+  // offline pill and the updater all read it on every render. Note it resolves
+  // against the TENANT's branding, not the merged per-user layer: an installed
+  // app's icon and splash are the company's identity, and one user's font
+  // choice does not change what the operating system shows on a home screen.
+  const pwa = React.useMemo(() => effectivePwa(pwaConfig, brandSource(branding)), [pwaConfig, branding]);
+
+  // The installed app's document-level identity — the title-bar colour and the
+  // iOS label. Kept in an effect rather than inside `paint` because it depends
+  // on the RESOLVED pwa config, which is derived from branding rather than
+  // being branding, and because it must re-run when either layer changes.
+  React.useEffect(() => applyPwaDocument(pwa), [pwa]);
+
+  const value = React.useMemo(
+    () => ({ branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig }),
+    [branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig],
+  );
+
+  return <BrandingCtx.Provider value={value}>{children}</BrandingCtx.Provider>;
 }
 
 export function useBranding() {

@@ -110,8 +110,24 @@
      --font-display is retained as a token so the 35 `font-display` call sites
      keep working; it now resolves to the display optical size of the same
      family rather than a second typeface. */
-  --font-display: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  --font-body: "InterVariable", "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* "Inter Variable", WITH the space. @fontsource-variable/inter declares the
+     family as `'Inter Variable'`; this token asked for "InterVariable", which
+     matches nothing, so every unbranded tenant has been rendering in system-ui
+     since the font was bundled — the woff2 downloaded on every load and was
+     never used. The static "Inter" stays as the second entry for anyone who has
+     the family installed locally. */
+  /* Fallbacks are BARE GENERIC KEYWORDS. Naming system-ui / Arial / Georgia
+     here would put a different typeface on screen per operating system, which
+     is the inconsistency the font library exists to remove — see the note in
+     lib/fonts.ts. The generic keyword covers only the swap window, and after
+     the first load the real face is served from the service worker's cache. */
+  --font-display: "Inter Variable", "Inter", sans-serif;
+  --font-body: "Inter Variable", "Inter", sans-serif;
+  /* --font-mono had NO default. Nothing declared it, so every `font-mono`
+     utility and `.num` cell fell through to Tailwind's built-in stack — Menlo,
+     Consolas, Courier New — i.e. three fonts from outside the library, chosen
+     by the OS, on every screen that shows a document reference or an amount. */
+  --font-mono: "JetBrains Mono Variable", "JetBrains Mono", monospace;
   /* Flatter. The previous ramp paired a soft ambient shadow with a large
      coloured drop; combined with the glow on .btn-primary it read as a Dribbble
      shot. Enterprise surfaces carry a hairline border and minimal elevation. */
@@ -436,6 +452,15 @@
     white-space: nowrap;
     display: inline-flex;
     align-items: center;
+    /* An inline-flex box aligns on ITS OWN baseline by default, so the pill
+       hangs off the text baseline and the line box grows by however far the
+       current font's descender drops — making the row height a function of the
+       typeface. That was invisible while --font-body silently fell back to
+       system-ui; fixing the font to actually load Inter moved a 32px row to
+       34.5px and the desktop layout gate caught it. With a fifteen-font picker
+       the row must measure the same whichever family a tenant chooses, so the
+       box is centred on the text instead of hung from its baseline. */
+    vertical-align: middle;
     gap: 5px;
   }
   .status::before {
@@ -1085,6 +1110,87 @@
     transition: none !important;
   }
 }
+
+/**
+ * BOOT SPLASH PRESETS — Settings › App & PWA › Splash.
+ *
+ * These are the animations a tenant chooses between for the screen shown while
+ * the app boots. They are deliberately longer than the 250ms in-app motion
+ * budget and `scripts/check-motion.mjs` exempts the `.splash-` prefix for it,
+ * on the same grounds as `.landing` and `.login`: this is the door, not the
+ * workstation. It is seen once per session, before any work has started, and
+ * the whole point of the editor is that a tenant gets to decide what their
+ * app's first half-second looks like.
+ *
+ * They are driven by CLASS, not by inline styles, so the tenant's choice cannot
+ * introduce a duration — the preset list is closed (pwa-design.js PWA_ENUMS).
+ * What the tenant does control is which preset, the colours, and how long the
+ * splash stays up (`splashDuration`), which is wall time, not motion.
+ *
+ * The global prefers-reduced-motion kill above applies to all of them, so the
+ * reduced-motion experience is the static composition with no animation — which
+ * is why every preset is legible at rest, and why the identity block's own
+ * reveal is a plain opacity transition rather than part of the preset.
+ */
+@keyframes splash-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes splash-breathe {
+  0%, 100% { transform: scale(1); filter: brightness(1); }
+  50% { transform: scale(1.045); filter: brightness(1.12); }
+}
+@keyframes splash-sweep {
+  from { transform: translateX(-140%) skewX(-18deg); }
+  to { transform: translateX(240%) skewX(-18deg); }
+}
+@keyframes splash-orbit {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes splash-drift {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.85; }
+  50% { transform: translate3d(3%, -2.5%, 0) scale(1.12); opacity: 1; }
+}
+
+/* fade — one-shot entrance. The quiet default. */
+.splash-fade { animation: splash-rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+/* pulse — the mark breathes while the app loads. Loops because it is a
+   progress signal: it stops when the splash lifts. */
+.splash-pulse { animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both, splash-breathe 2.2s ease-in-out 0.5s infinite; }
+
+/* shimmer — a light sweep crossing the mark. The sweep is a pseudo-element so
+   it clips to the mark's box and never touches layout. */
+.splash-shimmer { position: relative; overflow: hidden; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-shimmer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgb(255 255 255 / 0.42), transparent);
+  animation: splash-sweep 1.8s ease-in-out 0.4s infinite;
+  pointer-events: none;
+}
+
+/* ring — a brand-coloured arc orbits the mark. `--splash-accent` is set inline
+   from the tenant's theme colour. */
+.splash-ring { position: relative; animation: splash-rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.splash-ring::before {
+  content: "";
+  position: absolute;
+  inset: -14px;
+  border-radius: 999px;
+  border: 2px solid transparent;
+  border-top-color: var(--splash-accent, currentColor);
+  border-right-color: color-mix(in srgb, var(--splash-accent, currentColor) 35%, transparent);
+  animation: splash-orbit 1.15s linear infinite;
+  pointer-events: none;
+}
+
+/* mesh — the BACKDROP animates instead of the mark: two soft brand-coloured
+   blooms drifting behind a still logo. Applied to the splash backdrop, so it
+   composes with any of the marks above. */
+.splash-mesh-layer { animation: splash-drift 6s ease-in-out infinite; }
 
 /* Top-bar nav dropdown shadow + More overlay sidebar slide-in */
 .shadow-l { box-shadow: var(--shadow-l); }

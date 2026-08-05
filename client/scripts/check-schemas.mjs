@@ -68,16 +68,34 @@ const clientFiles = filesUnder("client/src", /\.tsx?$/).filter((f) => !/\.test\.
 /** Which domains a file names, from its `@praxis/shared` / `@shared` import. */
 function importedDomains(text) {
   const found = new Set();
-  // require("@praxis/shared") destructuring, and `import { a, b } from "@shared"`.
-  const re = /(?:const|import)\s*\{([^}]*)\}\s*(?:=\s*require\(|from\s*)["']@(?:praxis\/)?shared["']/g;
+
+  /*
+   * Form 1 — property access: `require("@praxis/shared").pwaDesign`.
+   *
+   * Usually written as `const { a, b } = require("@praxis/shared").pwaDesign`,
+   * which reaches PAST the domain to destructure its members. That form is why
+   * this branch exists: matching only the braces harvested `effectivePwa` and
+   * `iconLayout` as though they were domains, and reported the domain that IS
+   * imported — pwaDesign — as used by nobody. A gate that reports a false
+   * failure gets an exemption added to shut it up, and then it is worth nothing.
+   */
+  for (const m of text.matchAll(/require\(\s*["']@(?:praxis\/)?shared["']\s*\)\s*\.\s*(\w+)/g)) found.add(m[1]);
+
+  /*
+   * Form 2 — destructuring the package root: `const { ledger } = require(…)`,
+   * `import { journalEntry } from "@shared"`. The negative lookahead excludes
+   * form 1, whose braces name members rather than domains.
+   */
+  const re =
+    /(?:const|import)\s*\{([^}]*)\}\s*(?:=\s*require\(|from\s*)["']@(?:praxis\/)?shared["'](?!\s*\)\s*\.)/g;
   for (const m of text.matchAll(re)) {
     for (const part of m[1].split(",")) {
       // `{ journalEntry: schemas }` and `{ ledger as rules }` both name the
       // domain on the LEFT. Split on a real `:` or a whole-word `as` — an
       // earlier version used the character class `[:as]`, which also split
       // inside identifiers ("journalEntry" contains an "a") and reported every
-      // domain as unused.
-      const name = part.trim().split(/\s*(?::|\bas\b)\s*/)[0].trim();
+      // domain as unused. A leading `type` is TypeScript's inline type import.
+      const name = part.trim().replace(/^type\s+/, "").split(/\s*(?::|\bas\b)\s*/)[0].trim();
       if (name) found.add(name);
     }
   }

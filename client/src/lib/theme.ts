@@ -75,7 +75,7 @@ function hexToTriplet(value: string): string | null {
  * theme) until it clears the threshold against that theme's card surface. Hue
  * is preserved because the result must still read as the tenant's brand.
  */
-type Rgb = [number, number, number];
+export type Rgb = [number, number, number];
 
 /**
  * The surfaces the derived ink has to clear, per theme. Both `--background` and
@@ -95,7 +95,11 @@ const DARK_CARD: Rgb = [18, 22, 30]; // --card, dark
 const PILL_TINT = 0.14;
 const AA_NORMAL = 4.5;
 
-function parseHex(value: string): Rgb | null {
+/** Exported for the PWA design editor, which measures a tenant's chosen splash
+ *  and icon colours against each other with the SAME WCAG maths this module
+ *  uses to derive accessible ink — two implementations of "readable" would
+ *  eventually disagree, and the one nobody looks at would be the wrong one. */
+export function parseHex(value: string): Rgb | null {
   const t = hexToTriplet(value);
   if (!t) return null;
   const [r, g, b] = t.split(" ").map(Number);
@@ -103,7 +107,7 @@ function parseHex(value: string): Rgb | null {
 }
 
 /** WCAG relative luminance. */
-function luminance([r, g, b]: Rgb): number {
+export function luminance([r, g, b]: Rgb): number {
   const lin = (c: number) => {
     const s = c / 255;
     return s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4);
@@ -111,7 +115,7 @@ function luminance([r, g, b]: Rgb): number {
   return 0.2126 * lin(r) + 0.7152 * lin(g) + 0.0722 * lin(b);
 }
 
-function contrast(a: Rgb, b: Rgb): number {
+export function contrast(a: Rgb, b: Rgb): number {
   const la = luminance(a);
   const lb = luminance(b);
   return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);

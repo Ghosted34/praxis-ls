@@ -40,7 +40,7 @@ const TONE: Record<CalloutTone, { box: string; ink: string; live: "polite" | "as
   ok: { box: "border-ok/40 bg-ok-fill/10", ink: "text-ok", live: "polite" },
   warn: { box: "border-warn/40 bg-warn-fill/10", ink: "text-warn", live: "assertive" },
   bad: { box: "border-bad/40 bg-bad-fill/10", ink: "text-bad", live: "assertive" },
-  info: { box: "border-brand-blue/40 bg-brand-blue/10", ink: "text-brand-blue", live: "polite" },
+  info: { box: "border-brand-blue/40 bg-brand-blue/10", ink: "text-brand-blue-ink", live: "polite" },
 };
 
 function Glyph({ tone }: { tone: CalloutTone }) {

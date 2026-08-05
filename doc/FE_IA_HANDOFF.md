@@ -1,5 +1,15 @@
 # Praxis LS — Frontend IA Map & Backend Gaps (Handoff)
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> Still useful as a module→navigation REFERENCE. It is not a plan, and its "backend gaps" list is from 2026-07-13.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 _Prepared 2026-07-13. Maps `src/modules/*` onto the frontend navigation, and lists backend
 gaps to close. Excludes `ai/` (its own surface) and `branding` + `catalogue` (these two are
 tabs under **Settings**, per decision)._

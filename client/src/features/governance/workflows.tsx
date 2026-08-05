@@ -156,7 +156,7 @@ function WorkflowDrawer({ workflow, onClose, onChanged }: { workflow: wf.Workflo
             {chain.map((s) => (
               <li key={s.workflow_step_id} className="flex items-center justify-between rounded-lg border border-border px-3 py-2">
                 <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-[rgb(var(--primary))]">{s.step_seq}</span>
+                  <span className="grid h-6 w-6 place-items-center rounded-full bg-primary/15 text-xs font-semibold text-primary-ink">{s.step_seq}</span>
                   <Pill tone={s.step_kind === "VALIDATE" ? "blue" : "ok"}>{s.step_kind}</Pill>
                   {/* An unbound step is open to anyone — say so plainly rather than
                       showing a capability that reads like a restriction. */}

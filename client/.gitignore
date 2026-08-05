@@ -6,3 +6,9 @@ dist-ssr
 .env.*
 !.env.example
 .DS_Store
+
+# Playwright (desktop layout gate). The report and traces are CI artifacts —
+# evidence for a human on a failed measurement, not something to commit.
+/playwright-report/
+/test-results/
+/blob-report/

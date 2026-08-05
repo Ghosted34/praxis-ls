@@ -259,6 +259,37 @@ jobs:
         if: matrix.app == 'client'
         run: npm run check:contrast --prefix client
 
+      - name: Frontend guide is not lying
+        # Phase 5, closing F5 — the audit's ROOT-CAUSE finding. The onboarding
+        # doc told every new engineer to use <ResourceList> and <CrudResource>:
+        # one had been deleted, the other had zero call sites. The audit's words:
+        # "there is no paved road, so 24 feature areas each paved their own."
+        #
+        # Phase 1 corrected the document. Nothing stopped it drifting again, and
+        # being wrong cost nothing, which is why it stayed wrong for months. This
+        # fails the build if doc/FRONTEND_GUIDE.md names a component that is not
+        # a real export, and if a superseded frontend doc loses the banner
+        # pointing at the guide.
+        if: matrix.app == 'client'
+        run: npm run check:docs --prefix client
+
+      - name: Motion budget
+        # Phase 5. F17's sharpest finding was `.animate-fade-up` running 500ms on
+        # every card and table mount — a dispatcher opening the shipments view
+        # forty times a day waited twenty seconds a day for a decoration, and it
+        # made a fast backend look slow. Phase 1 took it to 120ms.
+        #
+        # Nothing stopped it coming back. A 500ms fade is one character away from
+        # a 50ms one, it looks fine in a screenshot and fine in review, and the
+        # person who notices is the operator on their three-hundredth use. Same
+        # argument as the palette gate: a rule nobody can check is a rule.
+        #
+        # It also asserts the prefers-reduced-motion umbrella still covers both
+        # animation AND transition, and still reaches pseudo-elements — one
+        # dropped `!important` silently un-honours a platform preference.
+        if: matrix.app == 'client'
+        run: npm run check:motion --prefix client
+
       - name: Raw-palette gate
         # Phase 4 deliverable: "Zero raw-palette colours". The audit measured 122
         # `text-emerald-600`-style literals against a design rule (#1: "never
@@ -301,6 +332,46 @@ jobs:
         # the schemas resolve, parse, and share ONE Zod. Client only.
         if: matrix.app == 'client'
         run: npm run check:shared --prefix client
+
+      - name: Install Chromium for the layout gate
+        # Only the browser, and only for the client. `--with-deps` pulls the
+        # shared libraries headless Chromium needs on a bare runner; the version
+        # is pinned by @playwright/test in package.json (exact, not caret) so the
+        # browser and the runner cannot drift apart between builds.
+        if: matrix.app == 'client'
+        run: npm run e2e:install --prefix client
+
+      - name: Desktop layout gate
+        # Phase 5. Phases 3 and 4 BOTH measured the app in a real browser at
+        # 1280/1440/1920/2560 and BOTH threw the harness away, deferring "stand
+        # it up in CI" to the next phase. This is that harness.
+        #
+        # It asserts NUMBERS, not pixels, and that is deliberate. A committed
+        # screenshot baseline differs between this runner and a developer's
+        # machine on font hinting alone, so its first run is red for a reason
+        # nobody can act on — and this repo has already written down what happens
+        # to a gate like that. What actually regressed in the findings this audit
+        # is about was never a pixel: it was a content column that would not grow
+        # past 1152px, a row 46px tall instead of 32, a page that scrolled
+        # sideways. Those are deterministic across platforms.
+        #
+        # It earned its place immediately: it found that the density work from
+        # Phase 1 had never landed on a real list screen. Rows measured 49px
+        # however small the padding was, because `<Button size="sm">` is 36px and
+        # 67 screens put one in the actions column. Invisible to jsdom (no layout
+        # engine) and not what the Phase 3/4 runs measured.
+        if: matrix.app == 'client'
+        run: npm run test:e2e --prefix client
+
+      - name: Upload layout-gate report
+        # Screenshots and traces are EVIDENCE, not the assertion — they exist so
+        # a human can see what a failed measurement looked like.
+        if: ${{ failure() && matrix.app == 'client' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: client/playwright-report
+          retention-days: 7
 
       - name: Bundle graph
         # The 2026-08-04 blank page: `manualChunks` split `vendor-react` out of

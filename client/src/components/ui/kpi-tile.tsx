@@ -8,11 +8,11 @@ import * as React from "react";
 import { cn } from "@/lib/cn";
 
 const TONE: Record<string, string> = {
-  accent: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary",
+  accent: "bg-[color-mix(in_srgb,var(--primary)_12%,transparent)] text-primary-ink",
   ok: "bg-[rgb(var(--ok)_/_0.12)] text-[rgb(var(--ok))]",
   warn: "bg-[rgb(var(--warn)_/_0.15)] text-[rgb(var(--warn))]",
   bad: "bg-[rgb(var(--bad)_/_0.12)] text-[rgb(var(--bad))]",
-  info: "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue))]",
+  info: "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue-ink))]",
 };
 
 export function KpiTile({

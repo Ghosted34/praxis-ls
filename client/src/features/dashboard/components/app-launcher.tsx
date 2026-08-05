@@ -83,7 +83,7 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
                   // it keeps a 6-across row from reading as one orange band.
                   i % 2 === 0
                     ? "bg-[color-mix(in_srgb,var(--primary)_11%,transparent)] text-primary-ink"
-                    : "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue))]",
+                    : "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue-ink))]",
                 )}
               >
                 <Icon />

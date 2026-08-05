@@ -72,7 +72,10 @@ import { PageContainer } from "@/components/layout/page-container";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { EmptyState } from "@/components/ui/states";
 import { Pagination } from "@/components/ui/pagination";
+import { BulkBar } from "@/components/ui/table-controls";
 import type { PageWidth } from "@/lib/layout";
+import type { Density } from "@/lib/density";
+import type { RowSelection } from "@/lib/use-row-selection";
 
 export type ListPageEmpty = {
   title: string;
@@ -100,6 +103,14 @@ export function ListPage<T extends Record<string, unknown>>({
   filtered,
   pagination,
   width = "wide",
+  selection,
+  bulkActions,
+  bulkNoun,
+  bulkNounPlural,
+  density,
+  sticky,
+  freezeFirstColumn,
+  maxHeight,
   children,
 }: {
   title: string;
@@ -137,6 +148,26 @@ export function ListPage<T extends Record<string, unknown>>({
   filtered?: boolean;
   pagination?: React.ComponentProps<typeof Pagination>;
   width?: PageWidth;
+  /**
+   * Multi-row selection, from `useRowSelection` (Phase 5). Adds the checkbox
+   * column and, with `bulkActions`, the bar that gives the selection a purpose.
+   * A selection with nothing to do with it is a checkbox column that wastes
+   * 40px on every screen — so pass both or neither.
+   */
+  selection?: RowSelection<T>;
+  /** Controls for the selected rows. Rendered in a `BulkBar` under the table. */
+  bulkActions?: React.ReactNode;
+  /** What the selected rows ARE — "invoice", not "row". */
+  bulkNoun?: string;
+  bulkNounPlural?: string;
+  /** Pin a row density, overriding the user's preference. Rarely correct. */
+  density?: Density;
+  /** Keep column headings visible while the body scrolls. Bounds table height. */
+  sticky?: boolean;
+  /** Keep the record's identity visible while scrolling a wide table right. */
+  freezeFirstColumn?: boolean;
+  /** Only meaningful with `sticky`. Defaults to 70vh. */
+  maxHeight?: string;
   /** Modals, drawers and anything else the screen owns. */
   children?: React.ReactNode;
 }) {
@@ -163,6 +194,24 @@ export function ListPage<T extends Record<string, unknown>>({
           rowKey={rowKey}
           onRowClick={onRowClick}
           empty={empty}
+          selection={selection}
+          density={density}
+          sticky={sticky}
+          freezeFirstColumn={freezeFirstColumn}
+          maxHeight={maxHeight}
+        />
+      )}
+
+      {/* Sits between the table and the pager, inside the content column, so it
+          can never cover the last row — the failure mode of the fixed overlay
+          this app used to reach for (F9). */}
+      {selection && bulkActions && (
+        <BulkBar
+          count={selection.count}
+          noun={bulkNoun}
+          nounPlural={bulkNounPlural}
+          onClear={selection.clear}
+          actions={bulkActions}
         />
       )}
 

@@ -1,5 +1,15 @@
 # UI Depth Overhaul — HR & Employees, Fleet, Vehicles, Warehouse
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> Done. The 21 HR/Fleet/WMS screens it describes exist and are the record; Phase 4 decomposed and gated them.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 > **Session 15 update (2026-07-27) — substantially DONE.** All 21 core screens across HR/Fleet/WMS are
 > archetypes (360 / run / queue / kanban / lifecycle / ledger / count-sheet / time-clock / expiry board), not
 > CRUD tables. The **per-screen AI gate** (a cross-cutting requirement that had been dropped) was restored on

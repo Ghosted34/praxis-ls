@@ -1,5 +1,15 @@
 # Lovable UI-Fidelity Plan — full app redesign to the reference mock
 
+> ## ⚠ SUPERSEDED — see `doc/FRONTEND_GUIDE.md`
+>
+> Shipped in session 15, then largely reversed by Phase 1: F17 found the mock's visual language was "a coherent aesthetic aimed at the wrong category", and the display serif, mesh gradient, glow shadows and 500ms entrances are gone.
+>
+> This file is kept for the history it holds. **Where it disagrees with
+> `doc/FRONTEND_GUIDE.md`, the guide wins.** Do not add to this file; add to the guide.
+> (Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, closing F15: six overlapping frontend plans, and
+> "a new engineer cannot tell which is current — and the one that reads most authoritative
+> is the one that's wrong".)
+
 _Drafted 2026-07-22 (session 12). Status: **DONE — kit restyle shipped in session 15 (2026-07-27).**_
 
 > **Session 15 update.** The full kit restyle below is implemented. `index.css` (font-display w400,

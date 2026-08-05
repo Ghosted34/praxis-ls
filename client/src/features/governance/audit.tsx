@@ -257,7 +257,7 @@ export function AuditPage() {
   }
 
   const ledgerCols: Column<LedgerEntry>[] = [
-    { key: "action", label: "Action", render: (r) => <span className="font-medium text-[rgb(var(--primary))]">{enumLabel(r.action)}</span> },
+    { key: "action", label: "Action", render: (r) => <span className="font-medium text-primary-ink">{enumLabel(r.action)}</span> },
     { key: "module_key", label: "Module", render: (r) => (r.module_key ? <Pill tone="mute">{r.module_key}</Pill> : "—") },
     { key: "entity_ref", label: "Entity", render: (r) => <span className="num text-muted-foreground">{r.entity_ref || "—"}</span> },
     { key: "actor_user_id", label: "Actor", render: (r) => actor(r.actor_user_id) },

@@ -256,7 +256,7 @@ export function MeetingsPage() {
               onClick={() => setDetail(r)}
               className="lux-card flex w-full items-center gap-3 p-3 text-left transition-colors hover:border-primary/40"
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary-ink">
                 <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
                   <rect x="3" y="4" width="18" height="18" rx="2" />
                   <path d="M16 2v4M8 2v4M3 10h18" />

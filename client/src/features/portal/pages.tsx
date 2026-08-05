@@ -321,7 +321,7 @@ export function PortalAccessPage() {
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
                     <p className="truncate text-sm font-semibold text-foreground">{cell(g.subject_email)}</p>
-                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">{portal.toLowerCase()}</span>
+                    <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary-ink">{portal.toLowerCase()}</span>
                     {!login ? (
                       <span className="rounded-full bg-[hsl(var(--warn))]/15 px-2 py-0.5 text-[11px] font-medium text-[hsl(var(--warn))]">
                         no sign-in

@@ -127,7 +127,7 @@ function CsatModal({ ticket, onClose, onRated }: { ticket: Ticket; onClose: () =
                 key={n}
                 type="button"
                 onClick={() => setScore(n)}
-                className={`h-10 w-10 rounded-md border text-lg transition ${n <= score ? "border-primary bg-primary/10 text-primary" : "border-input text-muted-foreground"}`}
+                className={`h-10 w-10 rounded-md border text-lg transition ${n <= score ? "border-primary bg-primary/10 text-primary-ink" : "border-input text-muted-foreground"}`}
                 aria-label={`${n} star${n > 1 ? "s" : ""}`}
               >
                 ★
@@ -168,7 +168,7 @@ export function SupportPage() {
     { key: "created_at", label: "Raised", render: (r) => dateFmt(r.created_at) },
     {
       key: "csat", label: "Rating", render: (r) => {
-        if (r.csat) return <span className="num text-primary">{"★".repeat(r.csat)}<span className="text-muted-foreground">{"★".repeat(5 - r.csat)}</span></span>;
+        if (r.csat) return <span className="num text-primary-ink">{"★".repeat(r.csat)}<span className="text-muted-foreground">{"★".repeat(5 - r.csat)}</span></span>;
         if (isResolved(r.status)) return (
           <RowActions>
             <Button size="sm" variant="outline" onClick={() => setRating(r)}>Rate</Button>

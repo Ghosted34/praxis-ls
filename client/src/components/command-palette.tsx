@@ -135,7 +135,7 @@ export function CommandPalette({
         idx === active ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/60",
       )}
     >
-      <span className="text-[rgb(var(--primary))]"><r.Icon /></span>
+      <span className="text-primary-ink"><r.Icon /></span>
       <span className="flex-1 font-medium text-foreground">{r.label}</span>
       {r.sub && <span className="micro">{r.sub}</span>}
     </button>

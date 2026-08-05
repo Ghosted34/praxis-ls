@@ -139,16 +139,25 @@ const CASES = [
   {
     name: "layout gate (e2e)",
     defect: "F9 — a 36px row-action button puts the row back to 48px",
-    cmd: ["npx", ["playwright", "test", "e2e/desktop-layout.spec.ts", "--grep", "default rows"]],
+    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "default rows"]],
     file: "src/index.css",
     from: "    --row-control-h: 1.25rem;",
     to: "    --row-control-h: 2.25rem;",
     rebuild: true, // the e2e gate runs against dist/
   },
   {
+    name: "layout gate (touch target)",
+    defect: "WCAG 2.2 2.5.8 — a desktop density number lands on a phone tap target",
+    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "tap target"]],
+    file: "src/index.css",
+    from: "    --row-control-h: 2.75rem; /* 44px — the platform touch guidance */",
+    to: "    --row-control-h: 1.25rem;",
+    rebuild: true,
+  },
+  {
     name: "layout gate (2560px tier)",
     defect: "F2/F3 — the content column stops growing past 1664px",
-    cmd: ["npx", ["playwright", "test", "e2e/desktop-layout.spec.ts", "--grep", "2560px"]],
+    cmd: ["npx", ["playwright", "test", "e2e/layout.spec.ts", "--grep", "2560px"]],
     file: "tailwind.config.ts",
     from: 'wide: "135rem", // 2160',
     to: 'wide: "104rem", // 1664',

@@ -227,53 +227,93 @@ describe("DataList keyboard row navigation", () => {
 
 /**
  * Multi-row selection (Phase 5).
+ *
+ * SCOPED TO A BRANCH, and that is not tidiness. jsdom does not apply media
+ * queries, so `hidden sm:block` and `sm:hidden` both render and every control
+ * exists TWICE in the tree. An unscoped `getByRole("checkbox", …)` therefore
+ * threw "found multiple elements" the moment the card branch gained its own
+ * checkbox — which is the test suite correctly noticing that the phone gap was
+ * being closed, not a flake to route around.
+ *
+ * Both branches are asserted deliberately: the table checkbox and the card
+ * checkbox are different code paths for the same capability, and the whole
+ * reason this block grew is that only one of them existed.
  */
 describe("DataList selection", () => {
   const base = { columns, rowKey: (r: Row) => r.id, error: null, loading: false };
 
-  function Harness({ onCount }: { onCount?: (n: number) => void }) {
+  function Harness({ clickable }: { clickable?: (r: Row) => void } = {}) {
     const sel = useRowSelection(rows, (r: Row) => r.id);
-    onCount?.(sel.count);
-    return <DataList {...base} rows={rows} selection={sel} />;
+    return <DataList {...base} rows={rows} selection={sel} onRowClick={clickable} />;
   }
+
+  /** The `hidden sm:block` half — a real <table>. */
+  const table = () => within(screen.getByRole("table").closest("div.hidden") as HTMLElement);
+  /** The `sm:hidden` half — the phone cards. */
+  const cards = () => within(document.querySelector("div.sm\\:hidden") as HTMLElement);
 
   it("adds a checkbox column NAMED BY THE RECORD, not 'row 2'", () => {
     render(<Harness />);
-    expect(screen.getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: /select all rows/i })).toBeInTheDocument();
+    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeInTheDocument();
+    expect(table().getByRole("checkbox", { name: /select all rows/i })).toBeInTheDocument();
   });
 
   it("select-all ticks every row, and untick clears them", async () => {
     render(<Harness />);
-    const all = screen.getByRole("checkbox", { name: /select all rows/i });
+    const all = table().getByRole("checkbox", { name: /select all rows/i });
     await userEvent.click(all);
-    expect(screen.getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeChecked();
-    expect(screen.getByRole("checkbox", { name: "Select SBX-2026-0002" })).toBeChecked();
+    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeChecked();
+    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0002" })).toBeChecked();
     await userEvent.click(all);
-    expect(screen.getByRole("checkbox", { name: "Select SBX-2026-0001" })).not.toBeChecked();
+    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).not.toBeChecked();
   });
 
   it("reports MIXED when only some rows are selected", async () => {
     render(<Harness />);
-    await userEvent.click(screen.getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    await userEvent.click(table().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
     // aria-checked="mixed" is a fact a tick glyph cannot express.
-    expect(screen.getByRole("checkbox", { name: /select all rows/i })).toHaveAttribute("aria-checked", "mixed");
+    expect(table().getByRole("checkbox", { name: /select all rows/i })).toHaveAttribute("aria-checked", "mixed");
   });
 
   it("clicking a checkbox does not also fire the row's navigation", async () => {
     const seen: Row[] = [];
-    function ClickableHarness() {
-      const sel = useRowSelection(rows, (r: Row) => r.id);
-      return <DataList {...base} rows={rows} selection={sel} onRowClick={(r) => seen.push(r)} />;
-    }
-    render(<ClickableHarness />);
-    await userEvent.click(screen.getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    render(<Harness clickable={(r) => seen.push(r)} />);
+    await userEvent.click(table().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
     expect(seen).toHaveLength(0);
   });
 
-  it("adds no checkbox column when the screen does not ask for one", () => {
+  it("adds no checkbox anywhere when the screen does not ask for one", () => {
     render(<DataList {...base} rows={rows} />);
     expect(screen.queryAllByRole("checkbox")).toHaveLength(0);
+  });
+
+  /* ── the phone half, which did not exist before ────────────────────────── */
+
+  it("THE CARD LIST SELECTS TOO — it was table-only", () => {
+    // The checkbox lived in a <th>, so multi-select simply did not exist below
+    // 640px: forty records meant forty taps and no bulk action.
+    render(<Harness />);
+    expect(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeInTheDocument();
+  });
+
+  it("the card list has its own select-all, since it has no header row", async () => {
+    render(<Harness />);
+    const all = cards().getByRole("checkbox", { name: "Select all" });
+    await userEvent.click(all);
+    expect(cards().getByRole("checkbox", { name: "Select SBX-2026-0002" })).toBeChecked();
+  });
+
+  it("selecting a card does not also open the record", async () => {
+    const seen: Row[] = [];
+    render(<Harness clickable={(r) => seen.push(r)} />);
+    await userEvent.click(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    expect(seen).toHaveLength(0);
+  });
+
+  it("the two branches share one selection — they are views, not copies", async () => {
+    render(<Harness />);
+    await userEvent.click(cards().getByRole("checkbox", { name: "Select SBX-2026-0001" }));
+    expect(table().getByRole("checkbox", { name: "Select SBX-2026-0001" })).toBeChecked();
   });
 
   it("a selectable table has no axe violations", async () => {

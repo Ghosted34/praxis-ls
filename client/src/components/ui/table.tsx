@@ -44,6 +44,12 @@ export const Table = ({
   <div
     data-density={density}
     className={cn(
+      // `table-density` is what opts this subtree DOWN to the 20px control
+      // height. The `:root` default is the 44px touch value, because
+      // <RowActions> is also rendered by DataList's phone card fallback and a
+      // dense-table number leaking onto a finger is the defect this scoping
+      // fixed (see index.css).
+      "table-density",
       "animate-fade-up w-full max-w-full overflow-x-auto rounded-[var(--radius)] border bg-card shadow-[var(--shadow-s)]",
       // Vertical scrolling is what a sticky heading sticks against: `top: 0`
       // resolves against the nearest scrolling ancestor, so without this the

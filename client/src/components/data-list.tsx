@@ -218,7 +218,11 @@ export function DataList<T extends Record<string, unknown>>({
                     // The primitive offsets its box by 2px to sit on a text
                     // label's baseline; in a cell there is no visible label to
                     // align to, so the offset is just a nudge off centre.
-                    className="[&>button]:mt-0"
+                    // `tap-24` is the WCAG 2.2 §2.5.8 minimum: a 16px box is a
+                    // 16px target. 44 would overlap the neighbouring rows in a
+                    // 28px compact row, so the table takes the normative floor
+                    // and the card (a finger, and room) takes 44.
+                    className="[&>button]:mt-0 [&>button]:tap-24"
                     checked={selection.headerState}
                     onCheckedChange={selection.toggleAll}
                     disabled={!selection.selectable}
@@ -263,7 +267,7 @@ export function DataList<T extends Record<string, unknown>>({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <Checkbox
-                        className="[&>button]:mt-0"
+                        className="[&>button]:mt-0 [&>button]:tap-24"
                         checked={selected}
                         onCheckedChange={() => selection.toggle(key, { shift: shiftRef.current })}
                         label={<span className="sr-only">Select {rowName(r, i)}</span>}
@@ -288,31 +292,78 @@ export function DataList<T extends Record<string, unknown>>({
       {/* Card fallback — phones. Each row becomes a label/value card; unlabelled
           columns (e.g. row actions) render full-width at the foot of the card. */}
       <div className="animate-fade-up space-y-2 sm:hidden">
-        {rows.map((r, i) => (
-          // Same reasoning as the table branch: the card keeps click-anywhere,
-          // and column 0 carries the real control. The card itself cannot BE a
-          // button — unlabelled columns render row actions inside it, and a
-          // button containing buttons is invalid HTML that no AT handles well.
-          // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
-          <div
-            key={rowKey(r, i)}
-            className={cn("lux-card p-3", onRowClick && "cursor-pointer")}
-            onClick={onRowClick ? () => onRowClick(r) : undefined}
-          >
-            {columns.map((c, ci) => {
-              const raw = c.render ? c.render(r) : cell(r[c.key]);
-              const val = onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{raw}</RowActivator> : raw;
-              return c.label ? (
-                <div key={c.key} className="flex items-baseline justify-between gap-3 py-0.5">
-                  <span className="micro shrink-0">{c.label}</span>
-                  <span className="min-w-0 text-right text-sm">{val}</span>
-                </div>
-              ) : (
-                <div key={c.key} className="mt-2 flex flex-wrap justify-end gap-2">{val}</div>
-              );
-            })}
+        {/*
+          Select-all, for the card list.
+          The table's lives in a <th>; a card list has no header row, so without
+          this the only way to select forty records on a phone is forty taps.
+          It is `sm:hidden` by virtue of its container, so the two never both
+          render.
+        */}
+        {selection && (
+          <div className="flex items-center justify-between rounded-[var(--radius)] border bg-card px-3 py-2">
+            <Checkbox
+              className="[&>button]:tap-44 [&>button]:mt-0"
+              checked={selection.headerState}
+              onCheckedChange={selection.toggleAll}
+              disabled={!selection.selectable}
+              label={<span className="text-sm">Select all</span>}
+            />
+            {selection.count > 0 && <span className="micro">{selection.count} selected</span>}
           </div>
-        ))}
+        )}
+        {rows.map((r, i) => {
+          const key = rowKey(r, i);
+          const selected = selection?.isSelected(key) ?? false;
+          return (
+            // Same reasoning as the table branch: the card keeps click-anywhere,
+            // and column 0 carries the real control. The card itself cannot BE a
+            // button — unlabelled columns render row actions inside it, and a
+            // button containing buttons is invalid HTML that no AT handles well.
+            // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
+            <div
+              key={key}
+              className={cn(
+                "lux-card p-3",
+                onRowClick && "cursor-pointer",
+                selected && "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]",
+              )}
+              onClick={onRowClick ? () => onRowClick(r) : undefined}
+            >
+              <div className="flex items-start gap-3">
+                {selection && (
+                  // The checkbox sits OUTSIDE the column loop rather than as a
+                  // pseudo-column: a card is not a row, and threading it through
+                  // the label/value pairs would have given it a "" label cell.
+                  <span role="presentation" onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      className="[&>button]:tap-44"
+                      checked={selected}
+                      // No shift-range on touch: there is no shift key, and a
+                      // long-press range is an idiom this app does not use
+                      // anywhere else. Tap-to-toggle plus Select all covers it.
+                      onCheckedChange={() => selection.toggle(key)}
+                      label={<span className="sr-only">Select {rowName(r, i)}</span>}
+                    />
+                  </span>
+                )}
+                <div className="min-w-0 flex-1">
+                  {columns.map((c, ci) => {
+                    const raw = c.render ? c.render(r) : cell(r[c.key]);
+                    const val = onRowClick && ci === 0 ? <RowActivator onClick={() => onRowClick(r)}>{raw}</RowActivator> : raw;
+                    return c.label ? (
+                      <div key={c.key} className="flex items-baseline justify-between gap-3 py-0.5">
+                        <span className="micro shrink-0">{c.label}</span>
+                        <span className="min-w-0 text-right text-sm">{val}</span>
+                      </div>
+                    ) : (
+                      <div key={c.key} className="mt-2 flex flex-wrap justify-end gap-2">{val}</div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </>
   );

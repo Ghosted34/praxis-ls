@@ -1,5 +1,6 @@
 /**
- * The desktop layout gate — the four-width run Phases 3 and 4 took by hand.
+ * The layout gate — the four-width run Phases 3 and 4 took by hand, plus the
+ * phone.
  *
  * Every assertion here corresponds to a finding the audit opens with:
  *
@@ -9,6 +10,13 @@
  *   F13 "~116 of 117 pages have no <h1>"                    → exactly one
  *   F17 "500ms entrance on every card and table mount"      → no page errors,
  *                                                             content painted
+ *
+ * It was called `desktop-layout` for one commit, and the name was the problem.
+ * Phase 5's work was desktop-shaped, the gate was written at desktop widths, and
+ * a desktop density number (`--row-control-h: 20px`) leaked onto every phone tap
+ * target with nothing to catch it. A gate that only measures the surface you
+ * were thinking about ratifies your blind spot. The phone block below is the
+ * correction, and it is not optional going forward.
  */
 import { test, expect } from "@playwright/test";
 import { openScreen, contentWidth, hasHorizontalScroll, DESKTOP_WIDTHS, type Density } from "./fixtures";
@@ -162,5 +170,97 @@ test.describe("wide-table affordances", () => {
     const after = await cell.boundingBox();
 
     expect(Math.abs((after?.x ?? 0) - (before?.x ?? 0))).toBeLessThanOrEqual(1);
+  });
+});
+
+/**
+ * PHONE. The gate had none of these, and that is exactly how the desktop
+ * density work leaked onto touch.
+ *
+ * `--row-control-h` was set on `:root` and applied by `<RowActions>`, which
+ * DataList renders in BOTH branches — so the 20px meant for a dense desktop row
+ * became the tap target on every phone. Under WCAG 2.2 §2.5.8 that fails AA
+ * (24×24 CSS px); against iOS HIG and Material it is under half. Nothing caught
+ * it because every assertion in this file was written at a desktop width.
+ *
+ * A gate that only measures the surface you were thinking about is a gate that
+ * ratifies your blind spot.
+ */
+test.describe("phone", () => {
+  const PHONE = { width: 390, height: 844 }; // iPhone 14
+
+  test("renders the card fallback, not a squeezed table", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    const { errors } = await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    // The table branch is `hidden sm:block`; below 640px the cards are the UI.
+    await expect(page.getByRole("table")).toBeHidden();
+    expect(await hasHorizontalScroll(page)).toBe(false);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveCount(1);
+    expect(errors).toEqual([]);
+  });
+
+  test("EVERY tap target clears the 24px minimum", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const small = await page.evaluate(() => {
+      // Measure the hit area, not the ink: a control may legitimately be drawn
+      // smaller than it is touchable — that is what `.tap-24` / `.tap-44` do,
+      // and reading the border box would report a false failure on exactly the
+      // fix this asserts.
+      const hit = (el: Element) => {
+        const own = el.getBoundingClientRect();
+        const before = getComputedStyle(el, "::before");
+        if (before.content !== "none" && before.position === "absolute") {
+          const inset = Math.abs(parseFloat(before.insetBlockStart || "0")) || 0;
+          return { w: own.width + inset * 2, h: own.height + inset * 2 };
+        }
+        return { w: own.width, h: own.height };
+      };
+      const cards = document.querySelector(".animate-fade-up.sm\\:hidden");
+      if (!cards) return [{ name: "NO CARD LIST", w: 0, h: 0 }];
+      return Array.from(cards.querySelectorAll("button, [role='checkbox'], a[href]"))
+        .map((el) => {
+          const { w, h } = hit(el);
+          return { name: (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 40), w, h };
+        })
+        // The row activator is a text link inside a sentence of content — WCAG
+        // 2.5.8 exempts inline targets, and padding it to 24px would push every
+        // card's first line apart. Everything else is a discrete control.
+        .filter((c) => !/^\d/.test(c.name))
+        .filter((c) => c.h < 24 || c.w < 24);
+    });
+
+    expect(small, `controls under 24×24: ${JSON.stringify(small)}`).toEqual([]);
+  });
+
+  test("row actions are touch-sized, not the 20px table figure", async ({ page }) => {
+    await page.setViewportSize(PHONE);
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const h = await page.evaluate(() => {
+      const cards = document.querySelector(".animate-fade-up.sm\\:hidden");
+      const btn = cards?.querySelector<HTMLElement>("[class*='justify-end'] button");
+      return btn ? btn.getBoundingClientRect().height : -1;
+    });
+
+    // 44px is the platform guidance, and the `:root` default the table opts
+    // down from. This is the exact number that regressed.
+    expect(h).toBeGreaterThanOrEqual(44);
+  });
+
+  test("multi-select works on a phone", async ({ page }) => {
+    // It did not exist below 640px: the checkbox lived in a <th>.
+    await page.setViewportSize(PHONE);
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const first = page.getByRole("checkbox", { name: /^Select 6/ }).first();
+    await expect(first).toBeVisible();
+    await first.click();
+    await expect(page.getByRole("status")).toContainText("1 account selected");
+
+    await page.getByRole("checkbox", { name: "Select all" }).click();
+    await expect(page.getByRole("status")).toContainText("60 accounts selected");
   });
 });

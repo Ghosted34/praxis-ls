@@ -19,11 +19,36 @@ const { getClient } = require("../../config/redis");
 const AUTH_TTL_S = 30;
 const GRANTS_TTL_S = 30;
 
-const authKey = (userId) => `identity:auth:${userId}`;
+/**
+ * PERF S9. Every cache key is namespaced by tenant.
+ *
+ * The keyspace was flat — `identity:grants:<roleIds>:<module>` — and
+ * `invalidateGrants()` deleted `identity:grants:*` across the whole Redis
+ * instance. So ONE tenant editing ONE permission flushed the RBAC cache for
+ * EVERY tenant on the deployment, producing a synchronised cache-miss stampede
+ * straight into the connection pools that S1/S2 are about.
+ *
+ * There was never a cross-tenant data leak — role ids are per-tenant
+ * gen_random_uuid(), so keys cannot collide — but the invalidation blast radius
+ * was global.
+ *
+ * The tenant comes from the ambient request context, which tenantContext
+ * already populates. Background work has no tenant; those entries land under
+ * `_` and are flushed by the global sweep, which is correct because a job that
+ * does not know its tenant cannot make a narrower claim.
+ */
+const requestContext = require("../../config/request-context");
+
+function tenantNs() {
+  const ctx = requestContext.get();
+  return (ctx && ctx.tenant) || "_";
+}
+
+const authKey = (userId) => `identity:${tenantNs()}:auth:${userId}`;
 const grantsKey = (roleIds, moduleKey) =>
-  `identity:grants:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
-const scopeKey = (userId) => `identity:scope:${userId}`;
-const capsKey = (userId) => `identity:caps:${userId}`;
+  `identity:${tenantNs()}:grants:${[...new Set(roleIds)].sort().join(",")}:${moduleKey}`;
+const scopeKey = (userId) => `identity:${tenantNs()}:scope:${userId}`;
+const capsKey = (userId) => `identity:${tenantNs()}:caps:${userId}`;
 
 /** Redis is best-effort for this cache — never let a Redis outage break auth. */
 function safeRedis() {
@@ -155,6 +180,31 @@ async function getApprovableModules(client, roleIds = []) {
 }
 
 /**
+ * PERF S4. Monotonic version of the tenant's scope tree.
+ *
+ * Folded into every closure cache key, so bumping it retires every cached
+ * closure for the tenant in ONE `INCR` — no SCAN, no key enumeration, and no
+ * interval during which a stale closure is still readable. That last property
+ * is what a per-user invalidation could not give: re-parenting one node changes
+ * the closure of every user beneath it, and enumerating those users is exactly
+ * the tree walk being avoided.
+ *
+ * Defaults to 0 when Redis is unreachable, which simply means the key is stable
+ * and the 30-second TTL is doing the work on its own — degraded, not wrong.
+ */
+async function scopeVersion(redis) {
+  const v = await redis.get(`identity:${tenantNs()}:scope:version`).catch(() => null);
+  return v || "0";
+}
+
+/** Call after ANY write to `scope` or `user_scope`. */
+async function bumpScopeVersion() {
+  const redis = safeRedis();
+  if (!redis) return;
+  await redis.incr(`identity:${tenantNs()}:scope:version`).catch(() => {});
+}
+
+/**
  * Resolve the DOWNWARD closure of a user's scope assignments: every scope they
  * are assigned to, plus everything beneath those nodes in the `parent_scope_id`
  * tree — the organigramme.
@@ -166,11 +216,27 @@ async function getApprovableModules(client, roleIds = []) {
  * approve Douala's work, not the reverse. Expressed from the user's side, that
  * is exactly "is the step's scope inside my closure".
  *
- * NOT cached, deliberately: `getUserScopeIds` caches a flat row read, but this
- * walks a tree whose shape changes when any scope is re-parented, and the scope
- * cache is keyed by user — a re-parent would leave every descendant user stale
- * for the TTL. Approval decisions are rare compared to list requests, so the
- * round trip is cheap and correctness is worth more here.
+ * CACHED SINCE PERF S4, and the original reason for not caching is worth keeping
+ * because it was right: this walks a tree whose shape changes when any scope is
+ * re-parented, and a cache keyed by USER would leave every descendant user stale
+ * for the TTL. The old comment concluded that approval decisions are rare, so
+ * the round trip was cheap.
+ *
+ * That conclusion was wrong about WHERE this runs. `requirePermission` calls it
+ * on EVERY permission-gated request, not just approvals — so a recursive CTE ran
+ * on essentially every authenticated request in the product, against a
+ * `parent_scope_id` column that had no index until migration 0500. The plan
+ * showed `Seq Scan on scope … loops=4`: the whole table re-scanned once per
+ * recursion level. Measured at 19,510 nodes: 14.78 ms per request, falling to
+ * 0.92 ms with the index alone.
+ *
+ * The fix for the staleness objection is to invalidate on the TREE rather than
+ * the USER. A monotonic version counter is folded into the cache key, and any
+ * write to `scope` or `user_scope` bumps it — which makes every cached closure
+ * in the tenant unreachable at once, in a single INCR, with no scan and no
+ * window in which a stale closure can be read. Re-parenting is rare; requests
+ * are not. That asymmetry is what makes this safe to cache when a per-user
+ * invalidation would not have been.
  *
  * `depth < 32` caps the walk. `UNION` (not UNION ALL) already terminates on a
  * cycle by discarding rows it has seen, but the cap is kept as a second brake:
@@ -179,6 +245,22 @@ async function getApprovableModules(client, roleIds = []) {
  */
 async function getUserScopeClosure(client, userId) {
   if (!userId) return [];
+
+  const redis = safeRedis();
+  let key = null;
+  if (redis) {
+    const version = await scopeVersion(redis);
+    key = `identity:${tenantNs()}:scope:closure:${version}:${userId}`;
+    const cached = await redis.get(key).catch(() => null);
+    if (cached) {
+      try {
+        return JSON.parse(cached);
+      } catch {
+        /* corrupt entry — fall through and recompute */
+      }
+    }
+  }
+
   const { rows } = await client.query(
     `WITH RECURSIVE mine AS (
        SELECT s.scope_id, 0 AS depth
@@ -194,7 +276,11 @@ async function getUserScopeClosure(client, userId) {
      SELECT scope_id FROM mine`,
     [userId],
   );
-  return rows.map((r) => r.scope_id);
+  const ids = rows.map((r) => r.scope_id);
+  // Same 30 s TTL as the other identity entries. The TTL is the backstop; the
+  // version counter is the real invalidation.
+  if (redis && key) await redis.set(key, JSON.stringify(ids), "EX", 30).catch(() => {});
+  return ids;
 }
 
 /**
@@ -263,7 +349,7 @@ async function getUserCapabilities(client, userId) {
 async function getMaskedFieldKeys(client, userId) {
   if (!userId) return [];
   const redis = safeRedis();
-  const key = `identity:grants:fields:${userId}`;
+  const key = `identity:${tenantNs()}:grants:fields:${userId}`;
   if (redis) {
     const cached = await redis.get(key).catch(() => null);
     if (cached) return JSON.parse(cached);
@@ -292,11 +378,54 @@ async function invalidateUser(userId) {
  * and short-lived (30 s) so a coarse flush is fine — permission edits are
  * rare and must propagate immediately (Watch-the-Watcher, PRD §5.7).
  */
-async function invalidateGrants() {
+/**
+ * Delete every key matching `pattern`, without blocking Redis.
+ *
+ * PERF S9. This used `KEYS`, which is O(N) over the ENTIRE keyspace and blocks
+ * the Redis main thread for the duration. The same Redis serves BullMQ,
+ * sessions and rate limiting, so a permission edit stalled all of them.
+ *
+ * `SCAN` is cursor-based and incremental: it never blocks, at the cost of
+ * being approximate under concurrent writes. That trade is right here — the
+ * entries are 30-second TTL, so a key this misses expires on its own moments
+ * later, while a blocked Redis is felt by every request in flight.
+ *
+ * Deletes in batches because `DEL` with tens of thousands of arguments is
+ * itself a long single command — replacing a blocking KEYS with a blocking DEL
+ * would have fixed nothing.
+ */
+async function scanDelete(redis, pattern) {
+  let cursor = "0";
+  let removed = 0;
+  do {
+    // eslint-disable-next-line no-await-in-loop
+    const res = await redis.scan(cursor, "MATCH", pattern, "COUNT", 500).catch(() => null);
+    if (!res) return removed;
+    const [next, keys] = res;
+    cursor = next;
+    if (keys && keys.length) {
+      for (let i = 0; i < keys.length; i += 200) {
+        // eslint-disable-next-line no-await-in-loop
+        await redis.del(...keys.slice(i, i + 200)).catch(() => {});
+      }
+      removed += keys.length;
+    }
+  } while (cursor !== "0");
+  return removed;
+}
+
+/**
+ * Flush the grant cache for the CURRENT TENANT only.
+ *
+ * `allTenants` exists for the one case that genuinely needs it — a platform-
+ * level change to the module catalogue — and has to be asked for explicitly,
+ * because the old behaviour was to do it always and by accident.
+ */
+async function invalidateGrants({ allTenants = false } = {}) {
   const redis = safeRedis();
   if (!redis) return;
-  const keys = await redis.keys("identity:grants:*").catch(() => []);
-  if (keys.length) await redis.del(...keys).catch(() => {});
+  const pattern = allTenants ? "identity:*:grants:*" : `identity:${tenantNs()}:grants:*`;
+  await scanDelete(redis, pattern);
 }
 
 module.exports = {
@@ -309,4 +438,5 @@ module.exports = {
   getMaskedFieldKeys,
   invalidateUser,
   invalidateGrants,
+  bumpScopeVersion,
 };

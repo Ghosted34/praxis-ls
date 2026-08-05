@@ -22,6 +22,7 @@
 "use strict";
 
 const { categoryFor } = require("../notifications/categories");
+const requestContext = require("../../config/request-context");
 
 // Roles that receive Watch-the-Watcher alerts (role.code, seeded in
 // 9020_seed_rbac_events.sql). CEO already sees everything by design; MANAGEMENT
@@ -43,6 +44,20 @@ function shortRef(ref) {
   const type = s.slice(0, i).replace(/_/g, " ");
   const id = s.slice(i + 1);
   return `${type} ${id.length > 8 ? id.slice(0, 8) : id}`.trim();
+}
+
+/**
+ * OBS T1, step 5. The correlation id of the request currently being served, or
+ * null when there is not one (a BullMQ worker, a scheduler, a migration).
+ *
+ * Read from AsyncLocalStorage rather than threaded through every caller: there
+ * are hundreds of emit/audit sites and a parameter that 300 call sites have to
+ * remember to pass is a parameter that will be missing somewhere. The ambient
+ * context is already populated for exactly this purpose by tenantContext.
+ */
+function currentRequestId() {
+  const ctx = requestContext.get();
+  return (ctx && ctx.requestId) || null;
 }
 
 async function emitEvent(client, e) {
@@ -70,9 +85,10 @@ async function emitEvent(client, e) {
   // the raw value raised 23503 and took the whole business operation with it.
   // Degrade to a NULL actor rather than lose the event.
   await client.query(
-    `INSERT INTO event_log (event_type_key, module_key, entity_ref, actor_user_id, priority, payload)
-     SELECT $1,$2,$3,(SELECT user_id FROM app_user WHERE user_id = $4),$5,$6`,
-    [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority, e.payload || {}],
+    `INSERT INTO event_log (event_type_key, module_key, entity_ref, actor_user_id, priority, payload, request_id)
+     SELECT $1,$2,$3,(SELECT user_id FROM app_user WHERE user_id = $4),$5,$6,$7`,
+    [key, e.moduleKey || null, e.entityRef || null, e.actorUserId || null, priority, e.payload || {},
+     e.requestId || currentRequestId()],
   );
 
   // Universal approval retrofit: if this event type is approvable, open the first
@@ -168,8 +184,8 @@ async function emitEvent(client, e) {
  */
 async function audit(client, a) {
   await client.query(
-    `INSERT INTO immutable_ledger (actor_user_id, actor_role, action, module_key, entity_ref, before_json, after_json, ip)
-     SELECT (SELECT user_id FROM app_user WHERE user_id = $1), $2,$3,$4,$5,$6,$7,$8`,
+    `INSERT INTO immutable_ledger (actor_user_id, actor_role, action, module_key, entity_ref, before_json, after_json, ip, request_id)
+     SELECT (SELECT user_id FROM app_user WHERE user_id = $1), $2,$3,$4,$5,$6,$7,$8,$9`,
     [
       a.actorUserId || null,
       a.actorRole || null,
@@ -179,6 +195,10 @@ async function audit(client, a) {
       a.before || null,
       a.after || null,
       a.ip || null,
+      // OBS T1: which request wrote this row. An explicit value wins so a
+      // background job that DOES know its originating request (a queued job
+      // carrying the id in its payload) can say so.
+      a.requestId || currentRequestId(),
     ],
   );
 }

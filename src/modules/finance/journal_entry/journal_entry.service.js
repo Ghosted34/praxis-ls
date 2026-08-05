@@ -15,6 +15,7 @@ const repo = require("./journal_entry.repo");
 const events = require("./journal_entry.events");
 const { assertBalanced, assertNoCompensation } = require("./journal_entry.rules");
 const { emitEvent, audit } = require("../../../shared/events/emit");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 const { AppError } = require("../../../utils/errors");
 
 const money = (v) => Number(v || 0).toFixed(2);
@@ -102,18 +103,57 @@ async function buildAndInsert(client, input) {
 }
 
 async function post(client, input) {
-  await client.query("BEGIN");
-  try {
-    const result = await buildAndInsert(client, input);
-    await client.query("COMMIT");
-    return result;
-  } catch (err) {
-    await client.query("ROLLBACK");
-    throw err;
-  }
+  // OBS L2: every posting in the product funnels through here — determination
+  // .postDocument, invoice posting, receipts, credit notes and depreciation all
+  // call journalEntry.post or buildAndInsert. Instrumenting the funnel rather
+  // than each of the nine finance modules is what makes the events uniform
+  // enough to query; the document-level services add their own line on top for
+  // the business fact ("invoice X was posted"), which is a different question
+  // from "entry Y was written".
+  return withMoneyLog(
+    "entry.posted",
+    (out) => ({
+      journal: input.journalCode || input.journalId || null,
+      entity_id: input.entityId || null,
+      entry_date: input.entryDate || null,
+      source: input.source || null,
+      source_doc_ref: input.sourceDocRef || null,
+      lines: Array.isArray(input.lines) ? input.lines.length : 0,
+      debit: (input.lines || []).reduce((a, l) => a + Number(l.debit || 0), 0),
+      entry_id: out && out.entry ? out.entry.entry_id : null,
+      entry_no: out && out.entry ? out.entry.entry_no : null,
+    }),
+    async () => {
+      await client.query("BEGIN");
+      try {
+        const result = await buildAndInsert(client, input);
+        await client.query("COMMIT");
+        return result;
+      } catch (err) {
+        await client.query("ROLLBACK");
+        throw err;
+      }
+    },
+  );
 }
 
 async function reverse(client, { entryId, reason = null, entryDate = null, actor = {}, ip = null }) {
+  // OBS L2. A reversal is the most consequential thing anyone does to a closed
+  // ledger and it was completely silent — including the two refusals below,
+  // which are exactly the events someone rings up about.
+  return withMoneyLog(
+    "entry.reversed",
+    (out) => ({
+      reverses_entry_id: entryId,
+      reason,
+      entry_id: out && out.entry ? out.entry.entry_id : null,
+      entry_no: out && out.entry ? out.entry.entry_no : null,
+    }),
+    () => reverseCore(client, { entryId, reason, entryDate, actor, ip }),
+  );
+}
+
+async function reverseCore(client, { entryId, reason, entryDate, actor, ip }) {
   await client.query("BEGIN");
   try {
     const original = await repo.getEntry(client, entryId);

@@ -19,7 +19,7 @@ router.get("/config", view, c.getCommsConfig);
 router.put("/config/whatsapp", create, v.whatsappConfig, c.setWhatsapp);
 router.put("/config/email", create, v.emailConfig, c.setEmail);
 router.post("/config/whatsapp/test", create, c.testWhatsapp);
-router.post("/config/email/test", create, c.testEmail);
+router.post("/config/email/test", create, v.emailTest, c.testEmail);
 
 // directory + cross-channel reads
 router.get("/colleagues", view, c.colleagues);
@@ -28,19 +28,19 @@ router.get("/starred", view, c.starred);
 router.get("/search", view, c.search);
 router.get("/quick-replies", view, c.listQuickReplies);
 router.post("/quick-replies", create, v.quickReply, c.createQuickReply);
-router.patch("/quick-replies/:id", create, c.updateQuickReply);
+router.patch("/quick-replies/:id", create, v.quickReplyPatch, c.updateQuickReply);
 router.delete("/quick-replies/:id", create, c.deleteQuickReply);
 
 // channels
 router.get("/channels", view, c.listChannels);
 router.post("/channels", create, v.channel, c.createChannel);
 router.get("/channels/:id", view, c.getChannel);
-router.post("/channels/:id/archive", view, c.archive);
+router.post("/channels/:id/archive", view, v.flag, c.archive);
 router.get("/channels/:id/members", view, c.members);
 router.post("/channels/:id/members", view, v.member, c.addMember);
 router.delete("/channels/:id/members/:userId", view, c.removeMember);
-router.post("/channels/:id/pin", view, c.pin);
-router.post("/channels/:id/mute", view, c.mute);
+router.post("/channels/:id/pin", view, v.flag, c.pin);
+router.post("/channels/:id/mute", view, v.flag, c.mute);
 router.post("/channels/:id/read", view, c.markRead);
 router.get("/channels/:id/draft", view, c.getDraft);
 router.put("/channels/:id/draft", view, v.draft, c.saveDraft);

@@ -28,7 +28,16 @@
 
 "use strict";
 
-const { getPool } = require("../config/database");
+// NEW-04. This used to import `config/database`, whose `initDatabase()` IS
+// NEVER CALLED ANYWHERE IN src/ — proven: `getPool()` throws
+// "db pool not initialised — call initDatabase() first". So EVERY cron job
+// wrapped in withCronLock threw on its first line, and because jobs swallow
+// their own errors that failure was invisible. The module read as working code
+// with a sensible advisory-lock design and had never once acquired a lock.
+//
+// `services/platform/db.js` is the pool the process actually creates, and it
+// exports the same { getPool, query, close } surface.
+const { getPool } = require("../services/platform/db");
 const { logger } = require("../config/logger");
 
 /**

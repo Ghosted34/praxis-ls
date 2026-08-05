@@ -44,7 +44,17 @@ function errorHandler(err, req, res, _next) {
     }
     else logger.warn({ request_id, code: err.code, status }, err.message);
     return res.status(status).json({
-      error: { code: err.code, message: err.message, ...(err.details ? { fields: err.details } : {}) },
+      error: {
+        code: err.code,
+        message: err.message,
+        // API F-2. `fields` is canonical. `details` is a DEPRECATED ALIAS kept
+        // because the auth endpoints emitted `details` and only `details`, and
+        // client/src/lib/api-client.ts read it — so removing it outright would
+        // break every existing auth integration on the day of the deploy.
+        // Both keys carry the same object. Remove `details` once no consumer
+        // reads it; the client no longer does.
+        ...(err.details ? { fields: err.details, details: err.details } : {}),
+      },
       request_id,
     });
   }
@@ -56,8 +66,11 @@ function errorHandler(err, req, res, _next) {
       return acc;
     }, {});
     logger.warn({ request_id, fields }, "validation error");
-    return res.status(400).json({
-      error: { code: "VALIDATION_ERROR", message: "Invalid input", fields },
+    // API F-2: 422, matching the 90 module validators that already used it.
+    // This fallback was the only path still answering 400 for the same class of
+    // error, so a caller's handling depended on WHICH layer caught the problem.
+    return res.status(422).json({
+      error: { code: "VALIDATION_ERROR", message: "Invalid input", fields, details: fields },
       request_id,
     });
   }

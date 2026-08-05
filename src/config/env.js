@@ -115,6 +115,35 @@ const Schema = z.object({
   TENANT_DB_APP_ROLE: z.string().default(""),
   TENANT_POOL_MAX: int(8),
 
+  // PERF S1. One pg.Pool per tenant DB was cached in an unbounded Map, so
+  // 12 warm tenants held 96 of Postgres's 100 connections and tenant 13 was
+  // refused outright. These three bound it.
+  //
+  //   CACHE_MAX    — how many tenant pools may exist at once; the least
+  //                  recently used is drained past this. 24 × the default
+  //                  max of 8 is a 192-connection ceiling in the worst case,
+  //                  which is why IDLE_MS matters: pools sit at 0 when quiet.
+  //   IDLE_MS      — how long an unused connection is kept before it is given
+  //                  back to Postgres. With min:0 a quiet tenant holds none.
+  //   ACQUIRE_TIMEOUT_MS — fail a checkout rather than hang behind a saturated
+  //                  pool. A visible 503 beats a request that never returns.
+  TENANT_POOL_CACHE_MAX: int(24),
+  TENANT_POOL_IDLE_MS: int(10_000),
+  TENANT_POOL_ACQUIRE_TIMEOUT_MS: int(5_000),
+
+  // PERF S1 seam. doc/DB_ARCHITECTURE.md:46 anticipates "PgBouncer at 10+
+  // tenants"; the ladder was documented but the code had nowhere to put it.
+  // Set these and every tenant pool routes through the pooler. Migrations and
+  // provisioning deliberately keep using the registry's own host/port — they
+  // must not go through a transaction pooler.
+  TENANT_DB_POOLER_HOST: z.string().default(""),
+  TENANT_DB_POOLER_PORT: int(0),
+
+  // PERF S10. The host->tenant cache is keyed by the Host header, which any
+  // client controls, and had no bound at all. 5,000 entries is far above a
+  // real deployment's subdomain count and far below a memory problem.
+  HOST_CACHE_MAX: int(5_000),
+
   REDIS_URL: z.string().default("redis://localhost:6379"),
 
   JWT_ACCESS_SECRET: z.string().default("__dev_access__"),

@@ -221,6 +221,27 @@ router.get("/health/ready", async (_req, res) => {
   // multiplies every configured limit by the container count. Worth seeing.
   checks.rate_limit_store = { status: "up", kind: rateLimitStoreKind() };
 
+  // PERF S1: the tenant connection budget, which used to be invisible until
+  // Postgres started refusing an unrelated tenant with "too many clients
+  // already". `waiting` is the number that matters — anything sustained above
+  // zero means requests are queueing for a connection, which is the shape the
+  // load test showed before the pool cap and per-request pinning went in.
+  try {
+    const p = require("../services/tenant/registry.service").poolStats();
+    checks.tenant_pools = {
+      status: p.waiting > 0 ? "degraded" : "up",
+      pools: p.pools,
+      cap: p.cap,
+      connections: p.connections,
+      idle: p.idle,
+      waiting: p.waiting,
+      // PERF S10: the Host-header cache, which any client can push entries into.
+      host_cache: require("../services/tenant/registry.service").hostCacheStats(),
+    };
+  } catch (err) {
+    checks.tenant_pools = { status: "unknown", error: err.message };
+  }
+
   // OBS-A6: dead-lettered business events. Reported here as well as by the
   // worker sweep so the number is available on demand — during an incident you
   // want to know NOW whether money-path events have been dropped, not at the
@@ -232,7 +253,12 @@ router.get("/health/ready", async (_req, res) => {
   const degraded =
     checks.redis.status === "down" ||
     checks.modules.status === "degraded" ||
-    checks.dead_letters.status === "degraded";
+    checks.dead_letters.status === "degraded" ||
+    checks.tenant_pools.status === "degraded";
+  // Note that `degraded` still answers 200. Connection queueing must NOT pull
+  // the instance out of the load balancer: shedding an instance because it is
+  // busy sends its traffic to its equally busy siblings, which is how a slow
+  // afternoon becomes an outage. It is reported, not acted on.
 
   res.status(fatal ? 503 : 200).json({
     ok: !fatal,

@@ -10,6 +10,8 @@ const { makeRepo } = require("../../../shared/crud/resource");
 const ALL_DOCS = "*";
 
 const base = makeRepo({
+  // SEC H3.
+  writable: ["code", "name"],
   table: "capability",
   pk: "capability_id",
   activeColumn: null,

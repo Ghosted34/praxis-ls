@@ -87,6 +87,30 @@ jobs:
         # Stops the backlog growing while DATA 3.5 is worked.
         run: node scripts/db/check-migration-reversibility.js
 
+      - name: Write routes are validated
+        # Audit SEC H3: request-body keys become SQL column identifiers on the
+        # ten modules that mounted `passthrough` — a pair of no-op middlewares
+        # that looks like a validator, is imported from shared/http/validate,
+        # and sits in the slot a validator sits in.
+        #
+        # query-helpers now validates and quotes every identifier, so the
+        # injection half cannot come back. This guards the OTHER half: a new
+        # module whose write route reads req.body with neither a zod schema nor
+        # a `writable` allow-list is mass assignment waiting to happen.
+        run: node scripts/check-write-route-validators.js
+
+      - name: API contract
+        # Audit API F-30: nothing would catch a contract regression. No
+        # versioning to roll behind, no trustworthy spec to diff, and zero tests
+        # asserting the response shape of a real endpoint — a PR renaming
+        # { data } to { items } on any of 731 routes passed CI.
+        #
+        # This diffs the live route surface against doc/api-contract.json.
+        # Removals and lost auth/rbac/validator gates fail; additions do not,
+        # because a check that fails on every new route gets --update'd without
+        # being read.
+        run: node scripts/check-api-contract.js
+
   security:
     runs-on: ubuntu-latest
     steps:

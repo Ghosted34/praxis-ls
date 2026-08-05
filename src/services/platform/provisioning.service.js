@@ -9,6 +9,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
 const { mirrorUsersIntoSandbox } = require("../../shared/db/sandbox-user-mirror");
+const passwordPolicy = require("../../shared/security/password-policy");
 
 async function migratePlatform() {
   logger.info("[praxis-db] migrating platform database...");
@@ -366,6 +367,10 @@ async function createAdmin(input) {
   let userId;
   try {
     await cli.query("SET search_path = live, public");
+    // SEC H6. This creates the TENANT ADMINISTRATOR, who typically receives the
+    // CEO role — the account that bypasses every permission check in the
+    // product. It was protected by zod's min(8) and nothing else.
+    await passwordPolicy.assertStrongPassword(password, { email });
     const hash = await argon2.hash(password, { type: argon2.argon2id });
     const { rows: userRows } = await cli.query(
       `INSERT INTO app_user (email, full_name, password_hash, status)

@@ -14,6 +14,7 @@ const fs = require("fs");
 const path = require("path");
 const { requireFeature } = require("../../middleware/feature-gate");
 const { logger } = require("../../config/logger");
+const { idParamGuard } = require("./validate");
 
 const MODULES_DIR = path.resolve(__dirname, "../../modules");
 const GROUP_SKIP = new Set(["platform"]);
@@ -77,6 +78,36 @@ function routeKeys(router, prefix = "") {
   }
   return out;
 }
+
+/**
+ * API F-16. Bind the id guard to every router a module mounts, including nested
+ * ones (app_user composes /users and /auth).
+ *
+ * `router.param` is the only public Express hook that fires between "the route
+ * matched" and "the handler runs" and knows the parameter value. It does NOT
+ * cascade from a parent router to a child, which is why this walks the stack
+ * rather than being registered once on the tenant router.
+ *
+ * A module opts out with `idParam: "text"` when its id genuinely is not a uuid
+ * or a number — chart_of_accounts is addressed by account code, currency by
+ * ISO code, feature_state by feature key.
+ */
+function bindIdGuard(router, seen = new Set()) {
+  if (!router || typeof router.param !== "function" || seen.has(router)) return;
+  seen.add(router);
+  for (const name of ID_PARAM_NAMES) router.param(name, idParamGuard);
+  for (const layer of router.stack || []) {
+    if (layer.handle && layer.handle.stack) bindIdGuard(layer.handle, seen);
+  }
+}
+
+/**
+ * Path parameters that name a row. Deliberately NOT :slug, :code, :key,
+ * :section, :provider, :docType or :vendor — those are legitimately free text
+ * and guarding them would reject valid requests.
+ */
+const ID_PARAM_NAMES = ["id", "userId", "dossierId", "messageId", "stepId", "lineId",
+  "attendeeId", "applicantId", "siteId", "itemId", "entryId"];
 
 /**
  * The last mount result, for the readiness probe and the CI manifest check.
@@ -151,6 +182,11 @@ function mountTenantModules(tenantRouter) {
       }
       byRoute.set(key, name);
     }
+
+    // API F-16: a malformed id used to reach Postgres and come back as a
+    // 22P02 mapped to `400 INVALID_VALUE` with no `fields` and no indication
+    // the problem was in the path. Now it is a 422 that names the parameter.
+    if (def.idParam !== "text") bindIdGuard(def.router);
 
     const chain = def.feature ? [requireFeature(def.feature)] : [];
     tenantRouter.use(basePath, ...chain, def.router);

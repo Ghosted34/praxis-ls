@@ -14,13 +14,11 @@
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 
-let query = null;
-try {
-  // eslint-disable-next-line global-require
-  ({ query } = require("../../config/database"));
-} catch {
-  query = null;
-}
+// NEW-04. This imported `config/database`, whose pool is never initialised, so
+// `query` resolved to a function that throws on call. The try/catch guarded the
+// REQUIRE, which never failed — the failure was one level deeper, at use.
+// Pointing at the pool the process actually creates makes the fallback real.
+const { query } = require("../../services/platform/db");
 
 /** Deploy-wide VAPID keypair + subject (platform store first, env fallback). */
 async function resolveVapid() {

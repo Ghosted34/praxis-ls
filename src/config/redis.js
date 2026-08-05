@@ -39,6 +39,29 @@ function buildOptions() {
   };
 }
 
+/**
+ * A DEDICATED connection, tracked so closeRedis can shut it down.
+ *
+ * PERF S11. All 13 BullMQ workers were handed `getClient()` — the single shared
+ * ioredis client. BullMQ workers issue BLOCKING commands (BZPOPMIN,
+ * BRPOPLPUSH); each one needs a connection of its own. Sharing one socket
+ * serialised the workers against each other, and — worse — that same connection
+ * also serves the identity cache and the rate limiter, so ordinary requests
+ * queued behind a blocking job read.
+ *
+ * ioredis will not multiplex around a blocking command; it cannot. The only fix
+ * is more sockets.
+ */
+const extras = new Set();
+
+function createConnection(label) {
+  const c = new IORedis(config.REDIS_URL, buildOptions());
+  c.on("error", (err) => logger.error({ err, conn: label }, "redis error"));
+  c.on("connect", () => logger.debug({ conn: label }, "redis connected"));
+  extras.add(c);
+  return c;
+}
+
 async function initRedis() {
   client = new IORedis(config.REDIS_URL, buildOptions());
   publisher = new IORedis(config.REDIS_URL, buildOptions());
@@ -77,12 +100,15 @@ async function closeRedis() {
     client?.quit(),
     publisher?.quit(),
     subscriber?.quit(),
+    ...[...extras].map((c) => c.quit()),
   ]);
+  extras.clear();
   client = publisher = subscriber = null;
 }
 
 module.exports = {
   initRedis,
+  createConnection,
   getClient,
   getPublisher,
   getSubscriber,

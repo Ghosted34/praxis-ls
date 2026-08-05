@@ -11,16 +11,17 @@ const express = require("express");
 const { authMiddleware } = require("../../middleware/auth");
 const { requirePermission } = require("../../middleware/rbac");
 const controller = require("./branding.controller");
+const validator = require("./branding.validator");
 
 const router = express.Router();
 router.get("/", controller.get);
-router.put("/", authMiddleware, requirePermission("MOD-70", "edit"), controller.put);
-router.post("/logo", authMiddleware, requirePermission("MOD-70", "edit"), controller.uploadLogo);
+router.put("/", authMiddleware, requirePermission("MOD-70", "edit"), validator.put, controller.put);
+router.post("/logo", authMiddleware, requirePermission("MOD-70", "edit"), validator.upload, controller.uploadLogo);
 
 // Login screen editor (3.2). GET is PUBLIC (login page reads it pre-auth);
 // write + background upload are gated the same as branding.
 router.get("/login", controller.getLogin);
-router.put("/login", authMiddleware, requirePermission("MOD-70", "edit"), controller.putLogin);
-router.post("/login/background", authMiddleware, requirePermission("MOD-70", "edit"), controller.uploadLoginBackground);
+router.put("/login", authMiddleware, requirePermission("MOD-70", "edit"), validator.putLogin, controller.putLogin);
+router.post("/login/background", authMiddleware, requirePermission("MOD-70", "edit"), validator.upload, controller.uploadLoginBackground);
 
 module.exports = { basePath: "/branding", feature: null, router };

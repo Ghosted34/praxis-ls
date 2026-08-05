@@ -89,6 +89,9 @@ async function addMember(client, { scopeId, userId, actor = {} }) {
     });
   }
   await identityCache.invalidateGrants();
+    // PERF S4: the closure cache is keyed on a tree version; any scope or
+    // user_scope write retires every cached closure for this tenant.
+    await identityCache.bumpScopeVersion();
   return { assigned: true, already: !added };
 }
 
@@ -108,6 +111,9 @@ async function removeMember(client, { scopeId, userId, actor = {} }) {
     before: { assigned_user_id: userId, scope_id: scopeId },
   });
   await identityCache.invalidateGrants();
+    // PERF S4: the closure cache is keyed on a tree version; any scope or
+    // user_scope write retires every cached closure for this tenant.
+    await identityCache.bumpScopeVersion();
   return { removed: true };
 }
 

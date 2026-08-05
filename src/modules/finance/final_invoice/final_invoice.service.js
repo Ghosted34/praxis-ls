@@ -20,6 +20,7 @@ const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 const ref = (id) => "invoice:" + id;
 
@@ -159,7 +160,19 @@ async function postCore(client, { invoice, econLines, entryDate, sourceDocRef, a
 }
 
 /** Dispatcher entry point: post an approved invoice by id (in the acting txn). */
-async function postApproved(client, { id, actor = {} }) {
+/**
+ * OBS L2. Issuing an invoice is the single most-asked-about event in the product and it wrote nothing to the log. `postApproved` returns null when the invoice is already POSTED_LOCKED, so a duplicate post is now visible as an ok event with a null entry_id rather than as nothing at all.
+ */
+async function postApproved(client, opts) {
+  const { id } = opts;
+  return withMoneyLog(
+    "invoice.posted",
+    (out) => ({ doc: id, invoice_id: id, entry_id: out && out.entry ? out.entry.entry_id : null, total_ttc: out && out.invoice ? out.invoice.total_ttc : null, doc_number: out && out.invoice ? out.invoice.doc_number : null }),
+    () => postApprovedCore(client, opts),
+  );
+}
+
+async function postApprovedCore(client, { id, actor = {} }) {
   const invoice = await repo.getInvoice(client, id);
   if (!invoice || invoice.status === "POSTED_LOCKED") return null;
   const lineRows = await repo.listLines(client, id);

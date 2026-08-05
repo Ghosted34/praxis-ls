@@ -85,6 +85,9 @@ module.exports = {
     await assertEntityResolvable(client, args && args.data ? args.data.entity_id : null);
     const r = await base.create(client, args);
     await identityCache.invalidateGrants();
+    // PERF S4: the closure cache is keyed on a tree version; any scope or
+    // user_scope write retires every cached closure for this tenant.
+    await identityCache.bumpScopeVersion();
     return r;
   },
   async update(client, args) {
@@ -94,11 +97,17 @@ module.exports = {
     await assertEntityResolvable(client, args && args.patch ? args.patch.entity_id : null);
     const r = await base.update(client, args);
     await identityCache.invalidateGrants();
+    // PERF S4: the closure cache is keyed on a tree version; any scope or
+    // user_scope write retires every cached closure for this tenant.
+    await identityCache.bumpScopeVersion();
     return r;
   },
   async archive(client, args) {
     const r = await base.archive(client, args);
     await identityCache.invalidateGrants();
+    // PERF S4: the closure cache is keyed on a tree version; any scope or
+    // user_scope write retires every cached closure for this tenant.
+    await identityCache.bumpScopeVersion();
     return r;
   },
 };

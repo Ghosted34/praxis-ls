@@ -20,7 +20,7 @@ const { logger } = require("../config/logger");
 const metrics = require("../shared/observability/metrics");
 const requestContext = require("../config/request-context");
 const { report } = require("../shared/observability/error-reporter");
-const { initRedis, getClient, closeRedis } = require("../config/redis");
+const { initRedis, createConnection, closeRedis } = require("../config/redis");
 
 // name: BullMQ queue name; handler: async (job) => result; concurrency optional.
 const PROCESSORS = [
@@ -44,11 +44,15 @@ const PROCESSORS = [
 const workers = [];
 
 function startWorkers() {
-  const connection = getClient();
   if (PROCESSORS.length === 0) {
     logger.warn("worker started with no registered processors — idle. Add entries to PROCESSORS as jobs land.");
   }
   for (const p of PROCESSORS) {
+    // PERF S11: one DEDICATED connection per worker. These were all given the
+    // single shared client, and BullMQ workers block on BZPOPMIN/BRPOPLPUSH —
+    // so they serialised against each other AND stalled the identity cache and
+    // rate limiter, which share that same socket.
+    const connection = createConnection(`worker:${p.name}`);
     const worker = new Worker(
       p.name,
       async (job) => {

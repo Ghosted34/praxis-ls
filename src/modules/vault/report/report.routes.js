@@ -11,7 +11,7 @@ const router = express.Router();
 router.use(authMiddleware);
 router.get("/catalogue", requirePermission(MODULE, "view"), controller.catalogue);
 router.get("/run/:key", requirePermission(MODULE, "view"), controller.run);
-router.post("/run/:key/pdf", requirePermission(MODULE, "view"), controller.runPdf);
+router.post("/run/:key/pdf", requirePermission(MODULE, "view"), validator.runPdf, controller.runPdf);
 router.get("/run/:key/export", requirePermission(MODULE, "view"), controller.runExport);
 router.get("/saved", requirePermission(MODULE, "view"), controller.listSaved);
 router.post("/saved", requirePermission(MODULE, "create"), validator.save, controller.save);

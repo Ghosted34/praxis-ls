@@ -1,7 +1,13 @@
 "use strict";
+
+const { listComplete } = require("../../../shared/db/query-helpers");
 const { makeRepo } = require("../../../shared/crud/resource");
 
 const base = makeRepo({
+  // SEC H3. The grant matrix. PUT /permissions/grant is validated properly now
+  // (permission.validator), but the generic CRUD create/update on the same
+  // table still went through passthrough — a second door to the same rows.
+  writable: ["role_id", "module_key", "can_create", "can_read", "can_update", "can_delete", "can_approve"],
   table: "permission",
   pk: "permission_id",
   activeColumn: null,
@@ -30,9 +36,7 @@ const base = makeRepo({
  * paginated `list()` stays for any other caller.
  */
 async function listAll(client) {
-  const { rows } = await client.query(
-    "SELECT * FROM permission ORDER BY role_id, module_key",
-  );
+  const { rows } = await listComplete(client, "SELECT * FROM permission ORDER BY role_id, module_key", [], { label: "The permission grant matrix", ceiling: 20000 });
   return rows;
 }
 

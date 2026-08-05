@@ -11,6 +11,14 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 
 const crud = makeRepo({
+  // SEC H3. app_user is on the passthrough validator, so PATCH /users/:id reached
+  // updateOne with an unfiltered body. password_hash, totp_secret_enc and
+  // godmode_pin_hash are all columns of this table.
+  //
+  // failed_logins and last_login_at are excluded although they are harmless-
+  // looking: they are system counters the auth path maintains, and a caller who
+  // can reset failed_logins can defeat login throttling.
+  writable: ["username", "email", "full_name", "is_2fa_enabled", "employee_id", "status", "whatsapp_number", "avatar_ref"],
   table: "app_user",
   pk: "user_id",
   activeColumn: null,
@@ -206,6 +214,22 @@ async function roleNames(client, id) {
   );
   return rows.map((r) => r.name);
 }
+/**
+ * Display names for a list of ROLE ids (not a user id).
+ *
+ * SEC H4 needs to say "you cannot grant Finance Manager" rather than "you
+ * cannot grant 8f3a…". `roleNames` above looks the other way round — role names
+ * FOR a user — and passing it an array of role ids silently matches nothing.
+ */
+async function roleNamesByIds(client, ids) {
+  if (!Array.isArray(ids) || ids.length === 0) return [];
+  const { rows } = await client.query(
+    "SELECT name FROM role WHERE role_id = ANY($1::uuid[]) ORDER BY is_system DESC, name",
+    [ids],
+  );
+  return rows.map((r) => r.name);
+}
+
 /** Count ACTIVE users holding the CEO role (for the last-CEO guard). */
 async function countActiveCeos(client) {
   const { rows } = await client.query(
@@ -303,7 +327,7 @@ async function killAllSessionsForUser(client, userId, killedBy) {
 module.exports = {
   ...crud,
   insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
-  getSignature, upsertSignature, ceoRoleId, roleNames,
+  getSignature, upsertSignature, ceoRoleId, roleNames, roleNamesByIds,
   createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser,
   insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,

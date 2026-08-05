@@ -12,6 +12,7 @@ const argon2 = require("argon2");
 const { AppError } = require("../../utils/errors");
 const platformDb = require("./db");
 const roles = require("./roles.service");
+const passwordPolicy = require("../../shared/security/password-policy");
 
 const SAFE = "platform_user_id, email, full_name, role, is_active, last_login_at, created_at";
 
@@ -41,6 +42,8 @@ function list() {
 async function create({ email, fullName, password, role }) {
   const mail = String(email || "").trim().toLowerCase();
   if (!mail || !password) throw new AppError("BAD_INPUT", "email and password are required", 422);
+  // SEC H6: the breach check and the email-local-part rule, which zod cannot do.
+  await passwordPolicy.assertStrongPassword(password, { email: mail });
   await assertRole(role);
   const hash = await argon2.hash(password, { type: argon2.argon2id });
   try {
@@ -90,8 +93,10 @@ async function update(id, { fullName, role, isActive }) {
 }
 
 async function setPassword(id, password) {
-  await getOr404(id);
-  if (!password || String(password).length < 8) throw new AppError("WEAK_PASSWORD", "Password must be at least 8 characters", 422);
+  const target = await getOr404(id);
+  // SEC H6. Was a bare `length < 8` on the account tier that administers every
+  // tenant on the deployment.
+  await passwordPolicy.assertStrongPassword(password, { email: target && target.email });
   const hash = await argon2.hash(password, { type: argon2.argon2id });
   await platformDb.query(
     "UPDATE platform.platform_user SET password_hash = $2 WHERE platform_user_id = $1",

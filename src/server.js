@@ -11,6 +11,7 @@ require("./shared/http/async-safe");
 
 const express = require("express");
 const helmet = require("helmet");
+const compression = require("compression");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
@@ -18,6 +19,7 @@ const { config } = require("./config/env");
 const { logger } = require("./config/logger");
 const { initRedis } = require("./config/redis");
 const routes = require("./routes");
+const { apiVersionHeaders, CURRENT: API_VERSION } = require("./middleware/api-version");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
 const { buildAccessLog } = require("./middleware/access-log");
@@ -106,6 +108,34 @@ function buildApp() {
       },
     }),
   );
+  /**
+   * PERF S7. `compression` has been a declared dependency all along and was
+   * mounted nowhere, and no proxy-level compression is documented either.
+   *
+   * Measured on a representative list response: 18,020 -> 2,381 bytes, an 86.8%
+   * reduction. It applies to every JSON response AND to the 1,318 KB of static
+   * SPA assets served by express.static below.
+   *
+   * Mounted BEFORE the routes and the static handlers so it sees every
+   * response, and before the access log records a status — compression does not
+   * change the status, so the ordering is only about coverage.
+   *
+   * `filter` honours the standard `x-no-compression` opt-out and otherwise
+   * defers to the library's own content-type judgement, which already declines
+   * to waste CPU on already-compressed bytes (images, PDFs, zips).
+   *
+   * A note for whoever adds Server-Sent Events later: buffering breaks event
+   * streams, and the opt-out header is how such a route excludes itself.
+   */
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.headers["x-no-compression"]) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
   app.use(cors(buildCorsOptions()));
   app.use(requestIdMiddleware);
   // OBS-L1/L3/T2: the HTTP access log. pino-http was a declared dependency
@@ -125,6 +155,18 @@ function buildApp() {
   // resolution, no token, same reasoning as the probes.
   app.use("/api", metricsRouter);
 
+  /**
+   * API F-18. `/api/v1/...` and `/api/...` serve the SAME router: unversioned
+   * is an alias for the current version, not a second contract. See
+   * middleware/api-version.js for why there is deliberately one implementation.
+   *
+   * The version middleware runs on both so every response carries
+   * X-API-Version, and the unversioned path additionally carries the
+   * deprecation notice and increments a counter — which is what will make
+   * retiring it a decision based on traffic rather than on nerve.
+   */
+  app.use("/api", apiVersionHeaders);
+  app.use(`/api/${API_VERSION}`, routes);
   app.use("/api", routes);
 
   // Per-tenant PWA: dynamic /manifest.webmanifest + /icons/app-icon-*.png, both

@@ -180,7 +180,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: { pending_token: pendingToken, code, keep_signed_in: tokenStore.getPersist() },
     });
     acceptTokens(r);
-  }, []);
+    // `pendingToken`, NOT []. This closes over render state: an empty array
+    // captures the value from the first render — `null`, always — so the guard
+    // above would throw on every legitimate challenge, and if it did not, the
+    // request would carry `pending_token: null`. 2FA would simply never
+    // complete. PERF S14's empty arrays are right for the handlers that touch
+    // only setters and module helpers; this is not one of them.
+  }, [pendingToken]);
 
   const pinLogin: AuthState["pinLogin"] = React.useCallback(async (email, pin) => {
     const dev = pinStore.get(email);
@@ -201,7 +207,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     if (user) pinStore.set(user.email, { device_id: r.device_id, label: r.label ?? label });
     return { device_id: r.device_id };
-  }, []);
+    // `user`, NOT [] — same reason as verify2fa. On the first render `user` is
+    // null, so an empty array makes the `if (user)` branch permanently false:
+    // the server registers the PIN device and the browser never records it, so
+    // the next PIN login fails with NO_PIN_DEVICE against a device that exists.
+    // Silent, and only on the happy path.
+  }, [user]);
 
   const logout: AuthState["logout"] = React.useCallback(async () => {
     try {
@@ -240,10 +251,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
    * cascade. AuthProvider wraps the whole app, so that is every render of
    * everything.
    *
-   * The handlers are now stable (useCallback with empty deps — they close only
-   * over stable setters and module-level helpers, and patchUser uses the
-   * functional setUser form), so the value identity changes only when the auth
+   * Four of the six are stable (`useCallback` with empty deps — they close only
+   * over stable setters and module-level helpers, and `patchUser` uses the
+   * functional `setUser` form), so the value identity changes only when the auth
    * state genuinely does.
+   *
+   * TWO ARE NOT, deliberately. `verify2fa` reads `pendingToken` and
+   * `registerPin` reads `user`, so both carry that dependency. A first pass at
+   * S14 gave all six `[]`, which is where this note used to claim all six were
+   * stable — and it was a stale-closure bug in the auth path, not a lint
+   * complaint: both would have captured `null` from the first render forever.
+   * eslint's `exhaustive-deps` caught it. The cost is that those two change
+   * identity when the value they read changes, which is once per sign-in — not
+   * the every-render cascade S14 was about.
+   *
+   * `acceptTokens` is re-created each render and is intentionally NOT a
+   * dependency of the three handlers that call it. It closes over nothing from
+   * render scope — only setters, `tokenStore`, `persistUser` and `tenant` — so
+   * a stale reference behaves identically to a fresh one. Listing it would make
+   * `login`, `verify2fa` and `pinLogin` unstable on every render and undo S14
+   * for no behavioural gain.
    */
   const value = React.useMemo(
     () => ({ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser }),

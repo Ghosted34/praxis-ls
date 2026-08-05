@@ -12,14 +12,20 @@ spreadsheet cannot hold.
 
 ## 1. Where it stands
 
-**159 of 212 fixed.** Criticals 45/46, Highs 69/78, Mediums 35/65, Lows 10/18.
+**162 of 215 fixed.** Criticals 45/46, Highs 71/80, Mediums 36/66, Lows 10/18.
 
 The most recent batch took the API-contract and data-integrity/perf clusters —
 twenty findings closed, one (API-F23) attempted and deliberately left open; see
 §10.
 
-The register grew from 205 to 212 rows: findings NEW-01…NEW-06 were discovered
-during remediation, not by the original audits.
+The register grew from 205 to 215 rows: findings NEW-01…NEW-10 were discovered
+during remediation, not by the original audits. NEW-08 is the largest of them
+and is worth reading before anything else — see §12. (There were two rows
+numbered `NEW-06`; the Security one is now `NEW-07`.)
+
+NEW-09 and NEW-10 are the same lesson as NEW-08 in two smaller places, and §13
+covers them together with a regression this remediation introduced into
+`PERF-S14` and then fixed.
 
 The latest batch closed the test-coverage cluster — TC-C7, C8, C9, C10, C12 and
 Q2 — plus API-F3, which that work turned up. **The six remaining Highs that were
@@ -504,6 +510,155 @@ reading before you take that finding); and the runner needed five gaps closed
 (auto-mock, callable auto-mock, `getMockImplementation`,
 `toHaveBeenNthCalledWith`, asymmetric `toEqual`). One of those was a **false
 PASS**: `deepEqual` compared an array to `{}` as equal on key count. Fixed.
+
+---
+
+## 12. NEW-08 — the integration suites found a flow that had never worked
+
+This is the first thing the real-Postgres integration job did, and it is the
+best argument in this document for keeping it.
+
+**`dossier` has no `title` column.** 0310 created the table without one; the only
+`ALTER TABLE dossier` in the tree before 0508 is 0479, adding
+`pol_place_id`/`pod_place_id`. Two services write one anyway:
+
+```
+src/orchestration/handlers/opportunity-won-open-dossier.js:48
+src/modules/sales/opportunity/opportunity.service.js:62    win({ createDossier })
+```
+
+Both reach `insertOne(client, "dossier", data)`, which builds its column list
+from `Object.keys(data)`. Its identifier check asks whether a key is a *legal
+identifier* — `title` is — not whether the table has it. So the key went to
+Postgres and came back `42703`.
+
+**Two failure modes, and the quiet one is worse.**
+
+- The **event** route fails inside the outbox. `dossierSvc.create` rolls back and
+  rethrows, the dispatcher marks the row FAILED, retries, and lands it in DEAD.
+  The user who clicked *Won* gets a **200**. The opportunity is marked won, no
+  dossier exists, nothing links them. Sales believes it handed the job to
+  Operations; Operations never sees it. Nothing surfaces but a dead-letter row.
+- The **synchronous** route — `POST /opportunities/:id/win` with
+  `createDossier: true` — is not swallowed. It 500s. **That flag has never once
+  succeeded.**
+
+The costing failures in the same run (`dossier_id violates not-null`) are this
+defect one step later: the dossier that should exist does not.
+
+**Why the column, rather than deleting the argument.** Both call sites are
+carrying `opportunity.name` — the human label for the deal — across the
+sales/operations boundary, and `dossier` had nowhere to put it: its only
+name-like column is `ref`, a machine-allocated number (`SLAS-2026-0001`). The
+authors were not inventing a column at random; they were writing to the field
+the model was missing. Dropping `title:` would also make the flow work, and
+would lose the deal name at exactly the handoff where Operations most needs to
+know what the job is. Migration **0508** adds it (nullable, plus a backfill from
+`opportunity.name` for hand-linked dossiers).
+
+**Why nothing caught it for months, which is the transferable part.** Three
+layers each had a reason not to:
+
+1. the zod validator strips unknown keys — but **both broken call sites reach
+   `service.create` in-process**, with no HTTP request anywhere near them;
+2. `insertOne` validates identifiers, which stops injection and knows nothing
+   about the schema;
+3. the unit suites fake the client, and **a fake accepts any column name you
+   hand it**.
+
+Only a real database ever said no. That is TC-Q3's argument — *the fix is not a
+better fake, it is a real database* — arriving as a concrete production bug
+rather than a finding.
+
+**What was added so the next one fails cheaply.** `operations_file.repo.js` now
+declares a `writable` allow-list (the layer that would have caught it, because
+it sits next to the SQL and applies to every caller, HTTP or not), and
+`tests/unit/dossier-columns.test.js` reconciles that list *and* both call-site
+payloads against the columns the migrations declare. No database needed — it
+fails in the fast suite, at the moment the mismatch is written.
+
+That reader had the defect this remediation keeps finding, caught while writing
+it: it read `DROP COLUMN` out of a **comment**. Every migration here documents
+its rollback in comments, so it reported `title` phantom on the migration that
+adds it. It strips comments now, and the first assertion in the file checks the
+reader found a plausible table at all — a scanner that silently matches nothing
+passes every other assertion vacuously.
+
+**Not yet executed.** 0508 has not been applied and has not been parsed — the
+session that wrote it had neither Postgres nor `libpg-query`. Run
+`npm run db:migrate:tenants`, then the orchestration integration suite. Given
+0499 took four attempts to apply, assume this one may need a second look.
+
+---
+
+## 13. The three things the first green-ish CI run cost, and what they teach
+
+All three were found by running the pipeline properly for the first time. Two of
+them are mine.
+
+### PERF-S14 — I introduced a stale-closure bug in the auth path
+
+S14 wrapped six `AuthProvider` handlers in `useCallback`. I gave **all six** an
+empty dep array. Two read render state:
+
+- `verify2fa` reads `pendingToken` → would have sent `pending_token: null`, so
+  **2FA could never complete**
+- `registerPin` reads `user` → `if (user)` never true, so the server registers a
+  PIN device the browser never records and the next PIN login fails
+  `NO_PIN_DEVICE` **against a device that exists**
+
+`eslint react-hooks/exhaustive-deps` caught both. The other four are genuinely
+stable and keep `[]`. `acceptTokens` is deliberately *not* a dependency: it
+closes over nothing from render scope, and listing it would make three handlers
+unstable every render and undo S14 for nothing.
+
+The part worth carrying: **the comment in the file asserted all six were
+stable**, and stayed there while the code stopped matching it. That is the
+failure this whole remediation is about, committed by the remediation.
+
+### NEW-10 — a spy type that erased the contract, hiding nine bad fixtures
+
+Pinning the client to vitest 3 broke `tsc -b` on two test files.
+`ReturnType<typeof vi.spyOn>` names the generic *without instantiating it*, so it
+resolves to the uninstantiated default and the real spy will not assign to it. It
+compiled under vitest 4 by accident.
+
+Typing from the spied function instead (`MockInstance<typeof apiClient.tenantPaged>`)
+fixed it — and immediately failed nine more times, because every fixture passed
+`{ data, total }` while `Paged<T>` also requires `limit`, `offset` and `hasMore`.
+The fake had been handing the hook `undefined` for all three and **nothing could
+complain**, because the erased type let `mockResolvedValue` accept anything.
+
+TC-Q3 again, from a new angle: *a fake that cannot disagree with the contract it
+replaces*.
+
+**Decision recorded:** stay on **vite 5 + vitest 3**. Forward (vite 7 + vitest 4)
+leaves those two files untouched but is a build-tool major nobody can verify
+without a real build — and PERF-S8, a Vite config change needing exactly that, is
+already open. Do them together or not at all.
+
+### NEW-09 — the fixture never satisfied the contract the suites document
+
+Both integration suites state their requirements in their own headers. The
+workflow fixture was written from what they obviously needed instead:
+
+- **no `accounting_period`** — journal-posting failed `No accounting period
+  covers <today>`; ledger-hardening's `beforeAll` left `period` undefined and all
+  six tests died on `period.period_id`, six identical errors naming the reader
+  and not the cause
+- **account `521`** is the non-postable parent; `5211` is the leaf. The service
+  was right to refuse it
+- and the one that matters most: `rejects an unbalanced entry` asserted only
+  `.rejects.toThrow()`, so it **passed on the not-postable error and never once
+  reached the balance check it is named after**
+
+A negative test that cannot say *why* it failed will pass for the wrong reason
+indefinitely. It now asserts `/Out of balance/`, the fixture seeds an OPEN
+calendar-month period computed in SQL and *asserts* one covers today before
+running anything, and `beforeAll` throws a message naming the missing fixture.
+
+**Not executed here** — no Postgres in the session that wrote it. `ci.yaml` is
+YAML-validated and both suites parse-check; the job is the verification.
 
 ---
 

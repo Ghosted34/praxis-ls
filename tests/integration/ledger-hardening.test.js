@@ -31,6 +31,16 @@ d("ledger hardening triggers (real Postgres)", () => {
       [entityId],
     );
     period = p.rows[0];
+
+    // Fail on the MISSING FIXTURE, not on its symptom.
+    //
+    // Without this, an absent journal or period leaves `journalId`/`period`
+    // undefined and every test below dies on `period.period_id` — six identical
+    // "Cannot read properties of undefined" failures that name the reader and
+    // not the cause. The first CI run of this suite did exactly that, and the
+    // real answer was one missing INSERT in the workflow fixture.
+    if (!journalId) throw new Error(`No journal seeded for TEST_ENTITY_ID=${entityId}. The CI fixture step seeds BQ/VT/AC/OD.`);
+    if (!period) throw new Error(`No OPEN accounting_period for TEST_ENTITY_ID=${entityId}. The CI fixture step seeds one covering today.`);
   });
   afterAll(async () => { if (pool) await pool.end(); });
 
@@ -73,7 +83,7 @@ d("ledger hardening triggers (real Postgres)", () => {
     await expect(rawValidatedEntry({
       periodId: period.period_id,
       entryDate: period.starts_on,
-      lines: [ { account_code: "521", debit: 100, credit: 0 }, { account_code: "521", debit: 0, credit: 100 } ],
+      lines: [ { account_code: "5211", debit: 100, credit: 0 }, { account_code: "5211", debit: 0, credit: 100 } ],
     })).rejects.toThrow(/both debited and credited|compensation/i);
   });
 
@@ -93,7 +103,7 @@ d("ledger hardening triggers (real Postgres)", () => {
     await expect(rawValidatedEntry({
       periodId: testPeriodId,
       entryDate: "2099-01-15",
-      lines: [ { account_code: "521", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
+      lines: [ { account_code: "5211", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
     })).rejects.toThrow(/FROZEN|cannot post/i);
     // The rejected entry rolled back, so the test period has no entries → drop it.
     await pool.query("DELETE FROM accounting_period WHERE period_id = $1", [testPeriodId]);
@@ -103,7 +113,7 @@ d("ledger hardening triggers (real Postgres)", () => {
     await expect(rawValidatedEntry({
       periodId: period.period_id,
       entryDate: "1999-01-01", // well outside any real period
-      lines: [ { account_code: "521", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
+      lines: [ { account_code: "5211", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
     })).rejects.toThrow(/outside its period/i);
   });
 
@@ -111,7 +121,7 @@ d("ledger hardening triggers (real Postgres)", () => {
     const withClient = async (fn) => { const c = await pool.connect(); try { return await fn(c); } finally { c.release(); } };
     const posted = await withClient((c) => service.post(c, {
       journalId, entityId, entryDate: period.starts_on, sourceDocRef: "test:reversal",
-      lines: [ { account_code: "521", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
+      lines: [ { account_code: "5211", debit: 100, credit: 0 }, { account_code: "4191", debit: 0, credit: 100 } ],
       actor: { user_id: null },
     }));
     await withClient((c) => service.reverse(c, { entryId: posted.entry.entry_id, reason: "test", actor: { user_id: null } }));

@@ -267,7 +267,7 @@ jobs:
         # afterwards — and this asserts the resulting state is uniform.
         run: node scripts/db/fleet-status.js
 
-      - name: Seed a corporate entity and journals for the integration suites
+      - name: Seed a corporate entity, journals and an OPEN period for the integration suites
         # TEST-C6. The four integration suites are not skipped because someone
         # disabled them — they self-skip on `!process.env.DATABASE_URL`, and
         # nothing ever set it. journal-posting.test.js says so in its own
@@ -316,8 +316,46 @@ jobs:
               ('BQ','Banque','$entity'), ('VT','Ventes','$entity'),
               ('AC','Achats','$entity'), ('OD','Operations diverses','$entity')
             ON CONFLICT (entity_id, code) DO NOTHING;"
+
+          # An OPEN accounting_period covering TODAY.
+          #
+          # Both integration suites document this in their own headers —
+          # journal-posting: "a corporate_entity id with an OPEN
+          # accounting_period covering TEST_ENTRY_DATE"; ledger-hardening: "a
+          # corporate_entity with a journal + an OPEN period". Neither got one.
+          # The first run failed with `No accounting period covers <today>`, and
+          # ledger-hardening's beforeAll left `period` undefined, so every test
+          # in it crashed on `period.period_id` rather than asserting anything.
+          #
+          # A CALENDAR MONTH around CURRENT_DATE, computed in SQL rather than in
+          # the shell, so it is right whatever day the job runs and cannot drift
+          # from the runner's clock. The suites take the most recent OPEN period,
+          # and ledger-hardening's own FROZEN fixture sits in 2099, so there is
+          # no overlap to trip over.
+          psql -h localhost -U praxis-admin -d tenant_citenant -v ON_ERROR_STOP=1 -c "
+            INSERT INTO accounting_period (entity_id, code, starts_on, ends_on, status)
+            VALUES (
+              '$entity',
+              to_char(CURRENT_DATE, 'YYYY-MM'),
+              date_trunc('month', CURRENT_DATE)::date,
+              (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+              'OPEN')
+            ON CONFLICT (entity_id, code) DO UPDATE SET status = 'OPEN';"
+
+          # Assert it rather than trusting it. A fixture that half-worked is how
+          # the suites came to 'pass' by skipping in the first place: the whole
+          # point of this job is that a green tick means something ran.
+          covers=$(psql -h localhost -U praxis-admin -d tenant_citenant -tAqc "
+            SELECT count(*) FROM accounting_period
+             WHERE entity_id = '$entity' AND status = 'OPEN'
+               AND CURRENT_DATE BETWEEN starts_on AND ends_on;")
+          if [ "$covers" != "1" ]; then
+            echo "::error::expected exactly one OPEN accounting_period covering today, found '$covers'"
+            exit 1
+          fi
+
           echo "entity_id=$entity" >> "$GITHUB_OUTPUT"
-          echo "Seeded corporate_entity $entity with journals BQ/VT/AC/OD"
+          echo "Seeded corporate_entity $entity with journals BQ/VT/AC/OD and an OPEN period for $(date +%Y-%m)"
 
       - name: Integration suites against the real database
         # These 11 tests have been dark since they were written. Three of the

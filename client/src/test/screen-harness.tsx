@@ -36,6 +36,8 @@ import * as React from "react";
 import { render, type RenderResult } from "@testing-library/react";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { ToastProvider } from "@/components/ui/toast";
+import { TooltipProvider } from "@/components/ui/tooltip";
 
 /** What a faked endpoint returns: a payload, or a thrown ApiError. */
 export type RouteFixture = unknown | { __error: { status: number; message: string; code?: string } };
@@ -183,17 +185,36 @@ export function renderScreen(ui: React.ReactElement, f: ScreenFixtures = {}): Re
   const client = testQueryClient();
   const at = f.path ?? "/";
 
+  /**
+   * THE APP'S ROOT PROVIDERS, not just the router and the query client.
+   *
+   * `main.tsx` mounts ToastProvider and TooltipProvider above every screen, and
+   * `useToast()` throws by design when it cannot find its provider — a good
+   * design, because a toast that silently goes nowhere is worse than a crash.
+   * The harness did not have them, so the first screen to announce a successful
+   * save (the journal-entry form, migrated to `<Form>`) took down all four of
+   * its state assertions with "useToast must be used inside <ToastProvider>".
+   *
+   * This is Addendum 5's shape again: the only path that exercised the harness
+   * was the only path that could not see what it was missing. Fixed here rather
+   * than by avoiding `useToast` in the form, because every form migrated after
+   * this one will want to confirm that it saved.
+   */
   return render(
     <QueryClientProvider client={client}>
-      <MemoryRouter initialEntries={[at]}>
-        {f.pattern ? (
-          <Routes>
-            <Route path={f.pattern} element={ui} />
-          </Routes>
-        ) : (
-          ui
-        )}
-      </MemoryRouter>
+      <ToastProvider>
+        <TooltipProvider>
+          <MemoryRouter initialEntries={[at]}>
+            {f.pattern ? (
+              <Routes>
+                <Route path={f.pattern} element={ui} />
+              </Routes>
+            ) : (
+              ui
+            )}
+          </MemoryRouter>
+        </TooltipProvider>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

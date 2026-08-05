@@ -6,6 +6,8 @@
  */
 const common = require("./schemas/common");
 const finalInvoice = require("./schemas/final-invoice");
+const journalEntry = require("./schemas/journal-entry");
+const ledger = require("./rules/ledger");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
 //
@@ -19,3 +21,7 @@ const finalInvoice = require("./schemas/final-invoice");
 // zodResolver was handed it. See client/config/shared-alias.ts.
 exports.common = common;
 exports.finalInvoice = finalInvoice;
+exports.journalEntry = journalEntry;
+// Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
+// Zod refinement.
+exports.ledger = ledger;

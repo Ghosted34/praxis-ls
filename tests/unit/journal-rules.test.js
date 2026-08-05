@@ -7,6 +7,29 @@ const { assertBalanced } = require("../../src/modules/finance/journal_entry/jour
 
 const L = (account_code, debit, credit) => ({ account_code, debit, credit });
 
+/**
+ * The CODE, not the message.
+ *
+ * These assertions used to match on message text (`/not balanced/i`), and that
+ * broke the moment the rules moved to `packages/shared` and their wording was
+ * rewritten for an OPERATOR rather than a log — because the client now renders
+ * them next to the offending line.
+ *
+ * The code is the stable thing: it is what the 422 body carries, what the AI
+ * tool surface branches on, and what does not change when someone improves a
+ * sentence. Asserting the sentence made a wording improvement look like a
+ * ledger regression, which is the wrong signal to give.
+ */
+const codeOf = (fn) => {
+  try {
+    fn();
+    return null;
+  } catch (e) {
+    return e.code;
+  }
+};
+
+
 describe("journal entry balance rules", () => {
   it("accepts a balanced two-line entry", () => {
     const r = assertBalanced([L("521", 1000, 0), L("4191", 0, 1000)]);
@@ -22,27 +45,27 @@ describe("journal entry balance rules", () => {
   });
 
   it("rejects fewer than two lines", () => {
-    expect(() => assertBalanced([L("521", 100, 0)])).toThrow(/at least two lines/i);
+    expect(codeOf(() => assertBalanced([L("521", 100, 0)]))).toBe("ENTRY_TOO_FEW_LINES");
   });
 
   it("rejects an unbalanced entry", () => {
-    expect(() => assertBalanced([L("521", 1000, 0), L("4191", 0, 999)])).toThrow(/not balanced/i);
+    expect(codeOf(() => assertBalanced([L("521", 1000, 0), L("4191", 0, 999)]))).toBe("ENTRY_UNBALANCED");
   });
 
   it("rejects a line with both sides set (#23.2)", () => {
-    expect(() => assertBalanced([L("521", 100, 100), L("4191", 0, 100)])).toThrow(/exactly one/i);
+    expect(codeOf(() => assertBalanced([L("521", 100, 100), L("4191", 0, 100)]))).toBe("LINE_ONE_SIDE");
   });
 
   it("rejects a line with neither side > 0 (#23.2)", () => {
-    expect(() => assertBalanced([L("521", 0, 0), L("4191", 0, 100)])).toThrow(/exactly one/i);
+    expect(codeOf(() => assertBalanced([L("521", 0, 0), L("4191", 0, 100)]))).toBe("LINE_ONE_SIDE");
   });
 
   it("rejects more than two decimals", () => {
-    expect(() => assertBalanced([L("521", 100.001, 0), L("4191", 0, 100.001)])).toThrow(/2 decimals/i);
+    expect(codeOf(() => assertBalanced([L("521", 100.001, 0), L("4191", 0, 100.001)]))).toBe("INVALID_AMOUNT");
   });
 
   it("rejects a missing account_code", () => {
-    expect(() => assertBalanced([L("", 100, 0), L("4191", 0, 100)])).toThrow(/account_code/i);
+    expect(codeOf(() => assertBalanced([L("", 100, 0), L("4191", 0, 100)]))).toBe("LINE_NO_ACCOUNT");
   });
 });
 

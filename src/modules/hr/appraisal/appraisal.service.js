@@ -10,7 +10,7 @@ const earningRepo = require("../payroll/earning.repo");
 const events = require("./appraisal.events");
 const { computeRating, weightedScore } = require("./appraisal.rules");
 const employeeService = require("../../master/employees/employees.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 const ref = (id) => "appraisal:" + id;
@@ -42,7 +42,7 @@ module.exports = {
     const earning = await earningRepo.upsertFromSource(client, {
       employee_id: a.employee_id, entity_id: entityId, period_code: a.period_code,
       kind: "BONUS", label: label || `Appraisal reward · ${a.period_code}`, amount: Number(amount),
-      source_ref: ref(id), created_by: actor.user_id || null,
+      source_ref: ref(id), created_by: await resolveActorId(client, actor.user_id),
     });
     if (!earning) throw new AppError("REWARD_LOCKED", "This reward was already paid in a validated payroll run and can't be changed", 409);
     await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });

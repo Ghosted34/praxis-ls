@@ -20,6 +20,25 @@ WORKDIR /app
 
 FROM base AS deps
 COPY package.json package-lock.json* ./
+# packages/ MUST be copied before install. package.json declares
+#   "@praxis/shared": "file:packages/shared"
+# and a file: dependency is resolved at install time — without the directory
+# present, npm cannot link it.
+#
+# 2026-08-04: this was missing, and the failure mode was quiet. The layer was
+# cached from before @praxis/shared was added, so builds kept succeeding while
+# producing an image whose node_modules had no @praxis/shared. The only importer
+# is finance/final_invoice/final_invoice.validator.js, so `require()` of that
+# module threw and the module-loader skipped it — meaning the INVOICING MODULE
+# was absent from the running API and every one of its routes 404'd,
+# indistinguishable from a wrong URL (audit API F-19).
+#
+# It was also a time bomb: the next change to package.json invalidates the cache,
+# npm install hits the missing path, and the build fails outright.
+#
+# Caught by `npm test` (ai-readiness + ai-writes), which is the argument for
+# running the suite rather than reasoning about it.
+COPY packages/ ./packages/
 # `npm install`, NOT `npm ci`: the lockfile is Windows-generated, so `ci` would
 # omit the Linux/musl platform binaries (sharp, argon2, …) and the app would
 # crash at require-time. install re-resolves platform-specific optional deps.

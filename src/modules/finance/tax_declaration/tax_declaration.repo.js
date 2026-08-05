@@ -1,7 +1,13 @@
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
 
-const crud = makeRepo({ table: "tax_declaration", pk: "tax_declaration_id", activeColumn: null, searchColumn: null, orderBy: "created_at DESC" });
+const crud = makeRepo({ table: "tax_declaration", pk: "tax_declaration_id", activeColumn: null, searchColumn: null, orderBy: "created_at DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
+});
 
 // Upsert on the natural key (entity_id, kind, period_code) — re-filing a period
 // recomputes the same row rather than duplicating it.

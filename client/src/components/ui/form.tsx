@@ -94,9 +94,9 @@ export function Form<TFieldValues extends FieldValues>({
        * Routing those to the fields is the half of F12 that the errMsg
        * consolidation in PR1 could not do from a helper — it needs the form.
        */
-      if (e instanceof ApiError && e.status === 422 && e.details && typeof e.details === "object") {
+      if (e instanceof ApiError && e.status === 422 && e.fields && typeof e.fields === "object") {
         let routed = false;
-        for (const [name, messages] of Object.entries(e.details as Record<string, string[] | string>)) {
+        for (const [name, messages] of Object.entries(e.fields as Record<string, string[] | string>)) {
           const message = Array.isArray(messages) ? messages.join(", ") : String(messages);
           // Only fields the form actually has; anything else falls through to
           // the banner rather than being silently dropped.

@@ -3,6 +3,9 @@
 const express = require("express");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
+// API F-21: this file reimplemented requireTransitionPermission locally —
+// same behaviour, duplicated. Uses the shared helper now.
+const { requireTransitionPermission } = require("../../../shared/http/transition-permission");
 const controller = require("./purchase_request.controller");
 const validator = require("./purchase_request.validator");
 
@@ -32,17 +35,12 @@ const TRANSITION_ACTION = {
   REJECTED: "approve",
 };
 
-/** requirePermission binds its action at mount time; this one depends on the body. */
-function requireTransitionPermission(req, res, next) {
-  const action = TRANSITION_ACTION[req.body && req.body.to] || "approve";
-  return requirePermission(MODULE, action)(req, res, next);
-}
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 // Validator runs FIRST so `to` is checked against the enum before it selects a
 // permission — otherwise an unrecognised value would choose its own gate.
-router.post("/:id/transition", validator.transition, requireTransitionPermission, controller.transition);
+router.post("/:id/transition", validator.transition, requireTransitionPermission(MODULE, TRANSITION_ACTION), controller.transition);
 
 module.exports = { basePath: "/purchase-requests", feature: null, router };

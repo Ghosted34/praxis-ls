@@ -62,8 +62,8 @@ export type Row = Record<string, unknown>;
 export function errMsg(e: unknown): string {
   if (e instanceof ApiError) {
     if (e.status === 403) return "You don't have permission to do this.";
-    if (e.status === 422 && e.details && typeof e.details === "object") {
-      const parts = Object.entries(e.details as Record<string, string[] | string>).map(
+    if (e.status === 422 && e.fields && typeof e.fields === "object") {
+      const parts = Object.entries(e.fields as Record<string, string[] | string>).map(
         ([k, v]) => `${k}: ${Array.isArray(v) ? v.join(", ") : v}`,
       );
       if (parts.length) return parts.join("; ");

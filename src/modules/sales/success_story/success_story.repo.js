@@ -1,10 +1,11 @@
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
 const insert = (client, data) => insertOne(client, "success_story", data);
 const get = (client, id) => getById(client, "success_story", "success_story_id", id);
 async function update(client, id, fields) {
-  const keys = Object.keys(fields); const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  return (await client.query("UPDATE success_story SET " + set + " WHERE success_story_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])])).rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "success_story", "success_story_id", id, fields, "*", null);
 }
 async function list(client, q = {}) {
   const { limit, offset } = page(q); const params = [limit, offset]; const wh = [];

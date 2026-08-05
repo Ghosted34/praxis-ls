@@ -45,6 +45,8 @@
 
 const { AppError } = require("../utils/errors");
 const identityCache = require("../shared/cache/identity-cache");
+const { logger } = require("../config/logger");
+const metrics = require("../shared/observability/metrics");
 
 const ACTION_COLUMN = {
   view: "can_read",
@@ -72,8 +74,14 @@ function requirePermission(moduleKey, action) {
       throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
     }
 
-    // CEO bypass (PRD §3 — CEO sees everything by design)
-    if (req.user.is_ceo) {
+    // CEO bypass (PRD §3 — CEO sees everything by design).
+    //
+    // `=== true`, not truthy. Grants below are compared exactly
+    // (`g[column] === true`) and this must not be laxer than the thing it
+    // bypasses. authMiddleware normalises is_ceo to a boolean today, so this
+    // changes no behaviour — but the CEO flag skips EVERY check in the product,
+    // and it should not depend on an upstream normalisation staying correct.
+    if (req.user.is_ceo === true) {
       req.permission_scope = "all";
       req.scope_ids = null;
       return next();
@@ -100,6 +108,15 @@ function requirePermission(moduleKey, action) {
 
     const allowed = grants.some((g) => g[column] === true);
     if (!allowed) {
+      // OBS-T4: rbac.js contained zero logger calls, so "why is this user
+      // getting 403s?" had no answer anywhere, and a burst of denials — the
+      // signature of a compromised account probing for access — was invisible.
+      metrics.inc("praxis_rbac_denials_total", { module: moduleKey, action }, 1,
+        "Permission denials by module and action.");
+      logger.warn(
+        { user_id: req.user.user_id, module: moduleKey, action },
+        "permission denied",
+      );
       throw new AppError(
         "PERMISSION_DENIED",
         `No permission for ${moduleKey}.${action}`,
@@ -144,7 +161,7 @@ function requireCapability(code) {
     if (!req.user) {
       throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
     }
-    if (req.user.is_ceo) {
+    if (req.user.is_ceo === true) {
       req.capabilities = ["ISSUER", "VALIDATOR", "APPROVER", "LINE_MANAGER"];
       req.is_line_manager = true;
       return next();
@@ -175,7 +192,9 @@ function requireCapability(code) {
 function requireCeo() {
   return function ceoCheck(req, _res, next) {
     if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
-    if (!req.user.is_ceo) throw new AppError("PERMISSION_DENIED", "This action is restricted to the CEO", 403);
+    // `!== true` rather than `!`: this gate stands in front of the God Mode
+    // purge, and a truthy non-boolean must not pass it.
+    if (req.user.is_ceo !== true) throw new AppError("PERMISSION_DENIED", "This action is restricted to the CEO", 403);
     return next();
   };
 }

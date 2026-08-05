@@ -15,6 +15,7 @@ const payrollRepo = require("../../hr/payroll/payroll.repo");
 const { getSetting } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 async function vatReturn(client, filters) {
   const rows = await statementsRepo.trialBalance(client, filters);
@@ -117,7 +118,19 @@ async function fileDeclaration(client, { entityId, kind, periodCode, from, to, d
   return row;
 }
 
-async function approveDeclaration(client, { id, actor = {} }) {
+/**
+ * OBS L2. A tax declaration is filed with a revenue authority. Approving one with no record of who or when is the kind of gap an auditor asks about first.
+ */
+async function approveDeclaration(client, opts) {
+  const { id } = opts;
+  return withMoneyLog(
+    "tax_declaration.approved",
+    (out) => ({ doc: id, declaration_id: id, amount: out ? out.total_due : null, period: out ? out.period_label : null }),
+    () => approveDeclarationCore(client, opts),
+  );
+}
+
+async function approveDeclarationCore(client, { id, actor = {} }) {
   const before = await repo.getDeclaration(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Tax declaration not found", 404);
   if (before.status !== "COMPUTED") throw new AppError("BAD_STATE", "Only a COMPUTED declaration can be approved (was " + before.status + ")", 409);

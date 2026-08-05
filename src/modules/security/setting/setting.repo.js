@@ -1,8 +1,10 @@
 /** Settings repository (MOD-70). Keyed by (section, key); upsert bumps version. */
 "use strict";
 
+const { listComplete } = require("../../../shared/db/query-helpers");
+
 async function listAll(client) {
-  const { rows } = await client.query("SELECT section, key, value, version, updated_at FROM setting ORDER BY section, key");
+  const { rows } = await listComplete(client, "SELECT section, key, value, version, updated_at FROM setting ORDER BY section, key", [], { label: "Settings", ceiling: 5000 });
   return rows;
 }
 async function listSections(client) {
@@ -10,7 +12,7 @@ async function listSections(client) {
   return rows.map((r) => r.section);
 }
 async function getSection(client, section) {
-  const { rows } = await client.query("SELECT key, value, version, updated_at FROM setting WHERE section = $1 ORDER BY key", [section]);
+  const { rows } = await listComplete(client, "SELECT key, value, version, updated_at FROM setting WHERE section = $1 ORDER BY key", [section], { label: "Settings for a section", ceiling: 5000 });
   return rows;
 }
 async function getByKey(client, section, key) {

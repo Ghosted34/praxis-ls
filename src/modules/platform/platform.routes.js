@@ -9,7 +9,7 @@
 
 const express = require("express");
 const c = require("./platform.controller");
-const { validate } = require("./platform.validator");
+const { validate, validateParams } = require("./platform.validator");
 const { platformAuth, requireCap } = require("../../middleware/platform-auth");
 // SEC-C3, 2026-08-04. The platform tier is the highest-privilege login in the
 // product — it reaches tenant provisioning, the credential store and God Mode —
@@ -96,11 +96,11 @@ router.get("/settings/:section/:key", requireCap("settings.read"), c.settingGet)
 router.put("/settings/:section/:key", requireCap("settings.write"), validate("platformSetting"), c.settingPut);
 // `test` sends the stored credential to the live provider, so it is a write-tier
 // action even though it mutates nothing locally.
-router.post("/settings/:section/:key/test", requireCap("settings.write"), c.settingTest);
+router.post("/settings/:section/:key/test", requireCap("settings.write"), validateParams("settingTest"), c.settingTest);
 
 // Deploy-wide AI vendor keys — one shared set every tenant's AI runtime uses.
 router.get("/ai-vendors", requireCap("settings.read"), c.aiVendorsList);
 router.put("/ai-vendors/:vendor", requireCap("settings.write"), validate("aiVendorSet"), c.aiVendorSet);
-router.post("/ai-vendors/:vendor/test", requireCap("settings.write"), c.aiVendorTest);
+router.post("/ai-vendors/:vendor/test", requireCap("settings.write"), validateParams("aiVendorTest"), c.aiVendorTest);
 
 module.exports = router;

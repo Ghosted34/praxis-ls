@@ -17,7 +17,7 @@ function publishMailEvent(slug, payload) {
   try {
     getPublisher().publish(CHANNEL, JSON.stringify({ slug, payload: payload || {} }));
   } catch (err) {
-    logger.debug({ err: err.message }, "[mail-bus] publish skipped (redis not ready)");
+    logger.debug({ err }, "[mail-bus] publish skipped (redis not ready)");
   }
 }
 

@@ -9,7 +9,7 @@ jest.mock("../../src/services/accounting/determination", () => ({
 jest.mock("../../src/services/documents/numbering.service", () => ({ allocate: jest.fn().mockResolvedValue({ number: "SMLS-INV-2026-0001", seq: 1, year: 2026 }) }));
 jest.mock("../../src/services/documents/document.service", () => ({ capture: jest.fn().mockResolvedValue({ doc_id: "d1" }) }));
 jest.mock("../../src/services/workflow/executor", () => ({ start: jest.fn().mockResolvedValue({ autoApproved: true }) }));
-jest.mock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn().mockResolvedValue(), audit: jest.fn().mockResolvedValue() }));
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: jest.fn().mockResolvedValue(), audit: jest.fn().mockResolvedValue() }));
 
 const numbering = require("../../src/services/documents/numbering.service");
 const documents = require("../../src/services/documents/document.service");
@@ -28,7 +28,12 @@ function fakeClient(initial) {
       if (/^INSERT INTO invoice_line/.test(s)) { st.lines.push({ invoice_line_id: "l" + st.lines.length, line_ht: params[params.length - 2], is_debours: false }); return { rows: [{}] }; }
       if (/^DELETE FROM invoice_line/.test(s)) { st.lines = []; return { rows: [] }; }
       if (/^SELECT \* FROM invoice_line/.test(s)) return { rows: st.lines.length ? st.lines : [{ dictionary_item_id: "i1", line_ht: 1000000, is_debours: false }] };
-      if (/^SELECT \* FROM invoice WHERE invoice_id/.test(s)) return { rows: st.invoice ? [st.invoice] : [] };
+      // PERF S20 quoted every identifier in query-helpers.getById, so this
+      // arrives as `WHERE "invoice_id" = $1`. The regex matched the unquoted
+      // form only and this fake returns {rows: []} for anything unmatched —
+      // which is precisely TC-Q3's complaint about these fakes, seen from the
+      // inside: a query-shape change becomes "Invoice not found".
+      if (/^SELECT \* FROM invoice WHERE "?invoice_id"?/.test(s)) return { rows: st.invoice ? [st.invoice] : [] };
       if (/^UPDATE invoice SET /.test(s)) { const status = params[1]; st.invoice = { ...st.invoice, status, ...(status === "POSTED_LOCKED" ? { doc_number: params[2] } : {}) }; return { rows: [st.invoice] }; }
       if (/^SELECT advance_id/.test(s)) return { rows: [] };
       return { rows: [] };

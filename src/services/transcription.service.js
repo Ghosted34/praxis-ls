@@ -90,7 +90,7 @@ async function transcribe({ audioUrl }) {
     });
     return (data && (data.text || data.transcript)) || null;
   } catch (err) {
-    logger.error({ err: err.message }, "transcription failed");
+    logger.error({ err }, "transcription failed");
     return null;
   }
 }

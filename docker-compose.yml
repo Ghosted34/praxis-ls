@@ -2,6 +2,16 @@ services:
   postgres:
     image: pgvector/pgvector:pg16
     container_name: praxis_postgres
+    # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
+    # without bound on a single-VPS deployment whose disk is itself unmonitored
+    # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
+    # standby and worker down together. Capped here. Shipping logs off-box is
+    # the other half and stays tracked as OBS-L7.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
     # container stayed down until a human noticed — and nothing notified anyone
     # (OBS-A1). This also pairs with the uncaughtException change in server.js:
@@ -29,6 +39,16 @@ services:
   redis:
     image: redis:7-alpine
     container_name: praxis_redis
+    # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
+    # without bound on a single-VPS deployment whose disk is itself unmonitored
+    # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
+    # standby and worker down together. Capped here. Shipping logs off-box is
+    # the other half and stays tracked as OBS-L7.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
     # container stayed down until a human noticed — and nothing notified anyone
     # (OBS-A1). This also pairs with the uncaughtException change in server.js:
@@ -75,6 +95,16 @@ services:
       context: .
       target: runtime
     container_name: praxis-ls
+    # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
+    # without bound on a single-VPS deployment whose disk is itself unmonitored
+    # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
+    # standby and worker down together. Capped here. Shipping logs off-box is
+    # the other half and stays tracked as OBS-L7.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
     # container stayed down until a human noticed — and nothing notified anyone
     # (OBS-A1). This also pairs with the uncaughtException change in server.js:
@@ -125,6 +155,16 @@ services:
       context: .
       target: runtime
     container_name: praxis-ls-standby
+    # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
+    # without bound on a single-VPS deployment whose disk is itself unmonitored
+    # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
+    # standby and worker down together. Capped here. Shipping logs off-box is
+    # the other half and stays tracked as OBS-L7.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
     # container stayed down until a human noticed — and nothing notified anyone
     # (OBS-A1). This also pairs with the uncaughtException change in server.js:
@@ -165,6 +205,16 @@ services:
       context: .
       target: worker
     container_name: praxis_worker
+    # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
+    # without bound on a single-VPS deployment whose disk is itself unmonitored
+    # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
+    # standby and worker down together. Capped here. Shipping logs off-box is
+    # the other half and stays tracked as OBS-L7.
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
     # OBS-A4 (2026-08-04): no service declared a restart policy, so a crashed
     # container stayed down until a human noticed — and nothing notified anyone
     # (OBS-A1). This also pairs with the uncaughtException change in server.js:

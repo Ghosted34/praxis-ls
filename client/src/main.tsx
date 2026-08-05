@@ -5,6 +5,7 @@ import { AuthProvider } from "@/app/auth/auth-context";
 import { BrandingProvider } from "@/app/branding/branding-context";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { initThemeMode } from "@/lib/theme-mode";
+import { installGlobalErrorReporting } from "@/lib/error-reporting";
 import { initDensity } from "@/lib/density";
 import { queryClient } from "@/lib/query-client";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -17,6 +18,13 @@ import { App } from "@/app/app";
 // offline, which the Google-Fonts link could not do (audit F17).
 import "@fontsource-variable/inter";
 import "./index.css";
+import { clearChunkReloadFlag } from "@/lib/chunk-reload";
+
+// OBS-E2: window 'error' and 'unhandledrejection' — the two failure modes React
+// never sees (event handlers, timers, un-awaited promises). Installed FIRST so a
+// throw during module evaluation or boot is still captured; that is the case
+// that produces a white screen with nothing in any log.
+installGlobalErrorReporting();
 
 // Apply the saved light/dark/system preference before first paint.
 initThemeMode();
@@ -57,6 +65,12 @@ initDensity();
 // The pre-boot bar has done its job the moment the shell can draw its own.
 // Removed rather than hidden so assistive technology never finds two title bars.
 document.getElementById("pre-boot-titlebar")?.remove();
+
+// The app is loading, so whatever stale build a previous session recovered from
+// is behind us. Cleared here rather than inside the recovery itself: leaving the
+// flag set would mean the NEXT deploy's stale chunk goes straight to the error
+// screen, having "already retried" in a session that succeeded hours ago.
+clearChunkReloadFlag();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

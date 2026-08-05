@@ -2,11 +2,26 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 
 const crud = makeRepo({
+  // SEC H3. This is the table the audit's attack scenario names. PATCH
+  // /sessions/:id reached updateOne against user_session with an unfiltered
+  // body, so MOD-67 `edit` could clear killed_at — resurrecting an
+  // administrator session security staff believed they had terminated — or
+  // repoint user_id to hijack one.
+  //
+  // A session is CREATED by logging in and ENDED through the revoke endpoint.
+  // Nothing about it is legitimately editable by a request body except the
+  // label a user gives their device.
+  writable: ["device_label"],
   table: "user_session",
   pk: "session_id",
   activeColumn: null,
   searchColumn: null,
   orderBy: "created_at DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 /** "Everyone... only their own sessions" (RBAC journey doc, Stop 1/22) —

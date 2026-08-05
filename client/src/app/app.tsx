@@ -9,6 +9,7 @@ import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
 import { UserAppearanceSync } from "@/app/branding/user-appearance-sync";
 import { Spinner } from "@/components/ui/states";
+import { withChunkReload } from "@/lib/chunk-reload";
 
 /**
  * ROUTE-LEVEL CODE SPLITTING (audit F16 / Phase 4 — "62 routes in one entry
@@ -41,7 +42,10 @@ function lazyNamed<K extends string, M extends { [P in K]: ComponentType }>(
   load: () => Promise<M>,
   name: K,
 ) {
-  return lazy(() => load().then((m) => ({ default: m[name] })));
+  // Wrapped so a chunk that no longer exists — the normal state of any tab that
+  // was open across a deploy — reloads to the current build instead of showing
+  // "This screen couldn't be displayed". See lib/chunk-reload.ts.
+  return lazy(withChunkReload(() => load().then((m) => ({ default: m[name] }))));
 }
 
 const ResetPasswordPage = lazyNamed(() => import("@/features/auth/reset-password-page"), "ResetPasswordPage");

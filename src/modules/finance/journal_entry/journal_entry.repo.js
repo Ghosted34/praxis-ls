@@ -7,7 +7,7 @@
  */
 "use strict";
 
-const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
 
 async function getJournal(client, { journalId, journalCode, entityId }) {
   if (journalId) {
@@ -50,13 +50,9 @@ function insertLine(client, data) {
 }
 
 async function setStatus(client, entryId, patch) {
-  const keys = Object.keys(patch);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE journal_entry SET " + set + " WHERE entry_id = $1 RETURNING *",
-    [entryId, ...keys.map((k) => patch[k])],
-  );
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "journal_entry", "entry_id", entryId, patch, "*", null);
 }
 
 const getEntry = (client, id) => getById(client, "journal_entry", "entry_id", id);

@@ -16,7 +16,7 @@ router.use(authMiddleware);
 
 router.get("/", requirePermission(M, "view"), controller.list);
 router.get("/expiring", requirePermission(M, "view"), controller.expiring);
-router.post("/scan", requirePermission(M, "edit"), controller.scan);
+router.post("/scan", requirePermission(M, "edit"), validator.scan, controller.scan);
 router.post("/", requirePermission(M, "create"), validator.create, controller.create);
 router.get("/:id", requirePermission(M, "view"), controller.get);
 router.patch("/:id", requirePermission(M, "edit"), validator.update, controller.update);

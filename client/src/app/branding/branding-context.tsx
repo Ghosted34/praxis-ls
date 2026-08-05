@@ -202,6 +202,12 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
     return () => observer.disconnect();
   }, [pwa]);
 
+  // PERF S14: the provider value is memoised deliberately. An inline object
+  // literal is a NEW context identity on every render, so every consumer in the
+  // tree re-renders whether or not anything changed — and with no React.memo
+  // across the component set there is nothing to arrest the cascade. Every
+  // setter below is a stable useCallback so this identity changes only when the
+  // branding, appearance or PWA state actually does.
   const value = React.useMemo(
     () => ({ branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig }),
     [branding, setBranding, userAppearance, setUserAppearance, ready, pwa, pwaConfig, setPwaConfig],

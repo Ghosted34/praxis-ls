@@ -11,6 +11,7 @@
 
 const { Queue } = require("bullmq");
 const { getClient } = require("../config/redis");
+const requestContext = require("../config/request-context");
 
 const queues = new Map();
 
@@ -26,7 +27,17 @@ function getQueue(name) {
  * trimmed history). Callers can override via `opts`.
  */
 async function enqueue(name, jobName, data, opts = {}) {
-  return getQueue(name).add(jobName, data, {
+  // OBS-T3: the API → BullMQ → worker → handler chain carried no trace
+  // identity, so a failed job could not be traced back to the user action that
+  // enqueued it. Stamp the ambient context onto the payload; workers.js
+  // restores it into AsyncLocalStorage, so the job's log lines carry the same
+  // tenant, user and request_id as the request that created it.
+  const ctx = requestContext.get();
+  const withCtx = ctx
+    ? { ...data, __ctx: { tenant: ctx.tenant || null, user_id: ctx.userId || null, request_id: ctx.requestId || null } }
+    : data;
+
+  return getQueue(name).add(jobName, withCtx, {
     attempts: 5,
     backoff: { type: "exponential", delay: 5000 },
     removeOnComplete: 1000,

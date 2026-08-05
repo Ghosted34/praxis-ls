@@ -75,7 +75,7 @@ function initRateLimitStore() {
   } catch (err) {
     storeKind = "memory";
     logger.warn(
-      { err: err.message },
+      { err },
       "rate-limit store falling back to in-memory — limits are PER PROCESS, so " +
         "a multi-container deploy enforces N times the configured maximum",
     );

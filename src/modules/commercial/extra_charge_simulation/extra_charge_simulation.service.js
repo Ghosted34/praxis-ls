@@ -10,7 +10,7 @@ const repo = require("./extra_charge_simulation.repo");
 const events = require("./extra_charge_simulation.events");
 const { computeDemurrage, daysBetween } = require("./extra_charge_simulation.rules");
 const { getSetting } = require("../../../shared/config/settings");
-const { audit } = require("../../../shared/events/emit");
+const { audit, resolveActorId } = require("../../../shared/events/emit");
 
 const ref = (id) => "extra_charge_simulation:" + id;
 
@@ -45,7 +45,7 @@ async function create(client, body, actor = {}) {
       dossier_id: body.dossier_id || null, shipping_line: body.shipping_line || null,
       container_variant: body.container_variant || null, free_days: computed.free_days,
       out_of_port_on: body.out_of_port_on || null, computed_charges: JSON.stringify(computed.breakdown),
-      total_amount: computed.total_amount, currency: body.currency || "XAF", created_by: actor.user_id || null,
+      total_amount: computed.total_amount, currency: body.currency || "XAF", created_by: await resolveActorId(client, actor.user_id),
     });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(sim.extra_charge_simulation_id), after: { total: computed.total_amount, days: computed.chargeable_days } });
     await client.query("COMMIT");

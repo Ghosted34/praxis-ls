@@ -25,12 +25,10 @@
  */
 import * as React from "react";
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, within } from "@testing-library/react";
+import { within } from "@testing-library/react";
 import { axe } from "jest-axe";
-import { MemoryRouter } from "react-router-dom";
-import { TooltipProvider } from "@/components/ui/tooltip";
 
-import { apiClientMock, authContextMock } from "@/test/screen-harness";
+import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harness";
 
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
@@ -89,19 +87,27 @@ beforeAll(() => {
   });
 });
 
-/** `main.tsx` mounts TooltipProvider above the shell, and the shell now uses it
- *  — the icon rail's labels and the ribbon's pin control are tooltips, because
- *  neither has room for visible text. Mirroring the real root here rather than
- *  giving the shell its own nested provider: the shell should not have to carry
- *  a provider so that a test can render it. */
+/**
+ * `renderScreen`, not a hand-rolled `render(<MemoryRouter>…)`.
+ *
+ * A router alone is not enough to mount AppShell. `useUnreadCounts` calls
+ * `useQueryClient()`, which throws "No QueryClient set, use QueryClientProvider
+ * to set one" — and it throws during render, so all six tests in this file died
+ * before asserting anything about the strip.
+ *
+ * The harness exists for precisely this and its own comment predicted it: it
+ * mounts THE APP'S ROOT PROVIDERS — QueryClient, Toast, Tooltip, router — after
+ * the journal-entry form lost four assertions to a missing ToastProvider. A
+ * shell is the component most likely to reach for any of them, so anything that
+ * renders one should go through the harness rather than assemble a subset of it
+ * and discover which piece is missing one hook at a time.
+ *
+ * The api-client fake is already installed at module level above; with no
+ * fixtures declared, `resolveFixture` answers every path with `[]`, so the
+ * unread-count queries resolve empty and the strip renders its default state.
+ */
 function renderShell() {
-  return render(
-    <TooltipProvider>
-      <MemoryRouter>
-        <AppShell />
-      </MemoryRouter>
-    </TooltipProvider>,
-  );
+  return renderScreen(<AppShell />);
 }
 
 describe("title bar strip", () => {
@@ -162,7 +168,7 @@ describe("title bar strip", () => {
     expect(strip.getByRole("button", { name: /search/i })).toBeInTheDocument();
   });
 
-  it("mounts the icon rail beside the content, not inside the strip", async () => {
+  it("mounts the icon rail beside the content, not inside the strip", () => {
     // The rail is app-level chrome with its own contents; nesting it in the
     // title bar would make it read as part of the window furniture and would
     // put it inside the drag region.

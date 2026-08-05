@@ -93,6 +93,50 @@ function initSocket(httpServer) {
     return null;
   }
   io = new Server(httpServer, { cors: { origin: corsOrigin, credentials: true } });
+
+  /**
+   * PERF S12. Attach the Redis adapter so `publish()` reaches every replica.
+   *
+   * `config/redis.js` documents "Pub/Sub coordination across Socket.io workers
+   * (redis adapter)" and creates the publisher/subscriber pair for it. No
+   * adapter was ever attached. Only mail-bus.js used the publisher.
+   *
+   * Without it `io.to(room).emit(...)` reaches only sockets connected to THIS
+   * Node process. That is invisible on a single replica and becomes a silent
+   * correctness failure the moment there are two: a Smart Comms message is
+   * delivered to the subset of recipients who happen to be on the sending
+   * process, with no error anywhere.
+   *
+   * Which matters now specifically because the PERF S1 fix makes running more
+   * replicas the answer to the tenant ceiling — so the change that relieves one
+   * problem would have quietly created this one.
+   *
+   * DEDICATED pub/sub connections, not the shared client: a connection in
+   * subscriber mode can issue nothing but (P)SUBSCRIBE/UNSUBSCRIBE, so handing
+   * the adapter a shared socket would break every other user of it. Same reason
+   * as S11, different symptom.
+   *
+   * Degrades rather than fails: if the adapter package is absent, realtime
+   * keeps working per-process and says so loudly, because a warning beats a
+   * chat feature that will not start.
+   */
+  try {
+    // eslint-disable-next-line global-require
+    const { createAdapter } = require("@socket.io/redis-adapter");
+    // eslint-disable-next-line global-require
+    const { createConnection } = require("../config/redis");
+    const pub = createConnection("socketio:pub");
+    const sub = createConnection("socketio:sub");
+    io.adapter(createAdapter(pub, sub));
+    logger.info("socket.io redis adapter attached — realtime is cross-process");
+  } catch (err) {
+    logger.warn(
+      { err },
+      "socket.io redis adapter NOT attached — realtime events reach only this process; " +
+        "install @socket.io/redis-adapter before running more than one API replica (PERF S12)",
+    );
+  }
+
   io.use(authenticate);
 
   io.on("connection", (socket) => {
@@ -145,7 +189,7 @@ function attachMailBridge(attempt = 0) {
   }
   // eslint-disable-next-line global-require
   const { CHANNEL } = require("./mail-bus");
-  subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err: err.message }, "[mail-bus] subscribe failed"));
+  subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err }, "[mail-bus] subscribe failed"));
   subscriber.on("message", (channel, message) => {
     if (channel !== CHANNEL || !io) return;
     try {

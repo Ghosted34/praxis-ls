@@ -6,20 +6,19 @@
 "use strict";
 
 const { z } = require("zod");
-const { passthrough } = require("../../../shared/http/validate");
+const { passthrough, body: validateBody } = require("../../../shared/http/validate");
 
-function zValidate(schema) {
-  return (req, res, next) => {
-    const parsed = schema.safeParse(req.body);
-    if (!parsed.success) {
-      return res.status(422).json({
-        error: { code: "VALIDATION_FAILED", message: "Invalid request body", details: parsed.error.flatten().fieldErrors },
-      });
-    }
-    req.body = parsed.data;
-    return next();
-  };
-}
+/**
+ * API F-2. This used to answer `VALIDATION_FAILED` + `details` and bypass the
+ * error handler entirely — so these responses also had no `request_id`, which
+ * is F-3. Every auth endpoint in the product went through it, meaning the FIRST
+ * endpoints any integrator touches taught them the wrong contract.
+ *
+ * Delegating to the shared kit fixes both: `VALIDATION_ERROR` + `fields` (with
+ * `details` still emitted as a deprecated alias by the error handler), and a
+ * `request_id` on the response because it now travels through `next(err)`.
+ */
+const zValidate = (schema) => validateBody(schema);
 
 // `keep_signed_in` MUST be declared: zValidate replaces req.body with the
 // parsed object and z.object() strips unknown keys, so an undeclared flag is

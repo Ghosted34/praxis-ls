@@ -12,9 +12,14 @@ const ne = require("../../src/shared/notifications/notify-events");
 
 const client = {};
 
+// PERF S5 replaced the per-recipient `notify` loop with ONE batched
+// `notifyMany` call, and this file was never updated — it kept asserting
+// `service.notify`, which the code no longer calls. Under the auto-mock that
+// made `onEvent` return undefined and the assertions fail against `undefined`
+// rather than against a wrong value, so it read like a product bug.
 beforeEach(() => {
   repo.recipientsWithPermission.mockReset();
-  service.notify.mockReset().mockResolvedValue({ notification_id: "n" });
+  service.notifyMany.mockReset().mockImplementation(async (c, ids) => (ids || []).length);
 });
 
 test("allowlisted finance event notifies module permission-holders (view), excluding the actor", async () => {
@@ -25,16 +30,19 @@ test("allowlisted finance event notifies module permission-holders (view), exclu
   });
   expect(sent).toBe(2);
   expect(repo.recipientsWithPermission).toHaveBeenCalledWith(client, "MOD-51", "view");
-  expect(service.notify.mock.calls.map((c) => c[1].userId)).toEqual(["fin1", "fin2"]);
-  expect(service.notify.mock.calls[0][1]).toMatchObject({ category: "finance", title: "Payment received" });
-  expect(service.notify.mock.calls[0][1].body).toMatch(/250,000 XAF/);
+  // ONE batched call, and the actor is excluded from its recipient list —
+  // "do not tell me about my own action" is this fan-out's rule.
+  expect(service.notifyMany).toHaveBeenCalledTimes(1);
+  expect(service.notifyMany.mock.calls[0][1]).toEqual(["fin1", "fin2"]);
+  expect(service.notifyMany.mock.calls[0][2]).toMatchObject({ category: "finance", title: "Payment received" });
+  expect(service.notifyMany.mock.calls[0][2].body).toMatch(/250,000 XAF/);
 });
 
 test("non-allowlisted event is a no-op (no query, no notify)", async () => {
   const sent = await ne.onEvent(client, { eventTypeKey: "attendance.clocked_in", moduleKey: "MOD-70", entityRef: "att:1" });
   expect(sent).toBe(0);
   expect(repo.recipientsWithPermission).not.toHaveBeenCalled();
-  expect(service.notify).not.toHaveBeenCalled();
+  expect(service.notifyMany).not.toHaveBeenCalled();
 });
 
 test("missing module key is a no-op", async () => {
@@ -44,6 +52,6 @@ test("missing module key is a no-op", async () => {
 
 test("is best-effort: a producer failure is swallowed", async () => {
   repo.recipientsWithPermission.mockResolvedValue(["fin1"]);
-  service.notify.mockRejectedValue(new Error("boom"));
+  service.notifyMany.mockRejectedValue(new Error("boom"));
   await expect(ne.onEvent(client, { eventTypeKey: "invoice.posted", moduleKey: "MOD-51", entityRef: "invoice:1" })).resolves.toBe(0);
 });

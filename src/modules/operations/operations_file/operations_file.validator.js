@@ -5,6 +5,11 @@ const create = z.object({
   entity_id: z.string().uuid(),
   client_id: z.string().uuid().optional(),
   service_type_id: z.string().uuid().optional(),
+  // The human label for the job, as opposed to `ref` (the allocated number).
+  // Added with migration 0508: both places that open a dossier from a won
+  // opportunity have always passed `opportunity.name` here, against a column
+  // that did not exist. Optional — a dossier created directly may have none.
+  title: z.string().trim().min(1).max(200).optional(),
   incoterm: z.string().optional(), bl_mawb: z.string().optional(),
   // pol/pod stay free text (display snapshot + the path old dossiers use);
   // *_place_id is the real reference into geo_place when the user picked one.

@@ -41,7 +41,7 @@ async function withLaneGeometry(client, shipments) {
   try {
     resolved = await geoPlace.resolveMany(client, places);
   } catch (err) {
-    logger.warn({ err: err.message }, "[control-tower] lane geometry unavailable");
+    logger.warn({ err }, "[control-tower] lane geometry unavailable");
     return shipments.map((s) => ({ ...s, coords: null }));
   }
 

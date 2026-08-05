@@ -59,7 +59,7 @@ async function onTaskOpened(client, { entityRef, roleId, amountXaf = null, exclu
     }
     return sent;
   } catch (err) {
-    logger.warn({ err: err.message, entityRef }, "[notify-approvals] onTaskOpened failed");
+    logger.error({ err, entityRef }, "[notify-approvals] onTaskOpened failed");
     return 0;
   }
 }
@@ -82,7 +82,7 @@ async function onOutcome(client, { entityRef, approved, actorUserId = null }) {
     });
     return 1;
   } catch (err) {
-    logger.warn({ err: err.message, entityRef }, "[notify-approvals] onOutcome failed");
+    logger.error({ err, entityRef }, "[notify-approvals] onOutcome failed");
     return 0;
   }
 }

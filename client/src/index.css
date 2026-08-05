@@ -298,6 +298,19 @@
   [data-density="compact"] {
     --rail-w: 46px;
   }
+  /*
+   * The rail's right border, split out because it is part of that sum.
+   *
+   * `--rail-w` is a BORDER-box width (Tailwind's preflight sets `box-sizing:
+   * border-box` on everything), so the rail's buttons centre themselves in
+   * `--rail-w - --rail-border`, half a pixel left of where the full width
+   * suggests. Centring the app mark on the full width put it 0.5px off — small
+   * enough to survive review and be caught only by the browser test, which is
+   * what it caught.
+   */
+  :root {
+    --rail-border: 1px;
+  }
 
   /*
    * The height of a control INSIDE a row — a row-action button, mainly.
@@ -1270,17 +1283,22 @@
  * which is 0 in any window without an overlay, so the mark started flush at the
  * edge with its axis at 10px while the rail's button sat at 26px.
  *
- * DERIVED, NOT MEASURED. Both halves of the sum are variables — the rail's width
- * and the mark's own size, which `AppMark` publishes as `--wco-mark-size` from
- * the same constant it passes to `<AppIcon>`. So resizing either one keeps them
- * aligned, which a hand-tuned `16px` here would not.
+ * DERIVED, NOT MEASURED. Every term is a variable — the rail's width, its right
+ * border, and the mark's own size, which `AppMark` publishes as
+ * `--wco-mark-size` from the same constant it passes to `<AppIcon>`. So resizing
+ * any of them keeps the two aligned, which a hand-tuned `16px` would not.
+ *
+ * THE BORDER IS IN THE SUM because `--rail-w` is a border-box width: the rail's
+ * buttons centre in `--rail-w - --rail-border`, so centring on the full width
+ * lands half a pixel right of them. That was the first version of this rule, and
+ * it took the browser test to see it.
  *
  * Only at `md` and up, because that is where the rail exists. Below it the strip
  * leads with the hamburger and there is nothing underneath to align to.
  */
 @media (min-width: 768px) {
   .wco-mark {
-    margin-left: calc((var(--rail-w) - var(--wco-mark-size)) / 2);
+    margin-left: calc((var(--rail-w) - var(--rail-border) - var(--wco-mark-size)) / 2);
   }
 }
 
@@ -1536,7 +1554,7 @@
     gap: 2px;
     padding: 8px 0;
     background: var(--card);
-    border-right: 1px solid var(--border);
+    border-right: var(--rail-border) solid var(--border);
     overflow-y: auto;
     overscroll-behavior: contain;
   }

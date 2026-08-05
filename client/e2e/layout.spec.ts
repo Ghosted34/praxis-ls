@@ -135,8 +135,12 @@ test.describe("the ribbon's chrome budget", () => {
    * unit test can therefore only pin that the component publishes its size. The
    * sum itself is measurable here and nowhere else.
    *
-   * Half a pixel of tolerance for sub-pixel rounding; anything that has actually
-   * drifted is off by whole pixels.
+   * TOLERANCE IS 0.05px, NOT HALF A PIXEL. The first version of the CSS centred
+   * the mark on `--rail-w` and forgot that it is a BORDER-box width — the rail's
+   * buttons centre in `--rail-w - --rail-border`, so the mark landed exactly
+   * 0.5px right of the Home button. A half-pixel tolerance is the one figure
+   * that would have called that alignment good. Both boxes are fixed sizes with
+   * no text in them, so the honest expectation is equality.
    */
   test("the title bar's app mark is centred on the rail below it", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
@@ -148,7 +152,7 @@ test.describe("the ribbon's chrome budget", () => {
     expect(homeBox, "the rail should carry a Control Tower button").not.toBeNull();
 
     const centre = (b: { x: number; width: number }) => b.x + b.width / 2;
-    expect(centre(markBox!)).toBeCloseTo(centre(homeBox!), 0);
+    expect(centre(markBox!)).toBeCloseTo(centre(homeBox!), 1);
   });
 
   /**

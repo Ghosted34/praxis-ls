@@ -7,6 +7,7 @@
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
+import { Link } from "react-router-dom";
 import { useBranding } from "@/app/branding/branding-context";
 import { saveBranding, type Branding } from "@/lib/branding";
 import { ApiError } from "@/lib/api-client";
@@ -157,6 +158,17 @@ export function AppearancePage() {
             <ImageField label="Alt logo (for light/dark)" value={logoAltUrl} onChange={setLogoAltUrl} />
             <ImageField label="Favicon" value={faviconUrl} onChange={setFaviconUrl} shape="square" />
           </div>
+          {/* The home-screen icon lives on its own screen, and someone looking
+              for it will look here first. Say where it is rather than letting
+              them settle for the sidebar logo — which is the wrong shape for a
+              circular crop and is only the FALLBACK for the app icon. */}
+          <p className="mt-3 text-[11px] text-muted-foreground">
+            Installing the app on a phone or desktop uses a separate square icon —{" "}
+            <Link to="/settings/pwa" className="font-medium text-primary-ink hover:underline">
+              App &amp; PWA
+            </Link>
+            . Leave it unset and it falls back to the logo above.
+          </p>
         </SettingsCard>
 
         <SettingsCard title="Typography & shape" desc="Font families (CSS names) and corner radius.">

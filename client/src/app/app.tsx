@@ -82,6 +82,7 @@ const ApprovalsPage = lazyNamed(() => import("@/features/governance/approvals"),
 // Settings leaf editors.
 const AppearancePage = lazyNamed(() => import("@/features/settings/appearance-page"), "AppearancePage");
 const LoginEditor = lazyNamed(() => import("@/features/settings/login-editor"), "LoginEditor");
+const PwaPage = lazyNamed(() => import("@/features/settings/pwa-page"), "PwaPage");
 const TemplateStudioPage = lazyNamed(() => import("@/features/settings/document-templates-page"), "TemplateStudioPage");
 const ModuleCataloguePage = lazyNamed(() => import("@/features/settings/catalogue-page"), "ModuleCataloguePage");
 const PaymentGatewaysPage = lazyNamed(() => import("@/features/settings/payment-gateways"), "PaymentGatewaysPage");
@@ -217,6 +218,7 @@ export function App() {
             that editor instead. Redirect keeps old links + the Settings hub card working. */}
         <Route path="settings/business-setup" element={<Navigate to="/master/corporate-entities" replace />} />
         <Route path="settings/login" element={<LoginEditor />} />
+        <Route path="settings/pwa" element={<PwaPage />} />
         <Route path="settings/business-policies" element={<BusinessPoliciesPage />} />
         <Route path="settings/payment-gateways" element={<PaymentGatewaysPage />} />
         <Route path="settings/custom-fields" element={<CustomFieldsPage />} />

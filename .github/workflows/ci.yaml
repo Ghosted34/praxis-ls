@@ -196,7 +196,12 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:16
+        # pgvector, not stock postgres:16. platform/0040_ai_knowledge.sql does
+        # `CREATE EXTENSION vector` for the AI knowledge embeddings, and the
+        # stock image does not ship it — the job failed at the FIRST platform
+        # migration with `extension "vector" is not available`, so it had never
+        # actually exercised anything.
+        image: pgvector/pgvector:pg16
         env:
           POSTGRES_USER: praxis-admin
           POSTGRES_PASSWORD: ci-only-not-a-secret
@@ -670,6 +675,13 @@ jobs:
           # access/refresh secrets, and an ENCRYPTION_KEY that is valid hex but
           # is NOT the dev default the guard rejects. Nothing here decrypts
           # anything real; the container never reaches a database.
+          #
+          # DB_PASSWORD is in the list because the guard grew a
+          # `!DB_PASSWORD -> DB_PASSWORD_empty` check after this step was
+          # written, and the step was never updated — so the smoke test failed
+          # on the guard rather than on the image. A non-empty value is all it
+          # wants; liveness (/api/health) touches no dependency, so nothing
+          # connects anywhere.
           docker run -d --name praxis-ci \
             -e NODE_ENV=production \
             -e LOG_LEVEL=warn \
@@ -677,6 +689,7 @@ jobs:
             -e JWT_ACCESS_SECRET=ci_access_a1b2c3d4e5f6a7b8c9d0e1f2 \
             -e JWT_REFRESH_SECRET=ci_refresh_9f8e7d6c5b4a39281706f5e4 \
             -e ENCRYPTION_KEY=7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520 \
+            -e DB_PASSWORD=ci-only-not-a-secret \
             -p 8080:8080 praxis-ls:ci
 
           for i in $(seq 1 30); do

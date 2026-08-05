@@ -30,5 +30,5 @@
 -- ============================================================================
 
 INSERT INTO platform.module_catalogue (module_key, group_key, name, sort_order, is_core) VALUES
- ('MOD-72','comms','Mail & Correspondence',130,false)
+ ('MOD-72','monitor','Mail & Correspondence',130,false)
 ON CONFLICT (module_key) DO NOTHING;

@@ -36,6 +36,36 @@ async function listAll(client) {
   return rows;
 }
 
+
+/**
+ * The module keys the CALLER can see, for the navigation shell.
+ *
+ * SELF-SCOPED, AND THAT IS THE WHOLE POINT. Every other read in this module is
+ * MOD-67 (IAM) gated, because seeing the grant matrix means seeing what everyone
+ * else can do. This one answers only "what can I see", which the caller already
+ * learns by clicking around — so gating it on IAM would mean nobody but an
+ * administrator could render a navigation menu.
+ *
+ * `can_read` alone, deliberately: the shell decides whether to SHOW a
+ * destination, not whether a write will be allowed. A user with create-but-not-
+ * read on a module has a broken grant, and hiding it is the right reading.
+ *
+ * Returns bare keys rather than the full row. The matrix is roles × 76 modules
+ * × 5 flags; the shell needs a set of strings, and sending the rest would ship
+ * the tenant's whole authorisation model to the browser to render a menu.
+ */
+async function visibleModuleKeys(client, roleIds) {
+  if (!roleIds || roleIds.length === 0) return [];
+  const { rows } = await client.query(
+    `SELECT DISTINCT module_key
+       FROM permission
+      WHERE role_id = ANY($1::uuid[]) AND can_read
+      ORDER BY module_key`,
+    [roleIds],
+  );
+  return rows.map((r) => r.module_key);
+}
+
 /**
  * Upsert a grant by its natural key (role_id, module_key) — the grant-matrix
  * edits by role×module, not by permission_id. Relies on the table's
@@ -57,4 +87,4 @@ async function upsertGrant(client, g) {
   return rows[0];
 }
 
-module.exports = { ...base, listAll, upsertGrant };
+module.exports = { ...base, listAll, upsertGrant, visibleModuleKeys };

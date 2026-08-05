@@ -15,6 +15,18 @@ const MODULE = "MOD-67";
 const router = express.Router();
 router.use(authMiddleware);
 
+/**
+ * What the CALLER can see — the navigation shell's source of truth.
+ *
+ * NOT MOD-67 GATED, and that is deliberate. Every other read here exposes what
+ * OTHER people can do, which is administrator business. This one answers only
+ * "what may I see", which the caller discovers anyway by using the app — so
+ * gating it on IAM would mean nobody but an administrator could render a menu.
+ * Before "/" so it is not taken as a paginated list, and before "/:id" so the
+ * word is not swallowed as an id.
+ */
+router.get("/mine", controller.mine);
+
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 // The full grant set for the matrix editor. GET / is paginated at 50 rows, which
 // is fewer than the default seed writes — an editor loading through it can't see

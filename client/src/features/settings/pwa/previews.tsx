@@ -20,6 +20,8 @@
 import * as React from "react";
 import { iconLayout, resolveTitlebar, type EffectivePwa } from "@/lib/pwa-config";
 import { contrast, parseHex } from "@/lib/theme";
+import { readWcoState, type WcoState } from "@/lib/wco";
+import { Callout } from "@/components/ui/callout";
 import { cn } from "@/lib/cn";
 
 export type MaskShape = "circle" | "squircle" | "rounded";
@@ -276,5 +278,65 @@ export function MaskLegend() {
       Android launchers crop to their own shape — a circle on Pixel, a squircle on Samsung, a rounded square
       elsewhere. iOS uses the plain icon and rounds it itself.
     </p>
+  );
+}
+
+/**
+ * Live report on whether the overlay is actually active, on THIS window.
+ *
+ * Added after a real failure: the title bar was configured correctly, the
+ * manifest was correct, and the installed app still showed Chrome's own title
+ * bar above the app's — with nothing anywhere saying so. Because the shell is
+ * designed to degrade silently (`env(titlebar-area-*)` with fallbacks), a
+ * failed overlay looks exactly like a working ordinary bar, and the only way to
+ * tell was to notice two title bars stacked and start uninstalling things.
+ *
+ * Each state names the next action, because "not active" on its own sends
+ * someone back around the same loop.
+ */
+export function TitleBarStatus() {
+  const [state, setState] = React.useState<WcoState>(() => readWcoState());
+
+  React.useEffect(() => {
+    // `geometrychange` fires when the overlay appears, disappears or resizes —
+    // so this stays correct if the window is restored, snapped or moved between
+    // displays rather than reporting whatever was true at mount.
+    const wco = (navigator as Navigator & { windowControlsOverlay?: { addEventListener: (t: "geometrychange", f: () => void) => void; removeEventListener: (t: "geometrychange", f: () => void) => void } }).windowControlsOverlay;
+    const onChange = () => setState(readWcoState());
+    wco?.addEventListener("geometrychange", onChange);
+    return () => wco?.removeEventListener("geometrychange", onChange);
+  }, []);
+
+  const REPORT: Record<WcoState, { tone: "ok" | "info" | "warn"; title: string; detail: string }> = {
+    active: {
+      tone: "ok",
+      title: "Active in this window.",
+      detail: "The app is drawing its own title bar — what you see at the top of this window is the design below.",
+    },
+    windowed: {
+      tone: "info",
+      title: "You're in a browser tab.",
+      detail:
+        "There is no title bar to take over here, so this row renders as the app's ordinary utility bar. Install the app to see the real thing.",
+    },
+    unsupported: {
+      tone: "info",
+      title: "Not supported by this browser.",
+      detail:
+        "Window Controls Overlay is desktop Chromium only — Chrome, Edge, Brave. Everywhere else the app keeps its normal header, and the colour below tints the browser or status bar instead.",
+    },
+    inactive: {
+      tone: "warn",
+      title: "Installed, but the overlay is off.",
+      detail:
+        "The app is running as a window and this browser supports the overlay, but the operating system is still drawing its own title bar — so you are seeing two. That means the INSTALLED copy of the manifest has no window-controls-overlay in it. Two things cause it: the app was installed before the setting existed and the browser has not refreshed the manifest yet, or it was added with \u201cCreate shortcut\u201d rather than installed as an app. Check chrome://web-app-internals, find this app, and look at display_override.",
+    },
+  };
+
+  const r = REPORT[state];
+  return (
+    <Callout tone={r.tone} title={r.title}>
+      {r.detail}
+    </Callout>
   );
 }

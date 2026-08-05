@@ -32,8 +32,8 @@ import { AREAS, areaRoute, sectionRoute, type Area, type AreaSection } from "./a
 import { moduleForRoute } from "@/app/screen-registry";
 import type { NavAccess } from "@/lib/nav-access";
 import {
-  AREA_ICON, CommsIcon, GovernanceIcon, HrIcon, MasterIcon, OperationsIcon, SalesIcon, SettingsIcon,
-  TowerIcon, VaultIcon, type IP,
+  AREA_ICON, CommsIcon, GodModeIcon, HrIcon, MasterIcon, OperationsIcon, PaletteIcon, SalesIcon,
+  SettingsIcon, SupportIcon, TowerIcon, VaultIcon, WorkspaceIcon, type IP,
 } from "./nav-icons";
 import type * as React from "react";
 
@@ -63,18 +63,29 @@ export const FAMILY_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   configure: SettingsIcon,
 };
 
-/** Fallback glyphs for areas whose label is not in AREA_ICON. */
+/**
+ * Glyphs for areas whose label is not a key in AREA_ICON.
+ *
+ * EVERY ONE IS DISTINCT, and that is a requirement rather than a nicety: the
+ * icon rail is icons ONLY, with the label behind a hover, so two areas drawn
+ * with the same glyph are two rail entries a user cannot tell apart without
+ * pointing at each in turn. The first version of this map had Control Tower and
+ * My workspace both on `TowerIcon`, and God mode, AI Control and Settings all on
+ * `SettingsIcon` — four of the five sat in the rail's default set.
+ * `ribbon-model.test.ts` pins uniqueness so the next area added cannot
+ * reintroduce it.
+ */
 const EXTRA_AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   "Control Tower": TowerIcon,
-  "My workspace": AREA_ICON.Overview,
+  "My workspace": WorkspaceIcon,
   "Smart Comms": CommsIcon,
-  "Support & feedback": GovernanceIcon,
+  "Support & feedback": SupportIcon,
   "Vault & compliance": VaultIcon,
   "Security & access": AREA_ICON["Security & Access"],
   "Settings & admin": SettingsIcon,
   "Master data": MasterIcon,
-  "God mode": SettingsIcon,
-  "AI Control": SettingsIcon,
+  "God mode": GodModeIcon,
+  "AI Control": PaletteIcon,
 };
 
 export const iconForArea = (label: string): ((p: IP) => React.JSX.Element) =>

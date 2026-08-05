@@ -19,7 +19,10 @@
  * correction, and it is not optional going forward.
  */
 import { test, expect } from "@playwright/test";
-import { openScreen, contentWidth, hasHorizontalScroll, DESKTOP_WIDTHS, type Density } from "./fixtures";
+import {
+  openScreen, contentWidth, hasHorizontalScroll, railWidth, ribbonHeight,
+  DESKTOP_WIDTHS, RAIL_PX, type Density,
+} from "./fixtures";
 
 /** Density → row height. Mirrors DENSITY_ROW_PX in src/lib/density.ts. */
 const ROW_PX = { compact: 28, default: 32, comfortable: 40 } as const;
@@ -42,10 +45,18 @@ test.describe("desktop layout", () => {
        * Before Phase 1 this number was 1152 at every width; after Phase 1 it was
        * 1664 from 1920 upward, which is why 1920 and 2560 rendered identically
        * and why Addenda 6 and 7 both left the 2560 case open.
+       *
+       * `RAIL_PX` joined the sum when the icon rail shipped: the rail is an
+       * in-flow column beside the content, so it is width the screen does not
+       * get. It is written as a term rather than folded into `shellPadding`
+       * because it is a different KIND of thing — padding is the screen's own
+       * breathing room and can be tuned per width, the rail is a fixed piece of
+       * chrome — and because the next person to read a failure here needs to
+       * see which one moved.
        */
       expect(column).toBeGreaterThan(0);
       expect(column).toBeLessThanOrEqual(cap);
-      expect(column).toBeCloseTo(Math.min(cap, width - shellPadding), -1);
+      expect(column).toBeCloseTo(Math.min(cap, width - RAIL_PX - shellPadding), -1);
 
       // A content column wider than its viewport is the failure this hides.
       expect(await hasHorizontalScroll(page)).toBe(false);
@@ -74,6 +85,100 @@ test.describe("desktop layout", () => {
     const at2560 = await contentWidth(page);
 
     expect(at2560).toBeGreaterThan(at1920);
+  });
+});
+
+/**
+ * THE CHROME BUDGET. The ribbon replaced a 52px nav row with two rows, so the
+ * question "how much of the window is furniture now" is the one a reviewer asks
+ * first — and it is not answerable from a unit test, because jsdom has no
+ * layout engine and the height comes from CSS the tests never load.
+ *
+ * The budget is ~96px at the default density, and it must TRACK the density
+ * preference: someone who asked for compact rows did not ask for compact rows
+ * under a fat header. That coupling is one `[data-density] .ribbon` rule away
+ * from silently not applying, which is exactly the shape of the defect that let
+ * `--row-py` look correct for two phases while the rendered row was 49px.
+ */
+test.describe("the ribbon's chrome budget", () => {
+  /** Two rows of `--ribbon-row-h`, plus the hairline between them and under. */
+  const BUDGET = { compact: 82, default: 94, comfortable: 110 } as const;
+
+  for (const [density, height] of Object.entries(BUDGET)) {
+    test(`${density} chrome is ${height}px, following the density preference`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i, density as Density);
+
+      const measured = await ribbonHeight(page);
+      expect(measured, "the ribbon did not render — is /permissions/mine mocked?").toBeGreaterThan(0);
+      expect(Math.abs(measured - height), `${density} chrome was ${measured}px`).toBeLessThanOrEqual(2);
+    });
+  }
+
+  test("the rail is exactly the width the column assertions subtract", async ({ page }) => {
+    // Without this, widening the rail would quietly narrow every table while
+    // the column assertions kept passing — they subtract a constant, and this
+    // is what holds the constant to what actually renders.
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+    expect(await railWidth(page)).toBe(RAIL_PX);
+  });
+
+  /**
+   * ROW B REVEALS PROGRESSIVELY, and this is the only place that can be
+   * checked. The row hides its tail with `hidden` / `2xl:inline-flex`, which
+   * jsdom cannot evaluate — it applies no media queries and loads no
+   * stylesheet — so a unit test sees ten links at every width and is satisfied.
+   *
+   * It shipped broken for exactly that reason: `.ribbon-item` sets
+   * `display: inline-flex` and was written as plain CSS after the utilities, so
+   * it beat `hidden` on source order and all ten of Finance's sections rendered
+   * at 1280px. The failure was a crowded row, not an error, and the only thing
+   * that would ever have caught it is a browser.
+   */
+  test("row B sheds its tail at narrow widths and shows it at wide ones", async ({ page }) => {
+    const shown = async (width: number) => {
+      await page.setViewportSize({ width, height: 900 });
+      await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+      return page.evaluate(() => {
+        const nav = document.querySelector("nav[aria-label$='sections']");
+        return Array.from(nav?.querySelectorAll("a") ?? []).filter(
+          (a) => a.getBoundingClientRect().width > 0,
+        ).length;
+      });
+    };
+
+    // Finance has ten sections — more than fit at any width, which is why the
+    // overflow menu beside the row carries all ten regardless.
+    const narrow = await shown(1280);
+    const wide = await shown(1920);
+
+    expect(narrow).toBeGreaterThan(0);
+    expect(narrow, "nothing was hidden at 1280 — is .ribbon-item beating `hidden`?").toBeLessThan(10);
+    expect(wide, "a wider window showed no more than a narrow one").toBeGreaterThan(narrow);
+
+    // Whatever is hidden is still one click away, at every width.
+    await expect(page.getByRole("button", { name: /All Finance destinations/i })).toBeVisible();
+  });
+
+  test("the hub draws no tab strip of its own on a desktop", async ({ page }) => {
+    /*
+     * The whole point of the ribbon: its second row IS the hub's tab strip, so
+     * the page must not draw a second one. Three bands of navigation before the
+     * first row of data is what this replaced, and a `md:hidden` that gets
+     * dropped in a refactor puts the third band straight back — visible only in
+     * a browser, because jsdom applies no media queries.
+     */
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+
+    const stripsInPage = await page.evaluate(
+      () => document.querySelectorAll("main [role='tablist']").length,
+    );
+    expect(stripsInPage).toBe(0);
+
+    // …and the destinations it used to carry are in the chrome instead.
+    await expect(page.getByRole("navigation", { name: /Finance sections/i })).toBeVisible();
   });
 });
 

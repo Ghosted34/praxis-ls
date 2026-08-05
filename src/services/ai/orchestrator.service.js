@@ -14,6 +14,7 @@ const governance = require("../../modules/ai/governance/governance.service");
 const convo = require("../../modules/ai/assistant/assistant.repo");
 const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
+const actionAuthz = require("./action-authz");
 
 /**
  * How many past turns are replayed to the model. Stored history is unbounded —
@@ -65,7 +66,7 @@ const history_ = {
         summary: state.summary || null,
       };
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation history unavailable");
+      logger.warn({ err }, "[ai] conversation history unavailable");
       return { conversationId: conversationId || null, turns: [], summary: null };
     }
   },
@@ -75,7 +76,7 @@ const history_ = {
       await convo.addMessage(client, { conversationId, role: "user", content: question });
       if (answer) await convo.addMessage(client, { conversationId, role: "assistant", content: answer });
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation turn not persisted");
+      logger.warn({ err }, "[ai] conversation turn not persisted");
     }
   },
 
@@ -137,7 +138,7 @@ const history_ = {
       // so the spend dashboard can show what summarisation costs.
       await recordUsage(client, { user, conversationId, res, feature, callType: "summary" });
     } catch (err) {
-      logger.warn({ err: err.message }, "[ai] conversation summarisation skipped");
+      logger.warn({ err }, "[ai] conversation summarisation skipped");
     }
   },
 };
@@ -343,6 +344,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
       let content;
       try {
+        // SEC H1. `def.required_permission` was selected into the tool list and
+        // never compared against anything. A read action returns tenant data
+        // the caller may hold no grant to see, so it is gated on the same terms
+        // as a write — and the model gets the denial as tool output rather than
+        // an exception, so it can tell the user why instead of the turn dying.
+        // eslint-disable-next-line no-await-in-loop
+        await actionAuthz.assertAllowed(client, user, def);
         const fn = registry[def.action_key];
         const out = fn ? await fn({ client, user, payload }) : { error: "no executor" }; // eslint-disable-line no-await-in-loop
         content = JSON.stringify(out && out.data !== undefined ? out.data : out);
@@ -453,6 +461,21 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
     await client.query("UPDATE ai_action_run SET proposed_payload=$2 WHERE action_run_id=$1", [actionRunId, payload]);
   }
 
+  // SEC H1. THE gap. This ran the executor with the caller's identity and no
+  // permission check whatsoever, so the assistant bypassed the module grant
+  // matrix entirely: draft_supplier_invoice and draft_cash_request were
+  // reachable by a warehouse operator holding only WMS grants.
+  //
+  // Checked HERE, at execution, and not only when the action was proposed — the
+  // two are separated by a human confirmation step, and a user's grants can be
+  // revoked in between. That is the same reason the governance gate above is
+  // re-checked at confirm time.
+  const { rows: defRows } = await client.query(
+    "SELECT action_key, required_permission FROM ai_action_catalogue WHERE action_key=$1",
+    [run.action_key],
+  );
+  await actionAuthz.assertAllowed(client, user, defRows[0] || { action_key: run.action_key, required_permission: null });
+
   const result = await fn({ client, user, payload });
   await client.query(
     "UPDATE ai_action_run SET status='EXECUTED', executed_entity_ref=$2 WHERE action_run_id=$1",
@@ -495,7 +518,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       });
     }
   } catch (err) {
-    logger.warn({ err: err.message, actionRunId }, "[ai] execution note not recorded in conversation");
+    logger.warn({ err, actionRunId }, "[ai] execution note not recorded in conversation");
   }
 
   // Step-by-step narration. After a confirmed action we generate a short message
@@ -526,7 +549,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       if (message) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: message });
     }
   } catch (err) {
-    logger.warn({ err: err.message, actionRunId }, "[ai] post-action narration skipped");
+    logger.warn({ err, actionRunId }, "[ai] post-action narration skipped");
   }
 
   return { ok: true, result, message };
@@ -574,7 +597,7 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
       wasSuccessful: true,
     });
   } catch (err) {
-    logger.warn({ err: err.message }, "ai usage log failed");
+    logger.error({ err }, "ai usage log failed");
   }
 }
 

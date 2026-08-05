@@ -14,7 +14,7 @@ const reportExport = require("./report-export");
 const statements = require("../../finance/financial_statement/financial_statement.service");
 const receivables = require("../../finance/smart_receivables/smart_receivables.service");
 const dossier = require("../../operations/operations_file/operations_file.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { enqueue } = require("../../../jobs/queue-producer");
 const { AppError } = require("../../../utils/errors");
 
@@ -92,7 +92,7 @@ async function createSchedule(client, { input, actor = {} }) {
   const row = await repo.insertScheduled(client, {
     name: input.name, report_key: input.report_key, params: input.params || {},
     cadence: input.cadence, recipients: input.recipients || [], formats: input.formats || ["pdf"],
-    active: input.active !== false, next_run_at: first, created_by: actor.user_id || null });
+    active: input.active !== false, next_run_at: first, created_by: await resolveActorId(client, actor.user_id) });
   await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_SET, moduleKey: events.MODULE, entityRef: "scheduled_report:" + row.scheduled_report_id, after: row });
   return row;
 }

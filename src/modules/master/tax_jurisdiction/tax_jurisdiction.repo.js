@@ -1,6 +1,6 @@
 /** Tax-jurisdiction / tax-code repository (MOD-07). All SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertJur = (client, data) => insertOne(client, "tax_jurisdiction", data);
 const getJur = (client, id) => getById(client, "tax_jurisdiction", "jurisdiction_id", id);
@@ -8,18 +8,16 @@ const insertCode = (client, data) => insertOne(client, "tax_code", data);
 const getCode = (client, id) => getById(client, "tax_code", "tax_code_id", id);
 
 async function updateJur(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getJur(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE tax_jurisdiction SET " + set + " WHERE jurisdiction_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getJur(client, id);
+  return updateOne(client, "tax_jurisdiction", "jurisdiction_id", id, fields, "*", null);
 }
 async function updateCode(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getCode(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE tax_code SET " + set + " WHERE tax_code_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getCode(client, id);
+  return updateOne(client, "tax_code", "tax_code_id", id, fields, "*", null);
 }
 async function codeCount(client, jurisdictionId) {
   const { rows } = await client.query("SELECT COUNT(*)::int AS n FROM tax_code WHERE jurisdiction_id = $1", [jurisdictionId]);

@@ -111,6 +111,60 @@ async function probeRedis() {
   return { status: "up", latency_ms: Date.now() - started };
 }
 
+
+/**
+ * Count permanently-undelivered business events across every active tenant.
+ *
+ * OBS-A6. Best-effort by construction: this walks tenant databases, and a
+ * single unreachable tenant must not make the whole process report unready.
+ * Anything it cannot read is reported as `unknown` rather than silently zero —
+ * a census that quietly returns 0 when it failed is the same class of bug as
+ * the health check that could not fail.
+ */
+async function deadLetterSummary() {
+  try {
+    const registry = require("../services/tenant/registry.service");
+    const { countDeadLetters } = require("../orchestration/dispatcher");
+
+    // listActiveTenants() is the real API and already returns connection metas
+    // in the same shape resolveByHost gives — the shape withTenantConnection
+    // wants. It is what the orchestration fan-out itself uses.
+    const tenants = await withTimeout(
+      registry.listActiveTenants(),
+      PROBE_TIMEOUT_MS,
+      "dead-letter tenant list",
+    );
+
+    let total = 0;
+    const byTenant = {};
+    const unreadable = [];
+
+    for (const meta of tenants) {
+      try {
+         
+        const dl = await withTimeout(
+          registry.withTenantConnection(meta, "live", (c) => countDeadLetters(c)),
+          PROBE_TIMEOUT_MS,
+          `dead-letters:${meta.slug}`,
+        );
+        if (dl.total > 0) byTenant[meta.slug] = dl.total;
+        total += dl.total;
+      } catch {
+        unreadable.push(meta.slug);
+      }
+    }
+
+    return {
+      status: total > 0 ? "degraded" : unreadable.length ? "unknown" : "up",
+      total,
+      ...(Object.keys(byTenant).length ? { by_tenant: byTenant } : {}),
+      ...(unreadable.length ? { unreadable } : {}),
+    };
+  } catch (err) {
+    return { status: "unknown", error: err.message };
+  }
+}
+
 /**
  * LIVENESS — no dependencies, cannot fail while the process is serving.
  * Shape kept backward-compatible: `{ ok, ts }` plus additive fields, so any
@@ -143,7 +197,15 @@ router.get("/health/ready", async (_req, res) => {
   checks.redis =
     redis.status === "fulfilled"
       ? redis.value
-      : { status: "down", error: redis.reason.message };
+      : {
+          status: "down",
+          error: redis.reason.message,
+          // OBS-A3: name what is actually broken. "redis: down" understates it —
+          // with Redis gone, sessions, rate limiting, the identity cache,
+          // socket.io pub-sub and ALL job enqueueing stop working while the API
+          // keeps answering 200s.
+          degrades: ["sessions", "rate_limiting", "identity_cache", "socketio_pubsub", "job_enqueueing"],
+        };
 
   // API F-19: a module whose require() throws is skipped and boot continues, so
   // a process can serve an incomplete API and look perfectly healthy. Surfacing
@@ -159,9 +221,44 @@ router.get("/health/ready", async (_req, res) => {
   // multiplies every configured limit by the container count. Worth seeing.
   checks.rate_limit_store = { status: "up", kind: rateLimitStoreKind() };
 
+  // PERF S1: the tenant connection budget, which used to be invisible until
+  // Postgres started refusing an unrelated tenant with "too many clients
+  // already". `waiting` is the number that matters — anything sustained above
+  // zero means requests are queueing for a connection, which is the shape the
+  // load test showed before the pool cap and per-request pinning went in.
+  try {
+    const p = require("../services/tenant/registry.service").poolStats();
+    checks.tenant_pools = {
+      status: p.waiting > 0 ? "degraded" : "up",
+      pools: p.pools,
+      cap: p.cap,
+      connections: p.connections,
+      idle: p.idle,
+      waiting: p.waiting,
+      // PERF S10: the Host-header cache, which any client can push entries into.
+      host_cache: require("../services/tenant/registry.service").hostCacheStats(),
+    };
+  } catch (err) {
+    checks.tenant_pools = { status: "unknown", error: err.message };
+  }
+
+  // OBS-A6: dead-lettered business events. Reported here as well as by the
+  // worker sweep so the number is available on demand — during an incident you
+  // want to know NOW whether money-path events have been dropped, not at the
+  // next sweep. Counted across the platform's tenants, best-effort: a census
+  // failure must never make the process look unready.
+  checks.dead_letters = await deadLetterSummary();
+
   const fatal = checks.postgres.status === "down";
   const degraded =
-    checks.redis.status === "down" || checks.modules.status === "degraded";
+    checks.redis.status === "down" ||
+    checks.modules.status === "degraded" ||
+    checks.dead_letters.status === "degraded" ||
+    checks.tenant_pools.status === "degraded";
+  // Note that `degraded` still answers 200. Connection queueing must NOT pull
+  // the instance out of the load balancer: shedding an instance because it is
+  // busy sends its traffic to its equally busy siblings, which is how a slow
+  // afternoon becomes an outage. It is reported, not acted on.
 
   res.status(fatal ? 503 : 200).json({
     ok: !fatal,

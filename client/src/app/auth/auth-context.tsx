@@ -154,7 +154,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener(SESSION_ENDED_EVENT, onEnded);
   }, []);
 
-  const login: AuthState["login"] = async (email, password, keepSignedIn = true) => {
+  const login: AuthState["login"] = React.useCallback(async (email, password, keepSignedIn = true) => {
     // Record the persistence choice before any tokens land. It also carries the
     // 2FA path: acceptTokens() runs later in verify2fa() and reads this flag.
     tokenStore.setPersist(keepSignedIn);
@@ -168,9 +168,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     acceptTokens(r);
     return { pending2fa: false };
-  };
+  }, []);
 
-  const verify2fa: AuthState["verify2fa"] = async (code) => {
+  const verify2fa: AuthState["verify2fa"] = React.useCallback(async (code) => {
     if (!pendingToken) throw new Error("No 2FA challenge in progress");
     const r = await tenant<{ access_token: string; refresh_token: string; user: User }>("/auth/2fa/verify", {
       method: "POST",
@@ -180,9 +180,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: { pending_token: pendingToken, code, keep_signed_in: tokenStore.getPersist() },
     });
     acceptTokens(r);
-  };
+    // `pendingToken`, NOT []. This closes over render state: an empty array
+    // captures the value from the first render — `null`, always — so the guard
+    // above would throw on every legitimate challenge, and if it did not, the
+    // request would carry `pending_token: null`. 2FA would simply never
+    // complete. PERF S14's empty arrays are right for the handlers that touch
+    // only setters and module helpers; this is not one of them.
+  }, [pendingToken]);
 
-  const pinLogin: AuthState["pinLogin"] = async (email, pin) => {
+  const pinLogin: AuthState["pinLogin"] = React.useCallback(async (email, pin) => {
     const dev = pinStore.get(email);
     if (!dev) throw new ApiError("NO_PIN_DEVICE", "No Quick PIN is set up on this device for that email.", 400);
     tokenStore.setPersist(true);
@@ -192,18 +198,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       body: { email: email.trim(), device_id: dev.device_id, pin, keep_signed_in: true },
     });
     acceptTokens(r);
-  };
+  }, []);
 
-  const registerPin: AuthState["registerPin"] = async (pin, label = null) => {
+  const registerPin: AuthState["registerPin"] = React.useCallback(async (pin, label = null) => {
     const r = await tenant<{ device_id: string; label?: string | null }>("/auth/pin/register", {
       method: "POST",
       body: { pin, label },
     });
     if (user) pinStore.set(user.email, { device_id: r.device_id, label: r.label ?? label });
     return { device_id: r.device_id };
-  };
+    // `user`, NOT [] — same reason as verify2fa. On the first render `user` is
+    // null, so an empty array makes the `if (user)` branch permanently false:
+    // the server registers the PIN device and the browser never records it, so
+    // the next PIN login fails with NO_PIN_DEVICE against a device that exists.
+    // Silent, and only on the happy path.
+  }, [user]);
 
-  const logout: AuthState["logout"] = async () => {
+  const logout: AuthState["logout"] = React.useCallback(async () => {
     try {
       await tenant("/auth/logout", { method: "POST" });
     } catch {
@@ -222,21 +233,51 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
     setUser(null);
     setStatus("anon");
-  };
+  }, []);
 
-  const patchUser = (partial: Partial<User>) =>
+  const patchUser = React.useCallback((partial: Partial<User>) =>
     setUser((u) => {
       if (!u) return u;
       const next = { ...u, ...partial };
       persistUser(next);
       return next;
-    });
+    }), []);
 
-  return (
-    <AuthCtx.Provider value={{ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser }}>
-      {children}
-    </AuthCtx.Provider>
+  /**
+   * PERF S14. This was an inline object literal containing six handlers that
+   * were re-created on every render, so EVERY render of AuthProvider produced a
+   * new context identity and re-rendered every consumer in the tree — and with
+   * zero React.memo across 134 components there was nothing to arrest the
+   * cascade. AuthProvider wraps the whole app, so that is every render of
+   * everything.
+   *
+   * Four of the six are stable (`useCallback` with empty deps — they close only
+   * over stable setters and module-level helpers, and `patchUser` uses the
+   * functional `setUser` form), so the value identity changes only when the auth
+   * state genuinely does.
+   *
+   * TWO ARE NOT, deliberately. `verify2fa` reads `pendingToken` and
+   * `registerPin` reads `user`, so both carry that dependency. A first pass at
+   * S14 gave all six `[]`, which is where this note used to claim all six were
+   * stable — and it was a stale-closure bug in the auth path, not a lint
+   * complaint: both would have captured `null` from the first render forever.
+   * eslint's `exhaustive-deps` caught it. The cost is that those two change
+   * identity when the value they read changes, which is once per sign-in — not
+   * the every-render cascade S14 was about.
+   *
+   * `acceptTokens` is re-created each render and is intentionally NOT a
+   * dependency of the three handlers that call it. It closes over nothing from
+   * render scope — only setters, `tokenStore`, `persistUser` and `tenant` — so
+   * a stale reference behaves identically to a fresh one. Listing it would make
+   * `login`, `verify2fa` and `pinLogin` unstable on every render and undo S14
+   * for no behavioural gain.
+   */
+  const value = React.useMemo(
+    () => ({ user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser }),
+    [user, status, pendingToken, login, verify2fa, pinLogin, registerPin, logout, patchUser],
   );
+
+  return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;
 }
 
 export function useAuth() {

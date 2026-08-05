@@ -17,7 +17,7 @@ jest.mock("../../src/shared/cache/identity-cache", () => ({
   invalidateUser: jest.fn(async () => {}),
   invalidateGrants: jest.fn(async () => {}),
 }));
-jest.mock("../../src/shared/events/emit", () => ({
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null,
   emitEvent: jest.fn(async () => {}),
   audit: jest.fn(async () => {}),
 }));

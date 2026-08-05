@@ -5,7 +5,7 @@ const { AppError } = require("../../utils/errors");
 const check = (schema) => (req, _res, next) => {
   const r = schema.safeParse(req.body);
   if (!r.success) {
-    throw new AppError("VALIDATION_ERROR", "Invalid request body", 400, r.error.flatten().fieldErrors);
+    throw new AppError("VALIDATION_ERROR", "Invalid request body", 422, r.error.flatten().fieldErrors);
   }
   req.body = r.data;
   return next();

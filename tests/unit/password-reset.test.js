@@ -6,7 +6,7 @@
 
 jest.mock("argon2", () => ({ argon2id: 2, hash: jest.fn().mockResolvedValue("argon2-hash"), verify: jest.fn() }));
 jest.mock("../../src/config/logger", () => ({ logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn() } }));
-jest.mock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn(), audit: jest.fn() }));
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: jest.fn(), audit: jest.fn() }));
 jest.mock("../../src/services/email.service", () => ({ send: jest.fn().mockResolvedValue({}) }));
 jest.mock("../../src/shared/cache/identity-cache", () => ({ invalidateUser: jest.fn() }));
 jest.mock("../../src/shared/cache/session-store", () => ({ removeSession: jest.fn(), indexSession: jest.fn() }));

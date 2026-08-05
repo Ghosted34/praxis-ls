@@ -36,7 +36,7 @@ async function embedBatch(client, texts) {
     );
     return (data.data || []).map((d) => d.embedding);
   } catch (err) {
-    logger.warn({ err: err.message }, "embeddings call failed -> skipping vectors");
+    logger.warn({ err }, "embeddings call failed -> skipping vectors");
     return [];
   }
 }

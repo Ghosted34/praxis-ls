@@ -16,6 +16,11 @@ const base = makeRepo({
   activeColumn: "is_active",
   searchColumn: "name_fr",
   orderBy: "name_fr ASC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at", "name_fr", "is_active"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 async function list(client, q = {}) {

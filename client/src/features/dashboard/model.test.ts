@@ -54,7 +54,25 @@ describe("toLiveShipment", () => {
     origin: "Shanghai",
     destination: "Douala",
     vessel_flight: "Maersk Cotonou",
-    eta: "2026-07-04T23:00:00.000Z",
+    // MIDDAY UTC, deliberately. This was 23:00Z, one hour from the date
+    // boundary, and `dateFmt` renders with `toLocaleDateString` and no
+    // `timeZone` — i.e. in the VIEWER's zone. So the assertion below only held
+    // at UTC: in Douala (WAT, UTC+1) 23:00Z on the 4th is 00:00 on the 5th, and
+    // the test failed "expected '05 Jul 2026' to be '04 Jul 2026'" for every
+    // developer on the team while passing on the UTC CI runner.
+    //
+    // Midday is the most boundary-distant instant there is, so this is robust
+    // if the TZ pin is ever removed — though NOT universally: at UTC+14
+    // (Kiritimati) 12:00Z is already the 5th, and no UTC hour survives every
+    // offset from -12 to +14. The pin is what makes this deterministic; midday
+    // just widens the margin.
+    //
+    // The off-by-one it was tripping over is REAL and is not fixed here: `eta`
+    // is a Postgres `date`, serialised to a UTC instant at the API's local
+    // midnight and then formatted in the browser's zone, so any viewer in a
+    // different zone from the API can see the wrong day. Recorded as NEW-11
+    // rather than papered over with a fixture change.
+    eta: "2026-07-04T12:00:00.000Z",
     service_key: "SEA_FREIGHT_IMPORT",
     current_milestone: "Costing approval",
     progress: 55,

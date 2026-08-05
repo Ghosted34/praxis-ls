@@ -1,6 +1,7 @@
 "use strict";
 const { makeService } = require("../../../shared/crud/resource");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { atomically } = require("../../../shared/db/tx");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./inventory.repo");
 const events = require("./inventory.events");
@@ -35,28 +36,67 @@ module.exports = {
     return row;
   },
 
+  /**
+   * Apply a signed stock delta. ATOMIC and LOCKED (audit DATA 5.1, Critical).
+   *
+   * What this used to be: a plain SELECT, a quantity computed in JavaScript, an
+   * UPDATE writing the ABSOLUTE value, then insertMovement, emitEvent and audit
+   * — five statements, each autocommitting independently because the controller
+   * calls through req.tenantDb with no wrapper. Three distinct failures:
+   *
+   *   1. LOST UPDATE. Two concurrent moves both read qty = 10; one wrote 5, the
+   *      other wrote 7. Final answer 7 instead of 2 — silent, and undetectable
+   *      afterwards because both movement rows were written.
+   *   2. The negative-stock guard was racy with no database backstop. Two
+   *      concurrent -6 moves against qty = 10 both passed.
+   *   3. Balance and journal diverged PERMANENTLY. If insertMovement failed the
+   *      quantity change was already committed, and because qty_on_hand is an
+   *      absolute value rather than a derived sum there is no way to detect or
+   *      reconstruct it.
+   *
+   * Three changes, each covering a different failure:
+   *   · one transaction (shared/db/tx.js) so balance + movement + event + audit
+   *     are a single unit — and nested calls join it rather than committing it
+   *   · SELECT … FOR UPDATE so concurrent moves on one item serialise
+   *   · the delta applied IN SQL with `WHERE qty_on_hand + $2 >= 0`, so the
+   *     floor is enforced by the database against the row it holds, not by a
+   *     check that ran before the lock
+   *
+   * Migration 0497 adds CHECK (qty_on_hand >= 0) as the last line of defence.
+   */
   async move(client, { id, movement_kind, qty, from_location, to_location, actor }) {
-    const before = await repo.findById(client, id);
-    if (!before) return null;
     const delta = Number(qty);
-    const newQty = Number(before.qty_on_hand) + delta;
-    if (newQty < 0) {
-      throw new AppError("NEGATIVE_STOCK", `Move would drive qty below zero (${before.qty_on_hand} + ${delta})`, 422);
-    }
-    const patch = { qty_on_hand: newQty, updated_at: new Date() };
-    if (to_location) patch.location_id = to_location;
-    const row = await repo.update(client, id, patch);
-    await repo.insertMovement(client, {
-      inventory_item_id: id,
-      movement_kind,
-      qty: delta,
-      from_location: from_location || before.location_id || null,
-      to_location: to_location || null,
-      moved_by: actor.user_id,
+    return atomically(client, async () => {
+      const before = await repo.findByIdForUpdate(client, id);
+      if (!before) return null;
+
+      const row = await repo.applyDelta(client, id, delta, {
+        location_id: to_location || undefined,
+      });
+      if (!row) {
+        // Zero rows matched: the `qty_on_hand + delta >= 0` guard rejected it.
+        // Reported with the balance the DATABASE held under lock, not the one
+        // we read before it. Throwing rolls the transaction back.
+        throw new AppError(
+          "NEGATIVE_STOCK",
+          `Move would drive qty below zero (${before.qty_on_hand} + ${delta})`,
+          422,
+        );
+      }
+
+      await repo.insertMovement(client, {
+        inventory_item_id: id,
+        movement_kind,
+        qty: delta,
+        from_location: from_location || before.location_id || null,
+        to_location: to_location || null,
+        moved_by: await resolveActorId(client, actor.user_id),
+      });
+      const entityRef = `inventory:${id}`;
+      await emitEvent(client, { eventTypeKey: events.MOVED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id });
+      await audit(client, { actorUserId: actor.user_id, action: events.MOVED, moduleKey: events.MODULE, entityRef, before, after: row });
+
+      return row;
     });
-    const entityRef = `inventory:${id}`;
-    await emitEvent(client, { eventTypeKey: events.MOVED, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id });
-    await audit(client, { actorUserId: actor.user_id, action: events.MOVED, moduleKey: events.MODULE, entityRef, before, after: row });
-    return row;
   },
 };

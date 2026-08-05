@@ -1,7 +1,13 @@
 "use strict";
+
+const { listComplete } = require("../../../shared/db/query-helpers");
 const { makeRepo } = require("../../../shared/crud/resource");
 
 const base = makeRepo({
+  // SEC H3. The grant matrix. PUT /permissions/grant is validated properly now
+  // (permission.validator), but the generic CRUD create/update on the same
+  // table still went through passthrough — a second door to the same rows.
+  writable: ["role_id", "module_key", "can_create", "can_read", "can_update", "can_delete", "can_approve"],
   table: "permission",
   pk: "permission_id",
   activeColumn: null,
@@ -9,6 +15,11 @@ const base = makeRepo({
   // The permission table has no created_at/updated_at — order by its real
   // columns (was "created_at DESC", which 500'd GET /permissions).
   orderBy: "role_id, module_key",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 /**
@@ -30,9 +41,7 @@ const base = makeRepo({
  * paginated `list()` stays for any other caller.
  */
 async function listAll(client) {
-  const { rows } = await client.query(
-    "SELECT * FROM permission ORDER BY role_id, module_key",
-  );
+  const { rows } = await listComplete(client, "SELECT * FROM permission ORDER BY role_id, module_key", [], { label: "The permission grant matrix", ceiling: 20000 });
   return rows;
 }
 

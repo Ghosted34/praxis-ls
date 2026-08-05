@@ -94,12 +94,42 @@ async function applyTracked(cli, fileList, opts) {
     const prefixed = searchPath
       ? `SET search_path = ${searchPath};\n${sql}`
       : sql;
+    // DATA 3.1: the DDL and the ledger row must commit together.
+    //
+    // These used to be two separate statements. A multi-statement simple query
+    // is its own implicit transaction, so the FILE was atomic — but the INSERT
+    // that records it was a second round-trip. Lose the connection, the pod, or
+    // the deploy between the two and the schema change is applied while the
+    // ledger says it is not. The next run re-applies it: fine for
+    // `CREATE TABLE IF NOT EXISTS`, silently destructive for an `ALTER ... ADD
+    // COLUMN` with a default backfill, an `UPDATE`, or a seed INSERT.
+    //
+    // One explicit transaction closes the window. Nothing is lost by wrapping:
+    // the file was already running inside an implicit transaction block, so any
+    // statement that cannot run in one (CREATE INDEX CONCURRENTLY, VACUUM,
+    // CREATE DATABASE) could never have run here anyway — verified, none of the
+    // 99 migration files in the repository uses one.
+    //
+    // The SET search_path is inside the transaction deliberately: it must not
+    // leak to the next file, and ROLLBACK reverts it.
     try {
-      await cli.query(prefixed);
-      await cli.query(
-        "INSERT INTO public.schema_migration(scope, filename) VALUES ($1,$2)",
-        [scope, name],
-      );
+      await cli.query("BEGIN");
+      try {
+        await cli.query(prefixed);
+        await cli.query(
+          "INSERT INTO public.schema_migration(scope, filename) VALUES ($1,$2)",
+          [scope, name],
+        );
+        await cli.query("COMMIT");
+      } catch (err) {
+        // A failed ROLLBACK must never mask the error that caused it.
+        try {
+          await cli.query("ROLLBACK");
+        } catch {
+          /* connection already gone; the original error is the useful one */
+        }
+        throw err;
+      }
       applied += 1;
       logger.debug({ file: name, scope }, "applied migration");
     } catch (err) {

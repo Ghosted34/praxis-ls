@@ -1,0 +1,369 @@
+-- 0500 — Index the foreign keys. 290 of 344 had none.
+--
+-- Audit DATA 2.2 (High). Derived by parsing the DDL: 344 foreign keys across
+-- the tenant schema, 54 whose referencing column already leads an index (a
+-- primary key, a unique, or an explicit index), 290 with nothing.
+--
+-- WHY AN UNINDEXED FK COSTS MORE THAN A SLOW JOIN
+--
+--   1. Every DELETE or UPDATE of a parent key makes Postgres check each child
+--      table for referencing rows. With no index that is a SEQUENTIAL SCAN of
+--      the child, per parent row. 0498 just changed nine of these to RESTRICT,
+--      which makes the check happen on every attempted delete rather than
+--      cascading — so the cost lands more often, not less.
+--
+--   2. The check takes a lock while it scans. On a large child table that turns
+--      a routine parent delete into a visible stall.
+--
+--   3. Every "show me the children of this parent" query — which is most of the
+--      detail views in the product — is a full scan of the child table.
+--
+-- Same reasoning as 0496 (created_at): plain
+
+-- ── 2026-08-05: made SELF-GUARDING, same reason as 0496 ─────────────────────
+--
+-- This list was derived by parsing the DDL, and 0496 proved that premise wrong
+-- on a live tenant: the migration files and the real schema have drifted
+-- (DATA 3.3), so a column a migration declares may simply not be there. The
+-- migrator sends the file as ONE implicit transaction, so a single missing
+-- column rolls back all 290 indexes and wedges the tenant behind this file.
+--
+-- Safe to edit in place ONLY because a failed file writes no ledger row —
+-- see the note in 0496.
+--
+-- ROLLBACK: DROP INDEX IF EXISTS <name>; for each pair below.
+
+DO $$
+DECLARE
+  spec    text[];
+  specs   text[][] := ARRAY[
+    ARRAY['idx_access_review_completed_by', 'access_review', 'completed_by'],
+    ARRAY['idx_access_review_created_by', 'access_review', 'created_by'],
+    ARRAY['idx_access_review_entry_decided_by', 'access_review_entry', 'decided_by'],
+    ARRAY['idx_access_review_entry_user_id', 'access_review_entry', 'user_id'],
+    ARRAY['idx_advance_client_id', 'advance', 'client_id'],
+    ARRAY['idx_advance_dossier_id', 'advance', 'dossier_id'],
+    ARRAY['idx_advance_entry_id', 'advance', 'entry_id'],
+    ARRAY['idx_ai_access_grant_feature_key', 'ai_access_grant', 'feature_key'],
+    ARRAY['idx_ai_access_grant_granted_by', 'ai_access_grant', 'granted_by'],
+    ARRAY['idx_ai_action_run_action_key', 'ai_action_run', 'action_key'],
+    ARRAY['idx_ai_action_run_conversation_id', 'ai_action_run', 'conversation_id'],
+    ARRAY['idx_ai_action_run_user_id', 'ai_action_run', 'user_id'],
+    ARRAY['idx_ai_budget_period_set_by', 'ai_budget_period', 'set_by'],
+    ARRAY['idx_ai_conversation_user_id', 'ai_conversation', 'user_id'],
+    ARRAY['idx_ai_document_dossier_id', 'ai_document', 'dossier_id'],
+    ARRAY['idx_ai_feature_flag_last_changed_by', 'ai_feature_flag', 'last_changed_by'],
+    ARRAY['idx_ai_message_conversation_id', 'ai_message', 'conversation_id'],
+    ARRAY['idx_ai_usage_ledger_period_id', 'ai_usage_ledger', 'period_id'],
+    ARRAY['idx_ai_usage_ledger_user_id', 'ai_usage_ledger', 'user_id'],
+    ARRAY['idx_ai_vendor_credential_last_rotated_by', 'ai_vendor_credential', 'last_rotated_by'],
+    ARRAY['idx_app_user_employee_id', 'app_user', 'employee_id'],
+    ARRAY['idx_appraisal_employee_id', 'appraisal', 'employee_id'],
+    ARRAY['idx_appraisal_kpi_target_id', 'appraisal', 'kpi_target_id'],
+    ARRAY['idx_appraisal_rated_by', 'appraisal', 'rated_by'],
+    ARRAY['idx_approval_task_acted_by', 'approval_task', 'acted_by'],
+    ARRAY['idx_approval_task_assigned_user_id', 'approval_task', 'assigned_user_id'],
+    ARRAY['idx_approval_task_workflow_id', 'approval_task', 'workflow_id'],
+    ARRAY['idx_approval_task_workflow_step_id', 'approval_task', 'workflow_step_id'],
+    ARRAY['idx_approval_token_approval_task_id', 'approval_token', 'approval_task_id'],
+    ARRAY['idx_approval_token_execution_card_id', 'approval_token', 'execution_card_id'],
+    ARRAY['idx_asset_coa_asset_code', 'asset', 'coa_asset_code'],
+    ARRAY['idx_asset_coa_depr_code', 'asset', 'coa_depr_code'],
+    ARRAY['idx_asset_entity_id', 'asset', 'entity_id'],
+    ARRAY['idx_attendance_log_employee_id', 'attendance_log', 'employee_id'],
+    ARRAY['idx_cash_request_approver_id', 'cash_request', 'approver_id'],
+    ARRAY['idx_cash_request_costing_id', 'cash_request', 'costing_id'],
+    ARRAY['idx_cash_request_dossier_id', 'cash_request', 'dossier_id'],
+    ARRAY['idx_cash_request_regie_advance_id', 'cash_request', 'regie_advance_id'],
+    ARRAY['idx_cash_request_requested_by', 'cash_request', 'requested_by'],
+    ARRAY['idx_cash_request_line_cash_request_id', 'cash_request_line', 'cash_request_id'],
+    ARRAY['idx_cash_request_line_dictionary_item_id', 'cash_request_line', 'dictionary_item_id'],
+    ARRAY['idx_cash_request_line_proof_vault_id', 'cash_request_line', 'proof_vault_id'],
+    ARRAY['idx_cash_request_payment_cash_request_id', 'cash_request_payment', 'cash_request_id'],
+    ARRAY['idx_cash_request_payment_entry_id', 'cash_request_payment', 'entry_id'],
+    ARRAY['idx_cash_request_payment_treasury_account_id', 'cash_request_payment', 'treasury_account_id'],
+    ARRAY['idx_chart_of_accounts_entity_id', 'chart_of_accounts', 'entity_id'],
+    ARRAY['idx_client_master_client_type_id', 'client_master', 'client_type_id'],
+    ARRAY['idx_client_master_entity_id', 'client_master', 'entity_id'],
+    ARRAY['idx_close_checklist_done_by', 'close_checklist', 'done_by'],
+    ARRAY['idx_comms_attachment_message_id', 'comms_attachment', 'message_id'],
+    ARRAY['idx_comms_attachment_vault_id', 'comms_attachment', 'vault_id'],
+    ARRAY['idx_comms_draft_group_id', 'comms_draft', 'group_id'],
+    ARRAY['idx_comms_draft_user_id', 'comms_draft', 'user_id'],
+    ARRAY['idx_comms_group_dossier_id', 'comms_group', 'dossier_id'],
+    ARRAY['idx_comms_member_group_id', 'comms_member', 'group_id'],
+    ARRAY['idx_comms_member_user_id', 'comms_member', 'user_id'],
+    ARRAY['idx_comms_message_media_vault_id', 'comms_message', 'media_vault_id'],
+    ARRAY['idx_comms_message_sender_user_id', 'comms_message', 'sender_user_id'],
+    ARRAY['idx_comms_quick_reply_owner_user_id', 'comms_quick_reply', 'owner_user_id'],
+    ARRAY['idx_comms_reaction_message_id', 'comms_reaction', 'message_id'],
+    ARRAY['idx_comms_reaction_user_id', 'comms_reaction', 'user_id'],
+    ARRAY['idx_comms_star_message_id', 'comms_star', 'message_id'],
+    ARRAY['idx_comms_star_user_id', 'comms_star', 'user_id'],
+    ARRAY['idx_contact_enquiry_lead_id', 'contact_enquiry', 'lead_id'],
+    ARRAY['idx_cost_entry_dictionary_item_id', 'cost_entry', 'dictionary_item_id'],
+    ARRAY['idx_cost_entry_dossier_id', 'cost_entry', 'dossier_id'],
+    ARRAY['idx_cost_entry_entry_id', 'cost_entry', 'entry_id'],
+    ARRAY['idx_costing_approver_id', 'costing', 'approver_id'],
+    ARRAY['idx_costing_dossier_id', 'costing', 'dossier_id'],
+    ARRAY['idx_costing_validator_id', 'costing', 'validator_id'],
+    ARRAY['idx_costing_line_costing_id', 'costing_line', 'costing_id'],
+    ARRAY['idx_costing_line_dictionary_item_id', 'costing_line', 'dictionary_item_id'],
+    ARRAY['idx_costing_line_tax_code_id', 'costing_line', 'tax_code_id'],
+    ARRAY['idx_cycle_count_counted_by', 'cycle_count', 'counted_by'],
+    ARRAY['idx_cycle_count_location_id', 'cycle_count', 'location_id'],
+    ARRAY['idx_debt_engagement_coa_code', 'debt_engagement', 'coa_code'],
+    ARRAY['idx_debt_engagement_currency', 'debt_engagement', 'currency'],
+    ARRAY['idx_debt_engagement_dossier_id', 'debt_engagement', 'dossier_id'],
+    ARRAY['idx_debt_engagement_entity_id', 'debt_engagement', 'entity_id'],
+    ARRAY['idx_debt_repayment_debt_engagement_id', 'debt_repayment', 'debt_engagement_id'],
+    ARRAY['idx_debt_repayment_entry_id', 'debt_repayment', 'entry_id'],
+    ARRAY['idx_delivery_note_dossier_id', 'delivery_note', 'dossier_id'],
+    ARRAY['idx_depreciation_schedule_entry_id', 'depreciation_schedule', 'entry_id'],
+    ARRAY['idx_doc_sequence_entity_id', 'doc_sequence', 'entity_id'],
+    ARRAY['idx_document_signature_document_vault_id', 'document_signature', 'document_vault_id'],
+    ARRAY['idx_document_signature_signer_user_id', 'document_signature', 'signer_user_id'],
+    ARRAY['idx_document_vault_verified_by', 'document_vault', 'verified_by'],
+    ARRAY['idx_dossier_client_id', 'dossier', 'client_id'],
+    ARRAY['idx_dossier_entity_id', 'dossier', 'entity_id'],
+    ARRAY['idx_dossier_owner_ops_id', 'dossier', 'owner_ops_id'],
+    ARRAY['idx_dossier_owner_sales_id', 'dossier', 'owner_sales_id'],
+    ARRAY['idx_dossier_service_type_id', 'dossier', 'service_type_id'],
+    ARRAY['idx_driver_license_document_vault_id', 'driver_license', 'document_vault_id'],
+    ARRAY['idx_driver_license_employee_id', 'driver_license', 'employee_id'],
+    ARRAY['idx_email_attachment_vault_id', 'email_attachment', 'vault_id'],
+    ARRAY['idx_email_connection_email_identity_id', 'email_connection', 'email_identity_id'],
+    ARRAY['idx_email_inbound_email_identity_id', 'email_inbound', 'email_identity_id'],
+    ARRAY['idx_email_send_log_document_vault_id', 'email_send_log', 'document_vault_id'],
+    ARRAY['idx_email_send_log_email_identity_id', 'email_send_log', 'email_identity_id'],
+    ARRAY['idx_employee_entity_id', 'employee', 'entity_id'],
+    ARRAY['idx_employee_earning_created_by', 'employee_earning', 'created_by'],
+    ARRAY['idx_employee_earning_employee_id', 'employee_earning', 'employee_id'],
+    ARRAY['idx_employee_earning_payroll_run_id', 'employee_earning', 'payroll_run_id'],
+    ARRAY['idx_event_log_actor_user_id', 'event_log', 'actor_user_id'],
+    ARRAY['idx_execution_card_created_by', 'execution_card', 'created_by'],
+    ARRAY['idx_extra_charge_simulation_created_by', 'extra_charge_simulation', 'created_by'],
+    ARRAY['idx_extra_charge_simulation_currency', 'extra_charge_simulation', 'currency'],
+    ARRAY['idx_extra_charge_simulation_dossier_id', 'extra_charge_simulation', 'dossier_id'],
+    ARRAY['idx_financial_statement_period_id', 'financial_statement', 'period_id'],
+    ARRAY['idx_fleet_claim_fleet_incident_id', 'fleet_claim', 'fleet_incident_id'],
+    ARRAY['idx_fleet_dispatch_dossier_id', 'fleet_dispatch', 'dossier_id'],
+    ARRAY['idx_fleet_dispatch_driver_employee_id', 'fleet_dispatch', 'driver_employee_id'],
+    ARRAY['idx_fleet_dispatch_vehicle_id', 'fleet_dispatch', 'vehicle_id'],
+    ARRAY['idx_fleet_incident_driver_employee_id', 'fleet_incident', 'driver_employee_id'],
+    ARRAY['idx_fleet_incident_vehicle_id', 'fleet_incident', 'vehicle_id'],
+    ARRAY['idx_fuel_log_dossier_id', 'fuel_log', 'dossier_id'],
+    ARRAY['idx_fuel_log_entry_id', 'fuel_log', 'entry_id'],
+    ARRAY['idx_fuel_log_vehicle_id', 'fuel_log', 'vehicle_id'],
+    ARRAY['idx_fx_rate_daily_quote_code', 'fx_rate_daily', 'quote_code'],
+    ARRAY['idx_goods_received_note_entry_id', 'goods_received_note', 'entry_id'],
+    ARRAY['idx_goods_received_note_po_id', 'goods_received_note', 'po_id'],
+    ARRAY['idx_goods_received_note_received_by', 'goods_received_note', 'received_by'],
+    ARRAY['idx_grn_inbound_dossier_id', 'grn_inbound', 'dossier_id'],
+    ARRAY['idx_grn_inbound_putaway_location', 'grn_inbound', 'putaway_location'],
+    ARRAY['idx_hr_contract_approved_by', 'hr_contract', 'approved_by'],
+    ARRAY['idx_hr_contract_employee_id', 'hr_contract', 'employee_id'],
+    ARRAY['idx_hr_contract_pdf_vault_id', 'hr_contract', 'pdf_vault_id'],
+    ARRAY['idx_hr_query_issued_by', 'hr_query', 'issued_by'],
+    ARRAY['idx_hr_sanction_hr_query_id', 'hr_sanction', 'hr_query_id'],
+    ARRAY['idx_hr_sanction_issued_by', 'hr_sanction', 'issued_by'],
+    ARRAY['idx_inventory_item_dossier_id', 'inventory_item', 'dossier_id'],
+    ARRAY['idx_inventory_item_location_id', 'inventory_item', 'location_id'],
+    ARRAY['idx_inventory_item_owner_client_id', 'inventory_item', 'owner_client_id'],
+    ARRAY['idx_invoice_approved_by', 'invoice', 'approved_by'],
+    ARRAY['idx_invoice_entity_id', 'invoice', 'entity_id'],
+    ARRAY['idx_invoice_entry_id', 'invoice', 'entry_id'],
+    ARRAY['idx_invoice_issued_by', 'invoice', 'issued_by'],
+    ARRAY['idx_invoice_validated_by', 'invoice', 'validated_by'],
+    ARRAY['idx_invoice_line_dictionary_item_id', 'invoice_line', 'dictionary_item_id'],
+    ARRAY['idx_invoice_line_tax_code_id', 'invoice_line', 'tax_code_id'],
+    ARRAY['idx_job_applicant_cv_vault_id', 'job_applicant', 'cv_vault_id'],
+    ARRAY['idx_job_applicant_vacancy_id', 'job_applicant', 'vacancy_id'],
+    ARRAY['idx_journal_entry_attested_by', 'journal_entry', 'attested_by'],
+    ARRAY['idx_journal_entry_created_by', 'journal_entry', 'created_by'],
+    ARRAY['idx_journal_entry_entity_id', 'journal_entry', 'entity_id'],
+    ARRAY['idx_journal_line_dictionary_item_id', 'journal_line', 'dictionary_item_id'],
+    ARRAY['idx_journal_line_tax_code_id', 'journal_line', 'tax_code_id'],
+    ARRAY['idx_kpi_target_employee_id', 'kpi_target', 'employee_id'],
+    ARRAY['idx_kpi_target_set_by', 'kpi_target', 'set_by'],
+    ARRAY['idx_lead_client_id', 'lead', 'client_id'],
+    ARRAY['idx_lead_owner_user_id', 'lead', 'owner_user_id'],
+    ARRAY['idx_leave_request_employee_id', 'leave_request', 'employee_id'],
+    ARRAY['idx_margin_simulation_created_by', 'margin_simulation', 'created_by'],
+    ARRAY['idx_margin_simulation_currency', 'margin_simulation', 'currency'],
+    ARRAY['idx_margin_simulation_dossier_id', 'margin_simulation', 'dossier_id'],
+    ARRAY['idx_margin_simulation_service_type_id', 'margin_simulation', 'service_type_id'],
+    ARRAY['idx_margin_simulation_line_dictionary_item_id', 'margin_simulation_line', 'dictionary_item_id'],
+    ARRAY['idx_margin_simulation_line_margin_simulation_id', 'margin_simulation_line', 'margin_simulation_id'],
+    ARRAY['idx_meeting_client_id', 'meeting', 'client_id'],
+    ARRAY['idx_meeting_lead_id', 'meeting', 'lead_id'],
+    ARRAY['idx_meeting_organiser_id', 'meeting', 'organiser_id'],
+    ARRAY['idx_meeting_transcript_vault_id', 'meeting', 'transcript_vault_id'],
+    ARRAY['idx_meeting_note_author_id', 'meeting_note', 'author_id'],
+    ARRAY['idx_meeting_note_meeting_id', 'meeting_note', 'meeting_id'],
+    ARRAY['idx_milestone_instance_completed_by', 'milestone_instance', 'completed_by'],
+    ARRAY['idx_milestone_template_stage_milestone_template_id', 'milestone_template_stage', 'milestone_template_id'],
+    ARRAY['idx_onboarding_checklist_employee_id', 'onboarding_checklist', 'employee_id'],
+    ARRAY['idx_onboarding_item_onboarding_checklist_id', 'onboarding_item', 'onboarding_checklist_id'],
+    ARRAY['idx_opportunity_client_id', 'opportunity', 'client_id'],
+    ARRAY['idx_opportunity_currency', 'opportunity', 'currency'],
+    ARRAY['idx_opportunity_dossier_id', 'opportunity', 'dossier_id'],
+    ARRAY['idx_opportunity_lead_id', 'opportunity', 'lead_id'],
+    ARRAY['idx_opportunity_owner_user_id', 'opportunity', 'owner_user_id'],
+    ARRAY['idx_opportunity_pipeline_stage_id', 'opportunity', 'pipeline_stage_id'],
+    ARRAY['idx_outbound_line_inventory_item_id', 'outbound_line', 'inventory_item_id'],
+    ARRAY['idx_outbound_line_outbound_order_id', 'outbound_line', 'outbound_order_id'],
+    ARRAY['idx_outbound_order_client_id', 'outbound_order', 'client_id'],
+    ARRAY['idx_outbound_order_dossier_id', 'outbound_order', 'dossier_id'],
+    ARRAY['idx_payment_allocation_invoice_id', 'payment_allocation', 'invoice_id'],
+    ARRAY['idx_payment_allocation_receipt_id', 'payment_allocation', 'receipt_id'],
+    ARRAY['idx_payment_gateway_updated_by', 'payment_gateway', 'updated_by'],
+    ARRAY['idx_payment_receipt_client_id', 'payment_receipt', 'client_id'],
+    ARRAY['idx_payment_receipt_entry_id', 'payment_receipt', 'entry_id'],
+    ARRAY['idx_payment_receipt_treasury_account_id', 'payment_receipt', 'treasury_account_id'],
+    ARRAY['idx_payroll_component_coa_code', 'payroll_component', 'coa_code'],
+    ARRAY['idx_payroll_component_tax_code_id', 'payroll_component', 'tax_code_id'],
+    ARRAY['idx_payroll_run_entry_id', 'payroll_run', 'entry_id'],
+    ARRAY['idx_payroll_run_item_employee_id', 'payroll_run_item', 'employee_id'],
+    ARRAY['idx_payroll_run_item_payroll_run_id', 'payroll_run_item', 'payroll_run_id'],
+    ARRAY['idx_portal_access_client_id', 'portal_access', 'client_id'],
+    ARRAY['idx_posting_rule_credit_account', 'posting_rule', 'credit_account'],
+    ARRAY['idx_posting_rule_debit_account', 'posting_rule', 'debit_account'],
+    ARRAY['idx_posting_rule_tax_code_id', 'posting_rule', 'tax_code_id'],
+    ARRAY['idx_pricing_variance_costing_id', 'pricing_variance', 'costing_id'],
+    ARRAY['idx_pricing_variance_dossier_id', 'pricing_variance', 'dossier_id'],
+    ARRAY['idx_pricing_variance_margin_simulation_id', 'pricing_variance', 'margin_simulation_id'],
+    ARRAY['idx_pricing_variance_quotation_id', 'pricing_variance', 'quotation_id'],
+    ARRAY['idx_proposal_client_id', 'proposal', 'client_id'],
+    ARRAY['idx_proposal_lead_id', 'proposal', 'lead_id'],
+    ARRAY['idx_proposal_opportunity_id', 'proposal', 'opportunity_id'],
+    ARRAY['idx_proposal_pdf_vault_id', 'proposal', 'pdf_vault_id'],
+    ARRAY['idx_proposal_reviewed_by', 'proposal', 'reviewed_by'],
+    ARRAY['idx_proposal_line_dictionary_item_id', 'proposal_line', 'dictionary_item_id'],
+    ARRAY['idx_proposal_line_proposal_id', 'proposal_line', 'proposal_id'],
+    ARRAY['idx_proposal_narrative_proposal_id', 'proposal_narrative', 'proposal_id'],
+    ARRAY['idx_purchase_order_approver_id', 'purchase_order', 'approver_id'],
+    ARRAY['idx_purchase_order_dossier_id', 'purchase_order', 'dossier_id'],
+    ARRAY['idx_purchase_order_issuer_id', 'purchase_order', 'issuer_id'],
+    ARRAY['idx_purchase_order_pr_id', 'purchase_order', 'pr_id'],
+    ARRAY['idx_purchase_order_supplier_id', 'purchase_order', 'supplier_id'],
+    ARRAY['idx_purchase_order_item_dictionary_item_id', 'purchase_order_item', 'dictionary_item_id'],
+    ARRAY['idx_purchase_order_item_po_id', 'purchase_order_item', 'po_id'],
+    ARRAY['idx_purchase_request_requested_by', 'purchase_request', 'requested_by'],
+    ARRAY['idx_q_ticket_dossier_id', 'q_ticket', 'dossier_id'],
+    ARRAY['idx_q_ticket_milestone_instance_id', 'q_ticket', 'milestone_instance_id'],
+    ARRAY['idx_quotation_client_id', 'quotation', 'client_id'],
+    ARRAY['idx_quotation_costing_id', 'quotation', 'costing_id'],
+    ARRAY['idx_quotation_currency', 'quotation', 'currency'],
+    ARRAY['idx_quotation_dossier_id', 'quotation', 'dossier_id'],
+    ARRAY['idx_quotation_entity_id', 'quotation', 'entity_id'],
+    ARRAY['idx_quotation_opportunity_id', 'quotation', 'opportunity_id'],
+    ARRAY['idx_quotation_pdf_vault_id', 'quotation', 'pdf_vault_id'],
+    ARRAY['idx_quotation_line_dictionary_item_id', 'quotation_line', 'dictionary_item_id'],
+    ARRAY['idx_quotation_line_quotation_id', 'quotation_line', 'quotation_id'],
+    ARRAY['idx_quotation_line_tax_code_id', 'quotation_line', 'tax_code_id'],
+    ARRAY['idx_regie_advance_holder_user_id', 'regie_advance', 'holder_user_id'],
+    ARRAY['idx_regie_advance_issue_entry_id', 'regie_advance', 'issue_entry_id'],
+    ARRAY['idx_reminder_user_id', 'reminder', 'user_id'],
+    ARRAY['idx_saved_report_owner_user_id', 'saved_report', 'owner_user_id'],
+    ARRAY['idx_scheduled_report_created_by', 'scheduled_report', 'created_by'],
+    ARRAY['idx_scope_parent_scope_id', 'scope', 'parent_scope_id'],
+    ARRAY['idx_setting_updated_by', 'setting', 'updated_by'],
+    ARRAY['idx_soft_delete_deleted_by', 'soft_delete', 'deleted_by'],
+    ARRAY['idx_soft_delete_restore_requested_by', 'soft_delete', 'restore_requested_by'],
+    ARRAY['idx_soft_delete_restored_by', 'soft_delete', 'restored_by'],
+    ARRAY['idx_sop_document_vault_id', 'sop_document', 'vault_id'],
+    ARRAY['idx_stock_movement_from_location', 'stock_movement', 'from_location'],
+    ARRAY['idx_stock_movement_inventory_item_id', 'stock_movement', 'inventory_item_id'],
+    ARRAY['idx_stock_movement_moved_by', 'stock_movement', 'moved_by'],
+    ARRAY['idx_stock_movement_to_location', 'stock_movement', 'to_location'],
+    ARRAY['idx_success_story_dossier_id', 'success_story', 'dossier_id'],
+    ARRAY['idx_success_story_signed_off_by', 'success_story', 'signed_off_by'],
+    ARRAY['idx_succession_plan_incumbent_id', 'succession_plan', 'incumbent_id'],
+    ARRAY['idx_succession_plan_successor_id', 'succession_plan', 'successor_id'],
+    ARRAY['idx_supplier_invoice_currency', 'supplier_invoice', 'currency'],
+    ARRAY['idx_supplier_invoice_dossier_id', 'supplier_invoice', 'dossier_id'],
+    ARRAY['idx_supplier_invoice_entity_id', 'supplier_invoice', 'entity_id'],
+    ARRAY['idx_supplier_invoice_entry_id', 'supplier_invoice', 'entry_id'],
+    ARRAY['idx_supplier_invoice_grn_id', 'supplier_invoice', 'grn_id'],
+    ARRAY['idx_supplier_invoice_po_id', 'supplier_invoice', 'po_id'],
+    ARRAY['idx_supplier_invoice_supplier_id', 'supplier_invoice', 'supplier_id'],
+    ARRAY['idx_supplier_invoice_line_dictionary_item_id', 'supplier_invoice_line', 'dictionary_item_id'],
+    ARRAY['idx_supplier_invoice_line_expense_account', 'supplier_invoice_line', 'expense_account'],
+    ARRAY['idx_supplier_invoice_line_supplier_invoice_id', 'supplier_invoice_line', 'supplier_invoice_id'],
+    ARRAY['idx_supplier_invoice_line_tax_code_id', 'supplier_invoice_line', 'tax_code_id'],
+    ARRAY['idx_supplier_master_entity_id', 'supplier_master', 'entity_id'],
+    ARRAY['idx_talent_pool_applicant_id', 'talent_pool', 'applicant_id'],
+    ARRAY['idx_tax_calendar_entity_id', 'tax_calendar', 'entity_id'],
+    ARRAY['idx_tax_calendar_tax_declaration_id', 'tax_calendar', 'tax_declaration_id'],
+    ARRAY['idx_tax_code_posts_credit_account', 'tax_code', 'posts_credit_account'],
+    ARRAY['idx_tax_code_posts_debit_account', 'tax_code', 'posts_debit_account'],
+    ARRAY['idx_training_attendance_certificate_vault_id', 'training_attendance', 'certificate_vault_id'],
+    ARRAY['idx_training_attendance_employee_id', 'training_attendance', 'employee_id'],
+    ARRAY['idx_training_attendance_training_id', 'training_attendance', 'training_id'],
+    ARRAY['idx_transit_order_dossier_id', 'transit_order', 'dossier_id'],
+    ARRAY['idx_treasury_account_coa_code', 'treasury_account', 'coa_code'],
+    ARRAY['idx_treasury_account_entity_id', 'treasury_account', 'entity_id'],
+    ARRAY['idx_treasury_account_momo_fee_account', 'treasury_account', 'momo_fee_account'],
+    ARRAY['idx_user_capability_capability_id', 'user_capability', 'capability_id'],
+    ARRAY['idx_user_capability_user_id', 'user_capability', 'user_id'],
+    ARRAY['idx_user_role_role_id', 'user_role', 'role_id'],
+    ARRAY['idx_user_role_user_id', 'user_role', 'user_id'],
+    ARRAY['idx_user_scope_scope_id', 'user_scope', 'scope_id'],
+    ARRAY['idx_user_scope_user_id', 'user_scope', 'user_id'],
+    ARRAY['idx_user_session_killed_by', 'user_session', 'killed_by'],
+    ARRAY['idx_vehicle_asset_id', 'vehicle', 'asset_id'],
+    ARRAY['idx_vehicle_entity_id', 'vehicle', 'entity_id'],
+    ARRAY['idx_vehicle_compliance_vehicle_id', 'vehicle_compliance', 'vehicle_id'],
+    ARRAY['idx_wms_equipment_asset_id', 'wms_equipment', 'asset_id'],
+    ARRAY['idx_wms_equipment_assigned_to', 'wms_equipment', 'assigned_to'],
+    ARRAY['idx_wms_equipment_location_id', 'wms_equipment', 'location_id'],
+    ARRAY['idx_work_order_dossier_id', 'work_order', 'dossier_id'],
+    ARRAY['idx_work_order_entry_id', 'work_order', 'entry_id'],
+    ARRAY['idx_work_order_vehicle_id', 'work_order', 'vehicle_id'],
+    ARRAY['idx_work_order_wms_equipment_id', 'work_order', 'wms_equipment_id'],
+    ARRAY['idx_work_order_part_inventory_item_id', 'work_order_part', 'inventory_item_id'],
+    ARRAY['idx_work_order_part_work_order_id', 'work_order_part', 'work_order_id'],
+    ARRAY['idx_workflow_event_type_id', 'workflow', 'event_type_id'],
+    ARRAY['idx_workflow_step_role_id', 'workflow_step', 'role_id'],
+    ARRAY['idx_workflow_step_scope_id', 'workflow_step', 'scope_id']
+  ];
+  made    int := 0;
+  skipped int := 0;
+  missing text[] := ARRAY[]::text[];
+BEGIN
+  FOREACH spec SLICE 1 IN ARRAY specs LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM information_schema.columns
+       WHERE table_schema = current_schema()
+         AND table_name   = spec[2]
+         AND column_name  = spec[3]
+    ) THEN
+      skipped := skipped + 1;
+      missing := missing || (spec[2] || '.' || spec[3]);
+      CONTINUE;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_indexes
+       WHERE schemaname = current_schema() AND indexname = spec[1]
+    ) THEN
+      EXECUTE format('CREATE INDEX %I ON %I.%I (%I)', spec[1], current_schema(), spec[2], spec[3]);
+      made := made + 1;
+    END IF;
+  END LOOP;
+
+  IF skipped > 0 THEN
+    RAISE WARNING '[0500] %: % FK column(s) absent and skipped — MIGRATION FILES AND LIVE SCHEMA HAVE DRIFTED (DATA 3.3): %',
+      current_schema(), skipped, array_to_string(missing, ', ');
+  END IF;
+  RAISE NOTICE '[0500] %: % FK index(es) created, % skipped.', current_schema(), made, skipped;
+END $$;
+
+-- DOWN
+-- Indexes only. Dropping them restores the sequential scans on FK checks that
+-- DATA 2.2 measured; it loses nothing.
+-- DO $$ DECLARE s text[]; BEGIN
+--   FOREACH s SLICE 1 IN ARRAY ARRAY[ARRAY['idx_advance_client_id'] /* … */] LOOP
+--     EXECUTE format('DROP INDEX IF EXISTS %I', s[1]);
+--   END LOOP; END $$;

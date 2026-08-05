@@ -43,7 +43,16 @@ const list = (client, q) => repo.list(client, q);
 async function creditCheck(client, { clientId, additionalAmount = 0 }) {
   const c = await repo.get(client, clientId);
   if (!c) throw new AppError("NOT_FOUND", "Client not found", 404);
-  return { client_id: clientId, kyc_complete: kycComplete(c), ...creditStatus(c, additionalAmount) };
+  // DATA 1.9: derive the real exposure. cached_receivables is written by
+  // nothing and is permanently zero, so this used to report unlimited credit
+  // for every client no matter what they owed.
+  const { outstanding, overdue } = await repo.outstandingFor(client, clientId);
+  return {
+    client_id: clientId,
+    kyc_complete: kycComplete(c),
+    overdue,
+    ...creditStatus(c, additionalAmount, outstanding),
+  };
 }
 
 module.exports = { create, update, get, list, creditCheck };

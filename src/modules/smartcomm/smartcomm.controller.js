@@ -16,7 +16,7 @@ module.exports = {
   createChannel: C((c, req) => service.createChannel(c, { data: req.body, actor: actor(req) })),
   getChannel: A((c, req) => service.getChannel(c, { id: req.params.id, actor: actor(req) })),
   archive: A((c, req) => service.setArchived(c, { id: req.params.id, archived: req.body.archived === true, actor: actor(req) })),
-  members: A((c, req) => service.listMembers(c, { groupId: req.params.id })),
+  members: A((c, req) => service.listMembers(c, { groupId: req.params.id, actor: req.user })),
   addMember: C((c, req) => service.addMember(c, { groupId: req.params.id, userId: req.body.user_id, memberRole: req.body.member_role, actor: actor(req) })),
   removeMember: A((c, req) => service.removeMember(c, { groupId: req.params.id, userId: req.params.userId, actor: actor(req) })),
   pin: A((c, req) => service.setPinned(c, { groupId: req.params.id, pinned: req.body.pinned === true, actor: actor(req) })),

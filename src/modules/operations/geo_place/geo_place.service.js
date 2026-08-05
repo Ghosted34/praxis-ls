@@ -49,7 +49,7 @@ async function resolveMany(client, places, { geocodeMisses = true } = {}) {
   } catch (err) {
     // Table missing (migration 0478 not applied) → degrade to no coordinates
     // rather than 500ing the whole dashboard.
-    logger.warn({ err: err.message }, "[geo_place] cache read failed");
+    logger.warn({ err }, "[geo_place] cache read failed");
     return out;
   }
   const byKey = new Map(cached.map((r) => [r.query_key, r]));
@@ -87,7 +87,7 @@ async function resolveMany(client, places, { geocodeMisses = true } = {}) {
           if (existing) byKey.set(key, existing);
         }
       } catch (err) {
-        logger.warn({ err: err.message, place: original }, "[geo_place] cache write failed");
+        logger.warn({ err, place: original }, "[geo_place] cache write failed");
       }
     }
   }

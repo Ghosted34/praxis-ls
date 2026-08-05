@@ -3,7 +3,7 @@
 "use strict";
 const repo = require("./success_story.repo");
 const events = require("./success_story.events");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const ref = (id) => "success_story:" + id;
 async function create(client, { data, actor = {} }) {
@@ -24,7 +24,7 @@ async function update(client, { id, patch = {}, actor = {} }) {
 async function signOff(client, { id, actor = {} }) {
   const s = await repo.get(client, id);
   if (!s) throw new AppError("NOT_FOUND", "Success story not found", 404);
-  const row = await repo.update(client, id, { signed_off_by: actor.user_id || null });
+  const row = await repo.update(client, id, { signed_off_by: await resolveActorId(client, actor.user_id) });
   await emitEvent(client, { eventTypeKey: events.SIGNED_OFF, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.SIGNED_OFF, moduleKey: events.MODULE, entityRef: ref(id), after: row });
   return row;

@@ -10,16 +10,42 @@
  */
 import { tokenStore } from "./token-store";
 
+/**
+ * Field name -> the message(s) that failed for it.
+ *
+ * `string[]` is what zod's `flatten().fieldErrors` produces and what the server
+ * sends. A bare `string` is admitted because the existing consumers already
+ * handle both (`use-resource.ts`, `form.tsx`), and narrowing the type to
+ * `string[]` alone would make the looser runtime behaviour a compile error
+ * without making anything safer.
+ */
+export type FieldErrors = Record<string, string[] | string>;
+
 export class ApiError extends Error {
   code: string;
   status: number;
+  /**
+   * Per-field validation messages, when the server sent any.
+   *
+   * API F-2. This used to be populated from `error.details`, which the server
+   * emitted in exactly ONE file — the auth validator. Every other route (~700
+   * of them) emits `error.fields`, so `details` was `undefined` and field-level
+   * validation messages NEVER REACHED THE UI anywhere except login. The client
+   * looked correct and silently dropped the useful half of every 422.
+   *
+   * Reads `fields` first now, falling back to `details` so a server that has
+   * not been redeployed yet still works during a rolling deploy.
+   */
+  fields?: FieldErrors;
+  /** @deprecated alias of `fields`; the server will stop sending it. */
   details?: unknown;
-  constructor(code: string, message: string, status: number, details?: unknown) {
+  constructor(code: string, message: string, status: number, fields?: FieldErrors) {
     super(message);
     this.name = "ApiError";
     this.code = code;
     this.status = status;
-    this.details = details;
+    this.fields = fields;
+    this.details = fields;
   }
 }
 
@@ -116,7 +142,22 @@ export async function tryRefresh(): Promise<boolean> {
  * `LIMIT` — null when the endpoint does not report one (most don't). It comes
  * from `X-Total-Count`; see src/shared/http/paged.js on the API side.
  */
-export type Paged<T> = { data: T; total: number | null };
+export type Paged<T> = {
+  data: T;
+  total: number | null;
+  /**
+   * The window this page represents, when the server reported one.
+   *
+   * API F-26. Every list endpoint returned a bare array and `page()` clamps to
+   * 50 rows, so every list screen in the app showed at most the 50 most recent
+   * rows AND PRESENTED THEM AS THE COMPLETE SET — a tenant with 300 clients saw
+   * 50 with no indication of the rest. The server now sends `meta` alongside
+   * `data`; `hasMore` is the flag a list screen needs to stop lying.
+   */
+  limit: number | null;
+  offset: number | null;
+  hasMore: boolean;
+};
 
 /**
  * The full request, returning headers as well as the unwrapped body.
@@ -156,17 +197,33 @@ export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Prom
 
   if (!res.ok) {
     const err = (json && json.error) || {};
-    throw new ApiError(err.code || "ERROR", err.message || res.statusText, res.status, err.details);
+    throw new ApiError(err.code || "ERROR", err.message || res.statusText, res.status, err.fields ?? err.details);
   }
   // Endpoints wrap payloads as { data: ... }; unwrap when present.
   const data = (json && "data" in json ? json.data : json) as T;
 
-  // Absent on most endpoints, and absent CROSS-ORIGIN unless the API lists it
-  // in CORS `exposedHeaders` — in which case this reads null and the caller
+  // API F-26: `meta` in the body is the primary source now. The header is kept
+  // as a fallback because it is absent CROSS-ORIGIN unless the API lists it in
+  // CORS `exposedHeaders`, and because endpoints that do not go through the
+  // shared CRUD kit send neither — in which case `total` is null and the caller
   // falls back to a single page rather than breaking.
+  const meta = (json && json.meta) || null;
   const raw = res.headers.get("X-Total-Count");
   const parsed = raw === null ? NaN : Number(raw);
-  return { data, total: Number.isFinite(parsed) ? parsed : null };
+  const headerTotal = Number.isFinite(parsed) ? parsed : null;
+  const total = typeof meta?.total === "number" ? meta.total : headerTotal;
+
+  return {
+    data,
+    total,
+    limit: typeof meta?.limit === "number" ? meta.limit : null,
+    offset: typeof meta?.offset === "number" ? meta.offset : null,
+    // Only ever true when the server actually said so. Inferring "more" from a
+    // full-looking page would guess wrong on a list whose length happens to
+    // equal the limit, and a pager that offers a next page that does not exist
+    // is worse than no pager.
+    hasMore: meta?.has_more === true,
+  };
 }
 
 export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T> {

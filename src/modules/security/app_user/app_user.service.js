@@ -73,10 +73,33 @@ async function resolveChannels(client) {
   return { comms: await read("comms"), whatsapp: await read("whatsapp"), instagram: await read("instagram") };
 }
 
-function signAccessToken({ userId, jti }) {
-  return jwt.sign({ sub: userId, jti, typ: "access" }, config.JWT_ACCESS_SECRET, {
-    expiresIn: config.JWT_ACCESS_TTL,
-  });
+/**
+ * Access tokens now carry `sid` — the session they belong to.
+ *
+ * Audit SEC-C2 (Critical). Logout is authenticated by the ACCESS token, but the
+ * access token carried only `{ sub, jti }`. The server therefore had no way to
+ * know which session the caller was in, and `logout()` fell back to
+ * `req.body.session_id` — which the client never sends. So logout invalidated
+ * the identity cache, emitted a LOGGED_OUT event, returned
+ * `{ logged_out: true }`, and left the session row alive and the refresh token
+ * valid. Anyone holding that refresh token could mint new access tokens
+ * indefinitely, including after the user had "signed out" on a shared machine.
+ *
+ * Binding the session id into the access token is also the groundwork for
+ * SEC-M1 (access tokens are not session-bound, so revocation does not revoke) —
+ * `authMiddleware` can now check the session on each request once that is taken
+ * on deliberately.
+ *
+ * Backward compatible: tokens issued before this change have no `sid`. They
+ * keep working until they expire (15 minutes), and logout for those callers
+ * degrades to the previous body-parameter behaviour rather than erroring.
+ */
+function signAccessToken({ userId, jti, sessionId }) {
+  return jwt.sign(
+    { sub: userId, jti, sid: sessionId, typ: "access" },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: config.JWT_ACCESS_TTL },
+  );
 }
 
 function signRefreshToken({ userId, sessionId, jti }) {
@@ -108,7 +131,8 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
   await sessionStore.indexSession(sessionId, { userId: user.user_id, ip, userAgent, environment });
 
   const jti = uuid();
-  const accessToken = signAccessToken({ userId: user.user_id, jti });
+  // SEC-C2: bind the access token to its session so logout can revoke it.
+  const accessToken = signAccessToken({ userId: user.user_id, jti, sessionId });
   const refreshJti = uuid();
   const refreshToken = signRefreshToken({ userId: user.user_id, sessionId, jti: refreshJti });
   await repo.setRefreshJti(client, sessionId, refreshJti); // for rotation reuse-detection
@@ -414,7 +438,11 @@ async function refresh(client, { refreshToken }) {
   }
 
   await repo.touchSession(client, payload.sid);
-  const accessToken = signAccessToken({ userId: payload.sub, jti: uuid() });
+  // SEC-C2: carry the session through rotation too. Without this, a client that
+  // has refreshed once holds an access token with no `sid` and logout silently
+  // reverts to revoking nothing — which is the original bug, reintroduced after
+  // fifteen minutes of use.
+  const accessToken = signAccessToken({ userId: payload.sub, jti: uuid(), sessionId: payload.sid });
   // Refresh-token rotation: mint a fresh refresh token (new jti + sliding exp)
   // bound to the SAME session and return it. The client swaps its stored token
   // for this one (already wired FE-side), so each refresh shortens the window in
@@ -478,10 +506,39 @@ async function setAvatar(client, { userId, dataUrl, slug }) {
   return { avatar_url: (row && row.avatar_ref) || stored.public_url };
 }
 
+/**
+ * End the caller's session (audit SEC-C2, Critical).
+ *
+ * What this used to do: take `sessionId` from `req.body.session_id`, which the
+ * client never sends, skip the whole revocation block, and return
+ * `{ logged_out: true }`. The session row stayed alive and the refresh token
+ * stayed valid — so "sign out" on a shared machine ended nothing, and anyone
+ * holding the refresh token kept minting access tokens.
+ *
+ * The session now comes from the ACCESS TOKEN (`sid`), so the caller cannot
+ * fail to supply it and cannot choose someone else's. An explicitly passed
+ * session_id is still honoured for "sign out this other device", but it is
+ * checked against the caller — see the ownership guard below (SEC-M2 notes the
+ * same gap in killSession).
+ */
 async function logout(client, { actor, sessionId }) {
-  if (sessionId) {
-    await repo.killSession(client, sessionId, actor.user_id);
-    await sessionStore.removeSession(sessionId, actor.user_id);
+  // Prefer the session bound to the presented token. Fall back to an explicit
+  // id only when the token predates SEC-C2 (issued before this shipped, ≤15
+  // minutes) or the caller is deliberately killing another device.
+  const target = sessionId || (actor && actor.session_id) || null;
+
+  if (target) {
+    // SEC-M2: killSession had no ownership predicate, so a caller could revoke
+    // any session id they could guess. Scope the kill to the acting user.
+    await repo.killSession(client, target, actor.user_id);
+    await sessionStore.removeSession(target, actor.user_id);
+  } else {
+    // No session identifiable. Previously this path silently returned success;
+    // it is the exact shape of the bug, so it is now loud rather than quiet.
+    logger.warn(
+      { user_id: actor && actor.user_id },
+      "logout could not identify a session to revoke — token predates SEC-C2 and no session_id was supplied",
+    );
   }
   await identityCache.invalidateUser(actor.user_id);
   await emitEvent(client, {
@@ -496,7 +553,8 @@ async function logout(client, { actor, sessionId }) {
     moduleKey: events.MODULE,
     entityRef: `app_user:${actor.user_id}`,
   });
-  return { logged_out: true };
+  // Report what actually happened rather than an unconditional success.
+  return { logged_out: true, session_revoked: Boolean(target) };
 }
 
 
@@ -555,7 +613,7 @@ async function requestPasswordReset(client, { email, ip, origin }) {
     } catch (err) {
       // Mail failure must not change the response (no enumeration) — the token
       // stays valid so a retry/resend can still deliver. Surface it in logs.
-      logger.error({ err: err.message, user_id: user.user_id }, "[auth] password-reset email failed to send");
+      logger.error({ err, user_id: user.user_id }, "[auth] password-reset email failed to send");
     }
   }
   return { ok: true };
@@ -651,6 +709,107 @@ async function createUser(client, { data, actor = {} }) {
     return getUser(client, user.user_id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
+/**
+ * SEC H4 (High). MOD-67 `edit` could take over any account, including the CEO,
+ * with no re-authentication.
+ *
+ * Two routes, both gated only on MOD-67 `edit` — an entirely ordinary
+ * delegation to an office manager who needs to onboard staff and reset
+ * forgotten passwords:
+ *
+ *   PATCH /users/:id          replaces role_ids wholesale. The only guard was
+ *                             the LAST-CEO check, which stops REMOVING the CEO
+ *                             role from the final CEO. Nothing stopped ADDING
+ *                             one, and nothing stopped acting on yourself. One
+ *                             `PATCH /users/{my own id}` adding the CEO role,
+ *                             and because the same call invalidates the identity
+ *                             cache, `is_ceo` is true on the very next request —
+ *                             at which point every requirePermission,
+ *                             requireCapability and requireCeo in the product
+ *                             returns early without consulting a grant.
+ *
+ *   POST /users/:id/password  sets any user's password without knowing it, the
+ *                             actor's own, or facing a step-up challenge. The
+ *                             quieter takeover: set the CEO's password, sign in
+ *                             as them, and the ledger attributes everything that
+ *                             follows to the CEO.
+ *
+ * THREE RULES, and the reasoning for each boundary:
+ *
+ *   1. YOU MAY NOT GRANT A ROLE YOU DO NOT HOLD. This is the general form of
+ *      "no self-elevation to CEO" and it is the one that matters — blocking
+ *      only the CEO role would leave every other privileged role open, and
+ *      would be trivially circumvented via a role that itself grants MOD-67.
+ *      A CEO holds everything, so a CEO can still delegate anything.
+ *
+ *   2. YOU MAY NOT CHANGE YOUR OWN ROLES AT ALL. Rule 1 already blocks
+ *      elevation, but self-editing roles is not a thing an administrator needs
+ *      to do, and forbidding it outright removes a whole class of ordering and
+ *      race arguments rather than reasoning about each.
+ *
+ *   3. ONLY A CEO MAY SET A CEO'S PASSWORD. Anything less means the account
+ *      that bypasses every check in the system can be captured by a delegated
+ *      grant.
+ *
+ * What this deliberately does NOT do is add a step-up re-authentication
+ * challenge, which the audit also suggests. That needs a UI flow and a decision
+ * about what re-auth means for an SSO session; these three rules close the
+ * escalation path on their own and do not depend on one.
+ */
+async function assertMayChangeRoles(client, { id, roleIds, actor }) {
+  if (!actor || !actor.user_id) {
+    throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  }
+  if (String(actor.user_id) === String(id)) {
+    // A NO-OP self-edit is allowed. The user-edit form posts the whole record,
+    // role_ids included, so refusing outright would 403 an administrator who
+    // only changed their own phone number. Compared as SETS: same roles, same
+    // count, in any order. Anything that actually differs is still refused,
+    // which is the property that matters.
+    const currentIds = (await repo.roleIds(client, id)).map(String).sort();
+    const nextIds = [...new Set(roleIds.map(String))].sort();
+    const unchanged =
+      currentIds.length === nextIds.length && currentIds.every((r, i) => r === nextIds[i]);
+    if (!unchanged) {
+      throw new AppError(
+        "SELF_ROLE_CHANGE",
+        "You cannot change your own roles. Ask another administrator.",
+        403,
+      );
+    }
+    return;
+  }
+  if (actor.is_ceo) return; // holds everything already
+
+  const actorRoleIds = (await repo.roleIds(client, actor.user_id)).map(String);
+  const held = new Set(actorRoleIds);
+  const granting = roleIds.map(String).filter((r) => !held.has(r));
+  if (granting.length === 0) return;
+
+  const names = await repo.roleNamesByIds(client, granting);
+  throw new AppError(
+    "ROLE_ESCALATION",
+    `You cannot grant ${names.length ? names.join(", ") : "a role"} because you do not hold ${names.length === 1 ? "it" : "them"}.`,
+    403,
+  );
+}
+
+/** SEC H4, rule 3. */
+async function assertMaySetPassword(client, { id, actor }) {
+  if (!actor || !actor.user_id) {
+    throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  }
+  if (String(actor.user_id) === String(id)) return; // your own password is yours
+  const targetCodes = await repo.roleCodes(client, id);
+  if (targetCodes.includes("CEO") && !actor.is_ceo) {
+    throw new AppError(
+      "PRIVILEGED_TARGET",
+      "Only a CEO can set a CEO's password. Use the password-reset flow so the account holder chooses it.",
+      403,
+    );
+  }
+}
+
 async function updateUser(client, { id, patch = {}, actor = {} }) {
   const before = await repo.getUserSafe(client, id);
   if (!before) throw new AppError("NOT_FOUND", "User not found", 404);
@@ -671,6 +830,8 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
     }
     if (Object.keys(fields).length) await repo.updateUserFields(client, id, fields);
     if (Array.isArray(patch.role_ids)) {
+      // SEC H4: before the last-owner guard, which only ever looked at REMOVAL.
+      await assertMayChangeRoles(client, { id, roleIds: patch.role_ids, actor });
       // Last-owner guard (4.3): don't let a role change strip the CEO role from
       // the last active CEO — that would strand the tenant with no owner. Mirrors
       // the existing last-CEO guard on setStatus.
@@ -700,6 +861,7 @@ async function updateUser(client, { id, patch = {}, actor = {} }) {
 async function setPassword(client, { id, newPassword, actor = {} }) {
   const target = await repo.getUserSafe(client, id);
   if (!target) throw new AppError("NOT_FOUND", "User not found", 404);
+  await assertMaySetPassword(client, { id, actor }); // SEC H4
   await passwordPolicy.assertStrongPassword(newPassword, { email: target.email });
   const hash = await argon2.hash(String(newPassword), ARGON);
   const row = await repo.setPasswordHash(client, id, hash);

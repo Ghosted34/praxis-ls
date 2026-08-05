@@ -1,5 +1,6 @@
 "use strict";
 const { makeService } = require("../../../shared/crud/resource");
+const { resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./hr_query.repo");
 const events = require("./hr_query.events");
@@ -23,7 +24,11 @@ async function respond(client, { id, employeeId, response }) {
 module.exports = {
   ...base,
   // Stamp the issuer on create.
-  create: (client, { data, actor }) => base.create(client, { data: { ...data, issued_by: actor.user_id || null }, actor }),
+  // DATA 2.4: issued_by is REFERENCES app_user(user_id); a live user id raises
+  // 23503 beside sandbox data, so it goes through the same guard emit.js uses.
+  create: async (client, { data, actor }) => base.create(client, {
+    data: { ...data, issued_by: await resolveActorId(client, actor.user_id) }, actor,
+  }),
   mine,
   respond,
 };

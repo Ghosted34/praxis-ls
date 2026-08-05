@@ -121,7 +121,7 @@ async function mirrorUserBestEffort(client, userId) {
     await mirrorUsersIntoSandbox(client, { userId });
   } catch (err) {
     logger.warn(
-      { err: err.message, userId },
+      { err, userId },
       "[sandbox-mirror] mirror failed; TEST-mode writes by this user may fail until it is retried",
     );
   }

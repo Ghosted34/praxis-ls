@@ -1,16 +1,15 @@
 /** Chart of Accounts repository (MOD-06). All chart_of_accounts SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insert = (client, data) => insertOne(client, "chart_of_accounts", data);
 const get = (client, code) => getById(client, "chart_of_accounts", "code", code);
 
 async function update(client, code, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return get(client, code);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE chart_of_accounts SET " + set + " WHERE code = $1 RETURNING *", [code, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return get(client, code);
+  return updateOne(client, "chart_of_accounts", "code", code, fields, "*", null);
 }
 
 async function children(client, code) {

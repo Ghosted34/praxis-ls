@@ -80,7 +80,7 @@ async function decodeHeicToJpeg(buffer) {
     // quality 1 ≈ lossless intermediate; sharp does the real q85 re-encode.
     return await convert({ buffer, format: "JPEG", quality: 1 });
   } catch (err) {
-    logger.warn({ err: err.message }, "HEIC decode failed");
+    logger.warn({ err }, "HEIC decode failed");
     throw new AppError(
       "IMAGE_PROCESSING_FAILED",
       "Could not read that HEIC image",
@@ -159,7 +159,7 @@ async function compressImage(buffer, mime, filename) {
     }
     return { buffer: out, mime_type: outMime, compressed: true, converted };
   } catch (err) {
-    logger.warn({ err: err.message }, "image compression skipped");
+    logger.warn({ err }, "image compression skipped");
     if (converted) {
       // We already decoded the HEIC — return the decoded JPEG even though the
       // optimise step failed, so the stored asset is still viewable.

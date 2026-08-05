@@ -2,11 +2,23 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 
 const crud = makeRepo({
+  // SEC H3. immutable_ledger is append-only and carries a forbid_mutation
+  // trigger, but the shared CRUD kit still exposed create/update against it
+  // with an unfiltered body — including before_json/after_json and, since
+  // 0499, the chain hashes. An EMPTY allow-list is the correct statement: no
+  // column of the audit trail is writable by a request. The trigger is the
+  // final authority; this makes the intent explicit and fails earlier.
+  writable: [],
   table: "immutable_ledger",
   pk: "ledger_id",
   activeColumn: null,
   searchColumn: null,
   orderBy: "ledger_id DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+  // API F-28: this repo uses makeRepo's list unchanged, which honours only
+  // limit/offset/q — any other key was silently ignored. Now it is named.
+  filterable: [],
 });
 
 async function listSoftDeletes(client, q = {}) {

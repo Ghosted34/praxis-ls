@@ -21,7 +21,7 @@ jest.mock("../../src/modules/security/setting/setting.service", () => ({
   put: jest.fn(async () => ({})),
   readSecret: jest.fn(async () => "decrypted-password"),
 }));
-jest.mock("../../src/shared/events/emit", () => ({ emitEvent: (...a) => mockEmitEvent(...a) }));
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: (...a) => mockEmitEvent(...a) }));
 jest.mock("../../src/modules/vault/document_vault/document_vault.service", () => ({
   createDocument: jest.fn(async () => ({ doc_id: "vault-1" })),
 }));

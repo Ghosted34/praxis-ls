@@ -49,7 +49,7 @@ function build() {
       // dynamic require: module path is discovered at runtime (trusted, local)
       mod = require(file);
     } catch (err) {
-      logger.warn({ file, err: err.message }, "entity-registry: skipped module (load error)");
+      logger.warn({ file, err }, "entity-registry: skipped module (load error)");
       continue;
     }
     if (mod && mod.__entityMeta && mod.__entityMeta.entity) {

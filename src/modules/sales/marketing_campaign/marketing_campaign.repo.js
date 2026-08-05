@@ -1,10 +1,11 @@
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
 const insert = (client, data) => insertOne(client, "marketing_campaign", data);
 const get = (client, id) => getById(client, "marketing_campaign", "campaign_id", id);
 async function update(client, id, fields) {
-  const keys = Object.keys(fields); const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  return (await client.query("UPDATE marketing_campaign SET " + set + " WHERE campaign_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])])).rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "marketing_campaign", "campaign_id", id, fields, "*", null);
 }
 async function list(client, q = {}) {
   const { limit, offset } = page(q); const params = [limit, offset]; const wh = [];
@@ -44,10 +45,10 @@ const listTemplates = (client) => client.query("SELECT * FROM campaign_template 
 const getTemplate = (client, id) => getById(client, "campaign_template", "template_id", id);
 const insertTemplate = (client, data) => insertOne(client, "campaign_template", data);
 async function updateTemplate(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getById(client, "campaign_template", "template_id", id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  return (await client.query("UPDATE campaign_template SET " + set + ", updated_at = now() WHERE template_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])])).rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getById(client, "campaign_template", "template_id", id);
+  return updateOne(client, "campaign_template", "template_id", id, fields, "*", null, { touch: "updated_at" });
 }
 async function deleteTemplate(client, id) {
   return (await client.query("DELETE FROM campaign_template WHERE template_id = $1 RETURNING *", [id])).rows[0] || null;

@@ -15,6 +15,7 @@ const { logger } = require("../../config/logger");
 const emailService = require("../../services/email.service");
 const repo = require("./portal_auth.repo");
 const { AppError } = require("../../utils/errors");
+const passwordPolicy = require("../../shared/security/password-policy");
 
 const TOKEN_TTL = "2h";
 const MODULE = "MOD-67";
@@ -74,7 +75,17 @@ async function login(client, { email, password }) {
 }
 
 async function createUser(client, { email, password, fullName }) {
-  if (!password || String(password).length < 8) throw new AppError("WEAK_PASSWORD", "Password must be at least 8 characters", 422);
+  // SEC H6. This was `String(password).length < 8` — no complexity, no breach
+  // check — while staff accounts have gone through assertStrongPassword (12
+  // chars, complexity, email-local-part rejection, HIBP) all along. "password"
+  // and "12345678" both passed.
+  //
+  // The weakness was inverted relative to exposure: a portal account belongs to
+  // an external client contact, investor or auditor, and it exposes that
+  // client's dossiers, invoices and receivables ageing — or, for an auditor
+  // grant, the tenant's full financial statements and general-ledger trail.
+  // Those are the accounts least likely to have a password manager behind them.
+  await passwordPolicy.assertStrongPassword(password, { email });
   const existing = await repo.findByEmail(client, email);
   if (existing) throw new AppError("EMAIL_TAKEN", "A portal user with that email already exists", 409);
   const password_hash = await argon2.hash(password, { type: argon2.argon2id });
@@ -82,7 +93,11 @@ async function createUser(client, { email, password, fullName }) {
 }
 
 async function setPassword(client, { id, password }) {
-  if (!password || String(password).length < 8) throw new AppError("WEAK_PASSWORD", "Password must be at least 8 characters", 422);
+  // SEC H6. Load the target first so the policy can apply its
+  // email-local-part rule; a 404 for an unknown id is the same as before.
+  const target = await repo.findById(client, id);
+  if (!target) throw new AppError("NOT_FOUND", "Portal user not found", 404);
+  await passwordPolicy.assertStrongPassword(password, { email: target.email });
   const password_hash = await argon2.hash(password, { type: argon2.argon2id });
   const row = await repo.setPassword(client, id, password_hash);
   if (!row) throw new AppError("NOT_FOUND", "Portal user not found", 404);
@@ -193,7 +208,7 @@ async function inviteUser(client, { email, fullName, ip, origin, tenantName = "y
     await sendInviteEmail(client, { to: normalized, name: fullName || user.full_name, token, origin, purpose: "INVITE", tenantName });
   } catch (err) {
     emailed = false;
-    logger.error({ err: err.message, email: normalized }, "[portal] invite email failed to send");
+    logger.error({ err, email: normalized }, "[portal] invite email failed to send");
   }
   return { portal_user_id: user.portal_user_id, email: normalized, created, emailed };
 }
@@ -211,7 +226,7 @@ async function requestReset(client, { email, ip, origin, tenantName }) {
     try {
       await sendInviteEmail(client, { to: user.email, name: user.full_name, token, origin, purpose: "RESET", tenantName });
     } catch (err) {
-      logger.error({ err: err.message, portal_user_id: user.portal_user_id }, "[portal] reset email failed to send");
+      logger.error({ err, portal_user_id: user.portal_user_id }, "[portal] reset email failed to send");
     }
   }
   return { ok: true };
@@ -227,12 +242,16 @@ async function requestReset(client, { email, ip, origin, tenantName }) {
 async function acceptInvite(client, { token, password }) {
   const invalid = () => new AppError("INVALID_INVITE", "This link is invalid or has expired. Ask for a new one.", 400);
   if (!token) throw invalid();
-  if (!password || String(password).length < 8) {
-    throw new AppError("WEAK_PASSWORD", "Password must be at least 8 characters", 422);
-  }
 
   const row = await repo.findInviteByHash(client, sha256(token));
   if (!row || row.used_at || new Date(row.expires_at).getTime() < Date.now()) throw invalid();
+
+  // SEC H6. The policy check moved BELOW the token lookup deliberately: it
+  // needs the invitee's email for the local-part rule, and that only exists
+  // once the invite resolves. Ordering is safe — an invalid token still fails
+  // first with the same generic error, so this leaks nothing about which
+  // tokens exist.
+  await passwordPolicy.assertStrongPassword(password, { email: row.email });
 
   const user = await repo.findById(client, row.portal_user_id);
   if (!user || user.status !== "ACTIVE") throw invalid();

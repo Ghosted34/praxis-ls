@@ -97,17 +97,23 @@ async function onEvent(client, { eventTypeKey, moduleKey, entityRef = null, acto
     const ent = shortEntity(entityRef);
     const body = `${cfg.title}${ent ? ` — ${cap(ent)}` : ""}${amt ? ` (${amt})` : ""}.`;
     const category = categoryFor(eventTypeKey);
-    let sent = 0;
-    for (const userId of recipients) {
-      if (actorUserId && userId === actorUserId) continue;
-      await service.notify(client, {
-        userId, eventTypeKey, title: cfg.title, body, entityRef, category, priority: cfg.priority || "NORMAL",
-      });
-      sent += 1;
-    }
-    return sent;
+    // PERF S5: one batched call instead of a loop of ~5 queries per recipient.
+    // The actor is excluded here rather than inside notifyMany — "do not tell
+    // me about my own action" is this fan-out's rule, not a property of
+    // notification delivery.
+    const targets = recipients.filter((u) => !(actorUserId && u === actorUserId));
+      // `return await`, NOT `return`. In an async function `try { return p; }`
+    // does NOT catch p's rejection — the return adopts the promise and the
+    // rejection escapes the handler entirely. This function is documented and
+    // relied upon as BEST-EFFORT (an event fan-out must never fail the business
+    // operation that produced the event), and it was not: a notifyMany failure
+    // propagated straight out to the caller. Found by the one test in
+    // notify-events.test.js that was still asserting the real contract.
+    return await service.notifyMany(client, targets, {
+      eventTypeKey, title: cfg.title, body, entityRef, category, priority: cfg.priority || "NORMAL",
+    });
   } catch (err) {
-    logger.warn({ err: err.message, eventTypeKey }, "[notify-events] failed");
+    logger.warn({ err, eventTypeKey }, "[notify-events] failed");
     return 0;
   }
 }

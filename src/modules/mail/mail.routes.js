@@ -36,9 +36,9 @@ const router = express.Router();
 // tenantContext; CSRF + user identity ride in the signed OAuth `state`, and the
 // webhook echoes Graph's validationToken. Declared BEFORE authMiddleware.
 router.get("/oauth/microsoft/callback", c.msOAuthCallback);
-router.post("/webhook/microsoft", c.msWebhook);
+router.post("/webhook/microsoft", v.msWebhook, c.msWebhook);
 router.get("/oauth/google/callback", c.ggOAuthCallback);
-router.post("/webhook/google", c.ggWebhook);
+router.post("/webhook/google", v.ggWebhook, c.ggWebhook);
 
 router.use(authMiddleware);
 
@@ -51,8 +51,8 @@ router.get("/oauth/google/start", requirePermission(M, "edit"), c.ggOAuthStart);
 router.get("/senders", requirePermission(M, "view"), c.senders);
 router.get("/sent", requirePermission(M, "view"), c.sent);
 router.get("/inbox", requirePermission(M, "view"), c.inbox);
-router.patch("/senders/:id", requirePermission(M, "edit"), c.updateSender);
-router.post("/senders", requirePermission(M, "create"), c.upsertSender);
+router.patch("/senders/:id", requirePermission(M, "edit"), v.senderPatch, c.updateSender);
+router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender);
 
 // Engine: connections
 router.get("/autodiscover", requirePermission(M, "view"), c.autodiscover);
@@ -66,7 +66,7 @@ router.get("/thread", requirePermission(M, "view"), c.thread);
 router.get("/thread/:id", requirePermission(M, "view"), c.message);
 router.get("/thread/:id/attachments", requirePermission(M, "view"), c.attachments);
 router.get("/client/:id/timeline", requirePermission(M, "view"), c.clientTimeline);
-router.post("/thread/:id/link", requirePermission(M, "create"), c.linkThread);
+router.post("/thread/:id/link", requirePermission(M, "create"), v.threadLink, c.linkThread);
 router.post("/thread/:id/read", requirePermission(M, "edit"), c.markRead);
 router.post("/send", requirePermission(M, "create"), v.send, c.send);
 router.post("/thread/:id/reply", requirePermission(M, "create"), v.reply, c.reply);

@@ -63,7 +63,7 @@ router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
 router.get("/:id/members", requirePermission(MODULE, "view"), asyncHandler(async (req, res) =>
   res.json({ data: await req.identityDb((c) => members.listMembers(c, req.params.id)) }),
 ));
-router.post("/:id/members", requirePermission(MODULE, "edit"), asyncHandler(async (req, res) =>
+router.post("/:id/members", requirePermission(MODULE, "edit"), validator.member, asyncHandler(async (req, res) =>
   res.status(201).json({
     data: await req.identityDb((c) =>
       members.addMember(c, { scopeId: req.params.id, userId: req.body.user_id, actor: actor(req) })),

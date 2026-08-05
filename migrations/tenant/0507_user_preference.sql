@@ -1,5 +1,22 @@
 -- ============================================================================
--- TENANT DB — 0496 per-user preferences (starting with appearance)
+-- TENANT DB — 0507 per-user preferences (starting with appearance)
+--
+-- RENUMBERED from 0496 on 2026-08-05. A merge from main landed this beside
+-- 0496_created_at_indexes.sql and check-migration-numbers.js failed the build,
+-- which is the guard doing its job — two files sharing a number means apply
+-- order is an alphabetical accident.
+--
+-- THIS is the file that moved, not the other one, and the reason is the rule
+-- the guard states: never renumber a migration that has already run, because
+-- the migrator keys the ledger on FILENAME and would re-apply it.
+--
+--   * 0496_created_at_indexes has already been applied to a live tenant.
+--   * This file is a single `CREATE TABLE IF NOT EXISTS` with no data step, so
+--     even on an environment where it DID already run under the old name, the
+--     re-run under this name creates nothing and inserts nothing. The ledger
+--     gains a row; the schema does not change.
+--
+-- That asymmetry is what makes this the safe one to move.
 --
 -- WHAT WAS MISSING. Appearance was a tenant-wide singleton: one `setting`
 -- section, one theme, everybody gets it. That is right for the brand — the logo

@@ -9,7 +9,7 @@
 const repo = require("./margin_simulation.repo");
 const events = require("./margin_simulation.events");
 const { computeMargin, priceForMargin } = require("./margin_simulation.rules");
-const { audit } = require("../../../shared/events/emit");
+const { audit, resolveActorId } = require("../../../shared/events/emit");
 
 const ref = (id) => "margin_simulation:" + id;
 
@@ -23,7 +23,7 @@ async function create(client, { dossierId = null, serviceTypeId = null, currency
   await client.query("BEGIN");
   try {
     const sim = await repo.insertSim(client, {
-      dossier_id: dossierId, service_type_id: serviceTypeId, created_by: actor.user_id || null,
+      dossier_id: dossierId, service_type_id: serviceTypeId, created_by: await resolveActorId(client, actor.user_id),
       margin_percent: totals.margin_percent, total_cost: totals.total_cost, total_price: totals.total_price,
       currency,
     });

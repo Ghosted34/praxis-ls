@@ -88,7 +88,7 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
     try {
       await finalInvoice.ensureDraftForCosting(client, id);
     } catch (err) {
-      logger.warn({ err: err.message, costing_id: id }, "sync draft-invoice on costing approval failed; async backstop will retry");
+      logger.error({ err, costing_id: id }, "sync draft-invoice on costing approval failed; async backstop will retry");
     }
   }
   await audit(client, { actorUserId: actor.user_id || null, action: events.statusChange(status), moduleKey: events.MODULE, entityRef: "costing:" + id, before, after: row });

@@ -1,5 +1,5 @@
 "use strict";
-const { insertOne, getById } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertAdvance = (client, data) => insertOne(client, "regie_advance", data);
 const get = (client, id) => getById(client, "regie_advance", "regie_advance_id", id);
@@ -23,13 +23,9 @@ async function listAgeable(client) {
 }
 
 async function setState(client, id, patch) {
-  const keys = Object.keys(patch);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE regie_advance SET " + set + " WHERE regie_advance_id = $1 RETURNING *",
-    [id, ...keys.map((k) => patch[k])],
-  );
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "regie_advance", "regie_advance_id", id, patch, "*", null);
 }
 
 module.exports = { insertAdvance, get, list, listAgeable, setState };

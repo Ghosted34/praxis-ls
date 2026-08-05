@@ -14,8 +14,9 @@ const journalEntry = require("../journal_entry/journal_entry.service");
 const determination = require("../../../services/accounting/determination");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 const ref = (id) => "invoice:" + id;
 
@@ -46,7 +47,7 @@ async function createDraft(client, opts) {
     }
     const cn = await repo.insertInvoice(client, {
       entity_id: entityId, client_id: clientId, dossier_id: dossierId, type: "CREDIT_NOTE",
-      status: "DRAFT", reverses_invoice_id: reversesInvoiceId, issued_by: actor.user_id || null,
+      status: "DRAFT", reverses_invoice_id: reversesInvoiceId, issued_by: await resolveActorId(client, actor.user_id),
     });
     if (lines.length) await replaceLines(client, cn.invoice_id, lines);
     await audit(client, { actorUserId: actor.user_id || null, action: events.DRAFTED, moduleKey: events.MODULE, entityRef: ref(cn.invoice_id), after: cn });
@@ -72,7 +73,19 @@ async function updateDraft(client, { creditNoteId, patch = {}, lines = null, act
 }
 
 /** Post the credit note: book the reverse of the equivalent sale, number + capture. */
-async function post(client, { creditNoteId, entryDate, sourceDocRef = null, actor = {}, ip = null }) {
+/**
+ * OBS L2. A credit note reduces what a client owes; a silent failure here is money the books still think is due. The two refusals above (wrong type, wrong status) now leave a record.
+ */
+async function post(client, opts) {
+  const { creditNoteId, entryDate } = opts;
+  return withMoneyLog(
+    "credit_note.posted",
+    (out) => ({ doc: creditNoteId, credit_note_id: creditNoteId, entry_date: entryDate, total_ttc: out ? out.total_ttc : null, doc_number: out ? out.doc_number : null }),
+    () => postCore(client, opts),
+  );
+}
+
+async function postCore(client, { creditNoteId, entryDate, sourceDocRef = null, actor = {}, ip = null }) {
   const cn = await repo.getInvoice(client, creditNoteId);
   if (!cn || cn.type !== "CREDIT_NOTE") throw new AppError("NOT_FOUND", "Credit note not found", 404);
   if (cn.status !== "DRAFT") throw new AppError("BAD_STATE", "Only a DRAFT credit note can be posted (was " + cn.status + ")", 422);

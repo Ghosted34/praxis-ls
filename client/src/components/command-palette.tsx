@@ -8,10 +8,21 @@
  * event so this stays decoupled from it. Data search (dossiers/invoices/people)
  * plugs into ACTIONS/JUMP once the backend exposes a search endpoint — the input
  * copy already hints at it.
+ *
+ * IT IS PERMISSION-AWARE, and it is the surface where that mattered most. The
+ * ribbon and the rail were filtered first; this was not, and it is the fastest
+ * route into the entire application — five curated jumps, every NAV screen on a
+ * keystroke, and four hard-coded actions, three of which land in Finance or
+ * Operations. A user without those grants could reach four separate 403s from
+ * here without ever seeing a menu that offered them. Every row now goes through
+ * the same `canOpenRoute` the shell uses, so "offered" and "openable" are one
+ * set. `useCanOpenRoute` returns true for everything while the permissions read
+ * is unresolved, so the palette is never briefly empty.
  */
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { useCanOpenRoute } from "@/lib/route-access";
 
 type PaletteGroup = { heading: string; items: { to: string; label: string }[] };
 type Row = {
@@ -59,6 +70,7 @@ export function CommandPalette({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const canOpen = useCanOpenRoute();
   const [query, setQuery] = React.useState("");
   const [active, setActive] = React.useState(0);
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -70,30 +82,47 @@ export function CommandPalette({
     window.dispatchEvent(new CustomEvent("praxis:open-copilot"));
   }, [onClose]);
 
-  // Every NAV screen, for typed search.
+  // Every NAV screen, for typed search — minus the ones this user cannot open.
   const allScreens = React.useMemo(
-    () => groups.flatMap((g) => g.items.map((it) => ({ ...it, group: g.heading }))),
-    [groups],
+    () => groups.flatMap((g) => g.items.filter((it) => canOpen(it.to)).map((it) => ({ ...it, group: g.heading }))),
+    [groups, canOpen],
   );
 
-  const ACTIONS: Row[] = React.useMemo(() => [
-    { key: "act:new-dossier", label: "New operation file", Icon: PlusIcon, run: () => go("/operations") },
-    { key: "act:new-invoice", label: "New invoice", Icon: FileTextIcon, run: () => go("/finance") },
-    { key: "act:file-tax", label: "File a tax return", Icon: TaxIcon, run: () => go("/finance") },
-    { key: "act:messages", label: "Open Messages", Icon: ChatIcon, run: () => go("/comms") },
-    { key: "act:ask-ai", label: "Ask Praxis AI…", Icon: AiIcon, run: askAi },
-  ], [go, askAi]);
+  // `to` is carried on the action rather than buried in the closure so the
+  // filter below can see where each one goes. "Ask Praxis AI…" has no route: it
+  // opens a panel, is gated by the tenant's AI flag rather than by a module,
+  // and must not be filtered out by a route check it does not participate in.
+  const ACTIONS: Row[] = React.useMemo(
+    () =>
+      [
+        { key: "act:new-dossier", label: "New operation file", Icon: PlusIcon, to: "/operations" },
+        { key: "act:new-invoice", label: "New invoice", Icon: FileTextIcon, to: "/finance" },
+        { key: "act:file-tax", label: "File a tax return", Icon: TaxIcon, to: "/finance/tax" },
+        { key: "act:messages", label: "Open Messages", Icon: ChatIcon, to: "/comms" },
+      ]
+        .filter((a) => canOpen(a.to))
+        .map((a) => ({ key: a.key, label: a.label, Icon: a.Icon, run: () => go(a.to) }))
+        .concat([{ key: "act:ask-ai", label: "Ask Praxis AI…", Icon: AiIcon, run: askAi }]),
+    [go, askAi, canOpen],
+  );
 
   const q = query.trim().toLowerCase();
 
   // Jump rows: curated shortcuts when empty; all matching screens when typing.
   const jumpRows: Row[] = React.useMemo(() => {
-    if (!q) return JUMP.map((j) => ({ key: `jump:${j.to}`, label: j.label, Icon: j.Icon, run: () => go(j.to) }));
+    if (!q) {
+      return JUMP.filter((j) => canOpen(j.to)).map((j) => ({
+        key: `jump:${j.to}`,
+        label: j.label,
+        Icon: j.Icon,
+        run: () => go(j.to),
+      }));
+    }
     return allScreens
       .filter((s) => s.label.toLowerCase().includes(q) || s.group.toLowerCase().includes(q))
       .slice(0, 12)
       .map((s) => ({ key: `screen:${s.to}`, label: s.label, sub: s.group, Icon: FolderIcon, run: () => go(s.to) }));
-  }, [q, allScreens, go]);
+  }, [q, allScreens, go, canOpen]);
 
   const actionRows: Row[] = React.useMemo(
     () => (!q ? ACTIONS : ACTIONS.filter((a) => a.label.toLowerCase().includes(q))),

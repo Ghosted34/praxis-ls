@@ -9,9 +9,12 @@
  * (`app/layout/ribbon-model.ts`), and the route a module key belongs to
  * (`app/screen-registry.json`).
  *
- * `version` is a digest of the visible module set. It is not used yet: the
- * optimistic cache and grant/revoke invalidation it exists for are a separate
- * change, and a straightforward fetch is what this shell does today.
+ * `version` is a short digest the server recomputes per request. The shell uses
+ * it as a CHEAP "did anything move" hint and nothing more — the decision about
+ * what to DO with a change is made by comparing the `modules` sets, in
+ * `nav-access-cache.ts`. That split is deliberate: the digest answers "is this
+ * the same answer as last time", which is not the same question as "did this
+ * user lose something", and only the second one may throw away unsaved work.
  */
 import { tenant } from "./api-client";
 
@@ -47,8 +50,13 @@ export const NO_ACCESS: NavAccess = { modules: [], groups: [], byGroup: {}, isCe
  * test fixture — is not a degraded ribbon, it is a TypeError inside a render
  * that takes the whole application down. The chrome is the one component that
  * cannot afford to be the thing that crashes: every screen is inside it.
+ *
+ * Exported because the OPTIMISTIC CACHE reads through it too. A record written
+ * by an older build of this app is exactly the "older shape" case above, and it
+ * arrives at first paint — before any network call — so an untrusted cache would
+ * be a way to crash the shell with no server involved at all.
  */
-function coerce(raw: unknown): NavAccess {
+export function coerceNavAccess(raw: unknown): NavAccess {
   const a = (raw ?? {}) as Partial<NavAccess>;
   return {
     modules: Array.isArray(a.modules) ? a.modules : [],
@@ -59,4 +67,5 @@ function coerce(raw: unknown): NavAccess {
   };
 }
 
-export const fetchNavAccess = async (): Promise<NavAccess> => coerce(await tenant<unknown>("/permissions/mine"));
+export const fetchNavAccess = async (): Promise<NavAccess> =>
+  coerceNavAccess(await tenant<unknown>("/permissions/mine"));

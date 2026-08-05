@@ -43,15 +43,28 @@
  * Exit 0 = within budget. Exit 1 = something got slower, or reduced motion
  * stopped being honoured.
  */
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 
 const here = dirname(fileURLToPath(import.meta.url));
-const cssPath = join(here, "..", "src", "index.css");
-const twPath = join(here, "..", "tailwind.config.ts");
+const clientRoot = join(here, "..");
+const cssPath = join(clientRoot, "src", "index.css");
+const twPath = join(clientRoot, "tailwind.config.ts");
 const css = readFileSync(cssPath, "utf8");
 const tw = readFileSync(twPath, "utf8");
+
+/** Every .ts/.tsx under client/src. Walked rather than globbed so this stays a
+ *  dependency-free script like the other gates. */
+function clientSources(dir = join(clientRoot, "src")) {
+  const out = [];
+  for (const e of readdirSync(dir, { withFileTypes: true })) {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) out.push(...clientSources(full));
+    else if (/\.tsx?$/.test(e.name)) out.push(full);
+  }
+  return out;
+}
 
 /** Anything in the app must land within this, in milliseconds. */
 const BUDGET_MS = 250;
@@ -72,6 +85,47 @@ const INFINITE_OK = {
   "lane-sea": "marching-ants stroke on a shipping lane — the motion IS direction of travel",
   "lane-road": "as above",
   "lane-air": "as above",
+};
+
+/**
+ * FRAMEWORK animations — `animate-*` utilities the app uses that Tailwind ships
+ * in its own base theme.
+ *
+ * THIS SECTION EXISTS BECAUSE THE GATE COULD NOT SEE THEM. Everything above
+ * reads `index.css` and the `animation` block in `tailwind.config.ts`, which is
+ * every animation this codebase DECLARES. Tailwind's built-ins are declared in
+ * neither, so `animate-pulse` — a two-second loop, eight times the budget, on
+ * the skeleton that now paints the whole application shell on a cold start —
+ * was outside the gate entirely. A budget with a hole that size in it is a
+ * budget that will eventually be quoted as proof of something it never checked.
+ *
+ * So: any `animate-<name>` used under `src/` that is not a project animation
+ * must be listed here with the reason it is allowed. The reasons are printed
+ * with the rest of the exemptions, and adding one is a decision a reviewer can
+ * see — the same shape of escape hatch as EXEMPT above, for the same reason.
+ *
+ * Both entries below are genuinely exempt rather than grandfathered:
+ *
+ *   pulse  A LOADING PLACEHOLDER. The budget's argument is about entrance
+ *          motion on a screen opened dozens of times a day — motion the user
+ *          waits through before they can work. A skeleton's shimmer is the
+ *          opposite: it is what is on screen WHILE they wait for something
+ *          else, and it must last exactly as long as the wait does, which is
+ *          not a duration this file can bound. Capping it at 250ms would mean a
+ *          placeholder that animates once and then sits frozen, which reads as
+ *          a hung page rather than a loading one.
+ *   spin   The same argument, for the same reason, on the inline spinner and
+ *          the Button's loading state.
+ *
+ * Both are neutralised by the reduced-motion kill asserted in section 4 — it is
+ * a `*` rule with `!important`, so it reaches framework utilities exactly as it
+ * reaches ours. That is what makes the exemption safe rather than merely
+ * declared.
+ */
+const FRAMEWORK_OK = {
+  pulse:
+    "loading skeleton — it must last as long as the wait, which no fixed budget can express; frozen after 250ms reads as a hung page",
+  spin: "inline spinner and the Button loading state — same argument as pulse",
 };
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */
@@ -171,6 +225,47 @@ if (!twAnimations) {
   }
 }
 
+/* ── 3b. framework animations the two files above cannot see ──────────────── */
+
+/**
+ * Every `animate-<name>` used in the client, minus the ones this project
+ * declares. Whatever is left came from Tailwind's base theme and needs a stated
+ * reason in FRAMEWORK_OK.
+ */
+const declaredAnimations = new Set([
+  // …from the Tailwind scale (`animation: { "fade-in": … }`)…
+  ...(twAnimations ? [...stripComments(twAnimations[1]).matchAll(/"([\w-]+)":/g)].map((m) => m[1]) : []),
+  // …and from index.css, where a couple are written as plain classes
+  // (`.animate-fade-up { animation: … }`) rather than through the config.
+  // Both are already measured by sections 1 and 3; the point here is only to
+  // recognise them as OURS so they are not reported as framework built-ins.
+  ...[...stripComments(css).matchAll(/\.animate-([\w-]+)\s*\{/g)].map((m) => m[1]),
+]);
+
+const used = new Map();
+for (const file of clientSources()) {
+  const text = readFileSync(file, "utf8");
+  for (const m of text.matchAll(/\banimate-([a-z][\w-]*)\b/g)) {
+    if (declaredAnimations.has(m[1])) continue;
+    if (!used.has(m[1])) used.set(m[1], relative(clientRoot, file));
+  }
+}
+
+for (const [name, where] of used) {
+  checked++;
+  if (FRAMEWORK_OK[name]) {
+    exempted.push({ selector: `tailwind base .animate-${name}`, prop: "animation", value: "(framework)", worst: NaN, reason: FRAMEWORK_OK[name] });
+  } else {
+    failures.push({
+      selector: `.animate-${name} (${where})`,
+      prop: "animation",
+      value: "Tailwind base theme — duration not declared in this repo",
+      worst: NaN,
+      framework: true,
+    });
+  }
+}
+
 /* ── 4. the reduced-motion umbrella ───────────────────────────────────────── */
 
 const reducedMotion = [];
@@ -190,7 +285,10 @@ if (!globalKill) {
 console.log(`\nMotion budget — ${BUDGET_MS}ms in-app\n`);
 
 for (const e of exempted) {
-  console.log(`  ALLOW ${String(Math.round(e.worst)).padStart(6)}ms  ${e.selector}  — ${e.reason}`);
+  // `NaN` is a framework animation whose duration is not declared in this repo,
+  // so there is no number to print — the reason is the whole point of the line.
+  const at = Number.isNaN(e.worst) ? "      —" : `${String(Math.round(e.worst)).padStart(6)}ms`;
+  console.log(`  ALLOW ${at}  ${e.selector}  — ${e.reason}`);
 }
 console.log(`\n  ${checked} declaration(s) checked, ${exempted.length} exempt.`);
 
@@ -206,7 +304,9 @@ if (failures.length) {
   for (const f of failures) {
     const why = f.infinite
       ? "loops forever with no entry in INFINITE_OK"
-      : `${Math.round(f.worst)}ms > ${BUDGET_MS}ms`;
+      : f.framework
+        ? "a framework animation with no entry in FRAMEWORK_OK — this file cannot read its duration, so it must be reasoned about by hand"
+        : `${Math.round(f.worst)}ms > ${BUDGET_MS}ms`;
     console.error(`    ${f.selector}  { ${f.prop}: ${f.value.trim()} }  — ${why}`);
   }
   console.error(

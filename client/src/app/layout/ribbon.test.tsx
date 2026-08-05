@@ -113,6 +113,14 @@ beforeEach(() => {
   saved.length = 0;
   access.current = null;
   stored.current = { ribbonPinned: null, railPins: null, railHintSeen: true };
+  // THE SHELL NOW REMEMBERS. `lib/nav-access-cache` persists the last answer so
+  // the ribbon paints before the network replies, which makes every test in
+  // this file start from whatever the previous one left behind — and a fixture
+  // with fewer modules than its predecessor reads as a REVOCATION, which
+  // hard-refreshes the page in the middle of an assertion. Persistent state
+  // needs an explicit reset; a suite that shares it is testing the order it
+  // happens to run in.
+  localStorage.clear();
 });
 
 function renderChrome(ui: React.ReactElement, at = "/") {

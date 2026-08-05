@@ -263,7 +263,14 @@ key.
   docker exec praxis_postgres pg_dumpall -U praxis-admin | gzip > backup-$(date +%F).sql.gz
   tar czf files-$(date +%F).tar.gz data media uploads
   ```
-- **Logs** — `docker compose logs -f api` / `worker`; files also land in `./logs`.
+- **Logs** — `docker compose logs -f api` / `worker`.
+  Pino writes to **stdout only**; Docker's json-file driver holds them, capped at
+  50MB x 5 per service (see `logging:` in docker-compose.yml).
+  There is **no `./logs` directory** — this line used to claim files landed there
+  (audit OBS-L6). Nothing has ever written to it, and an on-call engineer
+  following the old runbook at 02:00 found an empty folder. Logs are lost when a
+  container is recreated, which every deploy does; shipping them off-box is
+  tracked as OBS-L7.
 - **Feature flags** — if a module 403s for everyone (even the CEO), diagnose with
   `docker compose run --rm api node scripts/tenant/feature-report.js --slug=<slug>`.
 - **Sandbox reseed after admin re-creation** — if you re-provision an admin and

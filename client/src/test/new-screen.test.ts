@@ -22,7 +22,7 @@
  */
 import { describe, it, expect, afterAll } from "vitest";
 import { execFileSync } from "node:child_process";
-import { rmSync, existsSync, readFileSync } from "node:fs";
+import { rmSync, existsSync, readFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 
 const clientRoot = join(__dirname, "..", "..");
@@ -34,13 +34,35 @@ function run(cmd: string, args: string[]) {
   return execFileSync(cmd, args, { cwd: clientRoot, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
 }
 
+/**
+ * Run a local dev tool through `node` rather than `npx`.
+ *
+ * `execFileSync` does not use a shell, so on Windows it cannot launch `npx` —
+ * that is `npx.cmd`, and the lookup fails with ENOENT exactly as `mkdir` did
+ * below. Adding `shell: true` would fix the launch and break the arguments:
+ * `--name "Widget orders"` would be re-split on the space.
+ *
+ * The bin scripts are plain JS and always present in an installed tree, so
+ * calling them directly is both portable and a process faster than npx.
+ */
+function runTool(binRelPath: string, args: string[]) {
+  return run("node", [join("node_modules", binRelPath), ...args]);
+}
+
 afterAll(() => rmSync(areaDir, { recursive: true, force: true }));
 
 describe("scripts/new-screen.mjs", () => {
   it("generates a screen, and the generated screen compiles and lints clean", () => {
     // The generator refuses to write into an area that does not exist, which is
     // a real guard — so create it the way a real feature area is created.
-    execFileSync("mkdir", ["-p", areaDir]);
+    //
+    // `mkdirSync`, not `execFileSync("mkdir", ["-p", …])`. There is no mkdir
+    // BINARY on Windows — it is a cmd.exe builtin — and execFileSync does not
+    // use a shell, so that line could only ever run on Linux and macOS. It
+    // failed with `spawnSync mkdir ENOENT` for anyone developing on Windows,
+    // and passed in CI, which is the worst combination: a test that is green on
+    // the machine nobody reads and red on the machine everybody uses.
+    mkdirSync(areaDir, { recursive: true });
     run("node", ["scripts/new-screen.mjs", "--area", AREA, "--name", "Widget orders"]);
 
     expect(existsSync(file), "the generator did not write the file").toBe(true);
@@ -60,11 +82,11 @@ describe("scripts/new-screen.mjs", () => {
 
     // TYPECHECK. `tsc -b` covers src, so the generated file is in scope. This is
     // the assertion that catches a renamed prop on ListPage or a moved import.
-    expect(() => run("npx", ["tsc", "-b"])).not.toThrow();
+    expect(() => runTool("typescript/bin/tsc", ["-b"])).not.toThrow();
 
     // LINT, including jsx-a11y at error — the scaffold must not ship a
     // violation for someone to inherit.
-    expect(() => run("npx", ["eslint", `src/features/${AREA}/widget-orders.tsx`])).not.toThrow();
+    expect(() => runTool("eslint/bin/eslint.js", [`src/features/${AREA}/widget-orders.tsx`])).not.toThrow();
 
     // The palette gate scans untracked files too (Phase 4 fixed that), so a
     // scaffold that reached for a raw Tailwind colour would be caught here.

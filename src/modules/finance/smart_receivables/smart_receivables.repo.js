@@ -3,17 +3,17 @@
  * outstanding/ageing reads. All SQL for this module lives here.
  */
 "use strict";
-const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
+const { insertOne, updateOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
 
 const insertReceipt = (client, data) => insertOne(client, "payment_receipt", data);
 const getReceipt = (client, id) => getById(client, "payment_receipt", "receipt_id", id);
 const insertAllocation = (client, data) => insertOne(client, "payment_allocation", data);
 
 const updateReceipt = (client, id, fields) => {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getReceipt(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  return client.query("UPDATE payment_receipt SET " + set + " WHERE receipt_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]).then((r) => r.rows[0] || null);
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getReceipt(client, id);
+  return updateOne(client, "payment_receipt", "receipt_id", id, fields, "*", null);
 };
 
 /** Treasury account -> its GL cash account (521/571/538x). */
@@ -23,7 +23,34 @@ async function treasuryCoa(client, treasuryAccountId) {
 }
 
 /** Open FINAL invoices (issued/posted) with outstanding = total_ttc - allocated. */
-async function openInvoices(client, { clientId = null }) {
+/**
+ * Open invoices, oldest first.
+ *
+ * `forUpdate` locks the invoice rows for the caller's transaction (DATA 5.3).
+ * Without it two concurrent receipts for the same client both saw the same open
+ * invoices, both FIFO-allocated against them, and both committed — allocating an
+ * invoice beyond its value. That makes `outstanding` negative, and because this
+ * very query filters `outstanding > 0`, the over-allocated invoice then
+ * DISAPPEARS from ageing and dunning. The error hides itself.
+ *
+ * FOR UPDATE cannot be used with the LEFT JOIN aggregate in one statement
+ * (Postgres: "FOR UPDATE cannot be applied to the nullable side of an outer
+ * join"), so the lock is taken on `invoice` explicitly first, in the same order
+ * the allocation walks them — oldest due date first — which also gives a
+ * consistent lock order and avoids deadlock between two concurrent receipts.
+ */
+async function openInvoices(client, { clientId = null, forUpdate = false }) {
+  if (forUpdate) {
+    await client.query(
+      "SELECT i.invoice_id FROM invoice i " +
+        "WHERE i.type = 'FINAL' AND i.status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED') " +
+        "  AND ($1::uuid IS NULL OR i.client_id = $1) " +
+        "ORDER BY i.payment_due_on ASC NULLS LAST, i.created_at ASC " +
+        "FOR UPDATE",
+      [clientId],
+    );
+  }
+
   const { rows } = await client.query(
     "SELECT i.invoice_id, i.doc_number, i.client_id, i.total_ttc, i.payment_due_on, " +
       "  COALESCE(a.allocated, 0) AS allocated, " +

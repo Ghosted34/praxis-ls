@@ -1,7 +1,17 @@
 "use strict";
 const orchestrator = require("../../src/services/ai/orchestrator.service");
 
-const user = { user_id: "u1" };
+// is_ceo, deliberately. SEC H1 made action-authz FAIL CLOSED: an action whose
+// catalogue row declares no `required_permission` is denied rather than
+// allowed. This fake has no ai_action_catalogue row, so after that fix every
+// action threw and the batch halted on the first one — which is the product
+// working, and this test predating it.
+//
+// The subject here is BATCH SEQUENCING — halt-on-failure, and what `executed`
+// counts. Authorisation has its own tests (action-authz, ai-writes). Satisfying
+// the gate explicitly with a CEO keeps this file about the one thing it is for,
+// rather than re-encoding the permission matrix into a sequencing test.
+const user = { user_id: "u1", is_ceo: true };
 // Fake client: governance gate open; batch has two runs; per-run lookups by id.
 function makeClient(runOrder, actionKeyById) {
   return {

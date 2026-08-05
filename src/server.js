@@ -11,6 +11,7 @@ require("./shared/http/async-safe");
 
 const express = require("express");
 const helmet = require("helmet");
+const compression = require("compression");
 const cors = require("cors");
 const path = require("path");
 const fs = require("fs");
@@ -18,9 +19,13 @@ const { config } = require("./config/env");
 const { logger } = require("./config/logger");
 const { initRedis } = require("./config/redis");
 const routes = require("./routes");
+const { apiVersionHeaders, CURRENT: API_VERSION } = require("./middleware/api-version");
 const { router: pwaRouter } = require("./routes/pwa");
 const { requestIdMiddleware } = require("./middleware/request-id");
 const { buildAccessLog } = require("./middleware/access-log");
+const { report } = require("./shared/observability/error-reporter");
+const { router: clientErrorsRouter } = require("./routes/client-errors");
+const { router: metricsRouter } = require("./routes/metrics");
 const { initRateLimitStore } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
 const storage = require("./services/storage.service");
@@ -103,6 +108,34 @@ function buildApp() {
       },
     }),
   );
+  /**
+   * PERF S7. `compression` has been a declared dependency all along and was
+   * mounted nowhere, and no proxy-level compression is documented either.
+   *
+   * Measured on a representative list response: 18,020 -> 2,381 bytes, an 86.8%
+   * reduction. It applies to every JSON response AND to the 1,318 KB of static
+   * SPA assets served by express.static below.
+   *
+   * Mounted BEFORE the routes and the static handlers so it sees every
+   * response, and before the access log records a status — compression does not
+   * change the status, so the ordering is only about coverage.
+   *
+   * `filter` honours the standard `x-no-compression` opt-out and otherwise
+   * defers to the library's own content-type judgement, which already declines
+   * to waste CPU on already-compressed bytes (images, PDFs, zips).
+   *
+   * A note for whoever adds Server-Sent Events later: buffering breaks event
+   * streams, and the opt-out header is how such a route excludes itself.
+   */
+  app.use(
+    compression({
+      filter: (req, res) => {
+        if (req.headers["x-no-compression"]) return false;
+        return compression.filter(req, res);
+      },
+    }),
+  );
+
   app.use(cors(buildCorsOptions()));
   app.use(requestIdMiddleware);
   // OBS-L1/L3/T2: the HTTP access log. pino-http was a declared dependency
@@ -113,6 +146,27 @@ function buildApp() {
   app.use(express.json({ limit: "2mb" }));
   app.use(express.urlencoded({ extended: true }));
 
+  // OBS-E2: browser crash reports. Mounted before the tenant router so it needs
+  // no Host resolution and no token — the crashes worth catching happen at
+  // login, during boot, or after a session expires.
+  app.use("/api", clientErrorsRouter);
+
+  // OBS-M1: Prometheus scrape target. Mounted alongside health — no tenant
+  // resolution, no token, same reasoning as the probes.
+  app.use("/api", metricsRouter);
+
+  /**
+   * API F-18. `/api/v1/...` and `/api/...` serve the SAME router: unversioned
+   * is an alias for the current version, not a second contract. See
+   * middleware/api-version.js for why there is deliberately one implementation.
+   *
+   * The version middleware runs on both so every response carries
+   * X-API-Version, and the unversioned path additionally carries the
+   * deprecation notice and increments a counter — which is what will make
+   * retiring it a decision based on traffic rather than on nerve.
+   */
+  app.use("/api", apiVersionHeaders);
+  app.use(`/api/${API_VERSION}`, routes);
   app.use("/api", routes);
 
   // Per-tenant PWA: dynamic /manifest.webmanifest + /icons/app-icon-*.png, both
@@ -172,7 +226,7 @@ function buildApp() {
           res.redirect(302, url);
         })
         .catch((err) => {
-          logger.warn({ err: err.message, key }, "media presign failed");
+          logger.warn({ err, key }, "media presign failed");
           res.status(404).json({ error: { code: "NOT_FOUND", message: "Not found" } });
         });
     });
@@ -224,6 +278,7 @@ function installProcessGuards() {
   // fatal.
   process.on("unhandledRejection", (reason) => {
     logger.error({ err: reason }, "unhandledRejection (kept alive)");
+    report(reason, { origin: "server", severity: "error", route: "unhandledRejection" });
   });
 
   // OBS-E4. This used to swallow uncaughtException and keep going, which is
@@ -243,7 +298,11 @@ function installProcessGuards() {
   // immediately loses the very log line explaining why.
   process.on("uncaughtException", (err) => {
     logger.error({ err }, "uncaughtException — exiting so the supervisor restarts a clean process");
-    setTimeout(() => process.exit(1), 100).unref();
+    // Report BEFORE exiting, and give the send a moment. A crash is the single
+    // most important thing to hear about, and it is the one case where the
+    // process will not be around to retry.
+    report(err, { origin: "server", severity: "fatal", route: "uncaughtException" });
+    setTimeout(() => process.exit(1), 750).unref();
   });
 }
 
@@ -275,9 +334,40 @@ function start() {
     // if Redis is down (see shared/http/rate-limit.js).
     .then(() => initRateLimitStore())
     .catch((err) => {
-      logger.warn({ err: err.message }, "redis unavailable at boot — continuing without it");
+      // OBS-A3 (Critical). This was ONE warn line. With Redis down the API
+      // starts and reports healthy while sessions/refresh, remote session kill,
+      // rate limiting, the identity/permission cache, socket.io pub-sub AND ALL
+      // JOB ENQUEUEING are broken. Users see login failures and background work
+      // that silently never happens.
+      //
+      // It stays non-fatal on purpose — refusing to boot would turn a degraded
+      // cache into a total outage — but it is now an ERROR, it reports, and
+      // /api/health/ready marks the process `degraded` so a monitor sees it.
+      logger.error(
+        { err },
+        "REDIS UNAVAILABLE AT BOOT — sessions, rate limiting, the identity cache and ALL job enqueueing are degraded",
+      );
+      report(err, {
+        origin: "server",
+        severity: "fatal",
+        route: "boot/redis",
+        extra: {
+          degraded: ["sessions", "rate_limiting", "identity_cache", "socketio_pubsub", "job_enqueueing"],
+        },
+      });
       initRateLimitStore();
     });
+  // OBS-M2. The business-metric collector. Started after the app is built so a
+  // collection can never race the module loader, and on a timer rather than per
+  // scrape — a 15-second Prometheus poll across the fleet would be its own load
+  // problem, and PERF S1 is about a connection budget.
+  //
+  // These are the metrics that catch a failure the process-level ones cannot:
+  // up, returning 200, and silently doing nothing. The depreciation bug had
+  // 100% uptime and a zero error rate; the only symptom was a number that
+  // should have been rising and was flat.
+  require("./shared/observability/business-metrics").start();
+
   const server = app.listen(config.PORT, () =>
     logger.info({ port: config.PORT, env: config.NODE_ENV }, "praxis-ls api listening"),
   );

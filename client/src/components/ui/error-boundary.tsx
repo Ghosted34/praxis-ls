@@ -34,6 +34,7 @@
  */
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { reportClientError } from "@/lib/error-reporting";
 
 type Props = {
   children: React.ReactNode;
@@ -59,6 +60,20 @@ export class ErrorBoundary extends React.Component<Props, State> {
     // the only record that the boundary fired, and a silent boundary is worse
     // than a white screen — the bug simply stops being observed.
     console.error(`[ErrorBoundary${this.props.name ? ` · ${this.props.name}` : ""}]`, error, info.componentStack);
+    // OBS-E2: this used to be console-only plus an `onError` hook that no caller
+    // ever passed, so a boundary firing in production left no record anywhere.
+    // Reporting is now the default rather than something each call site has to
+    // remember — a boundary nobody hears about is worse than a white screen,
+    // because the bug stops being observed.
+    reportClientError({
+      kind: "render",
+      message: error.message,
+      name: error.name,
+      stack: error.stack,
+      componentStack: info.componentStack ?? undefined,
+      fatal: true,
+      release: import.meta.env.VITE_BUILD_SHA,
+    });
     this.props.onError?.(error, info);
   }
 

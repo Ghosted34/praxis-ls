@@ -15,6 +15,7 @@ const documents = require("../../../services/documents/document.service");
 const { getSetting } = require("../../../shared/config/settings");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 const ref = (id) => "payment_receipt:" + id;
 const CASH_DEFAULT = { CASH: "571", MOBILE_MONEY: "521", BANK: "521", CHEQUE: "521" };
@@ -42,14 +43,33 @@ async function cashCoaFor(client, receipt) {
 }
 
 /** Post a DRAFT receipt: FIFO-allocate, Dr cash / Cr 4111 (full amount), capture. */
-async function post(client, { receiptId, entityId, entryDate, sourceDocRef, customerAccount = "4111", actor = {}, ip = null }) {
+/**
+ * OBS L2. Cash arriving is the event a finance team reconciles against a bank statement. It was invisible.
+ */
+async function post(client, opts) {
+  const { receiptId, entityId, entryDate } = opts;
+  return withMoneyLog(
+    "receipt.posted",
+    (out) => ({ doc: receiptId, receipt_id: receiptId, entity_id: entityId, entry_date: entryDate, entry_id: out && out.entry ? out.entry.entry_id : null }),
+    () => postCore(client, opts),
+  );
+}
+
+async function postCore(client, { receiptId, entityId, entryDate, sourceDocRef, customerAccount = "4111", actor = {}, ip = null }) {
   const receipt = await repo.getReceipt(client, receiptId);
   if (!receipt) throw new AppError("NOT_FOUND", "Receipt not found", 404);
   if (receipt.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT receipt can be posted", 422);
 
   await client.query("BEGIN");
   try {
-    const openInv = await repo.openInvoices(client, { clientId: receipt.client_id });
+    // DATA 5.3: LOCK the open invoices before planning the allocation. This is
+    // the only caller that WRITES allocations; the read-only callers below
+    // deliberately do not lock. Two concurrent receipts for one client used to
+    // both see the same open invoices, both FIFO-allocate, and both commit —
+    // over-allocating an invoice past its value, which makes `outstanding`
+    // negative and then hides the invoice from ageing and dunning entirely,
+    // because openInvoices filters `outstanding > 0`.
+    const openInv = await repo.openInvoices(client, { clientId: receipt.client_id, forUpdate: true });
     const plan = planAllocation(receipt.amount, openInv);
     const cashCoa = await cashCoaFor(client, receipt);
 

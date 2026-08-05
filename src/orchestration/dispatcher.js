@@ -17,6 +17,7 @@
 const registry = require("./registry");
 require("./handlers"); // side-effect: register all handlers
 const { logger } = require("../config/logger");
+const { report } = require("../shared/observability/error-reporter");
 
 const MAX_ATTEMPTS = 5;
 
@@ -48,11 +49,46 @@ async function markFailed(client, eventId, attempts, maxAttempts, err) {
       "ON CONFLICT (event_id) DO UPDATE SET status=$2, attempts=$3, last_error=$4, updated_at=now()",
     [eventId, status, attempts, String((err && err.message) || err).slice(0, 500)],
   );
+  return status;
+}
+
+/**
+ * Dead-letter census for the caller's tenant/schema.
+ *
+ * OBS-A6: "Nothing ever queries event_dispatch WHERE status='DEAD'." This is
+ * that query. Surfaced on /api/health/ready and swept by the worker so a
+ * permanently-dropped business event is visible without anyone thinking to look.
+ *
+ * @returns {Promise<{total:number, byType:Array<{event_type_key:string,count:number,oldest:string,last_error:string}>}>}
+ */
+async function countDeadLetters(client, { limit = 20 } = {}) {
+  const { rows } = await client.query(
+    `SELECT el.event_type_key,
+            COUNT(*)::int      AS count,
+            MIN(ed.updated_at) AS oldest,
+            MAX(ed.last_error) AS last_error
+       FROM event_dispatch ed
+       JOIN event_log el ON el.event_id = ed.event_id
+      WHERE ed.status = 'DEAD'
+      GROUP BY el.event_type_key
+      ORDER BY count DESC
+      LIMIT $1`,
+    [limit],
+  );
+  return {
+    total: rows.reduce((sum, r) => sum + r.count, 0),
+    byType: rows.map((r) => ({
+      event_type_key: r.event_type_key,
+      count: r.count,
+      oldest: r.oldest,
+      last_error: r.last_error,
+    })),
+  };
 }
 
 /**
  * Process the pending event backlog for the caller's tenant/schema.
- * @returns {Promise<{scanned:number, processed:number, failed:number, skipped:number}>}
+ * @returns {Promise<{scanned:number, processed:number, failed:number, dead:number, skipped:number}>}
  */
 async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS } = {}) {
   const { rows } = await client.query(
@@ -66,40 +102,76 @@ async function dispatchPending(client, { limit = 200, maxAttempts = MAX_ATTEMPTS
   let processed = 0;
   let failed = 0;
   let skipped = 0;
+  let dead = 0;
 
   for (const ev of rows) {
     const hs = registry.getHandlers(ev.event_type_key);
     if (!hs.length) {
       // No subscriber — mark handled so it leaves the queue (the event still
       // lives forever in event_log for audit).
-      // eslint-disable-next-line no-await-in-loop
+       
       await markDone(client, ev.event_id);
       skipped += 1;
       continue;
     }
     try {
       for (const h of hs) {
-        // eslint-disable-next-line no-await-in-loop
+         
         if (await featureEnabled(client, h.feature)) {
-          // eslint-disable-next-line no-await-in-loop
+           
           await h.run(client, ev);
         }
       }
-      // eslint-disable-next-line no-await-in-loop
+       
       await markDone(client, ev.event_id);
       processed += 1;
     } catch (err) {
-      logger.warn(
-        { err: err.message, event_id: String(ev.event_id), key: ev.event_type_key },
-        "[orchestration] handler failed",
-      );
-      // eslint-disable-next-line no-await-in-loop
-      await markFailed(client, ev.event_id, Number(ev.attempts) + 1, maxAttempts, err);
+      const attempts = Number(ev.attempts) + 1;
+       
+      const status = await markFailed(client, ev.event_id, attempts, maxAttempts, err);
+
+      // OBS-A6 (Critical). This used to log ONE warn line, byte-identical for a
+      // retriable FAILED and a terminal DEAD — so there was no way to alert on
+      // "gave up permanently", and nothing anywhere queried for DEAD rows.
+      //
+      // The handlers that die here are the cross-module money flows
+      // (costing-approved-draft-invoice, supplier-invoice-posted-cost-entry,
+      // receipt-posted-collected-signal). An approved costing that should
+      // generate a draft invoice simply never generated one — permanently,
+      // while the app returned 200s.
+      //
+      // A retry that will be retried is `warn`. Giving up is `error` AND a
+      // report, because at that point a business action has been silently
+      // dropped and only a human can put it right.
+      if (status === "DEAD") {
+        logger.error(
+          { err, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
+          "[orchestration] handler DEAD — giving up, this business event will never be processed",
+        );
+        report(err, {
+          origin: "worker",
+          severity: "fatal",
+          route: `orchestration/${ev.event_type_key}`,
+          extra: {
+            event_id: String(ev.event_id),
+            event_type_key: ev.event_type_key,
+            entity_ref: ev.entity_ref,
+            attempts,
+            dropped: true,
+          },
+        });
+        dead += 1;
+      } else {
+        logger.warn(
+          { err, event_id: String(ev.event_id), key: ev.event_type_key, attempts },
+          "[orchestration] handler failed — will retry",
+        );
+      }
       failed += 1;
     }
   }
 
-  return { scanned: rows.length, processed, failed, skipped };
+  return { scanned: rows.length, processed, failed, dead, skipped };
 }
 
-module.exports = { dispatchPending, MAX_ATTEMPTS };
+module.exports = { dispatchPending, countDeadLetters, MAX_ATTEMPTS };

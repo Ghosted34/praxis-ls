@@ -9,6 +9,7 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 const repo = require("./financial_statement.repo");
 const { trialBalanceTotals, incomeStatement, balanceSheet, runningBalance, tafire, notesAnnexes, canClosePeriod } = require("./financial_statement.rules");
+const { withMoneyLog } = require("../../../shared/observability/money-log");
 
 async function trialBalance(client, filters) {
   const rows = await repo.trialBalance(client, filters);
@@ -53,7 +54,19 @@ async function listPeriods(client, filters = {}) {
  * close a period once its validated GL balances; the ledger post-guard already
  * rejects new entries into a non-OPEN period. Emits + audits the transition.
  */
-async function closePeriod(client, { periodId, to = "CLOSED", actor = {} }) {
+/**
+ * OBS L2. Closing a period freezes a set of books. It was silent, including the refusals for an already-closed or unbalanced period.
+ */
+async function closePeriod(client, opts) {
+  const { periodId, to = "CLOSED" } = opts;
+  return withMoneyLog(
+    "period.closed",
+    (out) => ({ period_id: periodId, to, status: out ? out.status : null }),
+    () => closePeriodCore(client, opts),
+  );
+}
+
+async function closePeriodCore(client, { periodId, to = "CLOSED", actor = {} }) {
   const period = await repo.getPeriod(client, periodId);
   if (!period) throw new AppError("NO_PERIOD", "Accounting period not found", 404);
   if (period.status === "CLOSED") throw new AppError("ALREADY_CLOSED", "Period is already closed", 422);

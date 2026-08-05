@@ -3,7 +3,7 @@
 // repo, event emitter and job queue mocked, so we assert the orchestration:
 // guards, sender From-formatting, per-subscriber enqueue, and the queued count.
 jest.mock("../../src/modules/sales/marketing_campaign/marketing_campaign.repo");
-jest.mock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn(), audit: jest.fn() }));
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: jest.fn(), audit: jest.fn() }));
 jest.mock("../../src/jobs/queue-producer", () => ({ enqueue: jest.fn().mockResolvedValue({}) }));
 
 const repo = require("../../src/modules/sales/marketing_campaign/marketing_campaign.repo");

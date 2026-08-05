@@ -1,6 +1,6 @@
 /** Purchase-order repository (MOD-60). All PO / PO-item SQL lives here. */
 "use strict";
-const { insertOne, getById, page } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
 const insertPO = (client, data) => insertOne(client, "purchase_order", data);
 const getPO = (client, id) => getById(client, "purchase_order", "po_id", id);
@@ -12,11 +12,10 @@ async function listItems(client, poId) {
   return rows;
 }
 async function update(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getPO(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE purchase_order SET " + set + " WHERE po_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getPO(client, id);
+  return updateOne(client, "purchase_order", "po_id", id, fields, "*", null);
 }
 async function listPO(client, q = {}) {
   const { limit, offset } = page(q);

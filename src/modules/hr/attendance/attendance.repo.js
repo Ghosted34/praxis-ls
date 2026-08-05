@@ -4,9 +4,13 @@
  */
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
+const { updateOne } = require("../../../shared/db/query-helpers");
 const { page } = require("../../../shared/db/query-helpers");
 
-const base = makeRepo({ table: "attendance_log", pk: "attendance_id", activeColumn: null, searchColumn: null, orderBy: "created_at DESC" });
+const base = makeRepo({ table: "attendance_log", pk: "attendance_id", activeColumn: null, searchColumn: null, orderBy: "created_at DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at"],
+});
 
 module.exports = {
   ...base,
@@ -53,14 +57,10 @@ module.exports = {
       .then((r) => r.rows[0]);
   },
   async updateSite(client, id, fields) {
-    const keys = Object.keys(fields);
-    if (!keys.length) return this.getSite(client, id);
-    const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-    const { rows } = await client.query(
-      "UPDATE work_site SET " + set + ", updated_at = now() WHERE work_site_id = $1 RETURNING *",
-      [id, ...keys.map((k) => fields[k])],
-    );
-    return rows[0] || null;
+    // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+    // identifier validation and writable allow-list in query-helpers.
+    if (!Object.keys(fields).length) return this.getSite(client, id);
+    return updateOne(client, "work_site", "work_site_id", id, fields, "*", null, { touch: "updated_at" });
   },
 
   async list(client, q = {}) {

@@ -62,4 +62,50 @@ function requireTransitionCapability(capabilityByTarget, opts = {}) {
   };
 }
 
-module.exports = { requireTransitionPermission, requireTransitionCapability };
+/**
+ * Close the PATCH back-door onto a lifecycle field (API F-17 / F-21).
+ *
+ * The near-universal module idiom is `{ create, update: create.partial() }`, so
+ * every field accepted at create is accepted on `PATCH /:id` — INCLUDING the
+ * status field, where the create schema declares it. That gave those resources
+ * TWO routes to the same state change with DIFFERENT permissions:
+ *
+ *     POST  /contracts/:id/status  { to: "SIGNED" }   → the declared gate
+ *     PATCH /contracts/:id         { status: "SIGNED" } → merely "edit"
+ *
+ * So the transition gate was optional: anyone with `edit` could take the second
+ * route and skip it entirely. Tightening `POST /:id/status` without this would
+ * have moved the hole rather than closed it.
+ *
+ * Mount this on the PATCH route, AFTER the validator. When the body does not
+ * carry the lifecycle field it does nothing at all, so ordinary edits are
+ * untouched. When it does, the request must satisfy the SAME permission the
+ * dedicated endpoint requires for that target state.
+ *
+ * A caller who holds the right permission is unaffected. A caller who was
+ * relying on the cheaper path now gets a 403 — which is the privilege
+ * escalation being closed, not a regression.
+ *
+ *     router.patch("/:id",
+ *       validator.update,
+ *       requirePermission(MODULE, "edit"),
+ *       requireLifecyclePermissionOnPatch(MODULE, TRANSITION_ACTION, { field: "status" }),
+ *       controller.update);
+ */
+function requireLifecyclePermissionOnPatch(moduleKey, actionByTarget, opts = {}) {
+  const field = opts.field || "status";
+  const fallback = opts.fallback || "approve";
+  return function lifecyclePatchRbac(req, res, next) {
+    const target = req.body ? req.body[field] : undefined;
+    // Not a lifecycle change — an ordinary PATCH. Nothing to add.
+    if (target === undefined) return next();
+    const action = actionByTarget[target] || fallback;
+    return requirePermission(moduleKey, action)(req, res, next);
+  };
+}
+
+module.exports = {
+  requireTransitionPermission,
+  requireTransitionCapability,
+  requireLifecyclePermissionOnPatch,
+};

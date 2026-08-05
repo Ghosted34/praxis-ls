@@ -15,7 +15,7 @@ router.get("/conversations", c.conversations);
 router.get("/options", c.options);
 router.get("/history", c.history);
 router.post("/history/clear", c.clearHistory);
-router.post("/actions/:id/confirm", c.confirm);
+router.post("/actions/:id/confirm", validate("confirm"), c.confirm);
 router.post("/batches/:batchId/confirm", c.confirmBatch);
 
 module.exports = { basePath: "/ai", feature: "ai.assistant.backend", router };

@@ -11,6 +11,31 @@ const slug = z
   .regex(/^[a-z][a-z0-9_]{1,40}$/, "lowercase [a-z0-9_], starts with a letter");
 const onoff = z.enum(["on", "off"]);
 
+/**
+ * SEC H6. Platform users and tenant admins were validated as
+ * `z.string().min(8)` — no complexity, no breach check — while staff app_user
+ * paths have always gone through the real policy.
+ *
+ * The weakness was inverted relative to privilege: a platform user administers
+ * EVERY tenant on the deployment, and a tenant admin created through
+ * `POST /tenants/:slug/admin` typically receives the CEO role. Both could hold
+ * "password" or "12345678". Combined with the absence of platform-tier 2FA,
+ * guessing one was a matter of throughput.
+ *
+ * This mirrors the SYNCHRONOUS half of shared/security/password-policy so the
+ * caller gets an immediate, specific error. The asynchronous half — the HIBP
+ * breach check and the email-local-part rule — cannot live in a zod schema and
+ * is applied in the services (users.service, provisioning.service). Both halves
+ * are needed: this one alone would let a breached-but-complex password through.
+ */
+const strongPassword = z
+  .string()
+  .min(12, "at least 12 characters")
+  .regex(/[a-z]/, "a lowercase letter")
+  .regex(/[A-Z]/, "an uppercase letter")
+  .regex(/[0-9]/, "a number")
+  .regex(/[^A-Za-z0-9]/, "a symbol");
+
 const schemas = {
   login: z.object({
     email: z.string().trim().email(),
@@ -27,7 +52,7 @@ const schemas = {
   admin: z.object({
     email: z.string().trim().email(),
     name: z.string().optional(),
-    password: z.string().min(8, "at least 8 characters"),
+    password: strongPassword,
     role: z.string().optional(),
   }),
   feature: z.object({ state: onoff }),
@@ -40,7 +65,7 @@ const schemas = {
   userCreate: z.object({
     email: z.string().trim().email(),
     full_name: z.string().optional(),
-    password: z.string().min(8, "at least 8 characters"),
+    password: strongPassword,
     role: z.string().optional(),
   }),
   userUpdate: z.object({
@@ -48,7 +73,7 @@ const schemas = {
     role: z.string().optional(),
     is_active: z.boolean().optional(),
   }),
-  userPassword: z.object({ password: z.string().min(8, "at least 8 characters") }),
+  userPassword: z.object({ password: strongPassword }),
   // Plans
   planCreate: z.object({
     code: z.string().min(2),
@@ -87,6 +112,36 @@ const schemas = {
   }),
 };
 
+/**
+ * API F-15/F-16. `POST /settings/:section/:key/test` and
+ * `POST /ai-vendors/:vendor/test` take their entire input from PATH parameters
+ * and validated none of it. Both are `settings.write`-tier actions that send a
+ * stored credential to a live third-party provider, so the segment decides
+ * which secret leaves the building.
+ *
+ * The id guard the module loader installs does not help here: these are not
+ * `:id`, and they are legitimately text. They need a shape of their own.
+ */
+const PARAM_SCHEMAS = {
+  settingTest: z.object({
+    section: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/i, "invalid settings section"),
+    key: z.string().regex(/^[a-z][a-z0-9_.]{0,63}$/i, "invalid settings key"),
+  }),
+  aiVendorTest: z.object({
+    vendor: z.string().regex(/^[a-z][a-z0-9_-]{0,39}$/i, "invalid vendor"),
+  }),
+};
+
+const validateParams = (schemaKey) => (req, _res, next) => {
+  const parsed = PARAM_SCHEMAS[schemaKey].safeParse(req.params);
+  if (!parsed.success) {
+    return next(
+      new AppError("VALIDATION_ERROR", "Invalid path parameters", 422, parsed.error.flatten().fieldErrors),
+    );
+  }
+  return next();
+};
+
 const validate = (schemaKey) => (req, _res, next) => {
   const parsed = schemas[schemaKey].safeParse(req.body);
   if (!parsed.success) {
@@ -103,4 +158,4 @@ const validate = (schemaKey) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { validate, schemas };
+module.exports = { validate, validateParams, schemas };

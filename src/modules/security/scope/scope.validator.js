@@ -19,7 +19,7 @@ const { AppError } = require("../../../utils/errors");
 const check = (schema) => (req, _res, next) => {
   const r = schema.safeParse(req.body);
   if (!r.success) {
-    throw new AppError("VALIDATION_ERROR", "Invalid request body", 400, r.error.flatten().fieldErrors);
+    throw new AppError("VALIDATION_ERROR", "Invalid request body", 422, r.error.flatten().fieldErrors);
   }
   req.body = r.data;
   return next();
@@ -44,4 +44,13 @@ const update = z.object({
   parent_scope_id: z.string().uuid().nullish(),
 });
 
-module.exports = { create: check(create), update: check(update), schemas: { create, update } };
+// API F-15: POST /scopes/:id/members read `req.body.user_id` unvalidated.
+// A non-UUID reached Postgres as 22P02 -> 400 INVALID_VALUE with no fields,
+// and an ABSENT user_id inserted NULL or raised 23502 depending on the
+// column — two different errors for the same mistake.
+const member = z.object({ user_id: z.string().uuid() }).strict();
+
+module.exports = {
+  create: check(create), update: check(update), member: check(member),
+  schemas: { create, update, member },
+};

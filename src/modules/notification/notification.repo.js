@@ -150,9 +150,64 @@ async function isChannelEnabled(client, userId, channel, category, defaultEnable
     [userId, channel, category]);
   return rows[0] ? rows[0].enabled === true : defaultEnabled;
 }
+/**
+ * PERF S5. Channel preferences for MANY users in one round-trip.
+ *
+ * `isChannelEnabled` above is one query per (user, channel). The fan-out called
+ * it twice per recipient — IN_APP and EMAIL — so notifying 50 finance users of
+ * one posted invoice issued 100 preference queries before it inserted anything.
+ *
+ * Absence of a row means the caller's default (the table stores explicit
+ * overrides only), so this returns just the rows that exist and lets the caller
+ * apply its own default. Returning a fully-populated map would require knowing
+ * the default here, and the two channels disagree about it.
+ */
+async function preferencesFor(client, userIds, channels, category) {
+  if (!userIds || userIds.length === 0) return new Map();
+  const { rows } = await client.query(
+    `SELECT user_id, channel, enabled
+       FROM notification_preference
+      WHERE user_id = ANY($1::uuid[]) AND channel = ANY($2::text[]) AND category = $3`,
+    [userIds, channels, category],
+  );
+  const map = new Map();
+  for (const r of rows) map.set(`${r.user_id}:${r.channel}`, r.enabled === true);
+  return map;
+}
+
+/**
+ * PERF S5. Insert one notification per user in a single statement.
+ *
+ * A multi-row INSERT … SELECT unnest() rather than N inserts: same rows, one
+ * round-trip, one WAL flush. `unnest` keeps it parameterised — the alternative,
+ * building a VALUES list, means N placeholders and a statement whose text
+ * changes with the recipient count, which defeats the plan cache.
+ */
+async function insertForUsers(client, userIds, { eventTypeKey = null, title, body = null, entityRef = null, priority = "NORMAL", category = null }) {
+  if (!userIds || userIds.length === 0) return [];
+  const { rows } = await client.query(
+    `INSERT INTO notification (user_id, channel, event_type_key, title, body, entity_ref, priority, category)
+     SELECT u, 'IN_APP', $2, $3, $4, $5, $6, $7 FROM unnest($1::uuid[]) AS u
+     RETURNING notification_id, user_id, created_at`,
+    [userIds, eventTypeKey, title, body, entityRef, priority === "HIGH" ? "HIGH" : "NORMAL", category],
+  );
+  return rows;
+}
+
+/** PERF S5. Deliverable addresses for many users in one round-trip. */
+async function activeEmailsFor(client, userIds) {
+  if (!userIds || userIds.length === 0) return new Map();
+  const { rows } = await client.query(
+    "SELECT user_id, email, full_name FROM app_user WHERE user_id = ANY($1::uuid[]) AND status = 'ACTIVE'",
+    [userIds],
+  );
+  return new Map(rows.map((r) => [r.user_id, r]));
+}
+
 module.exports = {
   mine, insertForUser, unreadCount, markRead, markAllRead,
   getPreferences, putPreferences, isChannelEnabled,
+  preferencesFor, insertForUsers, activeEmailsFor,
   savePushSubscription, deletePushSubscription,
   roleRecipients, requesterFor, recipientsWithPermission,
 };

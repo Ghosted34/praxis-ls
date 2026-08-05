@@ -29,6 +29,8 @@ const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
 const identityCache = require("../shared/cache/identity-cache");
 const requestContext = require("../config/request-context");
+const { logger } = require("../config/logger");
+const metrics = require("../shared/observability/metrics");
 
 async function authMiddleware(req, _res, next) {
   const header = req.headers.authorization;
@@ -66,6 +68,13 @@ async function authMiddleware(req, _res, next) {
   // LIVE→TEST toggle never bounces the user (accounts live in the live schema).
   const user = await req.identityDb((client) => identityCache.getAuthUser(client, payload.sub));
   if (!user || user.status !== "ACTIVE") {
+    // OBS-T4: auth/rbac/tenant middleware contained ZERO logger calls, so there
+    // was no failed-authentication record anywhere — a debugging gap and, more
+    // seriously, a detection gap: credential stuffing against a multi-tenant
+    // ERP would have been entirely invisible.
+    metrics.inc("praxis_auth_failures_total", { reason: "user_inactive" }, 1,
+      "Authentication failures by reason.");
+    logger.warn({ sub: payload.sub, reason: user ? "inactive" : "not_found" }, "authentication rejected");
     throw new AppError("USER_INACTIVE", "User not found or inactive", 401);
   }
 
@@ -79,6 +88,10 @@ async function authMiddleware(req, _res, next) {
     is_ceo: user.is_ceo === true,
     jwt_iat: payload.iat,
     jwt_jti: payload.jti,
+    // SEC-C2: the session this token belongs to, so logout can revoke it without
+    // the client having to tell us. Undefined on tokens issued before that
+    // shipped; logout degrades rather than erroring.
+    session_id: payload.sid || null,
   };
 
   // OBS-L3. `tenantContext` binds the ambient request-context BEFORE auth runs,

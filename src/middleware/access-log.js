@@ -38,9 +38,30 @@
 const pinoHttp = require("pino-http");
 const { logger } = require("../config/logger");
 const requestContext = require("../config/request-context");
+const metrics = require("../shared/observability/metrics");
 
 /** Paths whose success is noise, not signal. */
 const QUIET = /^\/api\/health(\/|$)/;
+
+/**
+ * Count + time one finished request. pino-http calls the message formatters
+ * exactly once per response, which makes them the cheapest reliable hook — and
+ * it keeps metrics on the same path as the access log, so the two cannot drift.
+ */
+function recordHttp(req, res) {
+  try {
+    const route = metrics.templatePath(req.url);
+    const labels = { method: req.method, route, status: String(res.statusCode) };
+    metrics.inc("praxis_http_requests_total", labels, 1, "HTTP requests by method, templated route and status.");
+    const ms = Number(res.responseTime ?? res[Symbol.for("responseTime")] ?? 0);
+    if (ms > 0) {
+      metrics.observe("praxis_http_request_duration_seconds", ms / 1000, { method: req.method, route },
+        "HTTP request duration in seconds.");
+    }
+  } catch {
+    /* metrics must never break a request */
+  }
+}
 
 function buildAccessLog() {
   return pinoHttp({
@@ -62,9 +83,11 @@ function buildAccessLog() {
     },
 
     customSuccessMessage(req, res) {
+      recordHttp(req, res);
       return `${req.method} ${req.url} ${res.statusCode}`;
     },
     customErrorMessage(req, res, err) {
+      recordHttp(req, res);
       return `${req.method} ${req.url} ${res.statusCode} ${err ? err.message : ""}`.trim();
     },
 

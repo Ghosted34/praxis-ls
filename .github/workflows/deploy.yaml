@@ -29,6 +29,45 @@ jobs:
     runs-on: ubuntu-latest
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
+      # TC-CI1, the half that lives in code.
+      #
+      # Branch protection itself is a GitHub settings change (doc/BRANCH_PROTECTION.md).
+      # Until it is switched on — and as a second line after it is — this refuses
+      # to deploy a commit that reached `main` without a pull request.
+      #
+      # The audit's finding was that 45% of changes were pushed straight to main
+      # and every green push auto-deployed. The six consecutive deploy failures
+      # on 2026-08-04 all went to production with no review. They happened to be
+      # crashes, which is the lucky version: a crash fails loudly and touches
+      # nothing. The same path was open to a migration that corrupts data.
+      #
+      # A direct push is stopped here rather than allowed and reported, because
+      # a warning on a deploy that already happened is not a control. Use
+      # workflow_dispatch for a deliberate manual deploy — that is a person
+      # choosing, which is the thing being asked for.
+      - name: Refuse to deploy an unreviewed commit
+        if: ${{ github.event_name == 'workflow_run' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          prs=$(gh api "repos/$REPO/commits/$SHA/pulls" \
+                  -H "Accept: application/vnd.github.groot-preview+json" \
+                  --jq 'length')
+          if [ "$prs" -eq 0 ]; then
+            echo "::error::$SHA reached main without a pull request. Refusing to deploy."
+            echo ""
+            echo "This is TC-CI1. Open a PR, get it reviewed, and merge it — or, if this"
+            echo "is a deliberate emergency deploy, trigger this workflow manually"
+            echo "(Actions -> Deploy -> Run workflow), which records who chose to."
+            echo ""
+            echo "Turn on branch protection so this cannot happen: doc/BRANCH_PROTECTION.md"
+            exit 1
+          fi
+          echo "$SHA arrived via pull request. Proceeding."
+
       - name: Rolling deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         with:

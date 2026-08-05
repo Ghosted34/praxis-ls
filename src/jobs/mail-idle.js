@@ -32,7 +32,7 @@ let stopping = false;
 function triggerSync(meta) {
   enqueue("mail-sync", "sync", { tenantMeta: meta, env: "live" },
     { jobId: `mailsync:${meta.db_name}:live`, removeOnComplete: true, removeOnFail: 100 })
-    .catch((err) => logger.warn({ err: err.message }, "[mail-idle] enqueue failed"));
+    .catch((err) => logger.warn({ err }, "[mail-idle] enqueue failed"));
 }
 
 async function idleConnection(meta, conn) {
@@ -71,7 +71,7 @@ async function main() {
     const conns = await registry.withTenantConnection(meta, "live", (c) => mailRepo.listSyncable(c));
     for (const conn of conns.filter((x) => x.provider === "imap_smtp")) {
       // eslint-disable-next-line no-await-in-loop
-      await idleConnection(meta, conn).catch((err) => logger.warn({ err: err.message, conn: conn.email_connection_id }, "[mail-idle] start failed"));
+      await idleConnection(meta, conn).catch((err) => logger.warn({ err, conn: conn.email_connection_id }, "[mail-idle] start failed"));
     }
   }
   logger.info({ idlers: idlers.size }, "[mail-idle] ready");

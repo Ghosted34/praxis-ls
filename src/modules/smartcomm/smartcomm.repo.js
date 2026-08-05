@@ -4,7 +4,7 @@
  * WhatsApp-style; no external social routing (PRD §11.5).
  */
 "use strict";
-const { insertOne, getById, page } = require("../../shared/db/query-helpers");
+const { insertOne, getById, page, updateOne } = require("../../shared/db/query-helpers");
 
 // ── Channels (comms_group) ──
 const insertChannel = (client, data) => insertOne(client, "comms_group", data);
@@ -45,11 +45,10 @@ async function findCustomerThread(client, clientId) {
   return rows[0] || null;
 }
 async function updateChannel(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return getChannel(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE comms_group SET " + set + ", updated_at = now() WHERE group_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return getChannel(client, id);
+  return updateOne(client, "comms_group", "group_id", id, fields, "*", null, { touch: "updated_at" });
 }
 
 // ── Members ──
@@ -168,10 +167,9 @@ async function listQuickReplies(client, userId) {
 }
 const createQuickReply = (client, data) => insertOne(client, "comms_quick_reply", data);
 async function updateQuickReply(client, id, fields) {
-  const keys = Object.keys(fields);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query("UPDATE comms_quick_reply SET " + set + ", updated_at = now() WHERE quick_reply_id = $1 RETURNING *", [id, ...keys.map((k) => fields[k])]);
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and writable allow-list in query-helpers.
+  return updateOne(client, "comms_quick_reply", "quick_reply_id", id, fields, "*", null, { touch: "updated_at" });
 }
 async function deleteQuickReply(client, id) { await client.query("DELETE FROM comms_quick_reply WHERE quick_reply_id = $1", [id]); }
 

@@ -9,6 +9,7 @@
 "use strict";
 
 const repo = require("./tax_jurisdiction.repo");
+const { atomically } = require("../../../shared/db/tx");
 const events = require("./tax_jurisdiction.events");
 const { assertRate, assertEffectiveWindow, pickEffective } = require("./tax_jurisdiction.rules");
 const { emitEvent, audit } = require("../../../shared/events/emit");
@@ -57,8 +58,9 @@ async function addCode(client, { jurisdictionId, code, kind, ratePercent = null,
   if (!jur) throw new AppError("NOT_FOUND", "Jurisdiction not found", 404);
   assertRate({ kind, ratePercent, brackets });
   assertEffectiveWindow({ effectiveFrom, effectiveTo });
-  await client.query("BEGIN");
-  try {
+  // atomically() joins an open transaction instead of opening a second one, so
+  // supersedeCode can wrap expire+add as a single unit (DATA 5.4).
+  return atomically(client, async () => {
     const row = await repo.insertCode(client, {
       jurisdiction_id: jurisdictionId, code, kind, rate_percent: ratePercent, base_rule: baseRule, applies_to: appliesTo,
       recoverable, posts_debit_account: postsDebitAccount, posts_credit_account: postsCreditAccount,
@@ -66,25 +68,36 @@ async function addCode(client, { jurisdictionId, code, kind, ratePercent = null,
     });
     await emitEvent(client, { eventTypeKey: events.CODE_CREATED, moduleKey: events.MODULE, entityRef: cref(row.tax_code_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CODE_CREATED, moduleKey: events.MODULE, entityRef: cref(row.tax_code_id), after: row });
-    await client.query("COMMIT");
     return row;
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
+  });
 }
 
 /** Supersede a code: expire the current effective row and open a new one (never edit history). */
 async function supersedeCode(client, { jurisdictionId, code, effectiveFrom, newRow, actor = {} }) {
-  const rows = await repo.codesByKey(client, jurisdictionId, code);
-  await client.query("BEGIN");
-  try {
+  // DATA 5.4 (High). This used to COMMIT the expiry and only then call addCode,
+  // which opened its own transaction. addCode runs assertRate BEFORE its BEGIN
+  // and throws on a bad rate; it can also fail on insert. Either way the old
+  // rate was already expired and the new one did not exist.
+  //
+  // The consequence is not subtle: for that (jurisdiction, code) there is then
+  // NO row effective from that date, pickEffective throws NO_EFFECTIVE_CODE,
+  // and EVERY INVOICE FROM THAT DATE FORWARD FAILS TO POST until someone
+  // notices and inserts the row by hand. A tax-rate change is exactly the
+  // operation performed under time pressure at a Finance Law boundary.
+  //
+  // Expire and replace are now one transaction: either the series is
+  // continuous, or nothing changed.
+  return atomically(client, async () => {
+    const rows = await repo.codesByKey(client, jurisdictionId, code);
     const current = rows.find((r) => !r.effective_to);
     if (current) {
       const dayBefore = new Date(Date.parse(effectiveFrom) - 86400000).toISOString().slice(0, 10);
       await repo.updateCode(client, current.tax_code_id, { effective_to: dayBefore });
       await emitEvent(client, { eventTypeKey: events.CODE_EXPIRED, moduleKey: events.MODULE, entityRef: cref(current.tax_code_id), actorUserId: actor.user_id || null });
     }
-    await client.query("COMMIT");
-  } catch (err) { await client.query("ROLLBACK"); throw err; }
-  return addCode(client, { jurisdictionId, code, effectiveFrom, ...newRow, actor });
+    // Nested: joins this transaction rather than opening its own.
+    return addCode(client, { jurisdictionId, code, effectiveFrom, ...newRow, actor });
+  });
 }
 
 /** Read the tax code effective at a date (mirrors determination.effectiveTax). */

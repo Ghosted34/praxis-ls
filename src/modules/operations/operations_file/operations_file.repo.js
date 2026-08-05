@@ -1,19 +1,45 @@
 /** Operations file (dossier) repository (MOD-29). All dossier SQL lives here. */
 "use strict";
-const { insertOne, getById, page, TOTAL_COL, splitTotal } = require("../../../shared/db/query-helpers");
+const { insertOne, getById, page, TOTAL_COL, splitTotal, updateOne } = require("../../../shared/db/query-helpers");
 
-const insert = (client, data) => insertOne(client, "dossier", data);
+/**
+ * Every column of `dossier` a caller may write, and nothing else.
+ *
+ * WHY THIS EXISTS. `insertOne`/`updateOne` build their column list from
+ * `Object.keys(data)`, and their identifier check only asks whether a key is a
+ * legal SQL identifier — it has no idea what columns this table has. So when
+ * two services passed `title` (a column `dossier` did not have until migration
+ * 0508), the key sailed through the app and Postgres answered 42703 at the very
+ * bottom of the stack: an unhandled 500 on `win({createDossier})`, and a
+ * dead-lettered outbox row on `opportunity.won` that nobody saw. The
+ * sales→operations handoff had never worked by either route.
+ *
+ * The zod validator already strips unknown keys on the REST and AI paths, but
+ * BOTH broken call sites reached `service.create` directly, in process, with no
+ * HTTP request anywhere near them. An allow-list here is the layer that covers
+ * those: it lives next to the SQL, so it applies to every caller, and it turns
+ * "column that does not exist" into a 422 naming the field instead of a
+ * database error two layers down.
+ *
+ * Excludes `dossier_id` (the pk), `created_at` and `updated_at` (the last set
+ * by `touch`, code-provided, and exempt from the list by design).
+ */
+const WRITABLE = new Set([
+  "ref", "entity_id", "client_id", "service_type_id", "status", "title",
+  "incoterm", "bl_mawb", "vessel_flight",
+  "pol", "pod", "pol_place_id", "pod_place_id",
+  "customs_regime", "eta", "ata", "details_json",
+  "owner_ops_id", "owner_sales_id",
+]);
+
+const insert = (client, data) => insertOne(client, "dossier", data, "*", WRITABLE);
 const get = (client, id) => getById(client, "dossier", "dossier_id", id);
 
 async function update(client, id, fields) {
-  const keys = Object.keys(fields);
-  if (!keys.length) return get(client, id);
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE dossier SET " + set + ", updated_at = now() WHERE dossier_id = $1 RETURNING *",
-    [id, ...keys.map((k) => fields[k])],
-  );
-  return rows[0] || null;
+  // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
+  // identifier validation and allow-list in query-helpers.
+  if (!Object.keys(fields).length) return get(client, id);
+  return updateOne(client, "dossier", "dossier_id", id, fields, "*", WRITABLE, { touch: "updated_at" });
 }
 
 /**
@@ -158,4 +184,8 @@ async function overview(client, dossierId) {
   };
 }
 
-module.exports = { insert, get, update, list, listPaged, overview };
+// WRITABLE is exported for tests/unit/dossier-columns.test.js, which reconciles
+// it against the columns the migrations actually declare. That test is the link
+// between this file and the schema — the link whose absence let `title` be
+// written for months against a column that did not exist.
+module.exports = { insert, get, update, list, listPaged, overview, WRITABLE };

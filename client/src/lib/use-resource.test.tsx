@@ -7,6 +7,7 @@
  */
 import * as React from "react";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import type { MockInstance } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { QueryClientProvider } from "@tanstack/react-query";
 
@@ -25,7 +26,9 @@ function wrapper() {
   );
 }
 
-let tenantSpy: ReturnType<typeof vi.spyOn>;
+// Typed from the spied function, not `ReturnType<typeof vi.spyOn>` — see the
+// note in use-list-paged.test.tsx for why that idiom breaks under vitest 3.
+let tenantSpy: MockInstance<typeof apiClient.tenant>;
 beforeEach(() => {
   tenantSpy = vi.spyOn(apiClient, "tenant");
 });

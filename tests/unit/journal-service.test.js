@@ -7,7 +7,7 @@
  * integration test that runs when DATABASE_URL is set.
  */
 jest.mock("../../src/modules/finance/journal_entry/journal_entry.repo");
-jest.mock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn().mockResolvedValue(), audit: jest.fn().mockResolvedValue() }));
+jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: jest.fn().mockResolvedValue(), audit: jest.fn().mockResolvedValue() }));
 
 const repo = require("../../src/modules/finance/journal_entry/journal_entry.repo");
 const { emitEvent } = require("../../src/shared/events/emit");

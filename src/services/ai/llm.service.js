@@ -101,7 +101,7 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
       // eslint-disable-next-line no-await-in-loop
       return await callVendor(vendor, { messages, tools, temperature });
     } catch (err) {
-      logger.warn({ err: err.message, vendor: name }, "LLM vendor failed");
+      logger.warn({ err, vendor: name }, "LLM vendor failed");
     }
   }
   return STUB;

@@ -38,5 +38,30 @@ export default defineConfig({
     setupFiles: ["./src/test/setup.ts"],
     include: ["src/**/*.test.{ts,tsx}"],
     css: false,
+    /**
+     * Pin the timezone, or date assertions mean different things on different
+     * desks.
+     *
+     * `dateFmt` formats with `toLocaleDateString` and no `timeZone`, i.e. in
+     * whatever zone the machine is in. model.test.ts asserted an ETA of
+     * `2026-07-04T23:00:00.000Z` renders "04 Jul 2026" — true at UTC, false one
+     * hour later: in Douala (WAT, UTC+1) that instant is already the 5th. So the
+     * suite passed on the UTC CI runner and failed for every developer on this
+     * team, which is the wrong way round for a test to be wrong.
+     *
+     * There is no timestamp that fixes this. For a calendar date to survive
+     * every real offset (UTC-12 to UTC+14) the UTC hour would have to be both
+     * >= 12 and <= 9. Midday is stable everywhere except Kiritimati; nothing is
+     * stable everywhere. Determinism has to come from pinning the zone.
+     *
+     * UTC because it matches CI and Docker, so a failure reproduces where it was
+     * reported. NOTE what this deliberately does NOT do: it does not make the
+     * app's date handling correct. `eta` is a Postgres `date` serialised to a
+     * UTC instant at the API's local midnight and then formatted in the
+     * browser's zone, so a viewer in a different zone from the API still sees
+     * the wrong day. That is NEW-11, and it needs a decision about where dates
+     * are rendered, not a test setting.
+     */
+    env: { TZ: "UTC" },
   },
 });

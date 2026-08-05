@@ -6,7 +6,10 @@
 const { makeRepo } = require("../../../shared/crud/resource");
 const { page } = require("../../../shared/db/query-helpers");
 
-const base = makeRepo({ table: "wms_equipment", pk: "wms_equipment_id", activeColumn: null, searchColumn: "label", orderBy: "created_at DESC" });
+const base = makeRepo({ table: "wms_equipment", pk: "wms_equipment_id", activeColumn: null, searchColumn: "label", orderBy: "created_at DESC",
+  // API F-29: explicit allow-list; anything else is refused, not interpolated.
+  sortable: ["created_at", "label"],
+});
 
 module.exports = {
   ...base,

@@ -23,10 +23,21 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        # npm install, NOT ci: the lockfile is Windows-generated, so `ci` on a
-        # Linux runner can omit linux platform binaries (sharp, argon2) — the
-        # same trap the Dockerfile documents.
-        run: npm install --no-audit --no-fund
+        # TC-CI8. This was `npm install`, with a comment explaining that the
+        # lockfile is Windows-generated so `ci` on a Linux runner could omit the
+        # linux platform binaries (sharp, argon2).
+        #
+        # THAT PREMISE IS FALSE, and it was worth checking rather than
+        # inheriting. lockfileVersion 3 records every platform variant
+        # regardless of the machine that generated it — verified: this lockfile
+        # contains @img/sharp-linux-x64, @img/sharp-libvips-linux-x64, argon2
+        # and node-gyp-build. npm resolves the right ones by os/cpu at install.
+        #
+        # The cost of the old line is the finding itself: `npm install` may
+        # resolve a NEWER version than the lockfile pins, so CI tested a
+        # dependency tree that is neither the one the Dockerfile builds nor the
+        # one that gets deployed. A green CI proved nothing about the artifact.
+        run: npm ci --no-audit --no-fund
 
       - name: Syntax check every source file
         # node --check catches parse/syntax errors the linter's config might skip
@@ -89,6 +100,30 @@ jobs:
         # to renumber. See scripts/db/check-migration-numbers.js.
         run: node scripts/db/check-migration-numbers.js
 
+      - name: Actor FK guard
+        # Audit DATA 2.4: ~60 tenant columns are REFERENCES app_user(user_id),
+        # identity is pinned to the LIVE schema, and a raw actor id written
+        # beside SANDBOX data raises 23503 and fails the operation. emit.js
+        # guards its own writes; the finding was that the guard is applied
+        # INCONSISTENTLY — a defect that comes back the next time somebody adds
+        # an `_by` column. This fails the build on a raw one.
+        run: node scripts/check-actor-fk-guard.js
+
+      - name: jest.mock hoisting
+        # Jest hoists jest.mock above the imports, so a factory closing over a
+        # module-scope variable runs before it exists — babel rejects it unless
+        # the name starts with mock. Eleven suites violated this at once and
+        # nothing caught it, because they had been verified under a substitute
+        # runner that does not use babel. Cheap static check; loud at write time.
+        run: node scripts/check-jest-mock-hoisting.js
+
+      - name: API docs in sync
+        # API F-5 / F-25: doc/API_REFERENCE.md and doc/ERROR_CODES.md are
+        # GENERATED from the code. A spec that is hand-written drifts — the
+        # Postman collection this replaces covered 19% and had already drifted.
+        # Fails if a route or an error code was added without regenerating.
+        run: node scripts/generate-api-docs.js --check
+
       - name: Migration reversibility
         # Audit DATA 3.5 / TEST-D2: there is not one down-migration in this
         # repo, which is half of why a bad deploy was unrecoverable (the other
@@ -100,6 +135,274 @@ jobs:
         # a commented `-- DOWN` block or an explicit `-- IRREVERSIBLE: <reason>`.
         # Stops the backlog growing while DATA 3.5 is worked.
         run: node scripts/db/check-migration-reversibility.js
+
+      - name: Schema drift
+        # Audit DATA 3.3: notification_preference is CREATEd in two files with
+        # different columns. Both use IF NOT EXISTS, the earlier one wins, and
+        # `created_at` exists on no database despite 0472 declaring it — the
+        # later file half-applied and reported success.
+        #
+        # Nothing read the column, so nothing broke. That is what made it
+        # dangerous: the migration files quietly stopped describing the schema
+        # and no tooling could tell. Compared PER DATABASE, because tenant and
+        # platform legitimately share three table names.
+        run: node scripts/db/check-schema-drift.js
+
+      - name: Write routes are validated
+        # Audit SEC H3: request-body keys become SQL column identifiers on the
+        # ten modules that mounted `passthrough` — a pair of no-op middlewares
+        # that looks like a validator, is imported from shared/http/validate,
+        # and sits in the slot a validator sits in.
+        #
+        # query-helpers now validates and quotes every identifier, so the
+        # injection half cannot come back. This guards the OTHER half: a new
+        # module whose write route reads req.body with neither a zod schema nor
+        # a `writable` allow-list is mass assignment waiting to happen.
+        run: node scripts/check-write-route-validators.js
+
+      - name: API contract
+        # Audit API F-30: nothing would catch a contract regression. No
+        # versioning to roll behind, no trustworthy spec to diff, and zero tests
+        # asserting the response shape of a real endpoint — a PR renaming
+        # { data } to { items } on any of 731 routes passed CI.
+        #
+        # This diffs the live route surface against doc/api-contract.json.
+        # Removals and lost auth/rbac/validator gates fail; additions do not,
+        # because a check that fails on every new route gets --update'd without
+        # being read.
+        run: node scripts/check-api-contract.js
+
+  # ---------------------------------------------------------------------------
+  # TC-CI6 — migrations are never executed in CI; the first run is production.
+  #
+  # This is the finding with the worst asymmetry in the whole Test & CI/CD
+  # audit. Every other gate here answers "does the code parse / lint / pass its
+  # unit tests" — questions whose worst answer is a broken feature. A migration
+  # that fails answers a different question, and its worst answer is a
+  # half-migrated production database at the moment the deploy script has
+  # already rolled the old image away.
+  #
+  # The six consecutive failed deploys on 2026-08-04 were crashes, which is the
+  # lucky kind. A migration is the unlucky kind: 0498's unique indexes have no
+  # NOT VALID escape and either build or fail the whole run, and 0497/0499/0500
+  # touch 71 constraints and 290 indexes between them.
+  #
+  # A real Postgres, a real platform database, a real tenant provisioned from
+  # nothing, and then the whole tenant migration set applied twice — because
+  # idempotency is the property the migrator's ledger claims and nothing checked
+  # it.
+  # ---------------------------------------------------------------------------
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # pgvector, not stock postgres:16. platform/0040_ai_knowledge.sql does
+        # `CREATE EXTENSION vector` for the AI knowledge embeddings, and the
+        # stock image does not ship it — the job failed at the FIRST platform
+        # migration with `extension "vector" is not available`, so it had never
+        # actually exercised anything.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: praxis-admin
+          POSTGRES_PASSWORD: ci-only-not-a-secret
+          POSTGRES_DB: praxis_platform
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U praxis-admin"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      NODE_ENV: test
+      LOG_LEVEL: warn
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_NAME: praxis_platform
+      DB_USER: praxis-admin
+      DB_PASSWORD: ci-only-not-a-secret
+      TENANT_DB_HOST_DEFAULT: localhost
+      TENANT_DB_PORT_DEFAULT: "5432"
+      TENANT_DB_SUPERUSER: praxis-admin
+      TENANT_DB_SUPERUSER_PASSWORD: ci-only-not-a-secret
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci --no-audit --no-fund
+
+      - name: Migrate the platform database
+        run: node scripts/db/migrate-platform.js
+
+      - name: Provision a tenant from nothing
+        # Exercises create-database + live/sandbox migrate + seed + register.
+        # This is the path a new customer takes, and it has never run in CI.
+        run: node scripts/db/provision-tenant.js --slug=citenant --name="CI Tenant"
+
+      - name: Apply the tenant migration set again — must be a no-op
+        # The migrator's whole idempotency claim is its public.schema_migration
+        # ledger. Applying twice is the cheapest possible test of it, and since
+        # the DATA 3.1 fix the DDL and its ledger row commit together, so a
+        # second run must report zero applied.
+        run: |
+          set -euo pipefail
+          out=$(node scripts/db/migrate-tenants.js --slug=citenant 2>&1)
+          echo "$out"
+          if echo "$out" | grep -qE "\(([1-9][0-9]*) files\)"; then
+            echo "::error::Re-running migrations applied files that were already recorded — the ledger is not doing its job."
+            exit 1
+          fi
+
+      - name: Probe the constraints that cannot be NOT VALID
+        # 0498's unique doc_number indexes either build or fail the migration.
+        # On a freshly seeded tenant they must build; if this ever fails, the
+        # seed data itself contains duplicates.
+        run: node scripts/db/probe-doc-numbers.js --slug=citenant
+
+      - name: The fleet is on one schema version
+        # DATA 3.2 / TEST-D3. migrateAllTenants used to abort on the first
+        # failing tenant, splitting the fleet at an arbitrary point with nothing
+        # recording where. It now continues, reports per tenant, and throws
+        # afterwards — and this asserts the resulting state is uniform.
+        run: node scripts/db/fleet-status.js
+
+      - name: Seed a corporate entity, journals and an OPEN period for the integration suites
+        # TEST-C6. The four integration suites are not skipped because someone
+        # disabled them — they self-skip on `!process.env.DATABASE_URL`, and
+        # nothing ever set it. journal-posting.test.js says so in its own
+        # header: "Run in CI by adding a postgres service + db:provision, then
+        # set these vars." This job now has exactly that.
+        #
+        # corporate_entity and journal are NOT seeded by 9000-9060 — they are
+        # tenant business data, not reference data — so the fixture is created
+        # here rather than pretending a seed provides it.
+        id: fixture
+        run: |
+          set -euo pipefail
+          export PGPASSWORD=ci-only-not-a-secret
+          # search_path via PGOPTIONS, not a `SET` statement in the -c string.
+          #
+          # `psql -tAc "SET …; INSERT … RETURNING id;"` prints the COMMAND TAG of
+          # every statement alongside the rows, so the capture was not a uuid —
+          # it was the three lines "SET", the uuid, and "INSERT 0 1". Those got
+          # interpolated into the next query and Postgres said exactly that:
+          #
+          #     invalid input syntax for type uuid: "SET
+          #     7487d69c-… INSERT 0 1"
+          #
+          # Wrapping the INSERT in a CTE and SELECTing from it makes the
+          # top-level statement a SELECT, which prints rows and no tag — so -tA
+          # yields the bare uuid and nothing else.
+          export PGOPTIONS='--search_path=live,public'
+          entity=$(psql -h localhost -U praxis-admin -d tenant_citenant \
+            -v ON_ERROR_STOP=1 -tAqc "
+            WITH ins AS (
+              INSERT INTO corporate_entity (code, legal_name, country_code)
+                   VALUES ('CITEST', 'CI Test Entity', 'CM')
+              ON CONFLICT (code) DO UPDATE SET legal_name = EXCLUDED.legal_name
+                RETURNING entity_id
+            ) SELECT entity_id FROM ins;")
+
+          # Fail loudly rather than carrying an empty/garbled id into the next
+          # statement — that is the whole failure mode above.
+          case "$entity" in
+            ????????-????-????-????-????????????) ;;
+            *) echo "::error::expected a uuid from corporate_entity, got: '$entity'"; exit 1 ;;
+          esac
+
+          psql -h localhost -U praxis-admin -d tenant_citenant -v ON_ERROR_STOP=1 -c "
+            INSERT INTO journal (code, name, entity_id) VALUES
+              ('BQ','Banque','$entity'), ('VT','Ventes','$entity'),
+              ('AC','Achats','$entity'), ('OD','Operations diverses','$entity')
+            ON CONFLICT (entity_id, code) DO NOTHING;"
+
+          # An OPEN accounting_period covering TODAY.
+          #
+          # Both integration suites document this in their own headers —
+          # journal-posting: "a corporate_entity id with an OPEN
+          # accounting_period covering TEST_ENTRY_DATE"; ledger-hardening: "a
+          # corporate_entity with a journal + an OPEN period". Neither got one.
+          # The first run failed with `No accounting period covers <today>`, and
+          # ledger-hardening's beforeAll left `period` undefined, so every test
+          # in it crashed on `period.period_id` rather than asserting anything.
+          #
+          # A CALENDAR MONTH around CURRENT_DATE, computed in SQL rather than in
+          # the shell, so it is right whatever day the job runs and cannot drift
+          # from the runner's clock. The suites take the most recent OPEN period,
+          # and ledger-hardening's own FROZEN fixture sits in 2099, so there is
+          # no overlap to trip over.
+          psql -h localhost -U praxis-admin -d tenant_citenant -v ON_ERROR_STOP=1 -c "
+            INSERT INTO accounting_period (entity_id, code, starts_on, ends_on, status)
+            VALUES (
+              '$entity',
+              to_char(CURRENT_DATE, 'YYYY-MM'),
+              date_trunc('month', CURRENT_DATE)::date,
+              (date_trunc('month', CURRENT_DATE) + interval '1 month - 1 day')::date,
+              'OPEN')
+            ON CONFLICT (entity_id, code) DO UPDATE SET status = 'OPEN';"
+
+          # Assert it rather than trusting it. A fixture that half-worked is how
+          # the suites came to 'pass' by skipping in the first place: the whole
+          # point of this job is that a green tick means something ran.
+          covers=$(psql -h localhost -U praxis-admin -d tenant_citenant -tAqc "
+            SELECT count(*) FROM accounting_period
+             WHERE entity_id = '$entity' AND status = 'OPEN'
+               AND CURRENT_DATE BETWEEN starts_on AND ends_on;")
+          if [ "$covers" != "1" ]; then
+            echo "::error::expected exactly one OPEN accounting_period covering today, found '$covers'"
+            exit 1
+          fi
+
+          echo "entity_id=$entity" >> "$GITHUB_OUTPUT"
+          echo "Seeded corporate_entity $entity with journals BQ/VT/AC/OD and an OPEN period for $(date +%Y-%m)"
+
+      - name: Integration suites against the real database
+        # These 11 tests have been dark since they were written. Three of the
+        # four suites need only a database and now get one; mail-imap.test.js
+        # needs live IMAP/SMTP credentials and stays opt-in, which is correct —
+        # a test that talks to a third-party mail server does not belong in
+        # every PR run.
+        #
+        # The assertion count is checked as well as the exit code, because the
+        # whole finding is that these suites SKIPPED and nobody noticed. Jest
+        # exits 0 on a run where every suite self-skipped, so "it passed" and
+        # "it ran" are different questions and only one of them was ever asked.
+        env:
+          # search_path IS PART OF THIS URL, and has to be.
+          #
+          # Every tenant table lives in the `live` schema, never in `public`.
+          # These suites open their own `new Pool({ connectionString })`, so
+          # without it each one resolved against `public` and every query failed
+          # with 42P01 — `relation "journal" does not exist`, `"opportunity"`,
+          # `"event_log"`. The tables were there the whole time; the connection
+          # was looking in the wrong schema.
+          #
+          # journal-posting.test.js says so in its own header — "DATABASE_URL
+          # postgres connection string (search_path = the tenant schema)" — and
+          # the value this job supplied did not honour it. That is the finding
+          # these suites exist to catch, committed by the harness around them.
+          #
+          # `options=-c search_path=...` is libpq's own mechanism and
+          # node-postgres passes it through, so it needs no change in any test.
+          DATABASE_URL: >-
+            postgresql://praxis-admin:ci-only-not-a-secret@localhost:5432/tenant_citenant?options=-c%20search_path%3Dlive%2Cpublic
+          TEST_ENTITY_ID: ${{ steps.fixture.outputs.entity_id }}
+        run: |
+          set -euo pipefail
+          npx jest tests/integration --runInBand --ci --json --outputFile=/tmp/integration.json || true
+          passed=$(jq '.numPassedTests' /tmp/integration.json)
+          failed=$(jq '.numFailedTests' /tmp/integration.json)
+          echo "integration: $passed passed, $failed failed"
+
+          if [ "$failed" -gt 0 ]; then
+            jq -r '.testResults[].assertionResults[] | select(.status=="failed") | "  ✗ " + .fullName' /tmp/integration.json
+            exit 1
+          fi
+          if [ "$passed" -lt 1 ]; then
+            echo "::error::The integration suites asserted nothing — they are still self-skipping. DATABASE_URL/TEST_ENTITY_ID are not reaching them."
+            exit 1
+          fi
 
   security:
     runs-on: ubuntu-latest
@@ -113,7 +416,7 @@ jobs:
           cache: npm
 
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Dependency audit
         # REPORTS, DOES NOT BLOCK (2026-08-01). High and above only.
@@ -246,11 +549,9 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        # npm install, not ci: the lockfiles are Windows-generated, so `ci` on a
-        # Linux runner omits the platform rollup binary and vite build dies with
-        # "Cannot find module @rollup/rollup-linux-x64-gnu". Documented in
-        # doc/SESSION_HANDOFF.md "Sandbox gotcha".
-        run: npm install --no-audit --no-fund --prefix ${{ matrix.app }}
+        # TC-CI8: `ci`, not `install`. See the root install step — the
+        # Windows-lockfile concern does not hold for lockfileVersion 3.
+        run: npm ci --no-audit --no-fund --prefix ${{ matrix.app }}
 
       - name: Install root dependencies (for packages/shared)
         # The client imports packages/shared, the CommonJS Zod schemas the API
@@ -261,7 +562,7 @@ jobs:
         # `instanceof` across the FE/BE boundary — so the root copy is the one
         # both halves point at (see the alias in client/vite.config.ts).
         if: matrix.app == 'client'
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - name: Lint
         run: npm run lint --prefix ${{ matrix.app }}
@@ -428,3 +729,85 @@ jobs:
         # Catches Dockerfile breakage without needing a registry. Builds the
         # runtime stage; the worker stage shares the same base.
         run: docker build --target runtime -t praxis-ls:ci .
+
+      - name: Start the image and wait for liveness
+        # TC-CI7. The image was BUILT and never STARTED, so any failure between
+        # `docker build` succeeding and the process serving traffic reached
+        # production untouched — a missing runtime dependency, a bad CMD, a
+        # module that throws at require time.
+        #
+        # That is not hypothetical here. The Dockerfile's deps stage did not
+        # copy packages/, so the image shipped with @praxis/shared unresolvable
+        # and NO INVOICING MODULE. It built perfectly. Nothing before the deploy
+        # would have caught it.
+        #
+        # Liveness only: /api/health deliberately touches no dependency, so this
+        # asks the one question a container without a database can answer — did
+        # the process come up and start serving. Readiness needs Postgres and
+        # Redis and belongs in the migrations job's world, not here.
+        run: |
+          set -euo pipefail
+          # NODE_ENV=production is the point — it is the mode that ships, and
+          # env.js refuses to boot in it with default or duplicated secrets.
+          # These are throwaway CI values chosen to satisfy that guard: distinct
+          # access/refresh secrets, and an ENCRYPTION_KEY that is valid hex but
+          # is NOT the dev default the guard rejects. Nothing here decrypts
+          # anything real; the container never reaches a database.
+          #
+          # DB_PASSWORD is in the list because the guard grew a
+          # `!DB_PASSWORD -> DB_PASSWORD_empty` check after this step was
+          # written, and the step was never updated — so the smoke test failed
+          # on the guard rather than on the image. A non-empty value is all it
+          # wants; liveness (/api/health) touches no dependency, so nothing
+          # connects anywhere.
+          docker run -d --name praxis-ci \
+            -e NODE_ENV=production \
+            -e LOG_LEVEL=warn \
+            -e PORT=8080 \
+            -e JWT_ACCESS_SECRET=ci_access_a1b2c3d4e5f6a7b8c9d0e1f2 \
+            -e JWT_REFRESH_SECRET=ci_refresh_9f8e7d6c5b4a39281706f5e4 \
+            -e ENCRYPTION_KEY=7c4a8d09ca3762af61e59520943dc26494f8941b7c4a8d09ca3762af61e59520 \
+            -e DB_PASSWORD=ci-only-not-a-secret \
+            -p 8080:8080 praxis-ls:ci
+
+          for i in $(seq 1 30); do
+            code=$(curl -s -o /tmp/live.json -w '%{http_code}' http://localhost:8080/api/health || true)
+            if [ "$code" = "200" ]; then
+              echo "Container is serving after ${i}s:"
+              cat /tmp/live.json
+              exit 0
+            fi
+            sleep 1
+          done
+
+          echo "::error::The built image never served /api/health within 30s."
+          echo "--- container logs ---"
+          docker logs praxis-ci 2>&1 | tail -80
+          exit 1
+
+      - name: Every module mounts inside the image
+        # The invoicing-module incident again, stated as an assertion. A module
+        # that fails to require is SKIPPED by the loader, not fatal — by design,
+        # so one bad module cannot take the API down — which means the only
+        # evidence is this field. Empty is the only acceptable value.
+        run: |
+          set -euo pipefail
+          skipped=$(docker exec -w /app praxis-ci node -e "
+            const express = require('express');
+            const { mountTenantModules, mountReport } = require('./src/shared/http/module-loader');
+            mountTenantModules(express.Router());
+            const r = mountReport();
+            console.log(JSON.stringify({ mounted: r.mounted.length, skipped: r.skipped }));
+          ")
+          echo "$skipped"
+          if [ "$(echo "$skipped" | jq '.skipped | length')" != "0" ]; then
+            echo "::error::Modules failed to mount inside the built image."
+            echo "$skipped" | jq .skipped
+            exit 1
+          fi
+
+      - name: Container logs and teardown
+        if: always()
+        run: |
+          docker logs praxis-ci 2>&1 | tail -50 || true
+          docker rm -f praxis-ci || true

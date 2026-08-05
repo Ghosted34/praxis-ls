@@ -17,6 +17,13 @@ for (const k of [
   "DEEPSEEK_API_KEY",
   "OPENAI_API_KEY",
   "SMTP_HOST", "SMTP_USER", "SMTP_PASS",
+  // A unit test must never make a network call. error-reporter.report() POSTs
+  // to ALERT_WEBHOOK_URL, and the orchestration dispatcher calls it when an
+  // event goes DEAD — so a developer with a real webhook in .env had that path
+  // hang on a live HTTP request. Found while writing the outbox tests
+  // (TEST-C8): the suite ran fine in a clean environment and timed out in a
+  // configured one, which is the worst kind of flake.
+  "ALERT_WEBHOOK_URL", "ALERT_EMAIL",
 ]) {
   process.env[k] = "";
 }

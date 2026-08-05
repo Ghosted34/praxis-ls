@@ -9,6 +9,7 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
 const { mirrorUsersIntoSandbox } = require("../../shared/db/sandbox-user-mirror");
+const passwordPolicy = require("../../shared/security/password-policy");
 
 async function migratePlatform() {
   logger.info("[praxis-db] migrating platform database...");
@@ -77,6 +78,24 @@ async function provisionTenant(input) {
   await pf.connect();
   let tenantId;
   try {
+    // DATA 5.6. These five platform writes — tenant upsert, tenant_database,
+    // subdomain, status='LIVE', audit — used to run on a bare client with no
+    // BEGIN, so each autocommitted independently. A failure part-way left a
+    // tenant registered with no database row or no subdomain, or stuck in
+    // PROVISIONING with its schema fully built and nothing pointing at it.
+    // Every one of those states needs a human to diagnose and unpick, because
+    // the tenant looks half-real from every angle.
+    //
+    // One transaction makes the platform's view of a tenant all-or-nothing.
+    // The DATABASE ITSELF is deliberately outside it: `ensureDatabase` and the
+    // schema migration above are CREATE DATABASE and DDL, which cannot be
+    // rolled back by a transaction on a different connection. That asymmetry
+    // is the right way round — an orphaned database with no platform row is
+    // inert and re-provisioning is idempotent (`ON CONFLICT (slug) DO UPDATE`),
+    // whereas a platform row pointing at a database that does not exist routes
+    // live traffic into a 500.
+    await pf.query("BEGIN");
+
     const planRow = await pf.query(
       "SELECT plan_id FROM platform.plan WHERE code=$1",
       [plan],
@@ -118,6 +137,16 @@ async function provisionTenant(input) {
       plan,
       host,
     });
+    await pf.query("COMMIT");
+  } catch (err) {
+    // A failed ROLLBACK must never mask the error that caused it — same rule
+    // as shared/db/tx.js.
+    try {
+      await pf.query("ROLLBACK");
+    } catch {
+      /* connection already gone; the original error is the useful one */
+    }
+    throw err;
   } finally {
     await pf.end();
   }
@@ -296,7 +325,7 @@ async function mirrorUsersOnMigrate(slug) {
     if (mirrored) logger.info({ slug, mirrored }, "mirrored users into sandbox");
   } catch (err) {
     logger.error(
-      { slug, err: err.message },
+      { slug, err },
       "sandbox user mirror failed — TEST-mode writes may fail for unmirrored users; run scripts/tenant/mirror-users.js",
     );
   } finally {
@@ -304,18 +333,147 @@ async function mirrorUsersOnMigrate(slug) {
   }
 }
 
+/**
+ * Migrate every tenant, and END IN A KNOWN STATE whatever happens.
+ *
+ * DATA 3.2 (High) and TEST-D3 (High). This used to be a bare
+ * `for … results.push(await migrateTenant(slug))` with no try/catch, so the
+ * first tenant to throw aborted the loop. The fleet was then split at an
+ * arbitrary point: tenants before the failure upgraded, tenants after it
+ * untouched, and NOTHING RECORDED WHERE THE LINE FELL. `scripts/deploy.sh`
+ * runs this on every deploy, so the split happened during a deploy, while the
+ * new image — which expects the new schema — was rolling out to all of them.
+ *
+ * A tenant left behind does not fail loudly. It fails the next time a query
+ * touches a column that migration was going to add, as a 42703 from deep inside
+ * a feature, on one tenant, hours later.
+ *
+ * CONTINUE RATHER THAN STOP, deliberately. If the cause is tenant-specific data
+ * then stopping punishes every tenant after it in the list for one tenant's
+ * problem. If the cause is systematic then continuing costs a few more seconds
+ * and produces the far more useful message "all 12 failed" instead of "the
+ * first one failed". Either way the outcome is enumerated per tenant, which is
+ * the part that was missing: the caller can see exactly which databases are on
+ * which side of the line.
+ *
+ * Throws AFTER the sweep if anything failed, so a deploy still goes red — the
+ * change is that it goes red having done as much as it safely could and having
+ * said precisely what it did.
+ */
 async function migrateAllTenants() {
   const slugs = await listTenantSlugs();
   const results = [];
-  for (const slug of slugs) results.push(await migrateTenant(slug));
+  const failures = [];
+
+  for (const slug of slugs) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      results.push(await migrateTenant(slug));
+    } catch (err) {
+      logger.error({ err, slug }, "tenant migration failed — continuing with the rest of the fleet");
+      results.push({ slug, applied: null, error: err.message });
+      failures.push({ slug, error: err.message });
+    }
+  }
+
+  if (failures.length) {
+    const err = new Error(
+      `${failures.length} of ${slugs.length} tenant(s) failed to migrate: ` +
+        `${failures.map((f) => `${f.slug} (${f.error})`).join("; ")}. ` +
+        "The rest of the fleet was migrated. Run scripts/db/fleet-status.js to see who is on what.",
+    );
+    err.code = "FLEET_MIGRATION_PARTIAL";
+    err.results = results;
+    throw err;
+  }
   return results;
 }
 
+/**
+ * What schema version is each tenant actually on?
+ *
+ * DATA 3.2's other half. Even with containment, a mixed fleet is only
+ * manageable if it is visible, and there was no way to ask. Reads each tenant's
+ * own `public.schema_migration` ledger — the same table the migrator writes —
+ * so this reports what was APPLIED, not what someone believes was applied.
+ *
+ * Best-effort per tenant: an unreachable database is reported as such rather
+ * than failing the whole report, because "which tenants can I not even reach"
+ * is exactly what you want to know during an incident.
+ */
+async function fleetSchemaStatus() {
+  const slugs = await listTenantSlugs();
+  const expected = m.files.tenantSchema().length;
+  const out = [];
+
+  for (const slug of slugs) {
+    const cli = m.client(m.tenantDbName(slug), { superuser: true });
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      await cli.connect();
+      // eslint-disable-next-line no-await-in-loop
+      const { rows } = await cli.query(
+        `SELECT scope, COUNT(*)::int AS applied, MAX(filename) AS latest, MAX(applied_at) AS last_applied_at
+           FROM public.schema_migration GROUP BY scope ORDER BY scope`,
+      );
+      const live = rows.find((r) => r.scope === "live") || { applied: 0, latest: null };
+      out.push({
+        slug,
+        applied: live.applied,
+        expected,
+        latest: live.latest,
+        last_applied_at: live.last_applied_at || null,
+        behind: expected - live.applied,
+        scopes: rows,
+      });
+    } catch (err) {
+      out.push({ slug, error: err.message });
+    } finally {
+      // eslint-disable-next-line no-await-in-loop
+      await cli.end().catch(() => {});
+    }
+  }
+
+  const behind = out.filter((t) => t.behind > 0);
+  const unreachable = out.filter((t) => t.error);
+  return {
+    expected,
+    tenants: out,
+    // `drifted` is the single fact a deploy or a health probe wants.
+    drifted: behind.length > 0 || unreachable.length > 0,
+    behind: behind.map((t) => t.slug),
+    unreachable: unreachable.map((t) => t.slug),
+  };
+}
+
+/**
+ * Rebuild a tenant's sandbox schema from scratch.
+ *
+ * DATA 5.6. This used to run DROP SCHEMA → CREATE SCHEMA → ledger DELETE →
+ * re-apply on a bare client with no transaction. The window between the DROP
+ * and a successful rebuild is the dangerous part: a crash, a dropped
+ * connection or a failing migration file left the tenant with NO SANDBOX
+ * SCHEMA AT ALL and a ledger that still claimed the sandbox scopes were
+ * applied. TEST mode then failed for every user of that tenant, and the next
+ * migrate pass would not rebuild it because the ledger said there was nothing
+ * to do.
+ *
+ * Postgres CAN roll back DDL — `DROP SCHEMA` and `CREATE SCHEMA` are
+ * transactional here, unlike `CREATE DATABASE` in provisionTenant — so the
+ * whole rebuild genuinely is all-or-nothing. On failure the tenant keeps the
+ * sandbox it had.
+ *
+ * The cost is that the schema is locked for the duration of the rebuild rather
+ * than being briefly absent. That is the correct trade: a sandbox that is
+ * unavailable for thirty seconds is an inconvenience, and a sandbox that has
+ * silently ceased to exist is an incident.
+ */
 async function wipeSandbox(input) {
   const slug = input.slug;
   const cli = m.client(m.tenantDbName(slug), { superuser: true });
   await cli.connect();
   try {
+    await cli.query("BEGIN");
     await cli.query("DROP SCHEMA IF EXISTS sandbox CASCADE");
     await cli.query("CREATE SCHEMA sandbox");
     await cli.query(
@@ -333,6 +491,18 @@ async function wipeSandbox(input) {
     // tenant columns are `REFERENCES app_user(user_id)`. See
     // shared/db/sandbox-user-mirror.js for the full why.
     await mirrorUsersIntoSandbox(cli);
+    await cli.query("COMMIT");
+  } catch (err) {
+    try {
+      await cli.query("ROLLBACK");
+    } catch {
+      /* connection already gone; the original error is the useful one */
+    }
+    logger.error(
+      { slug, err },
+      "sandbox wipe failed and was rolled back — the tenant keeps its previous sandbox",
+    );
+    throw err;
   } finally {
     await cli.end();
   }
@@ -366,6 +536,10 @@ async function createAdmin(input) {
   let userId;
   try {
     await cli.query("SET search_path = live, public");
+    // SEC H6. This creates the TENANT ADMINISTRATOR, who typically receives the
+    // CEO role — the account that bypasses every permission check in the
+    // product. It was protected by zod's min(8) and nothing else.
+    await passwordPolicy.assertStrongPassword(password, { email });
     const hash = await argon2.hash(password, { type: argon2.argon2id });
     const { rows: userRows } = await cli.query(
       `INSERT INTO app_user (email, full_name, password_hash, status)
@@ -444,6 +618,7 @@ module.exports = {
   provisionTenant,
   migrateTenant,
   migrateAllTenants,
+  fleetSchemaStatus,
   wipeSandbox,
   projectFeatures,
   enforceDependencies,

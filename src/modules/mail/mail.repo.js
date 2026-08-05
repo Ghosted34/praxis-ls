@@ -41,16 +41,19 @@ async function listInbox(client, { limit = 100, offset = 0, identityId = null } 
   return rows;
 }
 
+const IDENTITY_WRITABLE = ["from_name", "reply_to", "smtp_host", "smtp_port", "is_active"];
+const IDENTITY_COLS = "email_identity_id, purpose, from_address, from_name, reply_to, smtp_host, smtp_port, is_active";
+
 async function updateIdentity(client, id, fields) {
-  const allow = ["from_name", "reply_to", "smtp_host", "smtp_port", "is_active"];
-  const keys = Object.keys(fields).filter((k) => allow.includes(k));
+  // PERF S19/S20: was a hand-rolled SET builder. This one already had the right
+  // instinct — an explicit column allow-list — but applied it by FILTERING,
+  // which silently drops an unwritable field and reports success. Passed to
+  // updateOne it becomes a 422 naming the field, which is the same list doing
+  // the same job honestly.
+  const keys = Object.keys(fields).filter((k) => IDENTITY_WRITABLE.includes(k));
   if (!keys.length) return null;
-  const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ");
-  const { rows } = await client.query(
-    "UPDATE email_identity SET " + set + " WHERE email_identity_id = $1 RETURNING email_identity_id, purpose, from_address, from_name, reply_to, smtp_host, smtp_port, is_active",
-    [id, ...keys.map((k) => fields[k])],
-  );
-  return rows[0] || null;
+  const patch = Object.fromEntries(keys.map((k) => [k, fields[k]]));
+  return updateOne(client, "email_identity", "email_identity_id", id, patch, IDENTITY_COLS, IDENTITY_WRITABLE);
 }
 
 async function upsertIdentity(client, d) {

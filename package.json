@@ -4,6 +4,7 @@
   "private": true,
   "description": "Praxis LS — white-label, multi-tenant logistics & OHADA-accounting ERP (API + workers).",
   "license": "UNLICENSED",
+  "packageManager": "npm@10.8.2",
   "engines": {
     "node": ">=20 <21"
   },
@@ -70,6 +71,7 @@
     "rate-limit-redis": "^4.2.0",
     "sanitize-html": "^2.13.1",
     "sharp": "^0.33.5",
+    "@socket.io/redis-adapter": "^8.3.0",
     "socket.io": "^4.8.1",
     "uuid": "^11.0.3",
     "web-push": "^3.6.7",

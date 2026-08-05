@@ -81,6 +81,13 @@ const Schema = z.object({
    */
   ALERT_WEBHOOK_URL: z.string().default(""),
   ALERT_EMAIL: z.string().default(""),
+
+  /**
+   * Optional bearer token guarding GET /api/metrics (OBS-M1). Unset = open,
+   * which is correct when the scraper shares the host or the network is
+   * private. Set it the moment the endpoint is reachable from outside.
+   */
+  METRICS_TOKEN: z.string().default(""),
   // Dedicated host for the Praxis-side Platform Console (e.g. admin.praxisls.com).
   // The console static app is served ONLY when the request Host matches this, at
   // the root of that host; tenant hosts never serve it. Empty (default) = the
@@ -97,7 +104,9 @@ const Schema = z.object({
   DB_POOL_MAX: int(10),
   DB_STATEMENT_TIMEOUT_MS: int(30000),
   DB_PLATFORM_SCHEMA: z.string().default("platform"),
-  RLS_READ_ENFORCE: bool(false),
+  // RLS_READ_ENFORCE removed 2026-08-05 (DI-4.1): it gated a code path that set
+  // a GUC for policies that do not exist. Turning it on cost a round-trip per
+  // read and filtered nothing. Tenant isolation is the database boundary.
 
   TENANT_DB_HOST_DEFAULT: z.string().default(urlParts.host || "localhost"),
   TENANT_DB_PORT_DEFAULT: int(urlParts.port || 5432),
@@ -105,6 +114,35 @@ const Schema = z.object({
   TENANT_DB_SUPERUSER_PASSWORD: z.string().default(""),
   TENANT_DB_APP_ROLE: z.string().default(""),
   TENANT_POOL_MAX: int(8),
+
+  // PERF S1. One pg.Pool per tenant DB was cached in an unbounded Map, so
+  // 12 warm tenants held 96 of Postgres's 100 connections and tenant 13 was
+  // refused outright. These three bound it.
+  //
+  //   CACHE_MAX    — how many tenant pools may exist at once; the least
+  //                  recently used is drained past this. 24 × the default
+  //                  max of 8 is a 192-connection ceiling in the worst case,
+  //                  which is why IDLE_MS matters: pools sit at 0 when quiet.
+  //   IDLE_MS      — how long an unused connection is kept before it is given
+  //                  back to Postgres. With min:0 a quiet tenant holds none.
+  //   ACQUIRE_TIMEOUT_MS — fail a checkout rather than hang behind a saturated
+  //                  pool. A visible 503 beats a request that never returns.
+  TENANT_POOL_CACHE_MAX: int(24),
+  TENANT_POOL_IDLE_MS: int(10_000),
+  TENANT_POOL_ACQUIRE_TIMEOUT_MS: int(5_000),
+
+  // PERF S1 seam. doc/DB_ARCHITECTURE.md:46 anticipates "PgBouncer at 10+
+  // tenants"; the ladder was documented but the code had nowhere to put it.
+  // Set these and every tenant pool routes through the pooler. Migrations and
+  // provisioning deliberately keep using the registry's own host/port — they
+  // must not go through a transaction pooler.
+  TENANT_DB_POOLER_HOST: z.string().default(""),
+  TENANT_DB_POOLER_PORT: int(0),
+
+  // PERF S10. The host->tenant cache is keyed by the Host header, which any
+  // client controls, and had no bound at all. 5,000 entries is far above a
+  // real deployment's subdomain count and far below a memory problem.
+  HOST_CACHE_MAX: int(5_000),
 
   REDIS_URL: z.string().default("redis://localhost:6379"),
 

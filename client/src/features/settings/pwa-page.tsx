@@ -747,6 +747,7 @@ export function PwaPage() {
         desc="Installed windows only, on desktop Chromium (Windows, macOS, Linux, ChromeOS)."
       >
         <div className="flex flex-col gap-3">
+          <Warnings items={manifestIssues.filter((w) => w.id === "display-blocks-titlebar")} />
           <TitleBarStatus />
           <p className="text-sm text-muted-foreground">
             In a browser tab there is no title bar to take over, so this row renders as the app's ordinary utility

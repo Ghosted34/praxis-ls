@@ -176,6 +176,25 @@ export function manifestWarnings(cfg: EffectivePwa): PwaWarning[] {
         "Chrome and Edge won't offer the install prompt for a manifest in browser mode — the app opens as a normal tab. Use standalone unless you specifically want that.",
     });
   }
+  /**
+   * THE ONE THAT COST A REAL AFTERNOON. Window Controls Overlay only exists
+   * where there are window controls to overlay, so `src/routes/pwa.js` omits it
+   * for `fullscreen` and `browser` — correct, and completely invisible: the
+   * Title bar tab keeps offering colours, artwork and a live preview for a bar
+   * that the display mode on THIS tab has made impossible. The installed app
+   * then shows the OS title bar with the app's own bar beneath it, and nothing
+   * anywhere connects the two settings.
+   */
+  if (cfg.display === "fullscreen" || cfg.display === "browser") {
+    out.push({
+      id: "display-blocks-titlebar",
+      tone: "warn",
+      title: `The title bar design cannot apply in ${cfg.display === "browser" ? "browser" : "full screen"} mode`,
+      detail:
+        "Taking over the title bar needs a window that has one. In this display mode the operating system keeps drawing its own, so an installed app shows two bars stacked. Switch to Standalone to use the Title bar tab.",
+    });
+  }
+
   if (cfg.name.length > 30) {
     out.push({
       id: "long-name",

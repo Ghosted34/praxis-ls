@@ -990,6 +990,14 @@
   font-size: 0.9rem;
 }
 .login-field input::placeholder { color: rgb(232 220 224 / 0.4); }
+.login-field input:-webkit-autofill,
+.login-field input:-webkit-autofill:hover,
+.login-field input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #f6eef1;
+  -webkit-box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
+  box-shadow: 0 0 0 1000px color-mix(in srgb, var(--primary) 10%, #180d10) inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
 .login-field button { color: rgb(232 220 224 / 0.55); }
 .login-field button:hover { color: #fff; }
 .login-check {

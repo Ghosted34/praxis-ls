@@ -29,7 +29,7 @@ A generic "build an email engine" roadmap assumes a greenfield MySQL app with a 
 
 **Engine (new).** `src/modules/mail/` now also provides the provider-agnostic engine: connect a mailbox, test, sync inbound, send, reply. Secrets keyed `mail_conn:<id>` in the vault.
 
-**Adjacent, do-not-confuse.** `smartcomm` (`0430`) is internal team chat. "Comms → Mail" is the UI that reads `email_inbound`.
+**Adjacent, do-not-confuse.** `smartcomm` (`0430`) is internal team chat. "Comms → Mail" is the UI that reads `email_inbound`. The two distinct email configs — per-tenant SYSTEM email (with the Praxis fallback sender) vs each user's MAILBOX (`email_connection`) — are spelled out in `EMAIL_TWO_CONFIGS.md`.
 
 **Infra:** `bullmq`, `ioredis`, `nodemailer` present; added `imapflow`, `mailparser`. Worker entry `src/jobs/workers.js`.
 

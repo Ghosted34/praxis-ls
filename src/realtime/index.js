@@ -199,17 +199,20 @@ function initSocket(httpServer) {
 /**
  * Subscribe to the Redis mail bus and re-emit inbound-mail events to each tenant's
  * mail room. Retries until Redis is ready (initRedis resolves shortly after boot).
+ * G-7: retries indefinitely with capped backoff instead of giving up after 20
+ * tries — if Redis comes up even briefly after boot, live `mail:new` resumes
+ * (interval polling remains the safety net regardless).
  */
 function attachMailBridge(attempt = 0) {
   let subscriber;
   try {
-     
     subscriber = require("../config/redis").getSubscriber();
   } catch {
-    if (attempt < 20) setTimeout(() => attachMailBridge(attempt + 1), 500);
+    const delay = Math.min(500 * 2 ** Math.min(attempt, 5), 15000); // 500ms → 16s, capped
+    setTimeout(() => attachMailBridge(attempt + 1), delay);
     return;
   }
-   
+  subscriber.on("error", () => { /* redis will retry via its own reconnect logic */ });
   const { CHANNEL } = require("./mail-bus");
   subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err }, "[mail-bus] subscribe failed"));
   subscriber.on("message", (channel, message) => {

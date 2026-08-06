@@ -8,7 +8,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Textarea } from "@/components/ui/textarea";
-import { Modal, Field } from "@/components/ui/modal";
+import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/states";
@@ -109,12 +109,62 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
   );
 }
 
+function ComposeModal({ connections, onClose, onSent }: { connections: api.Connection[]; onClose: () => void; onSent: () => void }) {
+  const [connId, setConnId] = React.useState(connections[0]?.email_connection_id || "");
+  const [f, setF] = React.useState({ to: "", cc: "", subject: "", body: "" });
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [sent, setSent] = React.useState(false);
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault(); setBusy(true); setError(null);
+    try {
+      const to = f.to.split(",").map((s) => s.trim()).filter(Boolean);
+      const cc = f.cc.split(",").map((s) => s.trim()).filter(Boolean);
+      if (!to.length) throw new Error("At least one recipient is required");
+      await api.sendMail({
+        connectionId: connId,
+        to,
+        cc: cc.length ? cc : undefined,
+        subject: f.subject || undefined,
+        text: f.body || undefined,
+      });
+      setSent(true); onSent();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} size="lg" title="New message" description="Send from one of your connected mailboxes.">
+      <form className="space-y-3" onSubmit={submit}>
+        <Field label="From mailbox" required>
+          <Select value={connId} onChange={(e) => setConnId(e.target.value)} disabled={!connections.length}>
+            {connections.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}</option>)}
+          </Select>
+        </Field>
+        <Field label="To" required><Input value={f.to} onChange={set("to")} placeholder="recipient@company.cm, another@company.cm" /></Field>
+        <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
+        <Field label="Subject"><Input value={f.subject} onChange={set("subject")} placeholder="Subject" /></Field>
+        <Field label="Body"><Textarea value={f.body} onChange={set("body")} rows={7} placeholder="Write your message…" /></Field>
+        {error && <ErrorState message={error} />}
+        <div className="flex items-center justify-end gap-3 pt-1">
+          {sent && <span className="micro text-[rgb(var(--ok))]">✓ Sent</span>}
+          <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button type="submit" loading={busy} disabled={busy || !connections.length}>Send</Button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
+
 function ThreadsSection() {
   const conns = useResource(() => api.listConnections(), []);
   const [connId, setConnId] = React.useState<string>("");
   const thread = useResource(() => api.listThread(connId || undefined), [connId]);
   const [viewId, setViewId] = React.useState<string | null>(null);
+  const [composeOpen, setComposeOpen] = React.useState(false);
   const list = conns.data || [];
+  const connected = (conns.data || []).filter((c) => c.status === "CONNECTED");
 
   // Live refresh: the server pushes `mail:new` to the tenant mail room when the
   // sync worker ingests inbound mail. Reload the thread on any signal.
@@ -144,12 +194,16 @@ function ThreadsSection() {
             <button key={c.email_connection_id} onClick={() => setConnId(c.email_connection_id)} className={`chip ${connId === c.email_connection_id ? "on" : ""}`}>{c.email_address}</button>
           ))}
         </div>
-        <Button size="sm" variant="outline" onClick={() => thread.reload()}>Refresh</Button>
+        <div className="flex items-center gap-2">
+          <Button size="sm" onClick={() => setComposeOpen(true)} disabled={!connected.length} title={connected.length ? "Send a new email" : "Connect a mailbox first"}>Compose</Button>
+          <Button size="sm" variant="outline" onClick={() => thread.reload()}>Refresh</Button>
+        </div>
       </div>
       <DataList columns={cols} rows={thread.data} error={thread.error} loading={thread.loading}
         rowKey={(m) => m.email_inbound_id} onRowClick={(m) => setViewId(m.email_inbound_id)}
         empty={{ title: "No messages yet", hint: "Connect a mailbox under Mailboxes, then messages sync in here." }} />
       {viewId && <ThreadMessage id={viewId} onClose={() => setViewId(null)} onChanged={() => thread.reload()} />}
+      {composeOpen && <ComposeModal connections={connected} onClose={() => setComposeOpen(false)} onSent={() => thread.reload()} />}
     </>
   );
 }

@@ -557,7 +557,11 @@ async function send(client, { docType, entityId, recordId, to, subject, actor = 
     if (buffer && buffer.length) attachments = [{ filename: `${docType.toLowerCase()}.pdf`, content: buffer, contentType: "application/pdf" }];
   } catch { /* fall back to inline HTML only */ }
 
-  await emailSvc.send(client, { to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70" });
+  await emailSvc.send(client, {
+    to: recipient, subject: subject || title, html, attachments, purpose: "NOTIFICATIONS", moduleKey: "MOD-70",
+    // Record the source document on the send-log row (e.g. `invoice:<id>`).
+    entityRef: entityId || recordId ? `${String(docType).toLowerCase()}:${entityId || recordId}` : null,
+  });
   try { await generate(client, { docType, entityId, recordId, actor }); } catch { /* vault copy is best-effort */ }
   await audit(client, { actorUserId: actor.user_id || null, action: "document.sent", moduleKey: "MOD-70", entityRef: `${docType.toLowerCase()}:${recordId || "adhoc"}`, after: { to: recipient, docType, attached: !!attachments } });
   return { sent: true, to: recipient, docType, attached: !!attachments };

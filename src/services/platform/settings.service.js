@@ -22,6 +22,9 @@ const SPEC = {
   "storage.s3": { probe: probes.s3, cfg: (value, secret) => ({ ...value, secret_key: secret }) },
   "geocoding.geoapify": { probe: probes.geoapify, cfg: (value, secret) => ({ ...value, api_key: secret }) },
   "push.vapid": { probe: probes.vapid, cfg: (value, secret) => ({ public_key: value.public_key, private_key: secret, subject: value.subject }) },
+  // System-email fallback sender. value = non-secret config incl. SMTP host/user;
+  // the SMTP password is the encrypted `secret`. Probe: nodemailer verify().
+  "mail.fallback": { probe: probes.smtp, cfg: (value, secret) => ({ smtp_host: value.smtp_host, smtp_port: value.smtp_port, smtp_user: value.smtp_user, smtp_secure: value.smtp_secure, smtp_pass: secret }) },
 };
 const specKey = (section, key) => section + "." + key;
 

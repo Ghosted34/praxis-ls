@@ -74,6 +74,11 @@ const OperationsHub = lazyNamed(() => import("@/features/operations/hub"), "Oper
 const CostingHub = lazyNamed(() => import("@/features/costing/hub"), "CostingHub");
 const ProcurementHub = lazyNamed(() => import("@/features/procurement/hub"), "ProcurementHub");
 const AiControlHub = lazyNamed(() => import("@/features/ai-control/hub"), "AiControlHub");
+// The assistant's own screen. Its own chunk, and a big one (the three panes, the
+// canvas, the table view) — which is exactly why it must not be bundled with the
+// drawer: the drawer is mounted on every screen in the product, and it stays
+// small by handing the heavy surface off to this route.
+const AiWorkspace = lazyNamed(() => import("@/features/ai/workspace"), "AiWorkspace");
 const CommsHub = lazyNamed(() => import("@/features/comms/hub"), "CommsHub");
 const SettingsHub = lazyNamed(() => import("@/features/settings/settings-hub"), "SettingsHub");
 const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data-page"), "MasterDataPage");
@@ -197,6 +202,10 @@ export function App() {
         <Route path="help" element={<HelpPage />} />
         <Route path="support" element={<SupportPage />} />
         <Route path="godmode" element={<GodModePage />} />
+        {/* Praxis AI — the assistant's workspace. Sits in Overview beside the
+            Control Tower, NOT under AI Control: this is where you USE the
+            assistant, AI Control is where an administrator governs it. */}
+        <Route path="ai" element={<AiWorkspace />} />
         {/* AI Control — governance admin hub */}
         <Route path="ai-control" element={<AiControlHub />} />
         <Route path="ai-control/:section" element={<AiControlHub />} />

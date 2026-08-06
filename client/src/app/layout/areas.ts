@@ -58,6 +58,26 @@ export type Area = {
 export const AREAS: Area[] = [
   { key: "tower", label: "Control Tower", basePath: "", to: "/", sections: [] },
   { key: "workspace", label: "My workspace", basePath: "/workspace", sections: [] },
+  /**
+   * Praxis AI — the assistant's workspace.
+   *
+   * IT SITS IN OVERVIEW, and the placement is load-bearing rather than tidy.
+   * `buildRibbon` derives an area's family by VOTE of its screens' `module_key`
+   * (ribbon-model.ts), and drops any area whose routes are ungated entirely —
+   * so where this lands is decided by the registry entry for `/ai`, which gates
+   * it on MOD-00A, the same module as the Control Tower and My workspace. That
+   * votes `monitor`, i.e. Overview.
+   *
+   * WHY NOT BESIDE AI CONTROL. AI Control is gated on MOD-67 and lands in
+   * Configure, which is right for it: it is where an administrator sets the
+   * budget, the grants and the feature flags. This is where a user ASKS the
+   * assistant something. Filing the two together would put a daily tool behind
+   * an admin heading.
+   *
+   * WHY NOT INSIDE A MODULE FAMILY. It reads Finance and Operations and
+   * Procurement. Under any one of them the label would misstate its scope.
+   */
+  { key: "ai", label: "Praxis AI", basePath: "/ai", sections: [] },
   { key: "comms", label: "Smart Comms", basePath: "/comms", sections: [] },
   { key: "support", label: "Support & feedback", basePath: "/support", sections: [] },
 

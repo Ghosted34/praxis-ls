@@ -31,6 +31,7 @@
 import { AREAS, areaRoute, sectionRoute, type Area, type AreaSection } from "./areas";
 import { moduleForRoute } from "@/app/screen-registry";
 import type { NavAccess } from "@/lib/nav-access";
+import { PraxisMark } from "@/components/ai/icons";
 import {
   AREA_ICON, CommsIcon, GodModeIcon, HrIcon, MasterIcon, OperationsIcon, PaletteIcon, SalesIcon,
   SettingsIcon, SupportIcon, TowerIcon, VaultIcon, WorkspaceIcon, type IP,
@@ -86,6 +87,12 @@ const EXTRA_AREA_ICON: Record<string, (p: IP) => React.JSX.Element> = {
   "Master data": MasterIcon,
   "God mode": GodModeIcon,
   "AI Control": PaletteIcon,
+  // The assistant's own mark, not a second drawing of it. `ribbon-model.test.ts`
+  // pins that no two areas share a glyph, and the rail is icons-only — so the
+  // area a user reaches the assistant through has to carry the same mark the
+  // drawer and the workspace do, or the rail teaches one symbol and the panel
+  // shows another.
+  "Praxis AI": PraxisMark,
 };
 
 export const iconForArea = (label: string): ((p: IP) => React.JSX.Element) =>

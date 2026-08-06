@@ -25,6 +25,7 @@ export const NAV: NavGroup[] = [
     items: [
       { to: "/", label: "Control Tower" },
       { to: "/workspace", label: "My workspace" },
+      { to: "/ai", label: "Praxis AI" },
       { to: "/support", label: "Support & feedback" },
       { to: "/godmode", label: "God mode" },
     ],

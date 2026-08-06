@@ -217,13 +217,17 @@ describe("row B is the hub's tabs, in the chrome", () => {
   });
 
   it("lists the family's areas when the area you are in has no sections of its own", async () => {
-    // `monitor` is four single-screen areas. A row that insisted on sections
-    // would be a lone dropdown with nothing beside it.
+    // `monitor` is single-screen areas throughout. A row that insisted on
+    // sections would be a lone dropdown with nothing beside it.
+    //
+    // MOD-00A carries three of them — the Control Tower, My workspace and
+    // Praxis AI — which is also the case that proves an area needs no module of
+    // its own to be filed correctly, only a registry entry naming one.
     access.current = grant({ monitor: ["MOD-00A", "MOD-74"] });
     renderRibbon("/");
     const areas = await screen.findByRole("navigation", { name: "Monitor areas" });
     expect(within(areas).getAllByRole("link").map((l) => l.textContent)).toEqual([
-      "Control Tower", "My workspace", "Support & feedback",
+      "Control Tower", "My workspace", "Praxis AI", "Support & feedback",
     ]);
   });
 

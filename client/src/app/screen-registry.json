@@ -1070,6 +1070,15 @@
       "actions": []
     },
     {
+      "id": "ai_workspace",
+      "title": "Praxis AI",
+      "route": "/ai",
+      "area": "home",
+      "module_key": "MOD-00A",
+      "purpose": "The assistant's full workspace: conversation history and Spaces, the thread, and a panel for the records, tables and drafts an answer produces. Gated on MOD-00A like the Control Tower, so it sits in Overview and is reachable by anyone who can sign in — the tenant-wide AI flag is what turns it on or off. Distinct from AI Control, which governs the assistant rather than using it.",
+      "actions": []
+    },
+    {
       "id": "comms",
       "title": "Smart Comms",
       "route": "/comms",

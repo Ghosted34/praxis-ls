@@ -20,17 +20,24 @@ const appearance = z.object({
 });
 
 /**
- * The shell arrangement. `railPins` is bounded on BOTH axes because it is the
- * one field here a client could grow without limit: the rail is a strip of
- * icons roughly a dozen tall, so a request carrying two hundred is not a
- * preference, and the row it would write is billed to the tenant's database
- * rather than to whoever sent it. The keys are opaque to the server (the client
- * owns which shortcut a key names), so length is the only check worth making —
- * an allow-list here would mean redeploying the API to add a shortcut.
+ * The shell arrangement. `railPins` and `towerPins` are bounded on BOTH axes
+ * because they are the fields here a client could grow without limit: the rail
+ * is a strip of icons roughly a dozen tall and the Control Tower shortcuts
+ * grid is capped at eleven user-chosen cards, so a request carrying two
+ * hundred is not a preference, and the row it would write is billed to the
+ * tenant's database rather than to whoever sent it. The keys are opaque to the
+ * server (the client owns which shortcut a key names), so length is the only
+ * check worth making — an allow-list here would mean redeploying the API to
+ * add a shortcut.
+ *
+ * Both pin arrays use the same envelope on purpose: one shape, two audiences,
+ * so the client's "absent = untouched, null = cleared" rule reads identically
+ * on the two lists.
  */
 const shell = z.object({
   ribbonPinned: z.boolean().nullable().optional(),
   railPins: z.array(z.string().min(1).max(64)).max(16).nullable().optional(),
+  towerPins: z.array(z.string().min(1).max(64)).max(16).nullable().optional(),
   railHintSeen: z.boolean().nullable().optional(),
 });
 

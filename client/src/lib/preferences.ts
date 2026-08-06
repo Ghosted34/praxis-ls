@@ -40,17 +40,30 @@ export const resetUserAppearance = () =>
  * deliberately cleared it. Collapsing the two would either make the rail
  * impossible to empty or make it arrive empty for everybody — the state that
  * teaches nobody it can be customised at all.
+ *
+ * `towerPins` is the same rule for the Control Tower's Applications grid: null
+ * shows the default eleven, [] is deliberately empty (nothing but the "More"
+ * card). The two lists are independent — a rail arrangement and a home-screen
+ * arrangement are not the same choice — and the client caps each one at its
+ * own visible limit (rail: MAX_RAIL_PINS, tower: MAX_TOWER_PINS).
  */
 export type ShellPrefs = {
   /** Is the ribbon's second row held open? Default (null) is pinned. */
   ribbonPinned: boolean | null;
   /** Area keys pinned to the icon rail, in the order they appear. */
   railPins: string[] | null;
+  /** Area keys pinned to the Control Tower's 11+1 shortcut grid, in order. */
+  towerPins: string[] | null;
   /** Has this user already been shown the "you can customise this" nudge? */
   railHintSeen: boolean | null;
 };
 
-export const EMPTY_SHELL_PREFS: ShellPrefs = { ribbonPinned: null, railPins: null, railHintSeen: null };
+export const EMPTY_SHELL_PREFS: ShellPrefs = {
+  ribbonPinned: null,
+  railPins: null,
+  towerPins: null,
+  railHintSeen: null,
+};
 
 /** Coerced at the boundary for the same reason `nav-access` is: the rail maps
  *  over `railPins` while rendering the chrome, so a body that is not the shape
@@ -61,6 +74,7 @@ export const fetchShellPrefs = async (): Promise<ShellPrefs> => {
   return {
     ribbonPinned: typeof p.ribbonPinned === "boolean" ? p.ribbonPinned : null,
     railPins: Array.isArray(p.railPins) ? p.railPins.filter((k): k is string => typeof k === "string") : null,
+    towerPins: Array.isArray(p.towerPins) ? p.towerPins.filter((k): k is string => typeof k === "string") : null,
     railHintSeen: typeof p.railHintSeen === "boolean" ? p.railHintSeen : null,
   };
 };

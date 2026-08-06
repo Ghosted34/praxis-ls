@@ -189,6 +189,7 @@ describe("shell preferences", () => {
     await expect(service.getShell(c, USER)).resolves.toEqual({
       ribbonPinned: null,
       railPins: null,
+      towerPins: null,
       railHintSeen: null,
     });
   });
@@ -236,7 +237,26 @@ describe("shell preferences", () => {
     await expect(service.setShell(c, { userId: USER, railPins: ["finance", "fleet"] })).resolves.toEqual({
       ribbonPinned: false,
       railPins: ["finance", "fleet"],
+      towerPins: null,
       railHintSeen: true,
+    });
+  });
+
+  /** The Control Tower's shortcut grid is a second independent pin list
+   *  persisted through the same envelope. Same shape, same "absent vs null"
+   *  rule, so the same test coverage applies. */
+  it("keeps rail and tower pin lists apart", async () => {
+    const c = fakeClient();
+    await service.setShell(c, { userId: USER, railPins: ["finance"], towerPins: ["operations", "wms"] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      railPins: ["finance"],
+      towerPins: ["operations", "wms"],
+    });
+    // Clearing one leaves the other in place.
+    await service.setShell(c, { userId: USER, towerPins: [] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      railPins: ["finance"],
+      towerPins: [],
     });
   });
 
@@ -278,6 +298,16 @@ describe("shell validator", () => {
   it("422s a pin that is not a string", () => {
     const { res } = run({ railPins: [{ to: "/finance" }] });
     expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it("accepts and bounds towerPins the same way as railPins", () => {
+    expect(run({ towerPins: [] }).req.body).toEqual({ towerPins: [] });
+    expect(run({ towerPins: null }).req.body).toEqual({ towerPins: null });
+    // Same 16-item cap as railPins — the Control Tower grid caps at 11 but the
+    // envelope is shared, so a client sending a longer list is still bounded.
+    const bloated = run({ towerPins: Array.from({ length: 40 }, (_, i) => `p${i}`) });
+    expect(bloated.next).not.toHaveBeenCalled();
+    expect(bloated.res.status).toHaveBeenCalledWith(422);
   });
 
   it("422s a non-boolean pinned state", () => {

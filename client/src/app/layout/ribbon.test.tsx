@@ -34,7 +34,7 @@ import type { ShellPrefs } from "@/lib/preferences";
  *  than an assumption about local state. */
 const saved: Partial<ShellPrefs>[] = [];
 const access = { current: null as NavAccess | null };
-const stored = { current: { ribbonPinned: null, railPins: null, railHintSeen: true } as ShellPrefs };
+const stored = { current: { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true } as ShellPrefs };
 /** Make the preferences read fail, which is NOT the same as it returning
  *  nothing — see "a failed preferences read" below. */
 const prefsFail = { current: false };
@@ -129,7 +129,7 @@ beforeEach(() => {
   prefsFail.current = false;
   accessPending.current = false;
   access.current = null;
-  stored.current = { ribbonPinned: null, railPins: null, railHintSeen: true };
+  stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
   // THE SHELL NOW REMEMBERS. `lib/nav-access-cache` persists the last answer so
   // the ribbon paints before the network replies, which makes every test in
   // this file start from whatever the previous one left behind — and a fixture
@@ -268,7 +268,7 @@ describe("pinned / collapsed round-trips through the preference API", () => {
 
   it("reads the saved state back on the next session", async () => {
     access.current = TWO_TABS;
-    stored.current = { ribbonPinned: false, railPins: null, railHintSeen: true };
+    stored.current = { ribbonPinned: false, railPins: null, towerPins: null, railHintSeen: true };
     renderRibbon("/wms");
     await screen.findByRole("navigation", { name: "Workflow" });
     await waitFor(() => expect(screen.queryByRole("navigation", { name: "Warehouse sections" })).toBeNull());
@@ -278,7 +278,7 @@ describe("pinned / collapsed round-trips through the preference API", () => {
    *  what makes collapsing safe to try. */
   it("summons row B from a family click while collapsed", async () => {
     access.current = TWO_TABS;
-    stored.current = { ribbonPinned: false, railPins: null, railHintSeen: true };
+    stored.current = { ribbonPinned: false, railPins: null, towerPins: null, railHintSeen: true };
     renderRibbon("/wms");
     const [fulfil] = await tabs();
     await userEvent.click(fulfil);
@@ -345,7 +345,7 @@ describe("a screen's commands sit in row B, right-aligned", () => {
 describe("the icon rail", () => {
   it("is never empty on a first login", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, railHintSeen: null };
+    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
     renderChrome(<IconRail />, "/");
 
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
@@ -359,7 +359,7 @@ describe("the icon rail", () => {
     // A warehouse-only role sees none of Operations / Finance / Comms /
     // Workspace, which is exactly when a naive default set yields an empty rail.
     access.current = grant({ fulfill: ["MOD-33", "MOD-35"] });
-    stored.current = { ribbonPinned: null, railPins: null, railHintSeen: null };
+    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
     renderChrome(<IconRail />, "/wms");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
     await waitFor(() => expect(within(rail).getByRole("link", { name: "Warehouse" })).toBeInTheDocument());
@@ -367,7 +367,7 @@ describe("the icon rail", () => {
 
   it("keeps a deliberately cleared rail cleared", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: [], railHintSeen: true };
+    stored.current = { ribbonPinned: null, railPins: [], towerPins: null, railHintSeen: true };
     renderChrome(<IconRail />, "/");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
     // Control Tower and the editor survive — "cleared" is not "empty".
@@ -378,7 +378,7 @@ describe("the icon rail", () => {
 
   it("drops a pin whose area the user can no longer reach", async () => {
     access.current = grant({ fulfill: ["MOD-33"] });
-    stored.current = { ribbonPinned: null, railPins: ["wms", "finance"], railHintSeen: true };
+    stored.current = { ribbonPinned: null, railPins: ["wms", "finance"], towerPins: null, railHintSeen: true };
     renderChrome(<IconRail />, "/wms");
     const rail = await screen.findByRole("navigation", { name: "Shortcuts" });
     await waitFor(() => expect(within(rail).getByRole("link", { name: "Warehouse" })).toBeInTheDocument());
@@ -387,7 +387,7 @@ describe("the icon rail", () => {
 
   it("nudges the edit affordance once, and records that it has", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, railHintSeen: null };
+    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: null };
     renderChrome(<IconRail />, "/");
     // The rail paints before the preferences land — the hint is decided once
     // BOTH reads settle, which is what stops it firing at a returning user on
@@ -400,7 +400,7 @@ describe("the icon rail", () => {
 
   it("does not nudge a user who has already seen it", async () => {
     access.current = SIX_TABS;
-    stored.current = { ribbonPinned: null, railPins: null, railHintSeen: true };
+    stored.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
     renderChrome(<IconRail />, "/");
     const edit = await screen.findByRole("link", { name: "Edit shortcuts" });
     await waitFor(() => expect(edit.className).not.toContain("rail-jiggle"));

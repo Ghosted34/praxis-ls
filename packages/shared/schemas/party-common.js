@@ -138,6 +138,11 @@ const beneficialOwnerShape = {
 exports.beneficialOwnerCreate = z.object(beneficialOwnerShape);
 exports.beneficialOwnerUpdate = patchOf(beneficialOwnerShape);
 
+// ── Manual hard block (Hard Rule 3) ─────────────────────────────────────────
+// A human applies a HARD_BLOCK with a reason; the reason is mandatory precisely
+// because this is the one block a rule can never issue.
+exports.blockReason = z.object({ reason: requiredText("A block reason") });
+
 // The enum vocabularies, exported so a picker and the API agree on the option
 // lists without re-typing them.
 exports.ROLE_TAGS = roleTag.options;

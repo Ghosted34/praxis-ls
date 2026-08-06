@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 731 |
-| Modules mounted | 100 |
+| Routes | 817 |
+| Modules mounted | 106 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 731 mounted routes, grouped by path prefix.
+All 817 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -257,6 +257,9 @@ All 731 mounted routes, grouped by path prefix.
 | PUT | `/api/tenant/branding/login` | — |
 | POST | `/api/tenant/branding/login/background` | — |
 | POST | `/api/tenant/branding/logo` | — |
+| GET | `/api/tenant/branding/pwa` | — |
+| PUT | `/api/tenant/branding/pwa` | — |
+| POST | `/api/tenant/branding/pwa/icon` | — |
 
 ### `tenant/campaigns`
 
@@ -320,6 +323,16 @@ All 731 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/chart-of-accounts/:code` | — |
 | PATCH | `/api/tenant/chart-of-accounts/:code` | — |
 
+### `tenant/client-types`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/client-types/` | — |
+| POST | `/api/tenant/client-types/` | — |
+| DELETE | `/api/tenant/client-types/:id` | — |
+| GET | `/api/tenant/client-types/:id` | — |
+| PATCH | `/api/tenant/client-types/:id` | — |
+
 ### `tenant/clients`
 
 | Method | Path | Body validated |
@@ -328,7 +341,36 @@ All 731 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/` | — |
 | GET | `/api/tenant/clients/:id` | — |
 | PATCH | `/api/tenant/clients/:id` | — |
+| GET | `/api/tenant/clients/:id/360` | — |
+| GET | `/api/tenant/clients/:id/addresses` | — |
+| POST | `/api/tenant/clients/:id/addresses` | — |
+| DELETE | `/api/tenant/clients/:id/addresses/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/addresses/:childId` | — |
+| GET | `/api/tenant/clients/:id/banks` | — |
+| POST | `/api/tenant/clients/:id/banks` | — |
+| DELETE | `/api/tenant/clients/:id/banks/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/banks/:childId` | — |
+| GET | `/api/tenant/clients/:id/beneficial-owners` | — |
+| POST | `/api/tenant/clients/:id/beneficial-owners` | — |
+| DELETE | `/api/tenant/clients/:id/beneficial-owners/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/beneficial-owners/:childId` | — |
+| POST | `/api/tenant/clients/:id/block` | — |
+| GET | `/api/tenant/clients/:id/contacts` | — |
+| POST | `/api/tenant/clients/:id/contacts` | — |
+| DELETE | `/api/tenant/clients/:id/contacts/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/contacts/:childId` | — |
 | GET | `/api/tenant/clients/:id/credit` | — |
+| GET | `/api/tenant/clients/:id/documents` | — |
+| POST | `/api/tenant/clients/:id/documents` | — |
+| DELETE | `/api/tenant/clients/:id/documents/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/documents/:childId` | — |
+| GET | `/api/tenant/clients/:id/registrations` | — |
+| POST | `/api/tenant/clients/:id/registrations` | — |
+| DELETE | `/api/tenant/clients/:id/registrations/:childId` | — |
+| PATCH | `/api/tenant/clients/:id/registrations/:childId` | — |
+| POST | `/api/tenant/clients/:id/unblock` | — |
+| POST | `/api/tenant/clients/:id/verify` | — |
+| POST | `/api/tenant/clients/convert-from-supplier/:id` | — |
 
 ### `tenant/compliance`
 
@@ -368,6 +410,13 @@ All 731 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/costings/:id` | — |
 | PATCH | `/api/tenant/costings/:id` | — |
 | POST | `/api/tenant/costings/:id/status` | — |
+
+### `tenant/countries`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/countries/` | — |
+| GET | `/api/tenant/countries/:code` | — |
 
 ### `tenant/credit-notes`
 
@@ -752,6 +801,23 @@ All 731 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/margin-simulations/:id` | — |
 | POST | `/api/tenant/margin-simulations/preview` | — |
 
+### `tenant/master-config`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/master-config/:appliesTo` | — |
+| PUT | `/api/tenant/master-config/:appliesTo` | — |
+
+### `tenant/me`
+
+| Method | Path | Body validated |
+|---|---|---|
+| DELETE | `/api/tenant/me/preferences/appearance` | — |
+| GET | `/api/tenant/me/preferences/appearance` | — |
+| PUT | `/api/tenant/me/preferences/appearance` | yes |
+| GET | `/api/tenant/me/preferences/shell` | — |
+| PUT | `/api/tenant/me/preferences/shell` | yes |
+
 ### `tenant/meetings`
 
 | Method | Path | Body validated |
@@ -843,6 +909,16 @@ All 731 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/outbound/:id/lines/:lineId` | — |
 | POST | `/api/tenant/outbound/:id/status` | — |
 
+### `tenant/party-document-types`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/party-document-types/` | — |
+| POST | `/api/tenant/party-document-types/` | — |
+| DELETE | `/api/tenant/party-document-types/:id` | — |
+| GET | `/api/tenant/party-document-types/:id` | — |
+| PATCH | `/api/tenant/party-document-types/:id` | — |
+
 ### `tenant/payment-gateways`
 
 | Method | Path | Body validated |
@@ -876,6 +952,7 @@ All 731 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/permissions/:id` | — |
 | PUT | `/api/tenant/permissions/grant` | — |
 | GET | `/api/tenant/permissions/matrix` | — |
+| GET | `/api/tenant/permissions/mine` | — |
 
 ### `tenant/portal`
 
@@ -1166,6 +1243,16 @@ All 731 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/supplier-invoices/:id/match` | — |
 | POST | `/api/tenant/supplier-invoices/:id/post` | — |
 
+### `tenant/supplier-types`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/supplier-types/` | — |
+| POST | `/api/tenant/supplier-types/` | — |
+| DELETE | `/api/tenant/supplier-types/:id` | — |
+| GET | `/api/tenant/supplier-types/:id` | — |
+| PATCH | `/api/tenant/supplier-types/:id` | — |
+
 ### `tenant/suppliers`
 
 | Method | Path | Body validated |
@@ -1174,6 +1261,35 @@ All 731 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/suppliers/` | — |
 | GET | `/api/tenant/suppliers/:id` | — |
 | PATCH | `/api/tenant/suppliers/:id` | — |
+| GET | `/api/tenant/suppliers/:id/360` | — |
+| GET | `/api/tenant/suppliers/:id/addresses` | — |
+| POST | `/api/tenant/suppliers/:id/addresses` | — |
+| DELETE | `/api/tenant/suppliers/:id/addresses/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/addresses/:childId` | — |
+| GET | `/api/tenant/suppliers/:id/banks` | — |
+| POST | `/api/tenant/suppliers/:id/banks` | — |
+| DELETE | `/api/tenant/suppliers/:id/banks/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/banks/:childId` | — |
+| GET | `/api/tenant/suppliers/:id/beneficial-owners` | — |
+| POST | `/api/tenant/suppliers/:id/beneficial-owners` | — |
+| DELETE | `/api/tenant/suppliers/:id/beneficial-owners/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/beneficial-owners/:childId` | — |
+| POST | `/api/tenant/suppliers/:id/block` | — |
+| GET | `/api/tenant/suppliers/:id/contacts` | — |
+| POST | `/api/tenant/suppliers/:id/contacts` | — |
+| DELETE | `/api/tenant/suppliers/:id/contacts/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/contacts/:childId` | — |
+| GET | `/api/tenant/suppliers/:id/documents` | — |
+| POST | `/api/tenant/suppliers/:id/documents` | — |
+| DELETE | `/api/tenant/suppliers/:id/documents/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/documents/:childId` | — |
+| GET | `/api/tenant/suppliers/:id/registrations` | — |
+| POST | `/api/tenant/suppliers/:id/registrations` | — |
+| DELETE | `/api/tenant/suppliers/:id/registrations/:childId` | — |
+| PATCH | `/api/tenant/suppliers/:id/registrations/:childId` | — |
+| POST | `/api/tenant/suppliers/:id/unblock` | — |
+| POST | `/api/tenant/suppliers/:id/verify` | — |
+| POST | `/api/tenant/suppliers/convert-from-client/:id` | — |
 
 ### `tenant/support`
 

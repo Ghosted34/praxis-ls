@@ -1,8 +1,8 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 100,
-  "route_count": 731,
+  "modules_mounted": 106,
+  "route_count": 817,
   "routes": {
     "DELETE /api/platform/plans/:id": {
       "auth": false,
@@ -55,6 +55,41 @@
       "validated": false
     },
     "DELETE /api/tenant/chart-of-accounts/:code": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/client-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/addresses/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/banks/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/beneficial-owners/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/contacts/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/documents/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/clients/:id/registrations/:childId": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -149,12 +184,22 @@
       "rbac": true,
       "validated": false
     },
+    "DELETE /api/tenant/me/preferences/appearance": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
     "DELETE /api/tenant/notifications/push/subscribe": {
       "auth": false,
       "rbac": false,
       "validated": false
     },
     "DELETE /api/tenant/outbound/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/party-document-types/:id": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -235,6 +280,41 @@
       "validated": false
     },
     "DELETE /api/tenant/succession/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/supplier-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/addresses/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/banks/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/beneficial-owners/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/contacts/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/documents/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "DELETE /api/tenant/suppliers/:id/registrations/:childId": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -499,6 +579,11 @@
       "rbac": false,
       "validated": false
     },
+    "GET /api/tenant/branding/pwa": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
     "GET /api/tenant/campaigns/": {
       "auth": false,
       "rbac": true,
@@ -569,6 +654,16 @@
       "rbac": true,
       "validated": false
     },
+    "GET /api/tenant/client-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/client-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "GET /api/tenant/clients/": {
       "auth": false,
       "rbac": true,
@@ -579,7 +674,42 @@
       "rbac": true,
       "validated": false
     },
+    "GET /api/tenant/clients/:id/360": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/addresses": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/banks": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/beneficial-owners": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/contacts": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "GET /api/tenant/clients/:id/credit": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/documents": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/clients/:id/registrations": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -627,6 +757,16 @@
     "GET /api/tenant/costings/:id": {
       "auth": false,
       "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/countries/": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
+    "GET /api/tenant/countries/:code": {
+      "auth": false,
+      "rbac": false,
       "validated": false
     },
     "GET /api/tenant/credit-notes/": {
@@ -1119,6 +1259,21 @@
       "rbac": true,
       "validated": false
     },
+    "GET /api/tenant/master-config/:appliesTo": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
+    "GET /api/tenant/me/preferences/appearance": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
+    "GET /api/tenant/me/preferences/shell": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
     "GET /api/tenant/meetings/": {
       "auth": false,
       "rbac": true,
@@ -1229,6 +1384,16 @@
       "rbac": true,
       "validated": false
     },
+    "GET /api/tenant/party-document-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/party-document-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "GET /api/tenant/payment-gateways/": {
       "auth": false,
       "rbac": true,
@@ -1267,6 +1432,11 @@
     "GET /api/tenant/permissions/matrix": {
       "auth": false,
       "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/permissions/mine": {
+      "auth": false,
+      "rbac": false,
       "validated": false
     },
     "GET /api/tenant/portal/auditor": {
@@ -1674,12 +1844,57 @@
       "rbac": true,
       "validated": false
     },
+    "GET /api/tenant/supplier-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/supplier-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "GET /api/tenant/suppliers/": {
       "auth": false,
       "rbac": true,
       "validated": false
     },
     "GET /api/tenant/suppliers/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/360": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/addresses": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/banks": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/beneficial-owners": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/contacts": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/documents": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "GET /api/tenant/suppliers/:id/registrations": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -1979,7 +2194,42 @@
       "rbac": true,
       "validated": false
     },
+    "PATCH /api/tenant/client-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "PATCH /api/tenant/clients/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/addresses/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/banks/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/beneficial-owners/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/contacts/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/documents/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/clients/:id/registrations/:childId": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -2129,6 +2379,11 @@
       "rbac": true,
       "validated": false
     },
+    "PATCH /api/tenant/party-document-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "PATCH /api/tenant/payment-gateways/:provider/active": {
       "auth": false,
       "rbac": true,
@@ -2209,7 +2464,42 @@
       "rbac": true,
       "validated": false
     },
+    "PATCH /api/tenant/supplier-types/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "PATCH /api/tenant/suppliers/:id": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/addresses/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/banks/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/beneficial-owners/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/contacts/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/documents/:childId": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "PATCH /api/tenant/suppliers/:id/registrations/:childId": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -2534,6 +2824,11 @@
       "rbac": true,
       "validated": false
     },
+    "POST /api/tenant/branding/pwa/icon": {
+      "auth": true,
+      "rbac": true,
+      "validated": false
+    },
     "POST /api/tenant/campaigns/": {
       "auth": false,
       "rbac": true,
@@ -2604,7 +2899,62 @@
       "rbac": true,
       "validated": false
     },
+    "POST /api/tenant/client-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "POST /api/tenant/clients/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/addresses": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/banks": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/beneficial-owners": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/block": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/contacts": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/documents": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/registrations": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/unblock": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/:id/verify": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/clients/convert-from-supplier/:id": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -3094,6 +3444,11 @@
       "rbac": true,
       "validated": false
     },
+    "POST /api/tenant/party-document-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "POST /api/tenant/payment-gateways/": {
       "auth": false,
       "rbac": true,
@@ -3206,7 +3561,7 @@
     },
     "POST /api/tenant/purchase-requests/:id/transition": {
       "auth": false,
-      "rbac": false,
+      "rbac": true,
       "validated": false
     },
     "POST /api/tenant/quotations/": {
@@ -3424,7 +3779,62 @@
       "rbac": true,
       "validated": false
     },
+    "POST /api/tenant/supplier-types/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
     "POST /api/tenant/suppliers/": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/addresses": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/banks": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/beneficial-owners": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/block": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/contacts": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/documents": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/registrations": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/unblock": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/:id/verify": {
+      "auth": false,
+      "rbac": true,
+      "validated": false
+    },
+    "POST /api/tenant/suppliers/convert-from-client/:id": {
       "auth": false,
       "rbac": true,
       "validated": false
@@ -3604,6 +4014,11 @@
       "rbac": true,
       "validated": false
     },
+    "PUT /api/tenant/branding/pwa": {
+      "auth": true,
+      "rbac": true,
+      "validated": false
+    },
     "PUT /api/tenant/capabilities/users/:userId": {
       "auth": false,
       "rbac": true,
@@ -3613,6 +4028,21 @@
       "auth": false,
       "rbac": true,
       "validated": false
+    },
+    "PUT /api/tenant/master-config/:appliesTo": {
+      "auth": false,
+      "rbac": false,
+      "validated": false
+    },
+    "PUT /api/tenant/me/preferences/appearance": {
+      "auth": false,
+      "rbac": false,
+      "validated": true
+    },
+    "PUT /api/tenant/me/preferences/shell": {
+      "auth": false,
+      "rbac": false,
+      "validated": true
     },
     "PUT /api/tenant/notifications/preferences": {
       "auth": false,

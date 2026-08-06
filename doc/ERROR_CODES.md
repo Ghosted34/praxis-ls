@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (216)
+## All codes (224)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -44,6 +44,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `AUTH_REQUIRED` | 401 | 12× | — |
 | `BAD_ACTION` | 422 | 2× | — |
 | `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
+| `BAD_APPLIES_TO` | 422 | 1× | — |
 | `BAD_CODE` | 422 | 1× | — |
 | `BAD_CONTEXT` | 422 | 1× | — |
 | `BAD_CREDENTIALS` | 401 | 1× | — |
@@ -56,8 +57,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_INPUT` | 422 | 4× | — |
 | `BAD_KIND` | 422 | 1× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
+| `BAD_MIRROR` | 422 | 1× | — |
 | `BAD_MONTH` | 422 | 2× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
+| `BAD_PARTY_KIND` | 422 | 5× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |
@@ -99,12 +102,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |
-| `EXISTS` | 409 | 1× | — |
+| `EXISTS` | 409 | 2× | — |
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
 | `FORBIDDEN` | 403 | 4× | `PERMISSION_DENIED` |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
+| `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
@@ -140,7 +144,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 211× | — |
+| `NOT_FOUND` | 404 | 228× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -148,6 +152,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
 | `NO_COA` | 422 | 1× | — |
+| `NO_CONTROL_ACCOUNT` | 500 | 2× | — |
 | `NO_COUNTERPART` | 422 | 1× | — |
 | `NO_DEBOURS_ACCOUNT` | 422 | 1× | — |
 | `NO_DOC_TYPE` | 422 | 1× | — |
@@ -194,9 +199,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
-| `REFERENCED` | 409 | 1× | — |
+| `REFERENCED` | 409 | 2× | — |
 | `REF_REQUIRED` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
+| `REQUIRED_FIELDS_MISSING` | — | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
 | `RESULT_SET_TOO_LARGE` | 500 | 1× | — |
 | `REWARD_LOCKED` | 409 | 1× | — |
@@ -205,6 +211,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROOT_LOCKED` | 409 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
+| `SCAN_REQUIRED` | 422 | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
 | `SELF_APPROVAL` | 403 | 1× | — |
 | `SELF_DELETE` | 409 | 1× | — |
@@ -217,6 +224,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_RECORD` | 422 | 1× | — |
 | `SYSTEM_ROLE` | 409 | 1× | — |
+| `SYSTEM_TYPE` | 422 | 1× | — |
 | `TARIFF_GAP` | 422 | 1× | — |
 | `TEMPLATE_NOT_PUBLISHED` | 409 | 1× | — |
 | `TENANT_MISMATCH` | 400 | 1× | — |
@@ -235,7 +243,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 99× | — |
+| `VALIDATION_ERROR` | 422 | 104× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

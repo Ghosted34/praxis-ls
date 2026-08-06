@@ -447,6 +447,7 @@ export declare namespace partyCommon {
   const registrationUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const beneficialOwnerCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const beneficialOwnerUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const blockReason: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const ROLE_TAGS: readonly string[];
   const ADDRESS_TYPES: readonly string[];
 }

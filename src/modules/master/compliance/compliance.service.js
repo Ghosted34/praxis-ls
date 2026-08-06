@@ -111,8 +111,11 @@ async function sync(client, { kind, partyId }) {
 
   await reconcileFlags(client, entityRef, evalResult.flags);
 
-  // A human HARD_BLOCK outranks any computed state; never lower it here.
-  const state = evalResult.party.compliance_state === "HARD_BLOCK" ? "HARD_BLOCK" : evalResult.compliance_state;
+  // A human HARD_BLOCK outranks any computed state; never lower it here. The
+  // block is recorded by `hard_blocked_at` (set by POST /:id/block, cleared by
+  // /unblock), NOT by compliance_state — so an unblock that clears the timestamp
+  // lets this recompute the real state on the next sync.
+  const state = evalResult.party.hard_blocked_at ? "HARD_BLOCK" : evalResult.compliance_state;
   await client.query(`UPDATE ${c.table} SET compliance_state = $1, updated_at = now() WHERE ${c.pk} = $2`, [state, partyId]);
 
   const flags = await openFlags(client, entityRef);

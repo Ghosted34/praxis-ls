@@ -13,12 +13,12 @@
  * Pure: it takes the tenant's config rows and a parsed payload and returns what
  * is missing. The API loads the rows (master_config.repo) and calls
  * `checkRequired`; if the tenant has no rows at all it falls back to
- * `DEFAULTS`, which mirrors the seed in 0510 so a fresh tenant with no setup
+ * `DEFAULTS`, which mirrors the seed in 0511 so a fresh tenant with no setup
  * still validates.
  */
 
 /**
- * Seeded defaults — the SAME set 0510 writes into party_field_config. Kept here
+ * Seeded defaults — the SAME set 0511 writes into party_field_config. Kept here
  * as the fallback for a tenant whose config table is somehow empty, and as the
  * source PR 2's form reads when the API has not answered yet. `[applies_to,
  * field_key, field_group, is_required]`; everything unlisted defaults to
@@ -89,7 +89,7 @@ function defaultsFor(appliesTo) {
 
 /**
  * The effective config for a side: the tenant's stored rows, or the seeded
- * defaults when it has none. The DB is authoritative once seeded (0510 seeds it
+ * defaults when it has none. The DB is authoritative once seeded (0511 seeds it
  * on provision), so this only falls back on a genuinely empty table.
  */
 function effectiveConfig(appliesTo, dbRows) {

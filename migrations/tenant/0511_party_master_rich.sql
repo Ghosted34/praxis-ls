@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0510 party master data revamp (clients + suppliers, 360°).
+-- TENANT DB — 0511 party master data revamp (clients + suppliers, 360°).
 --
 -- Global-grade, compliance-first master data. Keeps client_master and
 -- supplier_master SEPARATE (no unified `party` table by design), and extends

@@ -11,6 +11,7 @@ const clientMaster = require("./schemas/client-master");
 const supplierMaster = require("./schemas/supplier-master");
 const partyCommon = require("./schemas/party-common");
 const partyConfig = require("./schemas/party-config");
+const entityCommon = require("./schemas/entity-common");
 const ledger = require("./rules/ledger");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
@@ -35,6 +36,10 @@ exports.supplierMaster = supplierMaster;
 exports.partyCommon = partyCommon;
 // Per-tenant field-requirement policy applied on top of the shape schemas.
 exports.partyConfig = partyConfig;
+// Nested resources owned by a CORPORATE ENTITY (people & shareholding, contacts,
+// addresses, registrations, establishments). Deliberately separate from
+// partyCommon — same mechanism, different meaning. See schemas/entity-common.js.
+exports.entityCommon = entityCommon;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 exports.countries = countries;

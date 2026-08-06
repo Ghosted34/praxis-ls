@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 838 |
+| Routes | 862 |
 | Modules mounted | 106 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 838 mounted routes, grouped by path prefix.
+All 862 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -571,8 +571,32 @@ All 838 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/entities/` | — |
 | GET | `/api/tenant/entities/:id` | — |
 | PATCH | `/api/tenant/entities/:id` | — |
+| GET | `/api/tenant/entities/:id/360` | — |
 | POST | `/api/tenant/entities/:id/active` | — |
+| GET | `/api/tenant/entities/:id/addresses` | — |
+| POST | `/api/tenant/entities/:id/addresses` | — |
+| DELETE | `/api/tenant/entities/:id/addresses/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/addresses/:childId` | — |
+| GET | `/api/tenant/entities/:id/cap-table` | — |
+| GET | `/api/tenant/entities/:id/contacts` | — |
+| POST | `/api/tenant/entities/:id/contacts` | — |
+| DELETE | `/api/tenant/entities/:id/contacts/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/contacts/:childId` | — |
+| GET | `/api/tenant/entities/:id/establishments` | — |
+| POST | `/api/tenant/entities/:id/establishments` | — |
+| DELETE | `/api/tenant/entities/:id/establishments/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/establishments/:childId` | — |
 | POST | `/api/tenant/entities/:id/logo` | — |
+| GET | `/api/tenant/entities/:id/people` | — |
+| POST | `/api/tenant/entities/:id/people` | — |
+| DELETE | `/api/tenant/entities/:id/people/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/people/:childId` | — |
+| GET | `/api/tenant/entities/:id/registrations` | — |
+| POST | `/api/tenant/entities/:id/registrations` | — |
+| DELETE | `/api/tenant/entities/:id/registrations/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/registrations/:childId` | — |
+| POST | `/api/tenant/entities/:id/status` | — |
+| POST | `/api/tenant/entities/:id/structure` | — |
 
 ### `tenant/equipment`
 

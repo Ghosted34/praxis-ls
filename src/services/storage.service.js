@@ -31,6 +31,7 @@ const path = require("path");
 const crypto = require("crypto");
 const { config } = require("../config/env");
 const { isPublicStorageKey } = require("../shared/http/media-guard");
+const { AppError } = require("../utils/errors");
 
 const DRIVER = config.STORAGE_DRIVER || "local";
 
@@ -112,19 +113,62 @@ function publicUrl(key) {
 
 /* ── local driver ──────────────────────────────────────────────────────── */
 
+/**
+ * Storage keys are composed by CALLERS out of request data — an entity id from a
+ * route parameter, a tenant slug, a document id — and then joined onto
+ * STORAGE_LOCAL_PATH. `path.join(base, "../../etc/crontab")` resolves happily
+ * outside the base, so a key that was never checked is a path traversal with a
+ * file write on the end of it.
+ *
+ * Nothing was checking. Every caller was individually careful (uuids, hex,
+ * fixed extensions) and one of them being careless is all it takes — so the
+ * guard belongs HERE, at the one place every driver funnels through, not in
+ * fifteen call sites that each have to remember.
+ *
+ * Two independent checks, because either alone has a gap:
+ *   1. a charset allow-list — letters, digits, `_ - . /` — which rejects `..`
+ *      by rejecting the traversal that needs it, plus null bytes, backslashes
+ *      (Windows separators) and absolute paths;
+ *   2. a resolved-path containment check, which is the actual invariant and
+ *      holds even if the charset rule is later loosened.
+ */
+const KEY_RE = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,511}$/;
+
+function assertSafeKey(key) {
+  const k = key === null || key === undefined ? "" : String(key);
+  if (!KEY_RE.test(k) || k.includes("..") || k.includes("//")) {
+    throw new AppError("BAD_STORAGE_KEY", "Invalid storage key", 400);
+  }
+  return k;
+}
+
+/** The absolute path for a key, proven to sit inside the storage root. */
+function localPath(key) {
+  const safe = assertSafeKey(key);
+  const base = path.resolve(config.STORAGE_LOCAL_PATH);
+  const full = path.resolve(base, safe);
+  // `startsWith(base)` alone would accept a sibling directory whose name merely
+  // begins with the base ("/data/storage-evil" vs "/data/storage"), so the
+  // separator is part of the test.
+  if (full !== base && !full.startsWith(base + path.sep)) {
+    throw new AppError("BAD_STORAGE_KEY", "Invalid storage key", 400);
+  }
+  return full;
+}
+
 const local = {
   async put(buffer, { key, contentType }) {
-    const finalKey = key || crypto.randomBytes(16).toString("hex");
-    const filePath = path.join(config.STORAGE_LOCAL_PATH, finalKey);
+    const finalKey = assertSafeKey(key || crypto.randomBytes(16).toString("hex"));
+    const filePath = localPath(finalKey);
     await fs.mkdir(path.dirname(filePath), { recursive: true });
     await fs.writeFile(filePath, buffer);
     return { key: finalKey, public_url: publicUrl(finalKey), size: buffer.length, content_type: contentType };
   },
   async get(key) {
-    return fs.readFile(path.join(config.STORAGE_LOCAL_PATH, key));
+    return fs.readFile(localPath(key));
   },
   async delete(key) {
-    await fs.unlink(path.join(config.STORAGE_LOCAL_PATH, key));
+    await fs.unlink(localPath(key));
   },
   async signedUrl(key) {
     // No signing for the local driver — it is served by the /media route (public
@@ -167,7 +211,9 @@ const s3 = {
     const { PutObjectCommand } = require("@aws-sdk/client-s3");
     const cfg = await resolveS3();
     const client = await s3Client();
-    const finalKey = key || crypto.randomBytes(16).toString("hex");
+    // Same key discipline as the local driver: one rule, both back-ends, so a
+    // deployment does not become traversable by switching STORAGE_DRIVER.
+    const finalKey = assertSafeKey(key || crypto.randomBytes(16).toString("hex"));
     await client.send(
       new PutObjectCommand({ Bucket: cfg.bucket, Key: finalKey, Body: buffer, ContentType: contentType }),
     );

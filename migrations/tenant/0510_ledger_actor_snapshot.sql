@@ -27,12 +27,20 @@
 -- There is no shadow `migrations/live/` in this repo, so this one file covers
 -- the identity ledger and the per-tenant business ledger alike.
 --
--- The forbid_mutation trigger (0130_platform_projection.sql:58) stays exactly
--- as it was: ADD COLUMN is a schema change, not an UPDATE, and the trigger
--- fires on UPDATE/DELETE against DATA. The tamper-evidence chain (0499) is
--- similarly unaffected — its hash includes only actor_user_id, action,
--- module_key, entity_ref, before_json, after_json, so adding NULL-defaulted
--- columns does not perturb any historical hash.
+-- The trg_ledger_ro trigger (0130_platform_projection.sql:58, function
+-- forbid_mutation) stays exactly as it was for the ADD COLUMN below — that's
+-- a schema change, not an UPDATE against data, so the trigger never sees it.
+-- The tamper-evidence chain (0499) is similarly unaffected — its hash
+-- includes only actor_user_id, action, module_key, entity_ref, before_json,
+-- after_json, so adding NULL-defaulted columns does not perturb any
+-- historical hash.
+--
+-- The one-shot back-fill below is a real UPDATE against data, though, and
+-- trg_ledger_ro fires on UPDATE regardless of which columns are touched —
+-- it can't tell "filling in a snapshot column" apart from "tampering with
+-- the ledger". So the back-fill brackets itself with a disable/enable of
+-- that one trigger, scoped as tightly as possible around the single
+-- statement that needs it.
 
 ALTER TABLE immutable_ledger
   ADD COLUMN IF NOT EXISTS actor_name_snapshot  text,
@@ -45,12 +53,16 @@ ALTER TABLE immutable_ledger
 -- lives in a different schema — the LIVE/SANDBOX identity landmine documented
 -- on audit() in src/shared/events/emit.js) simply keeps a NULL snapshot,
 -- which the humaniser reads as "You" for a self-scoped feed anyway.
+ALTER TABLE immutable_ledger DISABLE TRIGGER trg_ledger_ro;
+
 UPDATE immutable_ledger l
    SET actor_name_snapshot  = u.full_name,
        actor_email_snapshot = u.email
   FROM app_user u
  WHERE l.actor_user_id       = u.user_id
    AND l.actor_name_snapshot IS NULL;
+
+ALTER TABLE immutable_ledger ENABLE TRIGGER trg_ledger_ro;
 
 -- Sensitive rows are a small subset by design (God Mode, break-glass, etc.),
 -- so a partial index is the right shape: it is tiny, kept warm, and answers

@@ -2,36 +2,36 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 101,
-  "route_count": 737,
+  "route_count": 740,
   "tiers": {
     "public": 19,
-    "self-scoped": 94,
-    "gated": 624
+    "self-scoped": 52,
+    "gated": 669
   },
   "routes": {
     "DELETE /api/platform/plans/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "DELETE /api/platform/roles/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "DELETE /api/platform/tenants/:slug/features/:featureKey": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "DELETE /api/platform/users/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "DELETE /api/tenant/appraisals/:id": {
       "auth": true,
@@ -341,99 +341,99 @@
     },
     "GET /api/platform/ai-vendors": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/audit": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/capabilities": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/features": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/modules": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/plans": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/plans/:id/features": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/roles": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/settings": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/settings/:section/:key": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/support/tickets": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/support/tickets/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/tenants": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/tenants/:slug": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/tenants/:slug/features": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/platform/users": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "GET /api/tenant/ai/conversations": {
       "auth": true,
@@ -1365,6 +1365,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "GET /api/tenant/me/preferences/shell": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/meetings/": {
       "auth": true,
       "rbac": true,
@@ -1544,6 +1550,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/permissions/mine": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/portal/auditor": {
       "auth": true,
@@ -2291,45 +2303,45 @@
     },
     "PATCH /api/platform/plans/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/support/tickets/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/capacity": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/features/:featureKey": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/plan": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/sandbox": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/platform/users/:id": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PATCH /api/tenant/ai/governance/features/:key": {
       "auth": true,
@@ -2759,9 +2771,9 @@
     },
     "POST /api/platform/ai-vendors/:vendor/test": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/auth/login": {
       "auth": false,
@@ -2777,81 +2789,81 @@
     },
     "POST /api/platform/plans": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/roles": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/settings/:section/:key/test": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/settings/push/vapid/generate": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/admin": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/go-live": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/migrate": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/resume": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/sandbox/wipe": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/suspend": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/users": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/platform/users/:id/password": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "POST /api/tenant/ai/actions/:id/confirm": {
       "auth": true,
@@ -4319,27 +4331,27 @@
     },
     "PUT /api/platform/ai-vendors/:vendor": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PUT /api/platform/plans/:id/features": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PUT /api/platform/roles/:id/permissions": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PUT /api/platform/settings/:section/:key": {
       "auth": true,
-      "rbac": false,
+      "rbac": true,
       "validated": false,
-      "tier": "self-scoped"
+      "tier": "gated"
     },
     "PUT /api/tenant/branding/": {
       "auth": true,
@@ -4372,6 +4384,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/me/preferences/appearance": {
+      "auth": true,
+      "rbac": false,
+      "validated": true,
+      "tier": "self-scoped"
+    },
+    "PUT /api/tenant/me/preferences/shell": {
       "auth": true,
       "rbac": false,
       "validated": true,

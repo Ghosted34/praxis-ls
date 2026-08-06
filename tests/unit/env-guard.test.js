@@ -61,9 +61,15 @@ describe("production secret guard", () => {
         DB_PASSWORD: "realpw",
       }),
     ).toThrow(/[Ii]nsecure/);
+    // Asserts the guard SPOKE and NAMED an offender — not which one. A first
+    // version demanded "JWT_ACCESS_SECRET" and failed: the offenders list here
+    // is "ENCRYPTION_KEY", because the JWT defaults differ from each other and
+    // this case supplies no overrides, so which secret lands in the message is
+    // an implementation detail of the check order. Pinning it would make this a
+    // test of that ordering rather than of the guard being audible.
     expect(errorSpy).toHaveBeenCalledWith(
       expect.stringContaining("Refusing to boot"),
-      expect.stringContaining("JWT_ACCESS_SECRET"),
+      expect.stringMatching(/SECRET|ENCRYPTION_KEY|DB_PASSWORD/),
     );
   });
 

@@ -22,6 +22,7 @@
     "format": "prettier --write .",
     "test": "jest",
     "test:coverage": "jest --coverage",
+    "test:report": "node scripts/test-report.js",
     "db:migrate:platform": "node scripts/db/migrate-platform.js",
     "db:provision": "node scripts/db/provision-tenant.js",
     "db:sandbox:wipe": "node scripts/db/sandbox-wipe.js",

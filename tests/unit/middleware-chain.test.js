@@ -48,11 +48,37 @@ let mockScopeClosure = null;
 
 const mockStats = { acquires: 0, releases: 0, schemaSets: [], getAuthUser: 0, getGrants: 0 };
 
-/** A leased connection. Records the search_path re-binds tenantContext issues. */
+/**
+ * A leased connection. Records the search_path re-binds tenantContext issues.
+ *
+ * ANSWERS `user_session` (SEC-M1). authMiddleware now checks that the session
+ * named by the token's `sid` is still alive: Redis first, then Postgres, and
+ * "no row" means the session is gone. This fake answered every query with
+ * `{ rows: [] }`, so every request in this suite carrying a `sid` — which is
+ * most of them, since one test exists specifically to prove `sid` reaches
+ * `req.user` — read as REVOKED and came back 401 instead of 200/403.
+ *
+ * That is TC-Q3 from the other side: a fake that returns empty for anything it
+ * does not recognise cannot distinguish "no such session" from "I was never
+ * taught this query", and it silently answered a security question it knew
+ * nothing about. The fix is to model the query, not to soften the check —
+ * softening it would mean deleting a session row no longer revokes anything.
+ */
 function mockMakeLease(schema) {
   return {
     schema,
-    async query(sql) { mockStats.schemaSets.push(sql); return { rows: [] }; },
+    async query(sql) {
+      // RECORD ONLY `SET` STATEMENTS. `schemaSets` is named for the search_path
+      // re-binds tenantContext issues, and one test asserts it is EMPTY when no
+      // re-bind should have happened. It used to record every query, which was
+      // harmless while the only queries were re-binds — and stopped being
+      // harmless the moment authMiddleware started issuing a session lookup on
+      // the same connection. Filtering here keeps the counter measuring the
+      // thing it is named after instead of "all traffic".
+      if (/^\s*SET\s/i.test(sql)) mockStats.schemaSets.push(sql);
+      if (/user_session/.test(sql)) return { rows: [{ killed_at: null }] };
+      return { rows: [] };
+    },
     release() { mockStats.releases += 1; },
   };
 }

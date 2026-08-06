@@ -698,6 +698,14 @@ CREATE TRIGGER trg_supplier_bank_updated     BEFORE UPDATE ON supplier_bank_acco
 DROP TRIGGER IF EXISTS trg_party_field_config_updated ON party_field_config;
 CREATE TRIGGER trg_party_field_config_updated BEFORE UPDATE ON party_field_config FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
+-- ── 2.5 client_type symmetry — bring the pre-existing table (0300) in line ──
+-- 0300's client_type had only {code, name, is_system}; the registry CRUD and the
+-- settings page manage `is_active` (deactivate-not-delete) and sort by recency,
+-- so add them symmetrically with supplier_type. Additive, defaulted, idempotent.
+ALTER TABLE client_type
+  ADD COLUMN IF NOT EXISTS is_active  boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
+
 -- ── Seed: client categories (2.5 / 6.2) ────────────────────────────────────
 INSERT INTO client_type (code, name, is_system) VALUES
   ('SHIPPER','Shipper',true),

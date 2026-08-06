@@ -177,6 +177,33 @@ describe("title bar strip", () => {
     expect(strip.getByRole("button", { name: /search/i })).toBeInTheDocument();
   });
 
+  /**
+   * THE UTILITY CLUSTER IS NOT WAITING ON ANYTHING, which is why it has no
+   * skeleton.
+   *
+   * The optimistic-cache work gave the ribbon and the rail's pinned middle
+   * shimmering placeholders, because both are drawn from `GET
+   * /permissions/mine` and both were zero-height until it answered. The obvious
+   * next step is to give this strip placeholders too — and it would be a
+   * downgrade: none of it is permission-derived, so it paints as ITSELF on the
+   * first frame, and swapping real controls for grey boxes would remove
+   * function to add the appearance of loading.
+   *
+   * Asserted synchronously, with no `await` and no settled fetch, because "on
+   * the first frame" is the entire claim. If a later change made any of these
+   * conditional on the access read, this is where it would show up.
+   */
+  it("paints the search field and the utility controls before any permissions read settles", () => {
+    const { container } = renderShell();
+    const strip = within(container.querySelector<HTMLElement>(".wco")!);
+    expect(strip.getByRole("button", { name: /search/i })).toBeInTheDocument();
+    expect(strip.getByRole("group", { name: "Data environment" })).toBeInTheDocument();
+    expect(strip.getByRole("button", { name: /quick actions/i })).toBeInTheDocument();
+    expect(strip.getByRole("button", { name: /notification/i })).toBeInTheDocument();
+    // Nothing in the strip is a placeholder.
+    expect(container.querySelector(".wco .animate-pulse")).toBeNull();
+  });
+
   it("mounts the icon rail beside the content, not inside the strip", () => {
     // The rail is app-level chrome with its own contents; nesting it in the
     // title bar would make it read as part of the window furniture and would

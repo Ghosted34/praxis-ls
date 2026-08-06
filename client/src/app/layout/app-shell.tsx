@@ -59,6 +59,8 @@ import { ErrorBoundary } from "@/components/ui/error-boundary";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { XIcon } from "@/components/ui/icons";
 import { ActionErrorBanner } from "@/components/action-error-banner";
+import { AccessBanner } from "@/app/layout/access-banner";
+import { RouteAccessGate } from "@/app/layout/route-access-gate";
 import { useAiEnabled } from "@/components/ai-actions";
 import { cn } from "@/lib/cn";
 
@@ -687,7 +689,9 @@ export function AppShell() {
                   filename a deploy removed — surfaces as the screen error, not a
                   silent dead route. */}
               <React.Suspense fallback={<PageSkeleton />}>
-                <Outlet />
+                <RouteAccessGate pathname={location.pathname}>
+                  <Outlet />
+                </RouteAccessGate>
               </React.Suspense>
             </ErrorBoundary>
           </main>
@@ -702,6 +706,10 @@ export function AppShell() {
           for screens whose handlers had no catch — see
           doc/PERMISSION_SWEEP_BACKLOG.md §C. */}
       <ActionErrorBanner />
+      {/* The GRANT half of live permission invalidation. Its counterpart — a
+          revocation — never reaches a component: ShellProvider clears the local
+          cache and hard-refreshes the moment it sees one. */}
+      <AccessBanner />
       <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />

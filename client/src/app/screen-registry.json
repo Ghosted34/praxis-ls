@@ -1158,6 +1158,15 @@
       "module_key": "MOD-70",
       "purpose": "Modules and features enabled for this tenant's plan.",
       "actions": []
+    },
+    {
+      "id": "portal_access",
+      "title": "Portal access",
+      "route": "/portal/access",
+      "area": "settings",
+      "module_key": "MOD-67",
+      "purpose": "Grant and revoke external client, investor and auditor portal logins.",
+      "actions": []
     }
   ]
 }

@@ -31,6 +31,7 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/cn";
 import { useAiEnabled } from "@/components/ai-actions";
+import { useCanOpenRoute } from "@/lib/route-access";
 import { useClockPunch } from "@/components/clock-punch";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator } from "@/components/ui/dropdown-menu";
 
@@ -89,9 +90,19 @@ export type QuickAction = {
  * The destinations both surfaces offer. Shared so the touch cluster and the
  * desktop menu cannot drift into offering different things — which is how the
  * app ended up with three icon sets and four card recipes (F6).
+ *
+ * TWO DIFFERENT GATES, and they are not interchangeable. `aiEnabled` is the
+ * TENANT's feature flag — AI is provisioned or it is not — while `canOpen` is
+ * this USER's grant. Messages is the case that needs the second one: Smart
+ * Comms is a module like any other, and this menu appears in the title bar, in
+ * the icon rail and in the touch cluster, so an ungated entry here is three
+ * places offering a 403. Help is deliberately ungated in the registry and
+ * survives every filter, which is right — the way out must not be behind a
+ * grant.
  */
 export function useQuickActions(onDone?: () => void): QuickAction[] {
   const aiEnabled = useAiEnabled();
+  const canOpen = useCanOpenRoute();
   const navigate = useNavigate();
 
   return React.useMemo(() => {
@@ -110,10 +121,12 @@ export function useQuickActions(onDone?: () => void): QuickAction[] {
         },
       });
     }
-    list.push({ key: "msg", label: "Messages", Icon: ChatIcon, onSelect: () => { navigate("/comms"); done(); } });
+    if (canOpen("/comms")) {
+      list.push({ key: "msg", label: "Messages", Icon: ChatIcon, onSelect: () => { navigate("/comms"); done(); } });
+    }
     list.push({ key: "help", label: "Help", Icon: HelpIcon, onSelect: () => { navigate("/help"); done(); } });
     return list;
-  }, [aiEnabled, navigate, onDone]);
+  }, [aiEnabled, canOpen, navigate, onDone]);
 }
 
 /** The top-bar menu. Desktop only — `md:hidden` keeps the FAB below that. */

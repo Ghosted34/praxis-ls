@@ -32,6 +32,7 @@ import { resolveRailPins, pinRoute } from "./rail-model";
 import { useCommandPalette } from "./command-palette-context";
 import { useQuickActions } from "@/components/quick-actions";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
+import { RailPinsSkeleton } from "./shell-skeleton";
 import { SearchIcon, TowerIcon, type IP } from "./nav-icons";
 
 function PlusIcon(p: IP) {
@@ -75,7 +76,7 @@ function RailButton({
 }
 
 export function IconRail() {
-  const { access, ready, prefs, setPrefs } = useShell();
+  const { access, ready, resolved, prefs, setPrefs } = useShell();
   const { pathname } = useLocation();
   const palette = useCommandPalette();
   const quickActions = useQuickActions();
@@ -120,15 +121,23 @@ export function IconRail() {
 
       <span className="rail-rule" aria-hidden />
 
-      {pins.map((area) => {
-        const Icon = iconForArea(area.label);
-        const to = pinRoute(area);
-        return (
-          <RailButton key={area.key} label={area.label} to={to} active={pathname === to || pathname.startsWith(to + "/")}>
-            <Icon width={18} height={18} />
-          </RailButton>
-        );
-      })}
+      {/* Placeholders only on a genuine cache miss. The rail's fixed ends are
+          not permission-derived, so they are themselves from the first frame;
+          only the pinned middle — the part that really is unknown — shimmers,
+          and it reserves the height the resolved pins will take. */}
+      {!resolved ? (
+        <RailPinsSkeleton />
+      ) : (
+        pins.map((area) => {
+          const Icon = iconForArea(area.label);
+          const to = pinRoute(area);
+          return (
+            <RailButton key={area.key} label={area.label} to={to} active={pathname === to || pathname.startsWith(to + "/")}>
+              <Icon width={18} height={18} />
+            </RailButton>
+          );
+        })
+      )}
 
       {/* Pushes the quick actions and the editor to the bottom, so the pinned
           middle can grow without the two ends moving. */}

@@ -3,9 +3,22 @@
  * of cards; each card routes to its editor. Screens that aren't built yet route
  * to the shared ComingSoon placeholder (see doc/FE_IA_HANDOFF.md). Cards linking
  * into existing areas (Appearance, Notifications, IAM, Roles) go straight there.
+ *
+ * THE GRID IS FILTERED BY GRANT. This is the densest single collection of
+ * destinations in the product — twenty-four cards spanning IAM, the module
+ * catalogue, payment gateways and the portal — and it was hard-coded, so any
+ * user who could reach /settings at all was offered every one of them. The
+ * cards go through the same `canOpenRoute` as the ribbon and the palette, and a
+ * section whose cards are all filtered out is dropped rather than left as a
+ * heading over nothing (the same rule `buildRibbon` applies to an empty family).
+ *
+ * A user who can open none of them still gets the page, with its `<h1>` and a
+ * line saying so — a settings screen that renders as a bare title reads as a
+ * failure, and this is a refusal.
  */
 import { pageShell } from "@/lib/layout";
 import { Link } from "react-router-dom";
+import { useCanOpenRoute } from "@/lib/route-access";
 
 type Card = { to: string; label: string; desc: string; icon: IconKey };
 type Section = { heading: string; cards: Card[] };
@@ -115,6 +128,11 @@ function ChevIcon() {
 }
 
 export function SettingsHub() {
+  const canOpen = useCanOpenRoute();
+  const sections = SECTIONS.map((s) => ({ ...s, cards: s.cards.filter((c) => canOpen(c.to)) })).filter(
+    (s) => s.cards.length > 0,
+  );
+
   return (
     <section className={pageShell.wide}>
       <h1 className="font-display text-2xl tracking-tight">Settings</h1>
@@ -122,8 +140,14 @@ export function SettingsHub() {
         Configure the hub. Business identity, money, operations, communication &amp; integrations.
       </p>
 
+      {sections.length === 0 && (
+        <p className="mt-8 text-sm text-muted-foreground">
+          None of the workspace settings are part of your access. Ask an administrator if you need one of them.
+        </p>
+      )}
+
       <div className="mt-8 flex flex-col gap-8">
-        {SECTIONS.map((s) => (
+        {sections.map((s) => (
           <div key={s.heading}>
             <p className="micro mb-3">{s.heading}</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">

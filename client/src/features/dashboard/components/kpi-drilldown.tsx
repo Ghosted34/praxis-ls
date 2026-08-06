@@ -22,6 +22,7 @@ import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { EmptyState, ErrorState } from "@/components/ui/states";
 import { SkeletonTable } from "@/components/ui/skeleton";
 import { cn } from "@/lib/cn";
+import { useCanOpenRoute } from "@/lib/route-access";
 import type { Drill, KpiId } from "../drilldowns";
 import type { ControlTowerKpis } from "../use-control-tower";
 import { useKpiDrilldown } from "../use-control-tower";
@@ -72,12 +73,18 @@ export function KpiDrilldown({
   onClose: () => void;
 }) {
   const navigate = useNavigate();
+  const canOpen = useCanOpenRoute();
   const { drill, loading, error } = useKpiDrilldown(id, kpis);
 
   // Title has to exist before the data does — Dialog labels itself from it, and
   // an untitled dialog is an unnamed one for a screen reader.
   const title = drill?.title ?? "Loading detail";
-  const cta = drill?.cta;
+  // The drill-down itself is safe to show — every figure in it comes from a list
+  // this user was already entitled to read, and a source that 403s yields an
+  // empty table (see drilldowns.ts). Its "open the full list" button is a
+  // different thing: a route, offered like any other, and dropped when the user
+  // cannot open it. A dialog with no footer is a state Dialog already handles.
+  const cta = drill && canOpen(drill.cta.to) ? drill.cta : undefined;
 
   return (
     <Dialog

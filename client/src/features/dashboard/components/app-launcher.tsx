@@ -7,10 +7,17 @@
  * in the parent, keyed on the tile's visible text because the label was the only
  * identifier the mock's `apps` array carried. The route is now a property of the
  * tile, and the tile is a `<Link>`.
+ *
+ * TILES THIS USER CANNOT OPEN ARE NOT DRAWN. Twelve hard-coded destinations on
+ * the landing screen is the widest single offer in the product, and it was made
+ * to everybody: a warehouse role saw the OHADA ledger, the tax centre and
+ * treasury, and found out what they meant by clicking one. The grid reflows over
+ * however many survive, so a shorter list is a shorter grid rather than holes.
  */
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
+import { useCanOpenRoute } from "@/lib/route-access";
 
 type IP = React.SVGProps<SVGSVGElement>;
 const gi = (d: string) => (p: IP) => (
@@ -49,6 +56,9 @@ export const LAUNCHER: Tile[] = [
 ];
 
 export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
+  const canOpen = useCanOpenRoute();
+  const tiles = LAUNCHER.filter((t) => canOpen(t.to));
+
   return (
     <section aria-labelledby="ct-apps">
       <div className="mb-3 mt-6 flex items-center gap-3">
@@ -66,7 +76,7 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
       </div>
 
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        {LAUNCHER.map(({ label, hint, to, Icon }, i) => (
+        {tiles.map(({ label, hint, to, Icon }, i) => (
           <li key={to}>
             <Link
               to={to}

@@ -35,6 +35,8 @@ import { areaRoute, sectionRoute, type Area, type AreaSection } from "./areas";
 import { buildRibbon, iconForArea, locate, type RibbonArea, type RibbonFamily } from "./ribbon-model";
 import { useShell } from "./shell-context";
 import { useRibbonCommandList } from "./ribbon-commands";
+import { RibbonSkeleton } from "./shell-skeleton";
+import { readCachedRibbonPinned } from "@/lib/nav-access-cache";
 import { ChevronIcon, MoreIcon } from "./nav-icons";
 import { DropdownMenu, DropdownItem, DropdownLabel } from "@/components/ui/dropdown-menu";
 import { Tooltip } from "@/components/ui/tooltip";
@@ -210,7 +212,7 @@ function CommandCluster({ area, pathname }: { area?: RibbonArea; pathname: strin
 }
 
 export function Ribbon({ pathname }: { pathname: string }) {
-  const { access, ready, prefs, setPrefs } = useShell();
+  const { access, resolved, prefs, setPrefs } = useShell();
   const families = React.useMemo(() => buildRibbon(access), [access]);
   const { family: routeFamily, area: routeArea } = React.useMemo(
     () => locate(families, pathname),
@@ -224,7 +226,18 @@ export function Ribbon({ pathname }: { pathname: string }) {
   const [chosen, setChosen] = React.useState<string | null>(null);
   const family = routeFamily ?? families.find((f) => f.key === chosen) ?? families[0];
 
-  const pinned = prefs.ribbonPinned ?? true;
+  // Read once per mount, not per render: the live value is `prefs.ribbonPinned`
+  // the moment it exists, so re-reading storage would only ever return the same
+  // answer the mirror was seeded with.
+  const [cachedPinned] = React.useState(readCachedRibbonPinned);
+  // `?? cached ?? true`, and the middle term is the one doing work. The API's
+  // `null` means BOTH "still loading" and "never chosen", so a shell that fell
+  // straight to `true` would open row B for a user who had collapsed it and
+  // then shut it again when the preference landed — a 46px jump in the chrome,
+  // which is precisely the shift the optimistic access cache exists to remove.
+  // The local mirror is written by ShellProvider; see PINNED_KEY in
+  // lib/nav-access-cache.ts for why it is not a second source of truth.
+  const pinned = prefs.ribbonPinned ?? cachedPinned ?? true;
   // Unpinned, row B is summoned by clicking a family and dismissed by using it.
   // It overlays rather than expands, so summoning it never reflows the table
   // underneath — the reason Office's unpinned ribbon floats.
@@ -237,11 +250,18 @@ export function Ribbon({ pathname }: { pathname: string }) {
     return () => document.removeEventListener("keydown", onKey);
   }, [peek]);
 
-  // Nothing to draw until the permissions read settles. Deliberately blank
-  // rather than a skeleton: a shimmering placeholder for a 40ms read is more
-  // motion than information, and the optimistic-cache work this endpoint's
-  // `version` digest exists for is a separate change.
-  if (!ready || families.length === 0) return null;
+  // A CACHE MISS IS A SKELETON, NOT A HOLE. `resolved` is false only when this
+  // device has never seen an answer for this user — a genuine first login. Every
+  // other load draws the previous session's ribbon on the first frame and
+  // reconciles behind it, so this branch is rare and is the only one where the
+  // band's height would otherwise be zero.
+  //
+  // `families.length === 0` AFTER resolving is a different statement: the read
+  // answered, and the answer is that there is nothing to show (a failed fetch,
+  // or a user with no visible module). That stays blank — a permanent skeleton
+  // over a ribbon that is never coming is worse than no ribbon.
+  if (!resolved) return <RibbonSkeleton />;
+  if (families.length === 0) return null;
 
   const showRowB = pinned || peek;
 

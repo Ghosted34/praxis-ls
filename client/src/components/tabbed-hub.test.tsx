@@ -19,7 +19,13 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
+import { authContextMock } from "@/test/screen-harness";
 import type { NavAccess } from "@/lib/nav-access";
+
+// `ShellProvider` reads the signed-in user, because the cached access record is
+// keyed per user — a shared terminal must not paint the last operator's ribbon.
+// This file mounts the real provider, so it needs a real answer from `useAuth`.
+vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 const access = { current: null as NavAccess | null };
 const accessFails = { current: false };
@@ -74,6 +80,11 @@ beforeEach(() => {
   access.current = null;
   accessFails.current = false;
   accessPending.current = false;
+  // The shell now paints its FIRST frame from a localStorage record, so without
+  // this each test starts from the previous one's ribbon — and a fixture with
+  // fewer modules than its predecessor reads as a revocation, which triggers a
+  // hard reload mid-assertion. Every test in this file shares one user id.
+  localStorage.clear();
 });
 
 function renderHub() {

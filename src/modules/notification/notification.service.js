@@ -154,7 +154,7 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
     const person = people.get(userId);
     if (!person || !person.email) continue;
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       await emailService.send(client, {
         to: person.email,
         subject: title,
@@ -171,7 +171,7 @@ async function notifyMany(client, userIds, { eventTypeKey = null, title, body = 
   const pushUsers = ids.filter((u) => isSecurity || inAppUsers.includes(u));
   for (const userId of pushUsers) {
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       await deliverPush(client, { userId, title, body });
     } catch (err) {
       logger.error({ err, user_id: userId }, "[notify] push delivery skipped/failed");

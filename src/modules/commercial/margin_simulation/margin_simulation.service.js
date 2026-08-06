@@ -28,7 +28,7 @@ async function create(client, { dossierId = null, serviceTypeId = null, currency
       currency,
     });
     for (const ln of lines) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.insertLine(client, {
         margin_simulation_id: sim.margin_simulation_id, dictionary_item_id: ln.dictionary_item_id || null,
         label: ln.label || "Line", qty: ln.qty || 1, unit_cost: ln.unit_cost || 0, unit_price: ln.unit_price || 0,

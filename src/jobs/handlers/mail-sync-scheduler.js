@@ -18,7 +18,7 @@ module.exports = async function mailSyncScheduler() {
   const tenants = await registry.listActiveTenants();
   let enqueued = 0;
   for (const meta of tenants) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await enqueue(
       "mail-sync",
       "sync",

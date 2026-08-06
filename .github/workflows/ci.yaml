@@ -10,6 +10,26 @@ on:
   pull_request:
     branches: [main]
 
+# TC-D8 — CI had no concurrency group while `deploy.yaml` correctly has one.
+#
+# Two rapid pushes to `main` produced two CI runs, two `workflow_run` completion
+# events and two queued deploys ordered by COMPLETION time rather than commit
+# order. Because `deploy.sh` pulls whatever `main` is at execution time, the
+# practical result was a redundant deploy rather than a reversed one — but the
+# trigger SHA and the deployed SHA were then provably different, which is the
+# traceability failure in TC-R3. On 2026-08-03 there were eight pushes to `main`
+# between 09:33 and 16:16, several within fifteen minutes.
+#
+# `cancel-in-progress` differs by branch, deliberately:
+#   PRs  — cancel. A superseded PR run tells you about code that no longer
+#          exists, and the ref keys the group so PRs never cancel each other.
+#   main — DO NOT cancel. A main run is the deploy trigger; cancelling it drops
+#          the deploy for that commit and CI history gains a hole exactly where
+#          "was this commit ever green?" needs answering.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -72,7 +92,64 @@ jobs:
           exit "$fail"
 
       - name: Lint
+        # TC-CI10 (first half) — lint now BLOCKS.
+        #
+        # `eslint .` was verified to exit 0 with warnings present, because
+        # `no-unused-vars` and `no-shadow` are configured as "warn". So between
+        # `node --check` (does it parse) and Jest (does this function work) there
+        # was no semantic gate at all: a typo in a property name on an untested
+        # path reached production.
+        #
+        # A RATCHET, not zero. There are 136 warnings today — measured, not
+        # estimated. Setting `--max-warnings 0` would fail the build on arrival
+        # and be reverted by whoever it blocked first, which is how a gate
+        # becomes a comment (same reasoning as the coverage floor). The ceiling
+        # stops warnings GROWING; lower it as they are cleared, and the edit to
+        # this number is the record that they were.
+        #
+        # The other half of CI10 — a backend type-check — is NOT done. The
+        # backend is plain CommonJS with no type layer, and adding one is a
+        # project, not a pipeline step. Worth knowing that
+        # SmartLS_PRD_Master_Functional_Spec_v2.md:216 promises "every merge runs
+        # lint + type-check + unit/integration tests"; the PRD and the pipeline
+        # still disagree on type-check, and the PRD is the thing that should move.
         run: npm run lint
+
+      - name: PR title is usable as a changelog line
+        # TC-R4. Most commits use conventional prefixes, so the raw material is
+        # there — but the MERGE commits, which are the integration points a
+        # changelog is built from, carry the least information: "Lots of
+        # changes", "a lot", "audit portan and opportunities board list".
+        #
+        # A squash-merge takes its message from the PR TITLE, so gating the title
+        # is what actually fixes the history. PRs only — a push to main has no
+        # title to check, and CI1's branch protection is what stops those.
+        #
+        # Deliberately permissive on scope and wording; it only requires a type
+        # prefix, which is the difference between a generated changelog and a
+        # manual archaeology session.
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -u
+          if printf '%s' "$PR_TITLE" | grep -Eq '^(feat|fix|chore|docs|refactor|perf|test|build|ci|revert)(\([a-z0-9 ._/-]+\))?!?: .{6,}'; then
+            echo "PR title OK: $PR_TITLE"
+            exit 0
+          fi
+          echo "::error::PR title is not usable as a changelog entry: \"$PR_TITLE\""
+          echo "::error::Use  type(scope): what changed  — e.g. \"fix(ledger): reject unbalanced entries at the database\""
+          echo "::error::Types: feat fix chore docs refactor perf test build ci revert"
+          exit 1
+
+      - name: Env template matches the schema
+        # TC-E1. Nothing anywhere compared `.env.example` to what `env.js`
+        # actually requires, so the template drifted silently. The cost of that
+        # drift is paid in the worst possible place: a change that adds a
+        # required variable passes CI, passes the image build, RUNS ITS
+        # MIGRATIONS against every tenant database, and only then fails to boot.
+        # This moves the discovery to the PR.
+        run: node scripts/check-env-template.js
 
       - name: Font gate
         # No font from outside client/src/lib/fonts.ts may be NAMED anywhere —
@@ -89,8 +166,35 @@ jobs:
         run: npm run check:fonts
 
       - name: Test
-        # Real specs now live under tests/unit; the empty-suite flag is gone.
-        run: npx jest --runInBand
+        # TC-CI3 — coverage is MEASURED here, and the summary is printed.
+        #
+        # The Test step was `npx jest --runInBand`: no coverage, no threshold, no
+        # report, no artifact. The numbers in the audit had to be produced by
+        # hand on someone's laptop, so nobody could see whether a change moved
+        # coverage up or down — which makes a remediation programme unmeasurable
+        # from its first day. The threshold itself lives in jest.config.js and is
+        # deliberately expressed in FUNCTIONS and BRANCHES (TC-Q1: a line or
+        # statement gate is satisfied by importing files).
+        #
+        # TC-F2 — `--runInBand` is gone. Measured at 22.5s serial vs 7.4s
+        # parallel with identical results. The audit was explicit that the right
+        # moment to drop it is NOW, while the suite is pure and any breakage from
+        # parallel workers is obviously new, rather than later when
+        # database-touching tests make the cause ambiguous. The integration job
+        # keeps `--runInBand`, because there it IS load-bearing: those suites
+        # share one Postgres.
+        run: npx jest --coverage --coverageReporters=text-summary --coverageReporters=lcov
+
+      - name: Upload coverage report
+        # Keeps the lcov where a human (or a future badge/diff tool) can reach it.
+        # `always()` because a coverage-threshold failure is exactly when you want
+        # to look at the report.
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-backend
+          path: coverage/
+          retention-days: 14
 
       - name: Migration numbering
         # Two streams work this repo in parallel and have already collided on
@@ -135,6 +239,20 @@ jobs:
         # a commented `-- DOWN` block or an explicit `-- IRREVERSIBLE: <reason>`.
         # Stops the backlog growing while DATA 3.5 is worked.
         run: node scripts/db/check-migration-reversibility.js
+
+      - name: Destructive migrations must be declared
+        # OBS-I3. `deploy.sh` applies migrations to EVERY tenant database before
+        # the app rolls, the convention "keep them additive" was enforced by
+        # nothing, and there are no down-migrations for anything before 0500. A
+        # DROP COLUMN that passes review therefore reaches every customer's data
+        # at once with no way back but the pre-deploy backup.
+        #
+        # Not a ban — destructive migrations are sometimes right, and a gate that
+        # forbids them gets worked around. It requires an explicit
+        # `-- DESTRUCTIVE: <what is lost and why that is acceptable>` marker, so
+        # the sentence exists in the diff for a reviewer and in the file for
+        # whoever is restoring a backup at 02:00.
+        run: node scripts/db/check-destructive-migrations.js
 
       - name: Schema drift
         # Audit DATA 3.3: notification_preference is CREATEd in two files with
@@ -431,8 +549,38 @@ jobs:
         # blocking unrelated work. A gate everyone learns to force past is worse
         # than one that reports honestly. Flip this back to blocking once the
         # tree is clean — that is the point of leaving it here at all.
-        continue-on-error: true
-        run: npm audit --audit-level=high
+        # TC-CI4 — the gate now BLOCKS, with a dated exception rather than a
+        # permanent `continue-on-error`.
+        #
+        # The old reasoning was sound as far as it went: the outstanding findings
+        # are transitive `uuid` via `exceljs`/`node-cron`, clearing them needs a
+        # breaking `exceljs` major, and "a gate everyone learns to force past is
+        # worse than one that reports honestly". The flaw is that an exception
+        # with no expiry is indistinguishable from an exception nobody revisits —
+        # and these have been visible and unaddressed since the audit.
+        #
+        # `--audit-level=high` still, so moderates report without blocking. The
+        # EXPIRY below is the change: past that date this step fails on any high,
+        # which forces the exceljs decision to be made rather than deferred
+        # again. Move the date only together with a note saying why.
+        continue-on-error: false
+        run: |
+          set -uo pipefail
+          EXPIRY="2026-10-31"
+          if npm audit --audit-level=high; then
+            echo "npm audit: clean at high and above."
+            exit 0
+          fi
+          TODAY="$(date -u +%Y-%m-%d)"
+          if [ "$TODAY" \< "$EXPIRY" ]; then
+            echo "::warning::npm audit reports high-severity findings. KNOWN, and accepted until $EXPIRY:"
+            echo "::warning::transitive uuid via exceljs/node-cron — clearing it needs a breaking exceljs major (TC-CI4)."
+            echo "::warning::After $EXPIRY this step FAILS. Schedule the upgrade."
+            exit 0
+          fi
+          echo "::error::npm audit has high-severity findings and the accepted-risk window expired on $EXPIRY."
+          echo "::error::Either do the exceljs upgrade or move the EXPIRY in ci.yaml with a written reason."
+          exit 1
 
       - name: Secret scan
         # Catches a key pasted into a commit. The repo has real history here: the

@@ -46,8 +46,13 @@ const controllerRan = { finance: 0 };
 jest.mock("../../src/services/tenant/registry.service", () => ({
   SCHEMA: Symbol.for("praxis.schema"),
   resolveByHost: async (host) => mockTenants[host] || null,
-  acquire: async () => ({ async query() { return { rows: [] }; }, release() {} }),
-  withTenantConnection: async (_t, _e, fn) => fn({ async query() { return { rows: [] }; } }),
+  // `user_session` is answered because authMiddleware now verifies the session
+  // named by the token's `sid` is still alive (SEC-M1), and "no row" means
+  // revoked. A fake returning `{ rows: [] }` for everything answered that
+  // security question without knowing it was being asked, turning every 403
+  // assertion here into a 401. Model the query rather than soften the check.
+  acquire: async () => ({ async query(sql) { return /user_session/.test(sql) ? { rows: [{ killed_at: null }] } : { rows: [] }; }, release() {} }),
+  withTenantConnection: async (_t, _e, fn) => fn({ async query(sql) { return /user_session/.test(sql) ? { rows: [{ killed_at: null }] } : { rows: [] }; } }),
   invalidateHost: () => {},
   poolFor: () => null,
   listActiveTenants: async () => [],

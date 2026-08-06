@@ -16,7 +16,7 @@ jest.mock("imapflow", () => {
     async connect() {}
     async logout() {}
     async getMailboxLock() { this.mailbox = ImapFlow.__mailbox; return { release() {} }; }
-    // eslint-disable-next-line require-yield
+     
     async *fetch() { for (const m of ImapFlow.__messages) yield m; }
     async mailboxExists() { return false; }
     async append() {}

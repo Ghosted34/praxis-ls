@@ -65,19 +65,19 @@ const SCHEMES = {
   try {
     const total = Object.keys(SCHEMES).length;
     for (const schema of schemas) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const { rows } = await cli.query(
         "SELECT 1 FROM information_schema.schemata WHERE schema_name = $1",
         [schema],
       );
       if (!rows.length) { console.warn(`[praxis-db] schema '${schema}' missing — skipped`); continue; }
-      // eslint-disable-next-line no-await-in-loop
+       
       await cli.query(`SET search_path = ${schema}, public`);
       let wrote = 0;
       for (const [key, def] of Object.entries(SCHEMES)) {
         const value = { ...DEFAULTS, ...def };
         delete value.label; // `label` documents the key; it is not part of the stored scheme
-        // eslint-disable-next-line no-await-in-loop
+         
         const res = await cli.query(
           force
             ? `INSERT INTO setting (section, key, value)

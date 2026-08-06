@@ -13,7 +13,7 @@ module.exports = async function mailWebhookRenewScheduler() {
   const tenants = await registry.listActiveTenants();
   let enqueued = 0;
   for (const meta of tenants) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await enqueue("mail-webhook-renew", "renew", { tenantMeta: meta, env: "live" },
       { jobId: `mailrenew:${meta.db_name}:live`, attempts: 2, removeOnComplete: true, removeOnFail: 100 });
     enqueued += 1;

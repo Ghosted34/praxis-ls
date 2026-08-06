@@ -90,12 +90,12 @@ class MicrosoftGraphProvider {
     let deltaLink = null;
     // Bound the pages defensively; a healthy delta returns few per tick.
     for (let i = 0; i < 50; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const r = await this._req("GET", url);
       for (const m of r.data.value || []) {
         if (m["@removed"]) continue; // ignore deletions for now
         const n = this._normalize(m);
-        // eslint-disable-next-line no-await-in-loop
+         
         if (m.hasAttachments) n.attachments = await this._fetchAttachments(m.id);
         messages.push(n);
       }

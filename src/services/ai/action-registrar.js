@@ -180,7 +180,7 @@ async function syncCatalogue(client, { manifests, enableWritesInRegistryOnly = t
   const rows = buildCatalogue(manifests);
   let upserts = 0;
   for (const r of rows) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await client.query(
       `INSERT INTO ai_action_catalogue
          (action_key, title, description, module_key, is_write, payload_schema,

@@ -65,11 +65,36 @@ describe("platform API — every authenticated route carries a capability gate",
     expect(names).toContain("platformAuth");
   });
 
+/**
+ * The names an authorisation gate can have on this router.
+ *
+ * BOTH were called `check` until API-F23. `requireCap` and `requirePlatformRole`
+ * each returned `function check(...)`, which is generic enough that nothing
+ * reading the mounted routers could tell an authorisation step from any other
+ * middleware — so the contract snapshot classified every platform route,
+ * including `DELETE /tenants/:slug`, as "authenticated with no permission
+ * check". They are now `platformCapCheck` and `platformRoleCheck`.
+ *
+ * THIS TEST BREAKING IS THE POINT, AND ALSO THE WARNING. Renaming a function
+ * turned 53 assertions red, which is precisely the fragility TC-Q6 describes:
+ * a guard that identifies middleware BY NAME stops guarding the moment someone
+ * renames or wraps it, and here it failed loudly only because the rename was
+ * deliberate. A wrapper — `asyncHandler(requireCap('x'))` — would have made it
+ * fail silently instead, reporting every route ungated.
+ *
+ * Kept name-based rather than converted to identity matching because these are
+ * FACTORY-produced closures: `requireCap('a')` and `requireCap('b')` are
+ * different function objects, so there is no single reference to compare
+ * against. The honest fix is a tag on the returned function (as
+ * `makeLimiter` does with `praxisRateLimit`), which is a small change worth
+ * making next time this file is touched.
+ */
+const GATE_NAMES = ["platformCapCheck", "platformRoleCheck"];
+const isGated = (names) => names.some((n) => GATE_NAMES.includes(n));
+
   it.each(gated.map((r) => [r.key, r]))("%s is gated", (_key, route) => {
-    // requireCap returns a named function `check`; requirePlatformRole returns
-    // one too. Either is an authorisation decision — an ungated route has
-    // neither.
-    expect(route.names).toContain("check");
+    // Either gate is an authorisation decision — an ungated route has neither.
+    expect(isGated(route.names)).toBe(true);
   });
 
   describe("the credential store specifically (SEC-H2 / API F-20)", () => {
@@ -88,7 +113,7 @@ describe("platform API — every authenticated route carries a capability gate",
     it.each(CREDENTIAL_ROUTES)("%s exists and is gated", (key) => {
       const route = routes.find((r) => r.key === key);
       expect(route).toBeDefined();
-      expect(route.names).toContain("check");
+      expect(isGated(route.names)).toBe(true);
     });
   });
 

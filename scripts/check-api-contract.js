@@ -63,22 +63,84 @@ function chainNames(route) {
   return (route.stack || []).map((s) => s.name || "anonymous");
 }
 
-function walk(router, prefix, out) {
+// `portalAuthCheck` is the external portal's authenticator. It used to be an
+// anonymous function, which made the whole portal surface read as public — see
+// the note in portal_auth.middleware.js. It both authenticates AND checks the
+// portal grant, so it counts as `rbac` too: a portal route is not "logged in
+// with no permission check", it is gated by the grant.
+const IS_AUTH = (n) => /^authMiddleware$|^platformAuth$|^portalAuthCheck$/.test(n);
+const IS_RBAC = (n) => /rbacCheck|capabilityCheck|ceoCheck|requireCap|transitionRbac|portalAuthCheck|platformRoleCheck|platformCapCheck/i.test(n);
+const IS_VALID = (n) => /^mw$|validat|^zValidate$|deprecationHeaders/i.test(n);
+
+/**
+ * API-F23 / SEC-L5 — the walk now carries ROUTER-LEVEL middleware down to the
+ * routes it actually protects.
+ *
+ * THE BUG THIS FIXES, and it is the reason F23 sat open. The old walk read
+ * `auth`/`rbac` from each route's OWN stack. Almost every router in this
+ * codebase authenticates once at the top:
+ *
+ *     router.use(authMiddleware);        // applies to everything below
+ *     router.get("/mine", controller.mine);   // its own stack: [controller]
+ *
+ * That `use` layer has no `.route` and its `.handle` has no `.stack`, so the
+ * old walk hit neither branch and dropped it on the floor. Result: hundreds of
+ * authenticated routes recorded as `auth: false`. A first attempt to publish an
+ * access-tier table from those flags produced "713 public, 9 self-scoped"
+ * against an audit count of 10 and 61 — a SECURITY document that lied, which is
+ * why it was never shipped.
+ *
+ * `inherited` accumulates IN ORDER, which is also correct rather than merely
+ * convenient: Express applies a `use` only to routes registered after it, so a
+ * router that mounts a public route before its `authMiddleware` line still
+ * reports that route as public. That ordering is the real behaviour, and it is
+ * exactly the mistake worth catching.
+ */
+function walk(router, prefix, out, inherited = []) {
+  const carried = [...inherited];
   for (const layer of (router && router.stack) || []) {
     if (layer.route) {
-      const names = chainNames(layer.route);
+      const names = [...carried, ...chainNames(layer.route)];
       for (const method of Object.keys(layer.route.methods || {})) {
         out.push({
           key: `${method.toUpperCase()} ${prefix}${layer.route.path}`,
-          auth: names.some((n) => /^authMiddleware$|^platformAuth$/.test(n)),
-          rbac: names.some((n) => /rbacCheck|capabilityCheck|ceoCheck|requireCap|transitionRbac/i.test(n)),
-          validated: names.some((n) => /^mw$|validat|^zValidate$|deprecationHeaders/i.test(n)),
+          auth: names.some(IS_AUTH),
+          rbac: names.some(IS_RBAC),
+          validated: names.some(IS_VALID),
         });
       }
     } else if (layer.handle && layer.handle.stack) {
-      walk(layer.handle, prefix + mountPathOf(layer), out);
+      // A nested router — descend, carrying everything applied above it.
+      walk(layer.handle, prefix + mountPathOf(layer), out, carried);
+    } else if (layer.handle && typeof layer.handle === "function") {
+      // Router-level middleware: `router.use(fn)`. This is the case the old
+      // walk ignored, and it is where auth actually lives.
+      carried.push(layer.handle.name || "anonymous");
     }
   }
+}
+
+/**
+ * The access tier of a route — the thing F23 says exists in practice and is
+ * declared nowhere.
+ *
+ *   public       no authentication at all
+ *   self-scoped  authenticated, no permission grant required. NOT a gap: these
+ *                only ever act on the caller's own data, so there is nothing to
+ *                grant. `GET /appraisals/mine` and `POST /sessions/:id/kill`
+ *                are the shape — the latter enforces its rule in the SERVICE
+ *                (self allowed, otherwise MOD-68 can_update), which is exactly
+ *                why "no requirePermission on the route" cannot be read as a
+ *                finding on its own.
+ *   gated        authenticated and permission-checked
+ *
+ * Making the tier explicit is the whole point: today the only thing separating
+ * "self-scoped by design" from "someone forgot the permission check" is a prose
+ * comment, and a convention nobody can query is not a control.
+ */
+function tierOf(route) {
+  if (!route.auth) return "public";
+  return route.rbac ? "gated" : "self-scoped";
 }
 
 function buildSurface() {
@@ -94,14 +156,22 @@ function buildSurface() {
   walk(platform, "/api", routes);
 
   const byKey = {};
-  for (const r of routes) byKey[r.key] = { auth: r.auth, rbac: r.rbac, validated: r.validated };
+  for (const r of routes) {
+    byKey[r.key] = { auth: r.auth, rbac: r.rbac, validated: r.validated, tier: tierOf(r) };
+  }
 
   const report = mountReport();
+  const tiers = { public: 0, "self-scoped": 0, gated: 0 };
+  for (const v of Object.values(byKey)) tiers[v.tier] += 1;
+
   return {
     generated_by: "scripts/check-api-contract.js",
     api_version: require("../src/middleware/api-version").CURRENT,
     modules_mounted: report.mounted.length,
     route_count: Object.keys(byKey).length,
+    // API-F23 — the access tiers, counted. Published so a wrong number is
+    // visible in a diff rather than discovered by a consumer.
+    tiers,
     routes: Object.fromEntries(Object.entries(byKey).sort(([a], [b]) => a.localeCompare(b))),
   };
 }

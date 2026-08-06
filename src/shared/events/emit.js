@@ -148,7 +148,7 @@ async function emitEvent(client, e) {
   // transaction so the task is atomic with the change. `require` is lazy to keep
   // the module load order (executor → query-helpers only, no cycle back to emit).
   if (isApprovable && e.entityRef) {
-    // eslint-disable-next-line global-require
+     
     const executor = require("../../services/workflow/executor");
     const amountXaf = e.payload && (e.payload.amount_xaf ?? e.payload.amount ?? e.payload.total_ttc);
     await executor.start(client, { eventTypeKey: key, entityRef: e.entityRef, amountXaf: amountXaf ?? null, actorUserId: e.actorUserId || null });

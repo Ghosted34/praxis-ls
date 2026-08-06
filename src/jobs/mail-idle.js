@@ -67,10 +67,10 @@ async function main() {
   await initRedis();
   const tenants = await registry.listActiveTenants();
   for (const meta of tenants) {
-    // eslint-disable-next-line no-await-in-loop
+     
     const conns = await registry.withTenantConnection(meta, "live", (c) => mailRepo.listSyncable(c));
     for (const conn of conns.filter((x) => x.provider === "imap_smtp")) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await idleConnection(meta, conn).catch((err) => logger.warn({ err, conn: conn.email_connection_id }, "[mail-idle] start failed"));
     }
   }

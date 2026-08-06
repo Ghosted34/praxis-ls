@@ -15,4 +15,30 @@ async function identityFor(client, purpose) {
   return rows[0] || null;
 }
 
-module.exports = { identityFor };
+/**
+ * Append one row to email_send_log (the outbound send ledger surfaced by the
+ * Mail → Send log view). Called by email.service.send on every attempt — a
+ * SENT row with the provider message-id on success, a FAILED row with the error
+ * on failure. `status` is constrained by the table CHECK; the audit trail /
+ * deliverability history lives here. Best-effort: a failed log write must never
+ * take down the send itself (caller wraps in try/catch).
+ */
+async function recordSend(client, { email_identity_id, to_address, subject, entity_ref, document_vault_id, status, provider_message_id, error }) {
+  const { rows } = await client.query(
+    "INSERT INTO email_send_log (email_identity_id, to_address, subject, entity_ref, document_vault_id, status, provider_message_id, error, sent_at) " +
+      "VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now()) RETURNING email_send_id",
+    [
+      email_identity_id || null,
+      String(to_address || "").slice(0, 320),
+      subject ? String(subject).slice(0, 1000) : null,
+      entity_ref || null,
+      document_vault_id || null,
+      status || "SENT",
+      provider_message_id ? String(provider_message_id).slice(0, 500) : null,
+      error ? String(error).slice(0, 2000) : null,
+    ],
+  );
+  return rows[0] || null;
+}
+
+module.exports = { identityFor, recordSend };

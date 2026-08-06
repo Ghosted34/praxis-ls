@@ -62,7 +62,9 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
   const tenantReply = (identity && identity.reply_to) || settings.reply_to || null;
   const ownHost = (identity && identity.smtp_host) || settings.smtp_host;
   const fb = client && !ownHost ? await mailFallback.resolve() : null;
-  const fbFrom = fb ? (purpose === "SUPPORT" && fb.support_from ? fb.support_from : fb.from) : null;
+  const fbAddr = fb ? (purpose === "SUPPORT" && fb.support_from ? fb.support_from : fb.from) : null;
+  // G-8: give the fallback sender its display name (e.g. `"Praxis" <no-reply@praxisls.com>`).
+  const fbFrom = fbAddr ? (fb.from_name ? `"${fb.from_name}" <${fbAddr}>` : fbAddr) : null;
   return {
     from: (ownHost && tenantFrom) || fbFrom || config.MAIL_DEFAULT_FROM || ("no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com")),
     reply_to: (ownHost && tenantReply) || (fb && fb.reply_to) || null,
@@ -71,6 +73,7 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
     smtp_user: settings.smtp_user || (fb && fb.smtp_user) || config.SMTP_USER || null,
     smtp_pass: encPass || settings.smtp_pass || (fb && fb.smtp_pass) || config.SMTP_PASS || null,
     identity_purpose: identity ? identity.purpose : null,
+    email_identity_id: identity ? identity.email_identity_id : null,
     module_key: moduleKey,
     // Metadata for logging/UI: which sender path won, and the fallback's detail.
     sender_source: ownHost ? (identity ? "identity" : "settings") : fb ? "fallback" : "env",
@@ -92,17 +95,52 @@ function transportFrom(cfg) {
 /**
  * Send one message from the given purpose's verified identity. `client` is the
  * tenant connection; `purpose` selects the sender; `from`/`replyTo` override;
- * `tx` is an injectable transport for tests.
+ * `entityRef`/`documentVaultId` are recorded on the send-log row (the source
+ * document emailed / its vault copy); `tx` is an injectable transport for tests.
+ *
+ * Every attempt is recorded to email_send_log (G-1): SENT with the provider
+ * message-id on success, FAILED with the error on failure. When `client` is null
+ * (injectable-transport test path) no log is written.
  */
-async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null }, tx = null) {
+async function send(client, { to, subject, html, text, from, replyTo, attachments = null, purpose = "NOTIFICATIONS", moduleKey = null, entityRef = null, documentVaultId = null }, tx = null) {
   if (!to) throw new Error("email: 'to' is required");
   const cfg = await resolveMail(client, { purpose, moduleKey });
   if (!tx && !cfg.smtp_host) throw new Error("email: no sender configured (add an email_identity or SMTP settings)");
   const mailer = tx || transportFrom(cfg);
-  return mailer.sendMail({
-    from: from || cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text,
+  // G-4: honour a caller-supplied `from` override ONLY when the tenant resolved
+  // their OWN host (identity/settings). On the fallback sender the transport is
+  // the deploy relay, so sending a tenant-domain From would fail SPF/DKIM/DMARC —
+  // the fallback sender wins there (same deliverability rule as resolveMail).
+  const useOverride = from && (cfg.sender_source === "identity" || cfg.sender_source === "settings");
+  const payload = {
+    from: useOverride ? from : cfg.from, replyTo: replyTo || cfg.reply_to || undefined, to, subject, html, text,
     ...(attachments && attachments.length ? { attachments } : {}),
-  });
+  };
+  const logBase = {
+    email_identity_id: cfg.email_identity_id,
+    to_address: Array.isArray(to) ? to.join(", ") : to,
+    subject: subject || null,
+    entity_ref: entityRef || null,
+    document_vault_id: documentVaultId || null,
+  };
+  try {
+    const info = await mailer.sendMail(payload);
+    if (client) {
+      await emailRepo.recordSend(client, {
+        ...logBase,
+        status: "SENT",
+        provider_message_id: (info && (info.messageId || info.message_id)) || null,
+        error: null,
+      }).catch(() => { /* log write is best-effort, never masks a sent mail */ });
+    }
+    return info;
+  } catch (err) {
+    if (client) {
+      await emailRepo.recordSend(client, { ...logBase, status: "FAILED", provider_message_id: null, error: err && err.message })
+        .catch(() => { /* log write is best-effort */ });
+    }
+    throw err;
+  }
 }
 
 /**

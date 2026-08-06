@@ -427,7 +427,29 @@ async function autoLink(client, inboundId, fromAddress, subject) {
 
 const listThread = (client, q = {}) => repo.listInboundByConnection(client, { connectionId: q.connection_id, limit: q.limit, before: q.before });
 const getMessage = (client, id) => repo.getInbound(client, id);
-const markRead = (client, id) => repo.markInboundRead(client, id);
+/** Mark a message read locally AND propagate to the mail server (G-3). The
+ *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
+ *  but a transient provider failure must never block the local read flip. */
+async function markRead(client, id) {
+  const msg = await repo.getInbound(client, id);
+  if (!msg) throw new AppError("NOT_FOUND", "message not found", 404);
+  if (msg.email_connection_id && msg.external_message_id) {
+    try {
+      const conn = await repo.getConnection(client, msg.email_connection_id);
+      if (conn && conn.status === "CONNECTED") {
+        const adapter = await resolveAdapter(client, conn);
+        await adapter.markAsRead(msg.external_message_id);
+      }
+    } catch (err) {
+      // server mark is best-effort; still record the local read state
+      try {
+        const { logger } = require("../../config/logger");
+        logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
+      } catch { /* noop */ }
+    }
+  }
+  return repo.markInboundRead(client, id);
+}
 const listAttachments = (client, id) => repo.listAttachments(client, id);
 /** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
 const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>

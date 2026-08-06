@@ -8,6 +8,9 @@
  */
 
 jest.mock("axios");
+jest.mock("nodemailer", () => ({
+  createTransport: jest.fn(() => ({ verify: jest.fn(async () => true), sendMail: jest.fn(async () => ({})) })),
+}));
 
 jest.mock("@aws-sdk/client-s3", () => ({
   S3Client: class {
@@ -108,5 +111,28 @@ describe("platform settings tests (probes)", () => {
     const res = await service.test("push", "vapid");
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/VAPID/);
+  });
+
+  it("Mail fallback SMTP passes when the transport verifies, and never leaks the pass", async () => {
+    const nodemailer = require("nodemailer");
+    await service.put({
+      section: "mail", key: "fallback",
+      value: { from: "no-reply@praxisls.com", support_from: "support@praxisls.com", smtp_host: "mail.praxisls.com", smtp_port: 587, smtp_user: "relay" },
+      secret: "smtp-pass-42",
+    });
+    const res = await service.test("mail", "fallback");
+    expect(res.ok).toBe(true);
+    expect(res.smtp_host).toBe("mail.praxisls.com");
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ host: "mail.praxisls.com", auth: { user: "relay", pass: "smtp-pass-42" } }),
+    );
+    expect(JSON.stringify(res)).not.toContain("smtp-pass-42");
+  });
+
+  it("Mail fallback SMTP fails cleanly when no host is configured", async () => {
+    await service.put({ section: "mail", key: "fallback", value: { from: "no-reply@praxisls.com" } });
+    const res = await service.test("mail", "fallback");
+    expect(res.ok).toBe(false);
+    expect(res.error).toMatch(/no SMTP host/i);
   });
 });

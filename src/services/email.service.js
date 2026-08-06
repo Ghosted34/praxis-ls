@@ -1,15 +1,28 @@
 /**
- * Email service — per-tenant, PER-PURPOSE sender (nodemailer, lazily required).
+ * Email service — per-tenant, PER-PURPOSE SYSTEM-EMAIL sender (nodemailer).
  *
  * There is NO single generic sender. Each sending purpose (BILLING / DOCUMENTS /
  * NOTIFICATIONS / SUPPORT) has its OWN verified identity in `email_identity`
  * (From address + name + domain + SMTP host, SPF/DKIM/DMARC). A module declares
  * its `purpose` when sending; the identity resolves the From + transport host.
  *
- * Resolution (DB-first, env-fallback per BUILD_CONVENTIONS §7):
- *   From + host  ← email_identity(purpose) → settings "email".default → env
- *   auth creds   ← settings "email".default (smtp_user/pass) → env SMTP_*
- * `send` needs the tenant client to resolve these.
+ * Resolution (tenant-first, platform-fallback, env last — BUILD_CONVENTIONS §7):
+ *   From + host  ← email_identity(purpose) → settings "email".default
+ *                → PLATFORM mail.fallback (deploy-wide sender, see
+ *                  src/services/platform/mail-fallback.service.js) → env
+ *   auth creds   ← settings "email".default (smtp_user/pass) → fallback → env
+ *
+ * Why a fallback: tenants who have NOT configured their own mail (no identity,
+ * no SMTP, DNS not pointed at us) must still receive OTPs, invites, invoices and
+ * notifications. Those SYSTEM emails fall back to a Praxis-owned sender
+ * (no-reply@praxisls.com / support@praxisls.com) sent through the deploy-wide
+ * SMTP, so nothing silently fails. This is distinct from the second config —
+ * the per-user MAILBOX (their company-domain professional address, inbound +
+ * outbound) which lives in email_connection and is handled by src/modules/mail.
+ * See doc/EMAIL_TWO_CONFIGS.md.
+ *
+ * `send` needs the tenant client to resolve these (the fallback itself is
+ * platform-wide and independent of the tenant client).
  */
 "use strict";
 
@@ -17,6 +30,7 @@ const { config } = require("../config/env");
 const { getSetting } = require("../shared/config/settings");
 const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
+const mailFallback = require("./platform/mail-fallback.service");
 
 const fmtFrom = (id) => (id.from_name ? `"${id.from_name}" <${id.from_address}>` : id.from_address);
 
@@ -32,15 +46,35 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
     // legacy plaintext settings.smtp_pass is kept only as a back-compat fallback.
     encPass = await settingService.readSecret(client, "email_smtp_pass");
   }
+  // Tenant's own transport wins. When the tenant has configured NO SMTP host
+  // (no email_identity / email setting), resolve the deploy-wide FALLBACK
+  // sender (platform `mail.fallback` → env) so system emails still go out from
+  // a Praxis-owned address instead of failing. `client` being null is the
+  // injectable-transport test path — skip the platform round-trip there.
+  //
+  // Deliverability: when we fall back on TRANSPORT we also fall back on the
+  // SENDER. Sending a tenant-domain From (e.g. billing@acme.cm) through the
+  // deploy SMTP would fail SPF/DKIM/DMARC and bounce — a tenant that hasn't set
+  // up their own host hasn't verified their domain either, so the From must be
+  // the Praxis one. Only once the tenant supplies their own SMTP host do we
+  // trust their From/identity.
+  const tenantFrom = (identity && fmtFrom(identity)) || settings.from || null;
+  const tenantReply = (identity && identity.reply_to) || settings.reply_to || null;
+  const ownHost = (identity && identity.smtp_host) || settings.smtp_host;
+  const fb = client && !ownHost ? await mailFallback.resolve() : null;
+  const fbFrom = fb ? (purpose === "SUPPORT" && fb.support_from ? fb.support_from : fb.from) : null;
   return {
-    from: (identity && fmtFrom(identity)) || settings.from || config.MAIL_DEFAULT_FROM || ("no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com")),
-    reply_to: (identity && identity.reply_to) || settings.reply_to || null,
-    smtp_host: (identity && identity.smtp_host) || settings.smtp_host || config.SMTP_HOST || null,
-    smtp_port: Number((identity && identity.smtp_port) || settings.smtp_port || config.SMTP_PORT || 587),
-    smtp_user: settings.smtp_user || config.SMTP_USER || null,
-    smtp_pass: encPass || settings.smtp_pass || config.SMTP_PASS || null,
+    from: (ownHost && tenantFrom) || fbFrom || config.MAIL_DEFAULT_FROM || ("no-reply@" + (config.MAIL_FALLBACK_DOMAIN || "praxisls.com")),
+    reply_to: (ownHost && tenantReply) || (fb && fb.reply_to) || null,
+    smtp_host: ownHost || (fb && fb.smtp_host) || config.SMTP_HOST || null,
+    smtp_port: Number((identity && identity.smtp_port) || settings.smtp_port || (fb && fb.smtp_port) || config.SMTP_PORT || 587),
+    smtp_user: settings.smtp_user || (fb && fb.smtp_user) || config.SMTP_USER || null,
+    smtp_pass: encPass || settings.smtp_pass || (fb && fb.smtp_pass) || config.SMTP_PASS || null,
     identity_purpose: identity ? identity.purpose : null,
     module_key: moduleKey,
+    // Metadata for logging/UI: which sender path won, and the fallback's detail.
+    sender_source: ownHost ? (identity ? "identity" : "settings") : fb ? "fallback" : "env",
+    fallback: fb ? { from: fbFrom || fb.from, domain: fb.fallback_domain, source: fb.source } : null,
   };
 }
 

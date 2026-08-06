@@ -36,6 +36,24 @@ async function geoapify(cfg) {
 }
 
 /**
+ * SMTP (system-email fallback): nodemailer verify() — opens a connection, runs
+ * EHLO/AUTH, sends nothing. Auth is optional (some relays use IP allowlists).
+ */
+async function smtp(cfg) {
+  if (!cfg.smtp_host) throw new Error("no SMTP host configured");
+  const port = Number(cfg.smtp_port || 587);
+  const nodemailer = require("nodemailer");
+  const transport = nodemailer.createTransport({
+    host: cfg.smtp_host,
+    port,
+    secure: cfg.smtp_secure === true || port === 465,
+    auth: cfg.smtp_user && cfg.smtp_pass ? { user: cfg.smtp_user, pass: cfg.smtp_pass } : undefined,
+  });
+  await transport.verify();
+  return { smtp_host: cfg.smtp_host, smtp_port: port, smtp_user: cfg.smtp_user || null };
+}
+
+/**
  * VAPID keys can't be exercised without a live browser subscription, so this
  * validates the keypair is present and well-formed (base64url, P-256 sizes:
  * 65-byte public → 87 chars, 32-byte private → 43 chars, unpadded).
@@ -50,4 +68,4 @@ function vapid(cfg) {
   return { public_key_len: pub.length, subject: cfg.subject || null };
 }
 
-module.exports = { s3, geoapify, vapid };
+module.exports = { s3, geoapify, smtp, vapid };

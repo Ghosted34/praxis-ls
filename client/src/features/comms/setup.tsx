@@ -104,9 +104,17 @@ function ChannelConfig() {
     <>
       <form onSubmit={saveEm} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Fallback transport for senders without their own — password encrypted.</p></div>
+          <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Transport for system emails (OTP, invoices, notifications) sent from the sender cards above. Password encrypted.</p></div>
           <Pill tone={em?.pass_set ? "ok" : "warn"}>{em?.pass_set ? "Password set" : "Not set"}</Pill>
         </div>
+        <p className="mb-3 rounded-lg border border-border bg-muted/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+          <strong>Two separate configs.</strong> These sender cards + the SMTP login are your <strong>system-email</strong>
+          config — how Praxis sends OTPs, invoices and notifications. Until you add a sender here, they go out from
+          a Praxis address (<span className="num">no-reply@praxisls.com</span> / <span className="num">support@praxisls.com</span>)
+          via the deploy-wide fallback, so nothing fails before you set your own DNS/SMTP. Your <strong>mailbox</strong>
+          (reading &amp; replying to your own company-domain mail, inbound + outbound) is separate — connect it in{" "}
+          <span className="num">Comms → Mailbox</span>.
+        </p>
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="SMTP host"><Input value={emF.smtp_host} onChange={(e) => setEmF((s) => ({ ...s, smtp_host: e.target.value }))} placeholder="smtp.provider.com" /></Field>
           <Field label="SMTP port"><Input type="number" className="num" value={emF.smtp_port} onChange={(e) => setEmF((s) => ({ ...s, smtp_port: e.target.value }))} placeholder="587" /></Field>

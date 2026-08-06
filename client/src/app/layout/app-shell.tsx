@@ -49,7 +49,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
-import { PraxisCopilot } from "@/components/praxis-copilot";
+import { PraxisDrawer } from "@/components/praxis-drawer";
 import { FloatingActions } from "@/components/floating-actions";
 import { QuickActionsMenu } from "@/components/quick-actions";
 import { DropdownMenu, DropdownItem, DropdownLabel, DropdownSeparator, DropdownRadioGroup, DropdownRadioItem } from "@/components/ui/dropdown-menu";
@@ -814,7 +814,7 @@ export function AppShell() {
           cache and hard-refreshes the moment it sees one. */}
       <AccessBanner />
       <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
-      <PraxisCopilot />
+      <PraxisDrawer />
       <FloatingActions badge={unread.messages + unread.notifications} />
       {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
           the brief window between the toggle and the newly-mounted screen's

@@ -116,7 +116,17 @@ const INFINITE_OK = {
  *          a hung page rather than a loading one.
  *   spin   The same argument, for the same reason, on the inline spinner and
  *          the Button's loading state.
+ *   ping   THE LIVE MICROPHONE, and the only one of the three that is not about
+ *          waiting. The halo around the composer's mic while dictation is
+ *          recording is the same class of motion as the shipping-lane dash in
+ *          INFINITE_OK: it is not decoration on an entrance, it is the state
+ *          itself. A recording indicator that animates once and stops is a
+ *          recording indicator that says "finished" while the microphone is
+ *          still open — on a device that is listening to a room, that is the
+ *          one failure mode worth spending an exemption to avoid. It exists
+ *          only while `listening` is true, so it cannot loop on an idle screen.
  *
+
  * Both are neutralised by the reduced-motion kill asserted in section 4 — it is
  * a `*` rule with `!important`, so it reaches framework utilities exactly as it
  * reaches ours. That is what makes the exemption safe rather than merely
@@ -126,6 +136,7 @@ const FRAMEWORK_OK = {
   pulse:
     "loading skeleton — it must last as long as the wait, which no fixed budget can express; frozen after 250ms reads as a hung page",
   spin: "inline spinner and the Button loading state — same argument as pulse",
+  ping: "live-microphone halo while dictation records — the motion IS the state, and it exists only while listening",
 };
 
 /* ── helpers ──────────────────────────────────────────────────────────────── */

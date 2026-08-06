@@ -56,7 +56,11 @@ describe("an area lands under exactly one verb", () => {
 
   it("files each area where a person would look for it", () => {
     expect(placement()).toEqual({
-      monitor: ["tower", "workspace", "comms", "support"],
+      // `ai` is the assistant's workspace, gated on MOD-00A like the Control
+      // Tower — so it votes `monitor` and files under Overview. Its admin
+      // counterpart, `ai-control` (MOD-67), stays in `configure`. The split is
+      // deliberate: use the assistant here, govern it there.
+      monitor: ["tower", "workspace", "ai", "comms", "support"],
       engage: ["sales", "commercial", "procurement"],
       fulfill: ["operations", "wms", "fleet"],
       transact: ["finance", "costing"],

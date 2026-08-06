@@ -36,6 +36,15 @@ export type AiActionRun = {
   field_meta?: Record<string, AiFieldMeta>;
 };
 
+/**
+ * One record, document or report an answer was grounded on.
+ *
+ * `kind` drives how the grounding footer draws the chip; omitted means the UI
+ * infers it from the href (an in-app route is a record, an absolute URL is
+ * external). See `components/ai/grounding.ts`.
+ */
+export type AiSourceLike = { label: string; href: string; kind?: "record" | "external" | "report" };
+
 export type AskResult = {
   answer: string;
   actions: AiActionRun[];
@@ -45,6 +54,20 @@ export type AskResult = {
   gate?: { reason?: string };
   /** Thread the turn was recorded against — resolved server-side. */
   conversation_id?: string | null;
+  /**
+   * OPTIONAL GROUNDING, and optional on purpose.
+   *
+   * The assistant surfaces render a sources footer and a reasoning disclosure
+   * under every answer. Neither waits on this field: sources are derived from
+   * the internal links the model already writes (`components/ai/grounding.ts`),
+   * and the trace simply does not render when absent. These are the structured
+   * versions — authoritative, because the retrieval layer knows which permission
+   * each read was made under, which prose cannot say. Populate them and the UI
+   * upgrades in place; leave them and nothing regresses.
+   */
+  sources?: AiSourceLike[];
+  /** Ordered, human-readable steps taken to reach the answer. */
+  trace?: string[];
 };
 
 /**
@@ -78,8 +101,24 @@ export const listAiConversations = () => tenant<AiConversationMeta[]>("/ai/conve
 /** Start a fresh thread. The old one is retained, just no longer current. */
 export const clearAiHistory = () => tenant<AiHistory>("/ai/history/clear", { method: "POST" });
 
-export const askPraxis = (message: string, conversationId?: string) =>
-  tenant<AskResult>("/ai/ask", { method: "POST", body: { message, conversation_id: conversationId } });
+/**
+ * How the caller has pointed the assistant: which area of the product the
+ * question is about, and what SHAPE of answer is wanted.
+ *
+ * BE HANDOFF. `POST /ai/ask` accepts these today and drops them — its zod schema
+ * (`assistant.validator.js`) is non-strict, so unknown keys are stripped rather
+ * than rejected, and nothing breaks. They are sent anyway because the UI is the
+ * thing that knows them and the wire is where the contract belongs: adding
+ * `scope` and `mode` to that schema is all that is needed to start honouring
+ * them. `scope` is an area key from `AREAS` (`app/layout/areas.ts`), or `all`.
+ */
+export type AskOptions = { scope?: string; mode?: string };
+
+export const askPraxis = (message: string, conversationId?: string, opts?: AskOptions) =>
+  tenant<AskResult>("/ai/ask", {
+    method: "POST",
+    body: { message, conversation_id: conversationId, scope: opts?.scope, mode: opts?.mode },
+  });
 
 /** Confirm an action; pass `payload` to execute the form-edited values. `message`
  *  is Praxis's step-by-step recap + next-step question after a successful run. */

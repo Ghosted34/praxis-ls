@@ -588,7 +588,44 @@ engineer's first hour.
 
 ---
 
-## 8. Related docs
+## 8. The assistant surfaces (Praxis AI)
+
+Two surfaces, one conversation. Both live under `src/components/ai/` (the shared parts) with the
+page in `src/features/ai/`.
+
+| Surface | Where | Entry point |
+| --- | --- | --- |
+| **Drawer** | `components/praxis-drawer.tsx` — mounted once in the app shell, rides every screen | `window.dispatchEvent(new CustomEvent("praxis:open-copilot"))`, optionally `{ detail: { prompt } }` |
+| **Workspace** | `features/ai/workspace.tsx` at `/ai` — three panes, outer two collapsible | Overview in the ribbon, or the drawer's middle header button |
+
+**The rules that keep them one product, not two.**
+
+- **Shared state.** `useAiThread(start)` (`components/ai/thread.ts`) owns send, retry, confirm and
+  restore for both. Never re-implement a send in a surface.
+- **Shared composer and turn.** `<AiComposer>` (`size="hero" | "compact"`) and `<AiTurnView>`. A
+  control that belongs to a conversation goes in `components/ai/`, not in a surface.
+- **The drawer starts fresh, the page restores.** `useAiThread("fresh")` vs `("restore", id)`. A
+  panel flicked open over a screen and a page navigated to on purpose are different intentions —
+  which is also why history browsing exists only on the page.
+- **Scopes and Spaces are one list.** `useAiScopes()` derives from `buildRibbon`, so the composer's
+  scope chip and the workspace's Spaces rail cannot disagree, and neither offers an area the user
+  cannot see.
+- **Grounding is derived, not awaited.** `components/ai/grounding.ts` turns the internal links a
+  grounded answer already writes into source chips, lifts a markdown table into a real `<Table>`,
+  and decides when an answer belongs on the canvas. `AskResult.sources` / `.trace` upgrade it in
+  place when the backend sends them; nothing regresses while it does not.
+
+**Adding to it.** A new starter set for an area is one entry in `AREA_STARTERS`
+(`components/ai/context.tsx`), keyed on the screen registry's `area` — no component changes. A new
+right-pane view is a tab in `features/ai/right-pane.tsx`; it must disable rather than hide when
+empty, so the strip stays learnable.
+
+**The AI gate still governs everything.** `useAiEnabled()` — with the tenant flag off, neither
+surface renders and `/ai` redirects home. See `doc/AI_GATE_BE_HANDOFF.md`.
+
+---
+
+## 9. Related docs
 
 `doc/DESKTOP_UI_AUDIT.md` is the frontend assessment and roadmap (Phases 0–5) and the reference
 for every `F<n>` / `A<n>` finding cited here; its addenda are the record of what each phase found

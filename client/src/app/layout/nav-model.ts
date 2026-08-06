@@ -40,7 +40,10 @@ export const NAV: NavGroup[] = [
   { heading: "People & HR", prefix: "/hr", items: [{ to: "/hr", label: "People & HR" }] },
   { heading: "Master data", prefix: "/master", items: [{ to: "/master", label: "Master data" }] },
   { heading: "Vault", prefix: "/vault", items: [{ to: "/vault", label: "Vault & compliance" }] },
-  { heading: "Comms", prefix: "/comms", items: [{ to: "/comms", label: "Smart Comms" }] },
+  { heading: "Comms", prefix: "/comms", items: [
+    { to: "/comms", label: "Smart Comms" },
+    { to: "/comms/mail", label: "Mailbox" },
+  ] },
   { heading: "Security & Access", prefix: "/security", items: [{ to: "/security", label: "Security & access" }] },
   { heading: "Governance", prefix: "/governance", items: [{ to: "/governance", label: "Governance" }] },
   { heading: "Settings & Admin", prefix: "/settings", items: [{ to: "/settings", label: "Settings & admin" }] },

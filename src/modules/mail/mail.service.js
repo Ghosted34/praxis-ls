@@ -383,6 +383,14 @@ async function renewSubscriptions(client) {
 async function handleGmailNotification(client, body) {
   const dataB64 = body && body.message && body.message.data;
   if (!dataB64) return { ignored: true };
+  // G-6: a Gmail Pub/Sub push carries the `subscription` we watched. Only accept
+  // pushes from our configured topic — a forged/spurious push is dropped before
+  // any decode/lookup. (The subscription is the deployment's GOOGLE_PUBSUB_TOPIC
+  // with a Pub/Sub subscription id suffix, so a prefix match on the project/topic.)
+  const subscription = (body && body.subscription) || "";
+  if (config.GOOGLE_PUBSUB_TOPIC && subscription && !subscription.includes(config.GOOGLE_PUBSUB_TOPIC)) {
+    return { ignored: true };
+  }
   let payload;
   try { payload = JSON.parse(Buffer.from(dataB64, "base64").toString("utf8")); } catch { return { ignored: true }; }
   const conn = await repo.findByAddress(client, payload.emailAddress, "google_gmail");
@@ -403,8 +411,15 @@ async function handleGraphNotification(client, body, ctx = {}) {
   const results = [];
   if (ids.size) {
     for (const id of ids) {
-       
-      results.push(await syncConnection(client, id, ctx));
+      // G-6: `clientState` is the connection id we set at subscribe time. Only
+      // sync ids that resolve to a real, connected mailbox in THIS tenant — a
+      // forged clientState (or a stale one) is skipped instead of triggering
+      // work. The per-tenant DB scopes the lookup, so this also proves the
+      // connection belongs here. Best-effort: a bad id never aborts the batch.
+      let conn = null;
+      try { conn = await repo.getConnection(client, id); } catch { /* skip */ }
+      if (!conn || conn.status !== "CONNECTED") continue;
+      results.push(await syncConnection(client, conn.email_connection_id, ctx));
     }
   }
   return { notified: notes.length, synced: results.length, results };
@@ -427,7 +442,29 @@ async function autoLink(client, inboundId, fromAddress, subject) {
 
 const listThread = (client, q = {}) => repo.listInboundByConnection(client, { connectionId: q.connection_id, limit: q.limit, before: q.before });
 const getMessage = (client, id) => repo.getInbound(client, id);
-const markRead = (client, id) => repo.markInboundRead(client, id);
+/** Mark a message read locally AND propagate to the mail server (G-3). The
+ *  adapter's markAsRead is best-effort — a live mailbox must reflect the state,
+ *  but a transient provider failure must never block the local read flip. */
+async function markRead(client, id) {
+  const msg = await repo.getInbound(client, id);
+  if (!msg) throw new AppError("NOT_FOUND", "message not found", 404);
+  if (msg.email_connection_id && msg.external_message_id) {
+    try {
+      const conn = await repo.getConnection(client, msg.email_connection_id);
+      if (conn && conn.status === "CONNECTED") {
+        const adapter = await resolveAdapter(client, conn);
+        await adapter.markAsRead(msg.external_message_id);
+      }
+    } catch (err) {
+      // server mark is best-effort; still record the local read state
+      try {
+        const { logger } = require("../../config/logger");
+        logger.warn({ err, id }, "[mail] markAsRead propagation skipped");
+      } catch { /* noop */ }
+    }
+  }
+  return repo.markInboundRead(client, id);
+}
 const listAttachments = (client, id) => repo.listAttachments(client, id);
 /** Mail timeline for a client (Phase 3 CRM). Accepts a client id or an entity_ref. */
 const clientTimeline = (client, { client_id, entity_ref, limit } = {}) =>

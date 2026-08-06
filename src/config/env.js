@@ -189,11 +189,20 @@ const Schema = z.object({
   EXCHANGERATE_API_KEY: z.string().default(""),
   FX_SYNC_CRON: z.string().default("0 0 * * *"),
 
+  // ---- System-email FALLBACK sender (deploy-wide, see src/services/platform/mail-fallback.service.js) ----
+  // Praxis-owned SMTP used when a TENANT has not configured their own mail
+  // (no email_identity / email setting) so system emails (OTP, invoices,
+  // notifications) still go out instead of failing. This is a last-resort env
+  // default only — the authoritative source is the `mail.fallback` platform
+  // setting, configured + tested in the Platform Console (Integrations → Mail).
   SMTP_HOST: z.string().default(""),
   SMTP_PORT: int(587),
   SMTP_USER: z.string().default(""),
   SMTP_PASS: z.string().default(""),
-  MAIL_FALLBACK_DOMAIN: z.string().default("nmail.praxisls.com"),
+  MAIL_FALLBACK_DOMAIN: z.string().default("praxisls.com"),
+  MAIL_DEFAULT_FROM: z.string().default("no-reply@praxisls.com"),
+  MAIL_SUPPORT_FROM: z.string().default("support@praxisls.com"),
+  MAIL_FALLBACK_FROM_NAME: z.string().default("Praxis"),
 
   // Meta WhatsApp Cloud API (MOD-64 Smart Comms). Deploy-wide fallback only —
   // per-tenant creds are set + tested in Smart Comms (token encrypted in the

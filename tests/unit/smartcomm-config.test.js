@@ -10,6 +10,17 @@ jest.mock("axios");
 jest.mock("nodemailer", () => ({
   createTransport: jest.fn(() => ({ verify: jest.fn(async () => true), sendMail: jest.fn(async () => ({})) })),
 }));
+// email.service.resolveMail reads the platform `mail.fallback` sender when the
+// tenant has no own SMTP host — mock it here so the real email.service used by
+// verifyTransport never touches the platform DB in these tests. Returns empty
+// env defaults (no host) so "no SMTP host" behaviour is preserved.
+jest.mock("../../src/services/platform/mail-fallback.service", () => ({
+  resolve: jest.fn(async () => ({
+    from: "no-reply@praxisls.com", support_from: "support@praxisls.com", from_name: "Praxis",
+    reply_to: null, fallback_domain: "praxisls.com", smtp_host: null, smtp_port: 587,
+    smtp_user: null, smtp_pass: null, source: "env",
+  })),
+}));
 
 const axios = require("axios");
 const nodemailer = require("nodemailer");

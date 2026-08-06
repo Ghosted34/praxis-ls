@@ -26,6 +26,7 @@ export function Integrations() {
           <S3Card row={byKey["storage.s3"]} onSaved={reload} />
           <GeoapifyCard row={byKey["geocoding.geoapify"]} onSaved={reload} />
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
+          <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
         </div>
       )}
       {/* AI providers are deploy-wide integrations too — one shared key set. */}
@@ -173,6 +174,70 @@ function VapidCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => voi
       <p className="muted" style={{ fontSize: 11, marginTop: 8 }}>
         Regenerating invalidates existing browser subscriptions. Note: push delivery (subscription table + client service worker) is not yet wired.
       </p>
+    </Card>
+  );
+}
+
+/* System-email fallback ---------------------------------------------------
+ * Deploy-wide sender used for SYSTEM emails (OTP, invites, invoices,
+ * notifications) when a tenant hasn't configured their own mail — so tenants
+ * who haven't pointed their DNS at us never fail to receive system mail.
+ * Distinct from each user's mailbox (email_connection). See
+ * doc/EMAIL_TWO_CONFIGS.md. */ 
+function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }) {
+  const v = (row?.value || {}) as Record<string, string>;
+  const { toast } = useToast();
+  const [f, setF] = useState({
+    from: v.from || "no-reply@praxisls.com",
+    from_name: v.from_name || "Praxis",
+    support_from: v.support_from || "support@praxisls.com",
+    reply_to: v.reply_to || "",
+    fallback_domain: v.fallback_domain || "praxisls.com",
+    smtp_host: v.smtp_host || "",
+    smtp_port: v.smtp_port != null ? String(v.smtp_port) : "587",
+    smtp_user: v.smtp_user || "",
+    secret: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
+  const save = async () => {
+    setBusy(true);
+    try {
+      const { secret, ...value } = f;
+      await platform.putSetting("mail", "fallback", { value, secret: secret || undefined });
+      toast("Mail fallback saved");
+      setF({ ...f, secret: "" });
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Card
+      title="System-email fallback sender"
+      actions={<TestButton section="mail" keyName="fallback" />}
+    >
+      <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+        Praxis-owned sender for system emails (OTP, invites, invoices, notifications) when a tenant
+        hasn’t configured their own mail. Tenants who don’t point their DNS at us fall back here so
+        nothing fails. This is the second email config — separate from each user’s mailbox
+        (email_connection).
+      </p>
+      <div className="form-grid" style={{ display: "grid", gap: 12, gridTemplateColumns: "1fr 1fr" }}>
+        <Field label="From (transactional)"><input className="in" value={f.from} onChange={set("from")} placeholder="no-reply@praxisls.com" /></Field>
+        <Field label="From name"><input className="in" value={f.from_name} onChange={set("from_name")} placeholder="Praxis" /></Field>
+        <Field label="Support from"><input className="in" value={f.support_from} onChange={set("support_from")} placeholder="support@praxisls.com" /></Field>
+        <Field label="Reply-to"><input className="in" value={f.reply_to} onChange={set("reply_to")} placeholder="optional" /></Field>
+        <Field label="SMTP host"><input className="in" value={f.smtp_host} onChange={set("smtp_host")} placeholder="mail.praxisls.com" /></Field>
+        <Field label="SMTP port"><input className="in" value={f.smtp_port} onChange={set("smtp_port")} /></Field>
+        <Field label="SMTP user"><input className="in" value={f.smtp_user} onChange={set("smtp_user")} /></Field>
+        <Field label="SMTP password" hint={<SecretHint row={row} label="SMTP password" />}><input className="in" type="password" value={f.secret} onChange={set("secret")} placeholder="••••••••" /></Field>
+      </div>
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
     </Card>
   );
 }

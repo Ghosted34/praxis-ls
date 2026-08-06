@@ -11,10 +11,11 @@
 
 const mockFetchSince = jest.fn();
 const mockVerify = jest.fn();
+const mockMarkAsRead = jest.fn();
 const mockEmitEvent = jest.fn(async () => {});
 
 jest.mock("../../src/modules/mail/providers/imapSmtp.provider", () => ({
-  ImapSmtpProvider: jest.fn().mockImplementation(() => ({ fetchSince: mockFetchSince, verify: mockVerify })),
+  ImapSmtpProvider: jest.fn().mockImplementation(() => ({ fetchSince: mockFetchSince, verify: mockVerify, markAsRead: mockMarkAsRead })),
 }));
 jest.mock("../../src/modules/security/setting/setting.service", () => ({
   SECRET_SECTION: "integration_secret",
@@ -34,6 +35,8 @@ jest.mock("sanitize-html", () => {
 });
 jest.mock("../../src/modules/mail/mail.repo", () => ({
   getConnection: jest.fn(),
+  getInbound: jest.fn(),
+  markInboundRead: jest.fn(),
   insertInbound: jest.fn(),
   setCursor: jest.fn(async () => {}),
   setError: jest.fn(async () => {}),
@@ -140,4 +143,24 @@ test("records the error on the connection and does not throw", async () => {
   const res = await service.syncConnection({}, "conn-1", {});
   expect(res.error).toMatch(/IMAP auth failed/);
   expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "IMAP auth failed");
+});
+
+test("markRead propagates to the server adapter and flips the local row (G-3)", async () => {
+  repo.getInbound.mockResolvedValue({ email_inbound_id: "in-1", email_connection_id: "conn-1", external_message_id: "<mid>" });
+  repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
+  repo.markInboundRead.mockResolvedValue({ email_inbound_id: "in-1" });
+  const res = await service.markRead({}, "in-1");
+  expect(mockMarkAsRead).toHaveBeenCalledWith("<mid>");
+  expect(repo.markInboundRead).toHaveBeenCalledWith({}, "in-1");
+  expect(res).toMatchObject({ email_inbound_id: "in-1" });
+});
+
+test("markRead still flips the local row when server propagation fails", async () => {
+  repo.getInbound.mockResolvedValue({ email_inbound_id: "in-2", email_connection_id: "conn-1", external_message_id: "<mid>" });
+  repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
+  repo.markInboundRead.mockResolvedValue({ email_inbound_id: "in-2" });
+  mockMarkAsRead.mockRejectedValueOnce(new Error("provider down"));
+  const res = await service.markRead({}, "in-2");
+  expect(repo.markInboundRead).toHaveBeenCalledWith({}, "in-2");
+  expect(res).toMatchObject({ email_inbound_id: "in-2" });
 });

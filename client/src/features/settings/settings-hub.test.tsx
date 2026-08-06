@@ -41,6 +41,21 @@ function shell(modules: string[], resolved = true): ShellContextValue {
   return { access, ready: resolved, resolved, prefs: EMPTY_SHELL_PREFS, setPrefs: () => {}, grantNotice: null, dismissGrantNotice: () => {} };
 }
 
+/** A launcher-shaped fixture — the launcher builds tiles through
+ *  `buildRibbon(access)` and that reads `byGroup` for the module → verb map,
+ *  so a launcher test needs both the module list AND the verb partition. */
+function launcherShell(byGroup: Record<string, string[]>, resolved = true): ShellContextValue {
+  const modules = Object.values(byGroup).flat().sort();
+  const access: NavAccess = {
+    modules,
+    groups: Object.keys(byGroup),
+    byGroup,
+    isCeo: false,
+    version: modules.join("|").slice(0, 12),
+  };
+  return { access, ready: resolved, resolved, prefs: EMPTY_SHELL_PREFS, setPrefs: () => {}, grantNotice: null, dismissGrantNotice: () => {} };
+}
+
 function mount(ui: React.ReactElement, value: ShellContextValue) {
   return render(
     <MemoryRouter>
@@ -99,22 +114,31 @@ describe("the settings hub offers only the editors you can open", () => {
 });
 
 describe("the Control Tower launcher offers only the apps you can open", () => {
-  it("drops the finance tiles from a warehouse role", () => {
-    mount(<AppLauncher onBrowseAll={() => {}} />, shell(WAREHOUSE));
-    expect(screen.queryByText("Invoicing")).toBeNull();
-    expect(screen.queryByText("OHADA ledger")).toBeNull();
-    expect(screen.queryByText("Tax centre")).toBeNull();
-    expect(screen.getByText("Warehouse")).toBeInTheDocument();
+  it("drops the Finance tile from a warehouse-only role", () => {
+    // A warehouse role gets the fulfill verb populated; Finance would need
+    // transact modules and it has none, so Warehouse survives and Finance
+    // is not offered as a tile at all.
+    mount(<AppLauncher onBrowseAll={() => {}} />, launcherShell({ fulfill: WAREHOUSE }));
+    // Tile bodies are `<Link>` — the accessible name is the area's label.
+    expect(screen.queryByRole("link", { name: "Finance" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Warehouse" })).toBeInTheDocument();
   });
 
-  it("keeps them for a role that holds the grant", () => {
-    mount(<AppLauncher onBrowseAll={() => {}} />, shell([...WAREHOUSE, "MOD-51"]));
-    expect(screen.getByText("Invoicing")).toBeInTheDocument();
+  it("keeps Finance for a role that holds a transact grant", () => {
+    mount(
+      <AppLauncher onBrowseAll={() => {}} />,
+      launcherShell({ fulfill: WAREHOUSE, transact: ["MOD-51"] }),
+    );
+    expect(screen.getByRole("link", { name: "Finance" })).toBeInTheDocument();
   });
 
   it("filters nothing while the permissions read is unresolved", () => {
+    // Same rule as `useCanOpenRoute`: an unresolved read looks like a user
+    // with no access, and filtering against that would collapse the home
+    // screen to a single "More" card on every first login. The launcher
+    // falls through to the full area list while the shell settles.
     mount(<AppLauncher onBrowseAll={() => {}} />, shell([], false));
-    expect(screen.getByText("Invoicing")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Finance" })).toBeInTheDocument();
   });
 });
 

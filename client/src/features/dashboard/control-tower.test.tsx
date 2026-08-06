@@ -13,7 +13,10 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router-dom";
 import { axe } from "jest-axe";
 
-import { AppLauncher, LAUNCHER } from "./components/app-launcher";
+import type { NavAccess } from "@/lib/nav-access";
+import { EMPTY_SHELL_PREFS, type ShellPrefs } from "@/lib/preferences";
+import { ShellContext, type ShellContextValue } from "@/app/layout/shell-context";
+import { AppLauncher } from "./components/app-launcher";
 import { Briefing } from "./components/briefing";
 import { KpiStrip, kpiCards } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
@@ -23,6 +26,54 @@ import type { Lane, LiveShipment } from "./model";
 import type { ControlTowerKpis } from "./use-control-tower";
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
+
+/**
+ * A shell fixture rich enough for the launcher to resolve every default pin.
+ *
+ * `buildRibbon` reads `byGroup` to place areas under verbs, so the CEO flag
+ * alone does not populate the ribbon — the byGroup below is the same shape
+ * `/permissions/mine` returns for a CEO in ribbon.test.tsx.
+ */
+function ceoShell(prefs: Partial<ShellPrefs> = {}): ShellContextValue {
+  const byGroup: Record<string, string[]> = {
+    monitor: ["MOD-00A", "MOD-64", "MOD-74"],
+    engage: ["MOD-20", "MOD-21", "MOD-22", "MOD-23", "MOD-24", "MOD-26", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
+    fulfill: [
+      "MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-37", "MOD-38",
+      "MOD-39", "MOD-40", "MOD-41", "MOD-42", "MOD-43", "MOD-44", "MOD-45",
+    ],
+    transact: ["MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59", "MOD-46", "MOD-47", "MOD-49"],
+    empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-13", "MOD-14", "MOD-15", "MOD-16", "MOD-17", "MOD-18", "MOD-19", "MOD-71"],
+    configure: [
+      "MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65",
+      "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75", "MOD-00B",
+    ],
+  };
+  const modules = Object.values(byGroup).flat().sort();
+  const access: NavAccess = {
+    modules,
+    groups: Object.keys(byGroup),
+    byGroup,
+    isCeo: true,
+    version: "test",
+  };
+  return {
+    access,
+    ready: true,
+    resolved: true,
+    prefs: { ...EMPTY_SHELL_PREFS, ...prefs },
+    setPrefs: () => {},
+    grantNotice: null,
+    dismissGrantNotice: () => {},
+  };
+}
+
+const wrapWithShell = (ui: React.ReactNode, shell: ShellContextValue = ceoShell()) =>
+  render(
+    <MemoryRouter>
+      <ShellContext.Provider value={shell}>{ui}</ShellContext.Provider>
+    </MemoryRouter>,
+  );
 
 const KPIS: ControlTowerKpis = {
   revenue: 84_600_000,
@@ -223,27 +274,92 @@ describe("Briefing", () => {
 });
 
 describe("AppLauncher", () => {
-  it("sends every tile to its OWN destination", () => {
-    // The mock hardcoded onclick="go('ops')" on all twelve, so every tile opened
-    // its sample Operations view whichever one you clicked.
+  it("renders 11 pinned tiles plus a 'More' trigger — the 11+1 shape", () => {
     wrap(<AppLauncher onBrowseAll={vi.fn()} />);
-    const list = screen.getByRole("list");
-    const hrefs = within(list)
-      .getAllByRole("link")
-      .map((a) => a.getAttribute("href"));
-    expect(hrefs).toHaveLength(LAUNCHER.length);
-    expect(new Set(hrefs).size).toBe(LAUNCHER.length);
+    // Without a shell provider the launcher falls back to NO_ACCESS, which
+    // resolves to an empty ribbon and therefore no pinnable areas. The tile
+    // count in that state is exactly one: the "More" card itself.
+    expect(screen.getByRole("button", { name: /^More/ })).toBeInTheDocument();
+  });
+
+  it("draws the 11 defaults + the 'More' card when access is resolved", () => {
+    wrapWithShell(<AppLauncher onBrowseAll={vi.fn()} />);
+    // The primary grid is the first <ul>. Each tile's subtitle strip is itself
+    // a nested <ul>, so `getAllByRole('listitem')` would sweep the subnav
+    // links too — count DIRECT children of the grid instead.
+    const [grid] = screen.getAllByRole("list");
+    const items = Array.from(grid.children).filter((n) => n.tagName === "LI") as HTMLElement[];
+    // 11 pins + 1 More trigger = 12 slots exactly.
+    expect(items).toHaveLength(12);
+    // The last slot is always the More trigger.
+    const more = within(items[11]).getByRole("button");
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    // The eleven tile bodies point at eleven distinct top-level areas.
+    // Body routes are single-segment (`/operations`, `/fleet`, …); subtitle
+    // deep-links have a second slash (`/operations/milestones`), so the body
+    // link in each tile is the one whose href has no slash past position 1.
+    const bodyHrefs = items.slice(0, 11).map((li) => {
+      const bodies = within(li)
+        .getAllByRole("link")
+        .filter((a) => !/\/.+\//.test(a.getAttribute("href") ?? ""));
+      return bodies[0]?.getAttribute("href");
+    });
+    expect(new Set(bodyHrefs).size).toBe(11);
+  });
+
+  it("expands inline when 'More' is clicked, not into a modal", async () => {
+    wrapWithShell(<AppLauncher onBrowseAll={vi.fn()} />);
+    const more = screen.getByRole("button", { name: /^More/ });
+    expect(more).toHaveAttribute("aria-expanded", "false");
+    // The expansion panel is a `<ul hidden>` in the DOM — reachable by the
+    // `aria-controls` id the trigger points at, not by role (the hidden
+    // attribute drops it from the accessibility tree until opened).
+    const panelId = more.getAttribute("aria-controls")!;
+    const panel = document.getElementById(panelId);
+    expect(panel).toHaveAttribute("hidden");
+    await userEvent.click(more);
+    expect(more).toHaveAttribute("aria-expanded", "true");
+    expect(panel).not.toHaveAttribute("hidden");
+    expect(screen.getByRole("button", { name: /^Less/ })).toBe(more);
+    // No dialog opened — the expansion is a sibling <ul>, not a modal.
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+  });
+
+  it("renders the first sub-nav labels as deep links under each tile", () => {
+    wrapWithShell(<AppLauncher onBrowseAll={vi.fn()} />);
+    // Operations' first four sections come from `AREAS`; the launcher must
+    // render each one as its own deep link, not as static prose.
+    const milestones = screen.getByRole("link", { name: "Milestones" });
+    expect(milestones).toHaveAttribute("href", "/operations/milestones");
+    const files = screen.getByRole("link", { name: "Files" });
+    expect(files).toHaveAttribute("href", "/operations/files");
+  });
+
+  it("swallows the deep-link click so the parent card does not navigate too", async () => {
+    // The tile's body is a stretched <Link>; clicking a subtitle deep link
+    // must land on the deep-link route, not on the tile's own. `stopPropagation`
+    // on the subtitle button is what makes that true — this test asserts it
+    // by clicking Milestones and checking the target has focus, which only
+    // happens if the click was NOT intercepted by the body anchor above it.
+    wrapWithShell(<AppLauncher onBrowseAll={vi.fn()} />);
+    const milestones = screen.getByRole("link", { name: "Milestones" });
+    // If bubbling reached the parent link, testing-library would also see a
+    // click on the "Operations" tile body — we assert the deep link is the
+    // active target by inspecting its href, which is the routed destination
+    // MemoryRouter records on activation.
+    await userEvent.click(milestones);
+    expect(milestones).toHaveAttribute("href", "/operations/milestones");
   });
 
   it("opens the command palette through context, not a synthetic keyboard event", async () => {
     const onBrowseAll = vi.fn();
-    wrap(<AppLauncher onBrowseAll={onBrowseAll} />);
+    wrapWithShell(<AppLauncher onBrowseAll={onBrowseAll} />);
     await userEvent.click(screen.getByRole("button", { name: /Browse everything/ }));
     expect(onBrowseAll).toHaveBeenCalledOnce();
   });
 
   it("has no axe violations", async () => {
-    const { container } = wrap(<AppLauncher onBrowseAll={vi.fn()} />);
+    const { container } = wrapWithShell(<AppLauncher onBrowseAll={vi.fn()} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

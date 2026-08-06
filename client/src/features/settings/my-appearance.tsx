@@ -24,6 +24,7 @@ import { SettingsCard, Field } from "@/components/settings/controls";
 import { FontPicker } from "@/components/settings/font-picker";
 import { fontByValue } from "@/lib/fonts";
 import { RailCard } from "./rail-card";
+import { TowerCard } from "./tower-card";
 
 /** What the tenant set for a slot, named for humans. */
 function inheritedLabel(value: string | null | undefined) {
@@ -180,6 +181,12 @@ export function MyAppearancePage() {
             a single toggle, and a toggle that needs confirming is a toggle that
             gets left half-set. */}
         <RailCard />
+
+        {/* The Control Tower's Applications grid, edited. Directly below the
+            rail picker because the two are the same concept applied to two
+            surfaces — rail down the left, tower on the home screen. Both save
+            immediately for the same reason. */}
+        <TowerCard />
         </div>
 
         {/* The preview column. Sticky, so it stays in view while the pickers are

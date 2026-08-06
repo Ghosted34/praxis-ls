@@ -1,63 +1,246 @@
 /**
- * Application launcher — twelve tiles into the modules an operator uses daily.
+ * Application launcher — the Control Tower's 11+1 shortcut grid.
  *
- * The mock rendered every tile with a hardcoded `onclick="go('ops')"`, so all
- * twelve opened its own sample Operations view whichever one you clicked; the
- * iframe build patched that by rebinding the rendered DOM to a label→route map
- * in the parent, keyed on the tile's visible text because the label was the only
- * identifier the mock's `apps` array carried. The route is now a property of the
- * tile, and the tile is a `<Link>`.
+ * ELEVEN USER-PINNED TILES, plus a fixed "More" card in the twelfth slot that
+ * expands the grid inline. Row 1 is six tiles across; row 2 is five tiles
+ * plus the "More" card, keeping the block at exactly the same height whether
+ * or not it is expanded. Below xl the columns drop by media query and the
+ * grid still reads left-to-right in the same order.
  *
- * TILES THIS USER CANNOT OPEN ARE NOT DRAWN. Twelve hard-coded destinations on
- * the landing screen is the widest single offer in the product, and it was made
- * to everybody: a warehouse role saw the OHADA ledger, the tax centre and
- * treasury, and found out what they meant by clicking one. The grid reflows over
- * however many survive, so a shorter list is a shorter grid rather than holes.
+ * WHY EVERYTHING HERE IS DERIVED, NOT FETCHED. The candidates, the pinned
+ * subset, and each tile's sub-nav preview all come from one input — the
+ * `access` on ShellContext — through the same `buildRibbon` the ribbon
+ * itself uses. That answer is served from `nav-access-cache` on the first
+ * frame and revalidated on focus/navigation in `shell-providers.tsx`, so the
+ * launcher does not add a request; a `useMemo` keyed on `access` recomputes
+ * the tiles once per grant change and never on re-render.
+ *
+ * SUB-NAV DEEP LINKS ARE INSIDE THE CARD, and they must not activate the
+ * card. Every subtitle button calls `stopPropagation` (and `preventDefault`
+ * against the outer `<Link>`'s default) so a click on "Milestones" navigates
+ * to `/operations/milestones` and NOT to `/operations`. The card's body is a
+ * `<Link>` for middle-click and open-in-new-tab; the subtitle strip is a
+ * `<Link>` too, for the same reason.
  */
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
-import { useCanOpenRoute } from "@/lib/route-access";
+import { useShell } from "@/app/layout/shell-context";
+import { buildRibbon, iconForArea } from "@/app/layout/ribbon-model";
+import type { Area } from "@/app/layout/areas";
+import {
+  previewSections,
+  resolveTowerPins,
+  towerLandingRoute,
+  unpinnedTowerAreas,
+  unresolvedFallbackAreas,
+  MAX_TOWER_PINS,
+  type TowerSubnav,
+} from "../tower-model";
 
 type IP = React.SVGProps<SVGSVGElement>;
-const gi = (d: string) => (p: IP) => (
-  <svg
-    viewBox="0 0 24 24"
-    fill="none"
-    stroke="currentColor"
-    strokeWidth={1.6}
-    strokeLinecap="round"
-    strokeLinejoin="round"
-    aria-hidden
-    width={20}
-    height={20}
-    {...p}
-  >
-    <path d={d} />
-  </svg>
-);
 
-type Tile = { label: string; hint: string; to: string; Icon: (p: IP) => React.JSX.Element };
+function MoreIcon(p: IP) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      width={20}
+      height={20}
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.6}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+      {...p}
+    >
+      <circle cx={5} cy={12} r={1.4} />
+      <circle cx={12} cy={12} r={1.4} />
+      <circle cx={19} cy={12} r={1.4} />
+    </svg>
+  );
+}
 
-/** Routes carried over verbatim from the iframe build's `APP_ROUTE` map. */
-export const LAUNCHER: Tile[] = [
-  { label: "Operations", hint: "Dossiers · milestones", to: "/operations", Icon: gi("M4 4h6l2 3h8v13H4z") },
-  { label: "Freight", hint: "Sea · air · transit", to: "/operations/files", Icon: gi("M3 14l9-4 9 4-9 5zM12 10V4") },
-  { label: "Fleet", hint: "Dispatch · fuel", to: "/fleet", Icon: gi("M3 7h13l5 5v5h-3M5 17h2M17 17h2") },
-  { label: "Warehouse", hint: "GRN · putaway · pick", to: "/wms", Icon: gi("M3 9l9-5 9 5v10l-9 5-9-5z") },
-  { label: "Invoicing", hint: "Proforma · final", to: "/finance/invoices", Icon: gi("M4 6h16v13H4zM4 10h16") },
-  { label: "Treasury", hint: "Bank · cash · MoMo", to: "/master/treasury-accounts", Icon: gi("M12 3v18M7 7h8a3 3 0 010 6H7") },
-  { label: "OHADA ledger", hint: "Journals · GL · TB", to: "/finance/journals", Icon: gi("M4 19V5M4 19h16M8 15v-4M12 15V8M16 15v-6") },
-  { label: "Tax centre", hint: "TVA · WHT · DSF", to: "/finance/tax", Icon: gi("M6 3h12v18H6zM9 8h6M9 12h6M9 16h4") },
-  { label: "CRM", hint: "Clients · pipeline", to: "/sales/leads", Icon: gi("M9 4a3 3 0 100 6 3 3 0 000-6M3 20a6 6 0 0112 0M17 11a2.5 2.5 0 100-5") },
-  { label: "Procurement", hint: "PO · GRN · 3-way", to: "/procurement", Icon: gi("M3 4h2l2.4 12h10L20 8H6M9 20h.01M17 20h.01") },
-  { label: "HR & payroll", hint: "People · CNPS", to: "/hr/employees", Icon: gi("M12 4a3.5 3.5 0 100 7 3.5 3.5 0 000-7M5 21a7 7 0 0114 0") },
-  { label: "Settings", hint: "Config · white-label", to: "/settings", Icon: gi("M12 9a3 3 0 100 6 3 3 0 000-6M12 3v2M12 19v2M4 12H2M22 12h-2M5.6 5.6l1.4 1.4M17 17l1.4 1.4M18.4 5.6L17 7M7 17l-1.4 1.4") },
-];
+/**
+ * The strip of deep links under a tile's title.
+ *
+ * A `<Link>` rather than a `<button>` so middle-click and ⌘-click open the
+ * section in a new tab, which is how a lot of dashboard users work when the
+ * Control Tower is their launch pad. `stopPropagation` on the click AND on
+ * pointerdown, because React Router's `<Link>` fires navigation on click
+ * — but the outer card's `<Link>` also intercepts pointer events on some
+ * platforms during focus handling.
+ */
+function SubnavStrip({ items }: { items: TowerSubnav[] }) {
+  if (items.length === 0) return null;
+  // No handler on the <ul>: the strip sits above the tile's stretched body-link
+  // (`::after` at inset 0) via `position: relative; z-index: 10` in Tile, so a
+  // click on a deep link lands on THAT link — the body link never sees it.
+  // The per-link stopPropagation is defence in depth for platforms whose
+  // pointer-events model doesn't respect z-order for `::after` overlays.
+  return (
+    <ul className="mt-2 flex flex-wrap gap-x-2 gap-y-1">
+      {items.map((s, i) => (
+        <li key={s.key} className="flex items-center gap-2 text-label text-muted-foreground">
+          <Link
+            to={s.to}
+            className="rounded-sm underline-offset-2 hover:text-primary-ink hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {s.label}
+          </Link>
+          {i < items.length - 1 && <span aria-hidden className="text-muted-foreground/60">·</span>}
+        </li>
+      ))}
+    </ul>
+  );
+}
 
+/**
+ * One tile. Two child anchors — a body link that carries the main-card click
+ * and a subtitle strip of deep links — because nested `<a>` tags are invalid
+ * HTML and swallow inner clicks. The visible card is a plain container; the
+ * body-link is stretched across it with `absolute inset-0` so the whole tile
+ * is one click target for the primary destination, except where a subtitle
+ * anchor sits above it in the stacking order.
+ */
+function Tile({
+  area,
+  subnav,
+  tint,
+}: {
+  area: Area;
+  subnav: TowerSubnav[];
+  tint: "primary" | "blue";
+}) {
+  const Icon = iconForArea(area.label);
+  const to = towerLandingRoute(area);
+
+  return (
+    <div
+      className={cn(
+        "relative flex h-full flex-col rounded-lg border bg-card p-4 shadow-[var(--shadow-s)]",
+        "transition-colors focus-within:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))]",
+        "hover:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] hover:bg-accent/40",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "mb-3 grid h-10 w-10 place-items-center rounded-md",
+          tint === "primary"
+            ? "bg-[color-mix(in_srgb,var(--primary)_11%,transparent)] text-primary-ink"
+            : "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue-ink))]",
+        )}
+      >
+        <Icon />
+      </span>
+      {/* The stretched link IS the tile — the body's click target. Sits under
+          the subtitle strip in the stacking order so a click on a deep link
+          hits that link, not this one. */}
+      <Link
+        to={to}
+        className="rounded-sm text-base font-semibold leading-tight after:absolute after:inset-0 after:content-[''] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+      >
+        {area.label}
+      </Link>
+      {/* Positioned relative so it sits above the stretched link's `::after`. */}
+      <div className="relative z-10">
+        <SubnavStrip items={subnav} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The "+1" trigger.
+ *
+ * A `<button>`, not a `<Link>` — it toggles state, it does not navigate. The
+ * label swaps as the panel opens ("More" → "Less") so the twelfth slot never
+ * turns into a dead card; `aria-expanded` and `aria-controls` tell assistive
+ * tech which panel it opens.
+ */
+function MoreCard({
+  open,
+  count,
+  onToggle,
+  controls,
+}: {
+  open: boolean;
+  count: number;
+  onToggle: () => void;
+  controls: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      aria-expanded={open}
+      aria-controls={controls}
+      className={cn(
+        "flex h-full flex-col rounded-lg border border-dashed bg-card p-4 text-left shadow-[var(--shadow-s)]",
+        "transition-colors hover:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] hover:bg-accent/40",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary",
+      )}
+    >
+      <span
+        aria-hidden
+        className="mb-3 grid h-10 w-10 place-items-center rounded-md bg-[color-mix(in_srgb,var(--primary)_11%,transparent)] text-primary-ink"
+      >
+        <MoreIcon />
+      </span>
+      <span className="text-base font-semibold leading-tight">{open ? "Less" : "More"}</span>
+      <span className="mt-0.5 text-label text-muted-foreground">
+        {count === 0 ? "Everything is pinned" : open ? "Hide the rest" : `${count} more module${count === 1 ? "" : "s"}`}
+      </span>
+    </button>
+  );
+}
+
+/**
+ * The 11+1 grid.
+ *
+ * `pinned` fills the first eleven cells; the twelfth is `MoreCard`. When
+ * `open`, `rest` renders in the same grid below — which is what the user
+ * asked for: an INLINE expansion, not a popover, not a modal. The block
+ * below the grid slides down because the DOM does; nothing overlays.
+ */
 export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
-  const canOpen = useCanOpenRoute();
-  const tiles = LAUNCHER.filter((t) => canOpen(t.to));
+  const { access, resolved, prefs } = useShell();
+  const families = React.useMemo(() => buildRibbon(access), [access]);
+
+  // ONE memo, keyed on access + pins + resolved. Everything below derives
+  // from those and each is already stable across re-renders — `access` only
+  // ticks on grant changes, `prefs.towerPins` only on the user's own toggle,
+  // `resolved` flips once per shell mount.
+  //
+  // WHY THE `!resolved` BRANCH EXISTS. Same rule as `useCanOpenRoute`: an
+  // unresolved read looks identical to a user with no access, and the ribbon
+  // that feeds `buildRibbon` is empty during that frame. Filtering against it
+  // would collapse the launcher to a single "More" card on every genuine
+  // first login — a home screen that arrives that way teaches the user the
+  // feature is broken. Over-offering for one frame is recoverable; a real
+  // 403 on click lands on the same page any stale link would.
+  const { pinned, rest, subnavByKey } = React.useMemo(() => {
+    if (!resolved) {
+      const fallback = unresolvedFallbackAreas().slice(0, MAX_TOWER_PINS);
+      return { pinned: fallback, rest: [], subnavByKey: new Map<string, TowerSubnav[]>() };
+    }
+    const pins = resolveTowerPins(prefs.towerPins, families);
+    const remaining = unpinnedTowerAreas(pins, families);
+    const map = new Map<string, TowerSubnav[]>();
+    for (const a of [...pins, ...remaining]) map.set(a.key, previewSections(a, families));
+    return { pinned: pins, rest: remaining, subnavByKey: map };
+  }, [resolved, prefs.towerPins, families]);
+
+  const [open, setOpen] = React.useState(false);
+  const panelId = React.useId();
+
+  // Alternating tint by GRID POSITION so a re-order does not break the
+  // "no orange band" pattern. The `<More>` card counts as a slot, so `rest`
+  // continues the alternation past the trigger.
+  const tintAt = (i: number): "primary" | "blue" => (i % 2 === 0 ? "primary" : "blue");
 
   return (
     <section aria-labelledby="ct-apps">
@@ -75,32 +258,50 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
         </button>
       </div>
 
+      {/*
+        SIX COLUMNS AT XL, dropping to four/three/two below. The 6+5+1 shape
+        is only exact at xl; below it, the same tiles reflow into whatever
+        the media query allows, and the "More" card stays as the last item
+        so the trigger is always the tail of the grid.
+      */}
       <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-        {tiles.map(({ label, hint, to, Icon }, i) => (
-          <li key={to}>
-            <Link
-              to={to}
-              className={cn(
-                "flex h-full flex-col rounded-lg border bg-card p-4 shadow-[var(--shadow-s)]",
-                "transition-colors hover:border-[color-mix(in_srgb,var(--primary)_35%,var(--border))] hover:bg-accent/40",
-              )}
-            >
-              <span
-                aria-hidden
-                className={cn(
-                  "mb-3 grid h-10 w-10 place-items-center rounded-md",
-                  // Alternating tint, as the mock did with :nth-child(even) —
-                  // it keeps a 6-across row from reading as one orange band.
-                  i % 2 === 0
-                    ? "bg-[color-mix(in_srgb,var(--primary)_11%,transparent)] text-primary-ink"
-                    : "bg-[rgb(var(--brand-blue)_/_0.12)] text-[rgb(var(--brand-blue-ink))]",
-                )}
-              >
-                <Icon />
-              </span>
-              <span className="text-base font-semibold leading-tight">{label}</span>
-              <span className="mt-0.5 text-label text-muted-foreground">{hint}</span>
-            </Link>
+        {pinned.map((area, i) => (
+          <li key={area.key}>
+            <Tile area={area} subnav={subnavByKey.get(area.key) ?? []} tint={tintAt(i)} />
+          </li>
+        ))}
+        <li key="__more">
+          <MoreCard
+            open={open}
+            count={rest.length}
+            onToggle={() => setOpen((v) => !v)}
+            controls={panelId}
+          />
+        </li>
+      </ul>
+
+      {/*
+        The inline expansion. Same grid so the columns line up with the pinned
+        tiles above, and `hidden` rather than a conditional render so the DOM
+        exists at mount — the browser's focus manager can then find a tile
+        that opens from a URL parameter (a future enhancement) without a
+        second layout pass.
+      */}
+      <ul
+        id={panelId}
+        aria-label="More applications"
+        hidden={!open}
+        className={cn(
+          "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6",
+          // Border-top rule for the visual distinction from the pinned set —
+          // subtle, because the two rows are the same kind of tile, not two
+          // different concepts.
+          !!rest.length && "border-t border-dashed pt-3",
+        )}
+      >
+        {rest.map((area, i) => (
+          <li key={area.key}>
+            <Tile area={area} subnav={subnavByKey.get(area.key) ?? []} tint={tintAt(pinned.length + 1 + i)} />
           </li>
         ))}
       </ul>

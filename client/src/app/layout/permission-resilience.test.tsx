@@ -53,7 +53,7 @@ vi.mock("@/lib/nav-access", async () => {
   };
 });
 
-const storedPrefs = { current: { ribbonPinned: null, railPins: null, railHintSeen: true } as ShellPrefs };
+const storedPrefs = { current: { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true } as ShellPrefs };
 vi.mock("@/lib/preferences", async () => {
   const actual = await vi.importActual<typeof import("@/lib/preferences")>("@/lib/preferences");
   return { ...actual, fetchShellPrefs: async () => storedPrefs.current, saveShellPrefs: async () => storedPrefs.current };
@@ -108,7 +108,7 @@ beforeEach(() => {
   server.current = null;
   server.pending = false;
   server.calls = 0;
-  storedPrefs.current = { ribbonPinned: null, railPins: null, railHintSeen: true };
+  storedPrefs.current = { ribbonPinned: null, railPins: null, towerPins: null, railHintSeen: true };
   clock = 1_000_000;
   vi.spyOn(Date, "now").mockImplementation(() => clock);
   reload = vi.fn();

@@ -49,17 +49,27 @@ function hasAuth(router) {
   for (const l of router.stack) {
     if (!l.route && isAuth(l.handle)) return true;
     if (l.handle && l.handle.stack && hasAuth(l.handle)) return true;
-    if (l.route && (l.route.stack || []).some((h) => isAuth(h.handle) || isAuth(h))) return true;
+    if (
+      l.route &&
+      (l.route.stack || []).some((h) => isAuth(h.handle) || isAuth(h))
+    )
+      return true;
   }
   return false;
 }
 
 describe("every tenant module router is authenticated (no anonymous surface)", () => {
-  const modules = discover().map((m) => {
-    let def = null;
-    try { def = require(m.routesFile); } catch { /* load error handled elsewhere */ }
-    return { name: `${m.group}/${m.module}`, def };
-  }).filter((m) => m.def && m.def.router);
+  const modules = discover()
+    .map((m) => {
+      let def = null;
+      try {
+        def = require(m.routesFile);
+      } catch {
+        /* load error handled elsewhere */
+      }
+      return { name: `${m.group}/${m.module}`, def };
+    })
+    .filter((m) => m.def && m.def.router);
 
   it("discovers every module, not merely 'enough' of them", () => {
     // Pinned near the real count (100 at the time of writing), not a token
@@ -75,7 +85,7 @@ describe("every tenant module router is authenticated (no anonymous surface)", (
     expect(typeof authMiddleware).toBe("function");
   });
 
-  it.each(modules)("%s carries authMiddleware", ({ name, def }) => {
+  it.each(modules)("%s carries authMiddleware", ({ _, def }) => {
     // The only intentionally-public tenant route is document-verification /scan,
     // and that module ALSO gates /verify, so it still has authMiddleware present.
     expect(hasAuth(def.router)).toBe(true);

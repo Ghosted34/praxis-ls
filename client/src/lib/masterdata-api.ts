@@ -408,7 +408,7 @@ export const registrations = nested<Registration>("registrations");
 export const beneficialOwners = nested<BeneficialOwner>("beneficial-owners");
 
 /* ── 360° dossier ───────────────────────────────────────────────── */
-export type ComplianceFlag = { flag_id: string; rule_key: string; severity: string; message?: string | null; created_at?: string };
+export type ComplianceFlag = { flag_id: string; rule_key: string; severity: string; message?: string | null; created_at?: string; onboarding?: boolean };
 export type Compliance = { compliance_state: string; can_verify: boolean; flags: ComplianceFlag[] };
 export type GlParity = { docTotal: number; gl: number; mismatch: number; flagged: boolean };
 export type Aging = { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number };

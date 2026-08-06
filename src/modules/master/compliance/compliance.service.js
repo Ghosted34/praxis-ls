@@ -19,8 +19,8 @@ const { AppError } = require("../../../utils/errors");
 
 /** Per-kind wiring. Literals, never request input. */
 const KIND = {
-  client: { table: "client_master", pk: "client_id", docTable: "client_document", bankTable: "client_bank_account", appliesTo: "CLIENT", auxSide: "debit" },
-  supplier: { table: "supplier_master", pk: "supplier_id", docTable: "supplier_document", bankTable: "supplier_bank_account", appliesTo: "SUPPLIER", auxSide: "credit" },
+  client: { table: "client_master", pk: "client_id", docTable: "client_document", bankTable: "client_bank_account", appliesTo: "CLIENT", auxSide: "debit", categoryTable: "client_type", categoryFk: "client_type_id" },
+  supplier: { table: "supplier_master", pk: "supplier_id", docTable: "supplier_document", bankTable: "supplier_bank_account", appliesTo: "SUPPLIER", auxSide: "credit", categoryTable: "supplier_type", categoryFk: "supplier_type_id" },
 };
 
 const INVOICE_LOCKED = ["ISSUED_LOCKED", "APPROVED_LOCKED", "POSTED_LOCKED"];
@@ -37,6 +37,19 @@ async function loadParty(client, c, id) {
   return rows[0] || null;
 }
 
+/** The party's category CODE (client_type/supplier_type code) — drives document
+ *  applicability (§3.2). Null when the party has no category set. */
+async function categoryCodeFor(client, c, party) {
+  if (!party[c.categoryFk]) return null;
+  const { rows } = await client.query(`SELECT code FROM ${c.categoryTable} WHERE ${c.categoryFk} = $1`, [party[c.categoryFk]]);
+  return rows[0] ? rows[0].code : null;
+}
+
+/** The party's KYC tier for applicability: a HIGH risk tier means ENHANCED
+ *  due diligence, everyone else BASIC. (No dedicated column yet; derived so an
+ *  ENHANCED-only document type doesn't apply to an ordinary party.) */
+const tierFor = (party) => (String(party.risk_tier || "").toUpperCase() === "HIGH" ? "ENHANCED" : "BASIC");
+
 /** Gather everything the rules need and evaluate. Pure result, no writes. */
 async function evaluateParty(client, { kind, partyId }) {
   const c = cfg(kind);
@@ -48,6 +61,7 @@ async function evaluateParty(client, { kind, partyId }) {
   const { rows: documents } = await client.query(`SELECT * FROM ${c.docTable} WHERE ${c.pk} = $1`, [partyId]);
   const { rows: banks } = await client.query(`SELECT * FROM ${c.bankTable} WHERE ${c.pk} = $1`, [partyId]);
   const { rows: docTypes } = await client.query("SELECT * FROM party_document_type WHERE is_active = true");
+  const category = await categoryCodeFor(client, c, party);
 
   // Credit status is a client concept and derives from the GL, never a cache.
   let creditStatus = null;
@@ -57,7 +71,12 @@ async function evaluateParty(client, { kind, partyId }) {
     creditStatus = limit === null ? { within: true } : { within: outstanding <= limit, used: outstanding, limit };
   }
 
-  const result = rules.evaluate({ appliesTo: c.appliesTo, party, documents, docTypes, banks, creditStatus });
+  // Category, country and KYC tier drive document applicability (§3.2); the
+  // party's registration/AVL status drives the onboarding-vs-risk rollup (§3.3).
+  const result = rules.evaluate({
+    appliesTo: c.appliesTo, party, documents, docTypes, banks, creditStatus,
+    category, country: party.country_code || party.tax_residency_country || null, tier: tierFor(party),
+  });
   return { ...result, party };
 }
 
@@ -118,7 +137,11 @@ async function sync(client, { kind, partyId }) {
   const state = evalResult.party.hard_blocked_at ? "HARD_BLOCK" : evalResult.compliance_state;
   await client.query(`UPDATE ${c.table} SET compliance_state = $1, updated_at = now() WHERE ${c.pk} = $2`, [state, partyId]);
 
-  const flags = await openFlags(client, entityRef);
+  // Carry the pure engine's `onboarding` marker onto the persisted flags (which
+  // have flag_id + created_at) so the 360 can split "Required to activate" from
+  // real "Compliance issues" without re-deriving the classification (§3.3).
+  const onboardingByKey = new Map(evalResult.flags.map((f) => [flagKey(f), !!f.onboarding]));
+  const flags = (await openFlags(client, entityRef)).map((f) => ({ ...f, onboarding: onboardingByKey.get(flagKey(f)) || false }));
   return { compliance_state: state, can_verify: evalResult.can_verify, flags };
 }
 

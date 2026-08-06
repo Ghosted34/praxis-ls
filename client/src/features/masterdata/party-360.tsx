@@ -24,7 +24,7 @@ import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import * as api from "@/lib/masterdata-api";
 
-const STATE_TONE: Record<string, Tone> = { OK: "ok", WARN: "warn", ESCALATED: "bad", SOFT_BLOCK_RECOMMENDATION: "orange", HARD_BLOCK: "bad" };
+const STATE_TONE: Record<string, Tone> = { OK: "ok", ONBOARDING: "blue", WARN: "warn", ESCALATED: "bad", SOFT_BLOCK_RECOMMENDATION: "orange", HARD_BLOCK: "bad" };
 const SEVERITY_TONE: Record<string, Tone> = { INFO: "mute", WARN: "warn", ESCALATED: "bad", SOFT_BLOCK_RECOMMENDATION: "orange", RED: "bad", HARD_BLOCK: "bad" };
 const REG_TONE: Record<string, Tone> = { DRAFT: "mute", PENDING_REVIEW: "blue", ACTIVE: "ok", SUSPENDED: "orange", DEACTIVATED: "mute", ARCHIVED: "mute" };
 const AVL_TONE: Record<string, Tone> = { PROSPECT: "mute", PENDING_KYC: "warn", APPROVED: "ok", CONDITIONAL: "orange", SUSPENDED: "orange", BLOCKED: "bad", ARCHIVED: "mute" };
@@ -208,16 +208,46 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border bg-card p-4">
             <h4 className="mb-3 text-sm font-semibold text-foreground">Compliance</h4>
-            {comp.flags.length === 0 ? <p className="micro">No open flags.</p> : (
-              <ul className="space-y-1.5">
-                {comp.flags.map((f) => (
-                  <li key={f.flag_id} className="flex items-center gap-2 text-sm">
-                    <Pill tone={SEVERITY_TONE[f.severity] || "mute"}>{f.severity}</Pill>
-                    <span className="text-muted-foreground">{f.message || f.rule_key}</span>
-                  </li>
-                ))}
-              </ul>
-            )}
+            {(() => {
+              // Onboarding gaps (missing required docs, pending scans) are the
+              // checklist to activate a party, not a compliance failure — show
+              // them apart from real issues so a fresh draft does not read red
+              // (§3.3). The engine sets `onboarding` on each flag.
+              const onboarding = comp.flags.filter((f) => f.onboarding);
+              const issues = comp.flags.filter((f) => !f.onboarding);
+              if (comp.flags.length === 0) return <p className="micro">No open flags.</p>;
+              return (
+                <div className="space-y-3">
+                  {onboarding.length > 0 && (
+                    <div>
+                      <p className="mb-1.5 flex items-center gap-2 micro font-medium text-foreground">
+                        <Pill tone="blue">Required to activate</Pill>
+                      </p>
+                      <ul className="space-y-1.5">
+                        {onboarding.map((f) => (
+                          <li key={f.flag_id} className="flex items-center gap-2 text-sm">
+                            <span className="text-muted-foreground">{f.message || f.rule_key}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {issues.length > 0 && (
+                    <div>
+                      {onboarding.length > 0 && <p className="mb-1.5 micro font-medium text-foreground">Compliance issues</p>}
+                      <ul className="space-y-1.5">
+                        {issues.map((f) => (
+                          <li key={f.flag_id} className="flex items-center gap-2 text-sm">
+                            <Pill tone={SEVERITY_TONE[f.severity] || "mute"}>{f.severity}</Pill>
+                            <span className="text-muted-foreground">{f.message || f.rule_key}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             <p className="mt-3 micro">
               GL parity: {d.gl_parity.flagged ? <span className="text-bad">mismatch {money(d.gl_parity.mismatch)}</span> : "clean"} · docs {money(d.gl_parity.docTotal)} vs GL {money(d.gl_parity.gl)}
             </p>

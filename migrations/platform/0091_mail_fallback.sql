@@ -29,3 +29,10 @@ VALUES ('mail', 'fallback', '{
   "smtp_user":       ""
 }'::jsonb)
 ON CONFLICT (section, key) DO NOTHING;
+
+-- DOWN
+-- Seed of a single deploy-wide settings row. Reversal removes it — but an
+-- operator who has since set real fallback creds would lose them, so this is a
+-- deliberate manual step, not an automatic down (restore from the pre-deploy
+-- dump if that config matters).
+-- DELETE FROM platform.platform_setting WHERE section = 'mail' AND key = 'fallback';

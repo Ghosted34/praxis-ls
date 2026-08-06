@@ -24,12 +24,21 @@ export type Client = {
   is_withholding_agent?: boolean;
   is_active: boolean;
 };
+// Country-first form blocks (PR3-B §2) — the service persists these as their
+// own rows (party_registration / *_contact / *_address) in the create tx.
+export type PartyRegistrationInput = { kind: string; number?: string; country_code?: string };
+export type PartyContactInput = { name?: string; email?: string; phone?: string; role_tags?: string[] };
+export type PartyAddressInput = { line1?: string; city?: string; region?: string; postal_code?: string; country_code?: string };
+
 export type ClientInput = {
   name: string;
   entity_id?: string;
   client_type_id?: string;
   niu?: string;
   rccm?: string;
+  registrations?: PartyRegistrationInput[];
+  primary_contact?: PartyContactInput;
+  primary_address?: PartyAddressInput;
   email?: string;
   address?: string;
   city?: string;
@@ -108,6 +117,9 @@ export type SupplierInput = {
   supplier_type?: string;
   niu?: string;
   rccm?: string;
+  registrations?: PartyRegistrationInput[];
+  primary_contact?: PartyContactInput;
+  primary_address?: PartyAddressInput;
   email?: string;
   address?: string;
   city?: string;

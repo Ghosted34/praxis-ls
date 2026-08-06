@@ -78,6 +78,12 @@ const CAP_CATALOGUE = [
   // the catalogue — anything holding settings.write can rotate the credentials
   // the whole deployment runs on.
   "settings.read", "settings.write",
+  // Error Command Center (migration 0080). Split three ways deliberately:
+  // reading stack traces, resolving an error, and arming an escalation rule
+  // that pages people are different levels of trust. `errors.read` is the
+  // sensitive one — raw traces and error context are the most revealing
+  // non-credential data the platform stores.
+  "errors.read", "errors.resolve", "errors.configure",
 ];
 
 // Root Admin is the built-in superuser: it bypasses capability checks entirely

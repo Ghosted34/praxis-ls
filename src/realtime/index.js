@@ -170,6 +170,19 @@ function initSocket(httpServer) {
   });
 
   attachMailBridge();
+
+  // Error Command Center. A SEPARATE namespace, not another handler on `/`:
+  // the connection handler above authenticates tenant users (typ="access",
+  // tenant resolved from Host), and a platform token satisfies neither check.
+  // See realtime/platform-ns.js for why loosening those checks instead would
+  // punch a hole in the tenant/platform boundary.
+  try {
+    // eslint-disable-next-line global-require
+    require("./platform-ns").initPlatformNamespace(io);
+  } catch (err) {
+    logger.warn({ err }, "platform error-feed namespace failed to attach — console falls back to polling");
+  }
+
   logger.info("real-time (socket.io) ready");
   return io;
 }

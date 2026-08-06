@@ -41,6 +41,7 @@
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const requestContext = require("../../config/request-context");
+const store = require("./error-store");
 
 /** How long an identical error stays suppressed after being reported. */
 const DEDUPE_WINDOW_MS = 5 * 60 * 1000;
@@ -147,15 +148,6 @@ function report(err, meta = {}) {
     const now = Date.now();
     const entry = seen.get(fp);
 
-    if (entry && now - entry.lastSent < DEDUPE_WINDOW_MS) {
-      entry.suppressed += 1;
-      return Promise.resolve({ reported: false, reason: "deduped" });
-    }
-
-    const suppressed = entry ? entry.suppressed : 0;
-    seen.set(fp, { firstSeen: entry ? entry.firstSeen : now, lastSent: now, suppressed: 0 });
-    evictIfNeeded();
-
     const ctx = requestContext.get() || {};
     const payload = {
       origin: meta.origin || "server",
@@ -170,10 +162,31 @@ function report(err, meta = {}) {
       release: config.BUILD_SHA || "unknown",
       env: config.NODE_ENV,
       fingerprint: fp,
-      suppressed,
+      suppressed: entry ? entry.suppressed : 0,
       ts: new Date().toISOString(),
       ...(meta.extra ? { extra: meta.extra } : {}),
     };
+
+    // OBS-E3 / Error Command Center. Persist BEFORE the dedupe gate below.
+    //
+    // The gate exists to stop the alert channel being flooded, and it is right
+    // to. But `occurrence_count` is the number the Error Center sorts, charts
+    // and escalates on — so if persistence sat behind the same gate, a hot
+    // error firing 40k times in five minutes would be recorded as having fired
+    // ONCE, and every threshold rule in §5 would silently never trigger.
+    //
+    // Notification is deduped. Counting is not. They are different questions.
+    store.persist(payload);
+
+    if (entry && now - entry.lastSent < DEDUPE_WINDOW_MS) {
+      entry.suppressed += 1;
+      return Promise.resolve({ reported: false, reason: "deduped" });
+    }
+
+    const suppressed = entry ? entry.suppressed : 0;
+    seen.set(fp, { firstSeen: entry ? entry.firstSeen : now, lastSent: now, suppressed: 0 });
+    evictIfNeeded();
+    payload.suppressed = suppressed;
 
     if (!withinRateLimit()) {
       logger.warn({ fingerprint: fp }, "error report rate-limited (>20/min)");

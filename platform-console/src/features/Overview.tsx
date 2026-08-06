@@ -5,6 +5,7 @@ import type { AuditRow, TenantListRow } from "@/lib/types";
 import { useAsync } from "@/lib/useAsync";
 import { fmtDateTime, humanizeAction, titleCase } from "@/lib/format";
 import { Card, Empty, Loading, PageHeader, Pill } from "@/components/ui";
+import { SystemHealthWidget } from "@/components/SystemHealthWidget";
 
 export function Overview() {
   const tenants = useAsync<TenantListRow[]>(() => platform.tenants() as Promise<TenantListRow[]>);
@@ -34,6 +35,7 @@ export function Overview() {
   return (
     <>
       <PageHeader title="Overview" desc="Platform health at a glance across every tenant." />
+      <SystemHealthWidget />
       {tenants.loading ? (
         <Loading />
       ) : tenants.error ? (

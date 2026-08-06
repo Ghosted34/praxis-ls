@@ -35,6 +35,7 @@
  */
 import { QueryClient } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
+import { tokenStore } from "./token-store";
 
 export function makeQueryClient(): QueryClient {
   return new QueryClient({
@@ -62,4 +63,25 @@ export const queryClient = makeQueryClient();
  */
 export const TENANT_KEY = "tenant" as const;
 
-export const tenantKey = (path: string) => [TENANT_KEY, path] as const;
+/**
+ * Build the cache key for a tenant-scoped fetch.
+ *
+ * ENV IS PART OF THE KEY — do not remove it. The api-client sends
+ * `X-Praxis-Env` on every request, so a response is inherently scoped to LIVE
+ * or SANDBOX. Before env was in the key, both environments shared one entry
+ * per path, and switching LIVE ↔ TEST would return the OTHER environment's
+ * data from cache — visibly for `staleTime` (30 s) and, even outside that,
+ * as a flash of wrong data while the background revalidation was in flight.
+ * A browser refresh appeared to "fix" it only because it wiped the in-memory
+ * QueryClient. See `EnvToggle` / `switchEnv` in `app/layout/app-shell.tsx`.
+ *
+ * The env is read at CALL SITE from `tokenStore.getEnv()` — the same source
+ * the request header uses, so the key can never disagree with the header the
+ * response arrived under. Callers that pass this to `useQuery` re-run on
+ * every render, so a state-change env switch produces a NEW key immediately
+ * and TanStack treats it as a distinct query (fresh fetch, no staleness).
+ *
+ * Order matters: `[TENANT_KEY, env, path]` keeps `useRefresh()` — which
+ * invalidates the whole `[TENANT_KEY]` prefix — working for both envs.
+ */
+export const tenantKey = (path: string) => [TENANT_KEY, tokenStore.getEnv(), path] as const;

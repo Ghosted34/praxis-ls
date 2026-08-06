@@ -14,6 +14,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 import { ApiError } from "./api-client";
 import * as apiClient from "./api-client";
 import { makeQueryClient } from "./query-client";
+import { tokenStore } from "./token-store";
 import { errMsg, useList, useResource } from "./use-resource";
 
 function wrapper() {
@@ -131,6 +132,62 @@ describe("useList", () => {
     );
     await waitFor(() => expect(screen.getAllByTestId("count")[0]).toHaveTextContent("1"));
     expect(tenantSpy).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * THE STALE-TOGGLE REGRESSION. Before env was in the cache key, this
+   * sequence would return the LIVE payload to the sandbox render — the exact
+   * defect the reporter saw in the screenshots (LIVE data on-screen after
+   * switching to TEST, until a browser reload wiped the QueryClient).
+   *
+   * The assertion has two halves:
+   *   (a) `tenant` is called TWICE — once for each env — proving the sandbox
+   *       render didn't just satisfy itself from LIVE's cached entry;
+   *   (b) the render actually shows the sandbox payload, proving the mount
+   *       consumed the correct entry rather than the leftover LIVE one.
+   */
+  it("does NOT serve one env's cached data to the other after a switch", async () => {
+    // Route responses by the header the api-client is sending. This models the
+    // real backend (which returns different data per env) inside the spy.
+    tenantSpy.mockImplementation(async () => {
+      const env = tokenStore.getEnv();
+      return env === "sandbox" ? [{ id: "sandbox-1" }, { id: "sandbox-2" }] : [{ id: "live-1" }];
+    });
+
+    const originalEnv = tokenStore.getEnv();
+    try {
+      tokenStore.setEnv("live");
+      const Wrapper = wrapper();
+
+      // First mount under LIVE — should see the single LIVE row.
+      const { unmount } = render(
+        <Wrapper>
+          <ListProbe path="/clients" />
+        </Wrapper>,
+      );
+      await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("1"));
+
+      // The env-switch: header flips, and the shell would remount its content
+      // under `key={env}` in real life. Simulate the remount by unmounting and
+      // rendering a fresh probe under the SAME wrapper (same QueryClient) so
+      // the cache is genuinely shared across the two envs.
+      unmount();
+      tokenStore.setEnv("sandbox");
+
+      render(
+        <Wrapper>
+          <ListProbe path="/clients" />
+        </Wrapper>,
+      );
+
+      // The sandbox count is 2. Before the fix this waitFor would time out
+      // because the LIVE-keyed cache entry answered instantly with count=1
+      // and TanStack considered it fresh (staleTime=30s).
+      await waitFor(() => expect(screen.getByTestId("count")).toHaveTextContent("2"));
+      expect(tenantSpy).toHaveBeenCalledTimes(2);
+    } finally {
+      tokenStore.setEnv(originalEnv);
+    }
   });
 });
 

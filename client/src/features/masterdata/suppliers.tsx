@@ -1,25 +1,28 @@
 /**
- * Master data — suppliers.
+ * Master data — suppliers, as a 360° command centre (spec §8.2).
  *
- * Split out of `features/masterdata/pages.tsx` in Phase 4 (audit F7).
+ * The flat CRUD list became a list + rich dossier, mirroring the client master:
+ * pick a supplier to see AVL/compliance state, KYC documents, banks, contacts,
+ * registrations and the GL-derived payables rollup, with verify / block / convert
+ * actions. The detail view is shared (party-360.tsx); the edit form stays here.
  */
-
 import * as React from "react";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { ErrorState } from "@/components/ui/states";
-import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
+import { SplitPane } from "@/components/ui/split-pane";
+import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
-import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
-import { Pill, ActivePill } from "@/components/ui/pill";
-import { useList, errMsg } from "@/lib/use-resource";
-import { num } from "@/lib/format";
+import { Pill } from "@/components/ui/pill";
+import { useResource, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
+import { PartyDossier } from "./party-360";
+import { MasterDataSettings } from "./master-data-settings";
 
 function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onClose: () => void; onSaved: () => void }) {
   const isNew = row === null;
@@ -28,7 +31,6 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
   const [niu, setNiu] = React.useState(row?.niu ?? "");
   const [rccm, setRccm] = React.useState(row?.rccm ?? "");
   const [email, setEmail] = React.useState(row?.email ?? "");
-  // 0480 — supplier address, for POs and matched supplier invoices.
   const [address, setAddress] = React.useState(row?.address ?? "");
   const [city, setCity] = React.useState(row?.city ?? "");
   const [countryCode, setCountryCode] = React.useState(row?.country_code ?? "CM");
@@ -102,31 +104,53 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
 }
 
 export function SuppliersPage() {
-  const { rows, error, loading, reload } = useList<api.Supplier>("/suppliers");
+  const suppliers = useResource(() => api.listSuppliers(), []);
+  const [selId, setSelId] = React.useState<string | null>(null);
+  const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Supplier | "new" | null>(null);
-  const suppliers = rows || [];
-  const columns: Column<api.Supplier>[] = [
-    { key: "name", label: "Supplier", render: (r) => <span className="font-medium text-foreground">{r.name}</span> },
-    { key: "supplier_type", label: "Type" },
-    { key: "payment_method", label: "Pay method", render: (r) => (r.payment_method ? <Pill tone="mute">{r.payment_method}</Pill> : "—") },
-    { key: "rating", label: "Rating", render: (r) => (r.rating ? "★".repeat(r.rating) : "—") },
-    { key: "is_non_resident", label: "WHT", render: (r) => (r.is_non_resident ? <Pill tone="warn">Non-resident</Pill> : <span className="text-muted-foreground">—</span>) },
-    { key: "is_active", label: "Status", render: (r) => <ActivePill active={r.is_active} /> },
-  ];
+  const [settings, setSettings] = React.useState(false);
+
+  const rows = React.useMemo(() => suppliers.data || [], [suppliers.data]);
+  const filtered = q ? rows.filter((s) => s.name.toLowerCase().includes(q.toLowerCase())) : rows;
+  const selected = rows.find((s) => s.supplier_id === selId) || null;
+  React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].supplier_id); }, [rows, selId]);
+
   return (
     <section className={shell}>
-      <PageHeader eyebrow={<HubCrumb area="Master data" to="/master" />} title="Suppliers" description="Vendor master — payment, tax residency and rating." action={<Button onClick={() => setEditing("new")}>New supplier</Button>} />
+      <PageHeader
+        eyebrow={<HubCrumb area="Master data" to="/master" />}
+        title="Suppliers"
+        description="Vendor master with a live 360 — AVL, KYC, banks, WHT and payables."
+        action={
+          <div className="flex items-center gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>⚙ Settings</Button>
+            <Button onClick={() => setEditing("new")}>New supplier</Button>
+          </div>
+        }
+      />
       <HubTabs />
-      <KpiRow>
-        <KpiTile label="Suppliers" value={num(suppliers.length)} />
-        <KpiTile label="Active" value={num(suppliers.filter((s) => s.is_active).length)} />
-        <KpiTile label="Non-resident" value={num(suppliers.filter((s) => s.is_non_resident).length)} />
-      </KpiRow>
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.supplier_id} onRowClick={(r) => setEditing(r)} empty={{ title: "No suppliers yet", hint: "Add vendors to raise POs and supplier invoices." }} />
-      {editing !== null && <SupplierForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={reload} />}
+      {suppliers.error ? <ErrorState message={suppliers.error} /> : (
+        <SplitPane storageKey="master.suppliers" label="Supplier list width" defaultSize={260} min={200} max={480}>
+          <div className="space-y-2">
+            <Input placeholder="Search supplier…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+              {suppliers.loading ? <LoadingRow label="Loading suppliers…" /> : filtered.length === 0 ? <div className="px-3 py-4 micro">No suppliers.</div> : filtered.map((s) => (
+                <button key={s.supplier_id} onClick={() => setSelId(s.supplier_id)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${s.supplier_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
+                  <span className="truncate font-medium">{s.name}</span>
+                  <Pill tone={s.is_active ? "ok" : "mute"}>{s.is_active ? "Active" : "Off"}</Pill>
+                </button>
+              ))}
+            </div>
+          </div>
+          {selected
+            ? <PartyDossier kind="supplier" partyId={selected.supplier_id} onEdit={() => setEditing(selected)} onChanged={suppliers.reload} />
+            : <EmptyState title="No supplier selected" hint="Choose a supplier from the list." />}
+        </SplitPane>
+      )}
+      {editing !== null && <SupplierForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={suppliers.reload} />}
+      <MasterDataSettings open={settings} onClose={() => setSettings(false)} initialSide="SUPPLIER" />
       <ScreenAi path="master/suppliers" />
     </section>
   );
 }
-
-/* ══════════════════════════ Corporate entities ══════════════════ */

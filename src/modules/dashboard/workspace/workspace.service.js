@@ -17,9 +17,14 @@ async function mine(client, user, viewer = null) {
     moduleKeys: [],
     isCeo: !!(user && user.is_ceo),
   };
+  // `recent_activity` was here as `await repo.recentEvents(client)` — a
+  // tenant-wide read of `event_log` that the workspace page rendered as
+  // "Auth token refreshed · App user c2d39ee8". That surface moved to the
+  // Control Tower as `<RecentActivity>` on top of the self-scoped
+  // /audit/my-feed endpoint; this shape drops it so the Workspace stays a
+  // queue-of-work surface only. `recentEvents` in the repo went with it.
   return {
     approvals_awaiting_me: await repo.approvals(client, v),
-    recent_activity: await repo.recentEvents(client),
     unread_notifications: user && user.user_id ? await repo.unread(client, user.user_id) : [],
   };
 }

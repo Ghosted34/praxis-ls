@@ -40,8 +40,63 @@ const decideEntry = asyncHandler(async (req, res) => res.json({ data: await req.
 // the live schema. Read them from there, else TEST shows an empty security log.
 const listSecurityEvents = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listSecurityEvents(c, req.query)) }));
 
+// GET /audit/my-feed — the Control Tower's "Recent activity" data source.
+// Ungated at the router; hard-scoped here to actor_user_id = req.user.user_id
+// so a caller can only ever see their OWN actions. See the routes file for the
+// non-negotiable "no requirePermission" note.
+//
+// Two schemas at play — identity events (auth/RBAC/permission) live in
+// live.immutable_ledger; business writes (invoice, sales, wms, …) live in the
+// tenant's <env> schema. Two separate queries rather than a UNION at SQL: the
+// registry lease switches search_path per call, so keeping the queries apart
+// keeps per-schema pool boundaries clean and lets each side degrade
+// independently (a broken schema on one side is not a 500 on the other,
+// though we don't try/catch here today).
+//
+// The response envelope is `{ data, meta }`. The client's apiPaged
+// (client/src/lib/api-client.ts:202-227) unwraps `{ data }` to a bare array
+// UNLESS a sibling `meta` key is present — flat `{ data, page, total }`
+// would collapse the list. Meta stays as its own object.
+const myFeed = asyncHandler(async (req, res) => {
+  const page = Math.max(1, Number.parseInt(req.query.page ?? "1", 10) || 1);
+  const pageSize = 10;
+  // 3 pages × 10 rows. Anything beyond that is the full Audit Terminal's
+  // job (Governance → Ledger); the Control Tower widget is a glance.
+  const maxTotal = 30;
+
+  const [idRows, tnRows] = await Promise.all([
+    req.identityDb((c) => service.myFeed(c, req.user.user_id, maxTotal)),
+    req.tenantDb((c) => service.myFeed(c, req.user.user_id, maxTotal)),
+  ]);
+
+  const merged = [...idRows, ...tnRows]
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .slice(0, maxTotal);
+
+  const offset = (page - 1) * pageSize;
+  const slice = merged.slice(offset, offset + pageSize);
+  const newest = slice[0]?.created_at ? new Date(slice[0].created_at) : null;
+  // "Last 24 hours" reads honest on page 1 when the newest row is recent;
+  // deeper pages just say "Latest actions" so the header never lies.
+  const window = page === 1 && newest && (Date.now() - newest.getTime()) < 24 * 3600e3
+    ? "24h"
+    : "all_time";
+
+  res.json({
+    data: slice,
+    meta: {
+      window,
+      page,
+      page_size: pageSize,
+      total: merged.length,
+      has_more: offset + slice.length < merged.length,
+    },
+  });
+});
+
 module.exports = {
   ...crud, listSoftDeletes, requestRestore, restore,
   listReviews, createReview, getReview, completeReview, decideEntry,
   listSecurityEvents,
+  myFeed,
 };

@@ -19,6 +19,14 @@ const router = express.Router();
 router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), c.list);
+
+// Self-scoped feed for the Control Tower's "Recent activity" widget. NO
+// requirePermission gate: the query is hard-scoped in the controller to
+// actor_user_id = req.user.user_id, so a caller can only ever see their own
+// actions — reading OTHER people's audit rows still needs MOD-69 via c.list.
+// Registered BEFORE "/:id" so "my-feed" is never swallowed as an :id param.
+router.get("/my-feed", c.myFeed);
+
 // Registered before "/:id" so "soft-deletes" isn't swallowed as an :id param.
 router.get("/soft-deletes", requirePermission(MODULE, "view"), c.listSoftDeletes);
 

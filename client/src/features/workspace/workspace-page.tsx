@@ -1,8 +1,14 @@
 /**
  * My workspace — the read-only personal overview (Overview area). Rolls up what's
- * on the signed-in user's desk from GET /workspace: approvals awaiting them,
- * unread notifications, and recent activity. Composes the locked kit; accents
- * resolve to --primary.
+ * on the signed-in user's desk from GET /workspace: approvals awaiting them and
+ * unread notifications. Composes the locked kit; accents resolve to --primary.
+ *
+ * WHAT MOVED. "Recent activity" (panel) and "Recent events" (KPI tile) lived
+ * here on top of `event_log` and rendered raw humanised keys — "Auth token
+ * refreshed · App user c2d39ee8" was the everyday appearance. Both moved to
+ * the Control Tower as `<RecentActivity>`, backed by `/audit/my-feed` and a
+ * proper humaniser (see `client/src/lib/audit-humanize.ts`). Workspace is the
+ * queue-of-work surface now — nothing else.
  */
 import { pageShell } from "@/lib/layout";
 import { Panel } from "@/components/ui/panel";
@@ -12,13 +18,12 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { useResource } from "@/lib/use-resource";
-import { money, num, dateFmt, humanizeEvent, humanizeRef } from "@/lib/format";
+import { money, num, dateFmt, humanizeRef } from "@/lib/format";
 import { tenant } from "@/lib/api-client";
 
 type Approval = { approval_task_id?: string; id?: string; entity_ref?: string | null; step_kind?: string | null; amount_xaf?: number | string | null; status?: string | null; created_at?: string | null };
 type Note = { notification_id?: string; id?: string; title?: string | null; priority?: string | null; event_type_key?: string | null; created_at?: string | null };
-type Activity = { event_id?: string; id?: string; action?: string | null; event_type_key?: string | null; entity_ref?: string | null; created_at?: string | null };
-type Mine = { approvals_awaiting_me?: Approval[]; unread_notifications?: Note[]; recent_activity?: Activity[] };
+type Mine = { approvals_awaiting_me?: Approval[]; unread_notifications?: Note[] };
 
 const prioTone = (p?: string | null): Tone => {
   const u = String(p || "").toUpperCase();
@@ -33,11 +38,10 @@ export function WorkspacePage() {
   const d = r.data;
   const approvals = d?.approvals_awaiting_me || [];
   const notes = d?.unread_notifications || [];
-  const activity = d?.recent_activity || [];
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader title="My workspace" description="What's on your desk right now — approvals, alerts and the latest activity." />
+      <PageHeader title="My workspace" description="What's on your desk right now — approvals awaiting you and alerts you haven't opened." />
       {r.loading ? (
         <div className="py-10 text-center micro">Loading…</div>
       ) : r.error ? (
@@ -47,7 +51,6 @@ export function WorkspacePage() {
           <KpiRow>
             <KpiTile label="Awaiting my approval" value={num(approvals.length)} />
             <KpiTile label="Unread alerts" value={num(notes.length)} />
-            <KpiTile label="Recent events" value={num(activity.length)} />
           </KpiRow>
 
           <div className="grid gap-4 lg:grid-cols-2">
@@ -84,20 +87,11 @@ export function WorkspacePage() {
             </Panel>
           </div>
 
-          <div className="mt-4">
-            <Panel title="Recent activity" action={<Link to="/audit" className="text-sm text-muted-foreground transition-colors hover:text-primary-ink">Audit ledger →</Link>}>
-              {activity.length ? (
-                <ol className="space-y-1.5">
-                  {activity.slice(0, 12).map((e, i) => (
-                    <li key={e.event_id || e.id || i} className="flex items-center justify-between gap-3 text-sm">
-                      <span className="truncate"><span className="font-medium text-foreground">{humanizeEvent(e.action || e.event_type_key)}</span>{e.entity_ref ? <span className="text-muted-foreground"> · {humanizeRef(e.entity_ref)}</span> : null}</span>
-                      <span className="micro shrink-0">{dateFmt(e.created_at)}</span>
-                    </li>
-                  ))}
-                </ol>
-              ) : <p className="micro">No recent activity.</p>}
-            </Panel>
-          </div>
+          {/* Recent activity used to live below the two-column grid; it moved
+              to the Control Tower as `<RecentActivity>` on top of the new
+              `/audit/my-feed` endpoint. Workspace stays a queue-of-work
+              surface — the reflective "what happened" view belongs on the
+              home page where the user actually looks for it. */}
         </>
       )}
     </section>

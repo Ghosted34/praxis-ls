@@ -331,11 +331,14 @@ describe("refresh() end to end (TC-Q2)", () => {
       expect(Object.keys(out).sort()).toEqual(["access_token", "expires_in", "refresh_token", "token_type"]);
     });
 
-    it("emits exactly one token-refreshed event and no logout", async () => {
+    it("emits NO token-refreshed event (silent refresh is machine noise)", async () => {
+      // The event was removed because it drowned the Control Tower's
+      // self-scoped "Recent activity" feed — silent refresh fires every ~15
+      // min on every active tab. See the "no emitEvent + no audit here on
+      // purpose" comment in refresh() and the regression test at
+      // tests/security/no-refresh-audits.test.js.
       await svc.refresh(client, { refreshToken: makeRefreshToken() });
-      const refreshed = mockCalls.events.filter((e) => e.eventTypeKey === "auth.token_refreshed");
-      expect(refreshed).toHaveLength(1);
-      expect(refreshed[0].actorUserId).toBe(USER);
+      expect(mockCalls.events.filter((e) => e.eventTypeKey === "auth.token_refreshed")).toHaveLength(0);
       expect(mockCalls.events.filter((e) => e.eventTypeKey === "auth.logged_out")).toHaveLength(0);
     });
 

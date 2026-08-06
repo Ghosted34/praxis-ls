@@ -1,4 +1,12 @@
--- 0070 — Give the platform tier a session, so revocation means something.
+-- 0080 — Give the platform tier a session, so revocation means something.
+--
+-- Numbered 0080, not 0070: `0070_module_taxonomy.sql` already holds that slot.
+-- Caught by scripts/db/check-migration-numbers.js on the first CI run, which is
+-- the gate doing its job — a duplicate number is ambiguous ordering, and the
+-- migrator keys its ledger on FILENAME, so two files at 0070 would both apply
+-- but in an order nobody declared. Renumbered rather than merged because this
+-- file has never run anywhere; the grandfathered tenant/0470 and /0475
+-- collisions are left alone for exactly the opposite reason.
 --
 -- SEC-M6. Platform tokens were STATELESS: no session table, therefore no remote
 -- kill, no rotation-reuse detection, and a 30-day refresh TTL inherited from the

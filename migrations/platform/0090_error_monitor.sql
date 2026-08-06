@@ -1,5 +1,5 @@
 -- ============================================================================
--- PLATFORM DB — 0080 Error Command Center (doc/PROMPT_ErrorMonitor_Module.md)
+-- PLATFORM DB — 0090 Error Command Center (doc/PROMPT_ErrorMonitor_Module.md)
 -- ============================================================================
 --
 -- Gives the error sink a durable home. `shared/observability/error-reporter.js`

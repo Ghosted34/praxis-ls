@@ -48,7 +48,7 @@ async function setUserCapabilities(client, userId, capabilityIds) {
     [userId, ALL_DOCS],
   );
   for (const cid of capabilityIds || []) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await client.query(
       `INSERT INTO user_capability (user_id, capability_id, document_type)
        VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,

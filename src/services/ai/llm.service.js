@@ -94,11 +94,11 @@ const STUB = {
 
 async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY }) {
   for (const name of [vendorName, FALLBACK]) {
-    // eslint-disable-next-line no-await-in-loop
+     
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       return await callVendor(vendor, { messages, tools, temperature });
     } catch (err) {
       logger.warn({ err, vendor: name }, "LLM vendor failed");

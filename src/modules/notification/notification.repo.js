@@ -53,7 +53,7 @@ async function getPreferences(client, userId) {
 async function putPreferences(client, userId, prefs) {
   const out = [];
   for (const p of prefs) {
-    // eslint-disable-next-line no-await-in-loop
+     
     const { rows } = await client.query(
       "INSERT INTO notification_preference (user_id, channel, category, enabled) VALUES ($1,$2,$3,$4) " +
         "ON CONFLICT (user_id, channel, category) DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = now() " +

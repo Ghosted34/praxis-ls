@@ -126,7 +126,7 @@ async function test(section, key) {
  * in `value`, private key encrypted. Returns the public half only.
  */
 async function generateVapid({ subject, actor = null } = {}) {
-  // eslint-disable-next-line global-require
+   
   const webpush = require("web-push");
   const keys = webpush.generateVAPIDKeys();
   const subj = subject || "mailto:admin@praxisls.com";

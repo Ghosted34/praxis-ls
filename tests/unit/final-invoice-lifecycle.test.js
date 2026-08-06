@@ -36,7 +36,35 @@ function fakeClient(initial) {
       if (/^SELECT \* FROM invoice WHERE "?invoice_id"?/.test(s)) return { rows: st.invoice ? [st.invoice] : [] };
       if (/^UPDATE invoice SET /.test(s)) { const status = params[1]; st.invoice = { ...st.invoice, status, ...(status === "POSTED_LOCKED" ? { doc_number: params[2] } : {}) }; return { rows: [st.invoice] }; }
       if (/^SELECT advance_id/.test(s)) return { rows: [] };
-      return { rows: [] };
+
+      /**
+       * TC-Q3 — THROW on unrecognised SQL. Do not return `{ rows: [] }`.
+       *
+       * This line used to be `return { rows: [] }`, which made the fake
+       * incapable of noticing anything: a wrong WHERE clause, a dropped
+       * tenant/entity filter, a changed column list, or a query that was never
+       * issued at all, each arrived as "no rows" and the test carried on to
+       * assert something else. The comment eleven lines above is the proof — a
+       * real query-shape change (S20's identifier quoting) turned into "Invoice
+       * not found", and the fake said nothing.
+       *
+       * An empty result is a LEGITIMATE ANSWER to some queries and a SILENT
+       * FAILURE for the rest, and a catch-all cannot tell them apart. So the
+       * catch-all is gone: every query this service issues must be matched
+       * above, and adding one to the service means adding it here. That is the
+       * cost, and it is the point — it is what makes the fake disagree with a
+       * change instead of absorbing it.
+       *
+       * Adapted from tests/unit/wms-inventory.test.js, where writing a strict
+       * fake caught two genuine mismatches during authoring. This is still a
+       * fake and still cannot prove the SQL is CORRECT — only a real database
+       * does that (TC-C6, and the integration job now runs one). What it can do
+       * is stop being confidently wrong.
+       */
+      throw new Error(
+        `Unmatched SQL in fakeClient — the fake does not model this query, so any assertion after it is meaningless.\n`
+        + `If final_invoice.service issues this legitimately, add a branch for it above.\n\n  ${s.slice(0, 300)}`,
+      );
     },
   };
 }

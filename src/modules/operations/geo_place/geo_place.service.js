@@ -60,11 +60,11 @@ async function resolveMany(client, places, { geocodeMisses = true } = {}) {
     // of parallel requests is the fastest way to trip a free-tier rate limit.
     for (const key of misses) {
       const original = wanted.find((p) => keyOf.get(p) === key) || key;
-      // eslint-disable-next-line no-await-in-loop
+       
       const hit = await geoapify.forwardGeocode(original, { bias: DEFAULT_BIAS });
       if (!hit) continue;
       try {
-        // eslint-disable-next-line no-await-in-loop
+         
         const row = await repo.upsert(client, {
           queryKey: key,
           name: original,
@@ -82,7 +82,7 @@ async function resolveMany(client, places, { geocodeMisses = true } = {}) {
           // request inserted the same place first. Re-read rather than
           // synthesising a row — we need the real geo_place_id, and the winning
           // row may be a MANUAL correction whose coordinates differ from ours.
-          // eslint-disable-next-line no-await-in-loop
+           
           const [existing] = await repo.findByKeys(client, [key]);
           if (existing) byKey.set(key, existing);
         }

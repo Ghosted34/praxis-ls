@@ -26,7 +26,7 @@ async function resolveVapid() {
   let privateKey = null;
   let subject = null;
   try {
-    // eslint-disable-next-line global-require
+     
     const platformSettings = require("../../services/platform/settings.service");
     const r = await platformSettings.resolve("push", "vapid");
     if (r) {
@@ -52,7 +52,7 @@ async function getPublicKey() {
 async function configuredClient() {
   const v = await resolveVapid();
   if (!v.publicKey || !v.privateKey) return null;
-  // eslint-disable-next-line global-require
+   
   const webpush = require("web-push");
   webpush.setVapidDetails(v.subject, v.publicKey, v.privateKey);
   return webpush;

@@ -55,6 +55,32 @@ async function listActiveSessionIds(userId) {
   return redis.smembers(userSessionsKey(userId)).catch(() => null);
 }
 
+/**
+ * Is this session still in the index? THREE-VALUED, deliberately.
+ *
+ *   true  — indexed, definitely live
+ *   false — index reachable and this session is NOT in it
+ *   null  — index unreachable; caller must not conclude anything
+ *
+ * SEC-M1 needs this on every authenticated request, and the distinction between
+ * `false` and `null` is the whole safety of that. Redis here is a CACHE, not the
+ * record: `user_session.killed_at` in Postgres is the source of truth (see the
+ * header). A Redis restart, an eviction or a `FLUSHDB` empties this index while
+ * every one of those sessions is still perfectly valid — so treating "not found"
+ * as "revoked" would sign the entire tenant out the first time Redis blinked,
+ * which is a far worse failure than the 15-minute revocation lag it is meant to
+ * close. `false` therefore means "ask Postgres", not "reject".
+ */
+async function isSessionActive(sessionId) {
+  const redis = safeRedis();
+  if (!redis || !sessionId) return null;
+  try {
+    return (await redis.exists(sessionKey(sessionId))) === 1;
+  } catch {
+    return null;
+  }
+}
+
 /** Call on logout and on a remote kill. */
 async function removeSession(sessionId, userId) {
   const redis = safeRedis();
@@ -65,4 +91,4 @@ async function removeSession(sessionId, userId) {
   ]);
 }
 
-module.exports = { indexSession, listActiveSessionIds, removeSession };
+module.exports = { indexSession, listActiveSessionIds, removeSession, isSessionActive };

@@ -36,7 +36,7 @@ class ImapSmtpProvider {
   }
 
   _imapClient() {
-    // eslint-disable-next-line global-require
+     
     const { ImapFlow } = require("imapflow");
     const c = this.conn;
     return new ImapFlow({
@@ -49,7 +49,7 @@ class ImapSmtpProvider {
   }
 
   _smtpTransport() {
-    // eslint-disable-next-line global-require
+     
     const nodemailer = require("nodemailer");
     const c = this.conn;
     return nodemailer.createTransport({
@@ -62,7 +62,7 @@ class ImapSmtpProvider {
 
   /** Compose a message to a raw RFC822 buffer (no send) — reused for SMTP + APPEND. */
   async _composeRaw(mail) {
-    // eslint-disable-next-line global-require
+     
     const nodemailer = require("nodemailer");
     const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "\r\n" });
     const info = await composer.sendMail(mail);
@@ -153,7 +153,7 @@ class ImapSmtpProvider {
    * If uidvalidity changed, the mailbox re-numbered → full re-scan (last_uid=0).
    */
   async fetchSince(cursor) {
-    // eslint-disable-next-line global-require
+     
     const { simpleParser } = require("mailparser");
     const imap = this._imapClient();
     const messages = [];
@@ -185,7 +185,7 @@ class ImapSmtpProvider {
   }
 
   async getMessage(externalMessageId) {
-    // eslint-disable-next-line global-require
+     
     const { simpleParser } = require("mailparser");
     const imap = this._imapClient();
     let out = null;

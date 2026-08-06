@@ -1,0 +1,102 @@
+# SEC-M9 — something must watch for new advisories.
+#
+# The finding was three-part: known vulnerabilities present, the CI audit gate
+# non-blocking, and NOTHING tracking new advisories at all. TC-CI4 made the gate
+# block with a dated expiry. This is the third part: `npm audit` only tells you
+# about the tree as it is today, and only when someone runs it. Nothing was
+# watching upstream.
+#
+# WEEKLY, not daily, and grouped — deliberately. A bot that opens fifteen PRs a
+# week gets muted, and a muted bot is worse than none because it looks like
+# coverage. Grouping minor and patch updates into one PR per ecosystem keeps it
+# to something a person will actually read; majors come separately because they
+# need a decision (the `exceljs` major behind the current audit findings is
+# exactly that case).
+#
+# `open-pull-requests-limit: 3` for the same reason: a backlog that cannot be
+# cleared trains people to ignore the label.
+version: 2
+updates:
+  # Backend / root
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Douala
+    open-pull-requests-limit: 3
+    groups:
+      backend-minor-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "backend"]
+    commit-message:
+      # Matches the conventional-commit gate CI applies to PR titles (TC-R4),
+      # so Dependabot's own PRs pass it.
+      prefix: "chore"
+      include: scope
+
+  - package-ecosystem: npm
+    directory: "/client"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Douala
+    open-pull-requests-limit: 3
+    groups:
+      client-minor-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "frontend"]
+    commit-message:
+      prefix: "chore"
+      include: scope
+    ignore:
+      # Pinned as a pair — vitest 4 requires vite 6/7, and moving either alone
+      # breaks the other. See handoff §14. Bump them together, deliberately,
+      # alongside PERF-S8.
+      - dependency-name: "vite"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "vitest"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@vitest/ui"
+        update-types: ["version-update:semver-major"]
+
+  - package-ecosystem: npm
+    directory: "/platform-console"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Douala
+    open-pull-requests-limit: 2
+    groups:
+      console-minor-patch:
+        update-types: ["minor", "patch"]
+    labels: ["dependencies", "platform-console"]
+    commit-message:
+      prefix: "chore"
+      include: scope
+
+  # The Actions themselves. A compromised or abandoned action is a supply-chain
+  # path straight into a workflow that holds an SSH key to production (TC-D5).
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Africa/Douala
+    open-pull-requests-limit: 2
+    labels: ["dependencies", "ci"]
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 1
+    labels: ["dependencies", "docker"]
+    commit-message:
+      prefix: "chore"

@@ -367,7 +367,7 @@ async function migrateAllTenants() {
 
   for (const slug of slugs) {
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       results.push(await migrateTenant(slug));
     } catch (err) {
       logger.error({ err, slug }, "tenant migration failed — continuing with the rest of the fleet");
@@ -409,9 +409,9 @@ async function fleetSchemaStatus() {
   for (const slug of slugs) {
     const cli = m.client(m.tenantDbName(slug), { superuser: true });
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       await cli.connect();
-      // eslint-disable-next-line no-await-in-loop
+       
       const { rows } = await cli.query(
         `SELECT scope, COUNT(*)::int AS applied, MAX(filename) AS latest, MAX(applied_at) AS last_applied_at
            FROM public.schema_migration GROUP BY scope ORDER BY scope`,
@@ -429,7 +429,7 @@ async function fleetSchemaStatus() {
     } catch (err) {
       out.push({ slug, error: err.message });
     } finally {
-      // eslint-disable-next-line no-await-in-loop
+       
       await cli.end().catch(() => {});
     }
   }

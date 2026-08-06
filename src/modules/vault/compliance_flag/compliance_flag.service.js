@@ -20,12 +20,12 @@ async function run(client, { rules = null, actor = {} } = {}) {
   await client.query("BEGIN");
   try {
     for (const ruleKey of keys) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.clearOpenByRule(client, ruleKey);
-      // eslint-disable-next-line no-await-in-loop
+       
       const offenders = await repo.scan(client, ruleKey);
       for (const o of offenders) {
-        // eslint-disable-next-line no-await-in-loop
+         
         const flag = await repo.insertFlag(client, { rule_key: ruleKey, entity_ref: o.entity_ref, severity: severityOf(ruleKey), message: o.message });
         raised.push(flag);
       }

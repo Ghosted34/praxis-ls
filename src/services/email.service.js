@@ -45,7 +45,7 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
 }
 
 function transportFrom(cfg) {
-  // eslint-disable-next-line global-require
+   
   const nodemailer = require("nodemailer");
   return nodemailer.createTransport({
     host: cfg.smtp_host,

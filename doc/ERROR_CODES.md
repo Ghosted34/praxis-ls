@@ -41,7 +41,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
-| `AUTH_REQUIRED` | 401 | 12× | — |
+| `AUTH_REQUIRED` | 401 | 13× | — |
 | `BAD_ACTION` | 422 | 2× | — |
 | `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
 | `BAD_CODE` | 422 | 1× | — |
@@ -185,7 +185,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ORDER_LOCKED` | 422 | 1× | — |
 | `OUT_OF_GEOFENCE` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
-| `PERMISSION_DENIED` | 403 | 5× | — |
+| `PERMISSION_DENIED` | 403 | 6× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
 | `PLAN_IN_USE` | 409 | 1× | — |
 | `PORTAL_FORBIDDEN` | 403 | 1× | — |
@@ -211,7 +211,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
-| `SESSION_REVOKED` | 401 | 3× | — |
+| `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |

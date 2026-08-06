@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 731 |
-| Modules mounted | 100 |
+| Routes | 740 |
+| Modules mounted | 101 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 731 mounted routes, grouped by path prefix.
+All 740 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -257,6 +257,9 @@ All 731 mounted routes, grouped by path prefix.
 | PUT | `/api/tenant/branding/login` | — |
 | POST | `/api/tenant/branding/login/background` | — |
 | POST | `/api/tenant/branding/logo` | — |
+| GET | `/api/tenant/branding/pwa` | — |
+| PUT | `/api/tenant/branding/pwa` | — |
+| POST | `/api/tenant/branding/pwa/icon` | — |
 
 ### `tenant/campaigns`
 
@@ -752,6 +755,16 @@ All 731 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/margin-simulations/:id` | — |
 | POST | `/api/tenant/margin-simulations/preview` | — |
 
+### `tenant/me`
+
+| Method | Path | Body validated |
+|---|---|---|
+| DELETE | `/api/tenant/me/preferences/appearance` | — |
+| GET | `/api/tenant/me/preferences/appearance` | — |
+| PUT | `/api/tenant/me/preferences/appearance` | yes |
+| GET | `/api/tenant/me/preferences/shell` | — |
+| PUT | `/api/tenant/me/preferences/shell` | yes |
+
 ### `tenant/meetings`
 
 | Method | Path | Body validated |
@@ -876,6 +889,7 @@ All 731 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/permissions/:id` | — |
 | PUT | `/api/tenant/permissions/grant` | — |
 | GET | `/api/tenant/permissions/matrix` | — |
+| GET | `/api/tenant/permissions/mine` | — |
 
 ### `tenant/portal`
 

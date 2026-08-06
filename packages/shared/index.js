@@ -8,8 +8,12 @@ const common = require("./schemas/common");
 const finalInvoice = require("./schemas/final-invoice");
 const journalEntry = require("./schemas/journal-entry");
 const clientMaster = require("./schemas/client-master");
+const supplierMaster = require("./schemas/supplier-master");
+const partyCommon = require("./schemas/party-common");
+const partyConfig = require("./schemas/party-config");
 const ledger = require("./rules/ledger");
 const pwaDesign = require("./pwa-design");
+const countries = require("./data/countries");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
 //
@@ -25,6 +29,15 @@ exports.common = common;
 exports.finalInvoice = finalInvoice;
 exports.journalEntry = journalEntry;
 exports.clientMaster = clientMaster;
+exports.supplierMaster = supplierMaster;
+// Nested master-data resources shared by both masters (contacts, addresses,
+// banks, documents, registrations, beneficial owners).
+exports.partyCommon = partyCommon;
+// Per-tenant field-requirement policy applied on top of the shape schemas.
+exports.partyConfig = partyConfig;
+// Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
+// registration requirements) — the API, the seed and the client picker's source.
+exports.countries = countries;
 // Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
 // Zod refinement.
 exports.ledger = ledger;

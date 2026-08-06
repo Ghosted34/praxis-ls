@@ -157,6 +157,20 @@ export type Paged<T> = {
   limit: number | null;
   offset: number | null;
   hasMore: boolean;
+  /**
+   * The raw `meta` object from the response, or `null` when the server did
+   * not send one.
+   *
+   * The typed fields above (`total`, `limit`, `offset`, `hasMore`) cover what
+   * a paginated list wants; endpoints that need MORE meta — e.g.
+   * `/audit/my-feed` reports `window: '24h' | 'all_time'` so the widget can
+   * label its section head honestly — read it from here instead of every
+   * caller re-fetching the response.
+   *
+   * `unknown` on the values because different endpoints ship different meta
+   * shapes and this is the escape hatch, not a schema.
+   */
+  meta: Record<string, unknown> | null;
 };
 
 /**
@@ -223,6 +237,10 @@ export async function apiPaged<T = unknown>(path: string, opts: Opts = {}): Prom
     // equal the limit, and a pager that offers a next page that does not exist
     // is worse than no pager.
     hasMore: meta?.has_more === true,
+    // Escape hatch for endpoints whose meta carries fields beyond the four
+    // typed above (`/audit/my-feed` uses this for its `window` flag). See the
+    // `Paged<T>.meta` doc — this is intentionally raw, not schematised.
+    meta: (meta && typeof meta === "object") ? (meta as Record<string, unknown>) : null,
   };
 }
 

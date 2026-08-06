@@ -20,7 +20,16 @@ async function purge(c, { actor, softDeleteId, pin, ip }) {
     const e = new Error("accounting-connected records can never be purged — reverse instead");
     e.status = 422; throw e;
   }
-  await repo.recordPurge(c, { actorUserId: actor.user_id, entityRef: row.entity_ref, payload: row.payload_json, ip });
+  await repo.recordPurge(c, {
+    actorUserId: actor.user_id,
+    // Snapshot actor identity (0510) so the reader can render a card without a
+    // cross-schema join. `actor` is `req.user` from the controller.
+    actorName: actor.display_name || actor.email || null,
+    actorEmail: actor.email || null,
+    entityRef: row.entity_ref,
+    payload: row.payload_json,
+    ip,
+  });
   return { purged: true, entity_ref: row.entity_ref };
 }
 module.exports = { listPurgeable, purge };

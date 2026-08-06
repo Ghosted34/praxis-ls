@@ -133,6 +133,30 @@ async function completeReview(client, { id, completedBy }) {
   return rows[0] || null;
 }
 
+// Self-scoped ledger read for the Control Tower's "Recent activity" widget.
+//
+// Returns ONLY the fields the list card needs — the ledger's chunky payload
+// columns (`before_json`/`after_json`) and `ip` stay off the wire until the
+// user opens the detail modal, which fetches the full row via GET /audit/:id.
+// Keeping them out cuts the JSON payload by an order of magnitude on a page
+// where most rows are auth/RBAC (small) but a business write can have a full
+// entity snapshot in `after_json`.
+//
+// LIMIT is a cap (30 in practice — see the controller), not a page size:
+// paging happens in the controller after merging identity and tenant rows.
+async function myFeed(client, userId, cap) {
+  const { rows } = await client.query(
+    `SELECT ledger_id, created_at, action, module_key, entity_ref,
+            metadata, is_sensitive, actor_name_snapshot
+       FROM immutable_ledger
+      WHERE actor_user_id = $1
+      ORDER BY created_at DESC
+      LIMIT $2`,
+    [userId, cap],
+  );
+  return rows;
+}
+
 // ── Security-events read (4.2) — security-critical rows out of event_log ──
 async function listSecurityEvents(client, q = {}) {
   const limit = Math.min(Math.max(parseInt(q.limit, 10) || 50, 1), 200);
@@ -162,4 +186,5 @@ module.exports = {
   reinsertFromPayload,
   createReview, snapshotEntries, listReviews, getReview, listEntries, decideEntry, completeReview,
   listSecurityEvents,
+  myFeed,
 };

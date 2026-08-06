@@ -78,11 +78,110 @@ export function dateTimeFmt(d: string | Date | null | undefined): string {
   return dt.toLocaleString("en-GB", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
-/** Humanize an event/action key: "payroll.status_changed" → "Payroll status changed". */
+/**
+ * Humanize an event/action key.
+ *
+ * FOLDED INTO `audit-humanize.ts` (2026-08-06). The old implementation was a
+ * mechanical `"payroll.status_changed" → "Payroll status changed"`, which is
+ * what produced "Auth token refreshed · App user c2d39ee8" on every screen
+ * that rendered ledger rows. It now delegates to `humanize()`, so the
+ * Governance page's `humanizeEvent(action)` returns the same sentences the
+ * Control Tower widget does — one source of truth for how a ledger action is
+ * phrased.
+ *
+ * The signature stays permissive (`string | null | undefined`) because the
+ * existing callers pass raw column values off `useList` rows. `humanize`
+ * wants an `AuditFeedRow`, so we synthesise the minimum viable row from the
+ * key alone — the humaniser tolerates missing metadata and entity_ref (it
+ * falls back to the verb-only branch).
+ */
 export function humanizeEvent(key?: string | null): string {
   if (!key) return "Event";
-  const s = String(key).replace(/[._]+/g, " ").trim();
-  return s.charAt(0).toUpperCase() + s.slice(1);
+  // Local require rather than a top-level import to avoid a cycle: audit-humanize
+  // imports types from features/dashboard/use-my-audit-feed which itself imports
+  // from lib. A dynamic-shape row is enough — humanize reads only .action,
+  // .entity_ref and .metadata off it.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { humanize } = require("./audit-humanize") as typeof import("./audit-humanize");
+  const row = {
+    ledger_id: 0,
+    created_at: "",
+    action: String(key),
+    module_key: null,
+    entity_ref: null,
+    metadata: null,
+    is_sensitive: false,
+    actor_name_snapshot: null,
+  };
+  return humanize(row).text;
+}
+
+/**
+ * "just now", "12m ago", "3h ago", "2d ago" — relative time for a recent
+ * event. Falls back to `dateTimeFmt` past 30 days, so anything older reads as
+ * a concrete date rather than a lie like "45d ago".
+ *
+ * Rounds down (Math.floor): 59 seconds is "just now", not "1m ago". That is
+ * the natural read for a widget that revalidates every 60s — otherwise the
+ * label flickers on the boundary. Empty/malformed → em dash, same as the
+ * other formatters.
+ */
+export function fmtRelative(iso?: string | null): string {
+  if (!iso) return "—";
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return "—";
+  const diffMs = Date.now() - t;
+  if (diffMs < 60_000) return "just now";
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  if (days <= 30) return `${days}d ago`;
+  return dateTimeFmt(iso);
+}
+
+/**
+ * "MOD-69" → "Governance". Turns the MOD-xx codes the ledger stores into a
+ * human word for the "Area" line on the Recent activity card and detail
+ * modal. Anything unmapped falls back to the raw code so a new module lands
+ * in the reader as-is rather than as "Unknown".
+ *
+ * Coverage is the module keys visible in `src/shared/notifications/categories.js`
+ * — the same set that reaches the notification inbox. The Governance /
+ * Security cluster is spelled out explicitly because it makes up the bulk of
+ * a self-scoped feed (auth, RBAC, capability, session all point at MOD-69).
+ */
+const MODULE_LABEL: Record<string, string> = {
+  "MOD-01": "Your account",
+  "MOD-14": "Attendance",
+  "MOD-64": "Messaging",
+  "MOD-67": "Your account",
+  "MOD-69": "Governance",
+  "MOD-70": "Numbering",
+  "MOD-00A": "Your workspace",
+  "MOD-00B": "God Mode",
+};
+
+export function friendlyModule(moduleKey?: string | null): string {
+  if (!moduleKey) return "Activity";
+  const s = String(moduleKey).trim();
+  if (!s) return "Activity";
+  const upper = s.toUpperCase();
+  if (MODULE_LABEL[upper]) return MODULE_LABEL[upper];
+  // A domain-prefix mapping: "auth", "app_user", "permission" → Your account /
+  // Governance, so a legacy row that stored a bare domain instead of MOD-xx
+  // still reads sensibly.
+  const lower = s.toLowerCase();
+  if (lower.startsWith("auth") || lower === "app_user") return "Your account";
+  if (["permission", "role", "field_visibility", "capability", "audit_ledger", "session", "scope", "godmode"].includes(lower)) {
+    return "Governance";
+  }
+  if (lower.startsWith("comms") || lower === "channel") return "Messaging";
+  if (lower.startsWith("attendance")) return "Attendance";
+  // Anything else stays as-is — better a raw code the operator can google
+  // than a wrong label the humaniser fabricated.
+  return s;
 }
 
 /** Humanize an entity ref "type:id" → "Type <short-id>". UUIDs are shortened to

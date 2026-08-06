@@ -25,6 +25,12 @@ router.post("/auth/refresh", refreshLimiter, validate("refresh"), c.refresh);
 
 router.use(platformAuth);
 
+// Error Command Center (doc/PROMPT_ErrorMonitor_Module.md). Its own router
+// because the feature owns 18 routes across three capability tiers, and folding
+// them into this file would double its length. Mounted after platformAuth, so
+// every route inside already has req.platformUser + req.platformCaps.
+router.use("/", require("./errors/errors.routes"));
+
 router.get("/catalogue/modules", requireCap("catalogue.read"), c.listModules);
 router.get("/catalogue/features", requireCap("catalogue.read"), c.listFeatures);
 router.get("/catalogue/capabilities", requireCap("roles.read"), c.capsCatalogue);

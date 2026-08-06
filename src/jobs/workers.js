@@ -37,6 +37,8 @@ const PROCESSORS = [
   { name: "mail-sync-scheduler", concurrency: 1, handler: require("./handlers/mail-sync-scheduler") },
   { name: "mail-webhook-renew", concurrency: 2, handler: require("./handlers/mail-webhook-renew") },
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
+  // Error Command Center: 30-day retention purge + escalation rule evaluation.
+  { name: "error-maintenance", concurrency: 1, handler: require("./handlers/error-maintenance") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];
@@ -159,6 +161,31 @@ async function scheduleRecurring() {
   } else {
     await enqueue("mail-webhook-renew-scheduler", "tick", {}, { repeat: { every: renewEvery }, removeOnComplete: true, removeOnFail: 50 });
     logger.info({ every: renewEvery }, "mail webhook renew scheduler registered");
+  }
+
+  // Error Command Center (doc/PROMPT_ErrorMonitor_Module.md §2.2, §5.3).
+  //
+  // Retention runs on a CRON at 02:00 UTC rather than `repeat.every`, because
+  // the spec names a wall-clock time and an interval-based repeat drifts
+  // relative to it after every restart. Escalation runs on an interval, because
+  // what matters there is the gap between checks, not the time of day.
+  await enqueue("error-maintenance", "purge", {}, {
+    repeat: { pattern: "0 2 * * *", tz: "UTC" },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+  logger.info("error retention purge registered (02:00 UTC daily)");
+
+  const escalateEvery = config.ERROR_ESCALATION_INTERVAL_MS;
+  if (!escalateEvery || escalateEvery <= 0) {
+    logger.info("error escalation evaluator disabled (ERROR_ESCALATION_INTERVAL_MS=0)");
+  } else {
+    await enqueue("error-maintenance", "escalate", {}, {
+      repeat: { every: escalateEvery },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ every: escalateEvery }, "error escalation evaluator registered");
   }
 }
 

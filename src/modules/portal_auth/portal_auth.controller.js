@@ -38,7 +38,7 @@ module.exports = {
     const email = req.portal.user.email;
     const grants = {};
     for (const p of PORTALS) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const g = await req.tenantDb((c) => portal.checkAccess(c, { email, portal: p }));
       grants[p] = { allowed: g.allowed, client_id: g.grant ? g.grant.client_id : null, expires_at: g.grant ? g.grant.expires_at : null };
     }

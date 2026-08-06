@@ -132,6 +132,42 @@ function makeLimiter({ name, max, windowMs, keyGenerator }) {
   return limiter;
 }
 
+/**
+ * PERF S18 — the global ceiling. Nothing limited the API as a whole.
+ *
+ * Every existing limiter guards one authentication route (SEC-C3). Beyond
+ * those, any caller could issue unlimited requests: a runaway client loop, a
+ * scraper, or one tenant's integration retrying hard consumed the single
+ * Postgres, the single Redis and the single host that every OTHER tenant is
+ * served from. On a shared-nothing deployment that is one customer's problem;
+ * here it is everyone's, and there was no signal until the box fell over.
+ *
+ * KEYED BY TENANT FIRST, then IP. Keying on IP alone is wrong in both
+ * directions here: an office behind one NAT looks like a single abusive client,
+ * while a distributed integration for one tenant looks like a thousand innocent
+ * ones. The tenant slug is the unit of fairness, because the tenant is what the
+ * capacity is shared between. IP is the fallback before the Host resolves and
+ * for the platform surface.
+ *
+ * SET HIGH ON PURPOSE. This is a CIRCUIT BREAKER, not a quota — it exists to
+ * stop one caller taking the estate down, not to shape normal traffic. A busy
+ * screen fans out to a dozen calls, so a working day of heavy use must sit
+ * comfortably underneath it. A ceiling that trips on legitimate use gets raised
+ * in a panic during an incident, and then it is not a control any more.
+ * Deliberately generous, and worth revisiting with real numbers once
+ * `praxis_http_requests_total` has some history.
+ */
+const apiLimiter = makeLimiter({
+  name: "api-global",
+  windowMs: 60 * 1000,
+  max: Number(process.env.RATE_LIMIT_API_PER_MIN || 600),
+  keyGenerator: (req) => {
+    const tenant = req.tenant && req.tenant.slug;
+    if (tenant) return `tenant:${tenant}`;
+    return `ip:${req.ip}`;
+  },
+});
+
 /** True if an Express layer handle is one of our limiters. */
 function isRateLimiter(handle) {
   return Boolean(handle && handle.praxisRateLimit);
@@ -171,6 +207,7 @@ module.exports = {
   rateLimitStoreKind,
   makeLimiter,
   isRateLimiter,
+  apiLimiter,
   loginLimiter,
   totpLimiter,
   pinLimiter,

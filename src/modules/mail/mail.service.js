@@ -33,7 +33,7 @@ const OAUTH_STATE_TTL = "10m";
  *  scripts/handlers/unsafe schemes. Done once on ingest. */
 function cleanHtml(html) {
   if (!html) return null;
-  // eslint-disable-next-line global-require
+   
   const sanitize = require("sanitize-html");
   return sanitize(html, {
     allowedTags: sanitize.defaults.allowedTags.concat(["img"]),
@@ -210,11 +210,11 @@ async function persistAttachments(client, inboundId, list, ctx = {}) {
     try {
       const contentType = a.content_type || "application/octet-stream";
       const dataUrl = `data:${contentType};base64,${a.content.toString("base64")}`;
-      // eslint-disable-next-line no-await-in-loop
+       
       const doc = await documentVault.createDocument(client, {
         dataUrl, slug, entityRef: `email_inbound:${inboundId}`, docType: null, actor: { user_id: null },
       });
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.addAttachment(client, {
         email_inbound_id: inboundId, vault_id: doc.doc_id,
         filename: a.filename || null, content_type: contentType, size_bytes: a.content.length,
@@ -365,11 +365,11 @@ async function renewSubscriptions(client) {
   const results = [];
   for (const conn of due) {
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       const adapter = await resolveAdapter(client, conn);
-      // eslint-disable-next-line no-await-in-loop
+       
       const r = await adapter.renewSubscription(conn.push_subscription_id);
-      // eslint-disable-next-line no-await-in-loop
+       
       if (r && r.expiresAt) await repo.updateConnection(client, conn.email_connection_id, { push_expires_at: new Date(r.expiresAt) });
       results.push({ connection: conn.email_connection_id, ok: true });
     } catch (err) {
@@ -403,7 +403,7 @@ async function handleGraphNotification(client, body, ctx = {}) {
   const results = [];
   if (ids.size) {
     for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop
+       
       results.push(await syncConnection(client, id, ctx));
     }
   }

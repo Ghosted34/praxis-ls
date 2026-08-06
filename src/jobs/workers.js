@@ -138,7 +138,7 @@ async function scheduleRecurring() {
     logger.info("orchestration scheduler disabled (ORCHESTRATION_DISPATCH_INTERVAL_MS=0)");
     return;
   }
-  // eslint-disable-next-line global-require
+   
   const { enqueue } = require("./queue-producer");
   await enqueue("orchestration-scheduler", "tick", {}, { repeat: { every }, removeOnComplete: true, removeOnFail: 50 });
   logger.info({ every }, "orchestration scheduler registered");

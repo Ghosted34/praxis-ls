@@ -120,7 +120,7 @@ async function collectTenant(registry, meta) {
     await registry.withTenantConnection(meta, "live", async (client) => {
       for (const probe of PROBES) {
         try {
-          // eslint-disable-next-line no-await-in-loop
+           
           const { rows } = await client.query(probe.sql);
           for (const row of rows) {
             metrics.setGauge(
@@ -163,7 +163,7 @@ async function collectAll() {
   try {
     const tenants = await registry.listActiveTenants();
     for (const meta of tenants) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await collectTenant(registry, meta);
     }
     lastRun = new Date().toISOString();

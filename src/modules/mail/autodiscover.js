@@ -40,7 +40,7 @@ function probe(host, port, ms = 2500) {
 
 async function firstReachable(hosts, port) {
   for (const h of hosts) {
-    // eslint-disable-next-line no-await-in-loop
+     
     if (await probe(h, port)) return h;
   }
   return null;

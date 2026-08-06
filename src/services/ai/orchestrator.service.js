@@ -349,10 +349,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
         // the caller may hold no grant to see, so it is gated on the same terms
         // as a write — and the model gets the denial as tool output rather than
         // an exception, so it can tell the user why instead of the turn dying.
-        // eslint-disable-next-line no-await-in-loop
+         
         await actionAuthz.assertAllowed(client, user, def);
         const fn = registry[def.action_key];
-        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" }; // eslint-disable-line no-await-in-loop
+        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" };  
         content = JSON.stringify(out && out.data !== undefined ? out.data : out);
       } catch (err) {
         content = JSON.stringify({ error: err.message });
@@ -574,7 +574,7 @@ async function confirmBatch({ client, user, batchId, registry }) {
   for (const r of rows) {
     let res;
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       res = await confirmAction({ client, user, actionRunId: r.action_run_id, registry });
     } catch (err) {
       results.push({ action_run_id: r.action_run_id, ok: false, error: err.message });

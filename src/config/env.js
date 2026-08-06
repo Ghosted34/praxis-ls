@@ -145,6 +145,19 @@ const Schema = z.object({
   HOST_CACHE_MAX: int(5_000),
 
   REDIS_URL: z.string().default("redis://localhost:6379"),
+  /**
+   * SEC-L2. Consumed by docker-compose (`--requirepass`) and by the Redis
+   * healthcheck, not by this process — the client authenticates through the
+   * credentials embedded in REDIS_URL.
+   *
+   * Declared here anyway, and that is the point of declaring it:
+   * `scripts/check-env-template.js` reconciles `.env.example` against this
+   * schema in BOTH directions, so a variable documented in the template but
+   * absent here is reported as "setting it does nothing". Leaving it out would
+   * have made the template lie about a security control. (The check caught this
+   * exact omission when the variable was added.)
+   */
+  REDIS_PASSWORD: z.string().default(""),
 
   JWT_ACCESS_SECRET: z.string().default("__dev_access__"),
   JWT_REFRESH_SECRET: z.string().default("__dev_refresh__"),
@@ -268,6 +281,36 @@ const INSECURE_DEFAULTS = {
   JWT_REFRESH_SECRET: "__dev_refresh__",
   ENCRYPTION_KEY: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 };
+/**
+ * TC-E2 — NOT BROADENED, and the attempt is worth recording so the next person
+ * does not repeat it.
+ *
+ * The finding is that this guard keys solely on `NODE_ENV === "production"`,
+ * while the defaults it protects are published in this repo. The obvious fix is
+ * to add corroborating signals. Both candidates are wrong here:
+ *
+ *   APP_BASE_DOMAIN — defaults to "praxisls.com" (line 35), i.e. the DEFAULT is
+ *     already production-shaped. Tripping on "domain is not localhost" throws on
+ *     every developer machine, every unit test and every CI job, all of which
+ *     legitimately run on the dev secrets. Written, then caught before it
+ *     shipped by asking what the default actually is.
+ *
+ *   DB_HOST — is `postgres` in docker-compose, which is ALSO what production
+ *     uses, because it is a compose service name. So "host is not local" never
+ *     fires where it matters and does fire for a developer pointed at a remote
+ *     database. Exactly backwards.
+ *
+ * And the scenario the audit worried about is narrower than it reads: the
+ * Dockerfile sets `ENV NODE_ENV=production` on the runtime and worker stages, so
+ * `docker compose run --rm api node scripts/…` INHERITS it and is already
+ * guarded. The genuine residual is a process started outside Docker on the host
+ * with NODE_ENV unset — where the schema default is "development" (line 33).
+ *
+ * The real fix is therefore to stop having exploitable defaults at all
+ * (generate per-install secrets, or make these three required with no default),
+ * which is a behaviour change needing sign-off — not a cleverer sniff. Left as
+ * reported rather than shipping a guard that fires everywhere except production.
+ */
 if (parsed.data.NODE_ENV === "production") {
   const offenders = [];
   for (const [key, insecure] of Object.entries(INSECURE_DEFAULTS)) {

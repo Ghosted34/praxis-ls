@@ -31,8 +31,8 @@ async function syncTenant(slug) {
     const { rows } = await cli.query("SELECT 1 FROM information_schema.schemata WHERE schema_name = 'sandbox'");
     if (rows.length) schemas.push("sandbox");
     for (const schema of schemas) {
-      await cli.query(`SET search_path = ${schema}, public`); // eslint-disable-line no-await-in-loop
-      const r = await registrar.syncCatalogue(cli); // eslint-disable-line no-await-in-loop
+      await cli.query(`SET search_path = ${schema}, public`);  
+      const r = await registrar.syncCatalogue(cli);  
       console.warn(`[praxis-ai] tenant ${slug} (${schema}): ${r.upserts}/${r.total} catalogue actions synced`);
     }
   } finally {

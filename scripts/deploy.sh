@@ -114,8 +114,38 @@ if [ "${PRAXIS_DEPLOY_REEXEC:-0}" != "1" ]; then
   fi
   echo "   previous: $PREVIOUS_SHA"
 
-  echo "── pulling latest"
-  git pull --ff-only
+  # -------------------------------------------------------------------------
+  # TC-D7 — deploy a NAMED COMMIT, not "whatever main is when the script runs".
+  #
+  # `git pull --ff-only` made deployment identity a moving target: the commit
+  # whose CI turned green is not necessarily the commit that ships, and during
+  # an incident you could not deploy a specific commit at all — the
+  # workflow_dispatch path took no ref, so a manual run always shipped current
+  # main, which is the opposite of what you want when main is the problem.
+  #
+  # `DEPLOY_REF` (env or $1) pins it. Unset keeps the old behaviour — current
+  # main — so nothing about the automatic path changes.
+  #
+  # `git fetch` + `checkout --detach` rather than `pull`: a detached checkout of
+  # an explicit SHA cannot fast-forward into something else, and it fails
+  # cleanly on a dirty tree instead of half-applying. A hand-edited tracked file
+  # on the server used to make the next deploy die mid-script under `set -e`, at
+  # an arbitrary point, possibly after migrations had run.
+  # -------------------------------------------------------------------------
+  DEPLOY_REF="${DEPLOY_REF:-${1:-}}"
+  echo "── fetching"
+  git fetch --prune origin
+  if [ -n "$DEPLOY_REF" ]; then
+    echo "   pinned to: $DEPLOY_REF"
+    if ! git rev-parse --verify --quiet "${DEPLOY_REF}^{commit}" >/dev/null; then
+      echo "!! DEPLOY ABORTED — '$DEPLOY_REF' is not a commit this server knows about."
+      echo "   Nothing has been changed. Check the SHA, or push the branch first."
+      exit 1
+    fi
+    git checkout --detach "$DEPLOY_REF"
+  else
+    git checkout --detach origin/main
+  fi
 
   PULLED_SHA="$(git rev-parse HEAD)"
   if [ "$PULLED_SHA" != "$PREVIOUS_SHA" ]; then
@@ -123,6 +153,7 @@ if [ "${PRAXIS_DEPLOY_REEXEC:-0}" != "1" ]; then
   fi
   export PRAXIS_DEPLOY_REEXEC=1
   export PRAXIS_PREVIOUS_SHA="$PREVIOUS_SHA"
+  export DEPLOY_REF
   exec bash "$0" "$@"
 fi
 
@@ -135,6 +166,35 @@ BUILD_SHA="$(git rev-parse HEAD)"
 BUILD_TIME="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 echo "   deploying: $BUILD_SHA"
 announce "Deploy started on ${HOSTNAME_S} by ${DEPLOYER}: ${PREVIOUS_SHA:0:8} → ${BUILD_SHA:0:8}"
+
+# ---------------------------------------------------------------------------
+# TC-R3 — write down which commit deployed, when, by whom, and whether it
+# finished. Append-only.
+#
+# The deploy job never checked out the repository and never recorded a SHA; it
+# fired on CI completion and ran a script that pulled whatever `main` was at
+# execution time. Combined with CI having had no concurrency group (TC-D8, now
+# fixed), that was not even necessarily the SHA whose CI run triggered it. So
+# for any past deploy, "which commit did this deploy?" had no recorded answer —
+# only an inference from timestamps. Forty-four deploys, none of them
+# attributable.
+#
+# A line is written HERE, at the start, with status `started`, and rewritten at
+# the end with the outcome. Written at the start deliberately: a deploy that
+# dies halfway is exactly the one you need a record of, and a log that only
+# records successes is a log that is silent about every incident.
+# ---------------------------------------------------------------------------
+DEPLOY_LOG="$STATE_DIR/deploys.log"
+record_deploy() {
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BUILD_SHA" "$PREVIOUS_SHA" \
+    "${DEPLOYER:-unknown}" "${DEPLOY_REF:-main}" "$1" >> "$DEPLOY_LOG"
+}
+record_deploy "started"
+# `trap` so an abort anywhere below — a failed migration, a failed readiness
+# gate, `set -e` on any command — still leaves a record instead of a dangling
+# "started". Replaced by an explicit "succeeded" line at the end.
+trap 'rc=$?; if [ "$rc" -ne 0 ]; then record_deploy "failed(rc=$rc)"; fi' EXIT
 
 # ---------------------------------------------------------------------------
 # Database backup — BEFORE migrations.
@@ -228,6 +288,31 @@ for svc in api worker; do
   if [ -n "$img" ]; then docker tag "$img" "praxis-ls-$svc:$BUILD_SHA" || true; fi
 done
 
+# ---------------------------------------------------------------------------
+# TC-E1 — validate the ENVIRONMENT before touching any database.
+#
+# `src/config/env.js` parses the whole environment with Zod at require time and
+# refuses to boot in production on default JWT secrets, on identical access and
+# refresh secrets, or on an empty DB_PASSWORD. That guard is well built and is
+# the right control — the problem was purely WHEN it ran: at container start,
+# two steps below, AFTER migrations had already been applied to every tenant
+# database. A change introducing a required variable therefore got as far as
+# mutating all customer data before anything complained, and the only way out
+# was forward.
+#
+# Requiring env.js is the whole check: the parse and the production guard both
+# run on require. `--no-deps` so this does not start Postgres or Redis to answer
+# a question about a text file, and the freshly built image so it validates the
+# schema being deployed rather than the one currently running.
+# ---------------------------------------------------------------------------
+echo "── validating environment (before migrations)"
+if ! docker compose run --rm --no-deps api node -e "require('./src/config/env'); console.log('environment OK')"; then
+  echo "!! DEPLOY ABORTED — the environment is not valid for this build."
+  echo "   Nothing has been migrated. Fix .env on this host and re-run."
+  echo "   scripts/check-env-template.js lists what the schema requires."
+  exit 1
+fi
+
 echo "── running migrations (platform + all tenants)"
 docker compose run --rm migrate
 
@@ -236,6 +321,26 @@ echo "── syncing AI action catalogue (all tenants)"
 # about every read + vetted write. Idempotent upsert by action_key; without this the
 # catalogue drifts and the copilot only "knows" whatever was last synced by hand.
 docker compose run --rm api node scripts/ai/sync-actions.js --all
+
+# ---------------------------------------------------------------------------
+# SEC-L1 — make the bind mounts writable by the unprivileged container user.
+#
+# The runtime and worker images now run as `node` (uid 1000) instead of root.
+# A bind-mounted host directory keeps its host ownership inside the container,
+# so without this the app starts cleanly and then fails its FIRST WRITE — a
+# rendered PDF, an upload, a log line — at runtime rather than at boot. That is
+# the worst shape of failure: a green deploy that breaks on the first user.
+#
+# Idempotent, and the first run after this ships does the one-off repair of
+# files an earlier root container created. `|| true` because a host whose
+# directories are already correct but not root-owned (an unprivileged deploy
+# user) must not have the deploy aborted by a chown it does not need.
+# ---------------------------------------------------------------------------
+echo "── ensuring bind-mount ownership for the non-root container user"
+mkdir -p ./media ./uploads ./logs ./data
+chown -R 1000:1000 ./media ./uploads ./logs ./data 2>/dev/null || \
+  sudo chown -R 1000:1000 ./media ./uploads ./logs ./data 2>/dev/null || \
+  echo "   ! could not chown bind mounts — if the API cannot write, run: sudo chown -R 1000:1000 ./media ./uploads ./logs ./data"
 
 echo "── rolling api-standby"
 docker compose up -d --no-deps --wait api-standby
@@ -285,8 +390,45 @@ if [ "$READY" -ne 1 ]; then
     echo "       docker compose logs --tail=50 api"
   fi
   echo
-  echo "   Roll back:  bash scripts/rollback.sh $PREVIOUS_SHA"
   echo "   Backup:     $(cat "$STATE_DIR/last-backup" 2>/dev/null || echo 'none taken')"
+
+  # -------------------------------------------------------------------------
+  # OBS-I4 — AUTO-ROLLBACK, and the reason it is opt-in.
+  #
+  # A failed readiness check left the new, non-serving build in place and
+  # printed a command for a human to run. Between the failure and that human
+  # reading it, the site is down — and `deploy.sh` runs unattended from CI, so
+  # "someone will see the log" is not a control.
+  #
+  # WHY `AUTO_ROLLBACK=1` RATHER THAN ALWAYS. Migrations have already run by
+  # this point, and this codebase has no down-migrations (DI-3.5: new files
+  # carry a `-- DOWN` block, the existing 99 do not). Reverting the CODE under a
+  # schema that has moved forward is safe for an additive migration and is NOT
+  # safe for anything else — an automatic revert could turn a broken deploy into
+  # a corrupted one. That is a judgement about the specific change, so the
+  # operator makes it once, in the deploy environment, rather than the script
+  # guessing every time.
+  #
+  # Default OFF preserves today's behaviour exactly. Turn it on for a period
+  # when you know the migrations in flight are additive.
+  # -------------------------------------------------------------------------
+  if [ "${AUTO_ROLLBACK:-0}" = "1" ] && [ "$PREVIOUS_SHA" != "unknown" ] && [ -x scripts/rollback.sh ]; then
+    echo "   AUTO_ROLLBACK=1 → reverting to $PREVIOUS_SHA"
+    announce "DEPLOY FAILED READINESS on ${HOSTNAME_S}: ${BUILD_SHA:0:8} cannot serve — AUTO-ROLLING BACK to ${PREVIOUS_SHA:0:8}"
+    if bash scripts/rollback.sh "$PREVIOUS_SHA"; then
+      record_deploy "failed-rolled-back"
+      trap - EXIT
+      announce "Rollback ✓ ${HOSTNAME_S}: serving ${PREVIOUS_SHA:0:8} again. The SCHEMA is still at ${BUILD_SHA:0:8} — check the migrations before redeploying."
+      echo "!! rolled back to $PREVIOUS_SHA — note the database schema was NOT reverted"
+      exit 1
+    fi
+    announce "ROLLBACK FAILED on ${HOSTNAME_S}. Manual intervention required: ${BUILD_SHA:0:8} is live and not serving."
+    echo "!! rollback itself failed — manual intervention required"
+    exit 1
+  fi
+
+  echo "   Roll back:  bash scripts/rollback.sh $PREVIOUS_SHA"
+  echo "               (set AUTO_ROLLBACK=1 to have this happen automatically)"
   announce "DEPLOY FAILED READINESS on ${HOSTNAME_S}: ${BUILD_SHA:0:8} is running but cannot serve. Roll back: bash scripts/rollback.sh ${PREVIOUS_SHA:0:8}"
   exit 1
 fi
@@ -319,7 +461,14 @@ done
 
 announce "Deploy ✓ ${HOSTNAME_S}: now running ${BUILD_SHA:0:8} (was ${PREVIOUS_SHA:0:8}), by ${DEPLOYER}"
 
+# TC-R3 — close the record. The EXIT trap only fires on a non-zero status, so a
+# success needs saying explicitly; then disarm it so the trap cannot append a
+# second, contradictory line during normal shutdown.
+record_deploy "succeeded"
+trap - EXIT
+
 echo
 echo "deploy ✓  ${BUILD_SHA:0:8}"
 echo "   rollback:  bash scripts/rollback.sh $PREVIOUS_SHA"
 echo "   backup:    $(cat "$STATE_DIR/last-backup" 2>/dev/null || echo 'none')"
+echo "   recorded:  $DEPLOY_LOG"

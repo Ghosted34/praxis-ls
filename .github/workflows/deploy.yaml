@@ -18,7 +18,21 @@ on:
     workflows: ["CI"]
     types: [completed]
     branches: [main]
-  workflow_dispatch: {}
+  workflow_dispatch:
+    # TC-D7 — a manual deploy can now name a commit.
+    #
+    # The dispatch path took no input, so it always shipped whatever `main` was
+    # at execution time. That is precisely backwards during an incident: the
+    # moment you most need to deploy a specific known-good commit is the moment
+    # `main` is the thing that broke.
+    #
+    # Blank keeps the existing behaviour (current `main`), so the automatic path
+    # is unchanged.
+    inputs:
+      ref:
+        description: "Commit SHA or branch to deploy (blank = current main)"
+        required: false
+        type: string
 
 concurrency:
   group: deploy-production
@@ -27,6 +41,29 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # TC-D5, the half that lives in this repo.
+    #
+    # The finding: this job holds a shell on the production host, authenticated
+    # by one long-lived private key, with no GitHub Environment, no required
+    # approval and no rotation policy. `workflow_dispatch` is open to anyone
+    # with write access. The workflow's own docs give the example
+    # `DEPLOY_USER  e.g. root` — if that is literal, every CI run has
+    # unrestricted shell on production, and a compromised Action or a malicious
+    # dependency in any workflow step is a host compromise rather than a bad
+    # deploy.
+    #
+    # Naming an Environment is the part that is code. It gives the secrets a
+    # scope, gives you an approval gate and a deployment history, and lets the
+    # key be rotated in one place. **Create it in Settings → Environments →
+    # `production`** and move DEPLOY_HOST / DEPLOY_USER / DEPLOY_SSH_KEY into
+    # it; until it exists, GitHub falls back to repository secrets and this line
+    # is inert, so it is safe to land ahead of the settings change.
+    #
+    # THE REST IS NOT CODE and is not closed by this line — see
+    # doc/DEPLOYMENT.md: create an unprivileged `deploy` user, give it docker
+    # group membership plus only the sudo entries deploy.sh needs, restrict the
+    # authorized_keys entry (`from=`, `command=`), and set a rotation date.
+    environment: production
     if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
     steps:
       # TC-CI1, the half that lives in code.
@@ -80,7 +117,18 @@ jobs:
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           command_timeout: 30m
+          # TC-D7 / TC-R3. `DEPLOY_REF` pins the commit; blank means current main.
+          #
+          # On the AUTOMATIC path it is `workflow_run.head_sha` — the exact commit
+          # whose CI turned green. Previously the server pulled whatever `main`
+          # was when the script happened to run, so with two pushes in quick
+          # succession the deployed SHA could differ from the tested one, and
+          # nothing recorded either. Now the thing that was tested is the thing
+          # that ships, by name.
+          envs: DEPLOY_REF
           script: |
             set -e
             cd ~/praxis-ls
             bash scripts/deploy.sh
+        env:
+          DEPLOY_REF: ${{ github.event.inputs.ref || github.event.workflow_run.head_sha || '' }}

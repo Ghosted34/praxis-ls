@@ -28,7 +28,7 @@ async function replaceLines(client, invoiceId, lines) {
   await repo.deleteLines(client, invoiceId);
   for (let i = 0; i < lines.length; i += 1) {
     const ln = lines[i];
-    // eslint-disable-next-line no-await-in-loop
+     
     await repo.insertLine(client, {
       invoice_id: invoiceId, dictionary_item_id: ln.dictionary_item_id,
       label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_debours: ln.is_debours === true,
@@ -143,7 +143,7 @@ async function postCore(client, { invoice, econLines, entryDate, sourceDocRef, a
       validate: true, actor, ip,
     });
     for (const alloc of advanceApplied.allocations) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.addAdvanceApplied(client, alloc.advance_id, alloc.amount);
     }
   }

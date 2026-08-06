@@ -19,7 +19,7 @@ async function publishTemplate(client, { serviceTypeId, stages, actor = {} }) {
     const tpl = await repo.insertTemplate(client, { service_type_id: serviceTypeId, version, is_active: true });
     for (let i = 0; i < stages.length; i += 1) {
       const s = stages[i];
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.insertStage(client, { milestone_template_id: tpl.milestone_template_id, stage_seq: typeof s.stage_seq === "number" ? s.stage_seq : i + 1, code: s.code, label_fr: s.label_fr, label_en: s.label_en || null, default_offset_days: s.default_offset_days || 0 });
     }
     await repo.deactivateOthers(client, serviceTypeId, tpl.milestone_template_id);
@@ -41,7 +41,7 @@ async function instantiate(client, { dossierId, serviceTypeId, baseDate, actor =
   try {
     const out = [];
     for (const s of stageRows) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const inst = await repo.insertInstance(client, {
         dossier_id: dossierId, stage_seq: s.stage_seq, code: s.code, label: s.label_fr,
         due_date: computeDue(base, s.default_offset_days), status: "PENDING",

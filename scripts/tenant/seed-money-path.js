@@ -293,7 +293,7 @@ async function main() {
     let target = null;
     let pc = null;
     for (const a of assets) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const detail = await call("GET", `/assets/${a.asset_id}`);
       const sched = (detail.schedule || []).find((s) => !s.posted);
       if (sched) {

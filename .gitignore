@@ -90,3 +90,4 @@ client/vite.config.js
 client/vite.config.d.ts
 platform-console/vite.config.js
 platform-console/vite.config.d.ts
+test-failures.txt

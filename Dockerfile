@@ -80,6 +80,27 @@ ENV BUILD_SHA=$BUILD_SHA \
 LABEL org.opencontainers.image.revision=$BUILD_SHA \
       org.opencontainers.image.created=$BUILD_TIME
 EXPOSE 8080
+# SEC-L1 — do not run the application as root.
+#
+# Both stages ran as root, and compose bind-mounts ./data (the document vault),
+# ./media, ./uploads and ./logs into them. A single RCE-class bug in a
+# root-owned process therefore reached the host filesystem with full rights over
+# every file it could see, and the vault holds contracts, payslips and ID
+# documents. Dropping to an unprivileged user does not fix such a bug; it caps
+# what one costs.
+#
+# `node` (uid 1000) already exists in node:*-alpine, so there is no user to
+# create. /app is chowned so anything the image itself writes stays writable.
+#
+# THE BIND MOUNTS ARE THE OPERATIONAL HALF, and this is the part that breaks a
+# deployment if it is skipped: a host directory owned by root stays root-owned
+# inside the container, so the app would start and then fail its first write —
+# a rendered PDF, a log line — at runtime rather than at boot. scripts/deploy.sh
+# now chowns those four paths to 1000:1000 before bringing containers up. An
+# existing deployment's files are root-owned today, so that first run does the
+# one-off repair.
+RUN chown -R node:node /app
+USER node
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "src/server.js"]
 
@@ -88,5 +109,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 ENV NODE_ENV=production
 ENV ENABLE_WORKERS=true
+# SEC-L1 — same treatment as `runtime`; the worker mounts the same ./data.
+RUN chown -R node:node /app
+USER node
 ENTRYPOINT ["/sbin/tini", "--"]
 CMD ["node", "src/jobs/workers.js"]

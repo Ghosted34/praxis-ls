@@ -1,0 +1,70 @@
+# SEC-M9 — static analysis. There was none.
+#
+# The audit's finding: dependency vulnerabilities present, the audit gate
+# non-blocking, no SAST, no Dependabot. TC-CI4 fixed the gate, `.github/
+# dependabot.yml` watches upstream, and this is the missing third leg — nothing
+# looked at THIS repository's own code for injection, path traversal, unsafe
+# deserialisation or hard-coded credentials.
+#
+# WHY IT MATTERS HERE SPECIFICALLY. SEC-H3 was request-body keys becoming SQL
+# column identifiers — a real injection reachable from a tenant-admin grant,
+# found by a human reading `query-helpers.js`. CodeQL's `js/sql-injection` query
+# is built for exactly that shape. The class is not hypothetical in this
+# codebase; it has already happened once.
+#
+# SEPARATE WORKFLOW, not a step in ci.yaml: CodeQL needs `security-events:
+# write`, and widening the permissions of the workflow that also builds and
+# tests is the wrong trade. It also runs on a schedule, which a PR-triggered job
+# cannot do — new queries ship regularly and find things in code that has not
+# changed.
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, offset from the hour: CodeQL's own docs note that scheduled jobs
+    # on the hour queue behind everyone else's.
+    - cron: "23 5 * * 1"
+
+# Do not cancel a main run (same reasoning as ci.yaml): the security tab's
+# history is the record, and a cancelled run leaves a hole in it.
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  analyze:
+    name: Analyze JavaScript/TypeScript
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      # Least privilege, spelled out rather than inherited.
+      actions: read
+      contents: read
+      security-events: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Initialise CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript-typescript
+          # `security-extended` over the default `security`: the default set is
+          # tuned to minimise false positives on any repository, and this one
+          # has a demonstrated appetite for the injection class (SEC-H3). The
+          # extra noise is worth it on a codebase that handles other people's
+          # money and PII. Narrow it if the signal-to-noise proves bad — but
+          # narrow it deliberately, with a note, rather than by deleting the job.
+          queries: security-extended
+
+      # No build step. The backend is plain CommonJS and both frontends are
+      # bundled by Vite; CodeQL analyses JS/TS from source, and a build here
+      # would add minutes and a failure mode without adding coverage.
+      - name: Analyse
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:javascript-typescript"

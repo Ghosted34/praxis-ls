@@ -35,6 +35,7 @@ const {
   countryCode,
   optionalDate,
 } = require("./common");
+const partyCommon = require("./party-common");
 
 /**
  * Whole days. `z.number().int()` rejects `30.5`, but a form sends a STRING, so
@@ -88,6 +89,14 @@ const base = {
   advance_required_percent: percent,
   kyc_docs: z.array(z.any()).optional(),
   is_withholding_agent: z.boolean().optional(),
+  // Country-first form blocks (PR3-B §2). The service pulls these OUT of the
+  // flat payload and writes them as their own rows in the same transaction:
+  // `registrations` → party_registration (+ OHADA NIU/RCCM mirrored onto the
+  // master), `primary_contact` → client_contact, `primary_address` →
+  // client_address. Optional so the plain flat create still works.
+  registrations: z.array(partyCommon.registrationCreate).optional(),
+  primary_contact: partyCommon.contactCreate.optional(),
+  primary_address: partyCommon.addressCreate.optional(),
 };
 
 const create = z.object(base);

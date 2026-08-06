@@ -9,20 +9,25 @@ const events = require("./supplier_master.events");
 const numbering = require("../../../services/documents/numbering.service");
 const masterConfig = require("../master_config/master_config.service");
 const lifecycle = require("../party-lifecycle.service");
+const partyWrite = require("../_shared/party-write.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 async function create(client, { data, actor = {} }) {
+  const { registrations, primary_contact, primary_address, ...masterData } = data;
   await client.query("BEGIN");
   try {
-    await masterConfig.enforceRequired(client, "SUPPLIER", data);
-    const payload = { registration_status: "DRAFT", ...data };
+    partyWrite.validateRegistrations({ registrations, country: masterData.country_code, kind: "supplier", category: null });
+    Object.assign(masterData, partyWrite.niuRccmMirror(registrations), { name_norm: partyWrite.normalizeName(masterData) });
+    await masterConfig.enforceRequired(client, "SUPPLIER", masterData);
+    const payload = { registration_status: "DRAFT", ...masterData };
     let ref = payload.ref || null;
     if (!ref && payload.entity_id) {
       const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId: payload.entity_id, date: new Date().toISOString().slice(0, 10) });
       ref = alloc.number;
     }
     const row = await repo.insert(client, { ...payload, ref });
+    await partyWrite.writeChildren(client, { kind: "supplier", partyId: row.supplier_id, registrations, primary_contact, primary_address });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "supplier:" + row.supplier_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "supplier:" + row.supplier_id, after: row });
     await client.query("COMMIT");
@@ -36,9 +41,19 @@ async function create(client, { data, actor = {} }) {
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Supplier not found", 404);
+  const masterPatch = { ...patch };
+  const { registrations } = masterPatch;
+  delete masterPatch.registrations; delete masterPatch.primary_contact; delete masterPatch.primary_address;
+  if (registrations) {
+    partyWrite.validateRegistrations({ registrations, country: masterPatch.country_code ?? before.country_code, kind: "supplier", category: null });
+    Object.assign(masterPatch, partyWrite.niuRccmMirror(registrations));
+  }
+  if (masterPatch.name !== undefined || masterPatch.legal_name !== undefined) {
+    masterPatch.name_norm = partyWrite.normalizeName({ name: masterPatch.name ?? before.name, legal_name: masterPatch.legal_name ?? before.legal_name });
+  }
   await client.query("BEGIN");
   try {
-    const row = await repo.update(client, id, patch);
+    const row = await repo.update(client, id, masterPatch);
     if (row.registration_status === "ACTIVE" && !row.coa_aux_account) {
       await lifecycle.onActivate(client, { kind: "supplier", partyId: id });
     }

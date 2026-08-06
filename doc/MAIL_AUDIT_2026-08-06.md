@@ -85,17 +85,24 @@ formats as `"Praxis" <no-reply@praxisls.com>` when `from_name` is set.
 **G-5 · IMAP inbound sync polls only INBOX.** Other folders aren't pulled for
 inbound; outbound is recorded locally (`direction='OUT'`) and the SMTP adapter
 APPENDs to Sent, so the thread view is complete — but pre-existing mail in other
-folders won't appear. Limitation, not a bug.
+folders won't appear. **Decision: deferred.** This is a scope expansion (multi-
+folder sync has tradeoffs), not a defect, so it's kept as a documented limitation
+and a follow-up rather than crammed into this PR.
 
-**G-6 · Webhook authenticity is not verified.** Microsoft/Google webhook routes are
-pre-auth and only shape-validated (the validator explicitly flags this). A forged
-POST triggers a sync; impact is limited (sync is idempotent/deduped) but it's a
-spurious-sync / minor DoS surface. `clientState` / Pub/Sub `subscription` fields are
-available for verification but unused.
+**G-6 · Webhook authenticity.** ✅ **Mitigated.** Full cryptographic signing isn't
+available by default (Microsoft/Google don't sign change notifications unless you
+opt in to provider-side encryption), but two cheap checks are now in place:
+Microsoft Graph — a notification's `clientState` must resolve to a real, CONNECTED
+mailbox in the tenant (forged/stale ids are skipped, not synced); Gmail Pub/Sub — a
+push whose `subscription` doesn't match the configured `GOOGLE_PUBSUB_TOPIC` is
+ignored before any decode/lookup. Tested in `mail-webhook-auth.test.js`. For
+stronger guarantees, opt into Microsoft Graph notification encryption / a Gmail
+push verification token as a later hardening step.
 
-**G-7 · Realtime mail bridge retry is fire-and-forget.** `attachMailBridge` retries
-20×/500ms then gives up; if Redis is slow at boot, `mail:new` live refresh stops
-(polling still covers sync). Cosmetic.
+**G-7 · Realtime mail bridge retry.** ✅ **Fixed.** `attachMailBridge` now retries
+indefinitely with capped backoff (500ms → 16s) instead of giving up after 20 tries,
+so `mail:new` live refresh resumes if Redis comes up shortly after boot. Polling
+remains the safety net regardless.
 
 ---
 
@@ -200,8 +207,11 @@ MAIL_FALLBACK_FROM_NAME=Praxis
 
 ## 4. Recommendation
 
-All functional gaps (G-1…G-4, G-8) are **fixed and tested** in this branch;
-G-5…G-7 remain documented, non-blocking notes. Before shipping the PR, the **3.0
-Cloudflare/DNS** items (especially `praxisls.com` SPF/DKIM/DMARC for the fallback
-relay) and the **3.1 platform config** (set the fallback sender + click Test) are the
-hard prerequisites for the fallback to be useful in production.
+All functional/security gaps are now **fixed and tested**: G-1 (send log), G-2
+(compose), G-3 (read-state propagation), G-4 (SPF override guard), G-6 (webhook
+authenticity), G-7 (realtime bridge retry), G-8 (fallback display name). G-5
+(multi-folder IMAP sync) is the only one left and is **intentionally deferred** as
+scope, not a defect. Before shipping the PR, the **3.0 Cloudflare/DNS** items
+(especially `praxisls.com` SPF/DKIM/DMARC for the fallback relay) and the **3.1
+platform config** (set the fallback sender + click Test) are the hard prerequisites
+for the fallback to be useful in production.

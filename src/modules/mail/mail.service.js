@@ -383,6 +383,14 @@ async function renewSubscriptions(client) {
 async function handleGmailNotification(client, body) {
   const dataB64 = body && body.message && body.message.data;
   if (!dataB64) return { ignored: true };
+  // G-6: a Gmail Pub/Sub push carries the `subscription` we watched. Only accept
+  // pushes from our configured topic — a forged/spurious push is dropped before
+  // any decode/lookup. (The subscription is the deployment's GOOGLE_PUBSUB_TOPIC
+  // with a Pub/Sub subscription id suffix, so a prefix match on the project/topic.)
+  const subscription = (body && body.subscription) || "";
+  if (config.GOOGLE_PUBSUB_TOPIC && subscription && !subscription.includes(config.GOOGLE_PUBSUB_TOPIC)) {
+    return { ignored: true };
+  }
   let payload;
   try { payload = JSON.parse(Buffer.from(dataB64, "base64").toString("utf8")); } catch { return { ignored: true }; }
   const conn = await repo.findByAddress(client, payload.emailAddress, "google_gmail");
@@ -403,8 +411,15 @@ async function handleGraphNotification(client, body, ctx = {}) {
   const results = [];
   if (ids.size) {
     for (const id of ids) {
-       
-      results.push(await syncConnection(client, id, ctx));
+      // G-6: `clientState` is the connection id we set at subscribe time. Only
+      // sync ids that resolve to a real, connected mailbox in THIS tenant — a
+      // forged clientState (or a stale one) is skipped instead of triggering
+      // work. The per-tenant DB scopes the lookup, so this also proves the
+      // connection belongs here. Best-effort: a bad id never aborts the batch.
+      let conn = null;
+      try { conn = await repo.getConnection(client, id); } catch { /* skip */ }
+      if (!conn || conn.status !== "CONNECTED") continue;
+      results.push(await syncConnection(client, conn.email_connection_id, ctx));
     }
   }
   return { notified: notes.length, synced: results.length, results };

@@ -55,7 +55,7 @@ function requireDocTypePermission(action) {
 
     const allowed = await req.identityDb(async (c) => {
       for (const moduleKey of [owning, M]) {
-        // eslint-disable-next-line no-await-in-loop
+         
         const grants = await identityCache.getGrants(c, { role_ids: roleIds, module: moduleKey });
         if (grants.some((g) => g[column] === true)) return true;
       }

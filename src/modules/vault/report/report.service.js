@@ -128,7 +128,7 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
   for (const sr of due) {
     let ok = true;
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       const out = await run(client, { reportKey: sr.report_key, params: sr.params || {} });
       const html = "<h1>" + sr.name + "</h1><pre>" + JSON.stringify(out.data, null, 2) + "</pre>";
       // Render each requested spreadsheet format and attach it (base64, so the job
@@ -137,13 +137,13 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
       const attachments = [];
       for (const fmt of Array.isArray(sr.formats) ? sr.formats : []) {
         if (fmt !== "csv" && fmt !== "xlsx") continue;
-        // eslint-disable-next-line no-await-in-loop
+         
         const file = await reportExport.toExport(sr.report_key, out.data, fmt);
         attachments.push({ filename: `${sr.name}.${file.extension}`, content: file.buffer.toString("base64"), encoding: "base64", contentType: file.contentType });
       }
       if (tenantMeta && Array.isArray(sr.recipients)) {
         for (const to of sr.recipients) {
-          // eslint-disable-next-line no-await-in-loop
+           
           await enqueue("email", "scheduled-report", { tenantMeta, env, to, subject: sr.name, html, attachments: attachments.length ? attachments : undefined, purpose: "reports", moduleKey: events.MODULE });
         }
       }
@@ -151,9 +151,9 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
       ok = false;
     }
     const next = sr.cadence === "on_event" ? null : nextRunAt(sr.cadence, new Date());
-    // eslint-disable-next-line no-await-in-loop
+     
     await repo.markScheduledRan(client, sr.scheduled_report_id, next);
-    // eslint-disable-next-line no-await-in-loop
+     
     await audit(client, { actorUserId: actor.user_id || null, action: events.SCHEDULE_RAN, moduleKey: events.MODULE, entityRef: "scheduled_report:" + sr.scheduled_report_id, after: { ok, next_run_at: next } });
     results.push({ scheduled_report_id: sr.scheduled_report_id, ok, next_run_at: next });
   }

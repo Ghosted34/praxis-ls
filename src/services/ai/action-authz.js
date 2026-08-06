@@ -148,7 +148,7 @@ async function filterAllowed(client, user, defs) {
   const out = [];
   for (const def of defs) {
     try {
-      // eslint-disable-next-line no-await-in-loop
+       
       await assertAllowed(client, user, def);
       out.push(def);
     } catch {

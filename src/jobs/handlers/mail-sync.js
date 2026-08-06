@@ -18,7 +18,7 @@ module.exports = async function mailSync(job) {
     const conns = await repo.listSyncable(c);
     const results = [];
     for (const conn of conns) {
-      // eslint-disable-next-line no-await-in-loop
+       
       results.push(await mail.syncConnection(c, conn.email_connection_id, { slug: tenantMeta.slug }));
     }
     return { connections: conns.length, results };

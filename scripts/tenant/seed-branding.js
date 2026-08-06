@@ -101,7 +101,7 @@ const LOGIN = {
       const total = Object.keys(entries).length + Object.keys(LOGIN).length;
       for (const [section, kv] of sections) {
         for (const [key, value] of Object.entries(kv)) {
-          // eslint-disable-next-line no-await-in-loop
+           
           const res = await cli.query(
             force
               ? `INSERT INTO setting (section, key, value)

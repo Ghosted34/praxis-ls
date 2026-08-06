@@ -39,7 +39,7 @@ module.exports = {
     const signalled = [];
     for (const { dossier_id } of dossiers) {
       // Outstanding across this dossier's posted FINAL invoices.
-      // eslint-disable-next-line no-await-in-loop
+       
       const out = await client.query(
         "SELECT COUNT(*)::int AS n, " +
           "COALESCE(SUM(i.total_ttc - COALESCE(a.alloc, 0)), 0) AS outstanding " +
@@ -52,14 +52,14 @@ module.exports = {
       if (!row || row.n === 0) continue; // no billed invoices → nothing to "collect"
       if (Number(row.outstanding) > 0) continue; // still owed
 
-      // eslint-disable-next-line no-await-in-loop
+       
       const already = await client.query(
         "SELECT 1 FROM event_log WHERE event_type_key = 'dossier.fully_collected' AND entity_ref = $1 LIMIT 1",
         ["dossier:" + dossier_id],
       );
       if (already.rows.length) continue;
 
-      // eslint-disable-next-line no-await-in-loop
+       
       await emitEvent(client, {
         eventTypeKey: "dossier.fully_collected",
         moduleKey: "MOD-29",

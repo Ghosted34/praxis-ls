@@ -69,7 +69,7 @@ async function kill(client, { id, actor }) {
 async function killAllMine(client, actor) {
   const ids = await repo.killAllForUser(client, actor.user_id, actor.user_id);
   for (const id of ids) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await sessionStore.removeSession(id, actor.user_id);
   }
   await identityCache.invalidateUser(actor.user_id);

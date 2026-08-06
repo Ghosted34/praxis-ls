@@ -22,7 +22,7 @@ module.exports = async function orchestrationScheduler() {
   let enqueued = 0;
   for (const meta of tenants) {
     for (const env of ENVS) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await enqueue(
         "orchestration-dispatch",
         "dispatch",

@@ -12,7 +12,11 @@ spreadsheet cannot hold.
 
 ## 1. Where it stands
 
-**163 of 217 fixed.** Criticals 45/46, Highs 71/80, Mediums 37/68, Lows 10/18.
+**188 of 217 fixed.** Criticals 45/46, Highs 74/80, Mediums 51/67, Lows 14/19.
+
+**Every remaining item is a decision, a settings change, or a project** — none
+is a fix waiting to be written. See §18.
+One finding (NEW-07) is **Withdrawn** — see §16.
 
 The most recent batch took the API-contract and data-integrity/perf clusters —
 twenty findings closed, one (API-F23) attempted and deliberately left open; see
@@ -713,6 +717,308 @@ and — via the precise typing that fixed the first — exposed nine incomplete
 fixtures. The last of those was a net win. It is still the right call to stay on
 vite 5 + vitest 3 rather than take a build-tool major nobody can verify, but if
 PERF-S8 is ever done, do the vitest 4 move in the same change.
+
+---
+
+## 15c. Security sweep — SEC-M9, M8, M3, L2 and PERF-S18
+
+**Two of these were already half-done and saying so matters more than redoing
+them.** SEC-L2's keyspace namespacing and its `KEYS`-sweep problem were closed
+by PERF-S9; only Redis authentication remained. And **SEC-M8's justification had
+evaporated**: `unsafe-inline` was relaxed application-wide for the Control
+Tower's `<iframe srcDoc>` mock, and **Phase 3 / AUDIT F1 deleted that iframe.**
+The primary XSS defence had been switched off across every page including login,
+for months, protecting a feature that no longer existed — with the refresh token
+in web storage, a single XSS bought thirty days of account access.
+
+That is a pattern worth naming: **a documented, deliberate exception outlived
+its reason silently, because nothing ties an exception to the thing that
+justified it.** TC-CI4's dated `npm audit` expiry is the shape of the answer.
+
+Before removing it I verified the alternative was real, since this fails closed
+and visibly: one external `<script>` per `index.html`, `injectRegister: false`
+so the PWA emits no inline registration, and the two surviving `srcDoc` iframes
+use `sandbox=""` / `sandbox="allow-same-origin"` — neither grants
+`allow-scripts`, so scripts cannot run in them at all.
+
+**SEC-M3** now resolves authority from the **record**, not the screen. The vault
+holds payslips, contracts and ID documents; MOD-64 `view` alone let an
+operations clerk download HR files about colleagues. The existing
+`moduleKeyForDocType` pattern keys off the URL, so it could not be reused
+directly — here the doc type is a column, so the record loads first and the
+grant is checked against what it turns out to be. **MOD-64 still passes on
+purpose:** revoking the vault administrator's own grant in the same change would
+be a silent lockout dressed as a security fix.
+
+**PERF-S18** keys the new global limiter by **tenant**, not IP — an office
+behind one NAT looks like a single abuser, a distributed integration looks like
+a thousand innocents, and the tenant is the unit the capacity is shared between.
+Set high (600/min) because it is a circuit breaker, not a quota: a ceiling that
+trips on real use gets raised in a panic mid-incident and stops being a control.
+
+**SEC-M9** adds Dependabot and CodeQL. Weekly and grouped — a bot that opens
+fifteen PRs a week gets muted, and a muted bot still looks like coverage.
+`vite`/`vitest` majors are ignored because they are pinned as a pair (§14).
+
+**The TC-E1 gate caught my own omission** while doing this: `REDIS_PASSWORD` was
+added to `.env.example` and not to the schema, and CI told me so.
+
+---
+
+## 15b. API-F23 / SEC-L5 — the walk is DONE; the table is not published
+
+**Fixed:** the effective-middleware walk in `check-api-contract.js`. It now
+carries `router.use(...)` down to the routes it protects, accumulating in order.
+**19 public / 94 self-scoped / 624 gated**, against the old flags' nonsense
+"713 public". `doc/api-contract.json` records a tier per route.
+
+**Three live blind spots found by doing it** — all the same shape, an
+authorisation gate invisible because its function had no useful name:
+
+| Where | Was | Effect |
+|---|---|---|
+| `portal_auth.middleware.js` | anonymous function | the **entire external portal product** (`/portal/me`, `/client`, `/investor`, `/auditor`) read as PUBLIC |
+| `platform-auth.js` `requirePlatformRole` | `check` | platform admin routes unrecognisable |
+| `platform-auth.js` `requireCap` | `check` | same |
+
+Now `portalAuthCheck`, `platformRoleCheck`, `platformCapCheck`. These were real
+gaps in any inventory of *"what is reachable without credentials"*, not tooling
+noise.
+
+**Deliberately NOT published, and this is the finding repeating itself.** About
+23 `/api/platform/*` routes still classify self-scoped, including
+`DELETE /platform/tenants/...`. Their capability gates are applied somewhere the
+walk does not yet see — **or they genuinely lack one**, which would be a finding
+of its own worth checking before anything is written down. Emitting a tier table
+now would repeat exactly what kept F23 open: a security document that lies.
+
+**To finish:** resolve the platform classification (start at
+`src/modules/platform/platform.routes.js` — see whether caps are applied
+per-sub-router), then uncomment the tier section in `generate-api-docs.js` and
+add the CI gate that fails on any public/self-scoped route absent from an
+explicit allow-list. That gate is what turns the convention into a control.
+
+---
+
+## 15. QUEUED — how to actually close API-F23
+
+Left Open deliberately (see §10 and the note above `renderApi` in
+`scripts/generate-api-docs.js`). The plan, so the next session does not have to
+rediscover why the obvious approach fails:
+
+**The problem.** `doc/api-contract.json` records `auth`/`rbac` per route from the
+middleware on *that route's own stack*. Almost every router does
+`router.use(authMiddleware)` once at the top, which appears on no individual
+route — so hundreds of authenticated routes read `auth: false`. A first
+generator classified off those flags and produced **"713 public, 9 self-scoped"**
+against an audit count of 10 and 61. Publishing that would have been a security
+tier table that lied.
+
+**The fix — runtime introspection, not static analysis.**
+`check-api-contract.js` already mounts the real routers, so the answer is in
+`router.stack`:
+
+1. Walk the stack carrying context down. A `router.use(fn)` is a layer with no
+   `.route`; a route is a layer with `.route.stack`. Accumulate router-level
+   handlers as you descend and prepend them to each route's own stack — that is
+   the EFFECTIVE middleware, which is what is missing today.
+2. Classify from that: no `authMiddleware` → public; auth without
+   `requirePermission` → self-scoped; both → gated. Write the tier into
+   `api-contract.json`.
+3. **Sanity-check before trusting it.** The result should land near 10 / 61 /
+   rest. If it does not, the walk is wrong — this step is what stops a repeat of
+   "713 public".
+4. **Then make it a control, which is the real prize.** Fail CI if any route is
+   public or self-scoped and not named in an explicit allow-list file. Adding an
+   ungated route then costs a line that says "yes, deliberately" — and
+   `POST /sessions/:id/kill` (NEW-07) would have failed that build.
+5. The doc falls out free: `generate-api-docs.js` already has the tier section
+   written and suppressed; it only needs the field to exist.
+
+Steps 1–3 are the work. Step 4 is small once 1–3 are right. Step 5 is
+uncommenting.
+
+---
+
+## 16. Group 1 (Security) — 4 of 11 done, 7 to go
+
+**Done:** SEC-M1, SEC-M4, SEC-L1, and NEW-07 **withdrawn**.
+
+**NEW-07 was my error, and the shape of it is the point.** I filed
+*"`POST /sessions/:id/kill` has auth but no `requirePermission`"* after reading
+`session.routes.js`. `session.service.js` `kill()` enforces exactly the right
+rule — self always allowed, `is_ceo` allowed, otherwise MOD-68 `can_update`,
+else 403 — and the route is ungated deliberately, with a comment one line above
+saying so, because a `requirePermission` there would stop a user ending their
+own session. I judged a control by where I expected it to live rather than by
+what it does, which is the mistake this remediation keeps documenting in other
+people's code. Left in the register as Withdrawn rather than deleted: a
+withdrawn finding is evidence about the review. It also *strengthens* API-F23 —
+this is exactly a self-scoped route whose authorisation is real, enforced one
+layer down, and invisible at the route.
+
+**Two of the three fixes had a trap in them, both the same shape:** the obvious
+fix would have closed the hole and broken something real.
+
+- **SEC-M1** — rejecting on "not in Redis" would sign out every user of every
+  tenant the first time Redis restarted, because Redis is a cache and
+  `killed_at` is the record. Hence a three-valued check where *absent* means
+  *ask Postgres* and only *unreachable* means *assume nothing*, and a deliberate
+  fail-open when neither layer can answer.
+- **SEC-M4** — deleting the client-supplied `auth.host` would have broken every
+  developer's local socket, because it is a documented dev affordance for the
+  Vite proxy. Gated on `NODE_ENV` instead, matching the origin check beside it.
+- **SEC-L1** — `USER node` alone would have produced a green deploy that failed
+  on its first write, because bind mounts keep host ownership. `deploy.sh` does
+  the chown.
+
+**Remaining 7, with the honest reason each is still open:**
+
+| ID | Why it is not done |
+|---|---|
+| SEC-M9 | Dependabot + CodeQL are file additions and safe; the `npm audit` fixes are not, on a tree that has already had lockfile trouble. Do the config here, the bumps on a machine that can run `npm ci`. |
+| SEC-L5 | Per-route anonymous-surface assertion. **Do this with API-F23 (§15) — it is the same router walk**, and doing them separately means writing it twice and risking two answers. |
+| SEC-L2 | Redis password + per-tenant key prefix + `KEYS`→`SCAN`. Touches the hot identity-cache path; needs care, not scale. |
+| SEC-M3 | Vault record-level authz. The pattern exists (`moduleKeyForDocType` in `template.routes.js`); it is a real design port, not a patch. |
+| SEC-M8 | CSP `unsafe-inline`. Needs the Control Tower mock moved to a per-route CSP, and I cannot exercise that iframe here. |
+| SEC-M6 | Platform session store, revocation, 2FA. New table + migration + service work — a batch of its own. |
+| SEC-L3 | httpOnly refresh cookie. Explicitly gated on M8 and C2, and breaking for every client. |
+
+---
+
+## 17. Groups 2 and 3 — 6 done, 15 to go
+
+**Done:** TC-D8, TC-E1, TC-CI3, TC-Q1, TC-F2, TC-Q6.
+**TC-E2 attempted and reverted** — the reasoning is in `env.js` and in the
+register, and it is the most useful thing in this batch.
+
+### TC-E2: the obvious fix fires everywhere except production
+
+The guard keys on `NODE_ENV === "production"`; the natural fix is corroborating
+signals. Both are wrong here, and I wrote one before checking:
+
+- **`APP_BASE_DOMAIN` defaults to `praxisls.com`.** The default is already
+  production-shaped, so "domain is not localhost" throws on **every developer
+  machine, every unit test and every CI job**. I had this in the file before
+  asking what the default actually was.
+- **`DB_HOST` is `postgres` in compose — and production uses compose.** So
+  "host is not local" never fires where it matters, and *does* fire for a
+  developer pointed at a remote database. Exactly backwards.
+
+The audit's scenario is also narrower than it reads: the Dockerfile sets
+`ENV NODE_ENV=production` on runtime and worker, so `docker compose run --rm api
+node …` already inherits it. The genuine residual is a process started outside
+Docker with `NODE_ENV` unset. **The real fix is to stop having exploitable
+defaults** — per-install generated secrets, or make the three required with no
+default — which is a behaviour change needing sign-off, not a cleverer sniff.
+
+### What the other five bought
+
+- **TC-E1** moves environment validation from *after* migrations to *before*
+  them. Previously a change adding a required variable passed CI, passed the
+  build, **migrated every tenant database**, and only then failed to boot.
+- **TC-Q1/CI3** — coverage is measured in CI and the threshold is on
+  **functions**, because 99 `*.routes.js` files report 100% statements with 0%
+  functions. A line gate would be satisfied by importing files. No `branches`
+  floor: nobody has measured it, and a guessed number either breaks on arrival
+  or means nothing.
+- **TC-Q6** — the auth guard matched middleware **by function name**, so
+  wrapping it in `asyncHandler` would have left it green while detecting
+  nothing. Now matched by reference, floor raised from 50 to 95 against a
+  verified 101 modules.
+
+### Second pass — the other 12
+
+**Fixed:** TC-D7, TC-R3, OBS-I3, OBS-I4, TC-R1, TC-R4, TC-CI4, TC-Q3, TC-Q5,
+TC-F3. **Partially fixed:** TC-D5, TC-CI10 — both because the remainder is not
+code.
+
+Three decisions in there worth keeping:
+
+- **OBS-I4's auto-rollback is OPT-IN (`AUTO_ROLLBACK=1`), and that is the fix
+  rather than a hedge.** Migrations have already run by the time the readiness
+  gate fails, and there are no down-migrations before 0500. Reverting the *code*
+  under a schema that has moved forward is safe for an additive migration and
+  **not** safe for anything else — an automatic revert could turn a broken
+  deploy into a corrupted one. The operator makes that judgement once, in the
+  environment, instead of the script guessing every time.
+- **Two ratchets, not two zeroes.** Lint blocks at `--max-warnings 136` and
+  `npm audit` blocks with an expiry of 2026-10-31. A gate set to an
+  unachievable value fails on arrival and is reverted by whoever it blocks
+  first, which is how a gate becomes a comment. The number going down is the
+  record that work happened.
+- **OBS-I3 requires a marker, not abstinence.** `-- DESTRUCTIVE: <what is lost
+  and why>` on the statement. Banning destructive migrations outright gets
+  worked around; requiring the sentence puts it in the diff for a reviewer and
+  in the file for whoever is restoring a backup at 02:00.
+
+### Remaining 3 — none of them code I can write
+
+| ID | What is actually left |
+|---|---|
+| **TC-CI2** | `main` red 15% of runs. Follows from TC-CI1: switch on branch protection (`doc/BRANCH_PROTECTION.md`). The deploy-side guard already refuses to ship a commit that reached `main` without a PR. |
+| **TC-D5** (partial) | `environment: production` is declared in `deploy.yaml` and is inert until you create it. Then: an unprivileged `deploy` user, docker group + only the sudo entries `deploy.sh` needs, a restricted `authorized_keys` entry, a rotation date. **Until the user is unprivileged, a compromised Action is still a host compromise.** |
+| **TC-E2** | Needs sign-off, not cleverness — see above. Generate per-install secrets, or make the three required with no default. |
+| **TC-C11** (partial) | Frontend coverage of money, permissions and the Live/Test toggle. A body of test-writing, not a config change. |
+| **TC-CI10** (partial) | A backend type layer. The PRD promises one; the pipeline has never had one. The PRD is the thing that should move. |
+
+---
+
+## 18. What is left, and why none of it is a fix waiting to be written
+
+**29 open. Sorted by what unblocks them, not by severity** — severity does not
+tell you who has to act.
+
+### A. Settings and infrastructure — only the owner can do these (5)
+
+`TC-CI1` (branch protection, the last Critical) · `TC-CI2` (follows from CI1) ·
+`TC-D5` (the `production` Environment exists in `deploy.yaml` and is inert until
+created; then an unprivileged deploy user) · `OBS-I6` (single-host topology) ·
+`TC-D6` (already a costed decision — **amend the PRD**, which still contradicts
+it)
+
+### B. One decision each (4)
+
+- **`NEW-11`** — where dates are rendered. Serialise `date` as `YYYY-MM-DD` at
+  the API, or format with an explicit zone: the viewer's, the tenant's, or the
+  **port's**? For a freight ETA the third answer is defensible.
+- **`TC-E2`** — stop having exploitable defaults. Per-install generated secrets,
+  or make the three required with no default. Both are behaviour changes.
+- **`SEC-L3`** — needs the **cookie-scope story across tenant subdomains**
+  (`<slug>.<domain>`): apex-scoped is shared by every tenant in the browser,
+  host-scoped breaks cross-subdomain flows. Note its premise has weakened —
+  SEC-M8 and C2, the two findings its severity was coupled to, are now closed.
+- **`DI-3.4`** — already correctly diagnosed and correctly left alone.
+
+### C. One project each (3)
+
+`SEC-M5` + `SEC-M7` + `TC-E3` are **one piece of work, not three**: one JWT
+secret across three tiers, one encryption key across all tenants, and no
+rotation path for anything. Individually they read as Mediums; together they are
+the answer to *"what happens after a credential compromise"*, which today is
+**everything, everywhere**. `ENCRYPTION_KEY` in particular cannot be rotated
+without a re-encryption migration nobody has written.
+
+Also: `TC-C11` (frontend money/permission coverage) and `TC-CI10`'s remainder (a
+backend type layer — the PRD promises one and never had one).
+
+### D. The API-contract cluster — ONE sitting, then one batch (9)
+
+`API-F7…F14` are all breaking URL/verb changes: `/portal` vs `/portals`,
+pluralisation at 63/37, `DELETE` meaning two different things, reads that are
+POSTs. Fix the conventions and pick a versioning approach in a single session,
+then it is mechanical. **Piecemeal is worse than not at all** — half-converted
+conventions are harder to reason about than consistent-but-wrong ones.
+
+`API-F23` is the exception and is nearly done — see §15b. What remains is
+verifying the platform-tier classification, then the doc table and the CI gate.
+
+### E. Genuinely deferred, with a reason (5)
+
+`SEC-M6`'s 2FA step-up (a feature, and the same undecided design as the tenant
+side) · `PERF-S8` (needs a real build — pair it with the vitest 4 move) ·
+`PERF-S13` (Chromium pool) · `PERF-S17` (keyset pagination, breaking) ·
+`TC-CI4`'s `exceljs` major (dated to 2026-10-31 in CI)
 
 ---
 

@@ -51,7 +51,7 @@ class GmailProvider {
   }
 
   async _composeRaw(mail) {
-    // eslint-disable-next-line global-require
+     
     const nodemailer = require("nodemailer");
     const composer = nodemailer.createTransport({ streamTransport: true, buffer: true, newline: "\r\n" });
     const info = await composer.sendMail(mail);
@@ -97,7 +97,7 @@ class GmailProvider {
       let pageToken = null;
       let latestHistoryId = cursor.history_id;
       for (let i = 0; i < 50; i += 1) {
-        // eslint-disable-next-line no-await-in-loop
+         
         const r = await this._req("GET", "/history", {
           params: { startHistoryId: cursor.history_id, historyTypes: "messageAdded", labelId: "INBOX", pageToken: pageToken || undefined },
         });
@@ -129,7 +129,7 @@ class GmailProvider {
   async _getMany(ids) {
     const out = [];
     for (const id of ids) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const m = await this.getMessage(id);
       if (m) out.push(m);
     }
@@ -149,7 +149,7 @@ class GmailProvider {
     for (const a of refs) {
       if (!a.attachmentId) continue;
       try {
-        // eslint-disable-next-line no-await-in-loop
+         
         const r = await this._req("GET", `/messages/${messageId}/attachments/${a.attachmentId}`);
         const content = b64urlDecode(r.data.data);
         if (content.length <= ATTACH_MAX_BYTES) out.push({ filename: a.filename, content_type: a.content_type, size_bytes: content.length, content });

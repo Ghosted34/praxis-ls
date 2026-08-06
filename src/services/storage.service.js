@@ -63,7 +63,7 @@ async function resolveS3() {
   let value = {};
   let secret = null;
   try {
-    // eslint-disable-next-line global-require
+     
     const platformSettings = require("./platform/settings.service");
     const r = await platformSettings.resolve("storage", "s3");
     if (r) { value = r.value || {}; secret = r.secret; }
@@ -137,7 +137,7 @@ const local = {
 
 async function s3Client() {
   if (_s3) return _s3;
-  // eslint-disable-next-line global-require
+   
   const { S3Client } = require("@aws-sdk/client-s3");
   const cfg = await resolveS3();
   if (!cfg.bucket) throw new Error("S3 bucket is not configured (Platform Console → Integrations, or S3_BUCKET)");
@@ -163,7 +163,7 @@ async function streamToBuffer(body) {
 
 const s3 = {
   async put(buffer, { key, contentType }) {
-    // eslint-disable-next-line global-require
+     
     const { PutObjectCommand } = require("@aws-sdk/client-s3");
     const cfg = await resolveS3();
     const client = await s3Client();
@@ -174,7 +174,7 @@ const s3 = {
     return { key: finalKey, public_url: publicUrl(finalKey), size: buffer.length, content_type: contentType };
   },
   async get(key) {
-    // eslint-disable-next-line global-require
+     
     const { GetObjectCommand } = require("@aws-sdk/client-s3");
     const cfg = await resolveS3();
     const client = await s3Client();
@@ -182,16 +182,16 @@ const s3 = {
     return streamToBuffer(out.Body);
   },
   async delete(key) {
-    // eslint-disable-next-line global-require
+     
     const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
     const cfg = await resolveS3();
     const client = await s3Client();
     await client.send(new DeleteObjectCommand({ Bucket: cfg.bucket, Key: key }));
   },
   async signedUrl(key, ttlSeconds = 900) {
-    // eslint-disable-next-line global-require
+     
     const { GetObjectCommand } = require("@aws-sdk/client-s3");
-    // eslint-disable-next-line global-require
+     
     const { getSignedUrl } = require("@aws-sdk/s3-request-presigner");
     const cfg = await resolveS3();
     const client = await s3Client();

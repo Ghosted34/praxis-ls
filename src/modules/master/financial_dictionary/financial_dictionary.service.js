@@ -33,7 +33,7 @@ async function update(c, { id, patch, actor }) {
       // Capture-once/update-in-sync: replace the rule set atomically with the edit.
       await repo.deleteRules(c, id);
       for (const r of posting_rules) {
-        // eslint-disable-next-line no-await-in-loop
+         
         await repo.createRule(c, { ...r, dictionary_item_id: id, is_debours: r.is_debours ?? (row ? row.is_debours : before.is_debours) });
       }
     }

@@ -11,7 +11,7 @@ const axios = require("axios");
 /** S3 / S3-compatible: HeadBucket verifies creds authenticate + bucket exists. */
 async function s3(cfg) {
   if (!cfg.bucket) throw new Error("no bucket configured");
-  // eslint-disable-next-line global-require
+   
   const { S3Client, HeadBucketCommand } = require("@aws-sdk/client-s3");
   const client = new S3Client({
     region: cfg.region || "us-east-1",

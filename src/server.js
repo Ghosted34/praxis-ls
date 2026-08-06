@@ -26,7 +26,7 @@ const { buildAccessLog } = require("./middleware/access-log");
 const { report } = require("./shared/observability/error-reporter");
 const { router: clientErrorsRouter } = require("./routes/client-errors");
 const { router: metricsRouter } = require("./routes/metrics");
-const { initRateLimitStore } = require("./shared/http/rate-limit");
+const { initRateLimitStore, apiLimiter } = require("./shared/http/rate-limit");
 const { isPublicMediaPath } = require("./shared/http/media-guard");
 const storage = require("./services/storage.service");
 
@@ -86,23 +86,46 @@ function buildApp() {
   // attacker-controlled. A hop count makes Express take the address the proxy we
   // actually run appended. See TRUST_PROXY_HOPS in config/env.js.
   app.set("trust proxy", config.TRUST_PROXY_HOPS > 0 ? config.TRUST_PROXY_HOPS : false);
-  // Helmet with the default CSP relaxed on exactly two knobs. The Control Tower
-  // renders the Lovable mock in an <iframe srcDoc> whose document INHERITS this
-  // page's CSP: its live-data bridge is an inline <script> (needs
-  // script-src 'unsafe-inline') and the mock's controls are inline onclick=
-  // attributes (needs script-src-attr — helmet defaults it to 'none').
-  // img-src additionally allows https:/blob:/data: because tenant-authored
-  // branding (login hero, logos) may point at external URLs.
-  // Tightening path (tracked): serve the mock from its own route with a
-  // per-route CSP, or migrate its handlers to addEventListener — then restore
-  // the defaults here.
+  /**
+   * SEC-M8 — `unsafe-inline` is GONE. The reason for it no longer exists.
+   *
+   * `script-src` was relaxed to `'self' 'unsafe-inline'` and `script-src-attr`
+   * to `'unsafe-inline'` APPLICATION-WIDE, to support one feature: the Control
+   * Tower rendered the Lovable mock in an `<iframe srcDoc>` that inherited this
+   * page's CSP, with an inline `<script>` bridge and inline `onclick=`
+   * handlers. The cost was that the primary XSS mitigation was switched off for
+   * every page including login — and because the refresh token lives in web
+   * storage (SEC-L3), a single XSS bought thirty days of account access.
+   *
+   * PHASE 3 / AUDIT F1 DELETED THAT IFRAME. The Control Tower is real React
+   * now; the `onclick=` handlers survive only in comments describing what the
+   * mock used to do. So the relaxation had already stopped protecting anything
+   * and was purely a liability nobody had gone back to remove — which is worth
+   * noticing as a pattern: a documented, deliberate exception outlived its
+   * reason silently, because nothing ties an exception to the thing that
+   * justified it.
+   *
+   * VERIFIED BEFORE REMOVING, since this fails closed and loudly if wrong:
+   *   - `client/index.html` and `platform-console/index.html` carry exactly one
+   *     script each, `<script type="module" src="/src/main.tsx">` — external,
+   *     satisfied by `'self'`.
+   *   - `vite-plugin-pwa` is configured `injectRegister: false`, so the build
+   *     injects no inline registration script; the built `dist/index.html` has
+   *     one `<script>` tag.
+   *   - The two remaining `srcDoc` iframes (document preview, template preview)
+   *     use `sandbox=""` and `sandbox="allow-same-origin"`. Neither grants
+   *     `allow-scripts`, so scripts cannot run in them at all and they need no
+   *     script-src.
+   *
+   * `img-src` STAYS relaxed: tenant-authored branding (login hero, logos)
+   * legitimately points at external https URLs, and `blob:`/`data:` are used by
+   * generated previews. That is a real requirement, not a leftover.
+   */
   app.use(
     helmet({
       contentSecurityPolicy: {
         directives: {
           ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-          "script-src": ["'self'", "'unsafe-inline'"],
-          "script-src-attr": ["'unsafe-inline'"],
           "img-src": ["'self'", "data:", "blob:", "https:"],
         },
       },
@@ -166,6 +189,22 @@ function buildApp() {
    * retiring it a decision based on traffic rather than on nerve.
    */
   app.use("/api", apiVersionHeaders);
+
+  /**
+   * PERF S18 — one global ceiling across the whole API.
+   *
+   * Mounted HERE, after the health, metrics and client-error routes above and
+   * before the tenant router, which is the only placement that works: the
+   * probes must never be rate-limited (a limiter that 429s
+   * `/api/health/ready` turns a busy minute into a failed deploy and a
+   * restarting container), and everything below this line shares the one
+   * Postgres, the one Redis and the one host.
+   *
+   * Keyed per tenant — see the note in shared/http/rate-limit.js for why IP
+   * alone is wrong in both directions on a multi-tenant deployment.
+   */
+  app.use("/api", apiLimiter);
+
   app.use(`/api/${API_VERSION}`, routes);
   app.use("/api", routes);
 

@@ -33,7 +33,7 @@ module.exports = async function fxSync(job) {
     const done = [];
     for (const quote of quotes) {
       if (!rates[quote]) continue;
-      // eslint-disable-next-line no-await-in-loop
+       
       await currencyRepo.upsertRate(c, { base, quote, rate: rates[quote], asOfDate: asOf, source: "exchangerate-api", isOverride: false });
       done.push(quote);
     }

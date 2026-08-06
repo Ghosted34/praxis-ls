@@ -17,11 +17,11 @@ const ref = (id) => "proposal:" + id;
 async function replaceChildren(client, id, lines, narratives) {
   if (Array.isArray(lines)) {
     await repo.deleteLines(client, id);
-    for (const l of lines) { /* eslint-disable-next-line no-await-in-loop */ await repo.insertLine(client, { proposal_id: id, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line", qty: l.qty || 1, unit_price: l.unit_price || 0 }); }
+    for (const l of lines) {   await repo.insertLine(client, { proposal_id: id, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line", qty: l.qty || 1, unit_price: l.unit_price || 0 }); }
   }
   if (Array.isArray(narratives)) {
     await repo.deleteNarratives(client, id);
-    for (let i = 0; i < narratives.length; i += 1) { const n = narratives[i]; /* eslint-disable-next-line no-await-in-loop */ await repo.insertNarrative(client, { proposal_id: id, section: n.section, body: n.body || "", sort_order: n.sort_order ?? i }); }
+    for (let i = 0; i < narratives.length; i += 1) { const n = narratives[i];   await repo.insertNarrative(client, { proposal_id: id, section: n.section, body: n.body || "", sort_order: n.sort_order ?? i }); }
   }
 }
 async function createDraft(client, { data, actor = {} }) {

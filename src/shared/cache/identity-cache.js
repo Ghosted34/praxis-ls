@@ -398,14 +398,14 @@ async function scanDelete(redis, pattern) {
   let cursor = "0";
   let removed = 0;
   do {
-    // eslint-disable-next-line no-await-in-loop
+     
     const res = await redis.scan(cursor, "MATCH", pattern, "COUNT", 500).catch(() => null);
     if (!res) return removed;
     const [next, keys] = res;
     cursor = next;
     if (keys && keys.length) {
       for (let i = 0; i < keys.length; i += 200) {
-        // eslint-disable-next-line no-await-in-loop
+         
         await redis.del(...keys.slice(i, i + 200)).catch(() => {});
       }
       removed += keys.length;

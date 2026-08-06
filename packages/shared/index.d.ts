@@ -160,6 +160,13 @@ export declare namespace common {
   const amount: Amount;
   const positiveAmount: Amount;
   const currency: z.ZodString;
+  function blankToUndefined<T>(schema: z.ZodType<T>): Blankable<T>;
+  const optionalText: Blankable<string>;
+  const email: Blankable<string>;
+  const countryCode: Blankable<string>;
+  const optionalDate: Blankable<string>;
+  const phone: Blankable<string>;
+  const optionalPercent: BlankableNumeric;
 }
 
 export declare namespace finalInvoice {
@@ -320,39 +327,176 @@ type BlankableNumeric = z.ZodEffects<
   number | string | undefined
 >;
 
+/**
+ * The shared identity/terms fields of a client payload. `create` uses it as-is;
+ * `update` loosens `name` and adds the lifecycle flags. Declared as a shape type
+ * so the two cannot drift.
+ */
+type ClientBaseShape = {
+  entity_id: Blankable<string>;
+  name: z.ZodString;
+  legal_name: Blankable<string>;
+  trading_name: Blankable<string>;
+  client_type_id: Blankable<string>;
+  niu: Blankable<string>;
+  rccm: Blankable<string>;
+  email: Blankable<string>;
+  address: Blankable<string>;
+  city: Blankable<string>;
+  country_code: Blankable<string>;
+  industry: Blankable<string>;
+  website: Blankable<string>;
+  notes: Blankable<string>;
+  risk_tier: Blankable<string>;
+  tax_residency_country: Blankable<string>;
+  default_currency: Blankable<string>;
+  default_language: Blankable<string>;
+  preferred_channel: Blankable<string>;
+  relationship_manager_user_id: Blankable<string>;
+  payment_terms_days: BlankableNumeric;
+  credit_limit: BlankableNumeric;
+  credit_insured: z.ZodOptional<z.ZodBoolean>;
+  credit_insurance_ref: Blankable<string>;
+  credit_insurance_expires_on: Blankable<string>;
+  guarantee_amount: BlankableNumeric;
+  deposit_amount: BlankableNumeric;
+  advance_required: z.ZodOptional<z.ZodBoolean>;
+  advance_required_percent: BlankableNumeric;
+  kyc_docs: z.ZodOptional<z.ZodArray<z.ZodAny>>;
+  is_withholding_agent: z.ZodOptional<z.ZodBoolean>;
+};
+
+type RegistrationStatus = z.ZodOptional<
+  z.ZodEnum<["DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED"]>
+>;
+
 export declare namespace clientMaster {
-  const create: z.ZodObject<{
-    entity_id: Blankable<string>;
-    name: z.ZodString;
-    client_type_id: Blankable<string>;
-    niu: Blankable<string>;
-    rccm: Blankable<string>;
-    email: Blankable<string>;
-    address: Blankable<string>;
-    city: Blankable<string>;
-    country_code: Blankable<string>;
-    payment_terms_days: BlankableNumeric;
-    credit_limit: BlankableNumeric;
-    kyc_docs: z.ZodOptional<z.ZodArray<z.ZodAny>>;
-    is_withholding_agent: z.ZodOptional<z.ZodBoolean>;
-  }>;
-
-  const update: z.ZodObject<{
-    entity_id: Blankable<string>;
-    name: z.ZodOptional<z.ZodString>;
-    client_type_id: Blankable<string>;
-    niu: Blankable<string>;
-    rccm: Blankable<string>;
-    email: Blankable<string>;
-    address: Blankable<string>;
-    city: Blankable<string>;
-    country_code: Blankable<string>;
-    payment_terms_days: BlankableNumeric;
-    credit_limit: BlankableNumeric;
-    kyc_docs: z.ZodOptional<z.ZodArray<z.ZodAny>>;
-    is_withholding_agent: z.ZodOptional<z.ZodBoolean>;
-    is_active: z.ZodOptional<z.ZodBoolean>;
-  }>;
-
+  const create: z.ZodObject<ClientBaseShape>;
+  const update: z.ZodObject<
+    Omit<ClientBaseShape, "name"> & {
+      name: z.ZodOptional<z.ZodString>;
+      is_active: z.ZodOptional<z.ZodBoolean>;
+      registration_status: RegistrationStatus;
+    }
+  >;
   const aiUpdate: typeof update;
+}
+
+/** The shared identity/terms fields of a supplier payload; see ClientBaseShape. */
+type SupplierBaseShape = {
+  entity_id: Blankable<string>;
+  name: z.ZodString;
+  legal_name: Blankable<string>;
+  trading_name: Blankable<string>;
+  supplier_type: Blankable<string>;
+  supplier_type_id: Blankable<string>;
+  niu: Blankable<string>;
+  rccm: Blankable<string>;
+  email: Blankable<string>;
+  address: Blankable<string>;
+  city: Blankable<string>;
+  country_code: Blankable<string>;
+  industry: Blankable<string>;
+  website: Blankable<string>;
+  notes: Blankable<string>;
+  evaluation_notes: Blankable<string>;
+  risk_tier: Blankable<string>;
+  tax_residency_country: Blankable<string>;
+  default_currency: Blankable<string>;
+  default_language: Blankable<string>;
+  preferred_channel: Blankable<string>;
+  relationship_manager_user_id: Blankable<string>;
+  payment_method: Blankable<string>;
+  momo_network: Blankable<string>;
+  momo_number: Blankable<string>;
+  is_non_resident: z.ZodOptional<z.ZodBoolean>;
+  rating: BlankableNumeric;
+  withholding_rate: BlankableNumeric;
+  withholding_certificate_ref: Blankable<string>;
+  withholding_certificate_expires_on: Blankable<string>;
+};
+
+export declare namespace supplierMaster {
+  const create: z.ZodObject<SupplierBaseShape>;
+  const update: z.ZodObject<
+    Omit<SupplierBaseShape, "name"> & {
+      name: z.ZodOptional<z.ZodString>;
+      is_active: z.ZodOptional<z.ZodBoolean>;
+      registration_status: RegistrationStatus;
+    }
+  >;
+  const aiUpdate: typeof update;
+}
+
+/**
+ * Nested master-data resources shared by both masters. Each `*Create` is the
+ * full body a nested POST accepts; each `*Update` is its partial. Typed
+ * loosely as objects — the fields are enumerated at runtime in party-common.js
+ * and the API strips unknown keys.
+ */
+export declare namespace partyCommon {
+  const contactCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const contactUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const addressCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const addressUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const bankCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const bankUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const documentCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const documentUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const registrationCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const registrationUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const beneficialOwnerCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const beneficialOwnerUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const blockReason: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const ROLE_TAGS: readonly string[];
+  const ADDRESS_TYPES: readonly string[];
+}
+
+/** One `party_field_config` row, as the API returns it and the form reads it. */
+export type FieldConfig = {
+  applies_to: "CLIENT" | "SUPPLIER";
+  field_key: string;
+  field_group: string | null;
+  is_required: boolean;
+  is_visible: boolean;
+  is_custom: boolean;
+  sort_order: number;
+  label_override: string | null;
+};
+
+export declare namespace partyConfig {
+  const DEFAULT_ROWS: ReadonlyArray<[string, string, string, boolean]>;
+  const GROUP_ORDER: readonly string[];
+  function defaultsFor(appliesTo: string): FieldConfig[];
+  function effectiveConfig(appliesTo: string, dbRows: FieldConfig[] | null | undefined): FieldConfig[];
+  function checkRequired(
+    data: Record<string, unknown>,
+    config: FieldConfig[],
+  ): { ok: boolean; missing: string[] };
+}
+
+/** A country as the reference module and the picker render it. */
+export type Country = { code: string; name: string; phone: string; currency: string };
+export type CountryRow = Country & { sort_order: number };
+export type RegistrationRequirement = {
+  kind: string;
+  label_fr: string;
+  label_en: string;
+  regex: string;
+  placeholder: string;
+  required: boolean;
+};
+
+export declare namespace countries {
+  const COUNTRIES: readonly Country[];
+  const CATALOGUE: readonly CountryRow[];
+  const CEMAC: readonly string[];
+  const OHADA: readonly string[];
+  const EU: readonly string[];
+  const PRIORITY_ORDER: readonly string[];
+  const REGISTRATION_REQUIREMENTS: Record<string, RegistrationRequirement[]>;
+  function sortOrder(code: string): number;
+  function requirementsFor(code: string): RegistrationRequirement[];
+  function byCode(code: string): Country | undefined;
+  function phoneCodeFor(code: string): string;
 }

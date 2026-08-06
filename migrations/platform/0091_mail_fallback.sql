@@ -1,5 +1,5 @@
 -- ============================================================================
--- PLATFORM DB — 0090 system-email fallback sender (`mail.fallback`)
+-- PLATFORM DB — 0091 system-email fallback sender (`mail.fallback`)
 --
 -- The deploy-wide sender used for SYSTEM emails (OTP, invites, invoices,
 -- notifications) when a tenant has not configured their own mail — the fallback

@@ -64,7 +64,7 @@ afterEach(() => {
  * lying about the shape.
  */
 function paged<T>(p: { data: T; total: number | null } & Partial<apiClient.Paged<T>>): apiClient.Paged<T> {
-  return { limit: null, offset: null, hasMore: false, ...p };
+  return { limit: null, offset: null, hasMore: false, meta: null, ...p };
 }
 
 /** Renders the hook's output as text so assertions read off the DOM. */

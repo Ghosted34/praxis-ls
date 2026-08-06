@@ -30,6 +30,72 @@
          font is emitted into dist/assets and picked up by the existing
          `**/*.woff2` precache glob. -->
     <title>Praxis LS</title>
+    <!--
+      PRE-PAINT THEME + TITLE-BAR RESTORE.
+
+      This has to be INLINE and it has to be here — src/main.tsx is a `type=
+      "module"` script and modules are DEFERRED, so the browser paints the body
+      once with the raw fallbacks (light `--card`, white `#ffffff` in the
+      pre-boot bar, the static light `<meta name="theme-color">`) BEFORE main.tsx
+      gets a chance to set `.dark` on <html> or restore the cached
+      `--titlebar-bg`. On a dark-themed workspace that first painted frame is a
+      white flash across the title bar and the browser's own chrome, followed a
+      moment later by the correct dark bar — which is what the WCO-flash bug
+      report described. Running the same code inline and blocking here makes the
+      restore happen BEFORE first paint, so the first frame is already correct.
+
+      Idempotent with lib/theme-mode.ts and lib/pwa-config.ts: `.dark` is what
+      those modules toggle, `--titlebar-bg` is what `applyPwaDocument` writes,
+      and `praxis.titlebar.{dark,light}` is the key it already stores. When
+      nothing is cached (first ever launch, private mode, storage error) we
+      fall through and the inline pre-boot fallbacks stand — the honest
+      outcome, no guess. See lib/theme-mode.ts and lib/pwa-config.ts.
+    -->
+    <script>
+      (function () {
+        // These MIRROR SURFACE_LIGHT/SURFACE_DARK in packages/shared/pwa-design.js
+        // — the defaults `resolveTitlebar` returns when a tenant has not set an
+        // explicit titlebar colour. Duplicated here rather than imported for
+        // the same reason the shared module duplicates them from index.css:
+        // this script runs before any stylesheet or module has been fetched.
+        var SURFACE_LIGHT = "#ffffff";
+        var SURFACE_DARK = "#12161e";
+        try {
+          var stored = localStorage.getItem("praxis.theme");
+          var mode =
+            stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+          var isDark =
+            mode === "dark" ||
+            (mode === "system" &&
+              window.matchMedia &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          // Set the dark class BEFORE first paint — Tailwind is darkMode:"class",
+          // so this flips every token and the whole app paints dark from frame
+          // 1 instead of flashing the light theme for the moment before
+          // main.tsx runs.
+          if (isDark) document.documentElement.classList.add("dark");
+          // color-scheme lets the browser paint its own chrome (scrollbars,
+          // form controls) in the right mode from frame 1 as well.
+          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+          // The cached titlebar colour from the LAST session under this theme
+          // (written by applyPwaDocument). If none, fall back to the
+          // theme-matched default so the strip never paints white on a dark
+          // workspace — the whole point of this script.
+          var barBg =
+            localStorage.getItem("praxis.titlebar." + (isDark ? "dark" : "light")) ||
+            (isDark ? SURFACE_DARK : SURFACE_LIGHT);
+          document.documentElement.style.setProperty("--titlebar-bg", barBg);
+          // Update <meta name="theme-color"> in step — Chrome tints its own
+          // chrome (tab strip, address bar) from this on first paint, and the
+          // static tag above is a light fallback that would otherwise flash
+          // for a moment on refresh in a dark workspace.
+          var meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute("content", barBg);
+        } catch (e) {
+          /* private mode / storage disabled — the static fallbacks stand */
+        }
+      })();
+    </script>
   </head>
   <body>
     <!--
@@ -55,6 +121,13 @@
       aria-hidden and removed the moment the shell mounts — it is scaffolding,
       never a second copy of the bar for a screen reader to find.
     -->
+    <!--
+      `--titlebar-bg` is now ALWAYS set by the inline script above — either to
+      the cached value from a prior session or to a theme-matched default —
+      so this div paints the right colour on the very first frame, no light
+      flash on a dark workspace. The border is a neutral low-alpha grey
+      because it has to survive both themes with no JS involved.
+    -->
     <div
       id="pre-boot-titlebar"
       aria-hidden="true"
@@ -62,8 +135,8 @@
         min-height: 44px;
         padding-left: env(titlebar-area-x, 0px);
         padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
-        background: var(--titlebar-bg, #ffffff);
-        border-bottom: 1px solid rgb(16 30 52 / 0.09);
+        background: var(--titlebar-bg);
+        border-bottom: 1px solid rgb(128 128 128 / 0.14);
         -webkit-app-region: drag;
         app-region: drag;
       "

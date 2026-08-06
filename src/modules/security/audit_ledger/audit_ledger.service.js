@@ -124,8 +124,14 @@ async function completeReview(client, { id, actor }) {
 // ── Security-events read (4.2) ──
 const listSecurityEvents = (client, q) => repo.listSecurityEvents(client, q);
 
+// The Control Tower's self-scoped feed. Thin pass-through — the controller
+// runs it against BOTH the identity client and the tenant client and merges
+// the two ordered lists.
+const myFeed = (client, userId, cap) => repo.myFeed(client, userId, cap);
+
 module.exports = {
   ...crud, listSoftDeletes, requestRestore, restore,
   createReview, listReviews, getReview, decideEntry, completeReview,
   listSecurityEvents,
+  myFeed,
 };

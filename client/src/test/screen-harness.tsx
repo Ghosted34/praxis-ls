@@ -122,8 +122,12 @@ export async function apiClientMock() {
     api: (p: string) => fake(p),
     tenant: (p: string) => fake(p),
     platform: (p: string) => fake(p),
-    tenantPaged: async (p: string) => ({ data: await fake(p), total: null }),
-    apiPaged: async (p: string) => ({ data: await fake(p), total: null }),
+    // The fake `Paged<T>` — extend when `Paged<T>` extends. `limit`/`offset`
+    // stay null because a screen test's fixture is already the whole result;
+    // `hasMore` false so a screen never renders a next-page button that could
+    // never resolve; `meta` null because no fixture sends one.
+    tenantPaged: async (p: string) => ({ data: await fake(p), total: null, limit: null, offset: null, hasMore: false, meta: null }),
+    apiPaged: async (p: string) => ({ data: await fake(p), total: null, limit: null, offset: null, hasMore: false, meta: null }),
     download: async () => {},
     tenantDownload: async () => {},
   };

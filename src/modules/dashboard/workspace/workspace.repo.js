@@ -48,7 +48,13 @@ const approvals = (c, { roleIds = [], moduleKeys = [], isCeo = false } = {}) => 
   );
 };
 
-const recentEvents = (c) => safe(c, "SELECT * FROM event_log ORDER BY created_at DESC LIMIT 50");
+// `recentEvents` used to live here — a tenant-wide `SELECT * FROM event_log`
+// that fed the Workspace's "Recent activity" panel. That surface moved to the
+// Control Tower as `<RecentActivity>` on top of the self-scoped
+// /audit/my-feed endpoint, so this repo no longer needs to answer the
+// question. Removing it also lets us stop reading event_log for a UI panel
+// (that table is drivers of workflows and notifications; treating it as a
+// display list was always incidental).
 const unread = (c, userId) => safe(c, "SELECT * FROM notification WHERE user_id=$1 AND read_at IS NULL ORDER BY created_at DESC LIMIT 50", [userId]);
 
-module.exports = { approvals, recentEvents, unread };
+module.exports = { approvals, unread };

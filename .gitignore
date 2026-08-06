@@ -56,6 +56,10 @@ media/posters/*
 !media/posters/.gitkeep
 media/
 data/
+# …but packages/shared/data is SOURCE (the canonical country reference the API,
+# the seed and the client picker all import), not runtime data — keep it tracked.
+!packages/shared/data/
+!packages/shared/data/**
 
 # Database dumps
 *.dump

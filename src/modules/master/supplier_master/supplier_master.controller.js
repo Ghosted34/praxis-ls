@@ -1,5 +1,6 @@
 "use strict";
 const service = require("./supplier_master.service");
+const actions = require("../_shared/actions").build("supplier");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
 module.exports = {
@@ -7,4 +8,10 @@ module.exports = {
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Supplier not found", 404); res.json({ data: r }); }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+  // 360° dossier + lifecycle actions (shared with the client master).
+  dossier: actions.dossier,
+  block: actions.block,
+  unblock: actions.unblock,
+  verify: actions.verify,
+  convert: actions.convert,
 };

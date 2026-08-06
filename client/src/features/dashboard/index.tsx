@@ -44,6 +44,7 @@ import { Briefing } from "./components/briefing";
 import { KpiDrilldown } from "./components/kpi-drilldown";
 import { KpiStrip } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
+import { RecentActivity } from "./components/recent-activity";
 import { TowerHero } from "./components/tower-hero";
 import type { KpiId } from "./drilldowns";
 import { ShipmentMap } from "./map/shipment-map";
@@ -100,6 +101,14 @@ export function DashboardPage() {
       />
 
       <AppLauncher onBrowseAll={palette.open} />
+
+      {/*
+        Recent activity — the self-scoped audit widget. Placed BELOW the
+        launcher grid so the tower's primary read (my day, my numbers,
+        my apps) sits above the reflective "what I did" strip. Its data
+        source is /tenant/audit/my-feed (see components/recent-activity.tsx).
+      */}
+      <RecentActivity />
 
       <KpiDrilldown id={openKpi} kpis={data.kpis} onClose={() => setOpenKpi(null)} />
     </PageContainer>

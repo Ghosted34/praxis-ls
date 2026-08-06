@@ -38,7 +38,37 @@ export type ClientInput = {
   credit_limit?: number;
   is_withholding_agent?: boolean;
   is_active?: boolean;
+  // PR 2 extended fields (all optional; the shared schema owns validation).
+  legal_name?: string;
+  trading_name?: string;
+  industry?: string;
+  website?: string;
+  notes?: string;
+  risk_tier?: string;
+  tax_residency_country?: string;
+  default_currency?: string;
+  registration_status?: string;
 };
+/** Extended master fields (PR 2) — present after the 0511 revamp; all optional
+ *  so the existing list/table code keeps compiling against the same type. */
+export type PartyExtras = {
+  ref?: string | null;
+  legal_name?: string | null;
+  trading_name?: string | null;
+  registration_status?: string | null;
+  compliance_state?: string | null;
+  verification_status?: string | null;
+  coa_aux_account?: string | null;
+  risk_tier?: string | null;
+  industry?: string | null;
+  website?: string | null;
+  tax_residency_country?: string | null;
+  default_currency?: string | null;
+  hard_block_reason?: string | null;
+  hard_blocked_at?: string | null;
+  category_name?: string | null;
+};
+
 export const listClients = () => tenant<Client[]>("/clients");
 export const getClientCredit = (id: string) =>
   tenant<{ credit_limit: number | null; outstanding: number; available: number | null }>(`/clients/${id}/credit`);
@@ -82,12 +112,22 @@ export type SupplierInput = {
   address?: string;
   city?: string;
   country_code?: string;
-  payment_method?: "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE";
+  payment_method?: "BANK" | "CASH" | "MOBILE_MONEY" | "CHEQUE" | "BANK_TRANSFER";
   momo_network?: string;
   momo_number?: string;
   is_non_resident?: boolean;
   rating?: number;
   is_active?: boolean;
+  // PR 2 extended fields.
+  supplier_type_id?: string;
+  legal_name?: string;
+  trading_name?: string;
+  industry?: string;
+  website?: string;
+  tax_residency_country?: string;
+  default_currency?: string;
+  withholding_rate?: number;
+  registration_status?: string;
 };
 export const listSuppliers = () => tenant<Supplier[]>("/suppliers");
 export const createSupplier = (body: SupplierInput) => tenant<Supplier>("/suppliers", { method: "POST", body });
@@ -291,3 +331,117 @@ export async function listSalesTaxCodes(): Promise<TaxCode[]> {
     return true;
   });
 }
+
+/* ═══════════════ Party 360° revamp (PR 2) — src/modules/master ═══════════════ */
+
+export type PartyKind = "client" | "supplier";
+const base = (kind: PartyKind) => (kind === "client" ? "/clients" : "/suppliers");
+
+/* ── Dynamic registries ─────────────────────────────────────────── */
+export type Registry = { code: string; name: string; is_system?: boolean; is_active?: boolean };
+export type ClientType = Registry & { client_type_id: string };
+export type SupplierType = Registry & { supplier_type_id: string };
+export type DocumentType = Registry & {
+  document_type_id: string;
+  applies_to: "CLIENT" | "SUPPLIER" | "BOTH";
+  requires_expiry?: boolean;
+  requires_issuing_authority?: boolean;
+  default_severity?: string;
+};
+export const listClientTypes = () => tenant<ClientType[]>("/client-types");
+export const createClientType = (body: { code: string; name: string }) => tenant<ClientType>("/client-types", { method: "POST", body });
+export const updateClientType = (id: string, body: Partial<ClientType>) => tenant<ClientType>(`/client-types/${id}`, { method: "PATCH", body });
+export const listSupplierTypes = () => tenant<SupplierType[]>("/supplier-types");
+export const createSupplierType = (body: { code: string; name: string }) => tenant<SupplierType>("/supplier-types", { method: "POST", body });
+export const updateSupplierType = (id: string, body: Partial<SupplierType>) => tenant<SupplierType>(`/supplier-types/${id}`, { method: "PATCH", body });
+export const listDocumentTypes = (appliesTo?: "CLIENT" | "SUPPLIER") =>
+  tenant<DocumentType[]>(`/party-document-types${appliesTo ? `?applies_to=${appliesTo}` : ""}`);
+export const createDocumentType = (body: { code: string; name: string; applies_to?: string; default_severity?: string }) =>
+  tenant<DocumentType>("/party-document-types", { method: "POST", body });
+export const updateDocumentType = (id: string, body: Partial<DocumentType>) =>
+  tenant<DocumentType>(`/party-document-types/${id}`, { method: "PATCH", body });
+
+/* ── Countries (reference) ──────────────────────────────────────── */
+export type RegistrationRequirement = { kind: string; label_en: string; label_fr: string; regex: string; placeholder: string; required: boolean };
+export type CountryProfile = { code: string; name: string; phone: string; currency: string; sort_order: number; registration_requirements: RegistrationRequirement[] };
+export const listCountries = () => tenant<CountryProfile[]>("/countries");
+
+/* ── Field-requirement config (§5) ──────────────────────────────── */
+export type FieldConfigRow = {
+  applies_to: "CLIENT" | "SUPPLIER";
+  field_key: string;
+  field_group: string | null;
+  is_required: boolean;
+  is_visible: boolean;
+  is_custom?: boolean;
+  sort_order: number;
+  label_override?: string | null;
+};
+export type MasterConfig = { applies_to: string; groups: string[]; fields: FieldConfigRow[] };
+export const getMasterConfig = (appliesTo: "CLIENT" | "SUPPLIER") => tenant<MasterConfig>(`/master-config/${appliesTo}`);
+export const putMasterConfig = (appliesTo: "CLIENT" | "SUPPLIER", fields: FieldConfigRow[]) =>
+  tenant<MasterConfig>(`/master-config/${appliesTo}`, { method: "PUT", body: { fields } });
+
+/* ── Nested collections (contacts / addresses / banks / documents / … ) ── */
+export type Contact = { contact_id: string; name: string; title?: string | null; email?: string | null; phone?: string | null; role_tags?: string[]; is_primary?: boolean; is_active?: boolean };
+export type Address = { address_id: string; line1?: string | null; line2?: string | null; city?: string | null; region?: string | null; postal_code?: string | null; country_code?: string | null; type?: string | null; is_primary?: boolean; is_active?: boolean };
+export type BankAccount = { bank_account_id: string; beneficiary_name?: string | null; bank_name?: string | null; branch?: string | null; account_number?: string | null; iban?: string | null; swift_bic?: string | null; currency?: string | null; momo_network?: string | null; momo_number?: string | null; is_primary?: boolean; is_verified?: boolean; is_active?: boolean; masked?: boolean };
+export type PartyDocument = { document_id: string; document_type_id?: string | null; document_type_name?: string | null; document_number?: string | null; issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null; vault_id?: string | null; scan_status?: string; physical_ref?: string | null; scan_due_on?: string | null; verification_status?: string; default_severity?: string };
+export type Registration = { registration_id: string; country_code?: string | null; kind: string; number?: string | null; issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null; verified?: boolean };
+export type BeneficialOwner = { owner_id: string; full_name: string; date_of_birth?: string | null; nationality?: string | null; id_type?: string | null; id_number?: string | null; ownership_percent?: number | null; is_pep?: boolean; notes?: string | null };
+
+/** Generic nested-resource CRUD — one set of helpers for every child collection,
+ *  keyed by the URL segment. The parent id is always in the path. */
+function nested<T>(seg: string) {
+  return {
+    list: (kind: PartyKind, id: string) => tenant<T[]>(`${base(kind)}/${id}/${seg}`),
+    create: (kind: PartyKind, id: string, body: Partial<T>) => tenant<T>(`${base(kind)}/${id}/${seg}`, { method: "POST", body }),
+    update: (kind: PartyKind, id: string, childId: string, body: Partial<T>) => tenant<T>(`${base(kind)}/${id}/${seg}/${childId}`, { method: "PATCH", body }),
+    remove: (kind: PartyKind, id: string, childId: string) => tenant<{ deleted: boolean }>(`${base(kind)}/${id}/${seg}/${childId}`, { method: "DELETE" }),
+  };
+}
+export const contacts = nested<Contact>("contacts");
+export const addresses = nested<Address>("addresses");
+export const banks = nested<BankAccount>("banks");
+export const documents = nested<PartyDocument>("documents");
+export const registrations = nested<Registration>("registrations");
+export const beneficialOwners = nested<BeneficialOwner>("beneficial-owners");
+
+/* ── 360° dossier ───────────────────────────────────────────────── */
+export type ComplianceFlag = { flag_id: string; rule_key: string; severity: string; message?: string | null; created_at?: string };
+export type Compliance = { compliance_state: string; can_verify: boolean; flags: ComplianceFlag[] };
+export type GlParity = { docTotal: number; gl: number; mismatch: number; flagged: boolean };
+export type Aging = { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number };
+
+export type Client360 = {
+  party: Client & PartyExtras;
+  kpis: { outstanding: number; overdue: number; oldest_due_date?: string | null; credit_limit: number | null; credit_available: number | null; ytd_revenue: number; dossiers_in_progress: number; aging: Aging };
+  compliance: Compliance;
+  gl_parity: GlParity;
+  contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
+  dossiers: { dossier_id: string; ref?: string | null; title?: string | null; status?: string | null; created_at?: string }[];
+  invoices: { invoice_id: string; doc_number?: string | null; type?: string; total_ttc: number; status?: string; payment_due_on?: string | null }[];
+  receipts: Receipt[];
+  advances: { advance_id: string; amount: number | string; applied_amount?: number | string | null; received_on?: string | null }[];
+};
+export type Supplier360 = {
+  party: Supplier & PartyExtras & { avl_status?: string | null; withholding_rate?: number | null };
+  kpis: { payables: number; overdue_payables: number; oldest_due_date?: string | null; ytd_spend: number; open_purchase_orders: number };
+  compliance: Compliance;
+  gl_parity: GlParity;
+  contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
+  purchase_orders: { po_id: string; doc_number?: string | null; total_ttc?: number | null; status?: string; created_at?: string }[];
+  supplier_invoices: { supplier_invoice_id: string; doc_number?: string | null; amount_ttc?: number | null; wht_total?: number | null; status?: string; due_on?: string | null }[];
+};
+export const clientDossier = (id: string) => tenant<Client360>(`/clients/${id}/360`);
+export const supplierDossier = (id: string) => tenant<Supplier360>(`/suppliers/${id}/360`);
+
+/* ── Lifecycle actions ──────────────────────────────────────────── */
+export const blockParty = (kind: PartyKind, id: string, reason: string) => tenant(`${base(kind)}/${id}/block`, { method: "POST", body: { reason } });
+export const unblockParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/unblock`, { method: "POST" });
+export const verifyParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/verify`, { method: "POST" });
+export const activateParty = (kind: PartyKind, id: string) =>
+  (kind === "client" ? updateClient(id, { registration_status: "ACTIVE" } as Partial<ClientInput>) : updateSupplier(id, { registration_status: "ACTIVE" } as Partial<SupplierInput>));
+/** Smart Copy — a supplier id → a draft client, or a client id → a draft supplier. */
+export const convertFromSupplier = (supplierId: string) => tenant<Client>(`/clients/convert-from-supplier/${supplierId}`, { method: "POST" });
+export const convertFromClient = (clientId: string) => tenant<Supplier>(`/suppliers/convert-from-client/${clientId}`, { method: "POST" });

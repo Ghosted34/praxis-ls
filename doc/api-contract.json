@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 101,
-  "route_count": 740,
+  "modules_mounted": 106,
+  "route_count": 818,
   "tiers": {
     "public": 19,
-    "self-scoped": 52,
-    "gated": 669
+    "self-scoped": 57,
+    "gated": 742
   },
   "routes": {
     "DELETE /api/platform/plans/:id": {
@@ -70,6 +70,48 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/chart-of-accounts/:code": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/client-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/addresses/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/banks/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/beneficial-owners/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/contacts/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/clients/:id/registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -201,6 +243,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/party-document-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/payment-gateways/:provider": {
       "auth": true,
       "rbac": true,
@@ -292,6 +340,48 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/succession/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/supplier-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/addresses/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/banks/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/beneficial-owners/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/contacts/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/suppliers/:id/registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -567,6 +657,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/audit/my-feed": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/audit/reviews": {
       "auth": true,
       "rbac": true,
@@ -699,6 +795,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/client-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/client-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/clients/": {
       "auth": true,
       "rbac": true,
@@ -711,7 +819,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/clients/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/banks": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/beneficial-owners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/contacts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/clients/:id/credit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/registrations": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -770,6 +920,18 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "GET /api/tenant/countries/": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "GET /api/tenant/countries/:code": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/credit-notes/": {
       "auth": true,
@@ -1359,6 +1521,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/master-config/:appliesTo": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "GET /api/tenant/me/preferences/appearance": {
       "auth": true,
       "rbac": false,
@@ -1498,6 +1666,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/outbound/:id/lines": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/party-document-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/party-document-types/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2043,6 +2223,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/supplier-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/supplier-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/suppliers/": {
       "auth": true,
       "rbac": true,
@@ -2050,6 +2242,48 @@
       "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/banks": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/beneficial-owners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/contacts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/registrations": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2409,7 +2643,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/client-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/clients/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/addresses/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/banks/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/beneficial-owners/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/contacts/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/clients/:id/registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2589,6 +2865,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/party-document-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/payment-gateways/:provider/active": {
       "auth": true,
       "rbac": true,
@@ -2685,7 +2967,49 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/supplier-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/suppliers/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/addresses/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/banks/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/beneficial-owners/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/contacts/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/suppliers/:id/registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3165,7 +3489,73 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/client-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/clients/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/banks": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/beneficial-owners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/block": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/contacts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/unblock": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/verify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/convert-from-supplier/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3753,6 +4143,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/party-document-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/payment-gateways/": {
       "auth": true,
       "rbac": true,
@@ -4149,7 +4545,73 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/supplier-types/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/suppliers/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/banks": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/beneficial-owners": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/block": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/contacts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/unblock": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/verify": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/convert-from-client/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4382,6 +4844,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "PUT /api/tenant/master-config/:appliesTo": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/me/preferences/appearance": {
       "auth": true,

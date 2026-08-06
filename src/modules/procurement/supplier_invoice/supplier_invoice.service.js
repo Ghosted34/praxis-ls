@@ -25,7 +25,7 @@ const ref = (id) => "supplier_invoice:" + id;
 async function replaceLines(client, id, lines) {
   await repo.deleteLines(client, id);
   for (const ln of lines) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await repo.insertLine(client, { supplier_invoice_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", qty: ln.qty || 1, unit_price: ln.unit_price || 0, tax_code_id: ln.tax_code_id || null, expense_account: ln.expense_account || null });
   }
 }
@@ -61,7 +61,7 @@ async function match(client, { supplierInvoiceId, actor = {} }) {
     if (result.matched) {
       await repo.update(client, supplierInvoiceId, { status: "MATCHED" });
       const grns = si.po_id ? await grnService.list(client, { po_id: si.po_id }) : [];
-      for (const g of grns) { /* eslint-disable-next-line no-await-in-loop */ await grnService.markMatched(client, g.grn_id, true); }
+      for (const g of grns) {   await grnService.markMatched(client, g.grn_id, true); }
       // Open the tenant's configurable approval chain on a clean match (bound to
       // supplier_invoice.matched). No workflow bound → autoApproved and the
       // explicit Post step stays available (see the note on W8 below).

@@ -31,7 +31,7 @@ async function resolveKey() {
   if (_key !== undefined) return _key;
   let key = null;
   try {
-    // eslint-disable-next-line global-require
+     
     const platformSettings = require("./platform/settings.service");
     const r = await platformSettings.resolve("geocoding", "geoapify");
     key = (r && r.secret) || null;

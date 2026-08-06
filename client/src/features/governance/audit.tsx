@@ -6,7 +6,6 @@
 
 import * as React from "react";
 import { Segmented } from "@/components/ui/segmented";
-import { DataView } from "@/components/ui/data-view";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field } from "@/components/ui/modal";
@@ -19,6 +18,7 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt, enumLabel } from "@/lib/format";
 import { RowActions } from "@/components/ui/row-actions";
+import { AuditDetailModal } from "@/components/audit/audit-detail-modal";
 import { shell, shortId } from "./shared";
 
 /** Resolve actor ids → names. A 403 on /users is normal for non-IAM roles. */
@@ -85,38 +85,12 @@ type SoftDelete = {
 const decisionTone = (d?: string | null): Tone =>
   d === "approved" ? "ok" : d === "revoked" ? "bad" : d === "flagged" ? "warn" : "mute";
 
-/** Pretty-print a jsonb column without exploding on a null/primitive. */
-/** An audit-ledger before/after snapshot. These are arbitrary row shapes, so
- *  DataView renders them as a labelled field list rather than raw JSON (A4). */
-function Json({ value }: { value: unknown }) {
-  return <DataView data={value} emptyTitle="—" className="max-h-64 overflow-auto" />;
-}
-
-function LedgerDetail({ row, actorName, onClose }: { row: LedgerEntry; actorName: Record<string, string>; onClose: () => void }) {
-  return (
-    <Modal open onClose={onClose} size="xl" title={row.action} description="Ledger entries are append-only — a database trigger forbids update and delete.">
-      <div className="space-y-4">
-        <div className="grid gap-3 text-sm sm:grid-cols-2">
-          <div><div className="micro uppercase tracking-wide">Entity</div><span className="num">{row.entity_ref || "—"}</span></div>
-          <div><div className="micro uppercase tracking-wide">Module</div>{row.module_key || "—"}</div>
-          <div><div className="micro uppercase tracking-wide">Actor</div>{row.actor_user_id ? actorName[row.actor_user_id] || shortId(row.actor_user_id) : "—"}{row.actor_role ? ` · ${row.actor_role}` : ""}</div>
-          <div><div className="micro uppercase tracking-wide">When</div><span className="num">{dateFmt(row.created_at)}</span>{row.ip ? <span className="num text-muted-foreground"> · {row.ip}</span> : null}</div>
-        </div>
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <div className="micro mb-1 uppercase tracking-wide">Before</div>
-            <Json value={row.before_json} />
-          </div>
-          <div>
-            <div className="micro mb-1 uppercase tracking-wide">After</div>
-            <Json value={row.after_json} />
-          </div>
-        </div>
-        <div className="flex justify-end pt-2"><Button variant="outline" onClick={onClose}>Close</Button></div>
-      </div>
-    </Modal>
-  );
-}
+// LedgerDetail is now `AuditDetailModal` in `components/audit/audit-detail-modal.tsx`
+// — the Control Tower's Recent activity widget uses the same modal, and the
+// old copy hard-coded the raw `row.action` as the modal title, which is the
+// "Auth token refreshed" defect the rebuild was written to fix. Extracted so
+// both readers agree on the sentence AND the "Sensitive" pill. The Json
+// helper that rendered `before_json`/`after_json` moved with it.
 
 function ReviewDetail({ review, actorName, onClose, onChanged }: { review: Review; actorName: Record<string, string>; onClose: () => void; onChanged: () => void }) {
   const detail = useResource<Review>(() => tenant<Review>(`/audit/reviews/${review.review_id}`), [review.review_id]);
@@ -365,7 +339,7 @@ export function AuditPage() {
         </>
       )}
 
-      {detail && <LedgerDetail row={detail} actorName={actorName} onClose={() => setDetail(null)} />}
+      {detail && <AuditDetailModal row={detail} actorName={actorName} onClose={() => setDetail(null)} />}
       {openReview && <ReviewDetail review={openReview} actorName={actorName} onClose={() => setOpenReview(null)} onChanged={reviews.reload} />}
       {newReview && <NewReviewForm onClose={() => setNewReview(false)} onSaved={reviews.reload} />}
     </section>

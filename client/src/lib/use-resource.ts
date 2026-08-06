@@ -27,6 +27,7 @@ import * as React from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { tenant, tenantPaged, ApiError } from "./api-client";
 import { TENANT_KEY, tenantKey } from "./query-client";
+import { tokenStore } from "./token-store";
 
 /**
  * An untyped API row. The default `useList` element type, and what screens
@@ -272,6 +273,12 @@ export function useListPaged<T = Record<string, unknown>>(
  * data. The fetcher's source text discriminates them — it is stable per call
  * site across renders, and distinct between different function bodies in both
  * dev and minified builds.
+ *
+ * ENV IS PART OF THE KEY, same reason as `tenantKey`: without it a LIVE ↔ TEST
+ * switch would return the other environment's cached data for `staleTime` and
+ * flash the wrong data even outside it. Read at call time from tokenStore, so
+ * a state-driven env change produces a new key on the next render and TanStack
+ * fetches fresh under the new env's header.
  */
 function resourceKey(fn: () => unknown, deps: React.DependencyList) {
   const serialisedDeps = deps.map((d) => {
@@ -285,7 +292,7 @@ function resourceKey(fn: () => unknown, deps: React.DependencyList) {
     }
     return String(d);
   });
-  return [TENANT_KEY, "resource", fn.toString(), serialisedDeps] as const;
+  return [TENANT_KEY, tokenStore.getEnv(), "resource", fn.toString(), serialisedDeps] as const;
 }
 
 export function useResource<T>(fn: () => Promise<T>, deps: React.DependencyList) {

@@ -62,7 +62,7 @@ d("ledger hardening triggers (real Postgres)", () => {
       const entryId = e.rows[0].entry_id;
       let ln = 1;
       for (const l of lines) {
-        // eslint-disable-next-line no-await-in-loop
+         
         await c.query(
           "INSERT INTO journal_line (entry_id, account_code, debit, credit, line_no) VALUES ($1,$2,$3,$4,$5)",
           [entryId, l.account_code, l.debit, l.credit, ln++],

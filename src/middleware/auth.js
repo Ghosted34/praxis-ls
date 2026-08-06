@@ -28,6 +28,7 @@ const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const { AppError } = require("../utils/errors");
 const identityCache = require("../shared/cache/identity-cache");
+const sessionStore = require("../shared/cache/session-store");
 const requestContext = require("../config/request-context");
 const { logger } = require("../config/logger");
 const metrics = require("../shared/observability/metrics");
@@ -76,6 +77,58 @@ async function authMiddleware(req, _res, next) {
       "Authentication failures by reason.");
     logger.warn({ sub: payload.sub, reason: user ? "inactive" : "not_found" }, "authentication rejected");
     throw new AppError("USER_INACTIVE", "User not found or inactive", 401);
+  }
+
+  // ── SEC-M1: revocation must actually revoke ────────────────────────────────
+  //
+  // SEC-C2 put `sid` in the access token so logout could revoke the session
+  // without the client naming it. Nothing then CHECKED it here, so killing a
+  // session, hitting the idle timeout or tripping refresh-reuse detection
+  // blocked the next refresh and left the already-issued access token working
+  // for its remaining TTL. "Revoke this session now" did not mean now — which
+  // is exactly what the security screen implies it means, and what an incident
+  // responder would rely on while containing a compromised account.
+  //
+  // WHY IT IS A FALLBACK AND NOT A LOOKUP. Redis is a cache; `killed_at` in
+  // Postgres is the record. A Redis restart or eviction empties the index while
+  // every session in it is still valid, so "absent from Redis" must mean "go
+  // and ask", never "reject". The happy path is one Redis EXISTS and no
+  // database round-trip; a cold or missing index costs one indexed query.
+  //
+  // FAILS OPEN on an infrastructure error, LOUDLY. If both Redis and the
+  // identity database are unreachable we cannot distinguish a revoked session
+  // from an unreachable one, and refusing every request would convert a cache
+  // outage into a total sign-out. The 15-minute window this closes is not worth
+  // that, so the error is logged and counted instead of thrown.
+  //
+  // Tokens minted before SEC-C2 carry no `sid`; they are let through and expire
+  // on their own, which is the same degradation logout already accepts.
+  if (payload.sid) {
+    let live = await sessionStore.isSessionActive(payload.sid);
+    if (live !== true) {
+      try {
+        const row = await req.identityDb((client) =>
+          client.query(
+            "SELECT killed_at FROM user_session WHERE session_id = $1",
+            [payload.sid],
+          ).then((r) => r.rows[0] || null),
+        );
+        // No row is not "unknown": `sid` is only ever minted alongside a
+        // user_session row, so its absence means the session is gone.
+        live = row ? row.killed_at === null : false;
+      } catch (err) {
+        metrics.inc("praxis_auth_failures_total", { reason: "session_check_unavailable" }, 1,
+          "Authentication failures by reason.");
+        logger.error({ sid: payload.sid, err }, "session revocation check unavailable — allowing request");
+        live = true;
+      }
+    }
+    if (!live) {
+      metrics.inc("praxis_auth_failures_total", { reason: "session_revoked" }, 1,
+        "Authentication failures by reason.");
+      logger.warn({ sub: payload.sub, sid: payload.sid }, "authentication rejected: session revoked");
+      throw new AppError("SESSION_REVOKED", "This session has been ended", 401);
+    }
   }
 
   req.user = {

@@ -52,7 +52,13 @@ async function platformAuth(req, _res, next) {
 
 function requirePlatformRole(...roles) {
   const allowed = new Set(roles.length ? roles : ["PLATFORM_ROOT_ADMIN"]);
-  return function check(req, _res, next) {
+  // `platformRoleCheck`, not `check` (API-F23 / SEC-L5). Both gates here
+  // returned a function called `check`, which is too generic for any tool
+  // reading the mounted routers to recognise as an authorisation step — so
+  // every platform-console route, including tenant deletion, was classified as
+  // "authenticated with no permission check". The name is what makes the gate
+  // legible to the contract snapshot and to the CI tier check.
+  return function platformRoleCheck(req, _res, next) {
     if (!req.platformUser) {
       throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
     }
@@ -90,7 +96,8 @@ const ROOT_ROLE = "PLATFORM_ROOT_ADMIN";
  * matrix row, loaded in platformAuth). Root Admin passes unconditionally.
  */
 function requireCap(capability) {
-  return function check(req, _res, next) {
+  // `platformCapCheck` — see the note on requirePlatformRole above.
+  return function platformCapCheck(req, _res, next) {
     if (!req.platformUser) {
       throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
     }

@@ -39,6 +39,28 @@ services:
   redis:
     image: redis:7-alpine
     container_name: praxis_redis
+    # SEC-L2 — require a password.
+    #
+    # Redis was unauthenticated, mitigated only by the loopback port binding
+    # below. That is a real mitigation and it is also a single line of
+    # docker-compose away from not being one: publish the port, add a second
+    # host, run one container with `network_mode: host`, and the whole cache —
+    # session index, identity/RBAC projections, rate-limit counters — is open to
+    # anything that can reach the box. Rate-limit counters matter more than they
+    # sound: writable counters mean the login limiter can be reset at will,
+    # which quietly undoes SEC-C3.
+    #
+    # `${REDIS_PASSWORD}` with NO default on purpose. An empty value makes
+    # `--requirepass ""` a no-op, which would look configured and authenticate
+    # nothing — the exact "control that is counted but does not bite" shape this
+    # remediation keeps finding. It must be set in `.env`, and REDIS_URL must
+    # carry the same secret (redis://:<password>@redis:6379).
+    command:
+      [
+        "redis-server",
+        "--requirepass",
+        "${REDIS_PASSWORD:?REDIS_PASSWORD must be set in .env}",
+      ]
     # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
     # without bound on a single-VPS deployment whose disk is itself unmonitored
     # — a plausible CAUSE of the 02:00 outage, taking postgres, redis, api,
@@ -64,10 +86,19 @@ services:
     volumes:
       - praxis_redisdata:/data
     healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
+      # Must authenticate too, or the healthcheck reports a container "healthy"
+      # that no client can actually use — and with `--requirepass` set, an
+      # unauthenticated PING answers NOAUTH rather than PONG.
+      test:
+        [
+          "CMD-SHELL",
+          'redis-cli -a "$$REDIS_PASSWORD" --no-auth-warning ping | grep -q PONG',
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
 
   # One-shot: runs platform + all-tenant migrations, then exits. api/worker wait
   # for it, so a plain `docker compose up -d` is always schema-current — on the
@@ -86,7 +117,7 @@ services:
       # the migrator/provisioner connects via TENANT_DB_HOST_DEFAULT (falls back
       # to localhost, NOT DB_HOST) — it must also point at the postgres service
       TENANT_DB_HOST_DEFAULT: postgres
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     command: sh -c "npm run db:migrate:platform && npm run db:migrate:tenants"
     restart: "no"
 
@@ -126,11 +157,11 @@ services:
       NODE_ENV: production
       DB_HOST: postgres
       TENANT_DB_HOST_DEFAULT: postgres
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       PORT: "8080"
       ENABLE_WORKERS: "false"
     ports:
-      - "3000:8080"   # host:container — app listens on 8080 inside the container
+      - "3000:8080" # host:container — app listens on 8080 inside the container
     volumes:
       - ./media:/app/media
       - ./uploads:/app/uploads
@@ -183,7 +214,7 @@ services:
       NODE_ENV: production
       DB_HOST: postgres
       TENANT_DB_HOST_DEFAULT: postgres
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
       PORT: "8080"
       ENABLE_WORKERS: "false"
     ports:
@@ -233,7 +264,7 @@ services:
       NODE_ENV: production
       DB_HOST: postgres
       TENANT_DB_HOST_DEFAULT: postgres
-      REDIS_URL: redis://redis:6379
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379
     volumes:
       - ./media:/app/media
       - ./uploads:/app/uploads

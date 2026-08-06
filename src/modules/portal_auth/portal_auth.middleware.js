@@ -14,7 +14,19 @@ const portal = require("../portal/portal.service");
 const { AppError } = require("../../utils/errors");
 
 function portalAuth(portalType = null) {
-  return async function (req, _res, next) {
+  // NAMED, deliberately (API-F23 / SEC-L5). This returned an anonymous function,
+  // so `GET /portal/me`, `/client`, `/investor` and `/auditor` appeared in the
+  // route stack as `<anonymous>, <anonymous>` — indistinguishable from an
+  // unauthenticated route. Every tool that reads the mounted routers to ask
+  // "what is reachable without credentials?" therefore reported the entire
+  // external portal surface as PUBLIC. It is not: this middleware verifies the
+  // portal token, loads the user, and checks the portal grant.
+  //
+  // The name is the only thing that made it legible. That is a thin thread to
+  // hang a security inventory on, which is exactly TC-Q6's complaint about
+  // matching middleware by name — but until the tooling matches by reference,
+  // an anonymous auth middleware is an auth middleware nothing can see.
+  return async function portalAuthCheck(req, _res, next) {
     const header = req.headers.authorization;
     if (!header || !header.startsWith("Bearer ")) throw new AppError("AUTH_REQUIRED", "Portal authorization required", 401);
     const payload = service.verifyToken(header.slice("Bearer ".length).trim());

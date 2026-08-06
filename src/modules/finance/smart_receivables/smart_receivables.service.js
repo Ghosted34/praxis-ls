@@ -84,7 +84,7 @@ async function postCore(client, { receiptId, entityId, entryDate, sourceDocRef, 
     });
 
     for (const alloc of plan.allocations) {
-      // eslint-disable-next-line no-await-in-loop
+       
       await repo.insertAllocation(client, { receipt_id: receiptId, invoice_id: alloc.invoice_id, amount: alloc.amount });
     }
     const { number } = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: entryDate });

@@ -148,7 +148,7 @@ async function emitEvent(client, e) {
   // transaction so the task is atomic with the change. `require` is lazy to keep
   // the module load order (executor → query-helpers only, no cycle back to emit).
   if (isApprovable && e.entityRef) {
-    // eslint-disable-next-line global-require
+     
     const executor = require("../../services/workflow/executor");
     const amountXaf = e.payload && (e.payload.amount_xaf ?? e.payload.amount ?? e.payload.total_ttc);
     await executor.start(client, { eventTypeKey: key, entityRef: e.entityRef, amountXaf: amountXaf ?? null, actorUserId: e.actorUserId || null });
@@ -234,12 +234,35 @@ async function emitEvent(client, e) {
  * dropping the FK and letting a real ledger reference a user who never existed.
  */
 async function audit(client, a) {
+  // Denormalised actor + attribution columns (0510). They are ADDITIVE and all
+  // NULL-safe:
+  //   - actorName/actorEmail: captured at write time so a self-scoped feed
+  //     ("/audit/my-feed" on the Control Tower) can render a card without a
+  //     cross-schema join. Historical rows carry NULL until the back-fill in
+  //     0510 completes; callers that don't pass them keep working.
+  //   - isSensitive: emitter judgement, drives the "Sensitive" badge in the
+  //     reader. Defaults to false at the column level so an omitted flag is
+  //     the same as "ordinary".
+  //   - metadata: free-form jsonb (channel_name for a comms.message_posted,
+  //     count for a bulk op) so the humaniser has facts to compose from
+  //     without piling more columns on. Defaults to {} at the column level.
   await client.query(
-    `INSERT INTO immutable_ledger (actor_user_id, actor_role, action, module_key, entity_ref, before_json, after_json, ip, request_id)
-     SELECT (SELECT user_id FROM app_user WHERE user_id = $1), $2,$3,$4,$5,$6,$7,$8,$9`,
+    `INSERT INTO immutable_ledger (
+       actor_user_id, actor_role, actor_name_snapshot, actor_email_snapshot,
+       action, module_key, entity_ref,
+       before_json, after_json, ip, request_id,
+       is_sensitive, metadata
+     )
+     SELECT (SELECT user_id FROM app_user WHERE user_id = $1),
+            $2, $3, $4,
+            $5, $6, $7,
+            $8, $9, $10, $11,
+            COALESCE($12, false), COALESCE($13, '{}'::jsonb)`,
     [
       a.actorUserId || null,
       a.actorRole || null,
+      a.actorName || null,
+      a.actorEmail || null,
       a.action,
       a.moduleKey || null,
       a.entityRef || null,
@@ -250,8 +273,46 @@ async function audit(client, a) {
       // background job that DOES know its originating request (a queued job
       // carrying the id in its payload) can say so.
       a.requestId || currentRequestId(),
+      a.isSensitive === true ? true : null,
+      a.metadata || null,
     ],
   );
+}
+
+/**
+ * Pull the attribution fields a modern `audit()` write wants out of `req`.
+ *
+ * Existing callers pass `actorUserId` from `actor.user_id` and nothing else;
+ * that keeps working because every new column defaults NULL/false/'{}'. New
+ * (auth/RBAC) callers should do:
+ *
+ *     await audit(client, {
+ *       ...withActor(req),
+ *       action: events.LOGIN_SUCCEEDED,
+ *       moduleKey: events.MODULE,
+ *       entityRef: `app_user:${user.user_id}`,
+ *     });
+ *
+ * which fills in actor name, email and ip in one shape. A follow-up PR can
+ * propagate this across the ~200 remaining call sites — none of them regress
+ * in the meantime because the columns tolerate NULL.
+ *
+ * `req.user` is the shape `middleware/auth.js:81` attaches: user_id, email,
+ * display_name (used as the actor name), role_ids. `req.ip` is Express's
+ * trust-proxy-aware client ip.
+ */
+function withActor(req) {
+  const u = (req && req.user) || {};
+  return {
+    actorUserId: u.user_id || null,
+    actorName: u.display_name || u.email || null,
+    actorEmail: u.email || null,
+    ip: (req && req.ip) || null,
+    // Not filled by req.user today (no `role.code` on the auth projection);
+    // left null so callers that DO know their acting role (a service invoked
+    // via impersonation, say) can pass it in the spread instead.
+    actorRole: null,
+  };
 }
 
 /**
@@ -278,4 +339,4 @@ async function resolveActorId(client, userId) {
 }
 
 module.exports = {
-  clearEventTypeCache, emitEvent, audit, resolveActorId, WATCHER_ROLE_CODES };
+  clearEventTypeCache, emitEvent, audit, withActor, resolveActorId, WATCHER_ROLE_CODES };

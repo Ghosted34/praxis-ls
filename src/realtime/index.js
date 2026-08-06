@@ -64,7 +64,29 @@ async function authenticate(socket, next) {
     }
     if (payload.typ && payload.typ !== "access") return next(new Error("INVALID_TOKEN"));
 
-    const host = String(auth.host || socket.handshake.headers.host || "")
+    // SEC-M4. The HANDSHAKE HEADER, never `auth.host`.
+    //
+    // This read `auth.host || headers.host`, so a client CHOSE which tenant its
+    // token was resolved against — the one input in the handshake that must not
+    // be client-supplied. It failed closed today only because a user id from
+    // tenant A does not exist in tenant B's `app_user`, i.e. the isolation was
+    // resting on UUID non-collision rather than on a check. That stops being
+    // true the moment any tenant database is restored, cloned or seeded from
+    // another — a staging refresh or a support copy — and it would fail OPEN
+    // then, silently, with a valid token reading another tenant's live stream.
+    //
+    // The HTTP path resolves the tenant from Host alone; production now matches
+    // it, which is the actual fix: one rule for which request belongs to whom.
+    //
+    // NOT removed outright, because `auth.host` is a documented DEVELOPMENT
+    // affordance — comms-socket.ts says "in dev, pass host/url overrides", and
+    // it exists because the Vite dev server proxies the socket, so the Host
+    // header is the dev server's and not the tenant subdomain's. Deleting it
+    // would have closed the hole and broken every developer's local socket.
+    // Gated on NODE_ENV instead, exactly as the origin check above already
+    // gates `devLocal` — same rule, same place, one thing to reason about.
+    const devHostOverride = config.NODE_ENV !== "production" ? auth.host : null;
+    const host = String(devHostOverride || socket.handshake.headers.host || "")
       .toLowerCase()
       .split(":")[0];
     const tenant = await registry.resolveByHost(host);
@@ -86,7 +108,7 @@ async function authenticate(socket, next) {
 function initSocket(httpServer) {
   let Server;
   try {
-    // eslint-disable-next-line global-require
+     
     ({ Server } = require("socket.io"));
   } catch {
     logger.warn("socket.io not installed — real-time disabled");
@@ -121,9 +143,9 @@ function initSocket(httpServer) {
    * chat feature that will not start.
    */
   try {
-    // eslint-disable-next-line global-require
+     
     const { createAdapter } = require("@socket.io/redis-adapter");
-    // eslint-disable-next-line global-require
+     
     const { createConnection } = require("../config/redis");
     const pub = createConnection("socketio:pub");
     const sub = createConnection("socketio:sub");
@@ -150,7 +172,7 @@ function initSocket(httpServer) {
 
     socket.on("channel:join", async (groupId, ack) => {
       try {
-        // eslint-disable-next-line global-require
+         
         const repo = require("../modules/smartcomm/smartcomm.repo");
         const member = await registry.withTenantConnection(tenant, env, (c) => repo.findMember(c, groupId, userId));
         if (!member) return typeof ack === "function" && ack({ ok: false, error: "NOT_A_MEMBER" });
@@ -181,13 +203,13 @@ function initSocket(httpServer) {
 function attachMailBridge(attempt = 0) {
   let subscriber;
   try {
-    // eslint-disable-next-line global-require
+     
     subscriber = require("../config/redis").getSubscriber();
   } catch {
     if (attempt < 20) setTimeout(() => attachMailBridge(attempt + 1), 500);
     return;
   }
-  // eslint-disable-next-line global-require
+   
   const { CHANNEL } = require("./mail-bus");
   subscriber.subscribe(CHANNEL).catch((err) => logger.warn({ err }, "[mail-bus] subscribe failed"));
   subscriber.on("message", (channel, message) => {

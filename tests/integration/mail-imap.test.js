@@ -45,11 +45,11 @@ run("ImapSmtpProvider (live server)", () => {
     let cursor = null;
     let found = null;
     for (let i = 0; i < 12 && !found; i += 1) {
-      // eslint-disable-next-line no-await-in-loop
+       
       const { messages, nextCursor } = await provider().fetchSince(cursor);
       cursor = nextCursor;
       found = messages.find((m) => m.subject === subject) || null;
-      // eslint-disable-next-line no-await-in-loop
+       
       if (!found) await new Promise((res) => setTimeout(res, 2500));
     }
     expect(found).toBeTruthy();

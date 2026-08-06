@@ -147,7 +147,7 @@ describe("OBS-E1 — only real failures page anyone", () => {
     // The same identity trap explains the ZodError case below: `instanceof`
     // against a class from a different module instance is always false, so a
     // validation error fell through to the 500 branch.
-    // eslint-disable-next-line global-require
+     
     const { errorHandler } = require("../../src/middleware/error-handler");
     const app = express();
     app.use((req, _res, next) => { req.request_id = "rid-500"; next(); });
@@ -182,7 +182,7 @@ describe("OBS-E1 — only real failures page anyone", () => {
     // AFTER freshReporter(), so this is the same zod instance the freshly
     // required errorHandler will `instanceof` against.
     freshReporter();
-    // eslint-disable-next-line global-require
+     
     const { ZodError } = require("zod");
     const res = await request(
       appThrowing(new ZodError([{ code: "custom", path: ["x"], message: "bad" }])),

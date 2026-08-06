@@ -2,4092 +2,4920 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 817,
+  "route_count": 818,
+  "tiers": {
+    "public": 19,
+    "self-scoped": 57,
+    "gated": 742
+  },
   "routes": {
     "DELETE /api/platform/plans/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/platform/roles/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/platform/tenants/:slug/features/:featureKey": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/platform/users/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/appraisals/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/attendance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/auth/pin/devices/:deviceId": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "DELETE /api/tenant/campaigns/senders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/campaigns/templates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/capabilities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/chart-of-accounts/:code": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/client-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/addresses/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/banks/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/beneficial-owners/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/contacts/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/documents/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/clients/:id/registrations/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/contracts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/cycle-counts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/dispatch/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/documents/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/drivers/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/employees/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/equipment/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/expense-rates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/field-visibility/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/financing/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/fuel/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/hr/queries/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/hr/sanctions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/inbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/incidents/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/inventory/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/leave/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/locations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/me/preferences/appearance": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "DELETE /api/tenant/notifications/push/subscribe": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "DELETE /api/tenant/outbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/party-document-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/payment-gateways/:provider": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/permissions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/reports/saved/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/reports/scheduled/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/roles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/scopes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/scopes/:id/members/:userId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/service-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/sessions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/settings/:section/:key": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/channels/:id/draft": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/channels/:id/members/:userId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/messages/:messageId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/smartcomm/quick-replies/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/sops/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/succession/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/supplier-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/addresses/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/banks/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/beneficial-owners/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/contacts/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/documents/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/suppliers/:id/registrations/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/talent-pool/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/trainings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/vacancies/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/vehicle-compliance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/vehicles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/work-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "DELETE /api/tenant/workflows/:id/steps/:stepId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/ai-vendors": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/audit": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/capabilities": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/features": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/catalogue/modules": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/plans": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/plans/:id/features": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/roles": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/settings": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/settings/:section/:key": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/support/tickets": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/support/tickets/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/tenants": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/tenants/:slug": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/tenants/:slug/features": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/platform/users": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/conversations": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/ai/governance/budget": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/governance/can-use": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/governance/features": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/governance/grants": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/governance/usage": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/ai/history": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/ai/options": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/appraisals/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/appraisals/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/appraisals/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/approvals": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/assets/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/assets/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/attendance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/attendance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/attendance/absence": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/attendance/open": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/attendance/work-sites": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/audit/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/audit/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/audit/events": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/audit/my-feed": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/audit/reviews": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/audit/reviews/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/audit/soft-deletes": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/auth/me": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/auth/pin/devices": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/branding/": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/branding/login": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/branding/pwa": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/campaigns/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/campaigns/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/campaigns/senders": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/campaigns/subscribers": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/campaigns/templates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/campaigns/templates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/capabilities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/capabilities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/capabilities/users/:userId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/cash-requests/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/cash-requests/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/catalogue/modules": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/chart-of-accounts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/chart-of-accounts/:code": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/client-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/client-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/360": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/addresses": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/banks": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/beneficial-owners": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/contacts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/credit": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/documents": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/clients/:id/registrations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/compliance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/compliance/catalogue": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/contracts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/contracts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/contracts/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/cost-tracking/dossier/:dossierId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/cost-tracking/dossier/:dossierId/reconcile": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/costings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/costings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/countries/": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/countries/:code": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/credit-notes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/credit-notes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/currencies/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/currencies/convert": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/currencies/rate": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/currencies/rates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/cycle-counts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/cycle-counts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/dashboard/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/dashboard/control-tower": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/dashboard/kpis": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/delivery-notes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/delivery-notes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/dispatch/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/dispatch/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/document-templates/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/document-templates/:docType/config": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/document-templates/:docType/records": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/document-verification/scan": {
       "auth": false,
       "rbac": false,
-      "validated": true
+      "validated": true,
+      "tier": "public"
     },
     "GET /api/tenant/document-verification/verify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/documents/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/documents/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/documents/:id/download": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/drivers/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/drivers/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/drivers/expiring": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/:id/managers": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/:id/references": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/:id/reports": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/:id/team": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/drivers": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/employees/roster": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/entities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/entities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/equipment/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/equipment/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/event-types": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/expense-rates/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/expense-rates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/expense-rates/resolve": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/extra-charge-simulations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/extra-charge-simulations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/field-visibility/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/field-visibility/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/final-invoices/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/final-invoices/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/final-invoices/:id/totals": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/financial-dictionary/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/financial-dictionary/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/financing/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/financing/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/fuel/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/fuel/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/geo-places/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/god-mode/soft-deletes": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/goods-received/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/goods-received/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/hr/queries/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/hr/queries/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/hr/queries/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/hr/sanctions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/hr/sanctions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/hr/sanctions/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/inbound/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/inbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/incidents/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/incidents/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/intake/enquiries": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/intake/partnerships": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/inventory/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/inventory/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/inventory/:id/movements": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/journal-entries/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/journal-entries/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/leads/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/leads/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/leave/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/leave/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/leave/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/locations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/locations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/autodiscover": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/client/:id/timeline": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/connections": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/inbox": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/oauth/google/callback": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/mail/oauth/google/start": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/oauth/microsoft/callback": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "GET /api/tenant/mail/oauth/microsoft/start": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/senders": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/sent": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/thread": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/thread/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/mail/thread/:id/attachments": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/margin-simulations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/margin-simulations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/master-config/:appliesTo": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/me/preferences/appearance": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/me/preferences/shell": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/meetings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/meetings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/milestones/dossier/:dossierId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/milestones/templates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/notifications/": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/notifications/categories": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/notifications/preferences": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/notifications/push/public-key": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/notifications/unread-count": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/numbering-schemes/:moduleKey": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/onboarding/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/onboarding/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/operations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/operations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/operations/:id/360": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/opportunities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/opportunities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/opportunities/board": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/opportunities/stages": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/outbound/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/outbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/outbound/:id/lines": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/party-document-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/party-document-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payment-gateways/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payment-gateways/:provider": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payroll/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payroll/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/payroll/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/permissions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/permissions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/permissions/matrix": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/permissions/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/portal/auditor": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portal/client": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portal/investor": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portal/me": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portal/users": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portals/access": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portals/access/check": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portals/auditor": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portals/client": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/portals/investor": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/pricing-variance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/pricing-variance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/pricing-variance/:id/finance": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/proformas/advances": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/proformas/advances/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/proposals/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/proposals/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/purchase-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/purchase-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/purchase-requests/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/purchase-requests/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/quotations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/quotations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/receivables/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/receivables/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/receivables/ageing": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/receivables/overdue": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/receivables/reminders": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/regie/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/regie/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/catalogue": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/run/:key": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/run/:key/export": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/saved": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/saved/:id/run": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/scheduled": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/reports/tiles": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/roles/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/roles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/scopes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/scopes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/scopes/:id/members": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/scopes/entities": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/scopes/options": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/scopes/tree": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/service-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/service-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/sessions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/sessions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/sessions/mine": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/settings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/settings/:section": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/settings/:section/:key": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/settings/sections": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/signatures/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/channels": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/channels/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/channels/:id/draft": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/channels/:id/members": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/channels/:id/messages": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/colleagues": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/config": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/quick-replies": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/search": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/starred": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/smartcomm/unread": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/sops/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/sops/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/balance-sheet": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/cash-flow": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/grand-livre": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/income-statement": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/notes": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/periods": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/statements/trial-balance": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/success-stories/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/success-stories/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/succession/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/succession/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/supplier-invoices/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/supplier-invoices/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/supplier-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/supplier-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/360": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/addresses": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/banks": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/beneficial-owners": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/contacts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/documents": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/registrations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/support/tickets": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/support/tickets/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "GET /api/tenant/talent-pool/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/talent-pool/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax-jurisdictions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax-jurisdictions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax-jurisdictions/:id/codes": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax-jurisdictions/:id/effective": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/cnps-declaration": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/corporate-tax": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/declarations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/declarations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/dsf-dataset": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/vat-return": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/tax/withholding-return": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": true
+      "validated": true,
+      "tier": "gated"
     },
     "GET /api/tenant/trainings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/trainings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/trainings/:id/attendees": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/transit-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/transit-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/treasury-accounts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/treasury-accounts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/users/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/users/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/users/:id/email-signature": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/users/employees": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vacancies/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vacancies/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vacancies/:id/applicants": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vehicle-compliance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vehicle-compliance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vehicle-compliance/expiring": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vehicles/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/vehicles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/work-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/work-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/work-orders/:id/parts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/workflows": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/workflows/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/workflows/:id/steps": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "GET /api/tenant/workspace/": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PATCH /api/platform/plans/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/support/tickets/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/capacity": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/features/:featureKey": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/plan": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/tenants/:slug/sandbox": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/platform/users/:id": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/ai/governance/features/:key": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/appraisals/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/assets/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/attendance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/attendance/work-sites/:siteId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/audit/reviews/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/audit/reviews/:id/entries/:entryId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/campaigns/templates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/capabilities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/cash-requests/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/chart-of-accounts/:code": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/client-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/addresses/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/banks/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/beneficial-owners/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/contacts/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/documents/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/clients/:id/registrations/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/contracts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/costings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/credit-notes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/cycle-counts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/dispatch/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/drivers/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/employees/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/entities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/equipment/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/expense-rates/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/field-visibility/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/final-invoices/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/financial-dictionary/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/financing/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/fuel/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/hr/queries/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/hr/sanctions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/inbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/incidents/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/inventory/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/leads/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/leave/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/locations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/mail/senders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/onboarding/items/:itemId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/operations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/opportunities/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/outbound/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/outbound/:id/lines/:lineId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/party-document-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/payment-gateways/:provider/active": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/payment-gateways/:provider/role": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/permissions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/proposals/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/purchase-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/quotations/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/reports/scheduled/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/roles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/scopes/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/service-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/sessions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/smartcomm/messages/:messageId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/smartcomm/quick-replies/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/sops/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/success-stories/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/succession/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/supplier-types/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/addresses/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/banks/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/beneficial-owners/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/contacts/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/documents/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/suppliers/:id/registrations/:childId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/talent-pool/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/tax-jurisdictions/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/trainings/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/trainings/:id/attendees/:attendeeId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/transit-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/treasury-accounts/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/users/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/vacancies/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/vacancies/:id/applicants/:applicantId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/vehicle-compliance/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/vehicles/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/work-orders/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PATCH /api/tenant/workflows/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/ai-vendors/:vendor/test": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/auth/login": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/platform/auth/refresh": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/platform/plans": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/roles": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/settings/:section/:key/test": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/settings/push/vapid/generate": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/admin": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/go-live": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/migrate": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/resume": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/sandbox/wipe": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/tenants/:slug/suspend": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/users": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/platform/users/:id/password": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/ai/actions/:id/confirm": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/ai/ask": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/ai/batches/:batchId/confirm": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/ai/governance/budget": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/ai/governance/grants": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/ai/governance/grants/revoke": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/ai/history/clear": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/appraisals/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/appraisals/:id/reward": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/approvals/:id/act": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/assets/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/assets/:id/depreciate": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/assets/:id/dispose": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/attendance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/attendance/:id/clock-out": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/attendance/clock-in": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/attendance/clock-out": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/attendance/work-sites": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/audit/reviews": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/audit/soft-deletes/:id/request-restore": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/audit/soft-deletes/:id/restore": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/auth/2fa/disable": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/2fa/enable": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/2fa/setup": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/2fa/verify": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/auth/avatar": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/forgot-password": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/auth/login": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/auth/logout": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/pin/login": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/auth/pin/register": {
       "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/auth/refresh": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/auth/reset-password": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/branding/login/background": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/branding/logo": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/branding/pwa/icon": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/:id/send": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/senders": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/senders/:id/verify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/subscribers": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/subscribers/unsubscribe": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/campaigns/templates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/capabilities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cash-requests/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cash-requests/:id/disburse": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cash-requests/:id/justify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cash-requests/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/chart-of-accounts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/client-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/addresses": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/banks": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/beneficial-owners": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/block": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/contacts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/documents": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/registrations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/unblock": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/:id/verify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/clients/convert-from-supplier/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/compliance/:id/resolve": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/compliance/run": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/contracts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/contracts/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cost-tracking/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/costings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/costings/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/credit-notes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/credit-notes/:id/post": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/currencies/rates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/cycle-counts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/delivery-notes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/dispatch/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/dispatch/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/document-templates/:docType/:id/send": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/document-templates/:docType/generate": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/document-templates/:docType/preview": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/documents/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/drivers/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/drivers/scan": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/employees/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/employees/:id/active": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/entities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/entities/:id/active": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/entities/:id/logo": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/equipment/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/equipment/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/event-types": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/expense-rates/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/extra-charge-simulations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/extra-charge-simulations/preview": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/field-visibility/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/final-invoices/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/final-invoices/:id/submit": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/financial-dictionary/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/financing/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/financing/:id/drawdown": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/financing/:id/repay": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/fuel/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/geo-places/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/god-mode/purge": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/goods-received/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/hr/queries/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/hr/queries/:id/respond": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/hr/sanctions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/hr/sanctions/:id/lift": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/inbound/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/inbound/:id/qa": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/incidents/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/incidents/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/intake/enquiries": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/intake/enquiries/:id/triage": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/intake/partnerships": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/intake/partnerships/:id/review": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/inventory/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/inventory/:id/move": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/inventory/:id/state": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/journal-entries/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/journal-entries/:id/reverse": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/leads/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/leads/:id/convert": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/leads/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/leave/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/leave/:id/decision": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/locations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/connections": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/connections/:id/sync": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/connections/:id/test": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/send": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/senders": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/thread/:id/link": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/thread/:id/read": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/thread/:id/reply": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/mail/webhook/google": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/mail/webhook/microsoft": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/margin-simulations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/margin-simulations/preview": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/meetings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/meetings/:id/notes": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/milestones/:id/advance": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/milestones/instantiate": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/milestones/templates": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/notifications/:id/read": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/notifications/push/subscribe": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/notifications/read-all": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/onboarding/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/onboarding/:id/complete": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/onboarding/:id/items": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/operations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/operations/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/opportunities/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/opportunities/:id/lose": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/opportunities/:id/move": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/opportunities/:id/win": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/outbound/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/outbound/:id/lines": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/outbound/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/party-document-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/payment-gateways/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/payroll/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/payroll/:id/compute": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/payroll/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/permissions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portal/auth/accept": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/portal/auth/forgot": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/portal/auth/login": {
       "auth": false,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "public"
     },
     "POST /api/tenant/portal/users": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portal/users/:id/password": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portal/users/:id/status": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portal/users/invite": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portals/access": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/portals/access/:id/revoke": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/pricing-variance/compute": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/proformas/pay": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/proposals/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/proposals/:id/accept": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/proposals/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/purchase-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/purchase-orders/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/purchase-requests/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/purchase-requests/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/quotations/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/quotations/:id/accept": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/quotations/:id/transition": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/receivables/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/receivables/:id/post": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/regie/age-due": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/regie/issue": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/reports/run/:key/pdf": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/reports/saved": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/reports/scheduled": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/reports/scheduled/run-due": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/roles/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/scopes/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/scopes/:id/members": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/service-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/sessions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/sessions/:id/kill": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/sessions/mine/revoke-all": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/settings/integration_secret/:key/test": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/signatures/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/archive": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/certify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/members": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/messages": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/mute": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/pin": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/channels/:id/read": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/email/test": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/config/whatsapp/test": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/messages/:messageId/react": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/messages/:messageId/star": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/smartcomm/quick-replies": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/sops/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/statements/periods/close": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/success-stories/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/success-stories/:id/publish": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/success-stories/:id/sign-off": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/success-stories/:id/unpublish": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/succession/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/supplier-invoices/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/supplier-invoices/:id/match": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/supplier-invoices/:id/post": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/supplier-types/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/addresses": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/banks": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/beneficial-owners": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/block": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/contacts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/documents": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/registrations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/unblock": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/:id/verify": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/suppliers/convert-from-client/:id": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/support/tickets": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/support/tickets/:id/csat": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "POST /api/tenant/talent-pool/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax-jurisdictions/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax-jurisdictions/:id/active": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax-jurisdictions/:id/codes": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax/declarations": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax/declarations/:id/approve": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/tax/declarations/:id/submit": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/trainings/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/trainings/:id/attendees": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/trainings/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/transit-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/treasury-accounts/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/treasury-accounts/:id/active": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/users/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/users/:id/password": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/users/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vacancies/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vacancies/:id/applicants": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vacancies/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vehicle-compliance/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vehicle-compliance/scan": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/vehicles/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/work-orders/": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/work-orders/:id/parts": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/work-orders/:id/status": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/workflows": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "POST /api/tenant/workflows/:id/steps": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/platform/ai-vendors/:vendor": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/platform/plans/:id/features": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/platform/roles/:id/permissions": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/platform/settings/:section/:key": {
-      "auth": false,
-      "rbac": false,
-      "validated": false
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/branding/": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/branding/login": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/branding/pwa": {
       "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/capabilities/users/:userId": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/document-templates/:docType/config": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/master-config/:appliesTo": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/me/preferences/appearance": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": true
+      "validated": true,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/me/preferences/shell": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": true
+      "validated": true,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/notifications/preferences": {
-      "auth": false,
+      "auth": true,
       "rbac": false,
-      "validated": false
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PUT /api/tenant/numbering-schemes/:moduleKey": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/permissions/grant": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/reports/tiles": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/settings/:section/:key": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/smartcomm/channels/:id/draft": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/smartcomm/config/email": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/smartcomm/config/whatsapp": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/users/:id/email-signature": {
-      "auth": false,
+      "auth": true,
       "rbac": true,
-      "validated": false
+      "validated": false,
+      "tier": "gated"
     }
   }
 }

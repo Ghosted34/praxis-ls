@@ -79,7 +79,7 @@ async function setBranding(client, { actorId, ...fields }) {
     throw new AppError("BAD_THEME", "brand_theme must be 'dark' or 'light'", 422);
   }
   for (const [field, val] of Object.entries(changes)) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await repo.upsertAppearance(client, KEYS[field], val, actorId);
   }
   await audit(client, {
@@ -144,7 +144,7 @@ async function setLogin(client, { actorId, ...fields }) {
     throw new AppError("BAD_LAYOUT", "login.layout must be 'centered' or 'split'", 422);
   }
   for (const [field, val] of Object.entries(changes)) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await repo.upsertLogin(client, LOGIN_KEYS[field], val, actorId);
   }
   await audit(client, { actorUserId: actorId, action: "login.updated", moduleKey: "MOD-70", entityRef: "setting:login", after: changes });

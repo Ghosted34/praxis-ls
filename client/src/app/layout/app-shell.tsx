@@ -44,6 +44,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { TENANT_KEY } from "@/lib/query-client";
 import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
+import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
@@ -120,6 +121,63 @@ function EnvToggle({ env, onSwitch }: { env: string; onSwitch: (e: "live" | "san
       >
         TEST
       </button>
+    </div>
+  );
+}
+
+/**
+ * Full-screen interstitial during an env switch.
+ *
+ * `switchEnv` has already remounted every screen under `key={env}` and TanStack
+ * is fetching fresh data under new env-scoped keys, so this overlay is a
+ * VISUAL CUE, not a functional gate: without it the header briefly still
+ * carries the old env's chrome and the newly-mounted screen paints its
+ * skeleton — a fast-but-flickery transition that reads as either the toggle
+ * having not worked or the app being confused. Half a second of "Switching…"
+ * makes the same operation feel intentional.
+ *
+ * `role="status"` + `aria-live="polite"` so screen-reader users hear the
+ * change instead of watching focus land back on the same nav tree with no
+ * announcement of why.
+ */
+function EnvSwitchOverlay({ to }: { to: "live" | "sandbox" }) {
+  const label = to === "sandbox" ? "TEST" : "LIVE";
+  const tint = to === "sandbox" ? "warn" : "ok";
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-background/80 backdrop-blur-sm animate-fade-in"
+    >
+      <div className="flex flex-col items-center gap-3 rounded-xl border bg-card px-6 py-5 shadow-[var(--shadow-l)]">
+        <span
+          aria-hidden
+          className={cn(
+            "inline-block h-6 w-6 animate-spin rounded-full border-2 border-transparent",
+            tint === "warn"
+              ? "border-t-[rgb(var(--warn))]"
+              : "border-t-[rgb(var(--ok))]",
+          )}
+        />
+        <div className="text-center">
+          <div className="text-sm font-semibold text-foreground">
+            Switching to{" "}
+            <span
+              className={cn(
+                "rounded px-1.5 py-0.5 text-[11px] font-bold",
+                tint === "warn"
+                  ? "bg-[rgb(var(--warn-fill)_/_0.16)] text-[rgb(var(--warn))]"
+                  : "bg-[rgb(var(--ok-fill)_/_0.14)] text-[rgb(var(--ok))]",
+              )}
+            >
+              {label}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            Loading fresh data…
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -471,9 +529,14 @@ export function AppShell() {
   const brandName = branding.name || "Praxis LS";
   const navigate = useNavigate();
   const location = useLocation();
+  const qc = useQueryClient();
   const [sidebarOpen, setSidebarOpen] = React.useState(false);
   const [paletteOpen, setPaletteOpen] = React.useState(false);
   const [env, setEnvState] = React.useState<string>(tokenStore.getEnv());
+  // Non-null while an env switch is settling — shows a full-screen overlay so
+  // the user sees the transition instead of a flash of the new env's skeleton.
+  // Set to the OUTGOING env so the copy reads "Switching to <new>…".
+  const [switchingFrom, setSwitchingFrom] = React.useState<string | null>(null);
   const unread = useUnreadCounts(env);
 
   // ⌘K / Ctrl-K toggles the command palette; Escape closes what is open.
@@ -509,10 +572,50 @@ export function AppShell() {
   // header, update state; the `key={env}` on <main> remounts the routed screen
   // so every useEffect re-fetches under the new environment. Access token, auth
   // and scroll of the shell are preserved.
+  //
+  // WHY THE STEPS ARE ORDERED THE WAY THEY ARE — this is the fix for the stale-
+  // toggle bug (a user switching LIVE → TEST briefly saw LIVE data until they
+  // refreshed the browser). The bug had three sources; each step here addresses
+  // one:
+  //
+  //   1. `tenantKey()` and `resourceKey()` include env now, so a switch produces
+  //      a fresh cache key and TanStack can never serve the other env's data
+  //      from cache. This is the primary fix — the rest is defence.
+  //
+  //   2. `qc.cancelQueries()` stops any in-flight LIVE fetch. Without this, a
+  //      request that departed before the switch would land after it, and its
+  //      response (correctly headed with X-Praxis-Env: live) would still
+  //      populate the LIVE-keyed cache — which is fine per se, but wastes a
+  //      round-trip on data the user is no longer looking at.
+  //
+  //   3. The comms websocket carries env in its handshake, not per message —
+  //      so a live socket keeps subscribing to the OLD env's channels until it
+  //      is torn down. Disconnect here; the next `getCommsSocket()` reconnects
+  //      under the new env.
+  //
+  // The overlay is a brief interstitial (~350 ms, or however long the first
+  // batch of new-env fetches takes) so the switch is felt, not a silent
+  // repaint. `key={env}` on <main> still remounts the routed screen — that
+  // is what actually causes every screen's `useQuery` to be called again, with
+  // the new key.
   function switchEnv(next: string) {
     if (next === env) return;
+    setSwitchingFrom(env);
+    // Cancel anything already flying under the outgoing env — its response is
+    // no longer wanted, and we do not want it landing in the cache after the
+    // switch. Prefix-match on [TENANT_KEY, prevEnv] catches every tenant query.
+    void qc.cancelQueries({ queryKey: [TENANT_KEY, env] });
+    // The socket carries env in its auth object, once, at connect time. We
+    // have to tear it down for the next getCommsSocket() to reconnect under
+    // the new env — otherwise Smart Comms keeps talking to the old schema
+    // for the remaining lifetime of the page.
+    disconnectCommsSocket();
     tokenStore.setEnv(next);
     setEnvState(next);
+    // Give the newly-mounted screen a beat to fire its queries so the overlay
+    // does not vanish before the skeleton behind it has a chance to paint.
+    // Kept short — this is a transition indicator, not a load screen.
+    window.setTimeout(() => setSwitchingFrom(null), 350);
   }
 
   const visibleNav = useVisibleNav();
@@ -713,6 +816,13 @@ export function AppShell() {
       <CommandPalette open={paletteOpen} groups={visibleNav} onClose={() => setPaletteOpen(false)} />
       <PraxisCopilot />
       <FloatingActions badge={unread.messages + unread.notifications} />
+      {/* Env-switch interstitial. Shown while `switchingFrom` is set — i.e. for
+          the brief window between the toggle and the newly-mounted screen's
+          first paint. `to` is the destination env, mapped back from the
+          project's terminology (sandbox=TEST). */}
+      {switchingFrom && (
+        <EnvSwitchOverlay to={env === "sandbox" ? "sandbox" : "live"} />
+      )}
     </div>
     </RibbonCommandsProvider>
     </CommandPaletteProvider>

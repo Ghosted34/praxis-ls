@@ -161,12 +161,18 @@ module.exports = {
       entityRef: `permission:${row.permission_id}`,
       actorUserId: actor.user_id,
     });
+    // Snapshot actor identity (0510) — a role×module grant change is a
+    // security-critical event (see Watch-the-Watcher fan-out in emit.js) and
+    // deserves the "Sensitive" badge in the Control Tower reader too.
     await audit(client, {
       actorUserId: actor.user_id,
+      actorName: actor.display_name || actor.email || null,
+      actorEmail: actor.email || null,
       action: events.UPDATED,
       moduleKey: events.MODULE,
       entityRef: `permission:${row.permission_id}`,
       after: row,
+      isSensitive: true,
     });
     return row;
   },

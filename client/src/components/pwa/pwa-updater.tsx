@@ -12,6 +12,24 @@ import { useRegisterSW } from "virtual:pwa-register/react";
 import { XIcon } from "@/components/ui/icons";
 import { useBranding } from "@/app/branding/branding-context";
 
+/**
+ * How often to ask the service worker to check for a new build.
+ *
+ * WHY WE POLL AT ALL. `registerType: "prompt"` fires `onNeedRefresh` only when
+ * a new SW is DETECTED — and by default vite-plugin-pwa never proactively
+ * asks. Chrome checks the sw.js file on tab navigation and on the browser's
+ * own ~24 h cache TTL, so a user with a long-lived tab (the common ERP shape:
+ * an operator leaves a dossier open all day) can sit on a stale bundle for
+ * hours after a deploy, never seeing the "New version available" toast.
+ *
+ * Five minutes is short enough that a deploy is visible within one coffee
+ * break, long enough that the polling cost is trivial (one HEAD-ish request
+ * per user per five minutes). We also poll on tab-visible, so returning to a
+ * tab that has been in the background immediately checks — the audit's
+ * "leave a dossier open on one monitor for hours" note again.
+ */
+const SW_UPDATE_POLL_MS = 5 * 60_000;
+
 export function PwaUpdater() {
   // Tenant-authored copy (Settings › App & PWA › Offline & updates), falling
   // back to the built-in strings. Only the wording is configurable — WHEN the
@@ -22,9 +40,32 @@ export function PwaUpdater() {
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
+    // Poll for updates so a long-open tab actually sees a new deploy. `r` is
+    // the ServiceWorkerRegistration from the registration call — `update()`
+    // asks the browser to re-fetch sw.js and, if the byte-stream differs, fire
+    // the update lifecycle so `onNeedRefresh` above resolves.
+    onRegisteredSW(_url, r) {
+      if (!r) return;
+      const tick = () => {
+        // Don't check while offline — `update()` would just fail; wait for
+        // the next visibility change or the next scheduled tick.
+        if (navigator.onLine === false) return;
+        void r.update();
+      };
+      const timer = window.setInterval(tick, SW_UPDATE_POLL_MS);
+      const onVisibility = () => {
+        if (document.visibilityState === "visible") tick();
+      };
+      document.addEventListener("visibilitychange", onVisibility);
+      // Nothing tears this down: the SW registration is per-page and lives as
+      // long as the page does. The intent IS to keep polling for the lifetime
+      // of the tab — an unmount cleanup here would defeat the point.
+      void timer;
+      void onVisibility;
+    },
     onRegisterError(err) {
       // Non-fatal: the app works without the SW, just without offline/install.
-       
+
       console.warn("[pwa] service worker registration failed", err);
     },
   });

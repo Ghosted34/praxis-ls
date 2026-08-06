@@ -26,34 +26,16 @@ import { clearChunkReloadFlag } from "@/lib/chunk-reload";
 // that produces a white screen with nothing in any log.
 installGlobalErrorReporting();
 
-// Apply the saved light/dark/system preference before first paint.
+// The .dark class and the cached --titlebar-bg / theme-color are already set
+// by the INLINE script in index.html's <head>, before first paint — main.tsx is
+// a `type="module"` script and modules are deferred, so anything set here
+// happens AFTER the body has painted once and is a flash of the wrong theme.
+// initThemeMode() is still called (idempotent, and it wires the OS-preference
+// change listener that live-updates "system"), just no longer as the FIRST
+// place `.dark` is applied.
 initThemeMode();
-
-/**
- * Colour the pre-boot title bar (index.html) from the last session, before
- * anything is fetched.
- *
- * The bar's real colour comes from the tenant's App & PWA settings, which
- * arrive over the network — so the first frame of a cold start would otherwise
- * paint the light-theme fallback regardless of what the workspace actually
- * looks like. On a dark-themed tenant that is a white flash across the top of
- * the window, in the very first thing anyone sees of the app.
- *
- * Runs after initThemeMode() so `.dark` is already decided. If nothing is
- * cached (first ever launch, or private mode) the inline fallback stands, which
- * is the honest outcome rather than a guess.
- */
-try {
-  const cached = localStorage.getItem(
-    `praxis.titlebar.${document.documentElement.classList.contains("dark") ? "dark" : "light"}`,
-  );
-  if (cached) document.documentElement.style.setProperty("--titlebar-bg", cached);
-} catch {
-  /* private mode — keep the inline fallback */
-}
-// Same, for row density. Both write an attribute on <html> rather than render
-// anything, so doing it here — before createRoot — means the first paint is
-// already correct instead of flashing the default and correcting itself.
+// Same for row density — writes a data attribute on <html>, so setting it
+// before createRoot means the first paint is already correct.
 initDensity();
 
 // BrandingProvider paints the tenant's white-label colour (default until the

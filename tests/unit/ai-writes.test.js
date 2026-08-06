@@ -12,7 +12,14 @@ const costing = require("../../src/modules/costing/costing/costing.service");
 const { registry } = require("../../src/services/ai/action-registry");
 const { buildCatalogue, buildExecutorMap } = require("../../src/services/ai/action-registrar");
 
-describe("AI write surface is wired (not just cataloged)", () => {
+/**
+ * TC-Q5 — the first block is a REGISTRATION guard: it asserts every ai_enabled
+ * write has an executor in the map, not that any executor is correct. Useful
+ * (a write catalogued with no executor fails at the user, silently) but it is
+ * not coverage of the AI-write paths, and should not be counted as such. The
+ * later block does execute one path properly and is named accordingly.
+ */
+describe("AI write surface — WIRING ONLY (an executor exists per catalogued write)", () => {
   it("enables a money-path set of write actions, not just one", () => {
     const enabled = buildCatalogue().filter((r) => r.is_write && r.ai_enabled).map((r) => r.action_key);
     // Was 1 (create_client) before this step; now the create path across the cycle.

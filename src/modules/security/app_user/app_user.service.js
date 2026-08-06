@@ -144,8 +144,13 @@ async function issueSessionTokens(client, user, { ip, userAgent, environment, ke
     entityRef: `app_user:${user.user_id}`,
     actorUserId: user.user_id,
   });
+  // Snapshot actor identity (0510) so the Control Tower's self-scoped audit
+  // feed can render a card without a cross-schema join back to app_user. The
+  // user record is already in hand from findByEmail above.
   await audit(client, {
     actorUserId: user.user_id,
+    actorName: user.full_name || user.email || null,
+    actorEmail: user.email || null,
     action: events.LOGIN_SUCCEEDED,
     moduleKey: events.MODULE,
     entityRef: `app_user:${user.user_id}`,
@@ -328,9 +333,13 @@ async function enableTotp(client, userId, code) {
   });
   await audit(client, {
     actorUserId: userId,
+    actorName: user.full_name || user.email || null,
+    actorEmail: user.email || null,
     action: events.TWOFA_ENABLED,
     moduleKey: events.MODULE,
     entityRef: `app_user:${userId}`,
+    // Enabling 2FA is a security-posture change — deserves the badge.
+    isSensitive: true,
   });
   return { is_2fa_enabled: true };
 }
@@ -354,9 +363,13 @@ async function disableTotp(client, userId, code) {
   });
   await audit(client, {
     actorUserId: userId,
+    actorName: user.full_name || user.email || null,
+    actorEmail: user.email || null,
     action: events.TWOFA_DISABLED,
     moduleKey: events.MODULE,
     entityRef: `app_user:${userId}`,
+    // Disabling 2FA weakens the account — sensitive.
+    isSensitive: true,
   });
   return { is_2fa_enabled: false };
 }
@@ -453,12 +466,16 @@ async function refresh(client, { refreshToken }) {
   const rotatedRefreshToken = signRefreshToken({ userId: payload.sub, sessionId: payload.sid, jti: newRefreshJti });
   await repo.setRefreshJti(client, payload.sid, newRefreshJti);
 
-  await emitEvent(client, {
-    eventTypeKey: events.TOKEN_REFRESHED,
-    moduleKey: events.MODULE,
-    entityRef: `app_user:${payload.sub}`,
-    actorUserId: payload.sub,
-  });
+  // No emitEvent + no audit here on purpose. Silent token refresh happens
+  // every ~15 min on every active tab; it is machine noise, not user activity.
+  // Recording it drowned the Control Tower's self-scoped "Recent activity"
+  // feed in "Auth token refreshed · App user c2d39ee8" rows — the very defect
+  // the /audit/my-feed rebuild exists to fix. The `TOKEN_REFRESHED` constant
+  // in app_user.events.js is retained (other paths may reference it), we just
+  // don't emit it here.
+  //
+  // The important auth events — login_succeeded, logged_out, login_failed —
+  // stay: those are user-initiated and belong in the feed.
 
   return { access_token: accessToken, refresh_token: rotatedRefreshToken, token_type: "Bearer", expires_in: config.JWT_ACCESS_TTL };
 }

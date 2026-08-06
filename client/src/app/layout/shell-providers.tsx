@@ -180,7 +180,24 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
     let live = true;
     fetchShellPrefs()
       .then((p) => live && setLocalPrefs(p))
-      .catch(() => {})
+      /*
+       * A READ WE COULD NOT MAKE IS NOT A FIRST LOGIN.
+       *
+       * Swallowing this and settling leaves `prefs` at all-null, and all-null is
+       * exactly what the API returns for someone who has never chosen anything.
+       * The rail reads that as a first login, fires its one-time hint and
+       * records it — so a returning user whose preferences read blipped loses
+       * the hint permanently, on a network error they never saw.
+       *
+       * This is the same bug as the timing one the `ready` flag above fixes,
+       * arriving by a different route: there the answer had not come yet, here
+       * it never will. Suppressing the hint locally is enough, and is
+       * deliberately NOT a write — the server row stays absent, so a genuine
+       * first login still gets its hint the next time the read succeeds.
+       */
+      .catch(() => live && setLocalPrefs((cur) => ({ ...cur, railHintSeen: true })))
+      // `done("prefs")` in the version this came from; that helper went when the
+      // access branch was rewritten to revalidate, so the settle is inline here.
       .finally(() => live && setSettled((s) => (s.prefs ? s : { ...s, prefs: true })));
     return () => {
       live = false;

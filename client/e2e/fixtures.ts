@@ -191,7 +191,9 @@ export const DESKTOP_WIDTHS = [1280, 1440, 1920, 2560] as const;
  * pin the constant against what actually renders, so the two together say
  * "the rail is this wide AND the column accounts for exactly that".
  *
- * Mirrors `.rail { width: 52px }` in index.css (46px at compact density).
+ * Mirrors `--rail-w` in index.css (52px, 46px at compact density). It lives on
+ * `:root` rather than in `.rail` because the title bar's app mark centres itself
+ * on the same width.
  */
 export const RAIL_PX = 52;
 

@@ -254,6 +254,30 @@ describe("title bar strip", () => {
     expect(img.style.objectFit).toBe("contain");
   });
 
+  /**
+   * THE MARK IS CENTRED ON THE ICON RAIL, and the sum has to stay derivable.
+   *
+   * `.wco-mark` offsets the mark by `(--rail-w - --wco-mark-size) / 2` so its
+   * axis lands on the rail's Home button directly below it. jsdom loads no
+   * stylesheet, so the offset itself cannot be measured here — what CAN be
+   * pinned is the input the rule depends on: the component must publish the
+   * size it actually renders at. Hard-code a different number in the CSS, or
+   * drop the variable, and the mark silently drifts off the rail with every
+   * other test still green.
+   */
+  it("publishes its icon size to CSS, so the rail alignment stays derived", () => {
+    const { container } = renderShell();
+    const mark = container.querySelector<HTMLElement>(".wco .wco-mark")!;
+    expect(mark).not.toBeNull();
+
+    const declared = mark.style.getPropertyValue("--wco-mark-size");
+    expect(declared).toBe("20px");
+
+    // …and it is the size the icon is genuinely drawn at, not a stale copy.
+    const img = within(mark).getAllByRole("presentation", { hidden: true })[0] as HTMLImageElement;
+    expect(img.parentElement!.style.width).toBe(declared);
+  });
+
   it("gives the icon an empty alt, so the name is not announced twice", () => {
     // The name sits beside it as real text. An alt here would make a screen
     // reader read "Acme Freight Acme Freight" — which is what `Brand` does,

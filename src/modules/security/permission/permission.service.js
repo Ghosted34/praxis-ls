@@ -54,11 +54,12 @@ const catalogueRepo = require("../../catalogue/catalogue.repo");
  * WHAT `version` IS FOR. The client renders its LAST KNOWN ribbon immediately
  * from cache and revalidates in the background, so switching pages never
  * flashes an empty header. Comparing versions is how it learns the cache is
- * stale — and, because the digest covers the exact key set, a REVOCATION is
- * distinguishable from a GRANT by comparing the sets themselves. That
- * distinction is the point: losing access has to take effect at once, whereas
- * forcing a reload to tell someone they have gained a module would throw away
- * whatever they were typing to deliver news that cannot expose anything.
+ * stale — and, because the digest covers the exact key set AND the verb each
+ * key sits under, a REVOCATION is distinguishable from a GRANT by comparing the
+ * sets themselves. That distinction is the point: losing access has to take
+ * effect at once, whereas forcing a reload to tell someone they have gained a
+ * module would throw away whatever they were typing to deliver news that cannot
+ * expose anything.
  */
 async function navAccess(client, user) {
   const catalogue = await catalogueRepo.listModules();
@@ -85,11 +86,34 @@ async function navAccess(client, user) {
     byGroup[m.group_key].push(String(m.module_key).toUpperCase());
   }
 
-  // Sorted before hashing: the digest must describe the SET, not the order the
-  // database happened to return it in, or every request would look like a change.
+  /*
+   * THE DIGEST COVERS THE PARTITION, NOT JUST THE KEYS.
+   *
+   * It used to hash the module set alone, which was right when the set was the
+   * whole answer. `byGroup` changed that: moving a module from one workflow verb
+   * to another leaves every key exactly where it was and rearranges the ribbon
+   * completely — a tab gains a section, another loses one, and an area can
+   * change which tab it lives under entirely. Hashing keys alone reports that as
+   * "nothing changed", so the client's revalidation never fires on the one edit
+   * whose effect is most visible on screen.
+   *
+   * Pairs, not a nested structure, because the digest must describe a SET: sort
+   * `verb:MOD-xx` and the same partition always hashes the same however the
+   * database ordered its rows.
+   *
+   * A key with no catalogue row — a stale grant against a retired module —
+   * hashes as `:MOD-xx`. It has no verb to record, but it is still a real grant
+   * whose coming and going has to move the digest.
+   */
+  const verbOf = new Map(catalogue.map((m) => [String(m.module_key).toUpperCase(), m.group_key]));
   const version = crypto
     .createHash("sha1")
-    .update([...visible].sort().join(","))
+    .update(
+      [...visible]
+        .map((key) => `${verbOf.get(key) ?? ""}:${key}`)
+        .sort()
+        .join(","),
+    )
     .digest("hex")
     .slice(0, 12);
 

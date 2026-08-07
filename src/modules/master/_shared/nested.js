@@ -228,6 +228,30 @@ function entityResourceSpecs() {
       writable: ["code", "name", "kind", "country_code", "city", "address_line", "tax_office_ref",
         "registration_ref", "customs_office", "manager_employee_id", "opened_on", "closed_on", "is_active"],
     },
+    {
+      // Administrative documents (0516). `isDocument` gives the same
+      // PENDING -> SCANNED bump the party masters get when a scan arrives;
+      // verification stays a human step, and `verification_status`,
+      // `verified_by`, `content_hash` are absent from the allow-list so a
+      // request cannot assert a verification it has not earned.
+      seg: "documents", table: "entity_document", pk: "document_id",
+      create: entityCommon.documentCreate, update: entityCommon.documentUpdate,
+      touch: true, isDocument: true,
+      writable: ["document_type_id", "title", "document_number", "issuing_authority",
+        "issued_on", "expires_on", "country_code", "establishment_id", "vault_id",
+        "physical_ref", "scan_due_on", "renewal_lead_days", "notes", "is_active"],
+    },
+    {
+      // Per-entity tax registrations (0516) — the entity's own VAT/TVA number,
+      // regime and filing frequency in one jurisdiction. Rate cards stay in
+      // MOD-07; this is the binding between an entity and a jurisdiction.
+      seg: "tax-registrations", table: "entity_tax_registration", pk: "tax_registration_id",
+      create: entityCommon.taxRegistrationCreate, update: entityCommon.taxRegistrationUpdate, touch: true,
+      writable: ["jurisdiction_id", "country_code", "tax_kind", "tax_number", "regime",
+        "filing_frequency", "filing_due_day", "currency", "is_withholding_agent",
+        "reverse_charge_applies", "registered_on", "deregistered_on", "is_primary",
+        "is_active", "filing_portal_url", "responsible_user_id", "notes"],
+    },
   ];
 }
 
@@ -245,9 +269,13 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
     const { controller } = buildResource({
       table: r.table, pk: r.pk, parentCol: "entity_id",
       parentTable, parentPk, moduleKey, label: r.table,
-      writable: r.writable, touch: r.touch,
+      writable: r.writable, touch: r.touch, isDocument: r.isDocument,
     });
-    const viewAction = r.seg === "people" ? "edit" : "view";
+    // `people` carries the cap table and personal identifiers, and `documents`
+    // the statutes and tax certificates — both need the same UPDATE grant that
+    // entity-360's redaction tests, or the collection endpoint becomes a way to
+    // read around the dossier's redaction entirely.
+    const viewAction = ["people", "documents"].includes(r.seg) ? "edit" : "view";
     router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), controller.list);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
     router.patch(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "edit"), validate(r.update), controller.update);

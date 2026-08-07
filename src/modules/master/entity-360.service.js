@@ -21,8 +21,10 @@
 "use strict";
 const repo = require("./corporate_entity/corporate_entity.repo");
 const rules = require("./corporate_entity/corporate_entity.rules");
+const renewalRules = require("./corporate_entity/corporate_entity.renewals");
+const letterheadService = require("./entity-letterhead.service");
 const identityCache = require("../../shared/cache/identity-cache");
-const { canSeeFinancials, maskAccount } = require("./_shared/confidential");
+const { canSeeFinancials, maskAccount, maskBank } = require("./_shared/confidential");
 const { AppError } = require("../../utils/errors");
 
 /**
@@ -183,6 +185,8 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
   const ancestors = await repo.ancestors(c, id);
   const usage = await repo.usage(c, id);
   const treasury = await repo.treasuryAccounts(c, id);
+  const { documents, tax_registrations: taxRegistrations, letterhead } = await repo.documentsAndTax(c, id);
+  const obligations = await repo.taxObligations(c, id);
 
   const { people, contacts, addresses, registrations, establishments } = collections;
 
@@ -219,17 +223,30 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
     registrations,
     establishments,
     // Read-only. The client renders these with a deep link to MOD-09 rather than
-    // an edit form; see the module header.
-    treasury_accounts: treasury,
+    // an edit form; see the module header. Masked for a caller without Treasury
+    // read — since 0516 these rows carry the account number and IBAN themselves.
+    treasury_accounts: treasury.map((t) => maskBank(t, financials)),
     treasury_is_read_only: true,
     cap_table: governance
       ? cap
       : { ...cap, findings: cap.findings.map((f) => ({ ...f, person_id: undefined })), redacted: true },
     usage,
-    // The resolved inputs a document header/footer is built from. PR 2 renders
-    // these; the Overview already shows them so "what will an invoice print"
-    // is answerable before the designer exists.
+    documents,
+    tax_registrations: taxRegistrations,
+    tax_obligations: obligations,
+    // The resolved inputs a document header/footer is built from, plus the
+    // rendered result in the entity's own language — the designer previews the
+    // same function the invoice renderer will call, so the preview cannot lie.
     letterhead_source: letterheadSource(entity, { addresses, registrations }),
+    letterhead_config: letterhead,
+    letterhead_preview: maskPaymentBlock(
+      letterheadService.render(
+        { entity, config: letterhead, addresses, registrations, taxRegistrations, treasuryAccounts: treasury },
+        entity.default_language,
+      ),
+      financials,
+    ),
+    renewals: renewalRules.renewals({ documents, registrations, taxRegistrations }),
     readiness: rules.readiness(entity, { registrations, addresses, people }),
     expiring_registrations: expiringRegistrations,
     can_see_governance: governance,

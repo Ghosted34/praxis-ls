@@ -31,6 +31,16 @@ module.exports = {
       service: (c, p) => service.capTable(c, p.entity_id || p, (p && p.as_of) || null),
       describe: "Shareholding reconciliation for one entity: holders, totals and any mismatch findings, optionally as of a past date.",
     },
+    {
+      key: "get_entity_renewals",
+      service: (c, p) => service.renewals(c, p.entity_id || p, (p && p.as_of) || null),
+      describe: "Documents, registrations and tax registrations on one entity that have expired or are approaching expiry, most urgent first. Answers 'when does our France VAT certificate expire' and 'what is lapsing this quarter'.",
+    },
+    {
+      key: "get_entity_letterhead",
+      service: (c, p) => service.letterhead(c, p.entity_id || p, (p && p.lang) || null),
+      describe: "The letterhead/footer configuration for one entity and the rendered header, footer and payment block in both languages.",
+    },
   ],
   writes: [
     { key: "create_entity", service: service.create, schema: validator.schemas.create, permission: { module: "MOD-01", action: "create" }, confirm: true, describe: "Register a corporate entity (unique code, NIU/RCCM, fiscal year, accounting framework)." },

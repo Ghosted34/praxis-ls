@@ -49,10 +49,16 @@ const ROLE_TONE: Record<string, Tone> = {
 };
 
 const TABS = [
-  "Overview", "Identity & registrations", "People & shareholding",
-  "Contacts & addresses", "Structure", "Banking & treasury",
+  "Overview", "Identity & registrations", "Documents", "Tax & jurisdiction",
+  "People & shareholding", "Contacts & addresses", "Structure",
+  "Banking & treasury", "Letterhead", "Renewals",
 ] as const;
 type Tab = (typeof TABS)[number];
+
+const RENEWAL_TONE: Record<string, Tone> = { EXPIRED: "bad", DUE: "orange", APPROACHING: "warn" };
+const SCAN_TONE: Record<string, Tone> = {
+  PENDING: "warn", SCANNED: "blue", VERIFIED: "ok", REJECTED: "bad", EXPIRED: "bad",
+};
 
 /* ── Small building blocks ─────────────────────────────────────────────────── */
 
@@ -222,6 +228,23 @@ const REGISTRATION_FIELDS: FieldSpec[] = [
   { key: "issued_on", label: "Issued on", type: "date" },
   { key: "expires_on", label: "Expires on", type: "date" },
   { key: "is_primary", label: "Primary for this country", type: "checkbox" },
+];
+
+const TAX_REGISTRATION_FIELDS: FieldSpec[] = [
+  { key: "country_code", label: "Country", type: "country", hint: "Where this registration was issued." },
+  { key: "tax_kind", label: "Tax", type: "select", options: opts(["VAT", "INCOME", "WHT", "PAYROLL", "CUSTOMS", "LOCAL", "OTHER"]) },
+  { key: "tax_number", label: "Tax number", placeholder: "FR12345678901" },
+  { key: "regime", label: "Regime", placeholder: "RÉEL / NORMAL / SIMPLIFIÉ" },
+  { key: "filing_frequency", label: "Filing frequency", type: "select", options: opts(["MONTHLY", "QUARTERLY", "BIMONTHLY", "ANNUAL", "ON_EVENT"]) },
+  { key: "filing_due_day", label: "Filing due day", type: "number", hint: "Day of the month, 1–31." },
+  { key: "currency", label: "Filing currency", placeholder: "XAF" },
+  { key: "registered_on", label: "Registered on", type: "date" },
+  { key: "deregistered_on", label: "Deregistered on", type: "date", hint: "Leave blank while it is live." },
+  { key: "filing_portal_url", label: "Filing portal", placeholder: "https://…" },
+  { key: "is_withholding_agent", label: "We withhold tax here", type: "checkbox" },
+  { key: "reverse_charge_applies", label: "Reverse charge applies", type: "checkbox" },
+  { key: "is_primary", label: "Primary for this country", type: "checkbox" },
+  { key: "notes", label: "Notes", type: "textarea" },
 ];
 
 const ESTABLISHMENT_FIELDS: FieldSpec[] = [
@@ -451,6 +474,124 @@ export function EntityDossierPage() {
         </Section>
       )}
 
+      {tab === "Documents" && (
+        <DocumentsTab
+          entityId={entityId}
+          documents={d.data.documents}
+          onEdit={(row) => setEditing({ seg: "documents", title: row ? "Edit document" : "Add document", fields: [], row })}
+          onRemove={(id) => removeChild("documents", id)}
+          onSaved={reload}
+        />
+      )}
+
+      {tab === "Tax & jurisdiction" && (
+        <div className="space-y-4">
+          <Section
+            title="Tax registrations"
+            description="One row per jurisdiction this entity is registered in. Rate cards stay in the Tax module and are shared across entities — what lives here is this entity's own number, regime and filing rhythm."
+            action={
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" onClick={() => navigate("/master/tax-jurisdictions")}>Open Tax module →</Button>
+                <Button size="sm" onClick={() => setEditing({ seg: "tax-registrations", title: "Add tax registration", fields: TAX_REGISTRATION_FIELDS, row: { country_code: e.country_code, tax_kind: "VAT" } })}>Add registration</Button>
+              </div>
+            }
+          >
+            <MiniTable
+              empty={d.data.tax_registrations.length === 0}
+              head={<><Th>Country</Th><Th>Tax</Th><Th>Number</Th><Th>Regime</Th><Th>Filing</Th><Th>Status</Th><Th /></>}
+            >
+              {d.data.tax_registrations.map((t) => (
+                <tr key={t.tax_registration_id}>
+                  <Td>{t.country_code}{t.jurisdiction_name ? <span className="micro text-muted-foreground"> · {t.jurisdiction_name}</span> : null}</Td>
+                  <Td>
+                    <span className="font-medium text-foreground">{t.tax_kind}</span>
+                    {t.is_withholding_agent ? <> <Pill tone="orange">WHT agent</Pill></> : null}
+                    {t.reverse_charge_applies ? <> <Pill tone="blue">Reverse charge</Pill></> : null}
+                  </Td>
+                  <Td><span className="num">{t.tax_number || "—"}</span></Td>
+                  <Td>{t.regime || "—"}</Td>
+                  <Td>
+                    {t.filing_frequency ? enumLabel(t.filing_frequency) : "—"}
+                    {t.filing_due_day ? <span className="micro text-muted-foreground"> · day {t.filing_due_day}</span> : null}
+                  </Td>
+                  <Td>
+                    {t.deregistered_on
+                      ? <Pill tone="mute">Ended {dateFmt(t.deregistered_on)}</Pill>
+                      : <Pill tone={t.is_active === false ? "mute" : "ok"}>{t.is_active === false ? "Inactive" : "Active"}</Pill>}
+                  </Td>
+                  <Td r>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "tax-registrations", title: "Edit tax registration", fields: TAX_REGISTRATION_FIELDS, row: t as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeChild("tax-registrations", t.tax_registration_id)}>Remove</Button>
+                  </Td>
+                </tr>
+              ))}
+            </MiniTable>
+            {d.data.tax_registrations.length === 0 && (
+              <Callout tone="info" title="No tax registrations yet">
+                This is what lets one group stay compliant in several countries at once — a Cameroon entity filing TVA monthly and a France subsidiary filing under its own VAT number, each with its own number on its own invoices.
+              </Callout>
+            )}
+          </Section>
+
+          <Section
+            title="Filing calendar"
+            description="Upcoming statutory obligations for this entity, from the shared compliance calendar."
+          >
+            <MiniTable
+              empty={d.data.tax_obligations.length === 0}
+              head={<><Th>Obligation</Th><Th>Period</Th><Th>Due</Th><Th>Status</Th></>}
+            >
+              {d.data.tax_obligations.map((o) => (
+                <tr key={o.tax_calendar_id}>
+                  <Td><span className="font-medium text-foreground">{enumLabel(o.obligation)}</span>{o.country_code ? <span className="micro text-muted-foreground"> · {o.country_code}</span> : null}</Td>
+                  <Td>{o.period_code || "—"}</Td>
+                  <Td>{dateFmt(o.due_on)}</Td>
+                  <Td><Pill tone={o.status === "DONE" ? "ok" : o.status === "LATE" ? "bad" : o.status === "PENDING" ? "warn" : "mute"}>{enumLabel(o.status)}</Pill></Td>
+                </tr>
+              ))}
+            </MiniTable>
+          </Section>
+        </div>
+      )}
+
+      {tab === "Letterhead" && (
+        <LetterheadTab entityId={entityId} onSaved={reload} />
+      )}
+
+      {tab === "Renewals" && (
+        <Section
+          title="Renewals"
+          description={`Everything on this entity that has expired or is approaching expiry, as of ${dateFmt(d.data.renewals.as_of)}. Nothing here blocks anything — these are recommendations for a person to act on.`}
+        >
+          <KpiRow>
+            <KpiTile label="Expired" value={num(d.data.renewals.counts.expired)} />
+            <KpiTile label="Due now" value={num(d.data.renewals.counts.due)} />
+            <KpiTile label="Approaching" value={num(d.data.renewals.counts.approaching)} />
+          </KpiRow>
+          <MiniTable
+            empty={d.data.renewals.items.length === 0}
+            head={<><Th>Item</Th><Th>Kind</Th><Th>Country</Th><Th>Expires</Th><Th r>Days</Th><Th>State</Th></>}
+          >
+            {d.data.renewals.items.map((i) => (
+              <tr key={`${i.kind}-${i.id}`}>
+                <Td><span className="font-medium text-foreground">{i.label}</span></Td>
+                <Td>{enumLabel(i.kind)}</Td>
+                <Td>{i.country_code || "—"}</Td>
+                <Td>{dateFmt(i.expires_on)}</Td>
+                <Td r>{i.days_remaining != null ? num(i.days_remaining) : "—"}</Td>
+                <Td>
+                  <Pill tone={RENEWAL_TONE[i.state] || "mute"}>{enumLabel(i.state)}</Pill>
+                  {i.severity === "SOFT_BLOCK_RECOMMENDATION" && <> <Pill tone="bad">Act now</Pill></>}
+                </Td>
+              </tr>
+            ))}
+          </MiniTable>
+          {d.data.renewals.items.length === 0 && (
+            <EmptyState title="Nothing expiring" hint="Documents and registrations with an expiry date appear here as their deadline approaches." />
+          )}
+        </Section>
+      )}
+
       {tab === "People & shareholding" && (
         <div className="space-y-4">
           {!gov && (
@@ -677,6 +818,7 @@ export function EntityDossierPage() {
             const pkBySeg: Record<api.EntityCollection, string> = {
               people: "person_id", contacts: "contact_id", addresses: "address_id",
               registrations: "registration_id", establishments: "establishment_id",
+              documents: "document_id", "tax-registrations": "tax_registration_id",
             };
             const childId = editing.row ? (editing.row[pkBySeg[editing.seg]] as string | undefined) : undefined;
             return saveChild(editing.seg, values, childId);
@@ -693,6 +835,297 @@ export function EntityDossierPage() {
         />
       )}
     </section>
+  );
+}
+
+/**
+ * Administrative documents.
+ *
+ * Its own component because the form's fields depend on the chosen document
+ * TYPE — the registry says whether a type needs an expiry date and an issuing
+ * authority — so the type list has to be loaded before the modal can be built.
+ *
+ * A document may be recorded paper-only: the digital scan is a VERIFICATION
+ * gate, not a creation gate. Refusing to record a certificate you are holding in
+ * your hand because it has not been scanned is how a register ends up incomplete.
+ */
+function DocumentsTab({ entityId, documents, onRemove, onSaved }: {
+  entityId: string;
+  documents: api.EntityDocument[];
+  onEdit: (row: Record<string, unknown> | null) => void;
+  onRemove: (id: string) => void;
+  onSaved: () => void;
+}) {
+  const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
+  const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(null);
+  // `types.data || []` is a fresh array each render, so it cannot be a useMemo
+  // dependency — the memo would rebuild the field list on every keystroke.
+  const typeList = React.useMemo(() => types.data || [], [types.data]);
+
+  const fields = React.useMemo<FieldSpec[]>(() => [
+    { key: "document_type_id", label: "Document type", type: "select", options: typeList.map((t) => ({ value: t.document_type_id, label: t.name })) },
+    { key: "title", label: "Title", placeholder: "Customs bond 2026" },
+    { key: "document_number", label: "Reference number" },
+    { key: "issuing_authority", label: "Issuing authority", placeholder: "Direction Générale des Douanes" },
+    { key: "country_code", label: "Country", type: "country" },
+    { key: "issued_on", label: "Issued on", type: "date" },
+    { key: "expires_on", label: "Expires on", type: "date", hint: "Drives the renewals list." },
+    { key: "renewal_lead_days", label: "Warn this many days ahead", type: "number", hint: "Blank uses the document type's own lead time." },
+    { key: "physical_ref", label: "Paper original filed at", placeholder: "Box A-12", hint: "A document can be recorded before it is scanned." },
+    { key: "scan_due_on", label: "Scan due by", type: "date" },
+    { key: "notes", label: "Notes", type: "textarea" },
+  ], [typeList]);
+
+  async function save(values: Record<string, unknown>, id?: string) {
+    const body = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined));
+    if (id) await api.updateEntityChild(entityId, "documents", id, body);
+    else await api.addEntityChild(entityId, "documents", body);
+    onSaved();
+  }
+
+  return (
+    <Section
+      title="Administrative documents"
+      description="Statutes, tax clearances, licences and insurance. Anything with an expiry date feeds the Renewals tab."
+      action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
+    >
+      {types.error && <ErrorState message={errMsg(types.error)} />}
+      <MiniTable
+        empty={documents.length === 0}
+        head={<><Th>Document</Th><Th>Type</Th><Th>Number</Th><Th>Country</Th><Th>Expires</Th><Th>Scan</Th><Th /></>}
+      >
+        {documents.map((doc) => (
+          <tr key={doc.document_id}>
+            <Td><span className="font-medium text-foreground">{doc.title || doc.document_type_name || "Untitled"}</span></Td>
+            <Td>{doc.document_type_name || "—"}</Td>
+            <Td><span className="num">{doc.document_number || "—"}</span></Td>
+            <Td>{doc.country_code || "—"}</Td>
+            <Td>{doc.expires_on ? dateFmt(doc.expires_on) : "—"}</Td>
+            <Td>
+              <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>{enumLabel(doc.scan_status)}</Pill>
+              {!doc.vault_id && doc.physical_ref ? <> <Pill tone="mute">Paper</Pill></> : null}
+            </Td>
+            <Td r>
+              <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
+              <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
+            </Td>
+          </tr>
+        ))}
+      </MiniTable>
+
+      {documents.length === 0 && (
+        <EmptyState
+          title="No documents recorded"
+          hint="Start with the certificate of incorporation and the statutes — the rest can follow as you gather them."
+        />
+      )}
+
+      {adding && (
+        <ChildModal
+          title={adding === "new" ? "Add document" : "Edit document"}
+          fields={fields}
+          initial={adding === "new" ? null : (adding as unknown as Record<string, unknown>)}
+          onClose={() => setAdding(null)}
+          onSubmit={(values) => save(values, adding === "new" ? undefined : adding.document_id)}
+        />
+      )}
+    </Section>
+  );
+}
+
+/**
+ * The letterhead and footer designer.
+ *
+ * The preview is not a mock-up: it renders `preview.fr` / `preview.en` straight
+ * off the API, which come from the same pure function the invoice renderer
+ * calls. Toggling a switch saves and re-renders, so what is on screen is what a
+ * document prints — a hand-drawn preview would drift the first time the renderer
+ * changed.
+ *
+ * `empty_blocks` is the part a picture alone would hide: a block switched on
+ * with nothing behind it looks identical to one that is switched off.
+ */
+function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () => void }) {
+  const toast = useToast();
+  const lh = useResource<api.LetterheadBundle>(() => api.entityLetterhead(entityId), [entityId]);
+  const [lang, setLang] = React.useState<"fr" | "en">("fr");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  // Local echo of the text areas so typing is not a round trip per keystroke.
+  const [draft, setDraft] = React.useState<Record<string, string>>({});
+  const [dirty, setDirty] = React.useState(false);
+
+  React.useEffect(() => {
+    if (!lh.data) return;
+    const c = lh.data.config;
+    setDraft({
+      header_note_fr: c.header_note_fr ?? "", header_note_en: c.header_note_en ?? "",
+      footer_note_fr: c.footer_note_fr ?? "", footer_note_en: c.footer_note_en ?? "",
+      legal_mentions_fr: c.legal_mentions_fr ?? "", legal_mentions_en: c.legal_mentions_en ?? "",
+      brand_color: c.brand_color ?? "",
+    });
+    setDirty(false);
+  }, [lh.data]);
+
+  async function patch(body: Record<string, unknown>) {
+    setBusy(true); setError(null);
+    try {
+      await api.saveEntityLetterhead(entityId, body);
+      lh.reload(); onSaved();
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+  }
+
+  async function saveText() {
+    // Empty string clears the field rather than leaving the old value — these are
+    // nullable columns and the schema maps "" to undefined, so send null.
+    const body = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()]));
+    await patch(body);
+    toast.success("Letterhead saved.");
+  }
+
+  if (lh.loading) return <LoadingRow label="Loading letterhead…" />;
+  if (lh.error || !lh.data) return <ErrorState message={lh.error ? errMsg(lh.error) : "Could not load the letterhead."} />;
+
+  const { config: c, preview, treasury_accounts: accounts, remittance_account_id: remittance } = lh.data;
+  const p = preview[lang];
+  const toggles: { key: keyof api.LetterheadConfig; label: string; hint: string }[] = [
+    { key: "show_legal_form", label: "Legal form", hint: "SARL, SAS, Ltd — mandatory in most of the EU." },
+    { key: "show_share_capital", label: "Share capital", hint: "Mandatory on French invoices." },
+    { key: "show_registered_address", label: "Registered address", hint: "The statutory office, not the trading one." },
+    { key: "show_registrations", label: "Tax & trade identifiers", hint: "NIU, RCCM, VAT, EORI." },
+    { key: "show_contact", label: "Phone, email, website", hint: "" },
+    { key: "show_bank_block", label: "Payment block", hint: "Bank details on invoices." },
+  ];
+
+  return (
+    <div className="grid gap-4 lg:grid-cols-2">
+      <div className="space-y-4">
+        <Section title="What appears" description="The content is taken from the entity's own record — you choose which blocks print. Mandatory mentions differ by country.">
+          <div className="space-y-2">
+            {toggles.map((t) => (
+              <div key={String(t.key)} className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm text-foreground">{t.label}</p>
+                  {t.hint && <p className="micro text-muted-foreground">{t.hint}</p>}
+                </div>
+                <Checkbox
+                  checked={c[t.key] === true}
+                  disabled={busy}
+                  onCheckedChange={(v) => patch({ [t.key]: v === true })}
+                  label={<span className="sr-only">{t.label}</span>}
+                />
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        <Section title="Wording" description="What cannot be derived — a strapline, payment terms, a jurisdiction clause. Per language, so a French document never falls back to English small print.">
+          <div className="flex gap-1 border-b">
+            {(["fr", "en"] as const).map((l) => (
+              <button
+                key={l} type="button" onClick={() => setLang(l)}
+                aria-current={lang === l ? "page" : undefined}
+                className={`-mb-px border-b-2 px-3 py-1.5 text-sm ${lang === l ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground"}`}
+              >
+                {l === "fr" ? "Français" : "English"}
+              </button>
+            ))}
+          </div>
+          {(["header_note", "footer_note", "legal_mentions"] as const).map((base) => {
+            const key = `${base}_${lang}`;
+            const label = base === "header_note" ? "Header note" : base === "footer_note" ? "Footer note" : "Legal mentions";
+            return (
+              <label key={key} className="block space-y-1 text-sm">
+                <span className="font-medium text-foreground">{label}</span>
+                <textarea
+                  className="min-h-16 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                  value={draft[key] ?? ""}
+                  placeholder={base === "legal_mentions" ? (lang === "fr" ? "Pénalités de retard : 3 fois le taux légal." : "Late payment interest at 3× the statutory rate.") : ""}
+                  onChange={(ev) => { setDraft((s) => ({ ...s, [key]: ev.target.value })); setDirty(true); }}
+                />
+              </label>
+            );
+          })}
+          <label className="block space-y-1 text-sm">
+            <span className="font-medium text-foreground">Brand colour</span>
+            <Input
+              value={draft.brand_color ?? ""}
+              placeholder="#C2703D"
+              onChange={(ev) => { setDraft((s) => ({ ...s, brand_color: ev.target.value })); setDirty(true); }}
+            />
+          </label>
+          {error && <ErrorState message={error} />}
+          <div className="flex justify-end">
+            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>Save wording</Button>
+          </div>
+        </Section>
+
+        <Section title="Payment block" description="Which account leads the payment block on this entity's documents. Accounts themselves live in Treasury.">
+          {p.payment_block.source === "bank_block_legacy" && (
+            <Callout tone="warn" title="Still using the old bank block">
+              These details come from the entity&apos;s legacy bank block, not a treasury account. Activate the migrated account in Treasury and flag it &ldquo;show on documents&rdquo; so the payment block and the ledger agree.
+            </Callout>
+          )}
+          <Select
+            value={remittance ?? ""}
+            disabled={busy}
+            onChange={(ev) => patch({ remittance_account_id: ev.target.value || null })}
+          >
+            <option value="">— first flagged account —</option>
+            {accounts.map((a) => <option key={a.treasury_account_id} value={a.treasury_account_id}>{a.label} ({a.currency})</option>)}
+          </Select>
+          <Button size="sm" variant="outline" onClick={() => window.location.assign("/master/treasury-accounts")}>Manage accounts in Treasury →</Button>
+        </Section>
+      </div>
+
+      <div className="space-y-4">
+        <Section title="Preview" description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} — rendered by the same code the invoice generator uses.`}>
+          <article className="space-y-3 rounded-lg border bg-background p-4" style={p.brand_color ? { borderTopColor: p.brand_color, borderTopWidth: 3 } : undefined}>
+            <header className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}>
+              {p.header.logo
+                ? <img src={p.header.logo} alt="" className="inline-block h-10 w-auto object-contain" />
+                : <div className="inline-flex h-10 items-center micro text-muted-foreground">No logo</div>}
+              {p.header.company_line && <p className="text-sm font-semibold text-foreground">{p.header.company_line}</p>}
+              {p.header.address_line && <p className="micro text-muted-foreground">{p.header.address_line}</p>}
+              {p.header.contact_line && <p className="micro text-muted-foreground">{p.header.contact_line}</p>}
+              {p.header.note && <p className="micro text-muted-foreground">{p.header.note}</p>}
+            </header>
+
+            <div className="rounded border border-dashed py-8 text-center micro text-muted-foreground">Document body</div>
+
+            {p.payment_block.accounts.length > 0 && (
+              <div className="space-y-0.5 border-t pt-2">
+                <p className="micro font-medium text-foreground">{lang === "fr" ? "Coordonnées bancaires" : "Payment details"}</p>
+                {p.payment_block.accounts.map((a, i) => (
+                  <p key={i} className="micro num text-muted-foreground">
+                    {[a.bank_name, a.branch, a.account_number, a.iban, a.swift_bic, a.currency].filter(Boolean).join(" · ")}
+                  </p>
+                ))}
+              </div>
+            )}
+
+            <footer className="space-y-0.5 border-t pt-2 text-center">
+              {p.footer.company_line && <p className="micro text-muted-foreground">{p.footer.company_line}</p>}
+              {p.footer.address_line && <p className="micro text-muted-foreground">{p.footer.address_line}</p>}
+              {p.footer.identifier_line && <p className="micro num text-muted-foreground">{p.footer.identifier_line}</p>}
+              {p.footer.note && <p className="micro text-muted-foreground">{p.footer.note}</p>}
+              {p.footer.legal_mentions && <p className="micro text-muted-foreground">{p.footer.legal_mentions}</p>}
+            </footer>
+          </article>
+        </Section>
+
+        {p.empty_blocks.length > 0 && (
+          <Callout tone="warn" title="Switched on, but empty">
+            <p className="text-muted-foreground">
+              These blocks are enabled and would print nothing. Fill them in on the entity&apos;s other tabs, or switch them off.
+            </p>
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {p.empty_blocks.map((b) => <li key={b}><Pill tone="warn">{enumLabel(b)}</Pill></li>)}
+            </ul>
+          </Callout>
+        )}
+      </div>
+    </div>
   );
 }
 

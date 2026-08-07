@@ -28,7 +28,7 @@ const CONTACT_COLS = ["name", "title", "email", "phone", "role_tags", "is_primar
 const ADDRESS_COLS = ["line1", "line2", "city", "region", "postal_code", "country_code", "type", "is_primary", "is_active"];
 const REG_COLS = ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on"];
 
-/** Lower-case, trim, collapse internal whitespace — matches the 0513 backfill so
+/** Lower-case, trim, collapse internal whitespace — matches the 0516 backfill so
  *  the write path and the migration agree on the dedup key. */
 function normalizeName(data = {}) {
   const src = data.legal_name || data.name || "";

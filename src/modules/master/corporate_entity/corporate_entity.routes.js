@@ -18,6 +18,14 @@ router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
 // The cap table is governance data in full — gated at the route, not redacted.
 router.get("/:id/cap-table", requirePermission(MODULE, "edit"), controller.capTable);
+// Letterhead: the stored configuration plus the rendered preview in both
+// languages. The preview runs the same pure function the invoice renderer calls,
+// so what the designer shows is what a document prints.
+router.get("/:id/letterhead", requirePermission(MODULE, "view"), controller.letterhead);
+router.put("/:id/letterhead", requirePermission(MODULE, "edit"), validator.letterhead, controller.saveLetterhead);
+// Everything on this entity that needs renewing. Advisory: severities stop at
+// SOFT_BLOCK_RECOMMENDATION and no rule ever hard-blocks.
+router.get("/:id/renewals", requirePermission(MODULE, "view"), controller.renewals);
 
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
@@ -34,8 +42,10 @@ router.post("/:id/structure", requirePermission(MODULE, "edit"), validator.setSt
 router.post("/:id/logo", requirePermission(MODULE, "edit"), validator.logoUpload, controller.uploadLogo);
 
 // Nested collections: people (cap table + officers), contacts, addresses,
-// registrations, establishments under /:id/*. No banks — those are
-// treasury_account rows owned by MOD-09 and shown read-only on the dossier.
+// registrations, establishments, documents and tax-registrations under /:id/*.
+// No banks — those are treasury_account rows owned by MOD-09 and shown
+// read-only on the dossier, which is what keeps the payment block and the GL
+// mapping from drifting apart.
 mountEntityNested(router, { moduleKey: MODULE, parentTable: "corporate_entity", parentPk: "entity_id" });
 
 module.exports = { basePath: "/entities", feature: null, router };

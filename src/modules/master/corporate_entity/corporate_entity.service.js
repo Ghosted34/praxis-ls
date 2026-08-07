@@ -15,6 +15,10 @@ const crypto = require("crypto");
 const repo = require("./corporate_entity.repo");
 const events = require("./corporate_entity.events");
 const rules = require("./corporate_entity.rules");
+const renewalRules = require("./corporate_entity.renewals");
+const letterheadService = require("../entity-letterhead.service");
+const dossierService = require("../entity-360.service");
+const { maskBank } = require("../_shared/confidential");
 const storage = require("../../../services/storage.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
@@ -199,6 +203,82 @@ async function uploadLogo(client, { id, dataUrl, variant = "light", slug, actor 
   return row;
 }
 
+/**
+ * Read or update the letterhead configuration, returning the rendered result so
+ * the designer's preview always reflects what was actually stored rather than
+ * what the client believes it sent.
+ *
+ * `remittance_account_id` lives on `corporate_entity`, not on the letterhead
+ * row, but it is edited from the same panel — so it is accepted here and routed
+ * to the right table, with the account verified to belong to this entity first.
+ * Without that check an operator could point one entity's payment block at
+ * another entity's bank account.
+ */
+async function saveLetterhead(client, { id, patch = {}, actor = {} }) {
+  const entity = await repo.get(client, id);
+  if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
+
+  const before = await repo.getLetterhead(client, id);
+
+  if (patch.remittance_account_id !== undefined) {
+    const accountId = patch.remittance_account_id;
+    if (accountId) {
+      const owned = (await repo.treasuryAccounts(client, id))
+        .some((t) => String(t.treasury_account_id) === String(accountId));
+      if (!owned) {
+        throw new AppError("NOT_FOUND", "That treasury account does not belong to this entity", 404);
+      }
+    }
+    await repo.updateInternal(client, id, { remittance_account_id: accountId || null });
+  }
+
+  // DATA 2.4, same hazard as setStatus: `entity_letterhead.updated_by` is
+  // REFERENCES app_user(user_id). check-actor-fk-guard.js does not flag this one
+  // because it looks for the object-literal idiom and here the id arrives as a
+  // positional argument — but the 23503 on a SANDBOX write is identical, so it is
+  // guarded anyway rather than left to the gate's reach.
+  const row = await repo.upsertLetterhead(client, id, patch, await resolveActorId(client, actor.user_id));
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: events.LETTERHEAD_UPDATED,
+    moduleKey: events.MODULE, entityRef: ref(id), before, after: row,
+  });
+  return letterhead(client, id);
+}
+
+/** The stored configuration plus its rendered preview, in one or both languages. */
+async function letterhead(client, id, lang = null, { financials = false } = {}) {
+  const entity = await repo.get(client, id);
+  if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
+  const { addresses, registrations } = await repo.collections(client, id);
+  const { tax_registrations: taxRegistrations, letterhead: config } = await repo.documentsAndTax(client, id);
+  const treasuryAccounts = await repo.treasuryAccounts(client, id);
+  const input = { entity, config, addresses, registrations, taxRegistrations, treasuryAccounts };
+  // Same confidentiality rule as the dossier: the payment block and the account
+  // list both carry the number, and this route is MOD-01 `view`.
+  const mask = (p) => dossierService.maskPaymentBlock(p, financials);
+  return {
+    config: config || { entity_id: id, ...letterheadService.DEFAULT_CONFIG },
+    remittance_account_id: entity.remittance_account_id || null,
+    treasury_accounts: treasuryAccounts.map((t) => maskBank(t, financials)),
+    // Both languages, always: a French entity that also invoices in English
+    // needs to see both, and rendering twice is free (it is a pure function).
+    preview: {
+      fr: mask(letterheadService.render(input, "fr")),
+      en: mask(letterheadService.render(input, "en")),
+    },
+    language: lang || entity.default_language || "en",
+  };
+}
+
+/** Renewals due across documents, registrations and tax registrations. */
+async function renewals(client, id, asOf = null) {
+  const entity = await repo.get(client, id);
+  if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
+  const { registrations } = await repo.collections(client, id);
+  const { documents, tax_registrations: taxRegistrations } = await repo.documentsAndTax(client, id);
+  return renewalRules.renewals({ documents, registrations, taxRegistrations }, asOf);
+}
+
 /** Cap-table reconciliation for one entity, as of a date. Advisory, never throws. */
 async function capTable(client, id, asOf = null) {
   const entity = await repo.get(client, id);
@@ -211,5 +291,6 @@ const get = (client, id) => repo.get(client, id);
 const list = (client, q) => repo.list(client, q);
 
 module.exports = {
-  create, update, setStatus, setActive, setStructure, uploadLogo, capTable, get, list,
+  create, update, setStatus, setActive, setStructure, uploadLogo, capTable,
+  letterhead, saveLetterhead, renewals, get, list,
 };

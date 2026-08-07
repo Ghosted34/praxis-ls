@@ -30,6 +30,20 @@ module.exports = {
     res.json({ data });
   }),
 
+  letterhead: asyncHandler(async (req, res) => {
+    // Gate 14 again: this route is MOD-01 `view`, and the payment block it
+    // renders carries the account number.
+    const financials = await dossierService.canSeeFinancials(req);
+    const data = await req.tenantDb((c) => service.letterhead(c, req.params.id, req.query.lang || null, { financials }));
+    res.json({ data });
+  }),
+
+  saveLetterhead: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.saveLetterhead(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+
+  renewals: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.renewals(c, req.params.id, req.query.as_of || null)) })),
+
   capTable: asyncHandler(async (req, res) => {
     const data = await req.tenantDb((c) => service.capTable(c, req.params.id, req.query.as_of || null));
     res.json({ data });

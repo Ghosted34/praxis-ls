@@ -1,7 +1,24 @@
 "use strict";
 const service = require("./assistant.service");
 const { asyncHandler } = require("../../../utils/errors");
+const { buildTablesWorkbook } = require("./assistant.export");
 const user = (req) => req.user || { user_id: null };
+
+/**
+ * Answer tables → one .xlsx, one sheet per table.
+ *
+ * No `req.tenantDb`: this reads nothing. The rows arrive in the body because
+ * they were already rendered to this caller, under their own permissions, in an
+ * answer the orchestrator produced. The endpoint formats what they can see.
+ */
+const exportTables = asyncHandler(async (req, res) => {
+  const buf = await buildTablesWorkbook(req.body.tables);
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  res.setHeader("Content-Disposition", `attachment; filename="praxis-ai-${stamp}.xlsx"`);
+  res.setHeader("Content-Length", buf.length);
+  res.send(buf);
+});
 
 const ask = asyncHandler(async (req, res) => {
   const out = await req.tenantDb((client) =>
@@ -53,4 +70,4 @@ const clearHistory = asyncHandler(async (req, res) => {
   res.json({ data: out });
 });
 
-module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory, options };
+module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory, options, exportTables };

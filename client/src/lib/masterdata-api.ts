@@ -160,42 +160,306 @@ export type BankBlock = {
   iban?: string;
   swift?: string;
 };
+export type EntityLifecycle = "DRAFT" | "PENDING_REVIEW" | "ACTIVE" | "SUSPENDED" | "DEACTIVATED" | "ARCHIVED";
+export type AccountingFramework = "OHADA" | "IFRS" | "IFRS_SME" | "US_GAAP" | "FR_PCG" | "UK_GAAP" | "LOCAL_OTHER";
+export type EntityRelationship =
+  | "HEADQUARTERS" | "SUBSIDIARY" | "BRANCH" | "REPRESENTATIVE_OFFICE"
+  | "JOINT_VENTURE" | "ASSOCIATE" | "SPV";
+
 export type Entity = {
   entity_id: string;
   code: string;
   legal_name: string;
+  trading_name?: string | null;
+  legal_form?: string | null;
   niu?: string | null;
   rccm?: string | null;
   country_code?: string | null;
   address?: string | null;
+  description?: string | null;
+  industry?: string | null;
+  website?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  headcount?: number | null;
+  timezone?: string | null;
+  incorporation_date?: string | null;
+  incorporation_country?: string | null;
+  incorporation_place?: string | null;
+  dissolution_date?: string | null;
+  share_capital?: number | string | null;
+  share_capital_currency?: string | null;
+  share_capital_paid_up?: number | string | null;
   bank_block?: BankBlock | null;
   logo_light_ref?: string | null;
   logo_dark_ref?: string | null;
   doc_prefix?: string | null;
   default_language?: string | null;
   fiscal_year_start_month?: number | null;
+  accounting_framework?: AccountingFramework | null;
+  default_currency?: string | null;
+  default_tax_jurisdiction_id?: string | null;
+  payroll_country?: string | null;
+  numbering_reset?: "NEVER" | "ANNUAL" | "MONTHLY" | null;
+  vat_registered?: boolean | null;
+  parent_entity_id?: string | null;
+  relationship_type?: EntityRelationship | null;
+  ownership_percent?: number | string | null;
+  consolidates?: boolean;
+  is_group_parent?: boolean;
+  registration_status?: EntityLifecycle | null;
+  deactivation_reason?: string | null;
+  status_changed_at?: string | null;
   is_active: boolean;
 };
-export type EntityInput = {
+export type EntityInput = Partial<Omit<Entity, "entity_id" | "is_active">> & {
   code: string;
   legal_name: string;
-  niu?: string;
-  rccm?: string;
-  country_code?: string;
-  address?: string | null;
-  bank_block?: BankBlock;
-  logo_light_ref?: string | null;
-  logo_dark_ref?: string | null;
-  doc_prefix?: string;
-  default_language?: string;
-  fiscal_year_start_month?: number;
 };
+
+/* Nested collections owned by an entity. */
+export type EntityPerson = {
+  person_id: string;
+  role: "SHAREHOLDER" | "DIRECTOR" | "OFFICER" | "LEGAL_REPRESENTATIVE"
+    | "AUTHORISED_SIGNATORY" | "BENEFICIAL_OWNER" | "STATUTORY_AUDITOR" | "SECRETARY";
+  holder_type?: "PERSON" | "COMPANY";
+  full_name: string;
+  title?: string | null;
+  date_of_birth?: string | null;
+  nationality?: string | null;
+  country_of_residence?: string | null;
+  id_type?: string | null;
+  id_number?: string | null;
+  company_registration_number?: string | null;
+  company_country?: string | null;
+  holder_entity_id?: string | null;
+  holder_entity_code?: string | null;
+  holder_entity_name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  share_class?: string | null;
+  share_count?: number | string | null;
+  share_nominal_value?: number | string | null;
+  ownership_percent?: number | string | null;
+  voting_percent?: number | string | null;
+  is_pep?: boolean;
+  is_primary_contact?: boolean;
+  signature_limit_amount?: number | string | null;
+  signature_limit_currency?: string | null;
+  effective_from?: string | null;
+  effective_to?: string | null;
+  employee_id?: string | null;
+  notes?: string | null;
+  is_active?: boolean;
+  /** Set when the caller lacks the governance grant — personal fields are stripped. */
+  redacted?: boolean;
+};
+export type EntityContact = {
+  contact_id: string; name: string; title?: string | null;
+  email?: string | null; phone?: string | null; role_tags?: string[] | null;
+  is_primary?: boolean; language?: string | null; timezone?: string | null; is_active?: boolean;
+};
+export type EntityAddress = {
+  address_id: string;
+  type: "REGISTERED" | "TRADING" | "BILLING" | "REMITTANCE" | "MAILING" | "WAREHOUSE" | "OTHER";
+  line1?: string | null; line2?: string | null; city?: string | null; region?: string | null;
+  postal_code?: string | null; country_code?: string | null; po_box?: string | null;
+  is_primary?: boolean; is_active?: boolean;
+};
+export type EntityRegistration = {
+  registration_id: string; country_code?: string | null; kind: string; number?: string | null;
+  issuing_authority?: string | null; issued_on?: string | null; expires_on?: string | null;
+  is_primary?: boolean; verified?: boolean; notes?: string | null;
+};
+export type EntityEstablishment = {
+  establishment_id: string; code?: string | null; name: string;
+  kind?: "HEAD_OFFICE" | "OFFICE" | "WAREHOUSE" | "TERMINAL" | "WORKSHOP" | "SITE" | "AGENCY" | "OTHER";
+  country_code?: string | null; city?: string | null; address_line?: string | null;
+  tax_office_ref?: string | null; registration_ref?: string | null; customs_office?: string | null;
+  manager_employee_id?: string | null; opened_on?: string | null; closed_on?: string | null; is_active?: boolean;
+};
+
+export type EntityDocument = {
+  document_id: string;
+  document_type_id?: string | null;
+  document_type_code?: string | null;
+  document_type_name?: string | null;
+  default_severity?: string | null;
+  title?: string | null;
+  document_number?: string | null;
+  issuing_authority?: string | null;
+  issued_on?: string | null;
+  expires_on?: string | null;
+  country_code?: string | null;
+  establishment_id?: string | null;
+  vault_id?: string | null;
+  scan_status: "PENDING" | "SCANNED" | "VERIFIED" | "REJECTED" | "EXPIRED";
+  physical_ref?: string | null;
+  scan_due_on?: string | null;
+  verification_status: "PENDING" | "VERIFIED" | "REJECTED" | "EXPIRED";
+  renewal_lead_days?: number | null;
+  type_renewal_lead_days?: number | null;
+  notes?: string | null;
+  is_active?: boolean;
+};
+
+export type TaxKind = "VAT" | "INCOME" | "WHT" | "PAYROLL" | "CUSTOMS" | "LOCAL" | "OTHER";
+export type EntityTaxRegistration = {
+  tax_registration_id: string;
+  jurisdiction_id?: string | null;
+  jurisdiction_name?: string | null;
+  country_code: string;
+  tax_kind: TaxKind;
+  tax_number?: string | null;
+  regime?: string | null;
+  filing_frequency?: "MONTHLY" | "QUARTERLY" | "ANNUAL" | "BIMONTHLY" | "ON_EVENT" | null;
+  filing_due_day?: number | null;
+  currency?: string | null;
+  is_withholding_agent?: boolean;
+  reverse_charge_applies?: boolean;
+  registered_on?: string | null;
+  deregistered_on?: string | null;
+  is_primary?: boolean;
+  is_active?: boolean;
+  filing_portal_url?: string | null;
+  notes?: string | null;
+};
+
+export type TaxObligation = {
+  tax_calendar_id: string; obligation: string; due_on: string;
+  status: "PENDING" | "DONE" | "LATE" | "WAIVED" | "SUPERSEDED";
+  period_code?: string | null; tax_kind?: string | null; country_code?: string | null;
+};
+
+export type LetterheadConfig = {
+  entity_id?: string;
+  show_legal_form: boolean; show_share_capital: boolean; show_registered_address: boolean;
+  show_registrations: boolean; show_contact: boolean; show_bank_block: boolean; show_establishment: boolean;
+  header_note_fr?: string | null; header_note_en?: string | null;
+  footer_note_fr?: string | null; footer_note_en?: string | null;
+  legal_mentions_fr?: string | null; legal_mentions_en?: string | null;
+  brand_color?: string | null; accent_color?: string | null;
+  logo_position: "LEFT" | "CENTER" | "RIGHT";
+  paper_size: "A4" | "LETTER";
+  header_height_mm?: number | null; footer_height_mm?: number | null;
+};
+
+export type PaymentAccount = {
+  label: string; bank_name?: string | null; branch?: string | null;
+  account_number?: string | null; iban?: string | null; swift_bic?: string | null;
+  currency?: string | null; beneficiary_name?: string | null;
+};
+
+/** The rendered letterhead — the same shape the invoice renderer consumes. */
+export type LetterheadPreview = {
+  language: string;
+  paper_size: string;
+  logo_position: string;
+  brand_color?: string | null;
+  accent_color?: string | null;
+  header: {
+    logo?: string | null; logo_dark?: string | null; company_line?: string | null;
+    trading_name?: string | null; address_line?: string | null;
+    contact_line?: string | null; note?: string | null;
+  };
+  footer: {
+    company_line?: string | null; address_line?: string | null; identifier_line?: string | null;
+    contact_line?: string | null; note?: string | null; legal_mentions?: string | null;
+  };
+  payment_block: { source: "treasury" | "bank_block_legacy" | "none" | "hidden"; accounts: PaymentAccount[] };
+  identifiers: { kind: string; number: string }[];
+  empty_blocks: string[];
+};
+
+export type LetterheadBundle = {
+  config: LetterheadConfig;
+  remittance_account_id: string | null;
+  treasury_accounts: Treasury[];
+  preview: { fr: LetterheadPreview; en: LetterheadPreview };
+  language: string;
+};
+
+export type RenewalItem = {
+  kind: "DOCUMENT" | "REGISTRATION" | "TAX_REGISTRATION";
+  id: string; label: string; type_code?: string | null; country_code?: string | null;
+  expires_on: string; days_remaining: number | null;
+  state: "EXPIRED" | "DUE" | "APPROACHING";
+  severity: "INFO" | "WARN" | "ESCALATED" | "SOFT_BLOCK_RECOMMENDATION" | null;
+};
+export type Renewals = {
+  as_of: string; items: RenewalItem[];
+  counts: { expired: number; due: number; approaching: number };
+};
+
+export type CapTableFinding = { code: string; severity: "INFO" | "WARN"; message: string; person_id?: string };
+export type CapTable = {
+  as_of: string; holder_count: number; total_percent: number; total_shares: number;
+  issued_capital: number; balanced: boolean; findings: CapTableFinding[]; redacted?: boolean;
+};
+
+/** The `/entities/:id/360` aggregation — everything the dossier page renders. */
+export type Entity360 = {
+  entity: Entity;
+  structure: {
+    parent_entity_id: string | null;
+    relationship_type: EntityRelationship | null;
+    ownership_percent: number | string | null;
+    consolidates: boolean;
+    is_group_parent: boolean;
+    ancestors: { entity_id: string; code: string; legal_name: string; country_code?: string | null; depth: number }[];
+    children: (Pick<Entity, "entity_id" | "code" | "legal_name" | "country_code" | "relationship_type"
+      | "ownership_percent" | "consolidates" | "registration_status" | "is_active" | "accounting_framework">)[];
+  };
+  people: EntityPerson[];
+  contacts: EntityContact[];
+  addresses: EntityAddress[];
+  registrations: EntityRegistration[];
+  establishments: EntityEstablishment[];
+  /** Read-only here: treasury accounts are owned by MOD-09 and created there. */
+  treasury_accounts: Treasury[];
+  treasury_is_read_only: boolean;
+  cap_table: CapTable;
+  usage: { journal_entries: number; employees: number; treasury_accounts: number; subsidiaries: number };
+  documents: EntityDocument[];
+  tax_registrations: EntityTaxRegistration[];
+  tax_obligations: TaxObligation[];
+  letterhead_config: LetterheadConfig | null;
+  letterhead_preview: LetterheadPreview;
+  renewals: Renewals;
+  letterhead_source: Record<string, unknown>;
+  readiness: { ready: boolean; missing: { field: string; label: string }[] };
+  expiring_registrations: { registration_id: string; kind: string; number?: string | null; expires_on: string; expired: boolean }[];
+  can_see_governance: boolean;
+};
+
 export const listEntities = () => tenant<Entity[]>("/entities");
 export const createEntity = (body: EntityInput) => tenant<Entity>("/entities", { method: "POST", body });
 export const updateEntity = (id: string, body: Partial<EntityInput>) =>
   tenant<Entity>(`/entities/${id}`, { method: "PATCH", body });
 export const setEntityActive = (id: string, active: boolean) =>
   tenant<Entity>(`/entities/${id}/active`, { method: "POST", body: { active } });
+export const getEntity = (id: string) => tenant<Entity>(`/entities/${id}`);
+export const entityDossier = (id: string) => tenant<Entity360>(`/entities/${id}/360`);
+export const setEntityStatus = (id: string, status: EntityLifecycle, reason?: string) =>
+  tenant<Entity>(`/entities/${id}/status`, { method: "POST", body: { status, reason } });
+export const setEntityStructure = (id: string, body: Record<string, unknown>) =>
+  tenant<Entity>(`/entities/${id}/structure`, { method: "POST", body });
+
+export const entityLetterhead = (id: string) => tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
+export const saveEntityLetterhead = (id: string, body: Record<string, unknown>) =>
+  tenant<LetterheadBundle>(`/entities/${id}/letterhead`, { method: "PUT", body });
+export const entityRenewals = (id: string) => tenant<Renewals>(`/entities/${id}/renewals`);
+
+/** Generic nested-collection helpers — one implementation for all seven. */
+export type EntityCollection =
+  | "people" | "contacts" | "addresses" | "registrations" | "establishments"
+  | "documents" | "tax-registrations";
+export const addEntityChild = <T,>(id: string, seg: EntityCollection, body: Record<string, unknown>) =>
+  tenant<T>(`/entities/${id}/${seg}`, { method: "POST", body });
+export const updateEntityChild = <T,>(id: string, seg: EntityCollection, childId: string, body: Record<string, unknown>) =>
+  tenant<T>(`/entities/${id}/${seg}/${childId}`, { method: "PATCH", body });
+export const deleteEntityChild = (id: string, seg: EntityCollection, childId: string) =>
+  tenant<{ deleted: boolean }>(`/entities/${id}/${seg}/${childId}`, { method: "DELETE" });
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
  *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */
 export const uploadEntityLogo = (id: string, dataUrl: string, variant: "light" | "dark" = "light") =>
@@ -359,10 +623,14 @@ export type ClientType = Registry & { client_type_id: string };
 export type SupplierType = Registry & { supplier_type_id: string };
 export type DocumentType = Registry & {
   document_type_id: string;
-  applies_to: "CLIENT" | "SUPPLIER" | "BOTH";
+  // 0513 widened the registry to cover our own corporate entities, so the same
+  // table now backs client/supplier KYC and entity administrative documents.
+  applies_to: "CLIENT" | "SUPPLIER" | "BOTH" | "ENTITY" | "ALL";
   requires_expiry?: boolean;
   requires_issuing_authority?: boolean;
   default_severity?: string;
+  /** How far ahead of expiry this kind of document starts warning. */
+  renewal_lead_days?: number | null;
 };
 export const listClientTypes = () => tenant<ClientType[]>("/client-types");
 export const createClientType = (body: { code: string; name: string }) => tenant<ClientType>("/client-types", { method: "POST", body });
@@ -370,7 +638,7 @@ export const updateClientType = (id: string, body: Partial<ClientType>) => tenan
 export const listSupplierTypes = () => tenant<SupplierType[]>("/supplier-types");
 export const createSupplierType = (body: { code: string; name: string }) => tenant<SupplierType>("/supplier-types", { method: "POST", body });
 export const updateSupplierType = (id: string, body: Partial<SupplierType>) => tenant<SupplierType>(`/supplier-types/${id}`, { method: "PATCH", body });
-export const listDocumentTypes = (appliesTo?: "CLIENT" | "SUPPLIER") =>
+export const listDocumentTypes = (appliesTo?: "CLIENT" | "SUPPLIER" | "ENTITY") =>
   tenant<DocumentType[]>(`/party-document-types${appliesTo ? `?applies_to=${appliesTo}` : ""}`);
 export const createDocumentType = (body: { code: string; name: string; applies_to?: string; default_severity?: string }) =>
   tenant<DocumentType>("/party-document-types", { method: "POST", body });

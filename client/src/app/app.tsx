@@ -82,6 +82,7 @@ const AiWorkspace = lazyNamed(() => import("@/features/ai/workspace"), "AiWorksp
 const CommsHub = lazyNamed(() => import("@/features/comms/hub"), "CommsHub");
 const SettingsHub = lazyNamed(() => import("@/features/settings/settings-hub"), "SettingsHub");
 const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data-page"), "MasterDataPage");
+const EntityDossierPage = lazyNamed(() => import("@/features/masterdata/entity-360"), "EntityDossierPage");
 const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
 
 // Governance leaf screens — all four live in one module, so they share a chunk.
@@ -229,6 +230,11 @@ export function App() {
         {/* Finance (new) */}
         {/* Master data — one hub, deep-linkable tabs (per-section routes still resolve) */}
         <Route path="master" element={<MasterDataPage />} />
+        {/* The entity dossier is a full route, not a tab: it has to be
+            deep-linkable from a payroll run, an invoice footer config or a
+            compliance alert. Declared before the generic section route; react-
+            router ranks by specificity, so the two-segment path wins either way. */}
+        <Route path="master/corporate-entities/:entityId" element={<EntityDossierPage />} />
         <Route path="master/:section" element={<MasterDataPage />} />
         {/* Vault */}
         {/* Vault & compliance — same shape as Security: one hub, old paths become sections. */}

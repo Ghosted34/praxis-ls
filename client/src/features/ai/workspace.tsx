@@ -47,7 +47,7 @@ import { Tooltip } from "@/components/ui/tooltip";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useAuth } from "@/app/auth/auth-context";
 import { AiComposer, type ComposerValue } from "@/components/ai/composer";
-import { AiThinking, AiTurnView, type TurnCanvas } from "@/components/ai/turn";
+import { AiThinking, AiTurnView, hasOutput, outputFor, type TurnOutput } from "@/components/ai/turn";
 import { useAiThread, type AiTurn } from "@/components/ai/thread";
 import { DESK_STARTERS, scopeByKey, useAiScopes, type AiMode } from "@/components/ai/context";
 import { extractSources, mergeSources, type AiSource } from "@/components/ai/grounding";
@@ -134,6 +134,45 @@ export function AiWorkspace() {
     setPane((p) => ({ ...p, sources: allSources }));
   }, [allSources]);
 
+  /**
+   * THE PANE FILLS ITSELF. This is the behaviour that was missing.
+   *
+   * Before this, an answer's tables and drafts sat inert until you found the
+   * small canvas icon in a hover toolbar and clicked it — which meant that in
+   * practice nobody ever saw the right pane do anything, and it read as three
+   * empty tabs and a broken feature. An answer that produced a seven-table
+   * financial model showed you an empty panel until you went looking.
+   *
+   * So: every new assistant turn populates the pane and opens it, on the richest
+   * thing it produced — tables first, then the document. Nothing to click.
+   *
+   * IT TRACKS THE LATEST ANSWER, not a pinned one. The pane is a view of the
+   * conversation's current state, so a new answer replaces it; the toolbar on an
+   * older turn is how you deliberately go back to that one (`openOutput`).
+   *
+   * WHY IT DOES NOT FIGHT YOU. It keys on the turn id, so it fires once per
+   * answer rather than on every render — close the pane and it stays closed
+   * until the NEXT answer arrives. That is the compromise between "automatic"
+   * and "insistent": a pane that reopened on every re-render could not be
+   * dismissed at all.
+   */
+  const lastAnswer = React.useMemo(() => {
+    for (let i = thread.turns.length - 1; i >= 0; i--) {
+      if (thread.turns[i].role === "assistant") return thread.turns[i];
+    }
+    return null;
+  }, [thread.turns]);
+
+  const filledFor = React.useRef<string | null>(null);
+  React.useEffect(() => {
+    if (!lastAnswer || filledFor.current === lastAnswer.id) return;
+    filledFor.current = lastAnswer.id;
+    const output = outputFor(lastAnswer);
+    if (!hasOutput(output)) return;
+    setPane((p) => ({ ...p, output, tab: output.tables.length ? "table" : "canvas" }));
+    setLayout((l) => (l.right ? l : { ...l, right: true }));
+  }, [lastAnswer]);
+
   // Keep the URL pointing at the thread on screen, so the page is refreshable
   // and shareable. `replace`, so switching conversations does not stack a dozen
   // history entries between the user and the page they arrived from.
@@ -146,8 +185,10 @@ export function AiWorkspace() {
   // too, so a direct URL goes home (doc/AI_GATE_BE_HANDOFF.md).
   if (!aiEnabled) return <Navigate to="/" replace />;
 
-  function openCanvas(_turn: AiTurn, canvas: TurnCanvas) {
-    setPane((p) => ({ ...p, tab: canvas.kind === "table" ? "table" : "canvas", canvas }));
+  /** Manual re-open, from an older answer's toolbar. Auto-population handles
+   *  the latest one; this is how you pull a previous answer's output back. */
+  function openOutput(_turn: AiTurn, output: TurnOutput) {
+    setPane((p) => ({ ...p, tab: output.tables.length ? "table" : "canvas", output }));
     setLayout((l) => ({ ...l, right: true }));
   }
 
@@ -177,8 +218,40 @@ export function AiWorkspace() {
       argument here is specific: this is the only route whose content is a
       conversation rather than a record.
     */
-    <section className="flex h-full min-h-[36rem] flex-col">
-      <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
+    <section
+      className={cn(
+        "flex h-full min-h-[36rem] flex-col",
+        /*
+          FULL-BLEED, from `md` up.
+
+          `<main>` pads its content — `p-4 pb-24 md:p-6 md:pb-6 2xl:px-8` — which
+          is right for every screen that is a document on a page. This one is not
+          a document on a page; it is the page. Sat inside that padding, and
+          wrapped in the rounded bordered card this used to have, it read as a
+          large modal floating on an empty surface rather than as a screen. The
+          negative margins cancel the padding so the rails reach the window edge,
+          and the height is grown by the same amount so the bottom does not fall
+          short of it.
+
+          The exception lives HERE rather than in the shell, deliberately: the
+          shell should not know the name of a route. The cost is that these
+          numbers mirror `app-shell.tsx`'s padding and would need changing with
+          it — which is why they are spelled out rather than hidden in a utility.
+
+          NOT below `md`. There the padding includes `pb-24`, which is clearance
+          for the mobile bottom nav — bleeding into it would put the composer
+          underneath the navigation bar.
+        */
+        "md:-m-6 md:h-[calc(100%+3rem)] 2xl:-mx-8",
+      )}
+    >
+      {/*
+        No border, no radius, no card. The panes ARE the page; each brings its
+        own edge (`border-r` on the rail, `border-l` on the answer panel), which
+        is what a three-pane application looks like — as opposed to a box that
+        happens to contain three columns.
+      */}
+      <div className="relative flex min-h-0 flex-1 overflow-hidden bg-background">
         {/* LEFT RAIL. Static from `lg`; an overlay below it, because at 1024px
             three columns plus a reading measure is not three columns, it is
             three gutters. */}
@@ -299,7 +372,7 @@ export function AiWorkspace() {
                       onConfirmAction={thread.confirmAction}
                       confirming={thread.confirming}
                       doneActions={thread.doneActions}
-                      onOpenCanvas={openCanvas}
+                      onOpenCanvas={openOutput}
                     />
                   ))}
                   {thread.busy && <AiThinking />}

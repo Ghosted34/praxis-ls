@@ -1,23 +1,50 @@
 "use strict";
-const { z } = require("zod");
+/**
+ * MOD-01 validation — an ADAPTER, not a second rulebook.
+ *
+ * Every shape lives in `packages/shared` (schemas/entity-common.js) so the
+ * client's entity form and this API validate against the SAME object. A
+ * `z.object(...)` here would be a rule added on one side only, which is the
+ * drift `client/scripts/check-schemas.mjs` exists to stop — and it is how the
+ * previous version ended up listing the same fields twice, once for create and
+ * once for update, with a column added to one silently unwritable through the
+ * other.
+ *
+ * What this file owns: mapping a shared schema's failure onto this API's error
+ * envelope, and naming the AI-facing variants (which differ only in carrying
+ * `entity_id` in the body, because the assistant has no route parameter).
+ */
+const { entityCommon } = require("@praxis/shared");
 const { AppError } = require("../../../utils/errors");
-// `logo_light_ref` / `logo_dark_ref` are the per-entity document logos (columns
-// existed since 0100 but were previously unwritable — no validator field, so any
-// value sent was silently dropped). They hold the /media URL produced by
-// POST /entities/:id/logo; sending null clears one.
-const logoRef = z.string().optional().nullable();
+
 const schemas = {
-  create: z.object({ code: z.string().min(1), legal_name: z.string().min(1), niu: z.string().optional().nullable(), rccm: z.string().optional().nullable(), country_code: z.string().length(2).optional(), address: z.string().optional().nullable(), bank_block: z.record(z.any()).optional(), doc_prefix: z.string().optional(), default_language: z.enum(["fr", "en"]).optional(), fiscal_year_start_month: z.number().int().min(1).max(12).optional(), logo_light_ref: logoRef, logo_dark_ref: logoRef }),
-  update: z.object({ legal_name: z.string().optional(), niu: z.string().optional().nullable(), rccm: z.string().optional().nullable(), country_code: z.string().length(2).optional(), address: z.string().optional().nullable(), bank_block: z.record(z.any()).optional(), doc_prefix: z.string().optional(), default_language: z.enum(["fr", "en"]).optional(), fiscal_year_start_month: z.number().int().min(1).max(12).optional(), logo_light_ref: logoRef, logo_dark_ref: logoRef }),
-  setActive: z.object({ active: z.boolean() }),
-  logoUpload: z.object({ data_url: z.string().min(1), variant: z.enum(["light", "dark"]).optional() }),
+  create: entityCommon.masterCreate,
+  update: entityCommon.masterUpdate,
+  setActive: entityCommon.setActive,
+  setStatus: entityCommon.setStatus,
+  setStructure: entityCommon.setStructure,
+  logoUpload: entityCommon.logoUpload,
+  letterhead: entityCommon.letterheadUpdate,
   // AI-facing: entity_id in the payload → list_entities picker.
-  aiUpdate: z.object({ entity_id: z.string().uuid(), legal_name: z.string().optional(), niu: z.string().optional().nullable(), rccm: z.string().optional().nullable(), country_code: z.string().length(2).optional(), address: z.string().optional().nullable(), bank_block: z.record(z.any()).optional(), doc_prefix: z.string().optional(), default_language: z.enum(["fr", "en"]).optional(), fiscal_year_start_month: z.number().int().min(1).max(12).optional(), logo_light_ref: logoRef, logo_dark_ref: logoRef }),
-  aiSetActive: z.object({ entity_id: z.string().uuid(), active: z.boolean() }),
+  aiUpdate: entityCommon.aiUpdate,
+  aiSetActive: entityCommon.aiSetActive,
+  aiSetStatus: entityCommon.aiSetStatus,
+  aiCapTable: entityCommon.aiCapTable,
 };
+
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), update: mw("update"), setActive: mw("setActive"), logoUpload: mw("logoUpload"), schemas };
+
+module.exports = {
+  create: mw("create"),
+  update: mw("update"),
+  setActive: mw("setActive"),
+  setStatus: mw("setStatus"),
+  setStructure: mw("setStructure"),
+  logoUpload: mw("logoUpload"),
+  letterhead: mw("letterhead"),
+  schemas,
+};

@@ -1,2 +1,11 @@
 "use strict";
-module.exports = { MODULE: "MOD-01", CREATED: "entity.created", UPDATED: "entity.updated", ARCHIVED: "entity.archived" };
+module.exports = {
+  MODULE: "MOD-01",
+  CREATED: "entity.created",
+  UPDATED: "entity.updated",
+  ARCHIVED: "entity.archived",
+  STATUS_CHANGED: "entity.status_changed",
+  STRUCTURE_CHANGED: "entity.structure_changed",
+  LETTERHEAD_UPDATED: "entity.letterhead_updated",
+  DOCUMENT_EXPIRING: "entity.document_expiring",
+};

@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (233)
+## All codes (237)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -61,7 +61,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_KIND` | 422 | 1× | — |
 | `BAD_LAYOUT` | 422 | 1× | — |
 | `BAD_MIRROR` | 422 | 1× | — |
-| `BAD_MONTH` | 422 | 2× | — |
+| `BAD_MONTH` | 422 | 1× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
 | `BAD_PARTY_KIND` | 422 | 8× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
@@ -77,12 +77,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SIGNATURE` | 422 | 1× | — |
 | `BAD_STAGE` | 422 | 1× | — |
 | `BAD_STATE` | 400, 409, 422 | 15× | `BAD_STATUS` |
-| `BAD_STATUS` | 422 | 3× | — |
+| `BAD_STATUS` | 422 | 4× | — |
+| `BAD_STORAGE_KEY` | 400 | 2× | — |
 | `BAD_TEMPLATE` | 422 | 5× | — |
 | `BAD_THEME` | 422 | 1× | — |
 | `BAD_TOKEN` | 500 | 1× | — |
 | `BAD_TOTALS` | 422 | 1× | — |
-| `BAD_TRANSITION` | 422 | 2× | — |
+| `BAD_TRANSITION` | 422 | 3× | — |
 | `BAD_VALUE` | 422 | 1× | — |
 | `BAD_WINDOW` | 422 | 2× | — |
 | `BREACHED_PASSWORD` | 422 | 1× | — |
@@ -93,6 +94,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
 | `COMPLIANCE_BLOCKED` | 409 | 3× | — |
+| `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 1× | — |
@@ -114,6 +116,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
+| `HAS_SUBSIDIARIES` | 409 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |
@@ -149,7 +152,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 241× | — |
+| `NOT_FOUND` | 404 | 252× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -208,6 +211,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
+| `REASON_REQUIRED` | 422 | 1× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_REQUIRED` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |

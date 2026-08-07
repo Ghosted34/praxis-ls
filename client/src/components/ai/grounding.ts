@@ -32,6 +32,17 @@ export type AiSource = {
 };
 
 export type AiTable = {
+  /**
+   * The heading the table sits under, or a positional fallback.
+   *
+   * This is what makes several tables in one answer usable rather than a wall.
+   * A financial model comes back as "Revenue (from trial balance)",
+   * "Receivables (from ageing)", "Scenario A — Conservative", "Scenario B —
+   * Realistic" — and stripped of those labels they are seven indistinguishable
+   * grids of numbers. The label is already in the prose directly above each one;
+   * it just has to be carried across.
+   */
+  title: string;
   header: string[];
   rows: string[][];
 };
@@ -121,27 +132,62 @@ function cells(line: string): string[] {
 
 const DIVIDER = /^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/;
 
+/** Strip markdown decoration from a heading so it can be a label or a sheet name. */
+function plain(s: string): string {
+  return s
+    .replace(LINK, "$1")
+    .replace(/[*_`#]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 /**
- * The first markdown table in an answer, as data.
+ * EVERY markdown table in an answer, each labelled with the heading above it.
  *
- * `components/markdown.tsx` already renders these inline and renders them well,
- * so this is not a second renderer — it is the lift that lets the same rows open
- * in the right pane as a real `<Table>`, with the sorting and export a person
- * looking at twenty rows of receivables actually wants. Inline stays; the canvas
- * is the escalation.
+ * This used to return only the first one, on the reasoning that "an answer with
+ * two tables is an answer that should have been two answers". That was wrong,
+ * and a real financial model is what proved it: actuals, receivables ageing, tax
+ * position, model inputs, then three scenarios — seven tables, one coherent
+ * answer, and no way to split it that would not be worse. The pane showed the
+ * first two rows of the first one and silently dropped the rest, which on an
+ * accounting product is not a missing feature, it is a wrong answer.
  *
- * Only the FIRST table: an answer with two tables is an answer that should have
- * been two answers, and picking one to promote is better than a pane with a
- * silent second tab in it.
+ * Scenarios A, B and C only mean anything COMPARED, which is also why the pane
+ * stacks them rather than putting them behind a selector.
+ *
+ * `components/markdown.tsx` still renders these inline and renders them well —
+ * this is not a second renderer. It is the lift that lets the same rows open in
+ * the right pane as real `<Table>`s, with the sorting and export a person
+ * looking at a five-month projection actually wants.
  */
-export function extractTable(text: string): AiTable | null {
+export function extractTables(text: string): AiTable[] {
   const lines = text.split("\n");
+  const out: AiTable[] = [];
+  // The most recent heading seen while scanning down — the label for whatever
+  // table comes next. Cleared as it is consumed so two tables under one heading
+  // do not both claim it verbatim.
+  let heading = "";
+
   for (let i = 0; i < lines.length - 1; i++) {
+    const h = lines[i].match(/^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (h) {
+      heading = plain(h[1]);
+      continue;
+    }
+    // A bold line on its own is how models label a table when they have already
+    // spent their heading levels — "**Scenario A — Conservative**".
+    const b = lines[i].match(/^\s*\*\*(.+?)\*\*\s*$/);
+    if (b) {
+      heading = plain(b[1]);
+      continue;
+    }
     if (!lines[i].includes("|") || !DIVIDER.test(lines[i + 1])) continue;
+
     const header = cells(lines[i]);
     if (header.length < 2) continue;
     const rows: string[][] = [];
-    for (let j = i + 2; j < lines.length; j++) {
+    let j = i + 2;
+    for (; j < lines.length; j++) {
       if (!lines[j].includes("|") || !lines[j].trim()) break;
       const row = cells(lines[j]);
       // Ragged rows are padded rather than dropped — losing a row of financial
@@ -149,9 +195,18 @@ export function extractTable(text: string): AiTable | null {
       while (row.length < header.length) row.push("");
       rows.push(row.slice(0, header.length));
     }
-    if (rows.length) return { header, rows };
+    if (rows.length) {
+      out.push({ title: heading || `Table ${out.length + 1}`, header, rows });
+      heading = "";
+    }
+    i = j - 1; // resume after this table rather than rescanning its rows
   }
-  return null;
+  return out;
+}
+
+/** The first table, for callers that only need to know whether there is one. */
+export function extractTable(text: string): AiTable | null {
+  return extractTables(text)[0] ?? null;
 }
 
 /**

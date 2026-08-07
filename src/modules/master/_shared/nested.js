@@ -19,7 +19,7 @@ const { insertOne, updateOne, getById, page } = require("../../../shared/db/quer
 const { audit, emitEvent } = require("../../../shared/events/emit");
 const { requirePermission } = require("../../../middleware/rbac");
 const { asyncHandler, AppError } = require("../../../utils/errors");
-const { partyCommon } = require("@praxis/shared");
+const { partyCommon, entityCommon } = require("@praxis/shared");
 const { canSeeFinancials, maskBank } = require("./confidential");
 const changeRequest = require("./change-request.service");
 
@@ -205,4 +205,114 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
   }
 }
 
-module.exports = { mountNested, buildResource, resourceSpecs, validate };
+/**
+ * The five nested resources a CORPORATE ENTITY owns (MOD-01).
+ *
+ * Separate from `resourceSpecs` above because the shapes genuinely differ — an
+ * entity's people carry a cap table, its addresses carry a REGISTERED type that
+ * a counterparty has no equivalent of — but the machinery (`buildResource`) is
+ * identical, so this is a spec list, not a second implementation.
+ *
+ * No `banks` entry, deliberately: an entity's bank accounts are
+ * `treasury_account` rows owned by MOD-09, surfaced read-only on the dossier and
+ * created through Treasury. Mounting a writable bank collection here is exactly
+ * the duplicate source of truth the entity revamp set out to remove.
+ *
+ * `verified` / `verified_by` / `verified_at` on a registration are absent from
+ * every allow-list — verification is a service-owned step, not something a PATCH
+ * can assert about itself.
+ */
+function entityResourceSpecs() {
+  return [
+    {
+      seg: "people", table: "entity_person", pk: "person_id",
+      create: entityCommon.personCreate, update: entityCommon.personUpdate, touch: true,
+      writable: [
+        "role", "holder_type", "full_name", "title",
+        "date_of_birth", "nationality", "country_of_residence", "id_type", "id_number",
+        "company_registration_number", "company_country", "holder_entity_id",
+        "email", "phone",
+        "share_class", "share_count", "share_nominal_value", "ownership_percent", "voting_percent",
+        "is_pep", "is_primary_contact", "signature_limit_amount", "signature_limit_currency",
+        "effective_from", "effective_to",
+        "employee_id", "client_id", "supplier_id",
+        "notes", "is_active",
+      ],
+    },
+    {
+      seg: "contacts", table: "entity_contact", pk: "contact_id",
+      create: entityCommon.contactCreate, update: entityCommon.contactUpdate, touch: true,
+      writable: ["name", "title", "email", "phone", "role_tags", "is_primary", "language", "timezone", "is_active"],
+    },
+    {
+      seg: "addresses", table: "entity_address", pk: "address_id",
+      create: entityCommon.addressCreate, update: entityCommon.addressUpdate, touch: true,
+      writable: ["type", "line1", "line2", "city", "region", "postal_code", "country_code", "po_box", "is_primary", "is_active"],
+    },
+    {
+      seg: "registrations", table: "entity_registration", pk: "registration_id",
+      create: entityCommon.registrationCreate, update: entityCommon.registrationUpdate, touch: true,
+      writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on", "is_primary", "notes"],
+    },
+    {
+      seg: "establishments", table: "entity_establishment", pk: "establishment_id",
+      create: entityCommon.establishmentCreate, update: entityCommon.establishmentUpdate, touch: true,
+      writable: ["code", "name", "kind", "country_code", "city", "address_line", "tax_office_ref",
+        "registration_ref", "customs_office", "manager_employee_id", "opened_on", "closed_on", "is_active"],
+    },
+    {
+      // Administrative documents (0516). `isDocument` gives the same
+      // PENDING -> SCANNED bump the party masters get when a scan arrives;
+      // verification stays a human step, and `verification_status`,
+      // `verified_by`, `content_hash` are absent from the allow-list so a
+      // request cannot assert a verification it has not earned.
+      seg: "documents", table: "entity_document", pk: "document_id",
+      create: entityCommon.documentCreate, update: entityCommon.documentUpdate,
+      touch: true, isDocument: true,
+      writable: ["document_type_id", "title", "document_number", "issuing_authority",
+        "issued_on", "expires_on", "country_code", "establishment_id", "vault_id",
+        "physical_ref", "scan_due_on", "renewal_lead_days", "notes", "is_active"],
+    },
+    {
+      // Per-entity tax registrations (0516) — the entity's own VAT/TVA number,
+      // regime and filing frequency in one jurisdiction. Rate cards stay in
+      // MOD-07; this is the binding between an entity and a jurisdiction.
+      seg: "tax-registrations", table: "entity_tax_registration", pk: "tax_registration_id",
+      create: entityCommon.taxRegistrationCreate, update: entityCommon.taxRegistrationUpdate, touch: true,
+      writable: ["jurisdiction_id", "country_code", "tax_kind", "tax_number", "regime",
+        "filing_frequency", "filing_due_day", "currency", "is_withholding_agent",
+        "reverse_charge_applies", "registered_on", "deregistered_on", "is_primary",
+        "is_active", "filing_portal_url", "responsible_user_id", "notes"],
+    },
+  ];
+}
+
+/**
+ * Mount the entity's nested collections on the MOD-01 router.
+ *
+ * `people` is gated harder than the rest: reading a cap table needs the same
+ * UPDATE grant that `entity-360.service.canSeeGovernance` tests, so a Sales user
+ * who can view entities cannot enumerate shareholders and their identifiers by
+ * calling the collection endpoint directly — which would otherwise route around
+ * the dossier's redaction entirely.
+ */
+function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
+  for (const r of entityResourceSpecs()) {
+    const { controller } = buildResource({
+      table: r.table, pk: r.pk, parentCol: "entity_id",
+      parentTable, parentPk, moduleKey, label: r.table,
+      writable: r.writable, touch: r.touch, isDocument: r.isDocument,
+    });
+    // `people` carries the cap table and personal identifiers, and `documents`
+    // the statutes and tax certificates — both need the same UPDATE grant that
+    // entity-360's redaction tests, or the collection endpoint becomes a way to
+    // read around the dossier's redaction entirely.
+    const viewAction = ["people", "documents"].includes(r.seg) ? "edit" : "view";
+    router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), controller.list);
+    router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
+    router.patch(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "edit"), validate(r.update), controller.update);
+    router.delete(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "delete"), controller.remove);
+  }
+}
+
+module.exports = { mountNested, mountEntityNested, buildResource, resourceSpecs, entityResourceSpecs, validate };

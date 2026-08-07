@@ -4,7 +4,7 @@
  * write actions come back AWAITING_CONFIRM and are executed (permission-
  * inheriting) via confirm. This is the per-screen surface, not a general chat.
  */
-import { tenant } from "./api-client";
+import { tenant, downloadPost } from "./api-client";
 
 /** One selectable option for a reference dropdown, sourced from a list-read. */
 export type AiOption = { value: unknown; label: string };
@@ -137,3 +137,28 @@ export const confirmAiBatch = (batchId: string) =>
     `/ai/batches/${batchId}/confirm`,
     { method: "POST" },
   );
+
+/**
+ * Export an answer's tables as one Excel workbook — one sheet per table.
+ *
+ * SERVER-SIDE ON PURPOSE. The platform already owns an ExcelJS toolkit
+ * (`src/services/excel/workbook.js`) with the house header style, frozen header
+ * rows, zebra striping and autofilter, so a client-built file would be a second,
+ * worse-looking implementation of something that exists. The alternative also
+ * means shipping a spreadsheet writer to every browser that loads the app — for
+ * one button, into a bundle this repo actively polices (`check:bundle`).
+ *
+ * Rows go up as strings because that is what they are: cells lifted out of a
+ * markdown table in an answer. The server coerces the numeric-looking ones so
+ * amounts arrive as numbers rather than text, which is the difference between a
+ * spreadsheet you can sum and one you have to retype.
+ */
+export type AiExportTable = { title: string; header: string[]; rows: string[][] };
+
+export async function downloadAiTables(tables: AiExportTable[], filename?: string): Promise<void> {
+  await downloadPost(
+    "/tenant/ai/export/tables",
+    { tables },
+    filename || `praxis-ai-${new Date().toISOString().slice(0, 10)}.xlsx`,
+  );
+}

@@ -34,28 +34,36 @@
 import * as React from "react";
 import { Link } from "react-router-dom";
 import { cn } from "@/lib/cn";
-import { Markdown } from "@/components/markdown";
+import { Markdown, renderInline } from "@/components/markdown";
 import { Table, TBody, TD, TH, THead, TR } from "@/components/ui/table";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon, DownloadIcon, XIcon } from "@/components/ui/icons";
 import { screenByRoute } from "@/app/screen-registry";
 import { CopyIcon, DocIcon, LineageIcon, RecordIcon, TableIcon } from "@/components/ai/icons";
-import type { AiSource } from "@/components/ai/grounding";
-import type { TurnCanvas } from "@/components/ai/turn";
+import type { AiSource, AiTable } from "@/components/ai/grounding";
+import { downloadAiTables } from "@/lib/ai-api";
+import { errMsg } from "@/lib/use-resource";
+import type { TurnOutput } from "@/components/ai/turn";
 
 export type PaneTab = "canvas" | "table" | "record" | "sources";
 
 export type PaneState = {
   tab: PaneTab;
-  /** The lifted artefact or result set, from the turn the user opened. */
-  canvas: TurnCanvas | null;
+  /** Everything the latest answer produced — its tables and, separately, its
+   *  document. Both, because an answer can be both. */
+  output: TurnOutput;
   /** The source chip being previewed, if any. */
   record: AiSource | null;
   /** Every source across the whole thread, newest answer first. */
   sources: AiSource[];
 };
 
-export const EMPTY_PANE: PaneState = { tab: "canvas", canvas: null, record: null, sources: [] };
+export const EMPTY_PANE: PaneState = {
+  tab: "table",
+  output: { tables: [], artifact: null },
+  record: null,
+  sources: [],
+};
 
 const TABS: { value: PaneTab; label: string; Icon: (p: { width?: number; height?: number }) => React.JSX.Element }[] = [
   { value: "canvas", label: "Canvas", Icon: DocIcon },
@@ -74,8 +82,8 @@ export function AiRightPane({
   onClose: () => void;
 }) {
   const enabled: Record<PaneTab, boolean> = {
-    canvas: state.canvas?.kind === "artifact",
-    table: state.canvas?.kind === "table",
+    canvas: !!state.output.artifact,
+    table: state.output.tables.length > 0,
     record: !!state.record,
     sources: state.sources.length > 0,
   };
@@ -147,8 +155,8 @@ export function AiRightPane({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">
-        {state.tab === "canvas" && <CanvasView canvas={state.canvas} />}
-        {state.tab === "table" && <TableView canvas={state.canvas} />}
+        {state.tab === "canvas" && <CanvasView artifact={state.output.artifact} />}
+        {state.tab === "table" && <TableView tables={state.output.tables} />}
         {state.tab === "record" && <RecordView source={state.record} />}
         {state.tab === "sources" && (
           <SourcesView
@@ -180,21 +188,21 @@ function PaneEmpty({ title, body }: { title: string; body: string }) {
  * and download are the two things that make a draft useful today, and neither
  * pretends to be more than it is.
  */
-function CanvasView({ canvas }: { canvas: TurnCanvas | null }) {
+function CanvasView({ artifact }: { artifact: { title: string; text: string } | null }) {
   const [copied, setCopied] = React.useState(false);
-  if (canvas?.kind !== "artifact") {
+  if (!artifact) {
     return (
       <PaneEmpty
         title="Nothing on the canvas"
-        body="When Praxis drafts something long — a proforma, a memo, a summary — open it here for room to read it."
+        body="When Praxis drafts something long — a proforma, a memo, a summary — it opens here for room to read it."
       />
     );
   }
 
   async function copy() {
-    if (canvas?.kind !== "artifact") return;
+    if (!artifact) return;
     try {
-      await navigator.clipboard.writeText(canvas.text);
+      await navigator.clipboard.writeText(artifact.text);
       setCopied(true);
       setTimeout(() => setCopied(false), 1600);
     } catch {
@@ -203,12 +211,12 @@ function CanvasView({ canvas }: { canvas: TurnCanvas | null }) {
   }
 
   function download() {
-    if (canvas?.kind !== "artifact") return;
-    const blob = new Blob([canvas.text], { type: "text/markdown;charset=utf-8" });
+    if (!artifact) return;
+    const blob = new Blob([artifact.text], { type: "text/markdown;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `${canvas.title.replace(/[^\w\s-]/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "draft"}.md`;
+    a.download = `${slug(artifact.title) || "draft"}.md`;
     a.click();
     URL.revokeObjectURL(url);
   }
@@ -216,7 +224,7 @@ function CanvasView({ canvas }: { canvas: TurnCanvas | null }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
       <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">{canvas.title}</h3>
+        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">{artifact.title}</h3>
         <Tooltip content={copied ? "Copied" : "Copy"}>
           <button
             type="button"
@@ -239,32 +247,125 @@ function CanvasView({ canvas }: { canvas: TurnCanvas | null }) {
         </Tooltip>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-        <Markdown text={canvas.text} />
+        <Markdown text={artifact.text} />
+      </div>
+    </div>
+  );
+}
+
+/** Filename-safe slug for a heading. */
+function slug(s: string): string {
+  return s
+    .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/\s+/g, "-")
+    .toLowerCase()
+    .slice(0, 60);
+}
+
+/**
+ * Every table the answer produced, stacked.
+ *
+ * STACKED, NOT BEHIND A SELECTOR. A five-month projection arrives as Scenario A
+ * / B / C, and those three only mean anything COMPARED — a picker that shows one
+ * at a time hides two thirds of the point. Stacking also means the labels stay
+ * visible, which is what turns seven grids of numbers back into an argument.
+ *
+ * Each table sorts independently and exports on its own; the header exports all
+ * of them as one workbook, one sheet each.
+ */
+function TableView({ tables }: { tables: AiTable[] }) {
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  if (!tables.length) {
+    return (
+      <PaneEmpty
+        title="No tables in this answer"
+        body="When an answer comes back with rows in it, they open here — sortable, and exportable to Excel."
+      />
+    );
+  }
+
+  /**
+   * All tables as one workbook, one sheet each.
+   *
+   * SERVER-SIDE, because the platform already owns an ExcelJS toolkit
+   * (`src/services/excel/workbook.js`) with the house header style, frozen rows,
+   * zebra striping and autofilter — and because the alternative is shipping a
+   * spreadsheet writer to every browser that loads the app, for one button, into
+   * a bundle this repo actively polices (`check:bundle`).
+   */
+  async function exportWorkbook() {
+    setBusy(true);
+    setErr(null);
+    try {
+      await downloadAiTables(tables);
+    } catch (e) {
+      setErr(errMsg(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
+        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">
+          {tables.length} table{tables.length === 1 ? "" : "s"}
+        </h3>
+        <Tooltip content={tables.length === 1 ? "Export to Excel" : `Export all ${tables.length} as one workbook`}>
+          <button
+            type="button"
+            onClick={exportWorkbook}
+            disabled={busy}
+            aria-label="Export every table to Excel"
+            className="tap-24 inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-micro font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+          >
+            <DownloadIcon width={13} height={13} />
+            {busy ? "Building…" : "Excel"}
+          </button>
+        </Tooltip>
+      </div>
+
+      {err && (
+        <p className="border-b border-bad/30 bg-bad-fill/8 px-4 py-2 text-micro text-bad" role="alert">
+          {err}
+        </p>
+      )}
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        {tables.map((t, i) => (
+          <OneTable key={`${t.title}-${i}`} table={t} index={i} />
+        ))}
       </div>
     </div>
   );
 }
 
 /**
- * The result set, as a table that behaves like one.
+ * One lifted table.
  *
  * Sorting is CLIENT-SIDE and numeric-aware: an answer's table is tens of rows,
  * not thousands, so a round trip to sort it would be slower than the sort. The
  * numeric detection is what makes it useful on this product specifically —
- * "1 250 000" and "XAF 1,250,000" both have to sort as a number, or a sort on
- * an amount column is worse than no sort at all.
+ * "1 250 000" and "XAF 1,250,000" both have to sort as numbers, or a sort on an
+ * amount column is worse than no sort at all.
+ *
+ * Cells render through the app's inline markdown renderer, because models bold
+ * their total rows. Rendered as plain strings, the one row that most needed to
+ * read as a total printed `**Total revenue (HT)**` with its asterisks showing.
  */
-function TableView({ canvas }: { canvas: TurnCanvas | null }) {
+function OneTable({ table, index }: { table: AiTable; index: number }) {
   const [sort, setSort] = React.useState<{ col: number; dir: 1 | -1 } | null>(null);
 
   const rows = React.useMemo(() => {
-    if (canvas?.kind !== "table") return [];
-    if (!sort) return canvas.rows;
+    if (!sort) return table.rows;
     const num = (v: string) => {
       const n = Number(v.replace(/[^\d.-]/g, ""));
       return v.trim() && Number.isFinite(n) ? n : null;
     };
-    return [...canvas.rows].sort((a, b) => {
+    return [...table.rows].sort((a, b) => {
       const x = a[sort.col] ?? "";
       const y = b[sort.col] ?? "";
       const nx = num(x);
@@ -272,58 +373,52 @@ function TableView({ canvas }: { canvas: TurnCanvas | null }) {
       if (nx !== null && ny !== null) return (nx - ny) * sort.dir;
       return x.localeCompare(y, undefined, { numeric: true }) * sort.dir;
     });
-  }, [canvas, sort]);
-
-  if (canvas?.kind !== "table") {
-    return (
-      <PaneEmpty
-        title="No result set"
-        body="When an answer comes back with rows in it, open them here to sort and export them properly."
-      />
-    );
-  }
+  }, [table.rows, sort]);
 
   function exportCsv() {
-    if (canvas?.kind !== "table") return;
     const esc = (v: string) => (/[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
-    const csv = [canvas.header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
+    const csv = [table.header, ...rows].map((r) => r.map(esc).join(",")).join("\n");
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a");
     a.href = url;
-    a.download = "praxis-answer.csv";
+    a.download = `${slug(table.title) || `table-${index + 1}`}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   }
 
   return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-2.5">
-        <h3 className="min-w-0 flex-1 truncate font-display text-label font-semibold">
-          {rows.length} row{rows.length === 1 ? "" : "s"}
-        </h3>
-        <Tooltip content="Export as CSV">
+    <section className="border-b border-border last:border-b-0">
+      <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-card px-4 py-2">
+        <h4 className="min-w-0 flex-1 truncate text-label font-semibold text-foreground">{table.title}</h4>
+        <span className="micro shrink-0 text-muted-foreground">
+          {table.rows.length} row{table.rows.length === 1 ? "" : "s"}
+        </span>
+        <Tooltip content="Export this table as CSV">
           <button
             type="button"
             onClick={exportCsv}
-            aria-label="Export these rows as CSV"
-            className="tap-24 grid h-7 w-7 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            aria-label={`Export ${table.title} as CSV`}
+            className="tap-24 grid h-6 w-6 shrink-0 place-items-center rounded text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
           >
-            <DownloadIcon width={14} height={14} />
+            <DownloadIcon width={12} height={12} />
           </button>
         </Tooltip>
       </div>
-      <div className="min-h-0 flex-1 overflow-auto">
+
+      <div className="overflow-x-auto">
         <Table>
           <THead>
             <TR>
-              {canvas.header.map((h, i) => (
+              {table.header.map((h, i) => (
                 <TH key={i} aria-sort={sort?.col === i ? (sort.dir === 1 ? "ascending" : "descending") : "none"}>
                   <button
                     type="button"
-                    onClick={() => setSort((s) => (s?.col === i ? { col: i, dir: s.dir === 1 ? -1 : 1 } : { col: i, dir: 1 }))}
+                    onClick={() =>
+                      setSort((s) => (s?.col === i ? { col: i, dir: s.dir === 1 ? -1 : 1 } : { col: i, dir: 1 }))
+                    }
                     className="inline-flex items-center gap-1 transition-colors hover:text-foreground"
                   >
-                    {h}
+                    {renderInline(h, `h${i}`)}
                     <span aria-hidden className={cn("text-[9px]", sort?.col === i ? "opacity-100" : "opacity-30")}>
                       {sort?.col === i && sort.dir === -1 ? "▼" : "▲"}
                     </span>
@@ -337,7 +432,7 @@ function TableView({ canvas }: { canvas: TurnCanvas | null }) {
               <TR key={i}>
                 {r.map((c, j) => (
                   <TD key={j} className={j === 0 ? "font-medium text-foreground" : undefined}>
-                    {c}
+                    {renderInline(c, `c${i}-${j}`)}
                   </TD>
                 ))}
               </TR>
@@ -345,7 +440,7 @@ function TableView({ canvas }: { canvas: TurnCanvas | null }) {
           </TBody>
         </Table>
       </div>
-    </div>
+    </section>
   );
 }
 

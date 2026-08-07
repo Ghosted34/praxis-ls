@@ -34,7 +34,7 @@ import { Markdown } from "@/components/markdown";
 import { ActionForm } from "@/components/action-form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon } from "@/components/ui/icons";
-import { extractSources, extractTable, isLongForm, mergeSources, type AiSource } from "./grounding";
+import { artifactTitle, extractSources, extractTables, isLongForm, mergeSources, type AiSource, type AiTable } from "./grounding";
 import {
   CanvasIcon,
   CopyIcon,
@@ -52,23 +52,38 @@ import { AI_MODES } from "./context";
 import type { AiTurn } from "./thread";
 import type { AiActionRun } from "@/lib/ai-api";
 
-/** What the canvas would show for this turn, if anything. Computed once. */
-export type TurnCanvas =
-  | { kind: "artifact"; title: string; text: string }
-  | { kind: "table"; title: string; header: string[]; rows: string[][] };
+/**
+ * Everything one answer can put in the right pane.
+ *
+ * BOTH, NOT EITHER — and this is the bug that made Canvas look dead. The old
+ * shape was a union: check for a table, return it, and only reach the artifact
+ * branch if there wasn't one. So any answer containing a single table could
+ * never become an artifact, which is every drafted document this product
+ * produces — a memo whose §2 is a position table, a proforma with line items.
+ * "Draft a memo for the finance department" came back with a table in it and
+ * Canvas said *Nothing on the canvas*, correctly, for a reason no user could
+ * possibly infer.
+ *
+ * They were never alternatives. They are two views of one answer: the prose as
+ * a document, the rows as data. An answer can have neither, either, or both.
+ */
+export type TurnOutput = {
+  /** Every table in the answer, in order, each labelled by its own heading. */
+  tables: AiTable[];
+  /** The answer as a document, when it is long enough to be one. */
+  artifact: { title: string; text: string } | null;
+};
 
-export function canvasFor(turn: AiTurn): TurnCanvas | null {
-  if (turn.role !== "assistant" || turn.failed) return null;
-  const table = extractTable(turn.text);
-  // A table beats prose: a person looking at fifteen rows of receivables wants
-  // the sortable one, and the prose is still in the thread either way.
-  if (table) return { kind: "table", title: "Result", header: table.header, rows: table.rows };
-  if (isLongForm(turn.text)) {
-    const heading = turn.text.match(/^#{1,3}\s+(.+)$/m)?.[1]?.trim();
-    return { kind: "artifact", title: heading || "Draft", text: turn.text };
-  }
-  return null;
+export function outputFor(turn: AiTurn): TurnOutput {
+  if (turn.role !== "assistant" || turn.failed) return { tables: [], artifact: null };
+  return {
+    tables: extractTables(turn.text),
+    artifact: isLongForm(turn.text) ? { title: artifactTitle(turn.text), text: turn.text } : null,
+  };
 }
+
+/** True when this answer has anything worth opening the pane for. */
+export const hasOutput = (o: TurnOutput) => o.tables.length > 0 || !!o.artifact;
 
 export function AiTurnView({
   turn,
@@ -90,7 +105,7 @@ export function AiTurnView({
   doneActions: Record<string, boolean>;
   /** Absent in the drawer, which has no canvas — the button hides rather than
    *  opening a pane that is not there. */
-  onOpenCanvas?: (turn: AiTurn, canvas: TurnCanvas) => void;
+  onOpenCanvas?: (turn: AiTurn, output: TurnOutput) => void;
   compact?: boolean;
 }) {
   if (turn.role === "user") return <UserTurn turn={turn} />;
@@ -159,14 +174,14 @@ function AssistantTurn({
   onConfirmAction: (run: AiActionRun, payload: Record<string, unknown>) => void;
   confirming: string | null;
   doneActions: Record<string, boolean>;
-  onOpenCanvas?: (turn: AiTurn, canvas: TurnCanvas) => void;
+  onOpenCanvas?: (turn: AiTurn, output: TurnOutput) => void;
   compact?: boolean;
 }) {
   const sources = React.useMemo(
     () => mergeSources(extractSources(turn.text), turn.sources),
     [turn.text, turn.sources],
   );
-  const canvas = React.useMemo(() => canvasFor(turn), [turn]);
+  const output = React.useMemo(() => outputFor(turn), [turn]);
   const pending = (turn.actions ?? []).filter((a) => !doneActions[a.action_run_id]);
   const done = (turn.actions ?? []).filter((a) => doneActions[a.action_run_id]);
 
@@ -229,7 +244,7 @@ function AssistantTurn({
             turn={turn}
             isLast={isLast}
             busy={busy}
-            canvas={canvas}
+            output={output}
             onOpenCanvas={onOpenCanvas}
             onRetry={onRetry}
           />
@@ -408,15 +423,15 @@ function TurnToolbar({
   turn,
   isLast,
   busy,
-  canvas,
+  output,
   onOpenCanvas,
   onRetry,
 }: {
   turn: AiTurn;
   isLast: boolean;
   busy?: boolean;
-  canvas: TurnCanvas | null;
-  onOpenCanvas?: (turn: AiTurn, canvas: TurnCanvas) => void;
+  output: TurnOutput;
+  onOpenCanvas?: (turn: AiTurn, output: TurnOutput) => void;
   onRetry?: (turn: AiTurn) => void;
 }) {
   const [copied, setCopied] = React.useState(false);
@@ -466,8 +481,8 @@ function TurnToolbar({
         </ToolButton>
       )}
 
-      {canvas && onOpenCanvas && (
-        <ToolButton label={canvas.kind === "table" ? "Open as table" : "Open in canvas"} onClick={() => onOpenCanvas(turn, canvas)}>
+      {hasOutput(output) && onOpenCanvas && (
+        <ToolButton label={output.tables.length ? "Open the tables" : "Open in canvas"} onClick={() => onOpenCanvas(turn, output)}>
           <CanvasIcon />
         </ToolButton>
       )}

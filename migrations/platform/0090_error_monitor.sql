@@ -170,3 +170,8 @@ CROSS JOIN (VALUES
 ) AS c(capability)
 WHERE r.code = 'PLATFORM_ROOT_ADMIN'
 ON CONFLICT DO NOTHING;
+
+
+-- DOWN
+-- DROP TABLE IF EXISTS platform.error_escalation_log;
+-- DROP TABLE IF EXISTS platform.error_escalation_rule;

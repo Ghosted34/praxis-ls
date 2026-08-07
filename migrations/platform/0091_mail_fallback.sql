@@ -29,3 +29,7 @@ VALUES ('mail', 'fallback', '{
   "smtp_user":       ""
 }'::jsonb)
 ON CONFLICT (section, key) DO NOTHING;
+
+
+--DOWN
+-- DELETE FROM platform.platform_setting WHERE section = 'mail' AND key = 'fallback';

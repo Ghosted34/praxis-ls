@@ -286,13 +286,25 @@ export function AppLauncher({ onBrowseAll }: { onBrowseAll: () => void }) {
         exists at mount — the browser's focus manager can then find a tile
         that opens from a URL parameter (a future enhancement) without a
         second layout pass.
+
+        THE `grid` UTILITY MUST STAY CONDITIONAL ON `open`. The native
+        `hidden` attribute and Tailwind's `grid` class both set `display`
+        with the same specificity (an attribute selector vs. a single class
+        selector); whichever rule the cascade sees last wins, and Tailwind's
+        stylesheet loads after the UA default that backs `[hidden]`. With
+        `grid` applied unconditionally, `hidden` never actually hid this
+        panel — the "8 more modules" tiles rendered permanently, whether the
+        trigger read "More" or "Less". Only the "grid" token needs to be
+        conditional; `grid-cols-*`/`gap-*` don't touch `display` so they're
+        harmless either way.
       */}
       <ul
         id={panelId}
         aria-label="More applications"
         hidden={!open}
         className={cn(
-          "mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6",
+          "mt-3 grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6",
+          open && "grid",
           // Border-top rule for the visual distinction from the pinned set —
           // subtle, because the two rows are the same kind of tile, not two
           // different concepts.

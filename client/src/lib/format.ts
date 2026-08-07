@@ -147,37 +147,162 @@ export function fmtRelative(iso?: string | null): string {
  * modal. Anything unmapped falls back to the raw code so a new module lands
  * in the reader as-is rather than as "Unknown".
  *
- * Coverage is the module keys visible in `src/shared/notifications/categories.js`
- * — the same set that reaches the notification inbox. The Governance /
- * Security cluster is spelled out explicitly because it makes up the bulk of
- * a self-scoped feed (auth, RBAC, capability, session all point at MOD-69).
+ * PREVIOUSLY THIS COVERED SIX CODES. Every module the ledger could actually
+ * carry that wasn't one of those six rendered as its raw "MOD-11" / "MOD-04"
+ * — that's what a Vacancies or Supplier row showed on the Control Tower
+ * widget. Coverage is now the full catalogue (`platform.module_catalogue`,
+ * seeded in migrations/seeds/9100_seed_platform_catalogue.sql, plus the two
+ * modules added later in 9120/9130), so every module_key a row can carry
+ * resolves to a name instead of a code.
+ *
+ * Labels are shortened/lower-cased from the catalogue's admin-console names
+ * ("Supplier / Partner Master" → "Suppliers") to read as a place in the
+ * product rather than a database row, and made to match the nav labels
+ * visible elsewhere in the shell where one exists (e.g. "Vacancies",
+ * "Purchase orders", "Cash requests").
  */
 const MODULE_LABEL: Record<string, string> = {
-  "MOD-01": "Your account",
-  "MOD-14": "Attendance",
-  "MOD-64": "Messaging",
-  "MOD-67": "Your account",
-  "MOD-69": "Governance",
-  "MOD-70": "Numbering",
   "MOD-00A": "Your workspace",
   "MOD-00B": "God Mode",
+  "MOD-01": "Corporate entities",
+  "MOD-02": "Employees",
+  "MOD-03": "Clients",
+  "MOD-04": "Suppliers",
+  "MOD-05": "Financial dictionary",
+  "MOD-06": "Chart of accounts",
+  "MOD-07": "Tax",
+  "MOD-08": "Currency & FX",
+  "MOD-09": "Treasury accounts",
+  "MOD-10": "Expense rates",
+  "MOD-11": "Vacancies",
+  "MOD-12": "Contracts",
+  "MOD-13": "Appraisals",
+  "MOD-14": "Attendance",
+  "MOD-15": "Leave & allowances",
+  "MOD-16": "Onboarding",
+  "MOD-17": "Payroll",
+  "MOD-18": "Trainings",
+  "MOD-19": "Talent pool",
+  "MOD-20": "Leads",
+  "MOD-21": "Meetings",
+  "MOD-22": "Campaigns",
+  "MOD-23": "Proposals",
+  "MOD-24": "Sales pipeline",
+  "MOD-25": "Inbound intake",
+  "MOD-26": "Project portfolio",
+  "MOD-27": "Margin simulation",
+  "MOD-28": "Extra-charge simulation",
+  "MOD-29": "Operations files",
+  "MOD-30": "Transit orders",
+  "MOD-31": "Milestones",
+  "MOD-32": "Delivery notes",
+  "MOD-33": "Inbound operations",
+  "MOD-34": "Warehouse locations",
+  "MOD-35": "Inventory",
+  "MOD-36": "Outbound operations",
+  "MOD-37": "Equipment",
+  "MOD-38": "Cycle counting",
+  "MOD-39": "Vehicles",
+  "MOD-40": "Vehicle compliance",
+  "MOD-41": "Work orders",
+  "MOD-42": "Dispatch",
+  "MOD-43": "Fuel logs",
+  "MOD-44": "Drivers",
+  "MOD-45": "Incidents",
+  "MOD-46": "Costing",
+  "MOD-47": "Cost tracking",
+  "MOD-48": "Cost reconciliation",
+  "MOD-49": "Cash requests",
+  "MOD-50": "Proforma invoices",
+  "MOD-51": "Invoices",
+  "MOD-52": "Receivables",
+  "MOD-53": "Financing",
+  "MOD-54": "Assets",
+  "MOD-55": "Journal entries",
+  "MOD-56": "General ledger",
+  "MOD-57": "Income statement",
+  "MOD-58": "Profit & loss",
+  "MOD-59": "Cash-flow statement",
+  "MOD-60": "Purchase orders",
+  "MOD-61": "Goods received",
+  "MOD-62": "Purchase requests",
+  "MOD-63": "Reporting",
+  "MOD-64": "Messaging",
+  "MOD-65": "Compliance",
+  "MOD-66": "Document verification",
+  // The IAM/RBAC engine — every personal-account action (login, password,
+  // 2FA — app_user.events.js) AND every RBAC-admin action (role/permission/
+  // capability/field_visibility/scope changes) share this ONE code. This is
+  // the code-only default; DOMAIN_LABEL below overrides it to "Your account"
+  // specifically for the personal-account actions when we have the row's
+  // action to check.
+  "MOD-67": "Security & access",
+  "MOD-68": "Sessions",
+  "MOD-69": "Governance",
+  "MOD-70": "Settings",
+  "MOD-71": "HR discipline",
+  "MOD-72": "Mail",
+  "MOD-73": "Document vault",
+  "MOD-74": "Support & feedback",
+  "MOD-75": "Governance & approvals",
 };
 
-export function friendlyModule(moduleKey?: string | null): string {
+/**
+ * Domain (the leading segment of `action`, e.g. "auth" in
+ * "auth.login_succeeded") → Area label, for the handful of module codes one
+ * code covers more than one area a user would recognise as different places
+ * in the product. Consulted BEFORE the code-based table above when an action
+ * is available, and also used as the legacy bare-domain fallback below (for
+ * pre-MOD-xx rows that stored the domain string itself as module_key).
+ *
+ *   MOD-67 is both "you reset your password" (app_user.events.js) and "you
+ *   changed a role's permissions" (permission/role/capability/… .events.js)
+ *   — the previous code mapped the whole code to "Your account" unconditionally,
+ *   so a role or permission change under MOD-67 always read as personal
+ *   account activity, never as the security-sensitive access change it was.
+ */
+const DOMAIN_LABEL: Record<string, string> = {
+  auth: "Your account",
+  app_user: "Your account",
+  permission: "Security & access",
+  role: "Security & access",
+  capability: "Security & access",
+  field_visibility: "Security & access",
+  scope: "Security & access",
+  iam_role: "Security & access",
+  audit_ledger: "Governance",
+  soft_delete: "Governance",
+  godmode: "God Mode",
+  session: "Sessions",
+  numbering_setting: "Numbering",
+  comms: "Messaging",
+  channel: "Messaging",
+  attendance: "Attendance",
+};
+
+/**
+ * `action` is optional and only needed to disambiguate the handful of
+ * module codes DOMAIN_LABEL overrides (see above) — every other module_key
+ * resolves from MODULE_LABEL alone, same as before.
+ */
+export function friendlyModule(moduleKey?: string | null, action?: string | null): string {
   if (!moduleKey) return "Activity";
   const s = String(moduleKey).trim();
   if (!s) return "Activity";
+
+  const domain = action ? String(action).split(".")[0]?.trim().toLowerCase() : "";
+  if (domain && DOMAIN_LABEL[domain]) return DOMAIN_LABEL[domain];
+
   const upper = s.toUpperCase();
   if (MODULE_LABEL[upper]) return MODULE_LABEL[upper];
-  // A domain-prefix mapping: "auth", "app_user", "permission" → Your account /
-  // Governance, so a legacy row that stored a bare domain instead of MOD-xx
-  // still reads sensibly.
+
+  // Legacy rows that stored a bare domain instead of a MOD-xx code — same
+  // table, keyed on the module_key itself this time, so those still read
+  // sensibly.
   const lower = s.toLowerCase();
-  if (lower.startsWith("auth") || lower === "app_user") return "Your account";
-  if (["permission", "role", "field_visibility", "capability", "audit_ledger", "session", "scope", "godmode"].includes(lower)) {
-    return "Governance";
-  }
-  if (lower.startsWith("comms") || lower === "channel") return "Messaging";
+  if (DOMAIN_LABEL[lower]) return DOMAIN_LABEL[lower];
+  if (lower.startsWith("auth")) return "Your account";
+  if (lower.startsWith("comms")) return "Messaging";
   if (lower.startsWith("attendance")) return "Attendance";
   // Anything else stays as-is — better a raw code the operator can google
   // than a wrong label the humaniser fabricated.

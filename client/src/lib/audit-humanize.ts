@@ -12,7 +12,7 @@
  * changed a role's permissions".
  * ─────────────────────────────────────────────────────────────────────────
  *
- * Three layers, checked in order:
+ * Four layers, checked in order:
  *
  *   1. SPECIALS. Hand-written sentences for events where the mechanical
  *      derivation reads badly (login, message posted, God-Mode). Always
@@ -23,7 +23,12 @@
  *      VERBS and a noun from NOUN_ARTICLE (via entity_ref if we have one),
  *      composed as "You <past-tense verb> <a/an object>".
  *
- *   3. GENERIC FALLBACK. "You did <verb> on <a/an object>", never the raw
+ *   3. "<FIELD>_CHANGED". `<domain>.<field>_changed` (vehicle.status_changed,
+ *      entity.structure_changed, …) isn't a verb VERBS can match — the whole
+ *      segment is the key, not just "changed" — so it gets its own reading:
+ *      "You changed <a/an object>'s <field>".
+ *
+ *   4. GENERIC FALLBACK. "You did <verb> on <a/an object>", never the raw
  *      key. If nothing matches, the row still reads as English.
  *
  * Every path returns a `kind` in the same closed union, mapped to a Pill
@@ -123,9 +128,17 @@ const SPECIALS: Record<string, SpecialText> = {
   // permission.service.js:159); the humaniser matches on the concrete key.
   "permission.changed": { text: "You changed a role's permissions", kind: "security", sensitive: true },
   "permission.updated": { text: "You changed a role's permissions", kind: "security", sensitive: true },
-  "role.updated": { text: "You changed a role", kind: "security", sensitive: true },
-  "role.created": { text: "You created a role", kind: "security" },
-  "role.archived": { text: "You archived a role", kind: "security" },
+  // iam_role.events.js maps CREATED/UPDATED/ARCHIVED all onto the single
+  // security-critical key 'role.changed' (seeded in 9020_seed_rbac_events.sql)
+  // — there is no 'role.created' / 'role.updated' / 'role.archived' emitted
+  // anywhere in the codebase, so those three keys (the previous shape of this
+  // entry) never actually matched and every role change fell through to the
+  // generic fallback as "You did changed on a role".
+  "role.changed": { text: "You changed a role", kind: "security", sensitive: true },
+  // capability.service.js#setForUser deliberately emits 'role.changed' for the
+  // Watch-the-Watcher notification but audits under this more specific key —
+  // same fix as above, matched on what's actually written.
+  "user.capability.changed": { text: "You changed a user's capabilities", kind: "security", sensitive: true },
   "field_visibility.changed": { text: "You changed field visibility", kind: "security", sensitive: true },
   "capability.assigned": { text: "You assigned a capability", kind: "security" },
   "capability.revoked": { text: "You revoked a capability", kind: "security" },
@@ -139,6 +152,26 @@ const SPECIALS: Record<string, SpecialText> = {
   "audit_ledger.restored": { text: "You restored a deleted record", kind: "create" },
   "soft_delete.restored": { text: "You restored a deleted record", kind: "create" },
   "soft_delete.restore_requested": { text: "You requested a restore", kind: "update" },
+
+  // ── HR recruitment (vacancy.service.js) ─────────────────────────────────
+  // Both actions audit under the multi-word key `applicant_added` /
+  // `applicant_updated`, which VERBS can't split into a verb — it fell
+  // through to the generic layer as "You did applicant updated on a
+  // vacancy" (VERBS has no "applicant_updated" entry, and entity_ref is
+  // `vacancy:<id>`, not an applicant, so even the noun read wrong).
+  "vacancy.applicant_added": { text: "You added an applicant to a vacancy", kind: "create" },
+  "vacancy.applicant_updated": { text: "You updated an applicant", kind: "update" },
+  // Emitted once, on the HIRED transition, when the applicant's employee
+  // record is provisioned (vacancy.service.js:72). No domain prefix at all,
+  // so it never had a shot at the verb table.
+  "employee_provisioned": { text: "You hired an applicant", kind: "create" },
+
+  // ── client/supplier Smart Copy conversion (party-lifecycle.service.js) ──
+  // Action key is `${toKind}.converted_from_${fromKind}` — "converted_from_
+  // client" isn't a verb VERBS recognises, so this read as "You did
+  // converted from client on a supplier".
+  "client.converted_from_supplier": { text: "You converted a supplier into a client", kind: "create" },
+  "supplier.converted_from_client": { text: "You converted a client into a supplier", kind: "create" },
 };
 
 // God-Mode is always sensitive and always says the same thing at the
@@ -203,6 +236,19 @@ const VERBS: Record<string, { past: string; kind: Kind }> = {
   published:   { past: "published",   kind: "create" },
   triaged:     { past: "triaged",     kind: "update" },
   converted:   { past: "converted",   kind: "create" },
+  // party-lifecycle.service.js (client/supplier hard-block gate) and
+  // marketing_campaign.service.js (campaign_sender.verified) — generic here
+  // rather than one-off SPECIALS because the noun comes straight out of
+  // entity_ref/NOUN_ARTICLE ("a client", "a supplier", "a campaign sender").
+  verified:    { past: "verified",    kind: "approve" },
+  blocked:     { past: "blocked",     kind: "security" },
+  unblocked:   { past: "unblocked",   kind: "update" },
+  // Bare "changed" — 'role.changed' and 'ai.feature.changed' both end in a
+  // plain "changed" segment. The far more common "<field>_changed" shape
+  // (vehicle.status_changed, entity.structure_changed, …) is NOT this — see
+  // the dedicated composition below, since "status_changed" as a whole is
+  // not a key in this table.
+  changed:     { past: "changed",     kind: "update" },
 };
 
 // ── Nouns from entity_ref ────────────────────────────────────────────────
@@ -253,6 +299,15 @@ const NOUN_ARTICLE: Record<string, string> = {
   setting: "a setting",
   numbering: "a numbering scheme",
   entity: "a corporate entity",
+  vacancy: "a vacancy",
+  capability: "a capability",
+  work_order: "a work order",
+  hr_contract: "an HR contract",
+  training: "a training",
+  incident: "an incident",
+  equipment: "a piece of equipment",
+  inventory: "an inventory record",
+  fleet_dispatch: "a dispatch",
   ai_feature: "an AI feature",
   ai_vendor: "an AI vendor",
   ai_grant: "an AI grant",
@@ -344,6 +399,28 @@ export function humanize(row: AuditFeedRow): { text: string; kind: Kind; sensiti
     return {
       text: fallbackNoun ? `You ${verb.past} ${fallbackNoun}` : `You ${verb.past} something`,
       kind: verb.kind,
+      sensitive: false,
+    };
+  }
+
+  // 3b. "<field>_changed" — e.g. "vehicle.status_changed",
+  // "entity.structure_changed", "party.bank_account_changed",
+  // "inventory.state_changed". VERBS is an exact-match lookup on the whole
+  // last segment, so it can't split this shape into a verb at all (grep
+  // `_changed"` across src/modules/*.events.js — a dozen-plus call sites use
+  // it). Rather than let every one of those fall to the generic "You did
+  // status changed on a vehicle", pull the field name back out and read it
+  // as "You changed <noun>'s <field>".
+  const changedMatch = /^(.+)_changed$/.exec(lastSeg.toLowerCase());
+  if (changedMatch) {
+    const field = changedMatch[1].replace(/_/g, " ");
+    const changedNoun =
+      nounFromRef(row.entity_ref) ||
+      (midSeg ? NOUN_ARTICLE[midSeg.toLowerCase()] : null) ||
+      (midSeg ? `${ARTICLE_FOR(midSeg)} ${midSeg.replace(/_/g, " ")}` : null);
+    return {
+      text: changedNoun ? `You changed ${changedNoun}'s ${field}` : `You changed the ${field}`,
+      kind: "update",
       sensitive: false,
     };
   }

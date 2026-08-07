@@ -176,7 +176,7 @@ function ActivityRow({
             </span>
           </span>
           <span className="mt-0.5 flex items-center gap-2 truncate text-micro text-muted-foreground">
-            <span className="truncate">{friendlyModule(row.module_key)}</span>
+            <span className="truncate">{friendlyModule(row.module_key, row.action)}</span>
             {rowIsSensitive && <Pill tone="warn">Sensitive</Pill>}
           </span>
         </span>

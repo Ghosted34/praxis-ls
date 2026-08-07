@@ -20,8 +20,9 @@
  *      `GET /tenant/audit/:id` on open.
  *
  * The difference is transparent to the caller. Either way `humanize(row)`
- * writes the headline and `friendlyModule(row.module_key)` writes the Area
- * row — those come from the initial row and don't need the fetch to resolve.
+ * writes the headline and `friendlyModule(row.module_key, row.action)` writes
+ * the Area row — those come from the initial row and don't need the fetch to
+ * resolve.
  */
 import { Modal } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
@@ -123,7 +124,7 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
         <div className="grid gap-3 text-sm sm:grid-cols-2">
           <div>
             <div className="micro uppercase tracking-wide">Area</div>
-            <span>{friendlyModule(row.module_key)}</span>
+            <span>{friendlyModule(row.module_key, row.action)}</span>
           </div>
           <div>
             <div className="micro uppercase tracking-wide">Entity</div>

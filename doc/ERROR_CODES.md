@@ -25,12 +25,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (224)
+## All codes (226)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
 | `2FA_NOT_IMPLEMENTED` | 501 | 1× | — |
 | `AI_ACTION_FORBIDDEN` | 403 | 1× | — |
+| `AI_UNAVAILABLE` | 503 | 1× | — |
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 2× | — |
@@ -144,13 +145,14 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 228× | — |
+| `NOT_FOUND` | 404 | 235× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
 | `NOT_REVERSIBLE` | 422 | 1× | — |
 | `NOT_SIGNED_OFF` | 422 | 1× | — |
 | `NOT_YOURS` | 403 | 2× | `PERMISSION_DENIED` |
+| `NO_CHANGES` | 400 | 1× | — |
 | `NO_COA` | 422 | 1× | — |
 | `NO_CONTROL_ACCOUNT` | 500 | 2× | — |
 | `NO_COUNTERPART` | 422 | 1× | — |
@@ -243,7 +245,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 104× | — |
+| `VALIDATION_ERROR` | 422 | 105× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

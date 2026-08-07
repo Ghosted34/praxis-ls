@@ -61,7 +61,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_MIRROR` | 422 | 1× | — |
 | `BAD_MONTH` | 422 | 2× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
-| `BAD_PARTY_KIND` | 422 | 5× | — |
+| `BAD_PARTY_KIND` | 422 | 6× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |

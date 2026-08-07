@@ -143,6 +143,20 @@ exports.beneficialOwnerUpdate = patchOf(beneficialOwnerShape);
 // because this is the one block a rule can never issue.
 exports.blockReason = z.object({ reason: requiredText("A block reason") });
 
+// ── Dedupe check (PR3-C §5.1) ───────────────────────────────────────────────
+// The candidate a create form / 360 asks about. All optional — the more it
+// carries, the better the match. `bank_last4` is compared server-side only and
+// never returned. `exclude_id` drops the record itself when checking on edit.
+exports.dedupeCheck = z.object({
+  name: optionalText,
+  legal_name: optionalText,
+  email,
+  phone,
+  registrations: z.array(z.object({ kind: optionalText, number: optionalText })).optional(),
+  bank_last4: z.array(z.string()).optional(),
+  exclude_id: blankToUndefined(uuid),
+});
+
 // The enum vocabularies, exported so a picker and the API agree on the option
 // lists without re-typing them.
 exports.ROLE_TAGS = roleTag.options;

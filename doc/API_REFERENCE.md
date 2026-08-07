@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 818 |
+| Routes | 838 |
 | Modules mounted | 106 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 818 mounted routes, grouped by path prefix.
+All 838 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -73,6 +73,34 @@ All 818 mounted routes, grouped by path prefix.
 | GET | `/api/platform/catalogue/capabilities` | — |
 | GET | `/api/platform/catalogue/features` | — |
 | GET | `/api/platform/catalogue/modules` | — |
+
+### `platform/errors`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/platform/errors` | — |
+| GET | `/api/platform/errors/:id` | — |
+| POST | `/api/platform/errors/:id/explain` | — |
+| POST | `/api/platform/errors/:id/reopen` | — |
+| POST | `/api/platform/errors/:id/resolve` | — |
+| GET | `/api/platform/errors/:id/share` | — |
+| GET | `/api/platform/errors/export` | — |
+| GET | `/api/platform/errors/modules` | — |
+| GET | `/api/platform/errors/recent` | — |
+| GET | `/api/platform/errors/stats` | — |
+| GET | `/api/platform/errors/trends` | — |
+
+### `platform/escalation`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/platform/escalation/log` | — |
+| GET | `/api/platform/escalation/rules` | — |
+| POST | `/api/platform/escalation/rules` | — |
+| DELETE | `/api/platform/escalation/rules/:id` | — |
+| PATCH | `/api/platform/escalation/rules/:id` | — |
+| PUT | `/api/platform/escalation/rules/:id` | — |
+| POST | `/api/platform/escalation/rules/preview` | — |
 
 ### `platform/plans`
 
@@ -372,6 +400,7 @@ All 818 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/:id/unblock` | — |
 | POST | `/api/tenant/clients/:id/verify` | — |
 | POST | `/api/tenant/clients/convert-from-supplier/:id` | — |
+| POST | `/api/tenant/clients/dedupe-check` | — |
 
 ### `tenant/compliance`
 
@@ -1291,6 +1320,7 @@ All 818 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/suppliers/:id/unblock` | — |
 | POST | `/api/tenant/suppliers/:id/verify` | — |
 | POST | `/api/tenant/suppliers/convert-from-client/:id` | — |
+| POST | `/api/tenant/suppliers/dedupe-check` | — |
 
 ### `tenant/support`
 

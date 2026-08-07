@@ -7,6 +7,7 @@
 "use strict";
 const party360 = require("../party-360.service");
 const lifecycle = require("../party-lifecycle.service");
+const dedup = require("./dedup.service");
 const { canSeeFinancials } = require("./confidential");
 const { asyncHandler } = require("../../../utils/errors");
 
@@ -30,6 +31,10 @@ function build(kind) {
     // supplier id and returns a draft client (Hard Rule 2).
     convert: asyncHandler(async (req, res) =>
       res.status(201).json({ data: await req.tenantDb((c) => lifecycle.convert(c, { fromKind: opposite(kind), sourceId: req.params.id, actor: actorOf(req) })) })),
+    // Non-blocking duplicate detection (§5.1). `excludeId` (the record being
+    // edited) is dropped so the 360 does not flag a party as its own duplicate.
+    dedupeCheck: asyncHandler(async (req, res) =>
+      res.json({ data: await req.tenantDb((c) => dedup.findDuplicates(c, { kind, input: req.body, excludeId: req.body.exclude_id || null })) })),
   };
 }
 

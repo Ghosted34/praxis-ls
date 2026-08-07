@@ -15,6 +15,9 @@ router.use(authMiddleware);
 // Smart Copy conversion — a client id in, a draft supplier out.
 router.post("/convert-from-client/:id", requirePermission(MODULE, "create"), controller.convert);
 
+// Non-blocking duplicate detection (§5.1) — static prefix, before /:id.
+router.post("/dedupe-check", requirePermission(MODULE, "view"), validate(partyCommon.dedupeCheck), controller.dedupeCheck);
+
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);

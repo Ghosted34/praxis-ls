@@ -16,7 +16,8 @@ import { useZodForm } from "@/lib/use-zod-form";
 import { useToast } from "@/components/ui/toast";
 import { clientMaster } from "@shared";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
-import { CountrySelect } from "@/components/country-select";
+import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { CountryRegistrationFields, useCountryRegistrations, toRegistrationsPayload, type RegValues } from "./country-registration-fields";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, ActivePill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -50,7 +51,7 @@ import { shell } from "./shared";
  * All three now fail at the field, before the request, with the message the API
  * would have produced — because it is the API's schema.
  */
-export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; onClose: () => void; onSaved: () => void }) {
+export function ClientForm({ row, onClose, onSaved }: { row: (api.Client & Partial<api.PartyExtras>) | null; onClose: () => void; onSaved: () => void }) {
   const isNew = row === null;
   const { rows: entities } = useList<api.Entity>("/entities");
   const toast = useToast();
@@ -60,12 +61,10 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
   const form = useZodForm(isNew ? clientMaster.create : clientMaster.update, {
     defaultValues: {
       name: row?.name ?? "",
+      legal_name: row?.legal_name ?? row?.name ?? "",
+      trading_name: row?.trading_name ?? "",
       entity_id: row?.entity_id ?? "",
-      niu: row?.niu ?? "",
-      rccm: row?.rccm ?? "",
       email: row?.email ?? "",
-      address: row?.address ?? "",
-      city: row?.city ?? "",
       country_code: row?.country_code ?? "CM",
       payment_terms_days: row?.payment_terms_days != null ? String(row.payment_terms_days) : "",
       credit_limit: row?.credit_limit != null ? String(row.credit_limit) : "",
@@ -74,21 +73,42 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
     },
   });
 
+  // Country drives the dynamic registration IDs (§2.2). Registrations and the
+  // primary contact/address are local state, merged into the payload on submit —
+  // the service writes them as their own rows.
+  const country = String(form.watch("country_code") ?? "");
+  const reqs = useCountryRegistrations(country);
+  const [regs, setRegs] = React.useState<RegValues>(() => ({ NIU: row?.niu ?? "", RCCM: row?.rccm ?? "" }));
+  const [contact, setContact] = React.useState({ name: "", email: "", phone: "" });
+  const [address, setAddress] = React.useState({ line1: row?.address ?? "", city: row?.city ?? "" });
+
   return (
     <Modal
       open
       onClose={onClose}
       title={isNew ? "New client" : "Edit client"}
-      description="Customer master record — terms, credit and withholding status."
+      description="Customer master record — country, registrations, contact and terms."
     >
       <Form
         form={form}
         className="space-y-4"
         onSubmit={async (values) => {
-          // The schema's OUTPUT: numbers are numbers, blanks are `undefined`
-          // rather than `""`, and the country code is upper-cased. The
-          // hand-built payload object that used to do all three is gone.
-          const body = values as api.ClientInput;
+          const v = values as api.ClientInput & { legal_name?: string; trading_name?: string };
+          // Keep the legacy `name` column populated from the legal (or trading)
+          // name for every FK/report that reads it (§2.1).
+          const name = (v.legal_name || "").trim() || (v.trading_name || "").trim() || v.name;
+          const primary_contact = contact.name.trim()
+            ? { name: contact.name.trim(), email: contact.email.trim() || undefined, phone: contact.phone.trim() || undefined }
+            : undefined;
+          const primary_address = address.line1.trim() || address.city.trim()
+            ? { line1: address.line1.trim() || undefined, city: address.city.trim() || undefined, country_code: country || undefined }
+            : undefined;
+          const body: api.ClientInput = {
+            ...v,
+            name,
+            registrations: toRegistrationsPayload(reqs, regs, country),
+            ...(isNew ? { primary_contact, primary_address } : {}),
+          };
           if (isNew) await api.createClient(body);
           else await api.updateClient(row!.client_id, body);
           toast.success(isNew ? "Client created" : "Client saved");
@@ -97,67 +117,64 @@ export function ClientForm({ row, onClose, onSaved }: { row: api.Client | null; 
         }}
       >
         <div className="grid gap-4 sm:grid-cols-2">
-          <FormField form={form} name="name" label="Name" required className="sm:col-span-2">
-            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Client legal / trade name" />}
+          {/* 1 · Identity — country first, it drives the registration IDs. */}
+          <FormField form={form} name="country_code" label="Country" required className="sm:col-span-2">
+            {(field) => <SmartCountryPicker value={String(field.value ?? "")} onChange={field.onChange} allowEmpty={false} />}
           </FormField>
+          <FormField form={form} name="legal_name" label="Legal name" required>
+            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Acme SA" />}
+          </FormField>
+          <FormField form={form} name="trading_name" label="Trading / DBA name">
+            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Acme" />}
+          </FormField>
+
+          {/* 2 · Country-driven tax / legal IDs. */}
+          <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax &amp; legal registration</div>
+          <CountryRegistrationFields country={country} values={regs} onChange={setRegs} />
+
           <FormField form={form} name="entity_id" label="Corporate entity" hint="Which of our entities bills this client">
             {(field) => (
               <Select {...field} value={String(field.value ?? "")}>
                 <option value="">—</option>
                 {(entities || []).map((en) => (
-                  <option key={en.entity_id} value={en.entity_id}>
-                    {en.legal_name || en.code}
-                  </option>
+                  <option key={en.entity_id} value={en.entity_id}>{en.legal_name || en.code}</option>
                 ))}
               </Select>
             )}
           </FormField>
+
+          {/* 3 · Primary contact + address (new-client only; edit adds more in the 360). */}
+          {isNew && (
+            <>
+              <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Primary contact &amp; address</div>
+              <label className="space-y-1.5"><span className="block text-sm font-medium text-foreground">Contact name</span>
+                <Input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Awa Njoya" /></label>
+              <label className="space-y-1.5"><span className="block text-sm font-medium text-foreground">Contact email</span>
+                <Input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="billing@client.cm" /></label>
+              <label className="space-y-1.5"><span className="block text-sm font-medium text-foreground">Address line</span>
+                <Input value={address.line1} onChange={(e) => setAddress({ ...address, line1: e.target.value })} placeholder="Akwa" /></label>
+              <label className="space-y-1.5"><span className="block text-sm font-medium text-foreground">City</span>
+                <Input value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} placeholder="Douala" /></label>
+            </>
+          )}
+
+          {/* 4 · Finance terms. */}
+          <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Finance terms</div>
           <FormField form={form} name="payment_terms_days" label="Payment terms (days)">
-            {(field) => (
-              <Input type="number" min="0" className="num text-right" placeholder="30" {...field} value={String(field.value ?? "")} />
-            )}
-          </FormField>
-          <FormField form={form} name="niu" label="NIU">
-            {(field) => <Input {...field} value={String(field.value ?? "")} />}
-          </FormField>
-          <FormField form={form} name="rccm" label="RCCM">
-            {(field) => <Input {...field} value={String(field.value ?? "")} />}
-          </FormField>
-          <FormField form={form} name="email" label="Email" hint="Used to send invoices & receipts">
-            {(field) => <Input type="email" placeholder="billing@client.cm" {...field} value={String(field.value ?? "")} />}
+            {(field) => <Input type="number" min="0" className="num text-right" placeholder="30" {...field} value={String(field.value ?? "")} />}
           </FormField>
           <FormField form={form} name="credit_limit" label="Credit limit (XAF)">
-            {(field) => (
-              <Input type="number" min="0" step="0.01" className="num text-right" {...field} value={String(field.value ?? "")} />
-            )}
+            {(field) => <Input type="number" min="0" step="0.01" className="num text-right" {...field} value={String(field.value ?? "")} />}
           </FormField>
-          <FormField form={form} name="address" label="Address" className="sm:col-span-2" hint="Printed as the bill-to on invoices">
-            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Akwa, Douala" />}
-          </FormField>
-          <FormField form={form} name="city" label="City">
-            {(field) => <Input {...field} value={String(field.value ?? "")} placeholder="Douala" />}
-          </FormField>
-          <FormField form={form} name="country_code" label="Country">
-            {(field) => <CountrySelect value={String(field.value ?? "")} onChange={field.onChange} />}
+          <FormField form={form} name="email" label="Billing email" hint="Used to send invoices & receipts">
+            {(field) => <Input type="email" placeholder="ap@client.cm" {...field} value={String(field.value ?? "")} />}
           </FormField>
           <FormField form={form} name="is_withholding_agent" label="Withholding agent">
-            {(field) => (
-              <Checkbox
-                checked={!!field.value}
-                onCheckedChange={field.onChange}
-                label={<span className="sr-only">Withholding agent</span>}
-              />
-            )}
+            {(field) => <Checkbox checked={!!field.value} onCheckedChange={field.onChange} label={<span className="sr-only">Withholding agent</span>} />}
           </FormField>
           {!isNew && (
             <FormField form={form} name="is_active" label="Active">
-              {(field) => (
-                <Checkbox
-                  checked={field.value !== false}
-                  onCheckedChange={field.onChange}
-                  label={<span className="sr-only">Active</span>}
-                />
-              )}
+              {(field) => <Checkbox checked={field.value !== false} onCheckedChange={field.onChange} label={<span className="sr-only">Active</span>} />}
             </FormField>
           )}
         </div>

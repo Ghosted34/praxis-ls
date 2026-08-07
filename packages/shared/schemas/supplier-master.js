@@ -31,6 +31,7 @@ const {
   countryCode,
   optionalDate,
 } = require("./common");
+const partyCommon = require("./party-common");
 
 const language = blankToUndefined(z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase());
 const nonNegativeRate = blankToUndefined(amount.refine((n) => n >= 0, "Cannot be negative."));
@@ -81,6 +82,12 @@ const base = {
   withholding_rate: nonNegativeRate,
   withholding_certificate_ref: optionalText,
   withholding_certificate_expires_on: optionalDate,
+  // Country-first form blocks (PR3-B §2), same contract as the client: the
+  // service pulls these out and writes party_registration (+ OHADA NIU/RCCM
+  // mirror), supplier_contact and supplier_address rows in one transaction.
+  registrations: z.array(partyCommon.registrationCreate).optional(),
+  primary_contact: partyCommon.contactCreate.optional(),
+  primary_address: partyCommon.addressCreate.optional(),
 };
 
 const create = z.object(base);

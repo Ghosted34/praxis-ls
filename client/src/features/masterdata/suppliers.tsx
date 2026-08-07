@@ -16,7 +16,8 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
-import { CountrySelect } from "@/components/country-select";
+import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { CountryRegistrationFields, useCountryRegistrations, toRegistrationsPayload, type RegValues } from "./country-registration-fields";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/masterdata-api";
@@ -24,16 +25,13 @@ import { shell } from "./shared";
 import { PartyDossier } from "./party-360";
 import { MasterDataSettings } from "./master-data-settings";
 
-function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onClose: () => void; onSaved: () => void }) {
+function SupplierForm({ row, onClose, onSaved }: { row: (api.Supplier & Partial<api.PartyExtras>) | null; onClose: () => void; onSaved: () => void }) {
   const isNew = row === null;
-  const [name, setName] = React.useState(row?.name ?? "");
-  const [type, setType] = React.useState(row?.supplier_type ?? "");
-  const [niu, setNiu] = React.useState(row?.niu ?? "");
-  const [rccm, setRccm] = React.useState(row?.rccm ?? "");
-  const [email, setEmail] = React.useState(row?.email ?? "");
-  const [address, setAddress] = React.useState(row?.address ?? "");
-  const [city, setCity] = React.useState(row?.city ?? "");
   const [countryCode, setCountryCode] = React.useState(row?.country_code ?? "CM");
+  const [legalName, setLegalName] = React.useState(row?.legal_name ?? row?.name ?? "");
+  const [tradingName, setTradingName] = React.useState(row?.trading_name ?? "");
+  const [type, setType] = React.useState(row?.supplier_type ?? "");
+  const [email, setEmail] = React.useState(row?.email ?? "");
   const [method, setMethod] = React.useState(row?.payment_method ?? "");
   const [rating, setRating] = React.useState(row?.rating != null ? String(row.rating) : "");
   const [nonResident, setNonResident] = React.useState(row?.is_non_resident ?? false);
@@ -41,22 +39,34 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
+  // Country drives the dynamic tax/legal IDs (§2.2); registrations + primary
+  // contact/address are collected here and written as their own rows on save.
+  const reqs = useCountryRegistrations(countryCode);
+  const [regs, setRegs] = React.useState<RegValues>(() => ({ NIU: row?.niu ?? "", RCCM: row?.rccm ?? "" }));
+  const [contact, setContact] = React.useState({ name: "", email: "" });
+  const [address, setAddress] = React.useState({ line1: row?.address ?? "", city: row?.city ?? "" });
+
   async function submit(e: React.FormEvent) {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    const name = legalName.trim() || tradingName.trim();
+    const primary_contact = contact.name.trim() ? { name: contact.name.trim(), email: contact.email.trim() || undefined } : undefined;
+    const primary_address = address.line1.trim() || address.city.trim()
+      ? { line1: address.line1.trim() || undefined, city: address.city.trim() || undefined, country_code: countryCode || undefined }
+      : undefined;
     const body: api.SupplierInput = {
       name,
+      legal_name: legalName.trim() || undefined,
+      trading_name: tradingName.trim() || undefined,
       supplier_type: type || undefined,
-      niu: niu || undefined,
-      rccm: rccm || undefined,
       email: email || undefined,
-      address: address || undefined,
-      city: city || undefined,
       country_code: countryCode || undefined,
       payment_method: (method || undefined) as api.SupplierInput["payment_method"],
       rating: rating === "" ? undefined : Number(rating),
       is_non_resident: nonResident,
+      registrations: toRegistrationsPayload(reqs, regs, countryCode),
+      ...(isNew ? { primary_contact, primary_address } : {}),
     };
     try {
       if (isNew) await api.createSupplier(body);
@@ -71,33 +81,48 @@ function SupplierForm({ row, onClose, onSaved }: { row: api.Supplier | null; onC
   }
 
   return (
-    <Modal open onClose={onClose} title={isNew ? "New supplier" : "Edit supplier"} description="Vendor master — payment method, tax residency and rating.">
+    <Modal open onClose={onClose} title={isNew ? "New supplier" : "Edit supplier"} description="Vendor master — country, registrations, payment method and WHT.">
       <form className="space-y-4" onSubmit={submit}>
         <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Name" required className="sm:col-span-2"><Input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-          <Field label="Type"><Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Carrier, agent, utility…" /></Field>
+          {/* 1 · Identity — country first, it drives the registration IDs. */}
+          <Field label="Country" required className="sm:col-span-2">
+            <SmartCountryPicker value={countryCode} onChange={setCountryCode} allowEmpty={false} />
+          </Field>
+          <Field label="Legal name" required><Input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Bolloré Transport SA" /></Field>
+          <Field label="Trading / DBA name"><Input value={tradingName} onChange={(e) => setTradingName(e.target.value)} placeholder="Bolloré" /></Field>
+
+          {/* 2 · Country-driven tax / legal IDs. */}
+          <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax &amp; legal registration</div>
+          <CountryRegistrationFields country={countryCode} values={regs} onChange={setRegs} />
+
+          <Field label="Category"><Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Carrier, agent, utility…" /></Field>
           <Field label="Payment method">
             <Select value={method ?? ""} onChange={(e) => setMethod(e.target.value)}>
               <option value="">—</option>
               {["BANK", "CASH", "MOBILE_MONEY", "CHEQUE"].map((m) => <option key={m} value={m}>{m}</option>)}
             </Select>
           </Field>
-          <Field label="NIU"><Input value={niu} onChange={(e) => setNiu(e.target.value)} /></Field>
-          <Field label="RCCM"><Input value={rccm} onChange={(e) => setRccm(e.target.value)} /></Field>
+
+          {/* 3 · Primary contact + address (new-supplier only). */}
+          {isNew && (
+            <>
+              <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Primary contact &amp; address</div>
+              <Field label="Contact name"><Input value={contact.name} onChange={(e) => setContact({ ...contact, name: e.target.value })} placeholder="Jean Fotso" /></Field>
+              <Field label="Contact email"><Input type="email" value={contact.email} onChange={(e) => setContact({ ...contact, email: e.target.value })} placeholder="ap@supplier.cm" /></Field>
+              <Field label="Address line"><Input value={address.line1} onChange={(e) => setAddress({ ...address, line1: e.target.value })} placeholder="Zone industrielle, Bonabéri" /></Field>
+              <Field label="City"><Input value={address.city} onChange={(e) => setAddress({ ...address, city: e.target.value })} placeholder="Douala" /></Field>
+            </>
+          )}
+
+          {/* 4 · Terms. */}
+          <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Terms</div>
           <Field label="Email" hint="Used to send purchase orders"><Input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="ap@supplier.cm" /></Field>
           <Field label="Rating (1–5)"><Input type="number" min="1" max="5" className="num" value={rating} onChange={(e) => setRating(e.target.value)} /></Field>
-          <Field label="Address" className="sm:col-span-2" hint="Shown on purchase orders">
-            <Input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Zone industrielle, Bonabéri" />
-          </Field>
-          <Field label="City"><Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Douala" /></Field>
-          <Field label="Country">
-            <CountrySelect value={countryCode} onChange={setCountryCode} />
-          </Field>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={nonResident} onChange={(e) => setNonResident(e.target.checked)} /> Non-resident (WHT)</label>
           {!isNew && <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={active} onChange={(e) => setActive(e.target.checked)} /> Active</label>}
         </div>
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} disabled={!name || busy} onCancel={onClose} saveLabel={isNew ? "Create supplier" : "Save changes"} />
+        <FormButtons busy={busy} disabled={!legalName.trim() || busy} onCancel={onClose} saveLabel={isNew ? "Create supplier" : "Save changes"} />
       </form>
     </Modal>
   );

@@ -91,6 +91,16 @@
           // for a moment on refresh in a dark workspace.
           var meta = document.querySelector('meta[name="theme-color"]');
           if (meta) meta.setAttribute("content", barBg);
+          // THE WINDOW FRAME — the rounded top corners and the band behind the
+          // caption buttons — is painted from the MANIFEST's `theme_color`, not
+          // from the tag above, and it is read before any of this runs. The
+          // server has no way to know which theme this user is in (light/dark
+          // is per-user, in localStorage; the manifest only sees the tenant-wide
+          // `brand_theme`), so a dark-mode user in a light-default workspace got
+          // a white frame around a dark app on every refresh. Tell it.
+          var manifest = document.querySelector('link[rel="manifest"]');
+          if (manifest)
+            manifest.setAttribute("href", "/manifest.webmanifest?theme=" + (isDark ? "dark" : "light"));
         } catch (e) {
           /* private mode / storage disabled — the static fallbacks stand */
         }

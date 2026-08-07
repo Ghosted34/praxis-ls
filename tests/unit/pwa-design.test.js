@@ -479,6 +479,67 @@ describe("GET /manifest.webmanifest and /icons — resolved by Host, never cross
         .set("Host", "globex.praxis.test");
       expect(dark.body.theme_color).toBe("#12161e");
     });
+
+    /**
+     * THE REFRESH BUG. `theme_color` is what the browser paints an installed
+     * window's FRAME with — the rounded top corners and the band behind the
+     * caption buttons — on every load, before the page's own
+     * `<meta name="theme-color">` gets a say. Resolving it against
+     * `brand_theme` alone is wrong the moment those two disagree, and they
+     * disagree constantly: the brand theme is one value for the whole
+     * workspace, while light/dark is a per-user choice in localStorage. Every
+     * dark-mode user in a light-default workspace therefore got a white frame
+     * around a dark app on every refresh.
+     *
+     * The server cannot see localStorage, so index.html puts the live theme in
+     * the manifest URL and this honours it.
+     */
+    it("resolves the frame colours for the theme the page asks for", async () => {
+      // Acme's brand theme is light; a dark-mode user must not get its frame.
+      const dark = await request(app)
+        .get("/manifest.webmanifest?theme=dark")
+        .set("Host", "acme.praxis.test");
+      expect(dark.body.theme_color).toBe("#12161e");
+      // `background_color` paints the window while the app boots, so it follows
+      // the same hint — a light plate behind a dark app is the same defect.
+      expect(dark.body.background_color).toBe("#071324");
+
+      // And the reverse, for a dark-theme tenant with a light-mode user.
+      const light = await request(app)
+        .get("/manifest.webmanifest?theme=light")
+        .set("Host", "globex.praxis.test");
+      expect(light.body.theme_color).toBe("#ffffff");
+      expect(light.body.background_color).toBe("#f3f6fb");
+    });
+
+    it("falls back to the tenant's theme when the hint is absent or junk", async () => {
+      for (const query of ["", "?theme=", "?theme=DARK", "?theme=purple"]) {
+        const res = await request(app)
+          .get(`/manifest.webmanifest${query}`)
+          .set("Host", "acme.praxis.test");
+        expect(res.body.theme_color).toBe("#ffffff");
+        expect(res.body.background_color).toBe("#f3f6fb");
+      }
+    });
+
+    /**
+     * The hint may not become a second way to address a tenant. It selects a
+     * COLOUR and nothing else — identity, scope and icons come from the Host.
+     */
+    it("changes nothing but the colours", async () => {
+      const plain = await request(app)
+        .get("/manifest.webmanifest")
+        .set("Host", "acme.praxis.test");
+      const hinted = await request(app)
+        .get("/manifest.webmanifest?theme=dark")
+        .set("Host", "acme.praxis.test");
+
+      const strip = (b) => {
+        const { theme_color, background_color, ...rest } = b;
+        return rest;
+      };
+      expect(strip(hinted.body)).toEqual(strip(plain.body));
+    });
   });
 
   it("advertises the icon set an installable PWA needs", async () => {

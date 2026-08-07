@@ -73,6 +73,86 @@ function cssUrl(url: string): string {
 }
 
 /**
+ * THE WINDOW FRAME IS THE MANIFEST'S, UNTIL SOMETHING CHANGES AFTER LOAD.
+ *
+ * An installed window has two painters. The page draws the title-bar strip
+ * (`--titlebar-bg`); the browser draws what the page may not — the rounded top
+ * corners and the band behind the minimise/maximise/close buttons — and it
+ * takes that colour from the manifest's `theme_color`, letting the page's
+ * `<meta name="theme-color">` override it.
+ *
+ * The override only lands on a change the browser observes AFTER the document
+ * has loaded. Everything this app writes before then — the pre-paint script in
+ * index.html, and this module's first call while the bundle is still booting —
+ * is folded into the initial load and loses to the manifest. So on every
+ * refresh the frame came back as whatever `theme_color` says, which the server
+ * resolves against the TENANT's default theme (`brand_theme`), not the user's:
+ * a dark-mode user in a light-default workspace got a white frame around a dark
+ * app, and the only way out was to toggle light → dark, because THAT is a
+ * post-load change. This does the same thing without the toggle.
+ *
+ * Detaching and re-inserting the element is what makes it a real transition
+ * rather than a repeat of a value the browser has already dismissed: the
+ * removal reports "no theme colour" (the frame falls back to the manifest) and
+ * the insertion reports ours. Both happen in one synchronous task, so no frame
+ * is ever painted with the tag missing.
+ *
+ * ONCE PER TAG, which is once per document: the tag outlives every branding
+ * change, and re-running this on each one would detach and reattach the element
+ * on every keystroke in the colour picker. Tracked against the element rather
+ * than in a module-level flag so the guard is tied to the thing it is actually
+ * about — a replaced tag is a new document's tag, and needs the poke again.
+ */
+const poked = new WeakSet<HTMLMetaElement>();
+
+function pokeWindowFrame(meta: HTMLMetaElement) {
+  if (poked.has(meta)) return;
+  poked.add(meta);
+  const poke = () => {
+    const parent = meta.parentNode;
+    if (!parent) return;
+    const next = meta.nextSibling;
+    parent.removeChild(meta);
+    parent.insertBefore(meta, next);
+  };
+  if (document.readyState === "complete") poke();
+  else window.addEventListener("load", poke, { once: true });
+}
+
+/** Write the title-bar colour the browser reads, creating the tag if the
+ *  document somehow has none, and make the first write of a document stick. */
+function setThemeColor(value: string) {
+  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.name = "theme-color";
+    document.head.appendChild(meta);
+  }
+  meta.content = value;
+  pokeWindowFrame(meta);
+}
+
+/**
+ * Point the manifest at the theme the user is actually in.
+ *
+ * `theme_color` is read before a single line of ours runs, so the server has to
+ * resolve it without a live theme to ask — and the only theme it can see is the
+ * tenant-wide `brand_theme`, while light/dark is a PER-USER choice living in
+ * localStorage. The hint closes that gap: the next cold start fetches a
+ * manifest whose frame colour already matches, so the first painted frame is
+ * right rather than merely corrected. index.html sets this before first paint;
+ * this keeps it in step when the theme changes mid-session.
+ */
+function applyManifestTheme(theme: "dark" | "light") {
+  const link = document.querySelector<HTMLLinkElement>('link[rel="manifest"]');
+  if (!link) return;
+  const href = `/manifest.webmanifest?theme=${theme}`;
+  // Only on a real change — assigning href re-fetches the manifest, and an
+  // installed app re-reading it on every branding tick is pure noise.
+  if (link.getAttribute("href") !== href) link.setAttribute("href", href);
+}
+
+/**
  * Apply the document-level parts of the installed-app identity.
  *
  * THE TITLE BAR IS A META TAG, NOT THE MANIFEST. An installed PWA paints its
@@ -93,17 +173,14 @@ export function applyPwaDocument(cfg: EffectivePwa) {
   // The LIVE theme, not the tenant's default: the manifest had to guess before
   // our code ran, and this is where the guess gets corrected. `.dark` is what
   // lib/theme-mode.ts writes, including for "system".
-  const bar = resolveTitlebar(cfg, root.classList.contains("dark") ? "dark" : "light");
+  const theme = root.classList.contains("dark") ? "dark" : "light";
+  const bar = resolveTitlebar(cfg, theme);
 
-  let meta = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
-  if (!meta) {
-    meta = document.createElement("meta");
-    meta.name = "theme-color";
-    document.head.appendChild(meta);
-  }
   // The strip behind the caption buttons. Must equal `--titlebar-bg` below or
   // the window shows a seam where the OS's paint meets the page's.
-  meta.content = bar.base;
+  setThemeColor(bar.base);
+  // And the value the NEXT load's frame is painted from, before this runs.
+  applyManifestTheme(theme);
 
   root.style.setProperty("--titlebar-bg", bar.base);
   // Remembered per theme so the NEXT cold start paints the right colour before
@@ -112,7 +189,7 @@ export function applyPwaDocument(cfg: EffectivePwa) {
   // wrong colour in the first thing anyone sees. Per theme rather than one
   // value because the user may switch between sessions.
   try {
-    localStorage.setItem(`praxis.titlebar.${root.classList.contains("dark") ? "dark" : "light"}`, bar.base);
+    localStorage.setItem(`praxis.titlebar.${theme}`, bar.base);
   } catch {
     /* private mode — the pre-boot bar falls back to the token default */
   }

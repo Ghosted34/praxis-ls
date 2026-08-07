@@ -62,13 +62,43 @@ function clearIconCache() {
  * sections are read on ONE connection: the manifest is on the critical path of
  * every install and every cold start.
  */
-async function resolvePwaConfig(req) {
+/**
+ * A `?theme=` hint from the page, or null.
+ *
+ * WHY A QUERY PARAMETER AND NOT THE TENANT'S SETTING. `brand_theme` is one
+ * value for the whole workspace, while light/dark is a PER-USER choice the
+ * client keeps in localStorage — so resolving the manifest against the brand
+ * theme hands a light `theme_color` to every dark-mode user in a light-default
+ * workspace. That colour is what the browser paints the installed window's
+ * frame with (the rounded corners, and the band behind the caption buttons) on
+ * every load, before the page's own `<meta name="theme-color">` gets a say, so
+ * the wrong value there is a white frame around a dark app. index.html puts
+ * the live theme in the manifest URL; anything other than the two known values
+ * is ignored and the tenant's default stands.
+ */
+function themeHint(req) {
+  const t = req.query && req.query.theme;
+  return t === "dark" || t === "light" ? t : null;
+}
+
+async function resolvePwaConfig(req, themeOverride) {
   const slug = (req.tenant && req.tenant.slug) || "platform";
-  const fallback = () => ({
-    slug,
-    brandTheme: "light",
-    ...brandingService.effectivePwa(null, { name: req.tenant ? slug : DEFAULTS.name, primary: DEFAULTS.primary }),
-  });
+  // The hint wins over the tenant default, and feeds BOTH the title bar and the
+  // launch `background_color` (effectivePwa derives that from `theme` too) —
+  // they are the two colours a window shows before the app has painted.
+  const themeOf = (brandTheme) => themeOverride || (brandTheme === "dark" ? "dark" : "light");
+  const fallback = () => {
+    const theme = themeOf(null);
+    return {
+      slug,
+      brandTheme: theme,
+      ...brandingService.effectivePwa(null, {
+        name: req.tenant ? slug : DEFAULTS.name,
+        primary: DEFAULTS.primary,
+        theme,
+      }),
+    };
+  };
   if (!req.tenant) return fallback();
   try {
     const { brand, pwa } = await registry.withTenantConnection(req.tenant, "live", async (c) => ({
@@ -76,12 +106,12 @@ async function resolvePwaConfig(req) {
       pwa: await brandingService.getPwa(c),
     }));
     // `brandTheme` rides along so the manifest can resolve the title bar for
-    // the tenant's default theme — it is read before any of our code runs, so
-    // there is no live theme to ask.
+    // the theme the page asked for — or the tenant's default when it did not.
+    const theme = themeOf(brand.theme);
     return {
       slug,
-      brandTheme: brand.theme === "dark" ? "dark" : "light",
-      ...brandingService.effectivePwa(pwa, { ...brand, name: brand.name || slug }),
+      brandTheme: theme,
+      ...brandingService.effectivePwa(pwa, { ...brand, name: brand.name || slug, theme }),
     };
   } catch {
     return fallback();
@@ -257,7 +287,7 @@ router.get(
   "/manifest.webmanifest",
   hostTenantResolver,
   asyncHandler(async (req, res) => {
-    const cfg = await resolvePwaConfig(req);
+    const cfg = await resolvePwaConfig(req, themeHint(req));
     const v = iconVersion(cfg);
     const titlebar = brandingService.resolveTitlebar(cfg, cfg.brandTheme);
     const manifest = {
@@ -300,9 +330,16 @@ router.get(
        * band with the app's real bar butted against it, which is precisely the
        * bolted-on seam this is meant to remove.
        *
-       * Resolved against the tenant's DEFAULT theme, because this value is read
-       * before any of our code runs. Once the app boots it re-writes the meta
-       * tag for the live theme (lib/pwa-config.ts, applyPwaDocument).
+       * Resolved against the theme in `?theme=` — the live, per-user one, which
+       * index.html puts in the manifest URL before first paint (see themeHint).
+       * Without the hint it falls back to the tenant's default, which is the
+       * best guess available and is what an unhinted install or a crawler gets.
+       *
+       * This value MATTERS BEYOND THE FIRST FRAME: the browser paints the
+       * window frame from it on every load and only lets the page's meta tag
+       * override it on a change made after the document has loaded. Ship the
+       * wrong one and a dark-mode user sees a white frame until something
+       * post-load corrects it (lib/pwa-config.ts, pokeWindowFrame).
        */
       theme_color: titlebar.base,
       background_color: cfg.backgroundColor,

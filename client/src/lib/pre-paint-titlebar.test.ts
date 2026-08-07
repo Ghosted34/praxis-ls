@@ -52,7 +52,9 @@ function runPrePaint(env: {
 }) {
   document.documentElement.className = "";
   document.documentElement.removeAttribute("style");
-  document.head.innerHTML = '<meta name="theme-color" content="#f4f7fb">';
+  document.head.innerHTML =
+    '<meta name="theme-color" content="#f4f7fb">' +
+    '<link rel="manifest" href="/manifest.webmanifest">';
 
   const store: Record<string, string> = {};
   if (env.theme != null) store["praxis.theme"] = env.theme;
@@ -98,6 +100,8 @@ function runPrePaint(env: {
 const themeColor = () =>
   document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content;
 const cssVar = (n: string) => document.documentElement.style.getPropertyValue(n);
+const manifestHref = () =>
+  document.querySelector<HTMLLinkElement>('link[rel="manifest"]')!.getAttribute("href");
 
 describe("pre-paint titlebar script (index.html <head>)", () => {
   beforeEach(() => {
@@ -151,5 +155,24 @@ describe("pre-paint titlebar script (index.html <head>)", () => {
 
     runPrePaint({ theme: "light" });
     expect(document.documentElement.style.colorScheme).toBe("light");
+  });
+
+  /**
+   * The manifest's `theme_color` — not the meta tag — is what the browser
+   * paints the installed window's FRAME with (rounded corners, and the band
+   * behind the caption buttons), and it reads it before any of our code runs.
+   * The server can only see the tenant-wide `brand_theme`, so without this hint
+   * a dark-mode user in a light-default workspace gets a white frame on every
+   * refresh. See src/routes/pwa.js (themeHint).
+   */
+  it("puts the live theme in the manifest URL, so the frame colour matches", () => {
+    runPrePaint({ theme: "dark" });
+    expect(manifestHref()).toBe("/manifest.webmanifest?theme=dark");
+
+    runPrePaint({ theme: "light", osIsDark: true });
+    expect(manifestHref()).toBe("/manifest.webmanifest?theme=light");
+
+    runPrePaint({ theme: "system", osIsDark: true });
+    expect(manifestHref()).toBe("/manifest.webmanifest?theme=dark");
   });
 });

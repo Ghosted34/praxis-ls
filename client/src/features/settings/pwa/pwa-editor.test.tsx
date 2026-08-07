@@ -21,7 +21,7 @@
  *      or it trains people to ignore it.
  */
 import * as React from "react";
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
@@ -118,6 +118,23 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
     expect(themeColor()).toBe("#12161e");
   });
 
+  /**
+   * The frame colour the NEXT load starts from. The browser reads the manifest
+   * before any of this runs, so the only way its `theme_color` can match a
+   * per-user light/dark choice is for the page to say which one it is.
+   */
+  it("points the manifest at the live theme", () => {
+    document.head.insertAdjacentHTML("beforeend", '<link rel="manifest" href="/manifest.webmanifest">');
+    const href = () => document.querySelector('link[rel="manifest"]')!.getAttribute("href");
+
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(href()).toBe("/manifest.webmanifest?theme=light");
+
+    document.documentElement.classList.add("dark");
+    applyPwaDocument(effectivePwa(null, BRAND));
+    expect(href()).toBe("/manifest.webmanifest?theme=dark");
+  });
+
   it("uses the brand accent only when the tenant asks for it", () => {
     applyPwaDocument(effectivePwa({ titlebarMode: "brand" }, BRAND));
     expect(themeColor()).toBe(BRAND.primary);
@@ -195,6 +212,77 @@ describe("applyPwaDocument — the title bar is a meta tag, not the manifest", (
     applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#222222" }, BRAND));
     expect(themeColor()).toBe("#222222");
     expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
+  });
+});
+
+/**
+ * THE REFRESH BUG. An installed window's frame — the rounded top corners and
+ * the band behind the minimise/maximise/close buttons — is painted from the
+ * manifest's `theme_color`, and the page's `<meta name="theme-color">` only
+ * overrides it on a change the browser sees AFTER the document has loaded.
+ * Everything written before then (the pre-paint script, and this module's first
+ * call while the bundle boots) is folded into the initial load and loses, so on
+ * every refresh a dark-mode user got the manifest's colour back — resolved
+ * against the tenant-wide `brand_theme`, which is light for most workspaces.
+ * Toggling light → dark fixed it precisely because that IS a post-load change.
+ *
+ * So the module makes that change itself, once per document, by detaching and
+ * re-inserting the tag. This asserts the re-insertion actually happens — the
+ * value alone is not enough, and was already correct while the bug was live.
+ */
+describe("applyPwaDocument — making the first write survive a refresh", () => {
+  /** Record removals/insertions of the theme-color tag while `run` executes.
+   *  `nodeName` rather than an instanceof check on purpose: a ReferenceError
+   *  inside a MutationObserver callback is swallowed, and the test would then
+   *  pass or fail for a reason that has nothing to do with the code. */
+  async function recordHeadChanges(run: () => void): Promise<string[]> {
+    const seen: string[] = [];
+    const hit = (list: NodeList) =>
+      Array.from(list).some((n) => n.nodeName === "META" && (n as Element).getAttribute("name") === "theme-color");
+    const observer = new MutationObserver((records) => {
+      for (const r of records) {
+        if (hit(r.removedNodes)) seen.push("removed");
+        if (hit(r.addedNodes)) seen.push("added");
+      }
+    });
+    observer.observe(document.head, { childList: true });
+    run();
+    await new Promise((r) => setTimeout(r, 0));
+    observer.disconnect();
+    return seen;
+  }
+
+  beforeEach(() => {
+    // A brand-new tag, which is what a reload gives the module: the poke is
+    // once per tag, so replacing it is what makes the next one observable.
+    document.head.innerHTML = '<meta name="theme-color" content="#f4f7fb">';
+    document.documentElement.classList.remove("dark");
+  });
+
+  it("re-inserts the theme-color tag once after load, so the window frame repaints", async () => {
+    document.documentElement.classList.add("dark");
+
+    const seen = await recordHeadChanges(() => applyPwaDocument(effectivePwa(null, BRAND)));
+
+    // Removal then insertion — a real transition, not a repeat of a value the
+    // browser has already dismissed.
+    expect(seen).toEqual(["removed", "added"]);
+    // And it ends up back in the document, carrying the dark surface.
+    expect(document.querySelectorAll('meta[name="theme-color"]')).toHaveLength(1);
+    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#12161e");
+  });
+
+  it("does it once, not on every branding tick — a repaint per keystroke is a flicker", async () => {
+    const first = await recordHeadChanges(() => applyPwaDocument(effectivePwa(null, BRAND)));
+    expect(first).toEqual(["removed", "added"]); // the poke this test is about NOT repeating
+
+    const seen = await recordHeadChanges(() => {
+      applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#333333" }, BRAND));
+      applyPwaDocument(effectivePwa({ titlebarMode: "custom", titlebarLight: "#444444" }, BRAND));
+    });
+
+    expect(seen).toEqual([]);
+    expect(document.querySelector<HTMLMetaElement>('meta[name="theme-color"]')!.content).toBe("#444444");
   });
 });
 

@@ -21,7 +21,15 @@ export function resolved(mode: ThemeMode = getMode()): "light" | "dark" {
 }
 
 function apply(mode: ThemeMode) {
-  document.documentElement.classList.toggle("dark", resolved(mode) === "dark");
+  const dark = resolved(mode) === "dark";
+  document.documentElement.classList.toggle("dark", dark);
+  // `color-scheme` is what the BROWSER paints its own surfaces from — scrollbars,
+  // form controls, and in an installed window the caption-button glyphs. It was
+  // written once by the pre-paint script in index.html and never again, so it
+  // went stale the moment anyone used the toggle, and never moved at all for a
+  // "system" user whose OS preference flipped under them. Set alongside `.dark`,
+  // which is the only place that knows the appearance actually changed.
+  document.documentElement.style.colorScheme = dark ? "dark" : "light";
 }
 
 export function setMode(mode: ThemeMode) {

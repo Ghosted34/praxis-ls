@@ -11,7 +11,7 @@
  * `areas.test.ts` was written to catch for the ribbon.
  */
 import { describe, it, expect } from "vitest";
-import { artifactTitle, extractSources, extractTable, isLongForm, kindOf, mergeSources } from "./grounding";
+import { artifactTitle, extractSources, extractTable, extractTables, isLongForm, kindOf, mergeSources } from "./grounding";
 
 describe("extractSources", () => {
   it("reads the internal links a grounded answer already writes", () => {
@@ -104,12 +104,53 @@ describe("extractTable", () => {
 
   it("lifts a pipe table out of the prose around it", () => {
     expect(extractTable(md)).toEqual({
+      title: "Table 1",
       header: ["Client", "Overdue", "Days"],
       rows: [
         ["Ndongo Ltd", "4 500 000", "42"],
         ["Sabo SARL", "1 250 000", "7"],
       ],
     });
+  });
+
+  it("returns EVERY table, not just the first", () => {
+    // The regression that made the pane lie on a real financial model: seven
+    // tables in one answer, one of them shown.
+    const many = [
+      "### Revenue (from trial balance)",
+      "| Account | Amount |",
+      "| --- | --- |",
+      "| 7064 | 18,000,000 |",
+      "",
+      "### Receivables (from ageing)",
+      "| Bucket | Amount |",
+      "| --- | --- |",
+      "| Current | 21,465,000 |",
+      "| 1-30 days | 2,810,000 |",
+      "",
+      "**Scenario A — Conservative**",
+      "| Month | Revenue |",
+      "| --- | --- |",
+      "| Aug | 18,000,000 |",
+    ].join("\n");
+    const tables = extractTables(many);
+    expect(tables).toHaveLength(3);
+    expect(tables.map((t) => t.title)).toEqual([
+      "Revenue (from trial balance)",
+      "Receivables (from ageing)",
+      "Scenario A — Conservative",
+    ]);
+    expect(tables[1].rows).toHaveLength(2);
+  });
+
+  it("falls back to a positional label when a table has no heading", () => {
+    const two = "| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
+    expect(extractTables(two).map((t) => t.title)).toEqual(["Table 1", "Table 2"]);
+  });
+
+  it("does not let one heading label two tables", () => {
+    const two = "## Position\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\n| C | D |\n| --- | --- |\n| 3 | 4 |";
+    expect(extractTables(two).map((t) => t.title)).toEqual(["Position", "Table 2"]);
   });
 
   it("pads a ragged row rather than dropping it", () => {

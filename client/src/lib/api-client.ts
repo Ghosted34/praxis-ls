@@ -280,3 +280,43 @@ export async function download(path: string, filename: string): Promise<void> {
   URL.revokeObjectURL(url);
 }
 export const tenantDownload = (p: string, filename: string) => download(`/tenant${p}`, filename);
+
+/**
+ * As `download`, but POSTs a JSON body first.
+ *
+ * `download` covers the usual export: a GET whose parameters fit in a query
+ * string. This is for the case where the thing being exported IS the payload —
+ * the assistant's Excel export sends the table rows it lifted out of an answer,
+ * which are far too large for a URL and are not addressable by an id because
+ * they were never persisted anywhere.
+ *
+ * Deliberately a sibling rather than an option on `download`: the two differ in
+ * method, body and content-type, and the call sites read better naming which
+ * one they mean than passing a flag.
+ */
+export async function downloadPost(path: string, body: unknown, filename: string): Promise<void> {
+  const h = new Headers({ "Content-Type": "application/json" });
+  h.set("X-Praxis-Env", tokenStore.getEnv());
+  const t = tokenStore.getAccess();
+  if (t) h.set("Authorization", `Bearer ${t}`);
+  const res = await fetch(`/api${path}`, { method: "POST", headers: h, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const raw = await res.text().catch(() => "");
+    let message = res.statusText;
+    try {
+      const j = raw ? JSON.parse(raw) : null;
+      message = (j && j.error && j.error.message) || message;
+    } catch {
+      /* non-JSON body — keep the status text */
+    }
+    throw new ApiError("DOWNLOAD_FAILED", message, res.status);
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

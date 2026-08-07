@@ -17,5 +17,9 @@ router.get("/history", c.history);
 router.post("/history/clear", c.clearHistory);
 router.post("/actions/:id/confirm", validate("confirm"), c.confirm);
 router.post("/batches/:batchId/confirm", c.confirmBatch);
+// Excel export of an answer's tables. POST because the tables ARE the payload —
+// they were never persisted, so there is no id to GET them by. Reads nothing,
+// so auth + the feature gate on this router are the whole access story.
+router.post("/export/tables", validate("exportTables"), c.exportTables);
 
 module.exports = { basePath: "/ai", feature: "ai.assistant.backend", router };

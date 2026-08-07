@@ -12,7 +12,17 @@ import * as React from "react";
 const SAFE_HREF = /^(https?:|mailto:)/i;
 
 /** Inline: `code`, **bold**, *italic* / _italic_, [text](url). */
-function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+/**
+ * Inline spans — bold, italic, code, links — for one line of text.
+ *
+ * EXPORTED because the assistant's right pane lifts markdown tables out of an
+ * answer and re-renders their rows in a real `<Table>` (features/ai/right-pane).
+ * Rendering those cells as plain strings is what printed `**Total revenue
+ * (HT)**` with its asterisks showing, on the one row of a financial table that
+ * most needed to read as a total. There is one inline grammar in this app and
+ * this is it; a second renderer for the pane would drift from this one.
+ */
+export function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
   const nodes: React.ReactNode[] = [];
   // earliest-match scanner over the four inline patterns
   const pattern =

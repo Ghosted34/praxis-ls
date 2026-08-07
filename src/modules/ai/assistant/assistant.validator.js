@@ -20,6 +20,22 @@ const schemas = {
     message: z.string().min(1),
     conversation_id: z.string().uuid().optional(),
   }),
+  // Excel export of an answer's tables. Bounded rather than shaped-in-detail:
+  // the rows are markdown cells lifted from a reply the caller already has on
+  // screen, so nothing here widens what they can read — the limits are about
+  // refusing to build an unbounded workbook, not about access.
+  exportTables: z.object({
+    tables: z
+      .array(
+        z.object({
+          title: z.string().max(200).optional(),
+          header: z.array(z.string().max(500)).min(1).max(60),
+          rows: z.array(z.array(z.string().max(2000)).max(60)).max(5000),
+        }),
+      )
+      .min(1)
+      .max(25),
+  }).strict(),
 };
 const validate = (key) => (req, _res, next) => {
   const parsed = schemas[key].safeParse(req.body);

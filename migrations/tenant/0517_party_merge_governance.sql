@@ -1,5 +1,5 @@
 -- ============================================================================
--- 0515 — Governed merge + sensitive-field maker-checker (PR3-C §5.2 / §8).
+-- 0517 — Governed merge + sensitive-field maker-checker (PR3-C §5.2 / §8).
 --
 -- Three additive pieces the governed merge and the maker-checker lean on:
 --

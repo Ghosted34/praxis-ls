@@ -38,7 +38,7 @@ Dates are ISO-8601, UTC.
   registration / credit limit / status changes become pending change requests in
   Live, applied on a second authorization); and a transactional
   `compliance.assertAllowed` **gate** wired at dossier and PO creation
-  (migration `0515`).
+  (migration `0517`).
 
 ### Security
 

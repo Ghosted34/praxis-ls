@@ -200,11 +200,15 @@ async function cloneFromOrigin(c, { kind, targetId, sections = [], actor = {} })
   const sourceKind = kind === "client" ? "supplier" : "client";
 
   const cloned = {};
+  // Iterate the code-defined section keys and keep only the ones requested —
+  // `section` is therefore never a request-controlled property name (closes the
+  // remote-property-injection class; the request only ever filters, never keys).
+  const requested = new Set(Array.isArray(sections) ? sections : []);
   await c.query("BEGIN");
   try {
-    for (const section of sections) {
+    for (const section of Object.keys(CLONE_SPECS)) {
+      if (!requested.has(section)) continue;
       const spec = CLONE_SPECS[section];
-      if (!spec) continue;
       const srcTable = spec.table(sourceKind);
       const tgtTable = spec.table(kind);
       const { rows } = await c.query(

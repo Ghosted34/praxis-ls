@@ -15,13 +15,23 @@
  * is what lets an answer keep its prose in the thread and put its OUTPUT
  * somewhere it can be worked with.
  *
- * WHY IT IS A NORMAL PAGE. It keeps the ribbon, the icon rail and a standard
- * `PageHeader`, and it is reached from Overview like any other destination.
- * The alternative — hiding the chrome for a distraction-free canvas — would
- * make the assistant feel like a separate product bolted to the side of the
- * ERP, when the entire proposition is that it is inside it and acting as you.
- * The immersion is bought instead with a quiet conversation bar inside the
- * workspace frame, which is where it costs nothing.
+ * IT KEEPS THE SHELL AND DROPS THE PAGE HEADER — the only screen that does.
+ *
+ * The ribbon and the icon rail stay, because the alternative — hiding the
+ * chrome for a distraction-free canvas — would make the assistant feel like a
+ * separate product bolted to the side of the ERP, when the entire proposition
+ * is that it is inside it and acting as you.
+ *
+ * But `PageHeader` goes. Every other screen earns one: it names what you are
+ * about to read before you read it. This screen is not something you read, it
+ * is a room you work in, and the header was spending the top eighth of that
+ * room restating the ribbon tab immediately above it. The full height goes to
+ * the thread instead, and the permissions assurance it used to carry now sits
+ * under the composer, where the person about to ask a question can see it.
+ *
+ * That exception should stay singular. A product where every screen argues for
+ * its own chrome has no chrome; the argument here is that this is the only
+ * route whose content is a conversation rather than a record.
  *
  * ITS RELATIONSHIP TO THE DRAWER. Same thread state (`useAiThread`), same
  * composer, same turn rendering. The drawer's middle button lands here with
@@ -33,7 +43,6 @@
 import * as React from "react";
 import { Navigate, useLocation, useSearchParams } from "react-router-dom";
 import { cn } from "@/lib/cn";
-import { PageHeader } from "@/components/data-list";
 import { Tooltip } from "@/components/ui/tooltip";
 import { useAiEnabled } from "@/components/ai-actions";
 import { useAuth } from "@/app/auth/auth-context";
@@ -42,7 +51,8 @@ import { AiThinking, AiTurnView, type TurnCanvas } from "@/components/ai/turn";
 import { useAiThread, type AiTurn } from "@/components/ai/thread";
 import { DESK_STARTERS, scopeByKey, useAiScopes, type AiMode } from "@/components/ai/context";
 import { extractSources, mergeSources, type AiSource } from "@/components/ai/grounding";
-import { NewChatIcon, PanelLeftIcon, PanelRightIcon, PraxisMarkLarge } from "@/components/ai/icons";
+import { PanelLeftIcon, PanelRightIcon, PraxisMarkLarge } from "@/components/ai/icons";
+import { PlusIcon } from "@/components/ui/icons";
 import { AiHistoryRail } from "./history-rail";
 import { AiRightPane, EMPTY_PANE, type PaneState } from "./right-pane";
 
@@ -146,27 +156,28 @@ export function AiWorkspace() {
   const title = thread.turns.find((t) => t.role === "user")?.text;
 
   return (
-    <section className="flex h-full min-h-[36rem] flex-col">
-      <PageHeader
-        eyebrow="Praxis AI"
-        title="Assistant"
-        description="Reads freely across everything you have access to · writes always ask for your sign-off · acts with your permissions, as you."
-        action={
-          <button
-            type="button"
-            onClick={() => {
-              thread.newThread();
-              setPane(EMPTY_PANE);
-            }}
-            disabled={thread.busy}
-            className="btn-surface inline-flex h-9 items-center gap-2 rounded-md px-3 text-[13px] font-medium disabled:opacity-50"
-          >
-            <NewChatIcon width={15} height={15} />
-            New conversation
-          </button>
-        }
-      />
+    /*
+      NO PAGE HEADER — the one screen in the product that gets to skip it.
 
+      Every other screen opens with `PageHeader`: eyebrow, title, a line of
+      description. That contract is right for a screen you arrive at to READ,
+      because the header says what you are looking at before you look at it.
+      This screen is a room you arrive to WORK in, and the header was spending
+      the top eighth of it restating what the ribbon tab already said —
+      "Praxis AI › Assistant", above a thread that then had to fight for the
+      remaining height.
+
+      The assurance line it carried is not lost; it was always in two places at
+      once. It lives under the composer, where somebody about to type a question
+      about live financial data can actually see it, rather than above a
+      transcript they have already scrolled past.
+
+      Deliberately THE exception, and it should stay the only one. A product
+      where every screen argues for its own chrome has no chrome, and the
+      argument here is specific: this is the only route whose content is a
+      conversation rather than a record.
+    */
+    <section className="flex h-full min-h-[36rem] flex-col">
       <div className="relative flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-card">
         {/* LEFT RAIL. Static from `lg`; an overlay below it, because at 1024px
             three columns plus a reading measure is not three columns, it is
@@ -223,6 +234,35 @@ export function AiWorkspace() {
                 </span>
               )}
             </div>
+
+            {/*
+              NEW CONVERSATION, as a `+` rather than a labelled button in a page
+              header. It sits with the two pane toggles because it belongs to the
+              same class of control — things that change what this frame is
+              showing — and because that is where the eye already goes when the
+              answer on screen is finished with.
+
+              Icon-only is affordable here in a way it would not be alone: the
+              tooltip names it, `aria-label` names it, and it is flanked by two
+              controls the user has already learned. A lone unlabelled `+` in a
+              page header would be a guess.
+            */}
+            <Tooltip content="New conversation">
+              <button
+                type="button"
+                onClick={() => {
+                  thread.newThread();
+                  setPane(EMPTY_PANE);
+                }}
+                disabled={thread.busy}
+                aria-label="Start a new conversation"
+                className="tap-24 grid h-7 w-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-primary-ink disabled:opacity-40"
+              >
+                <PlusIcon width={16} height={16} />
+              </button>
+            </Tooltip>
+
+            <span aria-hidden className="h-4 w-px bg-border" />
 
             <PaneToggle
               label={layout.right ? "Hide answer panel" : "Show answer panel"}

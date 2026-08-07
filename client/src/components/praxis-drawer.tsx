@@ -38,7 +38,6 @@
 import * as React from "react";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { useNavigate } from "react-router-dom";
-import { cn } from "@/lib/cn";
 import { useAiEnabled } from "@/components/ai-actions";
 import { Tooltip } from "@/components/ui/tooltip";
 import { XIcon } from "@/components/ui/icons";
@@ -73,6 +72,12 @@ export function PraxisDrawer() {
   // A prompt handed in by an AI-action card, sent as soon as the body mounts.
   const [pending, setPending] = React.useState<string | null>(null);
 
+  // Width lives here rather than in the body, because the element it sizes is
+  // `Dialog.Content`, which now lives here too. It survives the `key` remount
+  // that gives every open a fresh thread — the panel you sized should stay that
+  // size across conversations, which was not true when the two shared a scope.
+  const [width, setWidth] = React.useState(initialWidth);
+
   React.useEffect(() => {
     const onOpen = (e: Event) => {
       const prompt = (e as CustomEvent<{ prompt?: string }>).detail?.prompt;
@@ -87,58 +92,6 @@ export function PraxisDrawer() {
     window.addEventListener("praxis:open-copilot", onOpen);
     return () => window.removeEventListener("praxis:open-copilot", onOpen);
   }, []);
-
-  // Global AI gate: with AI off for the tenant, no Praxis affordance exists
-  // anywhere in the app (doc/AI_GATE_BE_HANDOFF.md).
-  if (!aiEnabled) return null;
-
-  return (
-    <RadixDialog.Root open={open} onOpenChange={setOpen}>
-      <RadixDialog.Portal>
-        <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/25 backdrop-blur-[1px] data-[state=open]:animate-fade-in" />
-        <DrawerBody key={session} onClose={() => setOpen(false)} initialPrompt={pending} />
-      </RadixDialog.Portal>
-    </RadixDialog.Root>
-  );
-}
-
-function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPrompt: string | null }) {
-  const navigate = useNavigate();
-  const screen = useScreenContext();
-  const scopes = useAiScopes();
-  const thread = useAiThread("fresh");
-  const bodyRef = React.useRef<HTMLDivElement>(null);
-
-  // Open pre-scoped to the area you are standing in. A question asked from
-  // /finance/receivables is, overwhelmingly, a question about Finance — and the
-  // chip is right there to widen it when it is not.
-  const [composer, setComposer] = React.useState<ComposerValue>(() => ({
-    scope: scopeForPath(scopes, screen?.route ?? "").key,
-    mode: "ask",
-  }));
-  // `scopes` resolves a beat after mount (the access read). Re-derive once it
-  // has, but never after the user has touched the control.
-  const touched = React.useRef(false);
-  React.useEffect(() => {
-    if (touched.current || !screen) return;
-    setComposer((c) => ({ ...c, scope: scopeForPath(scopes, screen.route).key }));
-  }, [scopes, screen]);
-
-  const [width, setWidth] = React.useState(initialWidth);
-  const suggestions = React.useMemo(() => suggestionsFor(screen), [screen]);
-
-  // Auto-send a prompt handed in by an AI-action card. Once, on mount.
-  const sent = React.useRef(false);
-  React.useEffect(() => {
-    if (sent.current || !initialPrompt) return;
-    sent.current = true;
-    thread.send(initialPrompt, composer);
-  }, [initialPrompt, thread, composer]);
-
-  React.useEffect(() => {
-    const el = bodyRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [thread.turns, thread.busy]);
 
   /** Drag the left edge. Width is committed to storage on release, not per frame. */
   function startResize(e: React.PointerEvent<HTMLDivElement>) {
@@ -177,6 +130,129 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
     }
   }
 
+  // Global AI gate: with AI off for the tenant, no Praxis affordance exists
+  // anywhere in the app (doc/AI_GATE_BE_HANDOFF.md).
+  if (!aiEnabled) return null;
+
+  return (
+    <RadixDialog.Root open={open} onOpenChange={setOpen}>
+      <RadixDialog.Portal>
+        {/*
+          SCRIM, NOT A BLUR. It was `backdrop-blur-[1px]` and that was wrong on
+          this surface specifically: the drawer's whole proposition is that you
+          are asking about the screen it is sitting over, and the context chip
+          says so by name. Frosting that screen removes the thing the question
+          is about. `ui/dialog.tsx` blurs because a modal WANTS your attention
+          off the page; a side drawer wants it on.
+        */}
+        <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-fade-in" />
+
+        {/*
+          CONTENT IS A DIRECT CHILD OF PORTAL, and it has to be.
+
+          This was `<DrawerBody/>` — a plain function component wrapping
+          `Dialog.Content` — and that is what broke the drawer: `DialogPortal`
+          wraps every child in `<Presence>`, which clones it with a ref to track
+          mount/unmount. A component that is not `forwardRef` swallows that ref,
+          so Radix never registers the content layer. In modal mode it is that
+          registration that flips `pointer-events` back on for the dialog while
+          the rest of the document stays inert — miss it and NOTHING is
+          clickable, the drawer included, which is exactly how it presented.
+
+          So `Content` lives here, and the width state it needs lives here with
+          it. `DrawerBody` keeps the conversation and is now an ordinary child
+          INSIDE the content, where being a function component costs nothing.
+
+          Note it is written INLINE rather than as a `<DrawerShell>` — extracting
+          it for tidiness would put a function component back between `Portal`
+          and `Content` and reintroduce the same bug one level up.
+        */}
+        <RadixDialog.Content
+          aria-describedby={undefined}
+          style={{ width: `min(${width}px, 100vw)` }}
+          className="fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
+        >
+          <RadixDialog.Title className="sr-only">Praxis AI</RadixDialog.Title>
+
+          {/*
+            Resize handle — the ARIA window-splitter pattern.
+
+            A 12px hit area over a 1px visual line: the affordance the eye reads
+            is the edge, but the target the pointer has to hit cannot BE the edge
+            or nobody catches it on the way past.
+
+            It is a FOCUSABLE separator with `aria-valuenow`, which is what makes
+            it operable without a pointer — arrows move it 16px, Shift+arrows
+            64px, and a screen reader announces the width against its range.
+            That is the reason for the `jsx-a11y` suppression: the rule treats
+            `role="separator"` as non-interactive, but a separator WITH
+            `tabindex` and `aria-valuenow` is exactly the interactive variant
+            the ARIA spec defines for this, and the `<button>` it would push us
+            to cannot express a value.
+          */}
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
+          <div
+            role="separator"
+            aria-label="Resize panel"
+            aria-orientation="vertical"
+            aria-valuenow={Math.round(width)}
+            aria-valuemin={MIN_W}
+            aria-valuemax={MAX_W}
+            tabIndex={0}
+            onPointerDown={startResize}
+            onKeyDown={keyResize}
+            className="group/grip absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-col-resize items-center justify-center focus-visible:outline-none md:flex"
+          >
+            <span className="h-full w-px bg-transparent transition-colors group-hover/grip:bg-primary/40 group-focus-visible/grip:bg-primary" />
+            <span className="absolute text-border transition-colors group-hover/grip:text-primary-ink">
+              <GripIcon />
+            </span>
+          </div>
+
+          <DrawerBody key={session} onClose={() => setOpen(false)} initialPrompt={pending} />
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
+  );
+}
+
+function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPrompt: string | null }) {
+  const navigate = useNavigate();
+  const screen = useScreenContext();
+  const scopes = useAiScopes();
+  const thread = useAiThread("fresh");
+  const bodyRef = React.useRef<HTMLDivElement>(null);
+
+  // Open pre-scoped to the area you are standing in. A question asked from
+  // /finance/receivables is, overwhelmingly, a question about Finance — and the
+  // chip is right there to widen it when it is not.
+  const [composer, setComposer] = React.useState<ComposerValue>(() => ({
+    scope: scopeForPath(scopes, screen?.route ?? "").key,
+    mode: "ask",
+  }));
+  // `scopes` resolves a beat after mount (the access read). Re-derive once it
+  // has, but never after the user has touched the control.
+  const touched = React.useRef(false);
+  React.useEffect(() => {
+    if (touched.current || !screen) return;
+    setComposer((c) => ({ ...c, scope: scopeForPath(scopes, screen.route).key }));
+  }, [scopes, screen]);
+
+  const suggestions = React.useMemo(() => suggestionsFor(screen), [screen]);
+
+  // Auto-send a prompt handed in by an AI-action card. Once, on mount.
+  const sent = React.useRef(false);
+  React.useEffect(() => {
+    if (sent.current || !initialPrompt) return;
+    sent.current = true;
+    thread.send(initialPrompt, composer);
+  }, [initialPrompt, thread, composer]);
+
+  React.useEffect(() => {
+    const el = bodyRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+  }, [thread.turns, thread.busy]);
+
   /** Take this thread to the full page. The hinge between the two surfaces. */
   function expand() {
     const id = thread.conversationId;
@@ -189,51 +265,7 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
   const empty = thread.turns.length === 0 && !thread.busy;
 
   return (
-    <RadixDialog.Content
-      aria-describedby={undefined}
-      style={{ width: `min(${width}px, 100vw)` }}
-      className={cn(
-        "fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-card shadow-2xl outline-none",
-        "duration-150 data-[state=open]:animate-fade-in",
-      )}
-    >
-      <RadixDialog.Title className="sr-only">Praxis AI</RadixDialog.Title>
-
-      {/*
-        Resize handle — the ARIA window-splitter pattern.
-
-        A 12px hit area over a 1px visual line: the affordance the eye reads is
-        the edge, but the target the pointer has to hit cannot BE the edge or
-        nobody catches it on the way past.
-
-        It is a FOCUSABLE separator with `aria-valuenow`, which is what makes it
-        operable without a pointer — arrows move it 16px, Shift+arrows 64px, and
-        a screen reader announces the width as a percentage of its range. That is
-        the whole reason for the `jsx-a11y` suppression below: the rule treats
-        `role="separator"` as non-interactive, but a separator WITH `tabindex`
-        and `aria-valuenow` is precisely the interactive variant the ARIA spec
-        defines for this, and the alternative it would push us to — a `<button>`
-        that cannot express a value — is the less accessible control.
-      */}
-      {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions */}
-      <div
-        role="separator"
-        aria-label="Resize panel"
-        aria-orientation="vertical"
-        aria-valuenow={Math.round(width)}
-        aria-valuemin={MIN_W}
-        aria-valuemax={MAX_W}
-        tabIndex={0}
-        onPointerDown={startResize}
-        onKeyDown={keyResize}
-        className="group/grip absolute inset-y-0 -left-1.5 z-10 hidden w-3 cursor-col-resize items-center justify-center focus-visible:outline-none md:flex"
-      >
-        <span className="h-full w-px bg-transparent transition-colors group-hover/grip:bg-primary/40 group-focus-visible/grip:bg-primary" />
-        <span className="absolute text-border transition-colors group-hover/grip:text-primary-ink">
-          <GripIcon />
-        </span>
-      </div>
-
+    <>
       <DrawerHeader onNew={thread.newThread} onExpand={expand} busy={thread.busy} />
 
       <div ref={bodyRef} className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -282,7 +314,7 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
           Praxis acts with your permissions only — writes always ask first.
         </p>
       </div>
-    </RadixDialog.Content>
+    </>
   );
 }
 

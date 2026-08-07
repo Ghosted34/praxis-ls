@@ -1,5 +1,6 @@
 {
   "$comment": "Canonical UI screen registry — the AI's map of the app's screens. Each screen maps to its route, the module it belongs to (module_key), a one-line purpose, and the AI action_keys reachable from it. Keep this in sync when adding a route (see doc/AI_READINESS.md). Ingested into the AI global corpus by src/services/ai/knowledge/codebase.js; also usable by the frontend for nav/breadcrumbs.",
+  "$comment_actions": "`actions[]` is now COMPLETE for every <module>.ai.js manifest action, not just a sample. It is read in both directions: screen->actions grounds the assistant ('where do I raise an invoice?'), and the INVERSION action->route is how src/services/ai/answer-sources.js turns the reads the orchestrator executed into the citations under an answer. An action missing here is an answer that cannot say where it read from, so tests/unit/ai-readiness.test.js asserts every manifest read is declared on exactly one screen. Where a module owns several screens the split is by entity, not by module_key (MOD-64's signatures live on /vault/signatures, its documents on /vault/documents).",
   "version": 1,
   "screens": [
     {
@@ -28,7 +29,13 @@
       "area": "security",
       "module_key": "MOD-67",
       "purpose": "List and manage application users.",
-      "actions": []
+      "actions": [
+        "list_users",
+        "get_user",
+        "create_user",
+        "update_user",
+        "set_user_status"
+      ]
     },
     {
       "id": "security_roles",
@@ -100,7 +107,10 @@
       "area": "governance",
       "module_key": "MOD-67",
       "purpose": "In-app notifications incl. Watch-the-Watcher alerts.",
-      "actions": []
+      "actions": [
+        "my_notifications",
+        "my_unread_count"
+      ]
     },
     {
       "id": "workflows",
@@ -109,7 +119,13 @@
       "area": "governance",
       "module_key": "MOD-67",
       "purpose": "Universal Event Engine: event types, workflows, steps.",
-      "actions": []
+      "actions": [
+        "list_event_types",
+        "list_workflows",
+        "get_workflow",
+        "create_workflow",
+        "add_workflow_step"
+      ]
     },
     {
       "id": "approvals",
@@ -119,7 +135,8 @@
       "module_key": "MOD-67",
       "purpose": "Runtime approval queue for approvable events.",
       "actions": [
-        "act_approval"
+        "act_approval",
+        "list_approvals"
       ]
     },
     {
@@ -156,7 +173,11 @@
       "area": "settings",
       "module_key": "MOD-70",
       "purpose": "Tenant configuration hub.",
-      "actions": []
+      "actions": [
+        "list_settings",
+        "get_settings_section",
+        "set_setting"
+      ]
     },
     {
       "id": "settings_numbering",
@@ -180,7 +201,9 @@
       "actions": [
         "list_treasury_accounts",
         "create_treasury_account",
-        "set_treasury_account_active"
+        "set_treasury_account_active",
+        "get_treasury_account",
+        "update_treasury_account"
       ]
     },
     {
@@ -190,7 +213,13 @@
       "area": "master",
       "module_key": "MOD-03",
       "purpose": "Customer master — terms, credit limit and withholding status.",
-      "actions": []
+      "actions": [
+        "list_clients",
+        "get_client",
+        "client_credit_check",
+        "create_client",
+        "update_client"
+      ]
     },
     {
       "id": "master_suppliers",
@@ -199,7 +228,12 @@
       "area": "master",
       "module_key": "MOD-04",
       "purpose": "Vendor master — payment method, tax residency and rating.",
-      "actions": []
+      "actions": [
+        "list_suppliers",
+        "get_supplier",
+        "create_supplier",
+        "update_supplier"
+      ]
     },
     {
       "id": "master_corporate_entities",
@@ -208,7 +242,18 @@
       "area": "master",
       "module_key": "MOD-01",
       "purpose": "The legal entities we bill and report from.",
-      "actions": []
+      "actions": [
+        "list_entities",
+        "get_entity",
+        "get_entity_360",
+        "get_entity_cap_table",
+        "get_entity_renewals",
+        "get_entity_letterhead",
+        "create_entity",
+        "update_entity",
+        "set_entity_status",
+        "set_entity_active"
+      ]
     },
     {
       "id": "master_expense_rates",
@@ -217,7 +262,13 @@
       "area": "master",
       "module_key": "MOD-10",
       "purpose": "Per-shipping-line rates that feed costing.",
-      "actions": []
+      "actions": [
+        "list_expense_rates",
+        "get_expense_rate",
+        "resolve_expense_rate",
+        "create_expense_rate",
+        "update_expense_rate"
+      ]
     },
     {
       "id": "master_financial_dictionary",
@@ -226,7 +277,12 @@
       "area": "master",
       "module_key": "MOD-05",
       "purpose": "Billable/cost lines with their OHADA posting rules.",
-      "actions": []
+      "actions": [
+        "list_dictionary_items",
+        "get_dictionary_item",
+        "create_dictionary_item",
+        "update_dictionary_item"
+      ]
     },
     {
       "id": "settings_payment_gateways",
@@ -305,7 +361,8 @@
         "list_compliance",
         "get_compliance",
         "create_compliance",
-        "update_compliance"
+        "update_compliance",
+        "compliance_expiring"
       ]
     },
     {
@@ -363,7 +420,8 @@
         "list_drivers",
         "get_driver",
         "create_driver",
-        "update_driver"
+        "update_driver",
+        "drivers_expiring"
       ]
     },
     {
@@ -653,7 +711,12 @@
       "area": "finance",
       "module_key": "MOD-05",
       "purpose": "General ledger journal entries (balanced-or-rejected, reversal-not-edit).",
-      "actions": []
+      "actions": [
+        "list_journal_entries",
+        "get_journal_entry",
+        "post_journal_entry",
+        "reverse_journal_entry"
+      ]
     },
     {
       "id": "fin_invoices",
@@ -662,7 +725,13 @@
       "area": "finance",
       "module_key": "MOD-51",
       "purpose": "Final invoices — revenue recognition, clears advance + débours.",
-      "actions": []
+      "actions": [
+        "list_final_invoices",
+        "get_final_invoice",
+        "draft_final_invoice",
+        "update_final_invoice",
+        "submit_final_invoice"
+      ]
     },
     {
       "id": "fin_credit_notes",
@@ -680,7 +749,13 @@
       "area": "finance",
       "module_key": "MOD-53",
       "purpose": "Loans from banks/directors/third parties — engagements, drawdowns, repayments and outstanding balance.",
-      "actions": []
+      "actions": [
+        "list_debt",
+        "get_debt",
+        "create_debt",
+        "drawdown_debt",
+        "repay_debt"
+      ]
     },
     {
       "id": "fin_receivables",
@@ -689,7 +764,14 @@
       "area": "finance",
       "module_key": "MOD-56",
       "purpose": "Smart receivables ledger — open items, ageing, reminders.",
-      "actions": []
+      "actions": [
+        "list_receipts",
+        "get_receipt",
+        "receivables_ageing",
+        "receivables_reminders",
+        "draft_receipt",
+        "post_receipt"
+      ]
     },
     {
       "id": "fin_statements",
@@ -698,7 +780,13 @@
       "area": "finance",
       "module_key": "MOD-59",
       "purpose": "SYSCOHADA statements: trial balance, Bilan, Compte de résultat, TAFIRE.",
-      "actions": []
+      "actions": [
+        "get_trial_balance",
+        "get_income_statement",
+        "get_balance_sheet",
+        "get_grand_livre",
+        "get_cash_flow"
+      ]
     },
     {
       "id": "fin_tax",
@@ -707,7 +795,10 @@
       "area": "finance",
       "module_key": "MOD-07",
       "purpose": "TVA return, IS/minimum tax, withholding declarations.",
-      "actions": []
+      "actions": [
+        "get_vat_return",
+        "get_corporate_tax"
+      ]
     },
     {
       "id": "fin_chart",
@@ -716,7 +807,12 @@
       "area": "finance",
       "module_key": "MOD-58",
       "purpose": "SYSCOHADA/OHADA chart of accounts — hierarchical, is_postable / requires_analytic.",
-      "actions": []
+      "actions": [
+        "list_accounts",
+        "get_account",
+        "create_account",
+        "update_account"
+      ]
     },
     {
       "id": "fin_proformas",
@@ -725,7 +821,10 @@
       "area": "finance",
       "module_key": "MOD-52",
       "purpose": "Proforma and advance-payment invoices — advance posts to 4191, not revenue.",
-      "actions": []
+      "actions": [
+        "get_advance",
+        "record_proforma_payment"
+      ]
     },
     {
       "id": "ai_features",
@@ -770,7 +869,13 @@
       "area": "commercial",
       "module_key": "MOD-27",
       "purpose": "Client quotations: draft, send, accept, convert.",
-      "actions": []
+      "actions": [
+        "list_quotations",
+        "get_quotation",
+        "draft_quotation",
+        "transition_quotation",
+        "accept_quotation"
+      ]
     },
     {
       "id": "commercial_margin_sim",
@@ -779,7 +884,11 @@
       "area": "commercial",
       "module_key": "MOD-27",
       "purpose": "Model margin on a service before quoting.",
-      "actions": []
+      "actions": [
+        "list_margin_simulations",
+        "get_margin_simulation",
+        "create_margin_simulation"
+      ]
     },
     {
       "id": "commercial_extra_charges",
@@ -788,7 +897,11 @@
       "area": "commercial",
       "module_key": "MOD-28",
       "purpose": "Model extra charges (surcharges, demurrage).",
-      "actions": []
+      "actions": [
+        "list_extra_charge_simulations",
+        "get_extra_charge_simulation",
+        "create_extra_charge_simulation"
+      ]
     },
     {
       "id": "commercial_pricing_variance",
@@ -797,7 +910,11 @@
       "area": "commercial",
       "module_key": "MOD-27",
       "purpose": "Quoted vs realised price variance.",
-      "actions": []
+      "actions": [
+        "list_pricing_variance",
+        "get_pricing_variance",
+        "compute_pricing_variance"
+      ]
     },
     {
       "id": "costing_sheets",
@@ -806,7 +923,13 @@
       "area": "costing",
       "module_key": "MOD-46",
       "purpose": "Planned cost sheets and margin per dossier.",
-      "actions": []
+      "actions": [
+        "list_costings",
+        "get_costing",
+        "create_costing",
+        "update_costing",
+        "costing_status"
+      ]
     },
     {
       "id": "costing_tracking",
@@ -815,7 +938,10 @@
       "area": "costing",
       "module_key": "MOD-47",
       "purpose": "Actual costs booked against a dossier.",
-      "actions": []
+      "actions": [
+        "reconcile_dossier",
+        "record_cost"
+      ]
     },
     {
       "id": "costing_cash_requests",
@@ -824,7 +950,15 @@
       "area": "costing",
       "module_key": "MOD-49",
       "purpose": "Disbursal requests, approval and payout.",
-      "actions": []
+      "actions": [
+        "list_cash_requests",
+        "get_cash_request",
+        "draft_cash_request",
+        "update_cash_request",
+        "transition_cash_request",
+        "disburse_cash_request",
+        "justify_cash_request"
+      ]
     },
     {
       "id": "costing_regie",
@@ -833,7 +967,12 @@
       "area": "costing",
       "module_key": "MOD-49",
       "purpose": "Cash advances held by a régisseur and their justification.",
-      "actions": []
+      "actions": [
+        "list_regie_advances",
+        "get_regie_advance",
+        "issue_regie_advance",
+        "age_regie_advances"
+      ]
     },
     {
       "id": "hr_queries",
@@ -860,7 +999,13 @@
       "area": "operations",
       "module_key": "MOD-29",
       "purpose": "Operations files (dossiers) — the shipment record.",
-      "actions": []
+      "actions": [
+        "list_dossiers",
+        "get_dossier",
+        "open_dossier",
+        "update_dossier",
+        "transition_dossier"
+      ]
     },
     {
       "id": "ops_milestones",
@@ -869,7 +1014,13 @@
       "area": "operations",
       "module_key": "MOD-31",
       "purpose": "Milestone chain and progress per dossier.",
-      "actions": []
+      "actions": [
+        "list_milestone_templates",
+        "dossier_milestones",
+        "publish_milestone_template",
+        "instantiate_milestones",
+        "advance_milestone"
+      ]
     },
     {
       "id": "ops_transit_orders",
@@ -878,7 +1029,12 @@
       "area": "operations",
       "module_key": "MOD-30",
       "purpose": "Transit declarations raised against a dossier.",
-      "actions": []
+      "actions": [
+        "list_transit_orders",
+        "get_transit_order",
+        "create_transit_order",
+        "update_transit_order_docs"
+      ]
     },
     {
       "id": "ops_delivery_notes",
@@ -887,7 +1043,11 @@
       "area": "operations",
       "module_key": "MOD-32",
       "purpose": "Delivery notes issued on arrival.",
-      "actions": []
+      "actions": [
+        "list_delivery_notes",
+        "get_delivery_note",
+        "create_delivery_note"
+      ]
     },
     {
       "id": "ops_service_types",
@@ -896,7 +1056,10 @@
       "area": "operations",
       "module_key": "MOD-29",
       "purpose": "Service taxonomy and its milestone templates.",
-      "actions": []
+      "actions": [
+        "list_service_types",
+        "get_service_type"
+      ]
     },
     {
       "id": "proc_requests",
@@ -905,7 +1068,12 @@
       "area": "procurement",
       "module_key": "MOD-62",
       "purpose": "Purchase requisitions, before a PO.",
-      "actions": []
+      "actions": [
+        "list_purchase_requests",
+        "get_purchase_request",
+        "create_purchase_request",
+        "transition_purchase_request"
+      ]
     },
     {
       "id": "proc_orders",
@@ -914,7 +1082,13 @@
       "area": "procurement",
       "module_key": "MOD-60",
       "purpose": "Orders raised to suppliers.",
-      "actions": []
+      "actions": [
+        "list_purchase_orders",
+        "get_purchase_order",
+        "draft_purchase_order",
+        "update_purchase_order",
+        "transition_purchase_order"
+      ]
     },
     {
       "id": "proc_grn",
@@ -923,7 +1097,11 @@
       "area": "procurement",
       "module_key": "MOD-61",
       "purpose": "Goods-received notes and three-way match.",
-      "actions": []
+      "actions": [
+        "list_goods_received",
+        "get_goods_received",
+        "record_goods_received"
+      ]
     },
     {
       "id": "proc_supplier_invoices",
@@ -932,7 +1110,13 @@
       "area": "procurement",
       "module_key": "MOD-61",
       "purpose": "Supplier invoices, matching and posting.",
-      "actions": []
+      "actions": [
+        "list_supplier_invoices",
+        "get_supplier_invoice",
+        "draft_supplier_invoice",
+        "match_supplier_invoice",
+        "post_supplier_invoice"
+      ]
     },
     {
       "id": "sales_leads",
@@ -941,7 +1125,17 @@
       "area": "sales",
       "module_key": "MOD-20",
       "purpose": "Inbound leads and their qualification.",
-      "actions": []
+      "actions": [
+        "list_enquiries",
+        "list_partnership_requests",
+        "triage_enquiry",
+        "review_partnership",
+        "list_leads",
+        "get_lead",
+        "create_lead",
+        "transition_lead",
+        "convert_lead"
+      ]
     },
     {
       "id": "sales_opportunities",
@@ -950,7 +1144,14 @@
       "area": "sales",
       "module_key": "MOD-24",
       "purpose": "Pipeline of open opportunities by stage.",
-      "actions": []
+      "actions": [
+        "list_opportunities",
+        "pipeline_board",
+        "get_opportunity",
+        "create_opportunity",
+        "move_opportunity",
+        "win_opportunity"
+      ]
     },
     {
       "id": "sales_proposals",
@@ -959,7 +1160,13 @@
       "area": "sales",
       "module_key": "MOD-23",
       "purpose": "Generated client proposals.",
-      "actions": []
+      "actions": [
+        "list_proposals",
+        "get_proposal",
+        "draft_proposal",
+        "transition_proposal",
+        "accept_proposal"
+      ]
     },
     {
       "id": "sales_meetings",
@@ -968,7 +1175,12 @@
       "area": "sales",
       "module_key": "MOD-21",
       "purpose": "Client meetings and their outcomes.",
-      "actions": []
+      "actions": [
+        "list_meetings",
+        "get_meeting",
+        "schedule_meeting",
+        "add_meeting_note"
+      ]
     },
     {
       "id": "sales_campaigns",
@@ -977,7 +1189,12 @@
       "area": "sales",
       "module_key": "MOD-22",
       "purpose": "Marketing campaigns and sends.",
-      "actions": []
+      "actions": [
+        "list_campaigns",
+        "list_subscribers",
+        "create_campaign",
+        "transition_campaign"
+      ]
     },
     {
       "id": "sales_success_stories",
@@ -986,7 +1203,12 @@
       "area": "sales",
       "module_key": "MOD-26",
       "purpose": "Reference projects used in proposals.",
-      "actions": []
+      "actions": [
+        "list_success_stories",
+        "get_success_story",
+        "create_success_story",
+        "publish_success_story"
+      ]
     },
     {
       "id": "security_overview",
@@ -1031,7 +1253,10 @@
       "area": "vault",
       "module_key": "MOD-64",
       "purpose": "Signature blocks used on documents.",
-      "actions": []
+      "actions": [
+        "list_signatures",
+        "sign_document"
+      ]
     },
     {
       "id": "vault_verification",
@@ -1040,7 +1265,9 @@
       "area": "vault",
       "module_key": "MOD-66",
       "purpose": "QR verification of an issued document.",
-      "actions": []
+      "actions": [
+        "verify_document"
+      ]
     },
     {
       "id": "vault_compliance",
@@ -1049,7 +1276,12 @@
       "area": "vault",
       "module_key": "MOD-65",
       "purpose": "Compliance checks raised against records.",
-      "actions": []
+      "actions": [
+        "list_compliance_flags",
+        "compliance_rules",
+        "run_compliance_check",
+        "resolve_compliance_flag"
+      ]
     },
     {
       "id": "vault_reports",
@@ -1058,7 +1290,14 @@
       "area": "vault",
       "module_key": "MOD-63",
       "purpose": "Saved reports and dashboard tiles.",
-      "actions": []
+      "actions": [
+        "list_reports",
+        "run_report",
+        "list_saved_reports",
+        "dashboard_tiles",
+        "save_report",
+        "set_dashboard_tile"
+      ]
     },
     {
       "id": "workspace",
@@ -1085,7 +1324,18 @@
       "area": "comms",
       "module_key": "MOD-64",
       "purpose": "Unified inbox — team chat and email in one conversation list.",
-      "actions": []
+      "actions": [
+        "list_comms_channels",
+        "comms_unread",
+        "search_comms",
+        "create_comms_channel",
+        "post_comms_message",
+        "list_mail_connections",
+        "list_mail_thread",
+        "client_mail_timeline",
+        "send_mail",
+        "reply_mail"
+      ]
     },
     {
       "id": "support",
@@ -1130,7 +1380,12 @@
       "area": "master",
       "module_key": "MOD-08",
       "purpose": "Currency catalogue and live FX rates.",
-      "actions": []
+      "actions": [
+        "list_currencies",
+        "fx_rate",
+        "fx_convert",
+        "set_fx_rate"
+      ]
     },
     {
       "id": "master_tax_jurisdictions",
@@ -1139,7 +1394,14 @@
       "area": "master",
       "module_key": "MOD-07",
       "purpose": "VAT, WHT and other rates, enabled system-wide.",
-      "actions": []
+      "actions": [
+        "list_tax_jurisdictions",
+        "get_tax_jurisdiction",
+        "list_tax_codes",
+        "effective_tax_code",
+        "create_tax_jurisdiction",
+        "add_tax_code"
+      ]
     },
     {
       "id": "settings_document_templates",
@@ -1175,7 +1437,12 @@
       "area": "settings",
       "module_key": "MOD-67",
       "purpose": "Grant and revoke external client, investor and auditor portal logins.",
-      "actions": []
+      "actions": [
+        "list_portal_access",
+        "client_portal_view",
+        "investor_portal_view",
+        "grant_portal_access"
+      ]
     }
   ]
 }

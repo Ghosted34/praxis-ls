@@ -57,13 +57,16 @@ export type AskResult = {
   /**
    * OPTIONAL GROUNDING, and optional on purpose.
    *
-   * The assistant surfaces render a sources footer and a reasoning disclosure
-   * under every answer. Neither waits on this field: sources are derived from
-   * the internal links the model already writes (`components/ai/grounding.ts`),
-   * and the trace simply does not render when absent. These are the structured
-   * versions — authoritative, because the retrieval layer knows which permission
-   * each read was made under, which prose cannot say. Populate them and the UI
-   * upgrades in place; leave them and nothing regresses.
+   * Both are derived server-side from the read actions the orchestrator actually
+   * executed (`src/services/ai/answer-sources.js`) — never from the answer text,
+   * which would report what the model MENTIONED rather than what it read. They
+   * are authoritative for exactly that reason: the read layer knows which action
+   * ran and under which permission, and prose cannot say either.
+   *
+   * OMITTED, not empty, when a turn consulted nothing. Both surfaces render on
+   * presence — the sources footer and the `Trace · N steps` disclosure — so an
+   * empty array would draw a "Trace · 0 steps" control under small talk.
+   * `mergeSources` keeps the link-derived sources as a floor beneath these.
    */
   sources?: AiSourceLike[];
   /** Ordered, human-readable steps taken to reach the answer. */

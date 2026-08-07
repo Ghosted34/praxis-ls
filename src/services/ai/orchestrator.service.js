@@ -15,6 +15,7 @@ const convo = require("../../modules/ai/assistant/assistant.repo");
 const { buildFieldMeta } = require("./action-fields");
 const { logger } = require("../../config/logger");
 const actionAuthz = require("./action-authz");
+const { buildSources, buildTrace } = require("./answer-sources");
 
 /**
  * How many past turns are replayed to the model. Stored history is unbounded —
@@ -300,6 +301,9 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const offered = selectTools(tools, contextText);
   let res = await llm.chat({ client, messages, tools: offered.map(toOpenAiTool) });
   await recordUsage(client, { user, conversationId: history.conversationId, res, feature });
+  // Whether the anti-stall nudge below had to fire. A step in the trace, because
+  // "the model needed prodding" is part of how this answer came about.
+  let nudged = false;
 
   // Anti-stall: the model sometimes ANNOUNCES an action ("Now let me check…",
   // "I'll create it now") but emits no tool call, forcing the user to type
@@ -316,7 +320,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       tools: offered.map(toOpenAiTool),
     });
     await recordUsage(client, { user, conversationId: history.conversationId, res: retry, feature });
-    if (retry.toolCalls.length || (retry.text && retry.text.trim())) res = retry;
+    if (retry.toolCalls.length || (retry.text && retry.text.trim())) {
+      res = retry;
+      nudged = true;
+    }
   }
 
   // Split the model's tool calls: reads are pure, so we run them NOW and let the
@@ -337,26 +344,47 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
 
   let answer = res.text;
 
+  /**
+   * What every read actually returned — the ground truth behind the citations
+   * under the answer and the steps in its trace (`answer-sources.js`).
+   *
+   * Captured HERE, unredacted and uncapped, and not recovered later from the
+   * tool messages: those are truncated to 6 000 characters and scrubbed for
+   * egress to the model, so a row count taken from them would be a count of what
+   * survived the cap, not of what was read. Nothing in this array reaches a
+   * model — only a label, a route and a row count reach the browser.
+   */
+  const readTrace = [];
+
   if (readCalls.length && registry) {
     const toolMsgs = [];
     for (const { call, def } of readCalls) {
       let payload = {};
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
       let content;
+      const step = { actionKey: def.action_key, payload, result: null, failed: false, error: null };
       try {
         // SEC H1. `def.required_permission` was selected into the tool list and
         // never compared against anything. A read action returns tenant data
         // the caller may hold no grant to see, so it is gated on the same terms
         // as a write — and the model gets the denial as tool output rather than
         // an exception, so it can tell the user why instead of the turn dying.
-         
+
         await actionAuthz.assertAllowed(client, user, def);
         const fn = registry[def.action_key];
-        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" };  
-        content = JSON.stringify(out && out.data !== undefined ? out.data : out);
+        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" };
+        step.result = out && out.data !== undefined ? out.data : out;
+        // A missing executor is reported, not thrown, so it lands here rather
+        // than in the catch — and a read that produced only an error grounds
+        // nothing, so it must not become a citation.
+        if (!fn) { step.failed = true; step.error = "no executor"; }
+        content = JSON.stringify(step.result);
       } catch (err) {
+        step.failed = true;
+        step.error = err.message;
         content = JSON.stringify({ error: err.message });
       }
+      readTrace.push(step);
       // Cap + redact so a big list can't blow the context or leak sensitive text.
       toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
     }
@@ -419,9 +447,40 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   }
 
   const batchable = actions.filter((x) => x.requires_confirmation && (!x.validation_errors || x.validation_errors.length === 0));
+
+  /**
+   * Grounding, from the reads rather than from the prose.
+   *
+   * Both fields are OMITTED when empty rather than sent as `[]`, because the
+   * client renders on presence: the trace disclosure and the sources footer both
+   * test length, and an answer that consulted nothing should show nothing rather
+   * than an empty "Trace · 0 steps". `AskResult.sources` / `.trace` are already
+   * optional on the wire (`client/src/lib/ai-api.ts`).
+   *
+   * `sources` never includes a write: a proposed action is what the assistant
+   * wants to DO, not what the answer stands on. It appears in the trace, which
+   * is a record of the turn, not a citation list.
+   */
+  const sources = buildSources(readTrace);
+  const trace = buildTrace({
+    reads: readTrace,
+    writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })),
+    recalled: hits.length,
+    nudged,
+  });
+
   // conversation_id is returned so the client can keep sending the same thread
   // (and so a future multi-thread UI has the handle it would need).
-  return { answer, actions, batch_id: batchId, batch_size: batchable.length, provider: res.provider, conversation_id: history.conversationId };
+  return {
+    answer,
+    actions,
+    batch_id: batchId,
+    batch_size: batchable.length,
+    provider: res.provider,
+    conversation_id: history.conversationId,
+    ...(sources.length ? { sources } : {}),
+    ...(trace.length ? { trace } : {}),
+  };
 }
 
 /**

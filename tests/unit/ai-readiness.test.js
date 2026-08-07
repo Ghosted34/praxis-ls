@@ -33,7 +33,49 @@ describe("UI screen registry", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(new Set(routes).size).toBe(routes.length);
   });
+
+  /**
+   * `actions[]` is read in both directions, and the second one is load-bearing.
+   *
+   * screen->actions grounds the assistant ("where do I raise an invoice?"). The
+   * INVERSION, action->route, is what `src/services/ai/answer-sources.js` turns
+   * the executed reads into citations with. An action missing here is an answer
+   * that cannot say where it read from — and that failure is silent: the
+   * grounding footer just does not appear.
+   */
+  it("declares every manifest action on exactly one screen", () => {
+    const owner = new Map();
+    const duplicated = [];
+    for (const s of registry.screens) {
+      for (const a of s.actions || []) {
+        if (owner.has(a)) duplicated.push(`${a} (${owner.get(a)} and ${s.id})`);
+        else owner.set(a, s.id);
+      }
+    }
+    expect(duplicated).toEqual([]);
+
+    const undeclared = [];
+    for (const file of manifestFiles()) {
+      // dynamic require of a discovered manifest path (trusted, local)
+      const m = require(file);
+      for (const a of [...(m.reads || []), ...(m.writes || [])]) {
+        if (!owner.has(a.key)) undeclared.push(`${a.key} (${path.relative(process.cwd(), file)})`);
+      }
+    }
+    expect(undeclared).toEqual([]);
+  });
 });
+
+/** Every `<module>.ai.js` in the repo. */
+function manifestFiles(dir = path.resolve(__dirname, "../../src/modules"), out = []) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+    if (e.name === "node_modules") continue;
+    const full = path.join(dir, e.name);
+    if (e.isDirectory()) manifestFiles(full, out);
+    else if (e.name.endsWith(".ai.js")) out.push(full);
+  }
+  return out;
+}
 
 describe("AI knowledge walker ingests the UI", () => {
   const items = codebase.collect();
@@ -48,15 +90,7 @@ describe("AI knowledge walker ingests the UI", () => {
 });
 
 describe("every <module>.ai.js manifest is well-formed", () => {
-  const manifests = [];
-  (function walk(dir) {
-    for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-      if (e.name === "node_modules") continue;
-      const full = path.join(dir, e.name);
-      if (e.isDirectory()) walk(full);
-      else if (e.name.endsWith(".ai.js")) manifests.push(full);
-    }
-  })(path.resolve(__dirname, "../../src/modules"));
+  const manifests = manifestFiles();
 
   it("finds at least the exemplar", () => {
     expect(manifests.length).toBeGreaterThanOrEqual(1);

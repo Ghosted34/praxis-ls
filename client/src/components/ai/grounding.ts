@@ -8,14 +8,23 @@
  * one, and notice when an answer is long enough that it belongs on a canvas
  * rather than in a chat bubble.
  *
- * WHY DERIVE RATHER THAN WAIT FOR THE BACKEND. `/ai/ask` returns prose plus
- * proposed actions and nothing else today (`lib/ai-api.ts`), so a grounding
- * footer that renders only from a `sources[]` field would be a footer that never
- * renders. The model already writes internal links — `[INV-2026-0031](/finance/
- * invoices/8f2c)` — because the screen registry it is grounded on is a map of
- * routes. So the links ARE the citations; they just were not being treated as
- * such. When the backend does start sending structured sources, `mergeSources`
- * folds them in and the derived ones stay as the floor.
+ * WHERE THE CITATIONS COME FROM, AND WHY THERE ARE TWO SOURCES OF THEM.
+ *
+ * `/ai/ask` now returns structured `sources[]`, built server-side from the rows
+ * the orchestrator's read actions actually returned
+ * (`src/services/ai/answer-sources.js`). Those are the real citations: they say
+ * what was READ, under a known permission, which no amount of reading the prose
+ * can establish.
+ *
+ * `extractSources` remains, and remains the FLOOR rather than the mechanism. It
+ * was written on the assumption that the model writes internal links —
+ * `[INV-2026-0031](/finance/invoices/8f2c)` — because the screen registry it is
+ * grounded on is a map of routes. It does not, and the system prompt tells it
+ * not to ("NEVER show the user raw database identifiers"), which is why the
+ * footer had never rendered. What it still catches is the case the backend
+ * cannot: a route the model knew from the registry and linked deliberately, in
+ * an answer that read nothing. `mergeSources` folds the two together with the
+ * backend's winning on collision.
  *
  * Everything here is pure and string-in/data-out, so it is testable without a
  * render and cheap enough to run inside a `useMemo` on every turn.

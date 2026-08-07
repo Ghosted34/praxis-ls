@@ -453,12 +453,26 @@ function OneTable({ table, index }: { table: AiTable; index: number }) {
  * through — so a source chip answers "what am I about to open?" without a
  * navigation you then have to undo.
  *
- * It does NOT render the record's own detail view inline. Doing that needs a
- * registry of preview components keyed by route, one per record type, and
- * inventing that here would be a second rendering path for every detail screen
- * in the product — the exact duplication this codebase keeps having to undo.
- * The pane is built so that adding one later is a swap of this body, not a
- * change to the pane.
+ * It does NOT render the record's own detail view inline, and after looking at
+ * what that would take, it should not — the blocker is not the registry, it is
+ * ADDRESSABILITY.
+ *
+ * This product is hub-routed. `app.tsx` declares `/finance/:section`,
+ * `/fleet/:section`, `/master/:section` and so on; the only record-addressable
+ * routes in the whole app are `/master/corporate-entities/:entityId` and
+ * `/documents/:docType/:id`. Record detail is rendered INSIDE a hub section, in
+ * that section's own component and its own local state, so there is no
+ * `<InvoiceDetail id>` to mount here — a preview registry would mean AUTHORING
+ * one per record type, which is precisely the second rendering path for every
+ * detail screen that this comment was already warning about, ~70 times over.
+ *
+ * The upstream consequence is sharper: because no record route exists, a
+ * citation's href is the SCREEN a record lives on and its identity is carried by
+ * the label (see `src/services/ai/answer-sources.js`). So for most sources there
+ * is no record id to preview even in principle. The prerequisite for an inline
+ * preview is deep-linkable records — once a list screen honours a record
+ * deep-link, both this body and `hrefFor` on the server become worth changing,
+ * and in that order. Until then this shows what the product actually knows.
  */
 function RecordView({ source }: { source: AiSource | null }) {
   if (!source) {

@@ -9,6 +9,45 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  # MANUAL KICK — added 2026-08-06, during the GitHub Actions incident of that
+  # afternoon (githubstatus.com): *"Webhook triggers remain throttled to support
+  # recovery. Many push and pull request events are not yet triggering new
+  # workflow runs."*
+  #
+  # WHAT THE INCIDENT DID TO US. For roughly seven hours no CI run was created
+  # at all — not for PRs, not for pushes. Two merges reached `main`, #87 and
+  # #88, and neither produced one; the last push-to-`main` run was #234 at
+  # 14:47Z. CodeQL kept completing on the same commits CI never started on,
+  # which is what makes this so easy to misread as a repo-level fault. It was
+  # not: CI's `state` was `active` throughout, and nothing here was misconfigured.
+  #
+  # THE CONSEQUENCE IS WHY THIS TRIGGER EXISTS. `deploy.yaml` fires on
+  # `workflow_run: workflows: ["CI"]`, so no CI run means no `workflow_run`
+  # event means NO DEPLOY. Work merged to `main` silently stopped reaching
+  # production, and nothing anywhere said so — the PRs looked merged, `main`
+  # looked healthy, and the last deploy quietly receded into the afternoon. A
+  # red build shouts. This failure mode is silent, which makes it the worse one.
+  #
+  # AND MISSED TRIGGERS ARE NOT REPLAYED. That is the whole case for this. When
+  # an incident like that clears, GitHub does not go back and fire the events it
+  # dropped: `main` is simply left with commits that have no CI run and no
+  # deploy, permanently, and the next commit to land only covers itself. Before
+  # this trigger existed the only recovery was an empty commit to `main` —
+  # inventing history to work around an outage. `workflow_dispatch` is the route
+  # that needs no commit: run CI on the ref that was missed, and if it goes green
+  # the existing deploy chain fires by itself. That is the ordinary path, not a
+  # bypass of it.
+  #
+  # NOTE: deliberately CI's dispatch and NOT `deploy.yaml`'s, which already has
+  # one. That one deploys WITHOUT CI. This one makes the deploy earned.
+  #
+  # No inputs on purpose. `workflow_dispatch` already carries the ref you launch
+  # it against — the branch picker in the UI, `ref` on the API — and every job
+  # here checks out `github.ref` by default, so it works with nothing threaded
+  # through. An input would have to be plumbed into five separate `checkout`
+  # steps to mean anything, and a knob that is honoured by four jobs out of five
+  # is worse than no knob.
+  workflow_dispatch:
 
 # TC-D8 — CI had no concurrency group while `deploy.yaml` correctly has one.
 #

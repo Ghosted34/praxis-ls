@@ -32,11 +32,17 @@ const { AppError } = require("../../utils/errors");
 const PARTY = {
   client: {
     table: "client_master", pk: "client_id", parent: "4111",
-    labelFr: "Client", labelEn: "Client", mirrors: { ADVANCE: "4191" },
+    labelFr: "Client", labelEn: "Client",
+    mirrors: { ADVANCE: "4191" },
+    // The master column that records each mirror account's code — the explicit
+    // link that replaces the fragile "shared suffix" positional link.
+    mirrorColumns: { ADVANCE: "coa_advance_account" },
   },
   supplier: {
     table: "supplier_master", pk: "supplier_id", parent: "4011",
-    labelFr: "Fournisseur", labelEn: "Supplier", mirrors: { ADVANCE: "4091", WHT: "4474" },
+    labelFr: "Fournisseur", labelEn: "Supplier",
+    mirrors: { ADVANCE: "4091", WHT: "4474" },
+    mirrorColumns: { ADVANCE: "coa_advance_account", WHT: "coa_wht_account" },
   },
 };
 
@@ -59,12 +65,34 @@ function nextAuxCode(parent, maxChild) {
 }
 
 /**
- * A mirror account shares the aux account's 4-digit suffix under a different
- * control account — 41110007 → (4191) → 41910007 — so the two are found from
- * one another without a join.
+ * The suffix-shared mirror code — 41110007 → (4191) → 41910007. This is the
+ * PREFERRED code (it keeps the aux/mirror pair legible), but it is no longer
+ * trusted blindly: sharing a 4-digit suffix collides once a control account has
+ * more than 9999 children (the aux code overflows and the suffix wraps), at
+ * which point two parties map to the same mirror code. `chooseMirrorCode` adds
+ * the collision check.
  */
 function mirrorCodeFor(auxCode, mirrorParent) {
   return `${mirrorParent}${String(auxCode).slice(-4)}`;
+}
+
+/**
+ * Pick a mirror account code that is guaranteed free (PR3 §12, mirror-collision
+ * fix). Prefer the suffix-shared code; if it is already taken — another party's
+ * mirror after a suffix wrap — allocate the next child from the mirror parent's
+ * OWN sequence instead, exactly as an aux account is allocated. Pure, so both
+ * branches are unit-tested directly.
+ *
+ * @param {object} a
+ * @param {string} a.auxCode        the party's aux account code.
+ * @param {string} a.mirrorParent   the mirror control account (4191/4091/4474).
+ * @param {boolean} a.suffixTaken   is the suffix-shared code already in the COA?
+ * @param {?string} a.maxMirrorChild highest existing child under `mirrorParent`.
+ */
+function chooseMirrorCode({ auxCode, mirrorParent, suffixTaken, maxMirrorChild }) {
+  const preferred = mirrorCodeFor(auxCode, mirrorParent);
+  if (!suffixTaken) return preferred;
+  return nextAuxCode(mirrorParent, maxMirrorChild);
 }
 
 // ── DB operations (run inside the caller's transaction) ─────────────────────
@@ -140,14 +168,25 @@ async function ensureMirror(client, { kind, partyId, mirror }) {
   if (!cfg) throw new AppError("BAD_PARTY_KIND", `unknown party kind "${kind}"`, 422);
   const mirrorParent = cfg.mirrors[mirror];
   if (!mirrorParent) throw new AppError("BAD_MIRROR", `${kind} has no ${mirror} mirror account`, 422);
+  const column = cfg.mirrorColumns[mirror];
 
   const party = await partyRow(client, cfg, partyId);
   if (!party) throw new AppError("NOT_FOUND", `${kind} not found`, 404);
+  // Idempotent on the RECORDED link: a stored code is unambiguously this party's
+  // mirror account, so a re-call never risks returning another party's.
+  if (column && party[column]) return { code: party[column], created: false };
+
   const aux = party.coa_aux_account || (await allocateAux(client, { kind, partyId })).code;
 
-  const code = mirrorCodeFor(aux, mirrorParent);
-  const existing = await coaRepo.get(client, code);
-  if (existing) return { code, created: false };
+  // Prefer the suffix-shared code; on a collision fall back to the mirror
+  // parent's own next child (PR3 §12). `maxChildCode` is only queried when the
+  // suffix is actually taken, so the common path stays a single lookup.
+  const preferred = mirrorCodeFor(aux, mirrorParent);
+  const clash = await coaRepo.get(client, preferred);
+  const code = chooseMirrorCode({
+    auxCode: aux, mirrorParent, suffixTaken: !!clash,
+    maxMirrorChild: clash ? await maxChildCode(client, mirrorParent) : null,
+  });
 
   const parent = await coaRepo.get(client, mirrorParent);
   if (!parent) throw new AppError("NO_CONTROL_ACCOUNT", `control account ${mirrorParent} is missing`, 500);
@@ -156,6 +195,10 @@ async function ensureMirror(client, { kind, partyId, mirror }) {
   await insertLeaf(client, {
     code, parent, labelFr: `${lbl.fr} ${name}`, labelEn: `${lbl.en} ${name}`, entityId: party.entity_id,
   });
+  // Record the explicit link so the pair is found without relying on the suffix.
+  if (column) {
+    await client.query(`UPDATE ${cfg.table} SET ${column} = $1, updated_at = now() WHERE ${cfg.pk} = $2`, [code, partyId]);
+  }
   return { code, created: true };
 }
 
@@ -173,6 +216,7 @@ module.exports = {
   PARTY,
   nextAuxCode,
   mirrorCodeFor,
+  chooseMirrorCode,
   allocateAux,
   ensureMirror,
   deactivateAux,

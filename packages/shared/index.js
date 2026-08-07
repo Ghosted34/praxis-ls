@@ -38,6 +38,12 @@ exports.partyConfig = partyConfig;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 exports.countries = countries;
+// NOTE: expectedRegistrations() lives in ./data/registrations.js as a ready
+// module but is deliberately NOT re-exported here yet. `check:schemas` requires
+// every index export to be consumed by BOTH the API and the client; the two
+// consumers (the create form and the backend registration validator) land in
+// PR3-B, and this export is wired up there — exporting it now would trip the
+// gate as an unused "third definition".
 // Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
 // Zod refinement.
 exports.ledger = ledger;

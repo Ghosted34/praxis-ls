@@ -237,6 +237,14 @@ const Schema = z.object({
   // How often to renew push subscriptions (Graph webhooks expire ~3d). 0 disables.
   MAIL_WEBHOOK_RENEW_INTERVAL_MS: int(21600000), // 6h
 
+  // Error Command Center (doc/PROMPT_ErrorMonitor_Module.md §5.3): how often the
+  // escalation evaluator sweeps active rules. 0 disables escalation entirely
+  // while leaving capture, the feed and the dashboard fully working — which is
+  // the right default posture for a fresh deploy that has no recipients
+  // configured yet. 60s is well inside the smallest sensible rule window (the
+  // schema floors threshold_window_minutes at 1).
+  ERROR_ESCALATION_INTERVAL_MS: int(60000),
+
   // Gmail push (optional): Cloud Pub/Sub topic for users.watch. Empty ⇒ Gmail
   // stays on delta polling (no push).
   GOOGLE_PUBSUB_TOPIC: z.string().default(""),

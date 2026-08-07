@@ -13,6 +13,8 @@ import { Catalogue } from "@/features/Catalogue";
 import { Audit } from "@/features/Audit";
 import { Support } from "@/features/Support";
 import { Integrations } from "@/features/Integrations";
+import { ErrorCenter } from "@/features/ErrorCenter";
+import { ErrorCenterSettings } from "@/features/ErrorCenterSettings";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const loc = useLocation();
@@ -34,6 +36,15 @@ export default function App() {
       <Route path="/integrations" element={<RequireAuth><Integrations /></RequireAuth>} />
       {/* AI vendor keys now live under Integrations → AI providers. */}
       <Route path="/ai-vendors" element={<Navigate to="/integrations" replace />} />
+      {/* Error Command Center. The spec names the route /admin/error-center;
+          on this app the host IS admin (platform-console is host-gated to
+          admin.praxisls.com), so the /admin prefix is redundant here and the
+          canonical path is /error-center. The prefixed form is kept as a
+          redirect so links written against the spec still resolve. */}
+      <Route path="/error-center" element={<RequireAuth><ErrorCenter /></RequireAuth>} />
+      <Route path="/error-center/settings" element={<RequireAuth><ErrorCenterSettings /></RequireAuth>} />
+      <Route path="/admin/error-center" element={<Navigate to="/error-center" replace />} />
+      <Route path="/admin/error-center/settings" element={<Navigate to="/error-center/settings" replace />} />
       <Route path="/audit" element={<RequireAuth><Audit /></RequireAuth>} />
       <Route path="/support" element={<RequireAuth><Support /></RequireAuth>} />
       <Route path="*" element={<Navigate to={session.token ? "/overview" : "/login"} replace />} />

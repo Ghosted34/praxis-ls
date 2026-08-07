@@ -14,4 +14,5 @@ module.exports = {
   unblock: actions.unblock,
   verify: actions.verify,
   convert: actions.convert,
+  dedupeCheck: actions.dedupeCheck,
 };

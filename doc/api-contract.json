@@ -2,13 +2,19 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 818,
+  "route_count": 838,
   "tiers": {
     "public": 19,
     "self-scoped": 57,
-    "gated": 742
+    "gated": 762
   },
   "routes": {
+    "DELETE /api/platform/escalation/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/platform/plans/:id": {
       "auth": true,
       "rbac": true,
@@ -454,6 +460,66 @@
       "tier": "gated"
     },
     "GET /api/platform/catalogue/modules": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/:id/share": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/export": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/modules": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/recent": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/stats": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/errors/trends": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/escalation/log": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/platform/escalation/rules": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2535,6 +2601,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "PATCH /api/platform/escalation/rules/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/platform/plans/:id": {
       "auth": true,
       "rbac": true,
@@ -3111,6 +3183,36 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/platform/errors/:id/explain": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/errors/:id/reopen": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/errors/:id/resolve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/escalation/rules": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/platform/escalation/rules/preview": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/platform/plans": {
       "auth": true,
       "rbac": true,
@@ -3556,6 +3658,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/clients/convert-from-supplier/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/dedupe-check": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4617,6 +4725,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/suppliers/dedupe-check": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/support/tickets": {
       "auth": true,
       "rbac": false,
@@ -4792,6 +4906,12 @@
       "tier": "gated"
     },
     "PUT /api/platform/ai-vendors/:vendor": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/platform/escalation/rules/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,

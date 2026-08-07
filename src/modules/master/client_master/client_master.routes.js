@@ -16,6 +16,9 @@ router.use(authMiddleware);
 // before the /:id family; its static prefix keeps it unambiguous either way.
 router.post("/convert-from-supplier/:id", requirePermission(MODULE, "create"), controller.convert);
 
+// Non-blocking duplicate detection (§5.1) — static prefix, before /:id.
+router.post("/dedupe-check", requirePermission(MODULE, "view"), validate(partyCommon.dedupeCheck), controller.dedupeCheck);
+
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/credit", requirePermission(MODULE, "view"), controller.creditCheck);

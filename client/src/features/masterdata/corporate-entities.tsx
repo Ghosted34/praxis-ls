@@ -3,10 +3,12 @@
  *
  * Split out of `features/masterdata/pages.tsx` in Phase 4 (audit F7).
  *
- * This is the LIST. Clicking a row opens the dossier at
- * /master/corporate-entities/:id (features/masterdata/entity-360.tsx), which is
- * where everything about an entity lives — registrations, people and
- * shareholding, addresses, group structure, treasury.
+ * A master–detail screen: a searchable list of entities on the left, the full
+ * dossier inline on the right (features/masterdata/entity-360.tsx, EntityDossier)
+ * — the same shape as the client and supplier masters. Everything about an entity
+ * lives on the dossier: registrations, people and shareholding, addresses, group
+ * structure, treasury. It stays deep-linkable on its own route
+ * (/master/corporate-entities/:id) for links from payroll, invoices and alerts.
  *
  * The form here stays deliberately narrow. Creating an entity asks for what is
  * needed to open the file (code, legal name, country, prefix) plus the document
@@ -15,24 +17,24 @@
  */
 
 import * as React from "react";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ScreenAi } from "@/components/screen-ai";
 import { Button } from "@/components/ui/button";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
-import { ErrorState } from "@/components/ui/states";
-import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
+import { SplitPane } from "@/components/ui/split-pane";
+import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
-import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { RowActions } from "@/components/ui/row-actions";
 import { useList, errMsg } from "@/lib/use-resource";
-import { num, enumLabel } from "@/lib/format";
+import { enumLabel } from "@/lib/format";
 import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
+import { EntityDossier } from "./entity-360";
 
 const LIFECYCLE_TONE: Record<string, Tone> = {
   DRAFT: "mute", PENDING_REVIEW: "blue", ACTIVE: "ok",
@@ -209,77 +211,60 @@ function EntityForm({ row, entities, onClose, onSaved }: {
 
 export function CorporateEntitiesPage() {
   const { rows, error, loading, reload } = useList<api.Entity>("/entities");
-  const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
+  const [selId, setSelId] = React.useState<string | null>(null);
+  const [q, setQ] = React.useState("");
   const [editing, setEditing] = React.useState<api.Entity | "new" | null>(null);
   const entities = React.useMemo(() => rows || [], [rows]);
 
-  // The dossier's "Edit details" button links back here with ?edit=<id> — one
-  // form, reachable from both places, rather than a second copy on the dossier.
+  const statusOf = (r: api.Entity) => r.registration_status || (r.is_active ? "ACTIVE" : "DEACTIVATED");
+  const filtered = q ? entities.filter((e) => `${e.code} ${e.legal_name}`.toLowerCase().includes(q.toLowerCase())) : entities;
+  const selected = entities.find((e) => e.entity_id === selId) || null;
+  React.useEffect(() => { if (!selId && entities.length) setSelId(entities[0].entity_id); }, [entities, selId]);
+
+  // The dossier's "Edit details" links back here with ?edit=<id> — used by the
+  // deep-link page. One form, reachable from both places: open it and select
+  // that entity in the list.
   const editId = params.get("edit");
   React.useEffect(() => {
     if (!editId) return;
     const found = entities.find((e) => e.entity_id === editId);
     if (found) {
       setEditing(found);
+      setSelId(found.entity_id);
       params.delete("edit");
       setParams(params, { replace: true });
     }
   }, [editId, entities, params, setParams]);
-
-  const statusOf = (r: api.Entity) => r.registration_status || (r.is_active ? "ACTIVE" : "DEACTIVATED");
-
-  const columns: Column<api.Entity>[] = [
-    { key: "code", label: "Code", render: (r) => <span className="num font-medium text-foreground">{r.code}</span> },
-    {
-      key: "legal_name", label: "Legal name",
-      render: (r) => (
-        <span>
-          <span className="text-foreground">{r.legal_name}</span>
-          {r.parent_entity_id && <> <Pill tone="mute">{r.relationship_type ? enumLabel(r.relationship_type) : "Subsidiary"}</Pill></>}
-        </span>
-      ),
-    },
-    { key: "country_code", label: "Country" },
-    { key: "legal_form", label: "Form", render: (r) => r.legal_form || "—" },
-    { key: "accounting_framework", label: "Framework", render: (r) => (r.accounting_framework ? enumLabel(r.accounting_framework) : "—") },
-    { key: "doc_prefix", label: "Doc prefix" },
-    { key: "fiscal_year_start_month", label: "FY start", render: (r) => (r.fiscal_year_start_month ? new Date(2000, r.fiscal_year_start_month - 1, 1).toLocaleString("en", { month: "short" }) : "—") },
-    { key: "registration_status", label: "Status", render: (r) => <Pill tone={LIFECYCLE_TONE[statusOf(r)] || "mute"}>{enumLabel(statusOf(r))}</Pill> },
-    {
-      key: "_a", label: "", render: (r) => (
-        <RowActions>
-          <Button size="sm" variant="ghost" onClick={() => navigate(`/master/corporate-entities/${r.entity_id}`)}>Open</Button>
-          <Button size="sm" variant="ghost" onClick={() => setEditing(r)}>Edit</Button>
-        </RowActions>
-      ),
-    },
-  ];
 
   return (
     <section className={shell}>
       <PageHeader
         eyebrow={<HubCrumb area="Master data" to="/master" />}
         title="Corporate entities"
-        description="The legal entities we bill and report from. Open one for its registrations, shareholders, addresses and group structure."
+        description="The legal entities we bill and report from — registrations, shareholders, addresses and group structure, per entity."
         action={<Button onClick={() => setEditing("new")}>New entity</Button>}
       />
       <HubTabs />
-      <KpiRow>
-        <KpiTile label="Entities" value={num(entities.length)} />
-        <KpiTile label="Active" value={num(entities.filter((e) => statusOf(e) === "ACTIVE").length)} />
-        <KpiTile label="Countries" value={num(new Set(entities.map((e) => e.country_code).filter(Boolean)).size)} />
-        <KpiTile label="Subsidiaries" value={num(entities.filter((e) => e.parent_entity_id).length)} />
-      </KpiRow>
-      <DataList
-        columns={columns}
-        rows={rows}
-        error={error}
-        loading={loading}
-        rowKey={(r) => r.entity_id}
-        onRowClick={(r) => navigate(`/master/corporate-entities/${r.entity_id}`)}
-        empty={{ title: "No entities yet", hint: "Add the legal entity that issues your documents." }}
-      />
+      {error ? <ErrorState message={error} /> : (
+        <SplitPane storageKey="master.corporate-entities" label="Entity list width" defaultSize={280} min={220} max={480}>
+          <div className="space-y-2">
+            <Input placeholder="Search entity…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+              {loading ? <LoadingRow label="Loading entities…" /> : filtered.length === 0 ? <div className="px-3 py-4 micro">No entities.</div> : filtered.map((en) => (
+                <button key={en.entity_id} onClick={() => setSelId(en.entity_id)}
+                  className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${en.entity_id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}>
+                  <span className="min-w-0 truncate"><span className="num font-medium">{en.code}</span> · {en.legal_name}</span>
+                  <Pill tone={LIFECYCLE_TONE[statusOf(en)] || "mute"}>{enumLabel(statusOf(en))}</Pill>
+                </button>
+              ))}
+            </div>
+          </div>
+          {selected
+            ? <EntityDossier entityId={selected.entity_id} onEdit={() => setEditing(selected)} onChanged={reload} />
+            : <EmptyState title="No entity selected" hint="Choose an entity from the list." />}
+        </SplitPane>
+      )}
       {editing !== null && (
         <EntityForm
           row={editing === "new" ? null : editing}
@@ -287,9 +272,9 @@ export function CorporateEntitiesPage() {
           onClose={() => setEditing(null)}
           onSaved={(saved) => {
             reload();
-            // A brand-new entity opens straight into its dossier: the readiness
-            // checklist there is what tells the operator what is still missing.
-            if (editing === "new" && saved?.entity_id) navigate(`/master/corporate-entities/${saved.entity_id}`);
+            // A brand-new entity is selected straight away: the readiness
+            // checklist on its dossier is what says what is still missing.
+            if (saved?.entity_id) setSelId(saved.entity_id);
           }}
         />
       )}

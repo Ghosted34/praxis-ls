@@ -1,10 +1,15 @@
 /**
- * Corporate entity dossier (MOD-01) — the full page behind a row on
- * /master/corporate-entities.
+ * Corporate entity dossier (MOD-01).
  *
- * A FULL ROUTE, not a modal: this object has to be deep-linkable. You want to
- * link to it from a payroll run, from an invoice footer configuration, from a
- * compliance alert, and from a chat message. A modal cannot be linked to.
+ * `EntityDossier` is the reusable body — header card, readiness, KPIs and the
+ * tabbed collections. It renders inline in the master–detail list
+ * (features/masterdata/corporate-entities.tsx), the same way the client and
+ * supplier masters embed party-360.
+ *
+ * `EntityDossierPage` wraps it for the deep-link route
+ * (/master/corporate-entities/:id): this object still has to be linkable on its
+ * own — from a payroll run, an invoice footer, a compliance alert, a chat
+ * message — which a modal could never be.
  *
  * One `/entities/:id/360` call feeds every tab, and the page renders for a
  * brand-new entity with nothing filled in — the readiness checklist is the
@@ -30,11 +35,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
-import { PageHeader } from "@/components/data-list";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
+import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
 
@@ -89,7 +94,7 @@ function Detail({ label, children }: { label: string; children?: React.ReactNode
 
 function Section({ title, description, action, children }: { title: string; description?: string; action?: React.ReactNode; children: React.ReactNode }) {
   return (
-    <section className="space-y-3 rounded-lg border p-4">
+    <section className="space-y-3 rounded-xl border bg-card p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
           <h3 className="text-sm font-semibold text-foreground">{title}</h3>
@@ -263,8 +268,15 @@ const ESTABLISHMENT_FIELDS: FieldSpec[] = [
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
-export function EntityDossierPage() {
-  const { entityId = "" } = useParams();
+export function EntityDossier({ entityId, onEdit, onChanged }: {
+  entityId: string;
+  /** Opens the entity's edit form — owned by the host screen (the master–detail
+   *  list, or the deep-link page), so there is one form reachable from both. */
+  onEdit: () => void;
+  /** Fired after any change here, so a host list can refresh its rows — a status
+   *  change on the dossier is visible in the list beside it. */
+  onChanged?: () => void;
+}) {
   const navigate = useNavigate();
   const toast = useToast();
   const d = useResource<api.Entity360>(() => api.entityDossier(entityId), [entityId]);
@@ -272,7 +284,7 @@ export function EntityDossierPage() {
   const [editing, setEditing] = React.useState<null | { seg: api.EntityCollection; title: string; fields: FieldSpec[]; row?: Record<string, unknown> | null }>(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
 
-  const reload = () => d.reload();
+  const reload = () => { d.reload(); onChanged?.(); };
 
   async function saveChild(seg: api.EntityCollection, values: Record<string, unknown>, childId?: string) {
     // Empty strings mean "not filled in", not "set to empty" — the API's shared
@@ -292,16 +304,9 @@ export function EntityDossierPage() {
     } catch (e) { reportActionError(e); }
   }
 
-  if (d.loading) return <section className="p-6"><LoadingRow label="Loading entity…" /></section>;
+  if (d.loading) return <LoadingRow label="Loading entity…" />;
   if (d.error || !d.data) {
-    return (
-      <section className="p-6">
-        <ErrorState
-          message={d.error ? errMsg(d.error) : "Entity not found."}
-          action={<Button variant="outline" onClick={() => navigate("/master/corporate-entities")}>Back to entities</Button>}
-        />
-      </section>
-    );
+    return <ErrorState message={d.error ? errMsg(d.error) : "Entity not found."} />;
   }
 
   const { entity: e, structure, people, contacts, addresses, registrations, establishments, cap_table: cap, usage, readiness, treasury_accounts: treasury, expiring_registrations: expiring, can_see_governance: gov } = d.data;
@@ -311,27 +316,31 @@ export function EntityDossierPage() {
   const officers = people.filter((p) => p.role !== "SHAREHOLDER");
 
   return (
-    <section className="mx-auto w-full max-w-6xl space-y-4 p-4 sm:p-6">
-      <PageHeader
-        eyebrow={<Link to="/master/corporate-entities" className="micro text-muted-foreground hover:text-foreground">← Corporate entities</Link>}
-        title={e.legal_name}
-        description={
-          <span className="flex flex-wrap items-center gap-2">
-            <span className="num font-medium text-foreground">{e.code}</span>
-            <Pill tone={LIFECYCLE_TONE[status] || "mute"}>{enumLabel(status)}</Pill>
-            {e.legal_form && <Pill tone="mute">{e.legal_form}</Pill>}
-            {e.country_code && <Pill tone="mute">{e.country_code}</Pill>}
-            {e.accounting_framework && <Pill tone="blue">{enumLabel(e.accounting_framework)}</Pill>}
-            {structure.is_group_parent && <Pill tone="ok">Group parent</Pill>}
-          </span>
-        }
-        action={
-          <div className="flex flex-wrap gap-2">
-            <Button variant="outline" onClick={() => setStatusOpen(true)}>Change status</Button>
-            <Button onClick={() => navigate(`/master/corporate-entities?edit=${e.entity_id}`)}>Edit details</Button>
+    <div className="space-y-4">
+      {/* Header card — the client/supplier 360 surface (party-360.tsx), so the
+          three masters read as one family. */}
+      <div className="rounded-xl border bg-card p-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="truncate text-lg font-semibold text-foreground">{e.legal_name}</h3>
+              <Pill tone={LIFECYCLE_TONE[status] || "mute"}>{enumLabel(status)}</Pill>
+              {e.legal_form && <Pill tone="mute">{e.legal_form}</Pill>}
+              {e.country_code && <Pill tone="mute">{e.country_code}</Pill>}
+              {e.accounting_framework && <Pill tone="blue">{enumLabel(e.accounting_framework)}</Pill>}
+              {structure.is_group_parent && <Pill tone="ok">Group parent</Pill>}
+            </div>
+            <p className="mt-1 micro">
+              <span className="num font-medium text-foreground">{e.code}</span>
+              {e.trading_name ? ` · ${e.trading_name}` : ""}
+            </p>
           </div>
-        }
-      />
+          <div className="flex flex-wrap gap-2">
+            <Button size="sm" variant="outline" onClick={() => setStatusOpen(true)}>Change status</Button>
+            <Button size="sm" onClick={onEdit}>Edit details</Button>
+          </div>
+        </div>
+      </div>
 
       {/* The readiness checklist IS the empty state: a new entity opens here and
           is told what to fill in, rather than showing six blank tabs. */}
@@ -383,7 +392,7 @@ export function EntityDossierPage() {
         <div className="grid gap-4 lg:grid-cols-2">
           <Section title="About" description="Shown on the entity picker and internal directories.">
             <p className="text-sm text-muted-foreground">{e.description || "No description yet."}</p>
-            <dl className="grid gap-3 sm:grid-cols-2">
+            <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Trading name">{e.trading_name}</Detail>
               <Detail label="Industry">{e.industry}</Detail>
               <Detail label="Website">{e.website}</Detail>
@@ -394,7 +403,7 @@ export function EntityDossierPage() {
           </Section>
 
           <Section title="Incorporation" description="The statutory facts printed on documents.">
-            <dl className="grid gap-3 sm:grid-cols-2">
+            <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Legal form">{e.legal_form}</Detail>
               <Detail label="Incorporated">{e.incorporation_date ? dateFmt(e.incorporation_date) : null}</Detail>
               <Detail label="Place">{e.incorporation_place}</Detail>
@@ -409,7 +418,7 @@ export function EntityDossierPage() {
             title="Defaults carried into other modules"
             description="What HR, payroll and billing inherit when someone picks this entity."
           >
-            <dl className="grid gap-3 sm:grid-cols-2">
+            <dl className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
               <Detail label="Accounting framework">{e.accounting_framework ? enumLabel(e.accounting_framework) : null}</Detail>
               <Detail label="Default currency">{e.default_currency}</Detail>
               <Detail label="Payroll country">{e.payroll_country}</Detail>
@@ -725,7 +734,7 @@ export function EntityDossierPage() {
       {tab === "Structure" && (
         <div className="space-y-4">
           <Section title="Position in the group" description="A subsidiary is its own entity with its own books — this records how it relates to the parent.">
-            <dl className="grid gap-3 sm:grid-cols-3">
+            <dl className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
               <Detail label="Parent">
                 {structure.ancestors.length
                   ? <Link className="underline" to={`/master/corporate-entities/${structure.ancestors[0].entity_id}`}>{structure.ancestors[0].code} — {structure.ancestors[0].legal_name}</Link>
@@ -834,6 +843,25 @@ export function EntityDossierPage() {
           onSaved={reload}
         />
       )}
+    </div>
+  );
+}
+
+/**
+ * The deep-link route (`/master/corporate-entities/:id`). The dossier is now
+ * reached inline from the master–detail list, but it must stay linkable on its
+ * own — from a payroll run, an invoice footer, a compliance alert, a chat
+ * message — so this thin page renders the same body against the URL's id.
+ */
+export function EntityDossierPage() {
+  const { entityId = "" } = useParams();
+  const navigate = useNavigate();
+  return (
+    <section className={`${pageShell.wide} space-y-4`}>
+      <div className="micro">
+        <Link to="/master/corporate-entities" className="text-muted-foreground hover:text-foreground">← Corporate entities</Link>
+      </div>
+      <EntityDossier entityId={entityId} onEdit={() => navigate(`/master/corporate-entities?edit=${entityId}`)} />
     </section>
   );
 }

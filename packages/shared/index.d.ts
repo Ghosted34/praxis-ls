@@ -452,6 +452,54 @@ export declare namespace partyCommon {
   const ADDRESS_TYPES: readonly string[];
 }
 
+/**
+ * Nested resources owned by a corporate entity (MOD-01). Separate from
+ * `partyCommon` because an entity's address is a statutory fact about us, not a
+ * delivery point for a counterparty. Typed loosely as objects for the same
+ * reason partyCommon is — the fields are enumerated at runtime in
+ * entity-common.js and the API strips unknown keys.
+ */
+export declare namespace entityCommon {
+  /** The entity master itself — the API validator is a thin adapter over these. */
+  const masterCreate: z.ZodTypeAny;
+  const masterUpdate: z.ZodTypeAny;
+  const logoUpload: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const setActive: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const masterShapeKeys: readonly string[];
+  /** AI-tool envelopes — the same schemas with `entity_id` in the body. */
+  const aiUpdate: z.ZodTypeAny;
+  const aiSetActive: z.ZodTypeAny;
+  const aiSetStatus: z.ZodTypeAny;
+  const aiCapTable: z.ZodTypeAny;
+  const documentCreate: z.ZodTypeAny;
+  const documentUpdate: z.ZodTypeAny;
+  const taxRegistrationCreate: z.ZodTypeAny;
+  const taxRegistrationUpdate: z.ZodTypeAny;
+  const letterheadUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const TAX_KINDS: readonly string[];
+  const FILING_FREQUENCIES: readonly string[];
+  const personCreate: z.ZodTypeAny;
+  const personUpdate: z.ZodTypeAny;
+  const contactCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const contactUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const addressCreate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const addressUpdate: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const registrationCreate: z.ZodTypeAny;
+  const registrationUpdate: z.ZodTypeAny;
+  const establishmentCreate: z.ZodTypeAny;
+  const establishmentUpdate: z.ZodTypeAny;
+  const setStatus: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const setStructure: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  const PERSON_ROLES: readonly string[];
+  const HOLDER_TYPES: readonly string[];
+  const ADDRESS_TYPES: readonly string[];
+  const ESTABLISHMENT_KINDS: readonly string[];
+  const RELATIONSHIP_TYPES: readonly string[];
+  const LIFECYCLE_STATES: readonly string[];
+  const ACCOUNTING_FRAMEWORKS: readonly string[];
+  const CONTACT_ROLE_TAGS: readonly string[];
+}
+
 /** One `party_field_config` row, as the API returns it and the form reads it. */
 export type FieldConfig = {
   applies_to: "CLIENT" | "SUPPLIER";

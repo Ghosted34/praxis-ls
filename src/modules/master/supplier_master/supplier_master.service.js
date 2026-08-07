@@ -10,6 +10,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const masterConfig = require("../master_config/master_config.service");
 const lifecycle = require("../party-lifecycle.service");
 const partyWrite = require("../_shared/party-write.service");
+const changeRequest = require("../_shared/change-request.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -38,12 +39,14 @@ async function create(client, { data, actor = {} }) {
   }
 }
 
-async function update(client, { id, patch, actor = {} }) {
+async function update(client, { id, patch, actor = {}, env }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Supplier not found", 404);
   const masterPatch = { ...patch };
   const { registrations } = masterPatch;
   delete masterPatch.registrations; delete masterPatch.primary_contact; delete masterPatch.primary_address;
+  // Sensitive-field maker-checker (§8) — see the client master for the rationale.
+  const gate = changeRequest.isGoverned(env) ? changeRequest.pickSensitiveMaster(masterPatch) : { sensitive: {}, changeType: null };
   if (registrations) {
     partyWrite.validateRegistrations({ registrations, country: masterPatch.country_code ?? before.country_code, kind: "supplier", category: null });
     Object.assign(masterPatch, partyWrite.niuRccmMirror(registrations));
@@ -53,14 +56,20 @@ async function update(client, { id, patch, actor = {} }) {
   }
   await client.query("BEGIN");
   try {
-    const row = await repo.update(client, id, masterPatch);
+    let pending = null;
+    if (gate.changeType) {
+      pending = await changeRequest.open(client, { kind: "supplier", partyId: id, changeType: gate.changeType, payload: gate.sensitive, actor });
+    }
+    const row = Object.keys(masterPatch).length ? await repo.update(client, id, masterPatch) : before;
     if (row.registration_status === "ACTIVE" && !row.coa_aux_account) {
       await lifecycle.onActivate(client, { kind: "supplier", partyId: id });
     }
     await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "supplier:" + id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "supplier:" + id, before, after: row });
     await client.query("COMMIT");
-    return repo.get(client, id);
+    const result = await repo.get(client, id);
+    if (pending) result.pending_change = { change_request_id: pending.change_request_id, change_type: pending.change_type };
+    return result;
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

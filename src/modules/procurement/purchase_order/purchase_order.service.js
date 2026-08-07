@@ -14,6 +14,7 @@ const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
+const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -28,6 +29,12 @@ async function replaceItems(client, poId, items) {
 }
 
 async function createDraft(client, { prId = null, supplierId = null, dossierId = null, expenseCategory = "OPERATIONS", items = [], actor = {} }) {
+  // Transactional compliance gate (§5): a hard-blocked supplier cannot receive a
+  // PO. Softer states pass (freight moves) — flags show on the supplier 360.
+  if (supplierId) {
+    const gate = await compliance.assertAllowed(client, { kind: "supplier", partyId: supplierId, action: "po_create" });
+    if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This supplier is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
+  }
   await client.query("BEGIN");
   try {
     const po = await repo.insertPO(client, { pr_id: prId, supplier_id: supplierId, dossier_id: dossierId, expense_category: expenseCategory, status: "DRAFT", issuer_id: actor.user_id || null });

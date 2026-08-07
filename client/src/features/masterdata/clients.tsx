@@ -18,6 +18,7 @@ import { clientMaster } from "@shared";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { CountryRegistrationFields, useCountryRegistrations, toRegistrationsPayload, type RegValues } from "./country-registration-fields";
+import { DedupeHint } from "./dedupe-hint";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, ActivePill } from "@/components/ui/pill";
 import { useList } from "@/lib/use-resource";
@@ -131,6 +132,17 @@ export function ClientForm({ row, onClose, onSaved }: { row: (api.Client & Parti
           {/* 2 · Country-driven tax / legal IDs. */}
           <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax &amp; legal registration</div>
           <CountryRegistrationFields country={country} values={regs} onChange={setRegs} />
+
+          {/* Non-blocking duplicate detection (§5.1) — advisory, dismissible. */}
+          <DedupeHint
+            kind="client"
+            legalName={String(form.watch("legal_name") ?? "")}
+            name={String(form.watch("trading_name") ?? "")}
+            email={contact.email || String(form.watch("email") ?? "")}
+            excludeId={isNew ? undefined : row?.client_id}
+            registrations={[{ kind: "NIU", number: regs.NIU }, { kind: "RCCM", number: regs.RCCM }].filter((r) => r.number)}
+          />
+
 
           <FormField form={form} name="entity_id" label="Corporate entity" hint="Which of our entities bills this client">
             {(field) => (

@@ -13,6 +13,9 @@
 "use strict";
 const clientRepo = require("./client_master/client_master.repo");
 const compliance = require("./compliance/compliance.service");
+const dedup = require("./_shared/dedup.service");
+const changeRequest = require("./_shared/change-request.service");
+const supplierScorecard = require("./supplier_scorecard.service");
 const { maskBank } = require("./_shared/confidential");
 const { AppError } = require("../../utils/errors");
 
@@ -48,6 +51,26 @@ async function collections(c, kind, partyId, canSeeFinancials) {
     registrations: registrations.rows,
     beneficial_owners: owners.rows,
   };
+}
+
+/** Likely duplicates of THIS party (score ≥ 80) for the 360's amber banner. The
+ *  record itself is excluded so it never flags as its own duplicate. */
+async function duplicatesFor(c, kind, party, registrations) {
+  const input = {
+    name: party.name, legal_name: party.legal_name, email: party.email,
+    registrations: (registrations || []).map((r) => ({ kind: r.kind, number: r.number })),
+  };
+  const { candidates } = await dedup.findDuplicates(c, { kind, input, excludeId: party[`${kind}_id`], min: 80 });
+  return candidates;
+}
+
+/** The trading names this party was known by (from merges / former names). */
+async function aliasesFor(c, kind, partyId) {
+  const { rows } = await c.query(
+    "SELECT alias, kind, created_at FROM party_alias WHERE party_kind = $1 AND party_id = $2 ORDER BY created_at DESC",
+    [kind, partyId],
+  );
+  return rows;
 }
 
 async function clientKpis(c, partyId, party) {
@@ -146,7 +169,15 @@ async function clientDossier(c, { partyId, canSeeFinancials = false }) {
   const receipts = (await c.query("SELECT receipt_id, amount, method, received_on, status FROM payment_receipt WHERE client_id = $1 ORDER BY received_on DESC LIMIT 25", [partyId])).rows;
   const advances = (await c.query("SELECT advance_id, amount, applied_amount, received_on FROM advance WHERE client_id = $1 ORDER BY received_on DESC LIMIT 25", [partyId])).rows;
 
-  return { party, kpis, compliance: comp, gl_parity: parity, ...coll, dossiers, invoices, receipts, advances };
+  // 360 richness (§3): the record's aliases, its likely duplicates, and any
+  // pending sensitive-field / merge change requests awaiting a second approver.
+  const [aliases, duplicate_candidates, pending_changes] = [
+    await aliasesFor(c, "client", partyId),
+    await duplicatesFor(c, "client", party, coll.registrations),
+    await changeRequest.pendingFor(c, { kind: "client", partyId }),
+  ];
+
+  return { party, kpis, compliance: comp, gl_parity: parity, ...coll, dossiers, invoices, receipts, advances, aliases, duplicate_candidates, pending_changes };
 }
 
 /** GET /suppliers/:id/360 */
@@ -167,7 +198,16 @@ async function supplierDossier(c, { partyId, canSeeFinancials = false }) {
   const purchase_orders = (await c.query("SELECT po_id, doc_number, total_ttc, status, created_at FROM purchase_order WHERE supplier_id = $1 ORDER BY created_at DESC LIMIT 25", [partyId])).rows;
   const supplier_invoices = (await c.query("SELECT supplier_invoice_id, doc_number, amount_ttc, wht_total, status, due_on, created_at FROM supplier_invoice WHERE supplier_id = $1 ORDER BY created_at DESC LIMIT 25", [partyId])).rows;
 
-  return { party, kpis, compliance: comp, gl_parity: parity, ...coll, purchase_orders, supplier_invoices };
+  // 360 richness (§3): AVL scorecard (computed on load), aliases, likely
+  // duplicates, and any pending change requests.
+  const [scorecard, aliases, duplicate_candidates, pending_changes] = [
+    await supplierScorecard.evaluate(c, { supplierId: partyId }),
+    await aliasesFor(c, "supplier", partyId),
+    await duplicatesFor(c, "supplier", party, coll.registrations),
+    await changeRequest.pendingFor(c, { kind: "supplier", partyId }),
+  ];
+
+  return { party, kpis, compliance: comp, gl_parity: parity, ...coll, purchase_orders, supplier_invoices, scorecard, aliases, duplicate_candidates, pending_changes };
 }
 
 module.exports = { clientDossier, supplierDossier };

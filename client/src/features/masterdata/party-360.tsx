@@ -11,6 +11,7 @@
  * caller without finance visibility (gate 14); this view never unmasks them.
  */
 import * as React from "react";
+import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Select } from "@/components/ui/modal";
@@ -23,6 +24,17 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import * as api from "@/lib/masterdata-api";
+
+// Deep-link targets (§3.1) — the real hub-section routes confirmed in
+// src/app/app.tsx. A `focus` query hints the record to the destination list.
+const MODULE_ROUTE = {
+  dossier: "/operations/files",
+  invoice: "/finance/invoices",
+  receipt: "/finance/receivables",
+  po: "/procurement/purchase-orders",
+  supplier_invoice: "/procurement/supplier-invoices",
+} as const;
+const focusHref = (route: string, id?: string | null) => (id ? `${route}?focus=${encodeURIComponent(id)}` : route);
 
 const STATE_TONE: Record<string, Tone> = { OK: "ok", ONBOARDING: "blue", WARN: "warn", ESCALATED: "bad", SOFT_BLOCK_RECOMMENDATION: "orange", HARD_BLOCK: "bad" };
 const SEVERITY_TONE: Record<string, Tone> = { INFO: "mute", WARN: "warn", ESCALATED: "bad", SOFT_BLOCK_RECOMMENDATION: "orange", RED: "bad", HARD_BLOCK: "bad" };
@@ -98,8 +110,179 @@ function AddModal({ title, fields, onClose, onSubmit }: { title: string; fields:
 const CLIENT_TABS = ["Overview", "Documents", "Contacts", "Addresses", "Banks", "Registrations", "Owners", "Financial"] as const;
 type Tab = (typeof CLIENT_TABS)[number];
 
+/* ── PR3-C: duplicates, governed merge, scorecard, pending changes ─────────── */
+
+/** A cell that deep-links a financial/dossier row into its module (§3.1). */
+function DeepLink({ route, id, children }: { route: string; id?: string | null; children: React.ReactNode }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" className="text-primary-ink underline underline-offset-2 hover:opacity-80" onClick={() => navigate(focusHref(route, id))}>
+      {children}
+    </button>
+  );
+}
+
+/** Amber "Possible duplicates" panel (§5.1) — shown on the 360 for score ≥ 80. */
+function DuplicatesPanel({ candidates, kind, onOpen, onMerge, canMerge }: {
+  candidates: api.DedupeCandidate[]; kind: api.PartyKind;
+  onOpen: (id: string) => void; onMerge: (c: api.DedupeCandidate) => void; canMerge: boolean;
+}) {
+  const strong = candidates.filter((c) => c.score >= 80);
+  if (strong.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-warn/40 bg-warn-fill/40 p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <Pill tone="orange">Possible duplicates</Pill>
+        <span className="micro">This {kind} looks like {strong.length} existing record{strong.length === 1 ? "" : "s"} — review before trading.</span>
+      </div>
+      <ul className="mt-2.5 space-y-1.5">
+        {strong.map((c) => (
+          <li key={c.id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <div className="min-w-0">
+              <button className="font-medium text-primary-ink underline" onClick={() => onOpen(c.id)}>{c.name || c.ref || c.id.slice(0, 8)}</button>
+              <span className="ml-2 micro">{[c.ref, c.reasons.join(", "), `score ${c.score}`].filter(Boolean).join(" · ")}</span>
+            </div>
+            {canMerge && <Button size="sm" variant="outline" onClick={() => onMerge(c)}>Merge…</Button>}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/** Governed-merge confirm modal (§5.2): survivor pre-selected (this record), the
+ *  loser is the chosen duplicate, counts previewed, survivor ref typed to confirm. */
+function MergeModal({ kind, survivorId, survivorRef, loser, onClose, onDone }: {
+  kind: api.PartyKind; survivorId: string; survivorRef: string; loser: api.DedupeCandidate;
+  onClose: () => void; onDone: (msg: string) => void;
+}) {
+  const [preview, setPreview] = React.useState<api.MergePreviewResult | null>(null);
+  const [confirm, setConfirm] = React.useState("");
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    api.mergePreview(kind, survivorId, survivorId, loser.id).then(setPreview).catch((e) => setError(errMsg(e)));
+  }, [kind, survivorId, loser.id]);
+
+  const refOk = confirm.trim() !== "" && confirm.trim() === (survivorRef || "").trim();
+  async function run() {
+    setBusy(true); setError(null);
+    try {
+      const r = await api.mergeParty(kind, survivorId, survivorId, loser.id);
+      onDone(r && r.pending ? "Merge submitted for approval" : "Records merged");
+      onClose();
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+  }
+  return (
+    <Modal open onClose={onClose} title="Merge duplicate" description="Everything on the losing record is reattached to the survivor, its aliases are preserved, and it is archived (never deleted). This cannot be undone from the UI.">
+      <div className="space-y-3 text-sm">
+        <div className="rounded-lg border p-3">
+          <div><span className="micro">Survivor (kept)</span><div className="font-medium text-foreground">{preview?.survivor.name || survivorRef}</div></div>
+          <div className="mt-2"><span className="micro">Loser (archived)</span><div className="font-medium text-foreground">{loser.name || loser.ref || loser.id.slice(0, 8)}</div></div>
+        </div>
+        {preview && (
+          preview.moves.length === 0
+            ? <p className="micro">No linked records to move.</p>
+            : <div>
+                <p className="mb-1 micro font-medium text-foreground">{preview.total} record{preview.total === 1 ? "" : "s"} will move to the survivor:</p>
+                <ul className="space-y-0.5">
+                  {preview.moves.map((m) => <li key={`${m.table}.${m.column}`} className="micro">{m.count} × {m.table.replace(/_/g, " ")}</li>)}
+                </ul>
+              </div>
+        )}
+        <label className="block space-y-1">
+          <span className="font-medium text-foreground">Type the survivor ref <code className="micro">{survivorRef || "—"}</code> to confirm</span>
+          <Input value={confirm} onChange={(e) => setConfirm(e.target.value)} placeholder={survivorRef || ""} />
+        </label>
+        {error && <ErrorState message={error} />}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="default" loading={busy} disabled={!refOk} onClick={run}>Merge</Button>
+      </div>
+    </Modal>
+  );
+}
+
+/** Lightweight inline-SVG horizontal bar chart (§3.2) — no chart library, so the
+ *  single `vendor` bundle chunk stays acyclic. Colours come from ink tokens via
+ *  currentColor (never a fill token used as type — the F13 contrast rule). */
+function SvgBars({ data, ariaLabel, fmt }: { data: { label: string; value: number }[]; ariaLabel: string; fmt: (n: number) => string }) {
+  const max = Math.max(1, ...data.map((d) => d.value));
+  const H = 20; const W = 260; const barX = 96; const barMax = W - barX - 4;
+  return (
+    <svg viewBox={`0 0 ${W} ${data.length * H}`} className="w-full" role="img" aria-label={ariaLabel} preserveAspectRatio="xMinYMin meet">
+      {data.map((d, i) => (
+        <g key={d.label} transform={`translate(0 ${i * H})`}>
+          <text x="0" y={H / 2 + 3} className="fill-current text-muted-foreground" style={{ fontSize: 9 }}>{d.label}</text>
+          <rect x={barX} y={H / 2 - 5} width={barMax} height="10" rx="2" className="fill-current text-muted-foreground" style={{ opacity: 0.2 }} />
+          <rect x={barX} y={H / 2 - 5} width={Math.max(0, Math.round((d.value / max) * barMax))} height="10" rx="2" className="fill-current text-primary-ink" />
+          <text x={W} y={H / 2 + 3} textAnchor="end" className="fill-current text-foreground" style={{ fontSize: 9 }}>{fmt(d.value)}</text>
+        </g>
+      ))}
+    </svg>
+  );
+}
+
+const SCORE_TONE = (v: number): Tone => (v >= 80 ? "ok" : v >= 60 ? "warn" : "bad");
+
+/** Supplier AVL scorecard (§3.3): six sub-scores + overall. Static class names
+ *  only (Tailwind cannot purge-detect dynamically built ones). */
+function ScorecardCard({ s }: { s: api.Scorecard }) {
+  const rows: [string, number][] = [
+    ["On-time", s.score_on_time], ["Claims", s.score_claims], ["Disputes", s.score_disputes],
+    ["Responsiveness", s.score_responsiveness], ["Safety", s.score_safety], ["Compliance", s.score_compliance],
+  ];
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <div className="mb-3 flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-foreground">AVL scorecard</h4>
+        <div className="flex items-center gap-2"><span className="micro">Overall</span><Pill tone={SCORE_TONE(s.score_overall)}>{num(s.score_overall)}</Pill></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+        {rows.map(([label, v]) => (
+          <div key={label} className="rounded-lg border p-2">
+            <div className="flex items-center justify-between">
+              <span className="micro">{label}</span><Pill tone={SCORE_TONE(v)}>{num(v)}</Pill>
+            </div>
+            <div className="mt-1.5 h-1.5 overflow-hidden rounded bg-muted">
+              <div className="h-full bg-primary" style={{ width: `${Math.max(0, Math.min(100, v))}%` }} />
+            </div>
+          </div>
+        ))}
+      </div>
+      {s.last_evaluated_at && <p className="mt-2 micro">Evaluated {dateFmt(s.last_evaluated_at)}</p>}
+    </div>
+  );
+}
+
+/** Pending sensitive-field / merge change requests awaiting a second approver (§8). */
+function PendingChangesCard({ items, kind, partyId, onAct }: {
+  items: api.PendingChange[]; kind: api.PartyKind; partyId: string; onAct: (fn: () => Promise<unknown>, ok: string) => void;
+}) {
+  if (!items || items.length === 0) return null;
+  return (
+    <div className="rounded-xl border border-warn/40 bg-warn-fill/40 p-4">
+      <h4 className="mb-2 flex items-center gap-2 text-sm font-semibold text-foreground"><Pill tone="orange">Pending approval</Pill> Sensitive changes</h4>
+      <ul className="space-y-2">
+        {items.map((c) => (
+          <li key={c.change_request_id} className="flex flex-wrap items-center justify-between gap-2 text-sm">
+            <span className="text-muted-foreground">{enumLabel(c.change_type)}{c.reason ? ` — ${c.reason}` : ""}</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" onClick={() => onAct(() => api.approveChange(kind, partyId, c.change_request_id), "Change approved")}>Approve</Button>
+              <Button size="sm" variant="ghost" onClick={() => onAct(() => api.rejectChange(kind, partyId, c.change_request_id), "Change rejected")}>Reject</Button>
+            </div>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 micro">Maker-checker: the person who raised a change cannot approve it.</p>
+    </div>
+  );
+}
+
 export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.PartyKind; partyId: string; onEdit: () => void; onChanged?: () => void }) {
   const toast = useToast();
+  const navigate = useNavigate();
   const dossier = useResource<api.Client360 | api.Supplier360>(
     () => (kind === "client" ? api.clientDossier(partyId) : api.supplierDossier(partyId)),
     [kind, partyId],
@@ -108,6 +291,8 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [adding, setAdding] = React.useState<null | "contact" | "address" | "bank" | "document" | "registration" | "owner">(null);
   const [blocking, setBlocking] = React.useState(false);
+  const [merging, setMerging] = React.useState<api.DedupeCandidate | null>(null);
+  const [revealed, setRevealed] = React.useState<Record<string, string>>({});
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -130,6 +315,18 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
   const isClient = kind === "client";
   const blocked = p.compliance_state === "HARD_BLOCK" || !!p.hard_blocked_at;
   const docTypeOptions = (docTypes.data || []).map((t) => ({ value: t.document_type_id, label: t.name }));
+  // Conversion bridge (§6): the linked opposite-kind counterpart, if any.
+  const linkedId = isClient ? p.linked_supplier_id : p.linked_client_id;
+  const openParty = (targetKind: api.PartyKind, id?: string | null) =>
+    navigate(`/master/${targetKind === "client" ? "clients" : "suppliers"}${id ? `?focus=${encodeURIComponent(id)}` : ""}`);
+  // Explicit copy-from-origin (§6) — only offered on a converted party.
+  const copySection = (section: api.CloneSection) =>
+    act(async () => { const r = await api.cloneFromOrigin(kind, partyId, [section]); return r; }, "Copied from origin");
+  async function revealBankNumber(bankId: string) {
+    setError(null);
+    try { const r = await api.revealBank(kind, partyId, bankId); setRevealed((s) => ({ ...s, [bankId]: r.account_number || r.iban || r.swift_bic || "—" })); }
+    catch (e) { setError(errMsg(e)); }
+  }
 
   return (
     <div className="space-y-4">
@@ -147,6 +344,10 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
             <p className="mt-1 micro">
               {[p.ref, p.category_name, p.coa_aux_account && `Aux ${p.coa_aux_account}`, p.niu && `NIU ${p.niu}`].filter(Boolean).join(" · ") || "—"}
             </p>
+            {/* Aliases preserved from merges / former names (§5.2). */}
+            {(d.aliases || []).length > 0 && (
+              <p className="mt-1 micro">Also known as: {(d.aliases || []).map((a) => a.alias).join(", ")}</p>
+            )}
           </div>
           <div className="flex flex-wrap gap-2">
             <Button size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
@@ -156,10 +357,15 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
             {blocked
               ? <Button size="sm" variant="outline" loading={busy} onClick={() => act(() => api.unblockParty(kind, partyId), "Unblocked")}>Unblock</Button>
               : <Button size="sm" variant="outline" onClick={() => setBlocking(true)}>Block</Button>}
-            <Button size="sm" variant="ghost" loading={busy}
-              onClick={() => act(() => (isClient ? api.convertFromClient(partyId) : api.convertFromSupplier(partyId)), isClient ? "Draft supplier created" : "Draft client created")}>
-              {isClient ? "→ Supplier" : "→ Client"}
-            </Button>
+            {/* Conversion bridge (§6): once linked, View the counterpart instead of re-converting. */}
+            {linkedId
+              ? <Button size="sm" variant="ghost" onClick={() => openParty(isClient ? "supplier" : "client", linkedId)}>
+                  {isClient ? "View supplier" : "View client"}
+                </Button>
+              : <Button size="sm" variant="ghost" loading={busy}
+                  onClick={() => act(() => (isClient ? api.convertFromClient(partyId) : api.convertFromSupplier(partyId)), isClient ? "Draft supplier created" : "Draft client created")}>
+                  {isClient ? "→ Supplier" : "→ Client"}
+                </Button>}
           </div>
         </div>
         {blocked && p.hard_block_reason && (
@@ -169,6 +375,12 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
         )}
         {error && <div className="mt-3"><ErrorState message={error} /></div>}
       </div>
+
+      {/* Possible duplicates (§5.1) + pending sensitive changes (§8) */}
+      <DuplicatesPanel
+        candidates={d.duplicate_candidates || []} kind={kind}
+        onOpen={(id) => openParty(kind, id)} onMerge={(c) => setMerging(c)} canMerge />
+      <PendingChangesCard items={d.pending_changes || []} kind={kind} partyId={partyId} onAct={act} />
 
       {/* KPI strip */}
       {isClient ? (
@@ -263,6 +475,27 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
                   </div>
                 ))}
               </div>
+              {/* Inline-SVG aging chart (§3.2) — no chart library (bundle stays acyclic). */}
+              <div className="mt-3">
+                <SvgBars ariaLabel="Receivables aging" fmt={money} data={[
+                  { label: "Current", value: d.kpis.aging.current },
+                  { label: "1–30", value: d.kpis.aging.d1_30 },
+                  { label: "31–60", value: d.kpis.aging.d31_60 },
+                  { label: "61–90", value: d.kpis.aging.d61_90 },
+                  { label: "90+", value: d.kpis.aging.d90_plus },
+                ]} />
+              </div>
+            </div>
+          )}
+          {!isClient && d.scorecard && <ScorecardCard s={d.scorecard} />}
+          {!isClient && (
+            <div className="rounded-xl border bg-card p-4">
+              <h4 className="mb-3 text-sm font-semibold text-foreground">Payables</h4>
+              <SvgBars ariaLabel="Supplier payables" fmt={money} data={[
+                { label: "Payables", value: d.kpis.payables },
+                { label: "Overdue", value: d.kpis.overdue_payables },
+                { label: "YTD spend", value: d.kpis.ytd_spend },
+              ]} />
             </div>
           )}
         </div>
@@ -285,7 +518,7 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       )}
 
       {tab === "Contacts" && (
-        <Section title="Contacts" onAdd={() => setAdding("contact")}>
+        <Section title="Contacts" onAdd={() => setAdding("contact")} onCopy={linkedId ? () => copySection("contacts") : undefined}>
           {d.contacts.length === 0 ? <Empty /> : (
             <div className="grid gap-3 sm:grid-cols-2">
               {d.contacts.map((c: api.Contact) => (
@@ -296,7 +529,9 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
                     {(c.role_tags || []).map((t) => <Pill key={t} tone="mute">{enumLabel(t)}</Pill>)}
                   </div>
                   <p className="mt-1 micro">{[c.title, c.email, c.phone].filter(Boolean).join(" · ") || "—"}</p>
-                  <div className="mt-2 flex gap-2">
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {/* Client "Message" opens the Smart Comms CLIENT channel (§3.4); mailto is the fallback. */}
+                    {isClient && <button className="text-sm text-primary-ink underline" onClick={() => navigate(`/comms?client=${encodeURIComponent(partyId)}`)}>Message</button>}
                     {c.email && <a className="text-sm text-primary-ink underline" href={`mailto:${c.email}`}>Email</a>}
                     {c.phone && <a className="text-sm text-primary-ink underline" href={`tel:${c.phone}`}>Call</a>}
                     {c.phone && <a className="text-sm text-primary-ink underline" href={`https://wa.me/${c.phone.replace(/[^0-9]/g, "")}`} target="_blank" rel="noreferrer">WhatsApp</a>}
@@ -309,7 +544,7 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       )}
 
       {tab === "Addresses" && (
-        <Section title="Addresses" onAdd={() => setAdding("address")}>
+        <Section title="Addresses" onAdd={() => setAdding("address")} onCopy={linkedId ? () => copySection("addresses") : undefined}>
           {d.addresses.length === 0 ? <Empty /> : (
             <div className="grid gap-3 sm:grid-cols-2">
               {d.addresses.map((a: api.Address) => (
@@ -327,13 +562,19 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       )}
 
       {tab === "Banks" && (
-        <Section title="Bank accounts" onAdd={() => setAdding("bank")}>
+        <Section title="Bank accounts" onAdd={() => setAdding("bank")} onCopy={linkedId ? () => copySection("banks") : undefined}>
           <MiniTable empty={d.banks.length === 0} head={<><Th>Beneficiary</Th><Th>Bank</Th><Th>Account</Th><Th>Verified</Th></>}>
             {d.banks.map((b: api.BankAccount) => (
               <tr key={b.bank_account_id}>
                 <Td>{b.beneficiary_name || "—"}</Td>
                 <Td>{b.bank_name || "—"}</Td>
-                <Td>{b.account_number || b.iban || b.momo_number || "—"}{b.masked && <span className="ml-1 micro">masked</span>}</Td>
+                <Td>
+                  {revealed[b.bank_account_id] || b.account_number || b.iban || b.momo_number || "—"}
+                  {/* Masked reveal (§3.5): a dedicated, audited endpoint — never the whole number in the list payload. */}
+                  {b.masked && !revealed[b.bank_account_id] && (
+                    <button className="ml-2 text-primary-ink underline micro" onClick={() => revealBankNumber(b.bank_account_id)}>Reveal</button>
+                  )}
+                </Td>
                 <Td>{b.is_verified ? <Pill tone="ok">Verified</Pill> : <Pill tone="warn">Unverified</Pill>}</Td>
               </tr>
             ))}
@@ -366,14 +607,14 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
           <div className="space-y-4">
             <MiniTable empty={d.invoices.length === 0} head={<><Th>Invoice</Th><Th>Type</Th><Th>Status</Th><Th>Due</Th><Th r>Total</Th></>}>
               {d.invoices.map((i: Client360Invoice) => (
-                <tr key={i.invoice_id}><Td>{i.doc_number || i.invoice_id.slice(0, 8)}</Td><Td>{enumLabel(i.type)}</Td><Td>{enumLabel(i.status)}</Td><Td>{dateFmt(i.payment_due_on)}</Td><Td r>{money(i.total_ttc)}</Td></tr>
+                <tr key={i.invoice_id}><Td><DeepLink route={MODULE_ROUTE.invoice} id={i.invoice_id}>{i.doc_number || i.invoice_id.slice(0, 8)}</DeepLink></Td><Td>{enumLabel(i.type)}</Td><Td>{enumLabel(i.status)}</Td><Td>{dateFmt(i.payment_due_on)}</Td><Td r>{money(i.total_ttc)}</Td></tr>
               ))}
             </MiniTable>
           </div>
         ) : (
           <MiniTable empty={d.supplier_invoices.length === 0} head={<><Th>Bill</Th><Th>Status</Th><Th>Due</Th><Th r>WHT</Th><Th r>Total</Th></>}>
             {d.supplier_invoices.map((i: SupplierBill) => (
-              <tr key={i.supplier_invoice_id}><Td>{i.doc_number || i.supplier_invoice_id.slice(0, 8)}</Td><Td>{enumLabel(i.status)}</Td><Td>{dateFmt(i.due_on)}</Td><Td r>{money(i.wht_total)}</Td><Td r>{money(i.amount_ttc)}</Td></tr>
+              <tr key={i.supplier_invoice_id}><Td><DeepLink route={MODULE_ROUTE.supplier_invoice} id={i.supplier_invoice_id}>{i.doc_number || i.supplier_invoice_id.slice(0, 8)}</DeepLink></Td><Td>{enumLabel(i.status)}</Td><Td>{dateFmt(i.due_on)}</Td><Td r>{money(i.wht_total)}</Td><Td r>{money(i.amount_ttc)}</Td></tr>
             ))}
           </MiniTable>
         )
@@ -400,6 +641,7 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
         onSubmit={async (v) => { await api.beneficialOwners.create(kind, partyId, v as Partial<api.BeneficialOwner>); toast.success("Owner added"); reload(); }} />}
 
       {blocking && <BlockModal onClose={() => setBlocking(false)} onSubmit={async (reason) => { await act(() => api.blockParty(kind, partyId, reason), "Party blocked"); }} />}
+      {merging && <MergeModal kind={kind} survivorId={partyId} survivorRef={p.ref || ""} loser={merging} onClose={() => setMerging(null)} onDone={(msg) => { toast.success(msg); reload(); }} />}
     </div>
   );
 }
@@ -409,12 +651,16 @@ type SupplierBill = api.Supplier360["supplier_invoices"][number];
 
 function Empty() { return <div className="px-3 py-6 text-center micro">Nothing here yet.</div>; }
 
-function Section({ title, onAdd, children }: { title: string; onAdd: () => void; children: React.ReactNode }) {
+function Section({ title, onAdd, onCopy, children }: { title: string; onAdd: () => void; onCopy?: () => void; children: React.ReactNode }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="text-sm font-semibold text-foreground">{title}</h4>
-        <Button size="sm" variant="outline" onClick={onAdd}>+ Add</Button>
+        <div className="flex gap-2">
+          {/* Copy-from-origin (§6) — explicit, never automatic (Hard Rule 2). */}
+          {onCopy && <Button size="sm" variant="ghost" onClick={onCopy}>Copy from origin</Button>}
+          <Button size="sm" variant="outline" onClick={onAdd}>+ Add</Button>
+        </div>
       </div>
       {children}
     </div>

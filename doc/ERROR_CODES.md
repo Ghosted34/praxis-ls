@@ -21,11 +21,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
 | `BAD_STATE` | `BAD_STATUS` | 15× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
-| `FORBIDDEN` | `PERMISSION_DENIED` | 4× |
+| `FORBIDDEN` | `PERMISSION_DENIED` | 5× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (226)
+## All codes (233)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -35,9 +35,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_ACTED` | 422 | 1× | — |
 | `ALREADY_CLOCKED_IN` | 409 | 1× | — |
 | `ALREADY_CLOSED` | 422 | 2× | — |
+| `ALREADY_DECIDED` | 422 | 2× | — |
 | `ALREADY_DISPOSED` | 422 | 1× | — |
 | `ALREADY_GRANTED` | 409 | 1× | — |
 | `ALREADY_INSTANTIATED` | 409 | 1× | — |
+| `ALREADY_MERGED` | 409 | 2× | — |
 | `ALREADY_RESTORED` | 409 | 1× | — |
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
@@ -61,7 +63,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_MIRROR` | 422 | 1× | — |
 | `BAD_MONTH` | 422 | 2× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
-| `BAD_PARTY_KIND` | 422 | 6× | — |
+| `BAD_PARTY_KIND` | 422 | 8× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |
@@ -90,6 +92,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CLIENT_REQUIRED` | 422 | 2× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
+| `COMPLIANCE_BLOCKED` | 409 | 3× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 1× | — |
@@ -107,7 +110,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
-| `FORBIDDEN` | 403 | 4× | `PERMISSION_DENIED` |
+| `FORBIDDEN` | 403 | 5× | `PERMISSION_DENIED` |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
@@ -134,6 +137,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LOCKED` | 422 | 14× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `MERGE_SAME_RECORD` | 422 | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
 | `MISSING_FIELDS` | 422 | 1× | — |
 | `NEGATIVE_STOCK` | 422 | 1× | — |
@@ -145,7 +149,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 235× | — |
+| `NOT_FOUND` | 404 | 241× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -172,6 +176,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_MODULE` | 422 | 1× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
+| `NO_ORIGIN` | 422 | 1× | — |
 | `NO_PARENT` | 422 | 1× | — |
 | `NO_PERIOD` | 404, 422 | 2× | — |
 | `NO_POSTING_RULE` | 422 | 1× | — |
@@ -191,6 +196,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
 | `ORDER_LOCKED` | 422 | 1× | — |
 | `OUT_OF_GEOFENCE` | 422 | 1× | — |
+| `OVERRIDE_REASON_REQUIRED` | 422 | 1× | — |
+| `OVERRIDE_REQUIRED` | 422 | 1× | — |
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 6× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
@@ -215,7 +222,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `RUN_LOCKED` | 422 | 1× | — |
 | `SCAN_REQUIRED` | 422 | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
-| `SELF_APPROVAL` | 403 | 1× | — |
+| `SELF_APPROVAL` | 403 | 2× | — |
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
@@ -245,7 +252,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 106× | — |
+| `VALIDATION_ERROR` | 422 | 107× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

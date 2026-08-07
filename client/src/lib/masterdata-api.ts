@@ -76,6 +76,10 @@ export type PartyExtras = {
   hard_block_reason?: string | null;
   hard_blocked_at?: string | null;
   category_name?: string | null;
+  // Conversion bridge links (PR3-C §6) + merge bookkeeping (§5.2).
+  linked_client_id?: string | null;
+  linked_supplier_id?: string | null;
+  merged_into_id?: string | null;
 };
 
 export const listClients = () => tenant<Client[]>("/clients");
@@ -425,6 +429,12 @@ export type Compliance = { compliance_state: string; can_verify: boolean; flags:
 export type GlParity = { docTotal: number; gl: number; mismatch: number; flagged: boolean };
 export type Aging = { current: number; d1_30: number; d31_60: number; d61_90: number; d90_plus: number };
 
+// 360 richness (PR3-C §3 / §5) — aliases, likely duplicates, pending governed changes.
+export type PartyAlias = { alias: string; kind?: string | null; created_at?: string };
+export type DedupeCandidate = { id: string; name?: string | null; ref?: string | null; status?: string | null; score: number; reasons: string[] };
+export type PendingChange = { change_request_id: string; change_type: string; target_table?: string | null; target_id?: string | null; payload?: Record<string, unknown> | null; reason?: string | null; status: string; requested_by?: string | null; requested_at?: string };
+export type Scorecard = { score_on_time: number; score_claims: number; score_disputes: number; score_responsiveness: number; score_safety: number; score_compliance: number; score_overall: number; last_evaluated_at?: string | null };
+
 export type Client360 = {
   party: Client & PartyExtras;
   kpis: { outstanding: number; overdue: number; oldest_due_date?: string | null; credit_limit: number | null; credit_available: number | null; ytd_revenue: number; dossiers_in_progress: number; aging: Aging };
@@ -435,6 +445,9 @@ export type Client360 = {
   invoices: { invoice_id: string; doc_number?: string | null; type?: string; total_ttc: number; status?: string; payment_due_on?: string | null }[];
   receipts: Receipt[];
   advances: { advance_id: string; amount: number | string; applied_amount?: number | string | null; received_on?: string | null }[];
+  aliases: PartyAlias[];
+  duplicate_candidates: DedupeCandidate[];
+  pending_changes: PendingChange[];
 };
 export type Supplier360 = {
   party: Supplier & PartyExtras & { avl_status?: string | null; withholding_rate?: number | null };
@@ -444,9 +457,44 @@ export type Supplier360 = {
   contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
   purchase_orders: { po_id: string; doc_number?: string | null; total_ttc?: number | null; status?: string; created_at?: string }[];
   supplier_invoices: { supplier_invoice_id: string; doc_number?: string | null; amount_ttc?: number | null; wht_total?: number | null; status?: string; due_on?: string | null }[];
+  scorecard: Scorecard;
+  aliases: PartyAlias[];
+  duplicate_candidates: DedupeCandidate[];
+  pending_changes: PendingChange[];
 };
 export const clientDossier = (id: string) => tenant<Client360>(`/clients/${id}/360`);
 export const supplierDossier = (id: string) => tenant<Supplier360>(`/suppliers/${id}/360`);
+
+/* ── Deduplication (PR3-C §5.1) ─────────────────────────────────────────────── */
+export type DedupeInput = {
+  name?: string; legal_name?: string; email?: string; phone?: string;
+  registrations?: { kind?: string; number?: string }[]; exclude_id?: string;
+};
+export const dedupeCheck = (kind: PartyKind, input: DedupeInput) =>
+  tenant<{ candidates: DedupeCandidate[] }>(`${base(kind)}/dedupe-check`, { method: "POST", body: input });
+
+/* ── Governed merge (PR3-C §5.2) ────────────────────────────────────────────── */
+export type MergeParty = { id: string; ref?: string | null; name?: string | null };
+export type MergePreviewResult = { kind: PartyKind; survivor: MergeParty; loser: MergeParty; moves: { table: string; column: string; count: number }[]; total: number };
+export const mergePreview = (kind: PartyKind, id: string, survivorId: string, loserId: string) =>
+  tenant<MergePreviewResult>(`${base(kind)}/${id}/merge-preview`, { method: "POST", body: { survivor_id: survivorId, loser_id: loserId } });
+export const mergeParty = (kind: PartyKind, id: string, survivorId: string, loserId: string) =>
+  tenant<{ survivor_id?: string; loser_id?: string; pending?: boolean; change_request_id?: string }>(`${base(kind)}/${id}/merge`, { method: "POST", body: { survivor_id: survivorId, loser_id: loserId } });
+
+/* ── Copy-from-origin (PR3-C §6) ────────────────────────────────────────────── */
+export type CloneSection = "banks" | "contacts" | "addresses";
+export const cloneFromOrigin = (kind: PartyKind, id: string, sections: CloneSection[]) =>
+  tenant<{ cloned: Record<string, number>; from: string }>(`${base(kind)}/${id}/copy-from-origin`, { method: "POST", body: { sections } });
+
+/* ── Maker-checker decisions (PR3-C §8) ─────────────────────────────────────── */
+export const approveChange = (kind: PartyKind, id: string, changeRequestId: string) =>
+  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/approve`, { method: "POST" });
+export const rejectChange = (kind: PartyKind, id: string, changeRequestId: string) =>
+  tenant(`${base(kind)}/${id}/change-requests/${changeRequestId}/reject`, { method: "POST" });
+
+/* ── Masked-bank reveal (PR3-C §3.5) — finance/CEO only; audited server-side ─── */
+export const revealBank = (kind: PartyKind, id: string, bankAccountId: string) =>
+  tenant<{ bank_account_id: string; account_number?: string | null; iban?: string | null; swift_bic?: string | null }>(`${base(kind)}/${id}/banks/${bankAccountId}/reveal`, { method: "POST" });
 
 /* ── Lifecycle actions ──────────────────────────────────────────── */
 export const blockParty = (kind: PartyKind, id: string, reason: string) => tenant(`${base(kind)}/${id}/block`, { method: "POST", body: { reason } });

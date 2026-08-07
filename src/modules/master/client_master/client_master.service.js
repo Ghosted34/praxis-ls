@@ -15,6 +15,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const masterConfig = require("../master_config/master_config.service");
 const lifecycle = require("../party-lifecycle.service");
 const partyWrite = require("../_shared/party-write.service");
+const changeRequest = require("../_shared/change-request.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -50,7 +51,7 @@ async function create(client, { data, actor = {} }) {
   }
 }
 
-async function update(client, { id, patch, actor = {} }) {
+async function update(client, { id, patch, actor = {}, env }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Client not found", 404);
   // The nested blocks are managed via the 360 endpoints on edit — strip them
@@ -59,6 +60,11 @@ async function update(client, { id, patch, actor = {} }) {
   const masterPatch = { ...patch };
   const { registrations } = masterPatch;
   delete masterPatch.registrations; delete masterPatch.primary_contact; delete masterPatch.primary_address;
+  // Sensitive-field maker-checker (§8): in LIVE, split legal name / credit limit
+  // / status out of the direct patch — they need a second authorization. Done
+  // BEFORE the mirror + name_norm recompute so a pending legal-name change never
+  // half-applies through name_norm.
+  const gate = changeRequest.isGoverned(env) ? changeRequest.pickSensitiveMaster(masterPatch) : { sensitive: {}, changeType: null };
   if (registrations) {
     partyWrite.validateRegistrations({ registrations, country: masterPatch.country_code ?? before.country_code, kind: "client", category: null });
     Object.assign(masterPatch, partyWrite.niuRccmMirror(registrations));
@@ -68,7 +74,11 @@ async function update(client, { id, patch, actor = {} }) {
   }
   await client.query("BEGIN");
   try {
-    const row = await repo.update(client, id, masterPatch);
+    let pending = null;
+    if (gate.changeType) {
+      pending = await changeRequest.open(client, { kind: "client", partyId: id, changeType: gate.changeType, payload: gate.sensitive, actor });
+    }
+    const row = Object.keys(masterPatch).length ? await repo.update(client, id, masterPatch) : before;
     // Activation (§3): allocate the aux account + refresh compliance the first
     // time a client becomes ACTIVE. Keyed on "active without an aux account" so a
     // retry after a mid-activation failure still completes it.
@@ -78,7 +88,9 @@ async function update(client, { id, patch, actor = {} }) {
     await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: "client:" + id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "client:" + id, before, after: row });
     await client.query("COMMIT");
-    return repo.get(client, id);
+    const result = await repo.get(client, id);
+    if (pending) result.pending_change = { change_request_id: pending.change_request_id, change_type: pending.change_type };
+    return result;
   } catch (err) {
     await client.query("ROLLBACK");
     throw err;

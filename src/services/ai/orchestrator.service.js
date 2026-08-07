@@ -214,6 +214,55 @@ function validatePayload(schema, payload) {
  * payload, requires_confirmation}] }. Does NOT execute writes — that needs an
  * explicit confirm (see confirmAction).
  */
+/**
+ * Tell the model who is asking.
+ *
+ * WHY THIS EXISTS. Every drafted memo, letter and email came back signed
+ * "[Your Name]" — "Prepared by: [Your Name]", "FROM: [Your Name]" — and that is
+ * not a failure of intelligence. The model was never told. The system prompt
+ * carried the ERP's rules and the retrieved CONTEXT, and nothing at all about
+ * the person on the other end of the conversation, so a placeholder was the
+ * honest thing for it to write.
+ *
+ * `req.user` has carried `display_name` and `email` since auth was built, and
+ * this function already receives that object — it just used it for `user_id`
+ * and threw the rest away.
+ *
+ * WHY IN THE PROMPT AND NOT PATCHED IN THE UI. The alternative is
+ * find-and-replacing "[Your Name]" in the answer before rendering it. That is
+ * worse in two ways: it silently rewrites text the model wrote, and it only
+ * catches the exact placeholder it knows about — "[Name]", "[Your name here]"
+ * and "[Sender]" all slip through. Told once, up front, the model signs
+ * correctly everywhere, including in places no post-processor would think to
+ * look.
+ *
+ * DEFENSIVE, because the answer must not get worse when a field is missing. A
+ * user with no display_name contributes no line rather than "Name: undefined",
+ * and if nothing at all is known the block is empty and the prompt is exactly
+ * what it was before.
+ *
+ * NOT AN AUTHORISATION SIGNAL. This is stationery, not permission. Every read
+ * and write is still gated by `governance.canUseFeature` and the executor's own
+ * RBAC — a model that has been told the caller is the CEO has been told a fact
+ * about how to address a memo, not granted anything.
+ */
+function whoIsAsking(user) {
+  if (!user) return "";
+  const lines = [];
+  if (user.display_name) lines.push(`Name: ${user.display_name}`);
+  if (user.email) lines.push(`Email: ${user.email}`);
+  if (user.is_ceo) lines.push("Role: CEO / Executive");
+  if (!lines.length) return "";
+  return (
+    "\n\nWHO YOU ARE TALKING TO — the signed-in user, on whose behalf you act:\n" +
+    lines.join("\n") +
+    "\nUse their real name when you draft anything that carries a sender, a signature or a " +
+    "preparer — memos, letters, emails, notes. NEVER write a placeholder such as [Your Name], " +
+    "[Name] or [Sender]: you have been told the name, so use it. Do not invent a job title, a " +
+    "department or a company name you have not been given — leave those out rather than guessing."
+  );
+}
+
 async function ask({ client, user, conversationId, message, allowed, registry, feature = "assistant" }) {
   // Governance gate (AI_ARCHITECTURE §6): feature enabled + user granted + budget
   // not hard-capped. Nothing hits a model when the gate is closed.
@@ -255,6 +304,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     // Status machines: a record usually can't jump straight to a terminal state.
     "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
     "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
+    whoIsAsking(user) +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 

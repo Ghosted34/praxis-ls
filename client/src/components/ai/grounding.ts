@@ -240,3 +240,97 @@ export function artifactTitle(text: string): string {
   const clean = raw.replace(LINK, "$1").replace(/[*_`#]/g, "").trim();
   return clean.length > 60 ? clean.slice(0, 57).trimEnd() + "…" : clean || "Draft";
 }
+
+/**
+ * The DOCUMENT inside an answer, with the conversation around it removed.
+ *
+ * THE PROBLEM. An answer that drafts something arrives wrapped in chat:
+ *
+ *     Here's a draft memo for the finance department based on the financial model.
+ *     ---
+ *     INTERNAL MEMORANDUM
+ *     …the actual memo…
+ *     Prepared by: Tom Blake
+ *     ---
+ *     Would you like me to:
+ *     1. Add a section on operating expenses…
+ *     Just let me know.
+ *
+ * In the THREAD all of that is correct — it is a conversation, and the offer at
+ * the end is the assistant doing its job. On the CANVAS it is noise: the canvas
+ * holds the document you are going to send to the finance department, and
+ * "Here's a draft memo" is not part of it.
+ *
+ * NON-LOSSY BY CONSTRUCTION, and that is the whole design. Each end is trimmed
+ * only when it is confidently recognised; anything unrecognised is left exactly
+ * as it was. The worst case is the behaviour we already had — the full text —
+ * and the failure mode of a heuristic that guesses wrong is a slightly untidy
+ * canvas, never a truncated document. The full answer also remains in the
+ * thread regardless, so nothing is ever only-here.
+ *
+ * WHY A HEURISTIC AT ALL, given that guessing at model output is what left the
+ * sources footer dead for weeks. Because the alternative — asking the model to
+ * fence its documents — has to be paid for on four surfaces: the marker has to
+ * be stripped from the thread, the copy button, the download and the read-aloud,
+ * or it leaks as literal text. And it would STILL need this function as the
+ * fallback for the turns where the model does not comply. Given that, the fence
+ * buys precision on top of a trim that has to exist anyway; it is worth adding
+ * when this proves unreliable in practice, not before.
+ */
+
+/** Openers a model uses to hand over a draft, before the draft starts. */
+const LEAD_IN = /^\s*(here('?s| is)|i'?ve (drafted|prepared|written)|below is|this is)\b/i;
+
+/**
+ * The wrap-up offer. Anchored to a line START and to phrasings that are
+ * unambiguously a question back to the user, so a document that happens to
+ * contain the word "would" mid-sentence is untouched.
+ */
+const OFFER = /^\s{0,3}(#{1,6}\s*)?(\*\*)?(would you like me to|want me to|shall i|do you want me to|let me know if|just let me know|would you like)\b/i;
+
+export function documentBody(text: string): string {
+  const lines = text.split("\n");
+  let start = 0;
+  let end = lines.length;
+
+  // ── tail: from the offer to the end ──────────────────────────────────────
+  //
+  // Scanned DOWNWARD from the start of the final third, taking the FIRST match.
+  // Scanning up from the bottom looks equivalent and is not: a wrap-up is
+  // usually several lines — "Would you like me to:", a numbered list, then
+  // "Just let me know." — and the bottom-up scan stops at the LAST of those,
+  // trimming one line and leaving the block. The cut belongs at the first line
+  // of the offer, not its last.
+  //
+  // Restricting to the final third is what stops a document that opens with
+  // "Would you like to know the position?" losing its own body.
+  for (let i = Math.floor(lines.length * 0.66); i < lines.length; i++) {
+    if (!OFFER.test(lines[i])) continue;
+    end = i;
+    // Take the `---` immediately above it too; it was that block's separator.
+    while (end > 0 && !lines[end - 1].trim()) end -= 1;
+    if (end > 0 && /^\s*-{3,}\s*$/.test(lines[end - 1])) end -= 1;
+    break;
+  }
+
+  // ── head: a short hand-over sentence before the document begins ──────────
+  const firstText = lines.findIndex((l) => l.trim());
+  if (firstText !== -1 && LEAD_IN.test(lines[firstText])) {
+    // It has to be SHORT — one or two lines — or it is the answer, not a preamble.
+    let i = firstText;
+    while (i < end && lines[i].trim()) i += 1;
+    if (i - firstText <= 2) {
+      let j = i;
+      while (j < end && !lines[j].trim()) j += 1;
+      // And it has to be followed by a rule or a heading — the document starting.
+      if (j < end && (/^\s*-{3,}\s*$/.test(lines[j]) || /^\s{0,3}#{1,6}\s/.test(lines[j]) || /^\s*\*\*/.test(lines[j]))) {
+        start = /^\s*-{3,}\s*$/.test(lines[j]) ? j + 1 : j;
+      }
+    }
+  }
+
+  const body = lines.slice(start, end).join("\n").trim();
+  // The safety net: never hand back something materially shorter than what a
+  // document should be, and never hand back nothing.
+  return body.length >= 120 ? body : text;
+}

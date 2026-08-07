@@ -34,7 +34,7 @@ import { Markdown } from "@/components/markdown";
 import { ActionForm } from "@/components/action-form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon } from "@/components/ui/icons";
-import { artifactTitle, extractSources, extractTables, isLongForm, mergeSources, type AiSource, type AiTable } from "./grounding";
+import { artifactTitle, documentBody, extractSources, extractTables, isLongForm, mergeSources, type AiSource, type AiTable } from "./grounding";
 import {
   CanvasIcon,
   CopyIcon,
@@ -78,7 +78,12 @@ export function outputFor(turn: AiTurn): TurnOutput {
   if (turn.role !== "assistant" || turn.failed) return { tables: [], artifact: null };
   return {
     tables: extractTables(turn.text),
-    artifact: isLongForm(turn.text) ? { title: artifactTitle(turn.text), text: turn.text } : null,
+    // The canvas gets the DOCUMENT, not the conversation around it. The thread
+    // still shows the whole reply — the hand-over sentence and the "would you
+    // like me to…" offer belong there, and only there.
+    artifact: isLongForm(turn.text)
+      ? { title: artifactTitle(turn.text), text: documentBody(turn.text) }
+      : null,
   };
 }
 

@@ -11,7 +11,7 @@
  * `areas.test.ts` was written to catch for the ribbon.
  */
 import { describe, it, expect } from "vitest";
-import { artifactTitle, extractSources, extractTable, extractTables, isLongForm, kindOf, mergeSources } from "./grounding";
+import { artifactTitle, documentBody, extractSources, extractTable, extractTables, isLongForm, kindOf, mergeSources } from "./grounding";
 
 describe("extractSources", () => {
   it("reads the internal links a grounded answer already writes", () => {
@@ -196,5 +196,79 @@ describe("artifactTitle", () => {
     const title = artifactTitle("x".repeat(200));
     expect(title).toHaveLength(58);
     expect(title.endsWith("…")).toBe(true);
+  });
+});
+
+describe("documentBody", () => {
+  // The real shape from a "draft a memo for the finance department" reply.
+  const memo = [
+    "Here's a draft memo for the finance department based on the financial model.",
+    "",
+    "---",
+    "",
+    "## INTERNAL MEMORANDUM",
+    "",
+    "**TO:** Finance Department **FROM:** Tom Blake **DATE:** 07 August 2026",
+    "",
+    "### 1. Purpose",
+    "",
+    "This memo summarizes the H2 2026 financial outlook based on July actuals, the open",
+    "sales pipeline, and the current receivables and tax position.",
+    "",
+    "### 6. Caveats",
+    "",
+    "- Based on one month of actuals (July); the run-rate is not yet a reliable trend.",
+    "- This is a revenue/cash/tax model; operating expenses are not yet included.",
+    "",
+    "---",
+    "",
+    "**Prepared by:** Tom Blake **Distribution:** Finance Department",
+    "",
+    "---",
+    "",
+    "Would you like me to:",
+    "",
+    "1. **Add a section on operating expenses** to make this a full P&L?",
+    "2. **Adjust the collection-rate assumptions** to a figure you believe is realistic?",
+    "",
+    "Just let me know.",
+  ].join("\n");
+
+  it("drops the hand-over sentence and the trailing offer", () => {
+    const body = documentBody(memo);
+    expect(body).not.toMatch(/Here's a draft memo/);
+    expect(body).not.toMatch(/Would you like me to/);
+    expect(body).not.toMatch(/Just let me know/);
+  });
+
+  it("keeps the document itself intact, first line to last", () => {
+    const body = documentBody(memo);
+    expect(body).toMatch(/^## INTERNAL MEMORANDUM/);
+    expect(body).toMatch(/Prepared by:\*\* Tom Blake/);
+    expect(body).toMatch(/### 1\. Purpose/);
+    expect(body).toMatch(/### 6\. Caveats/);
+    expect(body).toMatch(/operating expenses are not yet included/);
+  });
+
+  it("NEVER truncates when it cannot recognise the shape — the safety property", () => {
+    // A document with no hand-over and no offer must come back byte-identical.
+    const plain = `## Proforma\n\n${"Terms and conditions apply. ".repeat(30)}`;
+    expect(documentBody(plain)).toBe(plain.trim());
+  });
+
+  it("leaves a document that merely contains the word 'would' alone", () => {
+    const doc = `## Report\n\n${"It would be prudent to collect early. ".repeat(20)}`;
+    expect(documentBody(doc)).toContain("would be prudent");
+  });
+
+  it("ignores an offer-like phrase near the TOP, which is prose not a wrap-up", () => {
+    const doc = `Would you like to know the position?\n\n## Report\n\n${"Body text here. ".repeat(40)}`;
+    expect(documentBody(doc)).toContain("Body text here.");
+  });
+
+  it("falls back to the full text rather than returning a scrap", () => {
+    // Trimming both ends here would leave almost nothing; the guard returns all.
+    const tiny = "Here's the note.\n\n---\n\nShort.\n\n---\n\nWould you like me to expand it?";
+    expect(documentBody(tiny)).toBe(tiny);
   });
 });

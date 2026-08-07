@@ -10,12 +10,21 @@ const { insertOne, getById, page, updateOne } = require("../../shared/db/query-h
 const insertChannel = (client, data) => insertOne(client, "comms_group", data);
 const getChannel = (client, id) => getById(client, "comms_group", "group_id", id);
 
+// The other member's avatar_ref, for DIRECT channels — lets the UI show the
+// user's uploaded profile photo instead of a hashed-colour initials chip. NULL
+// for every other kind (a group has no single "other" member).
+const PARTNER_AVATAR_SQL =
+  "CASE WHEN g.kind = 'DIRECT' THEN " +
+  "(SELECT u.avatar_ref FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id " +
+  "  WHERE pm.group_id = g.group_id AND pm.user_id <> $1 LIMIT 1) END AS partner_avatar_ref";
+
 async function listChannelsForUser(client, userId, q = {}) {
   const { limit, offset } = page(q);
   const { rows } = await client.query(
     "SELECT g.*, m.is_pinned, m.is_muted, m.last_read_at, " +
       "  (SELECT COUNT(*)::int FROM comms_message x WHERE x.group_id = g.group_id AND x.deleted_at IS NULL " +
-      "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread " +
+      "     AND (m.last_read_at IS NULL OR x.created_at > m.last_read_at) AND x.sender_user_id <> $1) AS unread, " +
+      "  " + PARTNER_AVATAR_SQL + " " +
       "FROM comms_group g JOIN comms_member m ON m.group_id = g.group_id AND m.user_id = $1 " +
       "WHERE g.status = 'ACTIVE' ORDER BY m.is_pinned DESC, g.updated_at DESC LIMIT $2 OFFSET $3",
     [userId, limit, offset],
@@ -28,7 +37,18 @@ async function getChannelEnriched(client, id) {
   const [{ members }] = (await client.query("SELECT COUNT(*)::int AS members FROM comms_member WHERE group_id = $1", [id])).rows;
   const [{ messages }] = (await client.query("SELECT COUNT(*)::int AS messages FROM comms_message WHERE group_id = $1 AND deleted_at IS NULL", [id])).rows;
   const last = (await client.query("SELECT * FROM comms_message WHERE group_id = $1 AND deleted_at IS NULL ORDER BY created_at DESC LIMIT 1", [id])).rows[0] || null;
-  return { ...g, member_count: members, message_count: messages, last_message: last };
+  // Same partner-avatar computation as listChannelsForUser, so the thread
+  // header shows the photo too. DIRECT channels have exactly two members, so
+  // any member other than the (unknown here) viewer is the partner.
+  let partner_avatar_ref = null;
+  if (g.kind === "DIRECT") {
+    const { rows: [partner] } = await client.query(
+      "SELECT u.avatar_ref FROM comms_member pm JOIN app_user u ON u.user_id = pm.user_id WHERE pm.group_id = $1 LIMIT 1",
+      [id],
+    );
+    partner_avatar_ref = partner?.avatar_ref ?? null;
+  }
+  return { ...g, member_count: members, message_count: messages, last_message: last, partner_avatar_ref };
 }
 async function findDirectChannel(client, userA, userB) {
   const { rows } = await client.query(
@@ -66,7 +86,7 @@ async function removeMember(client, groupId, userId) {
 }
 async function listMembers(client, groupId) {
   return (await client.query(
-    "SELECT m.*, u.full_name, u.email FROM comms_member m JOIN app_user u ON u.user_id = m.user_id WHERE m.group_id = $1 ORDER BY m.member_role, u.full_name", [groupId])).rows;
+    "SELECT m.*, u.full_name, u.email, u.avatar_ref FROM comms_member m JOIN app_user u ON u.user_id = m.user_id WHERE m.group_id = $1 ORDER BY m.member_role, u.full_name", [groupId])).rows;
 }
 async function findMember(client, groupId, userId) {
   return (await client.query("SELECT * FROM comms_member WHERE group_id = $1 AND user_id = $2", [groupId, userId])).rows[0] || null;
@@ -176,7 +196,7 @@ async function deleteQuickReply(client, id) { await client.query("DELETE FROM co
 // ── Colleague directory ──
 async function listColleagues(client, q = {}) {
   const { limit, offset } = page(q);
-  return (await client.query("SELECT user_id, full_name, email, status FROM app_user WHERE status = 'ACTIVE' ORDER BY full_name LIMIT $1 OFFSET $2", [limit, offset])).rows;
+  return (await client.query("SELECT user_id, full_name, email, status, avatar_ref FROM app_user WHERE status = 'ACTIVE' ORDER BY full_name LIMIT $1 OFFSET $2", [limit, offset])).rows;
 }
 
 module.exports = {

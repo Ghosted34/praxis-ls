@@ -29,6 +29,25 @@ function initials(name?: string | null) {
   const p = name.trim().split(/\s+/);
   return ((p[0]?.[0] ?? "") + (p[1]?.[0] ?? "")).toUpperCase() || "?";
 }
+
+const AVATAR_SIZES = {
+  sm: "h-8 w-8 text-[11px]",
+  md: "h-10 w-10 text-[12px]",
+  lg: "h-16 w-16 text-lg",
+} as const;
+
+/** Avatar — the user's uploaded profile photo (avatar_ref /media URL) when they
+ *  have one, else the hashed-colour initials chip (pixie parity). */
+function Avatar({ name, src, size = "md" }: { name?: string | null; src?: string | null; size?: keyof typeof AVATAR_SIZES }) {
+  if (src) {
+    return <img src={src} alt={name || "avatar"} className={cn("shrink-0 rounded-full object-cover", AVATAR_SIZES[size])} />;
+  }
+  return (
+    <span className={cn("grid shrink-0 place-items-center rounded-full font-semibold text-white", AVATAR_SIZES[size])} style={{ backgroundColor: avatarColour(name) }}>
+      {initials(name)}
+    </span>
+  );
+}
 function timeShort(iso?: string | null) {
   if (!iso) return "";
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
@@ -86,7 +105,8 @@ function NewChatModal({ colleagues, onClose, onCreated }: { colleagues: api.Coll
             {colleagues.map((c) => (
               <label key={c.user_id} className="flex items-center gap-2 rounded px-2 py-1 text-sm hover:bg-accent">
                 <input type={mode === "DIRECT" ? "radio" : "checkbox"} name="member" checked={selected.includes(c.user_id)} onChange={() => (mode === "DIRECT" ? setSelected([c.user_id]) : toggle(c.user_id))} />
-                {c.full_name || c.email}
+                <Avatar name={c.full_name} src={c.avatar_ref} size="sm" />
+                <span className="min-w-0 truncate">{c.full_name || c.email}</span>
               </label>
             ))}
           </div>
@@ -109,7 +129,7 @@ function ChannelRow({ c, active, onClick }: { c: api.Channel; active: boolean; o
   return (
     <button type="button" onClick={onClick}
       className={cn("flex w-full items-center gap-2.5 rounded-xl px-2.5 py-2 text-left transition-colors", active ? "bg-accent" : "hover:bg-accent/60")}>
-      <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[12px] font-semibold text-white" style={{ backgroundColor: avatarColour(c.name) }}>{initials(c.name)}</span>
+      <Avatar name={c.name} src={c.kind === "DIRECT" ? c.partner_avatar_ref : null} />
       <span className="min-w-0 flex-1">
         <span className="flex items-baseline justify-between gap-1">
           <span className={cn("flex items-center gap-1 truncate text-[12.5px]", unread > 0 ? "font-medium text-foreground" : "text-muted-foreground")}>
@@ -133,7 +153,7 @@ function InfoPane({ channel }: { channel: api.Channel | null }) {
   return (
     <div className="flex-1 overflow-y-auto p-4">
       <div className="flex flex-col items-center gap-2 border-b border-border pb-4 text-center">
-        <span className="grid h-16 w-16 place-items-center rounded-full text-lg font-semibold text-white" style={{ backgroundColor: avatarColour(channel.name) }}>{initials(channel.name)}</span>
+        <Avatar name={channel.name} src={channel.kind === "DIRECT" ? channel.partner_avatar_ref : null} size="lg" />
         <div className="text-sm font-semibold">{channel.name}</div>
         {channel.kind && <span className="micro">{channel.kind.toLowerCase()}</span>}
       </div>
@@ -295,7 +315,7 @@ function Thread({ channelId, meId, nameOf, onBack, onSent }: { channelId: string
     <>
       <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">
         <button className="text-muted-foreground hover:text-foreground md:hidden" onClick={onBack} aria-label="Back">←</button>
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[11px] font-semibold text-white" style={{ backgroundColor: avatarColour(ch.data?.name) }}>{initials(ch.data?.name || "?")}</span>
+        <Avatar name={ch.data?.name} src={ch.data?.kind === "DIRECT" ? ch.data?.partner_avatar_ref : null} size="sm" />
         <span className="text-sm font-semibold">{ch.data?.name || "Conversation"}</span>
         {ch.data?.kind && <span className="micro">· {ch.data.kind.toLowerCase()}</span>}
       </div>

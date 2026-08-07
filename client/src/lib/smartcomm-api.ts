@@ -27,9 +27,11 @@ export type Channel = {
   unread?: number;
   member_count?: number;
   last_message?: CommMessage | null;
+  /** The other member's uploaded profile photo (/media URL) — DIRECT channels only. */
+  partner_avatar_ref?: string | null;
 };
 
-export type Colleague = { user_id: string; full_name?: string | null; email: string };
+export type Colleague = { user_id: string; full_name?: string | null; email: string; avatar_ref?: string | null };
 
 /* ── Outbound provider config (email) — set + live test ── */
 export type CommsConfig = {

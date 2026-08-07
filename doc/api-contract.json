@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 862,
+  "route_count": 873,
   "tiers": {
     "public": 19,
     "self-scoped": 57,
-    "gated": 786
+    "gated": 797
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -171,6 +171,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "DELETE /api/tenant/entities/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "DELETE /api/tenant/entities/:id/establishments/:childId": {
       "auth": true,
       "rbac": true,
@@ -184,6 +190,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/entities/:id/registrations/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/entities/:id/tax-registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1269,7 +1281,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/entities/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/entities/:id/establishments": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/entities/:id/letterhead": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1282,6 +1306,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/entities/:id/registrations": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/entities/:id/renewals": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/entities/:id/tax-registrations": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2895,6 +2931,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/entities/:id/documents/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/entities/:id/establishments/:childId": {
       "auth": true,
       "rbac": true,
@@ -2908,6 +2950,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/entities/:id/registrations/:childId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/entities/:id/tax-registrations/:childId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3927,6 +3975,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/entities/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/entities/:id/establishments": {
       "auth": true,
       "rbac": true,
@@ -3958,6 +4012,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/entities/:id/structure": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/entities/:id/tax-registrations": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5104,6 +5164,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/document-templates/:docType/config": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/entities/:id/letterhead": {
       "auth": true,
       "rbac": true,
       "validated": false,

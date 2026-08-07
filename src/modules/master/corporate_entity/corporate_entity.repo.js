@@ -161,6 +161,100 @@ async function collections(client, id) {
 }
 
 /**
+ * Documents, tax registrations and the letterhead configuration (0516).
+ *
+ * Split from `collections` so the dossier can load the identity half without
+ * paying for the documents half, and so PR-2 callers that only want renewals do
+ * not drag in five unrelated queries. Sequential for the same reason as
+ * `collections` — one pg client per request.
+ */
+async function documentsAndTax(client, id) {
+  const documents = await client.query(
+    `SELECT d.*,
+            t.code AS document_type_code,
+            t.name AS document_type_name,
+            t.default_severity,
+            t.requires_expiry,
+            t.renewal_lead_days AS type_renewal_lead_days,
+            v.storage_path, v.content_hash AS vault_hash, v.status AS vault_status
+       FROM entity_document d
+       LEFT JOIN party_document_type t ON t.document_type_id = d.document_type_id
+       LEFT JOIN document_vault v      ON v.doc_id = d.vault_id
+      WHERE d.entity_id = $1
+      ORDER BY d.expires_on NULLS LAST, d.created_at DESC`,
+    [id],
+  );
+  const taxRegistrations = await client.query(
+    `SELECT tr.*, j.name AS jurisdiction_name, j.currency AS jurisdiction_currency
+       FROM entity_tax_registration tr
+       LEFT JOIN tax_jurisdiction j ON j.jurisdiction_id = tr.jurisdiction_id
+      WHERE tr.entity_id = $1
+      ORDER BY tr.is_primary DESC, tr.country_code, tr.tax_kind`,
+    [id],
+  );
+  const letterhead = await client.query("SELECT * FROM entity_letterhead WHERE entity_id = $1", [id]);
+  return {
+    documents: documents.rows,
+    tax_registrations: taxRegistrations.rows,
+    letterhead: letterhead.rows[0] || null,
+  };
+}
+
+/** The obligation calendar rows for this entity (0342's tax_calendar). */
+async function taxObligations(client, id, { limit = 24 } = {}) {
+  const { rows } = await client.query(
+    `SELECT c.*, tr.tax_kind, tr.country_code, tr.tax_number
+       FROM tax_calendar c
+       LEFT JOIN entity_tax_registration tr ON tr.tax_registration_id = c.tax_registration_id
+      WHERE c.entity_id = $1
+      ORDER BY c.status = 'PENDING' DESC, c.due_on
+      LIMIT $2`,
+    [id, limit],
+  );
+  return rows;
+}
+
+/**
+ * Columns the letterhead designer may write. As with WRITABLE above, this is an
+ * explicit allow-list rather than "whatever the body carried" — `updated_by` is
+ * stamped by the service and `entity_id` is the key, so neither is writable.
+ */
+const LETTERHEAD_WRITABLE = [
+  "show_legal_form", "show_share_capital", "show_registered_address", "show_registrations",
+  "show_contact", "show_bank_block", "show_establishment",
+  "header_note_fr", "header_note_en", "footer_note_fr", "footer_note_en",
+  "legal_mentions_fr", "legal_mentions_en",
+  "brand_color", "accent_color", "logo_position", "paper_size",
+  "header_height_mm", "footer_height_mm",
+];
+
+const getLetterhead = (client, id) => getById(client, "entity_letterhead", "entity_id", id);
+
+/**
+ * Upsert the letterhead configuration.
+ *
+ * 0516 seeds a row for every entity that existed then; this covers entities
+ * created after it, so the designer never opens on a missing row. The UPDATE
+ * goes through `updateOne`, which validates and quotes every identifier and
+ * enforces the allow-list — the SET clause must not be built by string
+ * concatenation here (SEC H3).
+ */
+async function upsertLetterhead(client, id, fields, actorUserId = null) {
+  await client.query(
+    "INSERT INTO entity_letterhead (entity_id) VALUES ($1) ON CONFLICT (entity_id) DO NOTHING",
+    [id],
+  );
+  const patch = {};
+  for (const k of LETTERHEAD_WRITABLE) if (fields[k] !== undefined) patch[k] = fields[k];
+  if (actorUserId) patch.updated_by = actorUserId;
+  if (!Object.keys(patch).length) return getLetterhead(client, id);
+  return updateOne(
+    client, "entity_letterhead", "entity_id", id, patch, "*",
+    [...LETTERHEAD_WRITABLE, "updated_by"], { touch: "updated_at" },
+  );
+}
+
+/**
  * How much of the tenant's operational history hangs off this entity. Read by
  * the dossier header, and by setStatus to explain why an entity cannot simply be
  * deleted. Counts are cheap here (indexed FK columns) and honest — an entity with
@@ -192,8 +286,19 @@ async function usage(client, id) {
  * stores a GL mapping and a label, not a number.
  */
 async function treasuryAccounts(client, id) {
+  // The bank-detail columns (0516) are selected because the letterhead's payment
+  // block is assembled from them — without them `paymentBlock` finds nothing on
+  // every row and silently falls back to the frozen `bank_block` forever, which
+  // defeats the whole point of making treasury_account the source of truth.
+  //
+  // They are the finance-confidential fields, so every caller that serializes
+  // this list masks them unless the caller holds Treasury read: the dossier and
+  // the letterhead endpoint both run it through maskPaymentBlock (gate 14).
   const { rows } = await client.query(
-    `SELECT treasury_account_id, kind, label, coa_code, currency, momo_network, is_active, created_at
+    `SELECT treasury_account_id, kind, label, coa_code, currency, momo_network,
+            is_active, is_primary, show_on_documents,
+            bank_name, branch, account_number, iban, swift_bic, beneficiary_name,
+            created_at
        FROM treasury_account WHERE entity_id = $1 ORDER BY is_active DESC, kind, label`,
     [id],
   );
@@ -201,7 +306,8 @@ async function treasuryAccounts(client, id) {
 }
 
 module.exports = {
-  WRITABLE,
+  WRITABLE, LETTERHEAD_WRITABLE,
   insert, get, getByCode, update, updateInternal, list,
   parentMap, children, ancestors, collections, usage, treasuryAccounts,
+  documentsAndTax, taxObligations, getLetterhead, upsertLetterhead,
 };

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 862 |
+| Routes | 873 |
 | Modules mounted | 106 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 862 mounted routes, grouped by path prefix.
+All 873 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -582,10 +582,16 @@ All 862 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/entities/:id/contacts` | — |
 | DELETE | `/api/tenant/entities/:id/contacts/:childId` | — |
 | PATCH | `/api/tenant/entities/:id/contacts/:childId` | — |
+| GET | `/api/tenant/entities/:id/documents` | — |
+| POST | `/api/tenant/entities/:id/documents` | — |
+| DELETE | `/api/tenant/entities/:id/documents/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/documents/:childId` | — |
 | GET | `/api/tenant/entities/:id/establishments` | — |
 | POST | `/api/tenant/entities/:id/establishments` | — |
 | DELETE | `/api/tenant/entities/:id/establishments/:childId` | — |
 | PATCH | `/api/tenant/entities/:id/establishments/:childId` | — |
+| GET | `/api/tenant/entities/:id/letterhead` | — |
+| PUT | `/api/tenant/entities/:id/letterhead` | — |
 | POST | `/api/tenant/entities/:id/logo` | — |
 | GET | `/api/tenant/entities/:id/people` | — |
 | POST | `/api/tenant/entities/:id/people` | — |
@@ -595,8 +601,13 @@ All 862 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/entities/:id/registrations` | — |
 | DELETE | `/api/tenant/entities/:id/registrations/:childId` | — |
 | PATCH | `/api/tenant/entities/:id/registrations/:childId` | — |
+| GET | `/api/tenant/entities/:id/renewals` | — |
 | POST | `/api/tenant/entities/:id/status` | — |
 | POST | `/api/tenant/entities/:id/structure` | — |
+| GET | `/api/tenant/entities/:id/tax-registrations` | — |
+| POST | `/api/tenant/entities/:id/tax-registrations` | — |
+| DELETE | `/api/tenant/entities/:id/tax-registrations/:childId` | — |
+| PATCH | `/api/tenant/entities/:id/tax-registrations/:childId` | — |
 
 ### `tenant/equipment`
 

@@ -298,6 +298,103 @@ exports.logoUpload = z.object({
 });
 exports.setActive = z.object({ active: z.boolean() });
 exports.masterShapeKeys = Object.keys(masterShape);
+// ── Administrative document ────────────────────────────────────────────────
+// Service-owned state is absent by design: `scan_status` transitions,
+// `verification_status`, `verified_by`, `content_hash` and `version_no` are
+// asserted by the service after a scan actually arrives, never by the request
+// claiming them (0511's Hard Rule 9, carried over).
+const documentShape = {
+  document_type_id: blankToUndefined(z.string().uuid("Pick a document type.")),
+  title: optionalText,
+  document_number: optionalText,
+  issuing_authority: optionalText,
+  issued_on: optionalDate,
+  expires_on: optionalDate,
+  country_code: countryCode,
+  establishment_id: blankToUndefined(z.string().uuid("Must be a valid establishment id.")),
+  vault_id: blankToUndefined(z.string().uuid("Must be a valid document id.")),
+  physical_ref: optionalText,
+  scan_due_on: optionalDate,
+  renewal_lead_days: blankToUndefined(
+    amount.refine((n) => Number.isInteger(n) && n >= 0 && n <= 365, "Enter 0-365 days."),
+  ),
+  notes: optionalText,
+  is_active: z.boolean().optional(),
+};
+const withDocumentRules = (schema) =>
+  schema.refine(
+    (v) => !(v.issued_on && v.expires_on) || v.expires_on >= v.issued_on,
+    { message: "Expiry cannot be before the issue date.", path: ["expires_on"] },
+  );
+exports.documentCreate = withDocumentRules(z.object(documentShape));
+exports.documentUpdate = withDocumentRules(patchOf(documentShape));
+
+// ── Tax registration (per entity, per jurisdiction) ────────────────────────
+const TAX_KINDS = ["VAT", "INCOME", "WHT", "PAYROLL", "CUSTOMS", "LOCAL", "OTHER"];
+const FILING_FREQUENCIES = ["MONTHLY", "QUARTERLY", "ANNUAL", "BIMONTHLY", "ON_EVENT"];
+
+const taxRegistrationShape = {
+  jurisdiction_id: blankToUndefined(z.string().uuid("Must be a valid jurisdiction id.")),
+  country_code: z.string().trim().length(2, "Use a 2-letter country code.").toUpperCase(),
+  tax_kind: z.enum(TAX_KINDS).optional(),
+  tax_number: optionalText,
+  regime: optionalText,
+  filing_frequency: blankToUndefined(z.enum(FILING_FREQUENCIES)),
+  filing_due_day: blankToUndefined(
+    amount.refine((n) => Number.isInteger(n) && n >= 1 && n <= 31, "Enter a day of the month, 1-31."),
+  ),
+  currency: optionalCurrency,
+  is_withholding_agent: z.boolean().optional(),
+  reverse_charge_applies: z.boolean().optional(),
+  registered_on: optionalDate,
+  deregistered_on: optionalDate,
+  is_primary: z.boolean().optional(),
+  is_active: z.boolean().optional(),
+  filing_portal_url: optionalText,
+  responsible_user_id: blankToUndefined(z.string().uuid("Must be a valid user id.")),
+  notes: optionalText,
+};
+const withTaxRules = (schema) =>
+  schema
+    .refine(
+      (v) => !(v.registered_on && v.deregistered_on) || v.deregistered_on >= v.registered_on,
+      { message: "Deregistration cannot be before registration.", path: ["deregistered_on"] },
+    )
+    .refine(
+      // A filing day without a frequency has nothing to attach to, and the
+      // obligation generator would silently skip it.
+      (v) => v.filing_due_day === undefined || v.filing_frequency !== undefined,
+      { message: "Choose a filing frequency before setting a due day.", path: ["filing_due_day"] },
+    );
+exports.taxRegistrationCreate = withTaxRules(z.object(taxRegistrationShape));
+exports.taxRegistrationUpdate = withTaxRules(patchOf(taxRegistrationShape));
+
+// ── Letterhead configuration ───────────────────────────────────────────────
+const hexColor = blankToUndefined(
+  z.string().trim().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Use a hex colour like #C2703D."),
+);
+exports.letterheadUpdate = z.object({
+  show_legal_form: z.boolean().optional(),
+  show_share_capital: z.boolean().optional(),
+  show_registered_address: z.boolean().optional(),
+  show_registrations: z.boolean().optional(),
+  show_contact: z.boolean().optional(),
+  show_bank_block: z.boolean().optional(),
+  show_establishment: z.boolean().optional(),
+  header_note_fr: optionalText.nullable(),
+  header_note_en: optionalText.nullable(),
+  footer_note_fr: optionalText.nullable(),
+  footer_note_en: optionalText.nullable(),
+  legal_mentions_fr: optionalText.nullable(),
+  legal_mentions_en: optionalText.nullable(),
+  brand_color: hexColor.nullable(),
+  accent_color: hexColor.nullable(),
+  logo_position: z.enum(["LEFT", "CENTER", "RIGHT"]).optional(),
+  paper_size: z.enum(["A4", "LETTER"]).optional(),
+  header_height_mm: blankToUndefined(amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm.")).nullable(),
+  footer_height_mm: blankToUndefined(amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm.")).nullable(),
+  remittance_account_id: blankToUndefined(z.string().uuid("Must be a valid treasury account id.")).nullable(),
+});
 
 // ── Entity-level actions ───────────────────────────────────────────────────
 exports.setStatus = z.object({
@@ -336,3 +433,5 @@ exports.RELATIONSHIP_TYPES = RELATIONSHIP_TYPES;
 exports.LIFECYCLE_STATES = LIFECYCLE_STATES;
 exports.ACCOUNTING_FRAMEWORKS = ACCOUNTING_FRAMEWORKS;
 exports.CONTACT_ROLE_TAGS = CONTACT_ROLE_TAGS;
+exports.TAX_KINDS = TAX_KINDS;
+exports.FILING_FREQUENCIES = FILING_FREQUENCIES;

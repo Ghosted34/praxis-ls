@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 873,
+  "route_count": 886,
   "tiers": {
     "public": 19,
-    "self-scoped": 57,
-    "gated": 797
+    "self-scoped": 58,
+    "gated": 809
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3459,6 +3459,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "POST /api/tenant/ai/export/tables": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "POST /api/tenant/ai/governance/budget": {
       "auth": true,
       "rbac": true,
@@ -3765,6 +3771,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/clients/:id/banks/:bankId/reveal": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/clients/:id/beneficial-owners": {
       "auth": true,
       "rbac": true,
@@ -3777,13 +3789,43 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/clients/:id/change-requests/:crid/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/change-requests/:crid/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/clients/:id/contacts": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/clients/:id/copy-from-origin": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/clients/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/merge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/clients/:id/merge-preview": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4881,6 +4923,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/suppliers/:id/banks/:bankId/reveal": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/suppliers/:id/beneficial-owners": {
       "auth": true,
       "rbac": true,
@@ -4893,13 +4941,43 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/suppliers/:id/change-requests/:crid/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/change-requests/:crid/reject": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/suppliers/:id/contacts": {
       "auth": true,
       "rbac": true,
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/suppliers/:id/copy-from-origin": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/suppliers/:id/documents": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/merge": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/suppliers/:id/merge-preview": {
       "auth": true,
       "rbac": true,
       "validated": false,

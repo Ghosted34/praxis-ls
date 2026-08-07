@@ -32,6 +32,18 @@ router.post("/:id/block", requirePermission(MODULE, "approve"), validate(partyCo
 router.post("/:id/unblock", requirePermission(MODULE, "approve"), controller.unblock);
 router.post("/:id/verify", requirePermission(MODULE, "approve"), controller.verify);
 
+// Governed merge (§5.2) — CEO/Admin (`approve`). In LIVE it opens a maker-checker
+// change request; in TEST/sandbox it merges directly. Preview is read-only.
+router.post("/:id/merge-preview", requirePermission(MODULE, "view"), validate(partyCommon.mergeRequest), controller.mergePreview);
+router.post("/:id/merge", requirePermission(MODULE, "approve"), validate(partyCommon.mergeRequest), controller.merge);
+// Copy chosen sections from a converted party's linked origin (§6).
+router.post("/:id/copy-from-origin", requirePermission(MODULE, "edit"), validate(partyCommon.cloneFromOrigin), controller.cloneFromOrigin);
+// Sensitive-field / merge maker-checker decisions (§8) — a second authorizer.
+router.post("/:id/change-requests/:crid/approve", requirePermission(MODULE, "approve"), controller.approveChange);
+router.post("/:id/change-requests/:crid/reject", requirePermission(MODULE, "approve"), controller.rejectChange);
+// Masked-bank reveal (§3.5) — finance/CEO enforced in the handler; audited.
+router.post("/:id/banks/:bankId/reveal", requirePermission(MODULE, "view"), controller.revealBank);
+
 // Nested collections: contacts, addresses, banks, documents, registrations,
 // beneficial-owners under /:id/*.
 mountNested(router, { kind: "client", moduleKey: MODULE, parentTable: "client_master", parentPk: "client_id" });

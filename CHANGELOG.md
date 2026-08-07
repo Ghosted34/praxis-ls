@@ -22,6 +22,24 @@ Dates are ISO-8601, UTC.
 
 ## Unreleased
 
+### Added
+
+- **Counterparty governance (PR3-C).** The dedup detection shipped in §5.1 now
+  has its UI (an amber "Possible duplicates" panel on both create forms and at
+  the top of the 360), plus: a **governed merge** (`party_merge/`) that
+  reattaches every FK loser→survivor by catalogue discovery, preserves the
+  loser's names as `party_alias` rows, soft-archives the loser
+  (`registration_status='ARCHIVED'`, `merged_into_id`) rather than deleting it,
+  deactivates its aux account and re-points its open compliance flags —
+  CEO/Admin only, routed through a maker-checker in Live; **copy-from-origin**
+  for a converted party (`cloneFromOrigin`); 360 **deep links**, inline-SVG
+  **charts** and the **supplier AVL scorecard**; an audited **masked-bank
+  reveal**; a **sensitive-field maker-checker** (bank / legal name / tax
+  registration / credit limit / status changes become pending change requests in
+  Live, applied on a second authorization); and a transactional
+  `compliance.assertAllowed` **gate** wired at dossier and PO creation
+  (migration `0517`).
+
 ### Security
 
 - Access tokens now respect session revocation — killing a session, the idle

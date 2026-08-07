@@ -9,6 +9,7 @@
 "use strict";
 const partyAccounting = require("./party-accounting.service");
 const compliance = require("./compliance/compliance.service");
+const { insertOne } = require("../../shared/db/query-helpers");
 const { audit, emitEvent, resolveActorId } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
 
@@ -166,6 +167,73 @@ async function convert(c, { fromKind, sourceId, actor = {} }) {
   }
 }
 
+// The domain sections a converted party can EXPLICITLY copy from its origin
+// (Hard Rule 2 — never automatic). Columns mirror the nested write allow-lists.
+const CLONE_SPECS = {
+  banks: { table: (k) => `${k}_bank_account`, cols: ["beneficiary_name", "bank_name", "branch", "account_number", "iban", "swift_bic", "routing_code", "currency", "momo_network", "momo_number"] },
+  contacts: { table: (k) => `${k}_contact`, cols: ["name", "title", "email", "phone", "role_tags", "language", "timezone", "portal_access"] },
+  addresses: { table: (k) => `${k}_address`, cols: ["line1", "line2", "city", "region", "postal_code", "country_code", "type"] },
+};
+
+/**
+ * Copy chosen domain sections (banks / contacts / addresses) from a converted
+ * party's LINKED ORIGIN into it — the explicit "copy from origin" affordance
+ * (Hard Rule 2: domain data starts blank and is only ever copied on request).
+ *
+ * The origin is the counterpart the conversion bridge linked, resolved from the
+ * target's `linked_*` column — never an arbitrary party, so a caller cannot pull
+ * another counterparty's bank details in. Atomic + audited. Copied rows are
+ * demoted to non-primary so the copy never silently reassigns the target's
+ * primary contact / account.
+ *
+ * @param {object} opts
+ * @param {"client"|"supplier"} opts.kind    the TARGET kind (the party you are on)
+ * @param {string} opts.targetId             the party receiving the copies
+ * @param {string[]} opts.sections           any of "banks" | "contacts" | "addresses"
+ */
+async function cloneFromOrigin(c, { kind, targetId, sections = [], actor = {} }) {
+  const k = cfg(kind);
+  const target = await loadParty(c, k, targetId);
+  if (!target) throw new AppError("NOT_FOUND", `${kind} not found`, 404);
+  const sourceId = target[k.link];
+  if (!sourceId) throw new AppError("NO_ORIGIN", "This record is not linked to an origin to copy from.", 422);
+  const sourceKind = kind === "client" ? "supplier" : "client";
+
+  const cloned = {};
+  // Iterate the code-defined section keys and keep only the ones requested —
+  // `section` is therefore never a request-controlled property name (closes the
+  // remote-property-injection class; the request only ever filters, never keys).
+  const requested = new Set(Array.isArray(sections) ? sections : []);
+  await c.query("BEGIN");
+  try {
+    for (const section of Object.keys(CLONE_SPECS)) {
+      if (!requested.has(section)) continue;
+      const spec = CLONE_SPECS[section];
+      const srcTable = spec.table(sourceKind);
+      const tgtTable = spec.table(kind);
+      const { rows } = await c.query(
+        `SELECT ${spec.cols.join(", ")} FROM ${srcTable} WHERE ${sourceKind}_id = $1 AND is_active IS NOT false`,
+        [sourceId],
+      );
+      let n = 0;
+      for (const r of rows) {
+        await insertOne(c, tgtTable, { ...r, is_primary: false, [`${kind}_id`]: targetId }, "*", [...spec.cols, "is_primary", `${kind}_id`]);
+        n += 1;
+      }
+      cloned[section] = n;
+    }
+    await audit(c, {
+      actorUserId: actor.user_id || null, action: `${kind}.cloned_from_origin`, moduleKey: k.moduleKey,
+      entityRef: `${kind}:${targetId}`, after: { from: `${sourceKind}:${sourceId}`, sections: cloned },
+    });
+    await c.query("COMMIT");
+    return { cloned, from: `${sourceKind}:${sourceId}` };
+  } catch (e) {
+    await c.query("ROLLBACK");
+    throw e;
+  }
+}
+
 /**
  * Called by the master update service when registration_status transitions to
  * ACTIVE: allocate the aux account (idempotent) and refresh compliance. Kept
@@ -176,4 +244,4 @@ async function onActivate(c, { kind, partyId }) {
   return compliance.sync(c, { kind, partyId });
 }
 
-module.exports = { block, unblock, verify, convert, onActivate };
+module.exports = { block, unblock, verify, convert, cloneFromOrigin, onActivate };

@@ -157,6 +157,19 @@ exports.dedupeCheck = z.object({
   exclude_id: blankToUndefined(uuid),
 });
 
+// ── Governed merge (PR3-C §5.2) ─────────────────────────────────────────────
+// Fold the LOSER into the SURVIVOR. Same kind only (a client never merges into a
+// supplier — that is the conversion bridge). Both ids are required and must
+// differ; the service enforces the "different record" rule with a clearer error.
+exports.mergeRequest = z.object({ survivor_id: uuid, loser_id: uuid });
+
+// ── Copy-from-origin (PR3-C §6) ─────────────────────────────────────────────
+// On a converted party, explicitly clone chosen sections from its linked origin
+// (never automatic — Hard Rule 2). At least one section.
+const cloneSection = z.enum(["banks", "contacts", "addresses"]);
+exports.cloneFromOrigin = z.object({ sections: z.array(cloneSection).min(1, "Choose at least one section to copy") });
+exports.CLONE_SECTIONS = cloneSection.options;
+
 // The enum vocabularies, exported so a picker and the API agree on the option
 // lists without re-typing them.
 exports.ROLE_TAGS = roleTag.options;

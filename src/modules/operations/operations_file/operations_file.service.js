@@ -10,6 +10,7 @@ const { canTransition, isTerminal } = require("./operations_file.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const milestones = require("../milestone/milestone.service");
 const geoPlace = require("../geo_place/geo_place.service");
+const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
@@ -101,6 +102,13 @@ async function resolvePlaces(client, dossier) {
 }
 
 async function create(client, { data, actor = {} }) {
+  // Transactional compliance gate (§5): a hard-blocked client cannot open a
+  // dossier. Softer states (SOFT_BLOCK/ESCALATED) pass so freight keeps moving —
+  // the flags surface on the 360 and the override dialog logs the reason.
+  if (data.client_id) {
+    const gate = await compliance.assertAllowed(client, { kind: "client", partyId: data.client_id, action: "dossier_create" });
+    if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
+  }
   await client.query("BEGIN");
   let row;
   try {

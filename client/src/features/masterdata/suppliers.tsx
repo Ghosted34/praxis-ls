@@ -18,6 +18,7 @@ import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { CountryRegistrationFields, useCountryRegistrations, toRegistrationsPayload, type RegValues } from "./country-registration-fields";
+import { DedupeHint } from "./dedupe-hint";
 import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/masterdata-api";
@@ -94,6 +95,16 @@ function SupplierForm({ row, onClose, onSaved }: { row: (api.Supplier & Partial<
           {/* 2 · Country-driven tax / legal IDs. */}
           <div className="sm:col-span-2 pt-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Tax &amp; legal registration</div>
           <CountryRegistrationFields country={countryCode} values={regs} onChange={setRegs} />
+
+          {/* Non-blocking duplicate detection (§5.1) — advisory, dismissible. */}
+          <DedupeHint
+            kind="supplier"
+            legalName={legalName}
+            name={tradingName}
+            email={contact.email || email}
+            excludeId={isNew ? undefined : row?.supplier_id}
+            registrations={[{ kind: "NIU", number: regs.NIU }, { kind: "RCCM", number: regs.RCCM }].filter((r) => r.number)}
+          />
 
           <Field label="Category"><Input value={type} onChange={(e) => setType(e.target.value)} placeholder="Carrier, agent, utility…" /></Field>
           <Field label="Payment method">

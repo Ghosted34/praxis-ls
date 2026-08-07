@@ -11,7 +11,7 @@ module.exports = {
     res.json({ data: r });
   }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
-  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
+  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req), env: req.env })) })),
   creditCheck: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.creditCheck(c, { clientId: req.params.id, additionalAmount: Number(req.query.amount) || 0 })) })),
   // 360° dossier + lifecycle actions (shared with the supplier master).
   dossier: actions.dossier,
@@ -19,5 +19,11 @@ module.exports = {
   unblock: actions.unblock,
   verify: actions.verify,
   convert: actions.convert,
+  cloneFromOrigin: actions.cloneFromOrigin,
   dedupeCheck: actions.dedupeCheck,
+  mergePreview: actions.mergePreview,
+  merge: actions.merge,
+  approveChange: actions.approveChange,
+  rejectChange: actions.rejectChange,
+  revealBank: actions.revealBank,
 };

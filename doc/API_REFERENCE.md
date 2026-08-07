@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 873 |
+| Routes | 886 |
 | Modules mounted | 106 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 873 mounted routes, grouped by path prefix.
+All 886 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -178,6 +178,7 @@ All 873 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/ai/ask` | — |
 | POST | `/api/tenant/ai/batches/:batchId/confirm` | — |
 | GET | `/api/tenant/ai/conversations` | — |
+| POST | `/api/tenant/ai/export/tables` | — |
 | GET | `/api/tenant/ai/governance/budget` | — |
 | POST | `/api/tenant/ai/governance/budget` | — |
 | GET | `/api/tenant/ai/governance/can-use` | — |
@@ -377,6 +378,7 @@ All 873 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/clients/:id/addresses/:childId` | — |
 | GET | `/api/tenant/clients/:id/banks` | — |
 | POST | `/api/tenant/clients/:id/banks` | — |
+| POST | `/api/tenant/clients/:id/banks/:bankId/reveal` | — |
 | DELETE | `/api/tenant/clients/:id/banks/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/banks/:childId` | — |
 | GET | `/api/tenant/clients/:id/beneficial-owners` | — |
@@ -384,15 +386,20 @@ All 873 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/clients/:id/beneficial-owners/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/beneficial-owners/:childId` | — |
 | POST | `/api/tenant/clients/:id/block` | — |
+| POST | `/api/tenant/clients/:id/change-requests/:crid/approve` | — |
+| POST | `/api/tenant/clients/:id/change-requests/:crid/reject` | — |
 | GET | `/api/tenant/clients/:id/contacts` | — |
 | POST | `/api/tenant/clients/:id/contacts` | — |
 | DELETE | `/api/tenant/clients/:id/contacts/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/contacts/:childId` | — |
+| POST | `/api/tenant/clients/:id/copy-from-origin` | — |
 | GET | `/api/tenant/clients/:id/credit` | — |
 | GET | `/api/tenant/clients/:id/documents` | — |
 | POST | `/api/tenant/clients/:id/documents` | — |
 | DELETE | `/api/tenant/clients/:id/documents/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/documents/:childId` | — |
+| POST | `/api/tenant/clients/:id/merge` | — |
+| POST | `/api/tenant/clients/:id/merge-preview` | — |
 | GET | `/api/tenant/clients/:id/registrations` | — |
 | POST | `/api/tenant/clients/:id/registrations` | — |
 | DELETE | `/api/tenant/clients/:id/registrations/:childId` | — |
@@ -1333,6 +1340,7 @@ All 873 mounted routes, grouped by path prefix.
 | PATCH | `/api/tenant/suppliers/:id/addresses/:childId` | — |
 | GET | `/api/tenant/suppliers/:id/banks` | — |
 | POST | `/api/tenant/suppliers/:id/banks` | — |
+| POST | `/api/tenant/suppliers/:id/banks/:bankId/reveal` | — |
 | DELETE | `/api/tenant/suppliers/:id/banks/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/banks/:childId` | — |
 | GET | `/api/tenant/suppliers/:id/beneficial-owners` | — |
@@ -1340,14 +1348,19 @@ All 873 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/suppliers/:id/beneficial-owners/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/beneficial-owners/:childId` | — |
 | POST | `/api/tenant/suppliers/:id/block` | — |
+| POST | `/api/tenant/suppliers/:id/change-requests/:crid/approve` | — |
+| POST | `/api/tenant/suppliers/:id/change-requests/:crid/reject` | — |
 | GET | `/api/tenant/suppliers/:id/contacts` | — |
 | POST | `/api/tenant/suppliers/:id/contacts` | — |
 | DELETE | `/api/tenant/suppliers/:id/contacts/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/contacts/:childId` | — |
+| POST | `/api/tenant/suppliers/:id/copy-from-origin` | — |
 | GET | `/api/tenant/suppliers/:id/documents` | — |
 | POST | `/api/tenant/suppliers/:id/documents` | — |
 | DELETE | `/api/tenant/suppliers/:id/documents/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/documents/:childId` | — |
+| POST | `/api/tenant/suppliers/:id/merge` | — |
+| POST | `/api/tenant/suppliers/:id/merge-preview` | — |
 | GET | `/api/tenant/suppliers/:id/registrations` | — |
 | POST | `/api/tenant/suppliers/:id/registrations` | — |
 | DELETE | `/api/tenant/suppliers/:id/registrations/:childId` | — |

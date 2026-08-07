@@ -21,6 +21,7 @@ const { requirePermission } = require("../../../middleware/rbac");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { partyCommon, entityCommon } = require("@praxis/shared");
 const { canSeeFinancials, maskBank } = require("./confidential");
+const changeRequest = require("./change-request.service");
 
 const actorOf = (req) => req.user || { user_id: null };
 
@@ -33,7 +34,7 @@ const validate = (schema) => (req, _res, next) => {
 };
 
 function buildResource(cfg) {
-  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument } = cfg;
+  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed } = cfg;
   const insertAllow = [...writable, parentCol];
 
   async function assertParent(c, parentId) {
@@ -72,8 +73,22 @@ function buildResource(cfg) {
       );
       return rows;
     },
-    async create(c, { parentId, data, actor = {} }) {
+    async create(c, { parentId, data, actor = {}, env }) {
       await assertParent(c, parentId);
+      // Sensitive-field maker-checker (§8): in LIVE a bank / tax-registration
+      // create is written as a PENDING change request and applied only on a
+      // second authorization; in TEST/sandbox it applies directly.
+      if (governed && changeRequest.isGoverned(env)) {
+        await c.query("BEGIN");
+        try {
+          const cr = await changeRequest.open(c, { kind, partyId: parentId, changeType: governed.create, targetTable: table, payload: data, actor });
+          await c.query("COMMIT");
+          return cr;
+        } catch (e) {
+          await c.query("ROLLBACK");
+          throw e;
+        }
+      }
       await c.query("BEGIN");
       try {
         const row = await insertOne(c, table, { ...data, [parentCol]: parentId }, "*", insertAllow);
@@ -87,9 +102,22 @@ function buildResource(cfg) {
         throw e;
       }
     },
-    async update(c, { parentId, id, patch, actor = {} }) {
+    async update(c, { parentId, id, patch, actor = {}, env }) {
       const before = await getById(c, table, pk, id);
       if (!belongs(before, parentId)) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+      // Sensitive-field maker-checker (§8): a bank / tax-registration EDIT is
+      // governed in LIVE the same way a create is.
+      if (governed && changeRequest.isGoverned(env)) {
+        await c.query("BEGIN");
+        try {
+          const cr = await changeRequest.open(c, { kind, partyId: parentId, changeType: governed.update, targetTable: table, targetId: id, payload: patch, actor });
+          await c.query("COMMIT");
+          return cr;
+        } catch (e) {
+          await c.query("ROLLBACK");
+          throw e;
+        }
+      }
       await c.query("BEGIN");
       try {
         const row = await updateOne(c, table, pk, id, patch, "*", writable, touch ? { touch: "updated_at" } : {});
@@ -120,8 +148,12 @@ function buildResource(cfg) {
 
   const controller = {
     list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.params.id, req.query)) })),
-    create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { parentId: req.params.id, data: req.body, actor: actorOf(req) })) })),
-    update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { parentId: req.params.id, id: req.params.childId, patch: req.body, actor: actorOf(req) })) })),
+    create: asyncHandler(async (req, res) => {
+      const row = await req.tenantDb((c) => service.create(c, { parentId: req.params.id, data: req.body, actor: actorOf(req), env: req.env }));
+      // A governed change awaits a second authorizer — 202, not 201 (created).
+      res.status(row && row.pending ? 202 : 201).json({ data: row });
+    }),
+    update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { parentId: req.params.id, id: req.params.childId, patch: req.body, actor: actorOf(req), env: req.env })) })),
     remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
   };
 
@@ -137,9 +169,9 @@ function resourceSpecs(kind) {
   return [
     { seg: "contacts", table: `${kind}_contact`, pk: "contact_id", create: partyCommon.contactCreate, update: partyCommon.contactUpdate, touch: true, writable: ["name", "title", "email", "phone", "role_tags", "is_primary", "language", "timezone", "portal_access", "is_active"] },
     { seg: "addresses", table: `${kind}_address`, pk: "address_id", create: partyCommon.addressCreate, update: partyCommon.addressUpdate, touch: true, writable: ["line1", "line2", "city", "region", "postal_code", "country_code", "type", "is_primary", "is_active"] },
-    { seg: "banks", table: `${kind}_bank_account`, pk: "bank_account_id", create: partyCommon.bankCreate, update: partyCommon.bankUpdate, touch: true, isBank: true, writable: ["beneficiary_name", "bank_name", "branch", "account_number", "iban", "swift_bic", "routing_code", "currency", "momo_network", "momo_number", "is_primary", "is_active"] },
+    { seg: "banks", table: `${kind}_bank_account`, pk: "bank_account_id", create: partyCommon.bankCreate, update: partyCommon.bankUpdate, touch: true, isBank: true, governed: { create: "BANK_CREATE", update: "BANK_UPDATE" }, writable: ["beneficiary_name", "bank_name", "branch", "account_number", "iban", "swift_bic", "routing_code", "currency", "momo_network", "momo_number", "is_primary", "is_active"] },
     { seg: "documents", table: `${kind}_document`, pk: "document_id", create: partyCommon.documentCreate, update: partyCommon.documentUpdate, touch: true, isDocument: true, writable: ["document_type_id", "document_number", "issuing_authority", "issued_on", "expires_on", "vault_id", "physical_ref", "scan_due_on"] },
-    { seg: "registrations", table: "party_registration", pk: "registration_id", parentCol: `${kind}_id`, create: partyCommon.registrationCreate, update: partyCommon.registrationUpdate, touch: false, writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on"] },
+    { seg: "registrations", table: "party_registration", pk: "registration_id", parentCol: `${kind}_id`, create: partyCommon.registrationCreate, update: partyCommon.registrationUpdate, touch: false, governed: { create: "TAX_REGISTRATION", update: "TAX_REGISTRATION" }, writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on"] },
     { seg: "beneficial-owners", table: `${kind}_beneficial_owner`, pk: "owner_id", create: partyCommon.beneficialOwnerCreate, update: partyCommon.beneficialOwnerUpdate, touch: false, writable: ["full_name", "date_of_birth", "nationality", "id_type", "id_number", "ownership_percent", "is_pep", "notes", "vault_id"] },
   ];
 }
@@ -155,7 +187,7 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
     const { service, controller } = buildResource({
       table: r.table, pk: r.pk, parentCol: r.parentCol || `${kind}_id`,
       parentTable, parentPk, moduleKey, label: r.table, writable: r.writable,
-      touch: r.touch, isBank: r.isBank, isDocument: r.isDocument,
+      touch: r.touch, isBank: r.isBank, isDocument: r.isDocument, kind, governed: r.governed,
     });
     // Bank numbers are masked in the list unless the caller has finance
     // visibility (gate 14) — masking in the serializer, never in the client.

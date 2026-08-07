@@ -15,7 +15,14 @@
 "use strict";
 const rules = require("./compliance.rules");
 const clientRepo = require("../client_master/client_master.repo");
+const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+
+const MODULE_KEY = { client: "MOD-03", supplier: "MOD-04" };
+// A recommendation/escalation is passable WITH a logged override; a hard block
+// is not. WARN/INFO/ONBOARDING/OK are allowed outright.
+const OVERRIDE_STATES = new Set(["ESCALATED", "SOFT_BLOCK_RECOMMENDATION"]);
+const BLOCKING_SEVERITY = new Set(["ESCALATED", "RED", "SOFT_BLOCK_RECOMMENDATION", "HARD_BLOCK"]);
 
 /** Per-kind wiring. Literals, never request input. */
 const KIND = {
@@ -200,4 +207,75 @@ async function glParity(client, { kind, partyId }) {
   return { docTotal, gl, mismatch, flagged };
 }
 
-module.exports = { KIND, evaluateParty, sync, glParity, openFlags, reconcileFlags };
+/**
+ * Transactional compliance gate (§5 / spec §9). Answer whether a party may be
+ * USED for `action` (client: quote/dossier/invoice/dispatch; supplier: PO/GRN/
+ * supplier-invoice/payment). Recomputes the pure engine so the answer is always
+ * self-consistent — a stale stored state never under-reports — and returns:
+ *
+ *   { allowed, state, requiresOverride, blockingFlags[], reason? }
+ *
+ * Behaviour (Hard Rule 3 — never silently block):
+ *   - HARD_BLOCK (human-set): allowed=false — a clear stop with a reason.
+ *   - SOFT_BLOCK_RECOMMENDATION / ESCALATED: allowed=true, requiresOverride=true
+ *     — freight moves with a logged override (reason + actor).
+ *   - WARN / INFO / ONBOARDING / OK: allowed=true, requiresOverride=false.
+ *
+ * Pure of writes — the caller decides whether to proceed (and calls
+ * `enforceAllowed` / `logOverride` to record an override).
+ */
+/**
+ * The gate decision from an evaluation — PURE (unit-tested). Split from the DB
+ * read so the HARD_BLOCK-stops / SOFT-ESCALATED-override / WARN-INFO-ONBOARDING-
+ * allow rules can be asserted directly.
+ */
+function gateDecision({ party = {}, compliance_state = "OK", flags = [] }) {
+  const hardBlocked = !!party.hard_blocked_at || compliance_state === "HARD_BLOCK";
+  const state = hardBlocked ? "HARD_BLOCK" : compliance_state;
+  const blockingFlags = (flags || [])
+    .filter((f) => !f.onboarding && BLOCKING_SEVERITY.has(f.severity))
+    .map((f) => ({ rule_key: f.rule_key, severity: f.severity, message: f.message }));
+  if (hardBlocked) {
+    return { allowed: false, state, requiresOverride: false, reason: party.hard_block_reason || "Party is hard-blocked", blockingFlags };
+  }
+  return { allowed: true, state, requiresOverride: OVERRIDE_STATES.has(state), blockingFlags };
+}
+
+async function assertAllowed(client, { kind, partyId, action = null }) {
+  const evalr = await evaluateParty(client, { kind, partyId });
+  return { ...gateDecision({ party: evalr.party, compliance_state: evalr.compliance_state, flags: evalr.flags }), action };
+}
+
+/** Record a compliance override (reason + actor) on the immutable ledger. */
+async function logOverride(client, { kind, partyId, action = null, reason, actor = {} }) {
+  if (!reason || !String(reason).trim()) throw new AppError("OVERRIDE_REASON_REQUIRED", "An override reason is required.", 422, { reason: ["required"] });
+  await audit(client, {
+    actorUserId: actor.user_id || null, action: `${kind}.compliance_override`, moduleKey: MODULE_KEY[kind],
+    entityRef: `${kind}:${partyId}`, isSensitive: true, after: { action, reason: String(reason).trim() }, metadata: { gate_action: action || null },
+  });
+  return { logged: true };
+}
+
+/**
+ * Enforce the gate at a call site. Throws on a hard stop; throws OVERRIDE_REQUIRED
+ * (carrying the flags for the UI's override dialog) when a recommendation/
+ * escalation needs a reason and none was supplied; logs and passes when a reason
+ * is supplied; otherwise returns the (allowed) assessment.
+ */
+async function enforceAllowed(client, { kind, partyId, action = null, override = null, actor = {} }) {
+  const gate = await assertAllowed(client, { kind, partyId, action });
+  if (!gate.allowed) {
+    throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "Party is hard-blocked — action not allowed.", 409, { blockingFlags: gate.blockingFlags });
+  }
+  if (gate.requiresOverride) {
+    const reason = override && String(override).trim() ? String(override).trim() : null;
+    if (!reason) {
+      throw new AppError("OVERRIDE_REQUIRED", `Compliance is ${gate.state} for this party — proceed only with a logged override reason.`, 422, { blockingFlags: gate.blockingFlags, state: gate.state });
+    }
+    await logOverride(client, { kind, partyId, action, reason, actor });
+    return { ...gate, overridden: true, override_reason: reason };
+  }
+  return gate;
+}
+
+module.exports = { KIND, evaluateParty, sync, glParity, openFlags, reconcileFlags, gateDecision, assertAllowed, enforceAllowed, logOverride };

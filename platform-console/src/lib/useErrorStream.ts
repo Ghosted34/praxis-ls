@@ -107,10 +107,22 @@ export function useErrorStream({ scope = "all", onError, onResolved, enabled = t
     if (!session.token) return false;
     try {
       const mod = await import("socket.io-client");
+      // Same origin the REST client uses. When `session.base` is relative — the
+      // default, `window.location.origin + "/api/platform"` — this resolves to
+      // the page origin, which in dev is Vite. That is correct ONLY because
+      // vite.config.ts proxies /socket.io with ws:true; without that entry the
+      // handshake is refused and the badge sits on "📡 Polling" forever while
+      // everything else looks fine. See the comment there.
       const origin = new URL(session.base, window.location.origin).origin;
       const socket = mod.io(`${origin}/platform`, {
         auth: { token: session.token },
         transports: ["websocket", "polling"],
+        // socket.io-client v4.8 stopped falling through the transport list on
+        // its own. Listing both without this means a blocked WebSocket — a
+        // corporate proxy, a TLS terminator that will not upgrade — reports
+        // `connect_error` and degrades to our 10-second poll, when long-polling
+        // over the same socket.io session would have kept the feed live.
+        tryAllTransports: true,
         // Reconnection is handled here rather than by socket.io's own retry, so
         // that a failure flips the UI to polling instead of leaving it on a
         // "Live" badge that is quietly retrying behind the user's back.

@@ -14,17 +14,22 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import {
-  errorsApi, LEVELS, LEVEL_STYLE,
-  type ErrorLevel, type EscalationRule,
+  errorsApi, LEVELS, LEVEL_STYLE, ago,
+  type ErrorLevel, type EscalationRule, type RuleMatch,
 } from "@/lib/errors-api";
-import { can } from "@/lib/api";
+import { can, platform } from "@/lib/api";
+import type { TenantListRow } from "@/lib/types";
 import { fmtDateTime } from "@/lib/format";
 import { Button, Card, Empty, Field, Loading, PageHeader } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 
+type Tenant = Pick<TenantListRow, "slug" | "display_name">;
+
 export function ErrorCenterSettings() {
   const { toast } = useToast();
   const [rules, setRules] = useState<EscalationRule[] | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [newScope, setNewScope] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const editable = can("errors.configure");
 
@@ -36,13 +41,20 @@ export function ErrorCenterSettings() {
 
   useEffect(() => {
     void load();
+    // The scope picker degrades to platform-wide only if this fails, which is
+    // the safe direction: a rule you cannot scope still notifies somebody.
+    (platform.tenants() as Promise<Tenant[]>).then(setTenants).catch(() => setTenants([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addRule = async () => {
     try {
       await errorsApi.createRule({
-        name: "New escalation rule",
+        name: newScope ? `New rule — ${newScope}` : "New escalation rule",
+        // Scope is fixed at creation. The API and schema have always supported
+        // tenant_id; only this form did not, so every rule anyone could make was
+        // platform-wide — which meant a noisy tenant paged on behalf of all of them.
+        tenant: newScope || null,
         level_filter: ["fatal"],
         threshold_count: 3,
         threshold_window_minutes: 15,
@@ -62,7 +74,22 @@ export function ErrorCenterSettings() {
         actions={
           <div className="row" style={{ gap: 8 }}>
             <Link to="/error-center"><Button size="sm" variant="ghost">← Error Center</Button></Link>
-            {editable && <Button size="sm" variant="primary" onClick={() => void addRule()}>+ Add rule</Button>}
+            {editable && (
+              <>
+                <select
+                  value={newScope}
+                  onChange={(e) => setNewScope(e.target.value)}
+                  style={{ width: "auto" }}
+                  aria-label="Scope for the new rule"
+                >
+                  <option value="">Platform-wide</option>
+                  {tenants.map((t) => (
+                    <option key={t.slug} value={t.slug}>{t.display_name || t.slug}</option>
+                  ))}
+                </select>
+                <Button size="sm" variant="primary" onClick={() => void addRule()}>+ Add rule</Button>
+              </>
+            )}
           </div>
         }
       />
@@ -90,6 +117,8 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
   const { toast } = useToast();
   const [draft, setDraft] = useState<EscalationRule>(rule);
   const [saving, setSaving] = useState(false);
+  const [preview, setPreview] = useState<RuleMatch[] | null>(null);
+  const [previewing, setPreviewing] = useState(false);
   const dirty = JSON.stringify(draft) !== JSON.stringify(rule);
 
   useEffect(() => setDraft(rule), [rule]);
@@ -130,6 +159,29 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
     }
   };
 
+  /**
+   * Dry-run against the DRAFT, not the saved rule — the question is "would the
+   * thresholds I am typing right now have paged me", and answering it about the
+   * saved values would be answering the wrong one.
+   */
+  const runPreview = async () => {
+    setPreviewing(true);
+    try {
+      setPreview(
+        await errorsApi.previewRule({
+          tenant: draft.tenant_slug,
+          level_filter: draft.level_filter,
+          threshold_count: draft.threshold_count,
+          threshold_window_minutes: draft.threshold_window_minutes,
+        }),
+      );
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Preview failed");
+    } finally {
+      setPreviewing(false);
+    }
+  };
+
   const remove = async () => {
     if (!window.confirm(`Delete “${rule.name}”? Notifications from this rule stop immediately.`)) return;
     try {
@@ -162,6 +214,7 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
             />
             Active
           </label>
+          <Button size="sm" variant="ghost" loading={previewing} onClick={() => void runPreview()}>Test rule</Button>
           {editable && dirty && <Button size="sm" variant="primary" loading={saving} onClick={() => void save()}>Save</Button>}
           {editable && <Button size="sm" variant="danger" onClick={() => void remove()}>Delete</Button>}
         </div>
@@ -269,6 +322,48 @@ function RuleEditor({ rule, editable, onChanged }: { rule: EscalationRule; edita
             onChange={(e) => set("action_webhook_url", e.target.value || null)}
           />
         </Field>
+
+        {preview !== null && (
+          <div style={{ borderTop: "1px solid var(--line-2)", paddingTop: 12 }}>
+            <label className="f">
+              Right now this rule would notify on {preview.length} error group{preview.length === 1 ? "" : "s"}
+              {draft.escalation_delay_minutes > 0 && preview.length > 0
+                ? ` — after a ${draft.escalation_delay_minutes} min delay, and only if still matching`
+                : ""}
+            </label>
+            {preview.length === 0 ? (
+              <div className="muted" style={{ fontSize: 12, marginTop: 4 }}>
+                Nothing matches. Either things are quiet, or the threshold is higher than anything that has happened
+                in the last {draft.threshold_window_minutes} minutes.
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 6 }}>
+                {preview.slice(0, 8).map((m) => (
+                  <div key={m.error_id} className="row" style={{ gap: 8, fontSize: 12 }}>
+                    <span
+                      className="pill"
+                      style={{
+                        background: LEVEL_STYLE[m.level].bg,
+                        color: LEVEL_STYLE[m.level].fg,
+                        border: `1px solid ${LEVEL_STYLE[m.level].border}`,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {LEVEL_STYLE[m.level].badge} ×{m.occurrence_count}
+                    </span>
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {m.message}
+                    </span>
+                    <span className="muted">{m.module || "—"} · {ago(m.last_seen)}</span>
+                  </div>
+                ))}
+                {preview.length > 8 && (
+                  <div className="muted" style={{ fontSize: 11 }}>+{preview.length - 8} more</div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className="muted" style={{ fontSize: 11 }}>
           Scope: {draft.tenant_slug ? `tenant · ${draft.tenant_slug}` : "platform-wide (all tenants)"} · Updated {fmtDateTime(rule.updated_at)}

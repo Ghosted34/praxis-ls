@@ -166,4 +166,102 @@ migrations/
   tenant/       0001_extensions … per-tenant DB (run for every tenant, live+sandbox)
   seeds/        OHADA COA, Cameroon tax codes, default RBAC, event catalogue, module/feature catalogue
 ```
-Migrations are versioned and idempotent-friendly; the provisioning tool runs `tenant/*` against each new tenant DB (both schemas) then applies `seeds/*`. Platform migrations run once for the cluster.
+Migrations are versioned and idempotent; the provisioning tool runs `tenant/*` against each new tenant DB (both schemas) then applies `seeds/*`. Platform migrations run once for the cluster.
+
+### 8.1 The ledger keys on FILENAME — so never rename an applied migration
+
+`public.schema_migration(scope, filename)` records what has run, keyed on the
+relative path (`src/services/platform/migrator.js`). Rename a migration that has
+already run and the ledger stops matching: the migrator sees a new file and
+applies it to a database that already has everything in it.
+
+```
+relation "error_event" already exists
+index "ux_error_event_sig" already exists
+trigger "trg_error_event_updated" already exists
+```
+
+This has happened — two migrations written with the same number, one renamed to
+resolve the collision. **If you must rename an applied migration**, reconcile the
+ledger instead of re-running it:
+
+```bash
+node scripts/db/mark-migration-applied.js --scope=platform --file=platform/0100_b.sql
+node scripts/db/mark-migration-applied.js --scope=tenant  --file=tenant/0530_x.sql --all-tenants
+```
+
+It refuses unless it can prove the migration already ran — it reads the tables,
+indexes, types and functions the file declares and checks the catalog. None
+present means it never ran (use `migrate`); a partial match means it is
+half-applied and needs a human, because a ledger row would freeze a broken schema
+and call it done.
+
+Avoid the situation entirely with `check-migration-numbers.js`, which fails the
+build on a new number collision.
+
+### 8.2 Every migration must be safe to run twice
+
+Enforced by `scripts/db/check-migration-idempotency.js` (CI, blocking).
+
+A migration re-runs more often than people expect: a file that fails part way
+leaves its ledger row unwritten, so the **whole file** runs again after the fix;
+`provision-tenant` replays the set; CI applies the tenant set twice on purpose to
+test the ledger.
+
+| Statement | Required form |
+|---|---|
+| `CREATE TABLE` | `CREATE TABLE IF NOT EXISTS` |
+| `CREATE [UNIQUE] INDEX` | `… IF NOT EXISTS` |
+| `ALTER TABLE … ADD COLUMN` | `ADD COLUMN IF NOT EXISTS` |
+| `CREATE SCHEMA` / `EXTENSION` | `… IF NOT EXISTS` |
+| `DROP <anything>` | `DROP … IF EXISTS` |
+| `CREATE FUNCTION` / `PROCEDURE` | `CREATE OR REPLACE …` |
+| `CREATE VIEW` | `CREATE OR REPLACE VIEW` |
+| `CREATE TRIGGER` | `CREATE OR REPLACE TRIGGER` (PG14+; the deploy is pg16) |
+| `INSERT` (seeds) | `… ON CONFLICT DO NOTHING` or `DO UPDATE SET …` |
+
+**Two shapes have no native guard in any Postgres version** — `ADD CONSTRAINT`
+and `CREATE TYPE`. They are the most common reason a migration that *looks*
+idempotent is not. Wrap them:
+
+```sql
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'shipment_status') THEN
+    CREATE TYPE shipment_status AS ENUM ('draft','booked','in_transit');
+  END IF;
+
+  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'ck_qty_positive') THEN
+    ALTER TABLE live.shipment ADD CONSTRAINT ck_qty_positive CHECK (qty > 0);
+  END IF;
+END $$;
+```
+
+The gate treats any `DO $$ … $$` block as the author's explicit guard and does
+not look inside it.
+
+### 8.3 An applied migration is IMMUTABLE — idempotency must not hide drift
+
+The same gate freezes every migration that existed when it landed, by content
+hash, and fails on any edit.
+
+This is the other half of §8.2 and the more important one. `IF NOT EXISTS`
+silently skips a table whose definition **changed** — which is precisely audit
+DATA 3.3: `notification_preference` was created in two files with different
+columns, both guarded, the earlier one won, and `created_at` exists on no
+database despite `0472` declaring it. Nothing read the column, so nothing broke.
+That is what made it dangerous.
+
+Editing a migration that has run somewhere changes what a **fresh** database
+gets and not what an **existing** one has. The two diverge silently, and the
+`IF NOT EXISTS` you just added guarantees nobody finds out.
+
+**A changed definition goes in a NEW migration. Always.**
+
+The 127 files that predate the gate are grandfathered — retro-fitting a
+migration that has already run in production is a bigger risk than the one being
+fixed. `--report` lists the 49 that are not yet idempotent, so the backlog is
+visible rather than forgotten:
+
+```bash
+node scripts/db/check-migration-idempotency.js --report
+```

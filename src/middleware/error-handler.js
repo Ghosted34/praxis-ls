@@ -33,6 +33,45 @@ const PG = {
 
 // The 4-arg signature is what marks this as Express's error handler; `_next` is
 // required to be present even though it is never called.
+/**
+ * Spec §2.3 pt 4 — "Backend must capture … API validation failures".
+ *
+ * Captured at `notice`, which is what makes honouring the requirement safe. A
+ * 422 is a client mistake, not a fault, and routing them at `error` would bury
+ * real failures under "email is required" and get the alert channel muted. At
+ * `notice` the reporter records and counts but never posts to the webhook and
+ * never spends the rate limit (see NOTIFY_SEVERITIES), and escalation rules
+ * default to `fatal`, so nothing pages.
+ *
+ * The message is SYNTHESISED rather than passed through. A ZodError's own
+ * `message` is a JSON dump of every issue, which would be unreadable in the feed
+ * and — worse — would fingerprint differently for every combination of bad
+ * fields, so one broken form would produce hundreds of separate groups. Keying
+ * on the route plus the sorted field names makes "this endpoint keeps getting
+ * bad input for these fields" ONE row with a rising count, which is the only
+ * shape in which this data is worth anything.
+ */
+function reportValidation(req, fields, code) {
+  try {
+    const names = Object.keys(fields || {}).sort().join(", ") || "unknown";
+    const route = `${req.method} ${req.route ? req.baseUrl + req.route.path : req.path}`;
+    const err = new Error(`${code}: ${names}`);
+    err.name = "ValidationError";
+    // A synthetic frame: the route IS the location for this class, and the real
+    // stack would point at the validator middleware for every one of them.
+    err.stack = `ValidationError: ${code}: ${names}\n    at ${route}`;
+    report(err, {
+      origin: "server",
+      severity: "notice",
+      route: `${req.method} ${req.originalUrl || req.path}`,
+      request_id: req.request_id,
+      extra: { fields: Object.keys(fields || {}) },
+    });
+  } catch {
+    /* reporting a validation failure must never break the 422 response */
+  }
+}
+
 function errorHandler(err, req, res, _next) {
   const request_id = req.request_id;
 
@@ -42,7 +81,15 @@ function errorHandler(err, req, res, _next) {
       logger.error({ err, request_id }, err.message);
       report(err, { origin: "server", route: `${req.method} ${req.originalUrl || req.path}`, request_id });
     }
-    else logger.warn({ request_id, code: err.code, status }, err.message);
+    else {
+      logger.warn({ request_id, code: err.code, status }, err.message);
+      // The 90 module validators throw AppError("VALIDATION_ERROR", …, 422),
+      // not ZodError, so capturing only the branch below would miss almost all
+      // of them.
+      if (status === 422 || err.code === "VALIDATION_ERROR") {
+        reportValidation(req, err.details, err.code || "VALIDATION_ERROR");
+      }
+    }
     return res.status(status).json({
       error: {
         code: err.code,
@@ -66,6 +113,7 @@ function errorHandler(err, req, res, _next) {
       return acc;
     }, {});
     logger.warn({ request_id, fields }, "validation error");
+    reportValidation(req, fields, "VALIDATION_ERROR");
     // API F-2: 422, matching the 90 module validators that already used it.
     // This fallback was the only path still answering 400 for the same class of
     // error, so a caller's handling depended on WHICH layer caught the problem.

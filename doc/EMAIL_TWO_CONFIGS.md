@@ -45,6 +45,33 @@ only the last-resort defaults for a fresh deployment.
 > itself must be properly set up with SPF/DKIM/DMARC on the deploy-wide SMTP.
 > That is a one-time Praxis-side task, not something tenants configure.
 
+## Platform-only mail rides the fallback tier
+
+There is one sender that belongs to **neither** column above: alerts the platform
+sends about itself — escalation email from the Error Command Center
+(`doc/PROMPT_ErrorMonitor_Module.md` §5.3). A fatal error in the host resolver,
+the tenant registry or boot itself happens *before* any tenant is known, so there
+is no `client`, no `email_identity`, and nothing for `email.service.send()` to
+resolve a sender from.
+
+This is **not a third configuration.** `src/services/platform/mail.service.js` is
+a second *consumer* of System email's bottom tier — the same `mail.fallback`
+platform setting, the same `no-reply@praxisls.com`, the same deploy-wide SMTP,
+resolved by the same `mail-fallback.service`. It builds its transport by calling
+`email.service.transportFrom`, so there is exactly one nodemailer configuration
+in the codebase, and it honours the same rule that no caller may override `from`
+on the fallback relay.
+
+Two consequences worth knowing:
+
+- **Configuring the fallback in the Console is what turns escalation email on.**
+  Until then it reports `no_smtp_configured` into
+  `platform.error_escalation_log` — honestly, rather than recording a send that
+  did not happen.
+- **It writes no `email_send_log` row.** That table is per-tenant, and platform
+  mail has no tenant; logging it under an arbitrary one would be worse than not
+  logging it. The escalation log row is the durable record.
+
 ## The mailbox is independent
 
 A user connects their mailbox (their company-domain professional address) in the

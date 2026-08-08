@@ -9,6 +9,10 @@ const { validate } = require("./assistant.validator");
 const router = express.Router();
 router.use(authMiddleware);
 router.post("/ask", validate("ask"), c.ask);
+// Streaming variant — SSE (text/event-stream). Same body schema as /ask.
+// Mounted BEFORE the catch-all because express matches in order; /ask/stream
+// must not be consumed by a wildcard /ask/:id route.
+router.post("/ask/stream", validate("ask"), c.askStream);
 // Conversation history — always the CALLER's own thread (scoped to req.user in
 // the service), so no RBAC beyond auth: there is no path to read anyone else's.
 router.get("/conversations", c.conversations);

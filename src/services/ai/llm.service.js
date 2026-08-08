@@ -85,6 +85,110 @@ async function callVendor(vendor, { messages, tools, temperature }) {
   return { provider: vendor.vendor, text, toolCalls, usage: data.usage || {} };
 }
 
+/**
+ * Streaming vendor call — yields `{ delta, done, toolCalls, text, usage }` chunks
+ * as the model generates them. The caller (orchestrator) forwards `delta` events
+ * to the client over SSE so the answer renders word-by-word instead of waiting
+ * for the full completion.
+ *
+ * WHY THIS EXISTS. The user's most consistent performance complaint is that the
+ * assistant "thinks" for 5–15 seconds and then dumps the whole answer at once.
+ * Streaming starts rendering the first token within ~500ms, which is the
+ * difference between "this is slow" and "this is typing". Tool calls (reads,
+ * proposed writes) are still buffered — they arrive as discrete events once the
+ * model finishes generating, because the client needs the full call to render
+ * an action card or execute a read.
+ *
+ * FALLBACK. When the vendor does not support streaming (or the stream errors),
+ * we fall back to the non-streaming `callVendor` and emit a single chunk with
+ * the complete text. The orchestrator treats this identically to a stream that
+ * produced one delta.
+ */
+async function* callVendorStream(vendor, { messages, tools, temperature }) {
+  const base = String(vendor.endpoint_url).replace(/\/$/, "");
+  const body = { model: vendor.model, messages, temperature, stream: true };
+  if (tools && tools.length) { body.tools = tools; body.tool_choice = "auto"; }
+
+  let response;
+  try {
+    response = await axios.post(`${base}/chat/completions`, body, {
+      headers: { Authorization: `Bearer ${vendor.api_key}`, "Content-Type": "application/json" },
+      timeout: 120000,
+      responseType: "stream",
+    });
+  } catch (err) {
+    // Stream not supported or network error — fall back to non-streaming.
+    logger.warn({ err, vendor: vendor.vendor }, "streaming vendor call failed, falling back");
+    const result = await callVendor(vendor, { messages, tools, temperature });
+    yield { delta: result.text, done: true, toolCalls: result.toolCalls, text: result.text, usage: result.usage, provider: vendor.vendor };
+    return;
+  }
+
+  let text = "";
+  const toolCallBuffers = new Map(); // index → { id, type, function: { name, arguments } }
+  let usage = {};
+
+  // Parse SSE lines from the response stream.
+  const stream = response.data;
+  for await (const rawChunk of stream) {
+    const chunk = typeof rawChunk === "string" ? rawChunk : rawChunk.toString("utf8");
+    const lines = chunk.split("\n");
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || !trimmed.startsWith("data:")) continue;
+      const payload = trimmed.slice(5).trim();
+      if (payload === "[DONE]") {
+        // Finalize tool calls from buffers.
+        const toolCalls = Array.from(toolCallBuffers.values()).map((tc) => ({
+          id: tc.id,
+          type: tc.type || "function",
+          function: { name: tc.function.name, arguments: tc.function.arguments },
+        }));
+        // If no structured tool calls, try to recover inline ones from text.
+        const finalToolCalls = toolCalls.length ? toolCalls : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).toolCalls : []);
+        const finalText = toolCalls.length ? text : (TOOLCALL_MARKUP.test(text) ? extractInlineToolCalls(text).text : text);
+        yield { delta: "", done: true, toolCalls: finalToolCalls, text: finalText, usage, provider: vendor.vendor };
+        return;
+      }
+      try {
+        const json = JSON.parse(payload);
+        const delta = (json.choices && json.choices[0] && json.choices[0].delta) || {};
+        if (json.usage) usage = json.usage;
+
+        // Text delta — yield immediately for client rendering.
+        if (delta.content) {
+          text += delta.content;
+          yield { delta: delta.content, done: false };
+        }
+
+        // Tool call deltas — buffer until complete.
+        if (Array.isArray(delta.tool_calls)) {
+          for (const tc of delta.tool_calls) {
+            const idx = tc.index;
+            if (!toolCallBuffers.has(idx)) {
+              toolCallBuffers.set(idx, { id: tc.id || `tc_${idx}`, type: "function", function: { name: "", arguments: "" } });
+            }
+            const buf = toolCallBuffers.get(idx);
+            if (tc.id) buf.id = tc.id;
+            if (tc.function) {
+              if (tc.function.name) buf.function.name += tc.function.name;
+              if (tc.function.arguments) buf.function.arguments += tc.function.arguments;
+            }
+          }
+        }
+      } catch {
+        // Malformed SSE line — skip silently (common with some vendors).
+      }
+    }
+  }
+
+  // Stream ended without [DONE] — emit what we have.
+  const toolCalls = Array.from(toolCallBuffers.values()).map((tc) => ({
+    id: tc.id, type: tc.type || "function", function: { name: tc.function.name, arguments: tc.function.arguments },
+  }));
+  yield { delta: "", done: true, toolCalls, text, usage, provider: vendor.vendor };
+}
+
 const STUB = {
   provider: null,
   text: "The AI assistant has no chat provider configured yet. An administrator can add one under AI Control > Vendors.",
@@ -107,4 +211,31 @@ async function chat({ client, messages, tools, temperature = 0.2, vendorName = P
   return STUB;
 }
 
-module.exports = { chat, resolveVendor, PRIMARY, FALLBACK };
+/**
+ * Streaming chat — yields `{ delta, done, toolCalls, text, usage, provider }`
+ * chunks. Tries PRIMARY then FALLBACK, same as `chat`. The orchestrator's
+ * `askStream` forwards deltas to the client over SSE.
+ *
+ * `onDelta` is called with each text delta so the orchestrator can accumulate
+ * the full text for conversation persistence. The generator also yields the
+ * same data, so callers can use either interface.
+ */
+async function* chatStream({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY, onDelta }) {
+  for (const name of [vendorName, FALLBACK]) {
+    const vendor = await resolveVendor(client, name);
+    if (!vendor) continue;
+    try {
+      for await (const chunk of callVendorStream(vendor, { messages, tools, temperature })) {
+        if (!chunk.done && chunk.delta && onDelta) onDelta(chunk.delta);
+        yield chunk;
+      }
+      return;
+    } catch (err) {
+      logger.warn({ err, vendor: name }, "LLM streaming vendor failed");
+    }
+  }
+  // No vendor — emit stub as a single chunk.
+  yield { delta: STUB.text, done: true, toolCalls: [], text: STUB.text, usage: {}, provider: null };
+}
+
+module.exports = { chat, chatStream, resolveVendor, PRIMARY, FALLBACK };

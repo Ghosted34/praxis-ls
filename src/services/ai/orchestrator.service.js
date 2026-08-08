@@ -154,6 +154,46 @@ async function loadTools(client) {
   return rows;
 }
 
+/**
+ * Self-learning: recent successful action patterns.
+ *
+ * THE LEARNING FIX. The assistant used to have no memory of what it had
+ * successfully done before. If a user asked it to "create a dossier like the
+ * last one" or "do the same thing you did for client X", it had no way to know
+ * what "the last one" was. This function pulls the last 10 successfully
+ * executed actions with their payloads, so the system prompt can include them
+ * as "PATTERNS YOU HAVE SUCCESSFULLY EXECUTED" — the model can reference them
+ * when the user asks for similar actions.
+ *
+ * This is not ML — it's pattern recall. The model sees concrete examples of
+ * what worked and can replicate the structure. It's the difference between
+ * "I don't know how to do that" and "I did something similar last week for
+ * client Y — let me propose the same structure".
+ *
+ * Best-effort: a failure here never blocks the answer.
+ */
+async function recentPatterns(client) {
+  try {
+    const { rows } = await client.query(
+      `SELECT action_key, proposed_payload, executed_entity_ref
+         FROM ai_action_run
+        WHERE status = 'EXECUTED'
+          AND proposed_payload IS NOT NULL
+        ORDER BY created_at DESC
+        LIMIT 10`,
+    );
+    return rows.map((r) => ({
+      action: r.action_key,
+      // Only include a summary of the payload (key fields, not everything) to
+      // keep the prompt compact. The model needs the STRUCTURE, not every value.
+      fields: Object.keys(r.proposed_payload || {}).slice(0, 8),
+      ref: r.executed_entity_ref,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 const toOpenAiTool = (a) => ({
   type: "function",
   function: {
@@ -179,11 +219,47 @@ const CORE_TOOLS = new Set([
   "create_client", "open_dossier", "list_dossiers", "list_clients", "list_leads",
   "list_opportunities", "list_quotations", "list_final_invoices", "receivables_ageing", "get_trial_balance",
 ]);
-const tokenize = (s) => (s || "").toLowerCase().match(/[a-z]{3,}/g) || [];
+
+// ── Domain synonyms for tool scoping ──
+// THE TOOL SCOPING FIX. The old tokenizer dropped all words < 3 characters,
+// which excluded domain abbreviations (PO, GRN, BL, VAT, NIU). A user asking
+// "create a PO for supplier X" would tokenize to ["create", "supplier"] and
+// `draft_purchase_order` would rely on description matching alone. These
+// synonyms map common abbreviations to their full tool-key equivalents so
+// the scoring finds the right actions.
+const SYNONYMS = {
+  po: "purchase_order", grn: "goods_received", bl: "bill_of_lading",
+  vat: "tax", tva: "tax", niu: "tax", irpp: "tax",
+  ops: "operations", dossier: "operations_file", file: "operations_file",
+  proforma: "proforma", quote: "quotation", quotation: "quotation",
+  invoice: "final_invoice", billing: "final_invoice",
+  pr: "purchase_request", rfq: "purchase_request",
+  si: "supplier_invoice", "supplier invoice": "supplier_invoice",
+  hr: "employee", staff: "employee", personnel: "employee",
+  wms: "warehouse", stock: "inventory", warehouse: "inventory",
+  fleet: "vehicle", truck: "vehicle", car: "vehicle",
+  cr: "cash_request", cash: "cash_request",
+  costing: "costing", cost: "costing",
+  lead: "lead", prospect: "lead",
+  opportunity: "opportunity", deal: "opportunity",
+  campaign: "marketing_campaign", marketing: "marketing_campaign",
+  driver: "driver", fuel: "fuel_log",
+  compliance: "compliance_flag", document: "document_vault",
+};
+
+const tokenize = (s) => {
+  const words = (s || "").toLowerCase().match(/[a-z]{2,}/g) || [];
+  // Expand synonyms so "PO" matches "purchase_order" in tool keys.
+  const expanded = new Set(words);
+  for (const w of words) {
+    if (SYNONYMS[w]) expanded.add(SYNONYMS[w]);
+  }
+  return expanded;
+};
 
 function selectTools(tools, contextText, limit = TOOL_LIMIT) {
   if (tools.length <= limit) return tools;
-  const q = new Set(tokenize(contextText));
+  const q = tokenize(contextText); // already a Set with domain synonyms expanded
   const scored = tools.map((t) => {
     const hay = `${t.action_key} ${t.title} ${t.description || ""}`.toLowerCase();
     let s = 0;
@@ -196,15 +272,27 @@ function selectTools(tools, contextText, limit = TOOL_LIMIT) {
   return scored.slice(0, limit).map((x) => x.t);
 }
 
-// Minimal JSON-schema gate: required keys present + no unknown top-level keys.
+// ── LENIENT payload validation ──
+// THE FIELD CONFUSION FIX. The old validatePayload rejected unknown keys — if
+// the model sent `client_name` instead of `client_id`, the action was rejected
+// as having an unknown field, and the user saw "validation failed: unknown
+// 'client_name'" even though the assistant had all the right details. This was
+// the root cause of "it confuses itself when details are provided".
+//
+// Now: only REQUIRED fields are enforced. Unknown fields pass through and the
+// executor ignores them (services destructure what they need). The interactive
+// form already handles field mapping via `field_meta` (dropdowns, refs), so
+// whatever the model pre-fills is either correct or editable by the user.
+//
+// Type checking is ALSO relaxed: a string "123" where a number is expected is
+// accepted — the executor or the module's own Zod validation will coerce or
+// reject it. The AI layer's job is to propose, not to be the final gate.
 function validatePayload(schema, payload) {
   const errors = [];
-  const props = (schema && schema.properties) || {};
   for (const req of (schema && schema.required) || []) {
-    if (payload[req] === undefined) errors.push(`missing '${req}'`);
-  }
-  for (const k of Object.keys(payload)) {
-    if (Object.keys(props).length && !props[k]) errors.push(`unknown '${k}'`);
+    if (payload[req] === undefined || payload[req] === null || payload[req] === "") {
+      errors.push(`missing '${req}'`);
+    }
   }
   return errors;
 }
@@ -272,6 +360,12 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   }
   const hits = await retrieve({ query: message, tenantClient: client, allowed, k: 6 });
   const tools = await loadTools(client);
+  // Self-learning: recent successful execution patterns for the model to reference.
+  const patterns = await recentPatterns(client);
+  const patternBlock = patterns.length
+    ? "\n\nPATTERNS YOU HAVE SUCCESSFULLY EXECUTED (use these as templates when the user asks for something similar):\n" +
+      patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
+    : "";
 
   const system =
     "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
@@ -293,8 +387,27 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
     // One step at a time: propose a single action, let the human confirm it, then
     // (a recap is generated automatically) wait before the next.
-    "When a task needs several actions, do them ONE AT A TIME: propose a single action, wait for the user to " +
-    "confirm it, then wait for their go-ahead before proposing the next. Do not propose multiple actions at once. " +
+    // ── KEY CHANGE: auto-continue after each step, no waiting for go-ahead ──
+    // The old prompt said "wait for their go-ahead before proposing the next"
+    // which created the snooze loop: propose → confirm → "shall I proceed?" →
+    // user says "yes" → propose → confirm → … Every cycle wasted a user turn
+    // on "yes". Now: after proposing an action you WAIT for confirmation (that's
+    // the safety property), but once confirmed the NEXT step is proposed in the
+    // SAME reply. The user confirmed once, which means they want the task done.
+    "When a task needs several actions, propose the FIRST action and wait for the user to " +
+    "confirm it. Once it is confirmed, IMMEDIATELY propose the next step — do not ask 'shall I " +
+    "proceed?' or 'would you like me to continue?'. Just do it. The user confirmed once, which " +
+    "means they want the task done. " +
+    // ── Draft → execute in one flow ──
+    // When the user says "draft and execute", "create and submit", "prepare and send" — they
+    // want BOTH steps, not a draft followed by a question. Draft the document as prose, then
+    // IMMEDIATELY propose the corresponding write action with all the details from your draft
+    // already filled in. The user sees the draft AND the action card together.
+    "When the user asks you to 'draft and execute', 'create and submit', 'prepare and send' or " +
+    "any combination of writing something AND recording it: first write the document as your " +
+    "answer text, then IMMEDIATELY call the appropriate write function with the details from " +
+    "your draft. Do not stop after drafting to ask 'shall I also create this?' — the user " +
+    "already asked you to. " +
     // The stall to kill: the model saying "let me do that now" WITHOUT emitting the
     // tool call, forcing the user to prod it. Announce and act in the same turn.
     "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
@@ -304,7 +417,22 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     // Status machines: a record usually can't jump straight to a terminal state.
     "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
     "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
+    // ── Human-readable rule (strengthened) ──
+    // The user consistently reports that raw database language is unacceptable.
+    // Every field name, column name, table name and internal identifier must be
+    // translated to business language before it reaches the user.
+    "LANGUAGE RULES — these are absolute: " +
+    "• NEVER show snake_case field names (say 'payment terms' not 'payment_terms_days'). " +
+    "• NEVER show UUIDs, internal IDs, or database column names. " +
+    "• NEVER say 'I cannot find' or 'missing field X' — if a value is unclear, ask the user " +
+    "  in plain language ('which client is this for?') instead of reporting a technical error. " +
+    "• When ALL the information the user provided is sufficient, USE IT — do not claim fields " +
+    "  are missing when the user has already told you the values. Map what they said to the " +
+    "  action's fields. " +
+    "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
+    "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
     whoIsAsking(user) +
+    patternBlock +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
@@ -558,13 +686,22 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
   // filled fields). Re-validate against the SAME catalogue schema the propose
   // step used, then persist it, so what executes is exactly what was confirmed
   // and the ledger reflects the final values — never the model's first guess.
+  //
+  // LENIENT: same relaxed validation as the propose step — required fields
+  // only, unknown keys allowed. The form may submit fields the schema doesn't
+  // declare (e.g. the model's original pre-fill carried extra keys the user
+  // didn't edit). The executor destructures what it needs.
   let payload = run.proposed_payload;
   if (edited && typeof edited === "object") {
     const { rows: cat } = await client.query(
       "SELECT payload_schema FROM ai_action_catalogue WHERE action_key=$1",
       [run.action_key],
     );
-    const errs = validatePayload(cat[0] && cat[0].payload_schema, edited);
+    // FAIL CLOSED on a missing catalogue row: if the action was removed from
+    // the catalogue between propose and confirm, we don't execute — the safe
+    // reading of "no schema found" is "this action no longer exists".
+    if (!cat[0]) throw new Error(`action '${run.action_key}' no longer in catalogue`);
+    const errs = validatePayload(cat[0].payload_schema, edited);
     if (errs.length) throw new Error(`invalid payload: ${errs.join("; ")}`);
     payload = edited;
     await client.query("UPDATE ai_action_run SET proposed_payload=$2 WHERE action_run_id=$1", [actionRunId, payload]);
@@ -630,21 +767,34 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
     logger.warn({ err, actionRunId }, "[ai] execution note not recorded in conversation");
   }
 
-  // Step-by-step narration. After a confirmed action we generate a short message
-  // that (1) confirms what was done by name, (2) recaps what's been completed in
-  // this task, and (3) proposes the SINGLE next step as a question — then stops
-  // and waits. No tools on this call, so it can only talk, never chain another
-  // action. Best-effort: a narration failure never fails the executed action.
+  // ── Post-execution auto-continue ──
+  // THE SNOOZE FIX. The old narration confirmed what was done and then asked
+  // "shall I proceed with the next step?" — forcing the user to type "yes"
+  // before the assistant proposed the next action. That was the core of the
+  // snooze loop: confirm → "shall I?" → "yes" → propose → confirm → "shall I?"
+  // → "yes" → … Each step cost TWO user interactions instead of one.
+  //
+  // Now: the narration confirms what was done, recaps progress, and PROPOSES
+  // the next step directly (as a new action card if applicable). The user
+  // confirmed the first step, which is consent to continue the task. If there
+  // is a clear next step, it is proposed immediately — no question, no wait.
+  //
+  // We still use a non-tool call for the NARRATION (the text), but the next
+  // action proposal comes from a FOLLOW-UP ask turn that runs automatically.
+  // Best-effort: a narration failure never fails the executed action.
   let message = null;
+  let nextActions = [];
   try {
     if (run.conversation_id) {
       const hist = await history_.load(client, { user, conversationId: run.conversation_id });
+      // Brief factual narration — no tools, just text. Confirms what was done
+      // and recaps progress. The NEXT step is auto-proposed below.
       const sys =
         "You are Praxis LS, carrying out a step-by-step task for the user. An action was JUST executed " +
-        "successfully. Reply in 1-3 short sentences of plain business language (never show UUIDs or " +
-        "snake_case field names): first confirm what was done, naming the record; then recap what has been " +
-        "completed in this task so far; then propose the SINGLE next step as a question and STOP. Do not take " +
-        "any further action or call any function — wait for the user's go-ahead.";
+        "successfully. Reply in 1-2 short sentences of plain business language (never show UUIDs or " +
+        "snake_case field names): confirm what was done, naming the record; then briefly recap what has " +
+        "been completed so far. Do NOT ask the user if they want to continue — they do. Do NOT propose " +
+        "next steps in this message — those come separately.";
       const nar = await llm.chat({
         client,
         temperature: 0.3,
@@ -656,12 +806,29 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
       message = nar.text || null;
       await recordUsage(client, { user, conversationId: run.conversation_id, res: nar, feature: "assistant" });
       if (message) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: message });
+
+      // ── Auto-propose the next step ──
+      // Instead of waiting for the user to say "yes, continue", we run a
+      // follow-up ask with a synthetic message that tells the model to propose
+      // whatever comes next. This eliminates the snooze loop entirely.
+      const autoMsg = "The previous action was just executed successfully. If there is a clear next step in this task, propose it now as an action. If the task is complete, just say so briefly.";
+      const followUp = await ask({ client, user, conversationId: run.conversation_id, message: autoMsg, allowed: undefined, registry, feature: "assistant" });
+      if (followUp.actions && followUp.actions.length) {
+        nextActions = followUp.actions;
+        // The follow-up's answer text rides with the narration.
+        if (followUp.answer && message) message = message + "\n\n" + followUp.answer;
+        else if (followUp.answer) message = followUp.answer;
+      } else if (followUp.answer) {
+        // No next action — the task is complete or the model chose to just narrate.
+        message = message ? message + "\n\n" + followUp.answer : followUp.answer;
+        if (followUp.answer) await convo.addMessage(client, { conversationId: run.conversation_id, role: "assistant", content: followUp.answer });
+      }
     }
   } catch (err) {
     logger.warn({ err, actionRunId }, "[ai] post-action narration skipped");
   }
 
-  return { ok: true, result, message };
+  return { ok: true, result, message, next_actions: nextActions };
 }
 
 /**
@@ -710,4 +877,251 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
   }
 }
 
-module.exports = { ask, confirmAction, confirmBatch, loadTools };
+/**
+ * Streaming variant of `ask`. Yields SSE-shaped events the controller forwards
+ * to the client:
+ *   { type: "delta",   text }               — incremental text token
+ *   { type: "answer",  text }               — final, complete answer text
+ *   { type: "actions", actions, batch_id }   — proposed write action cards
+ *   { type: "sources", sources }             — grounding citations
+ *   { type: "trace",   trace }              — reasoning steps
+ *   { type: "done",    conversation_id }     — turn complete
+ *   { type: "error",   message }            — recoverable error
+ *
+ * The read-tool narration and anti-stall nudge still use the non-streaming
+ * `llm.chat` (they are bounded, tool-heavy calls where streaming adds latency
+ * without visible benefit — the user sees nothing until the narration is
+ * complete). Only the INITIAL model call streams, because that is the one the
+ * user stares at while waiting.
+ */
+async function* askStream({ client, user, conversationId, message, allowed, registry, feature = "assistant" }) {
+  const gate = await governance.canUseFeature(client, { userId: user.user_id, featureKey: feature });
+  if (!gate.allowed) {
+    yield { type: "error", message: `The AI assistant is unavailable: ${gate.reason}.` };
+    yield { type: "done" };
+    return;
+  }
+
+  const hits = await retrieve({ query: message, tenantClient: client, allowed, k: 6 });
+  const tools = await loadTools(client);
+  // Self-learning: recent successful execution patterns.
+  const patterns = await recentPatterns(client);
+  const patternBlock = patterns.length
+    ? "\n\nPATTERNS YOU HAVE SUCCESSFULLY EXECUTED (use these as templates when the user asks for something similar):\n" +
+      patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
+    : "";
+
+  const system =
+    "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
+    "Only call a function when the user asks to DO something; never invent data. " +
+    "A question or request to SEE/LIST/COUNT/CHECK/SUMMARISE data is a READ — use a list_/get_ action (or just " +
+    "answer); NEVER a create_/update_/record_ write. Propose a write ONLY when the user explicitly asks to create, " +
+    "change, advance, record, or post something. 'How many X are there' means list_X, not create_X. " +
+    "When filtering or fetching a record, use its internal id (the UUID from a previous read), NOT a human " +
+    "reference like a vehicle registration, ref, or code — those won't match an id filter. " +
+    "You act with the user's permissions and cannot exceed them. " +
+    "Speak in plain business language. Refer to records by their name or human reference " +
+    "(a dossier by its ref e.g. SBX-2026-0001, a client or lead by its name), and use natural " +
+    "field names (\"payment terms\", not \"payment_terms_days\"). NEVER show the user raw database " +
+    "identifiers (UUIDs like d69be65d-…), internal id columns, or snake_case field names unless they " +
+    "explicitly ask for an ID. When confirming an action you took, name the record, not its UUID. " +
+    // ── KEY CHANGE: auto-continue after each step, no waiting for go-ahead ──
+    // The old prompt said "wait for their go-ahead before proposing the next" which
+    // created the snooze loop: propose → confirm → "shall I proceed?" → user says
+    // "yes" → propose → confirm → … Every cycle wasted a user turn on "yes".
+    // Now: after proposing an action you WAIT for confirmation (that's the safety
+    // property), but once confirmed the NEXT step is proposed in the SAME reply.
+    "When a task needs several actions, propose the FIRST action and wait for the user to " +
+    "confirm it. Once it is confirmed, IMMEDIATELY propose the next step — do not ask 'shall I " +
+    "proceed?' or 'would you like me to continue?'. Just do it. The user confirmed once, which " +
+    "means they want the task done. " +
+    // ── Draft → execute in one flow ──
+    // When the user says "draft and execute", "create and submit", "prepare and send" — they
+    // want BOTH steps, not a draft followed by a question. Draft the document as prose, then
+    // IMMEDIATELY propose the corresponding write action with all the details from your draft
+    // already filled in. The user sees the draft AND the action card together.
+    "When the user asks you to 'draft and execute', 'create and submit', 'prepare and send' or " +
+    "any combination of writing something AND recording it: first write the document as your " +
+    "answer text, then IMMEDIATELY call the appropriate write function with the details from " +
+    "your draft. Do not stop after drafting to ask 'shall I also create this?' — the user " +
+    "already asked you to. " +
+    "CRUCIAL: the moment you decide to act (and the user has given the go-ahead), CALL the function in that SAME " +
+    "reply. Never end your turn with only a statement of intent like 'let me do that now' or 'one moment' and then " +
+    "stop — if you say you will do it, do it in the same response. The user must never have to ask you to proceed " +
+    "with an action you already announced. " +
+    "For a status change, move ONE valid step along the lifecycle described in the action (e.g. a DRAFT proposal goes " +
+    "to IN_REVIEW before SENT); never skip states — if unsure of the current state, read it first." +
+    // ── Human-readable rule (strengthened) ──
+    "LANGUAGE RULES — these are absolute: " +
+    "• NEVER show snake_case field names (say 'payment terms' not 'payment_terms_days'). " +
+    "• NEVER show UUIDs, internal IDs, or database column names. " +
+    "• NEVER say 'I cannot find' or 'missing field X' — if a value is unclear, ask the user " +
+    "  in plain language ('which client is this for?') instead of reporting a technical error. " +
+    "• When ALL the information the user provided is sufficient, USE IT — do not claim fields " +
+    "  are missing when the user has already told you the values. Map what they said to the " +
+    "  action's fields. " +
+    "• If an action fails because of a field mapping issue, try to FIX the mapping yourself " +
+    "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
+    whoIsAsking(user) +
+    patternBlock +
+    "\n\nCONTEXT:\n" +
+    redact(toContextBlock(hits));
+
+  // ── Conversation memory (same as non-streaming) ──
+  const resolvedId = conversationId || (await history_.currentId(client, user));
+  await history_.condense(client, { user, conversationId: resolvedId, feature });
+  const history = await history_.load(client, { user, conversationId: resolvedId });
+  const messages = [
+    { role: "system", content: system },
+    ...(history.summary
+      ? [{ role: "system", content: "EARLIER IN THIS CONVERSATION (summary of turns no longer replayed in full):\n" + redact(history.summary) }]
+      : []),
+    ...history.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
+    { role: "user", content: redact(message) },
+  ];
+
+  const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
+  const offered = selectTools(tools, contextText);
+
+  // ── Stream the initial model call ──
+  let fullText = "";
+  let finalToolCalls = [];
+  let finalUsage = {};
+  let provider = null;
+
+  for await (const chunk of llm.chatStream({ client, messages, tools: offered.map(toOpenAiTool), onDelta: (d) => { fullText += d; } })) {
+    if (!chunk.done) {
+      yield { type: "delta", text: chunk.delta };
+    } else {
+      fullText = chunk.text || fullText;
+      finalToolCalls = chunk.toolCalls || [];
+      finalUsage = chunk.usage || {};
+      provider = chunk.provider;
+    }
+  }
+  await recordUsage(client, { user, conversationId: history.conversationId, res: { text: fullText, toolCalls: finalToolCalls, usage: finalUsage, provider }, feature });
+
+  // ── Anti-stall (non-streaming, same as ask) ──
+  let nudged = false;
+  if (!finalToolCalls.length && STALL_RE.test(fullText || "")) {
+    const retry = await llm.chat({
+      client,
+      messages: [
+        ...messages,
+        { role: "assistant", content: fullText || "" },
+        { role: "user", content: "Proceed NOW: if this needs an action, call the function in THIS reply; otherwise give the answer directly. Do not just say you will." },
+      ],
+      tools: offered.map(toOpenAiTool),
+    });
+    await recordUsage(client, { user, conversationId: history.conversationId, res: retry, feature });
+    if (retry.toolCalls.length || (retry.text && retry.text.trim())) {
+      // The retry replaces the stalled text. Emit a clear + the new text.
+      yield { type: "delta", text: "\n\n" + (retry.text || "") };
+      fullText = (fullText || "") + "\n\n" + (retry.text || "");
+      finalToolCalls = retry.toolCalls;
+      nudged = true;
+    }
+  }
+
+  // ── Split reads and writes (same logic as ask) ──
+  const defFor = (call) => tools.find((t) => t.action_key === call.function.name);
+  const availableReads = new Set(tools.filter((t) => !t.is_write).map((t) => t.action_key));
+  const writeCalls = [];
+  const readCalls = [];
+  for (const call of finalToolCalls) {
+    const def = defFor(call);
+    if (!def) continue;
+    (def.is_write ? writeCalls : readCalls).push({ call, def });
+  }
+
+  let answer = fullText;
+  const readTrace = [];
+
+  // ── Reads: non-streaming narration ──
+  if (readCalls.length && registry) {
+    const toolMsgs = [];
+    for (const { call, def } of readCalls) {
+      let payload = {};
+      try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
+      let content;
+      const step = { actionKey: def.action_key, payload, result: null, failed: false, error: null };
+      try {
+        await actionAuthz.assertAllowed(client, user, def);
+        const fn = registry[def.action_key];
+        const out = fn ? await fn({ client, user, payload }) : { error: "no executor" };
+        step.result = out && out.data !== undefined ? out.data : out;
+        if (!fn) { step.failed = true; step.error = "no executor"; }
+        content = JSON.stringify(step.result);
+      } catch (err) {
+        step.failed = true;
+        step.error = err.message;
+        content = JSON.stringify({ error: err.message });
+      }
+      readTrace.push(step);
+      toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
+    }
+    const followup = await llm.chat({
+      client,
+      messages: [
+        ...messages,
+        { role: "assistant", content: fullText || null, tool_calls: readCalls.map((r) => r.call) },
+        ...toolMsgs,
+      ],
+    });
+    await recordUsage(client, { user, conversationId: history.conversationId, res: followup, feature });
+    if (followup.text) {
+      // Stream the narration as a delta so the client appends it.
+      yield { type: "delta", text: "\n\n" + followup.text };
+      answer = followup.text;
+    }
+  }
+
+  // Persist the exchange.
+  await history_.save(client, { conversationId: history.conversationId, question: message, answer: answer || null });
+
+  // ── Writes: action cards ──
+  const actions = [];
+  const batchId = writeCalls.length ? crypto.randomUUID() : null;
+  for (const { call, def } of writeCalls) {
+    let payload = {};
+    try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
+    // LENIENT VALIDATION. The old validatePayload rejected unknown keys — if the
+    // model sent `client_name` instead of `client_id`, the action was rejected as
+    // having an unknown field. This is what made the assistant "confuse itself":
+    // it had all the details, used human-friendly field names, and got told they
+    // were wrong. Now: only REQUIRED fields are enforced. Unknown fields pass
+    // through and the executor ignores them (services destructure what they need).
+    const errs = [];
+    for (const req of (def.payload_schema && def.payload_schema.required) || []) {
+      if (payload[req] === undefined || payload[req] === null || payload[req] === "") errs.push(`missing '${req}'`);
+    }
+    const status = errs.length ? "VALIDATION_FAILED" : "AWAITING_CONFIRM";
+    const run = await client.query(
+      `INSERT INTO ai_action_run (conversation_id, user_id, action_key, proposed_payload, status, validation_error, batch_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING action_run_id`,
+      [history.conversationId || null, user.user_id, def.action_key, payload, status, errs.join("; ") || null, batchId],
+    );
+    actions.push({
+      action_run_id: run.rows[0].action_run_id,
+      action_key: def.action_key,
+      payload,
+      requires_confirmation: def.requires_confirmation,
+      validation_errors: errs,
+      schema: def.payload_schema,
+      field_meta: buildFieldMeta(def.payload_schema, availableReads),
+    });
+  }
+
+  // Emit the final events.
+  yield { type: "answer", text: answer };
+  if (actions.length) yield { type: "actions", actions, batch_id: batchId };
+
+  const sources = buildSources(readTrace);
+  const trace = buildTrace({ reads: readTrace, writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })), recalled: hits.length, nudged });
+  if (sources.length) yield { type: "sources", sources };
+  if (trace.length) yield { type: "trace", trace };
+
+  yield { type: "done", conversation_id: history.conversationId, provider };
+}
+
+module.exports = { ask, askStream, confirmAction, confirmBatch, loadTools };

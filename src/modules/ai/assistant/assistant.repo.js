@@ -50,10 +50,19 @@ async function recentMessages(client, conversationId, limit = 20) {
   return rows.reverse();
 }
 
-/** Full thread for the panel to render on open (newest N, chat order). */
+/**
+ * Full thread for the panel to render on open (newest N, chat order).
+ *
+ * SELECTS THE GROUNDING TOO (0521). It used to return role + content only,
+ * which meant a reopened conversation came back as bare prose: the Sources tab
+ * was empty and every trace disclosure was gone, on a thread that had visibly
+ * had both an hour earlier. The columns are nullable for rows written before
+ * 0521, and the client renders on presence, so an old message simply shows no
+ * citations rather than showing wrong ones.
+ */
 async function listMessages(client, conversationId, limit = 200) {
   const { rows } = await client.query(
-    "SELECT ai_message_id, role, content, created_at FROM ai_message " +
+    "SELECT ai_message_id, role, content, sources, trace, created_at FROM ai_message " +
       "WHERE conversation_id = $1 AND role IN ('user','assistant') " +
       "ORDER BY created_at DESC, ai_message_id DESC LIMIT $2",
     [conversationId, limit],
@@ -100,10 +109,26 @@ async function conversationBelongsToUser(client, conversationId, userId) {
   return rows.length > 0;
 }
 
-async function addMessage(client, { conversationId, role, content }) {
+/**
+ * Append one turn.
+ *
+ * `sources` / `trace` are OPTIONAL and only ever meaningful on an assistant row
+ * — a question grounds nothing. Passing `undefined` writes NULL, which is the
+ * honest value for "this turn recorded no grounding" and is what every caller
+ * other than the orchestrator's answer-save does. They are stringified here
+ * rather than at the call site so no caller has to know the column is jsonb.
+ */
+async function addMessage(client, { conversationId, role, content, sources, trace }) {
   const { rows } = await client.query(
-    "INSERT INTO ai_message (conversation_id, role, content) VALUES ($1,$2,$3) RETURNING ai_message_id, role, content, created_at",
-    [conversationId, role, content],
+    "INSERT INTO ai_message (conversation_id, role, content, sources, trace) VALUES ($1,$2,$3,$4,$5) " +
+      "RETURNING ai_message_id, role, content, sources, trace, created_at",
+    [
+      conversationId,
+      role,
+      content,
+      sources === undefined || sources === null ? null : JSON.stringify(sources),
+      trace === undefined || trace === null ? null : JSON.stringify(trace),
+    ],
   );
   return rows[0];
 }

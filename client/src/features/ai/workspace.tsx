@@ -150,11 +150,12 @@ export function AiWorkspace() {
    * conversation's current state, so a new answer replaces it; the toolbar on an
    * older turn is how you deliberately go back to that one (`openOutput`).
    *
-   * WHY IT DOES NOT FIGHT YOU. It keys on the turn id, so it fires once per
-   * answer rather than on every render — close the pane and it stays closed
-   * until the NEXT answer arrives. That is the compromise between "automatic"
-   * and "insistent": a pane that reopened on every re-render could not be
-   * dismissed at all.
+   * WHY IT DOES NOT FIGHT YOU. Two separate questions, deliberately kept apart:
+   * WHAT the pane shows follows the latest answer continuously, so a table that
+   * is still arriving keeps filling in; WHETHER the pane opens fires once per
+   * answer. Close it mid-stream and it stays closed until the NEXT answer, with
+   * its content quietly kept current behind it. Tying both to the turn id — the
+   * original design — is what broke it: see `lastOutput` below.
    */
   const lastAnswer = React.useMemo(() => {
     for (let i = thread.turns.length - 1; i >= 0; i--) {
@@ -163,15 +164,70 @@ export function AiWorkspace() {
     return null;
   }, [thread.turns]);
 
-  const filledFor = React.useRef<string | null>(null);
+  /**
+   * What the latest answer has produced SO FAR.
+   *
+   * Recomputed as the answer streams, which is the correction to the bug that
+   * made this whole pane look broken. The old effect claimed the turn id and
+   * returned:
+   *
+   *     if (!lastAnswer || filledFor.current === lastAnswer.id) return;
+   *     filledFor.current = lastAnswer.id;          // ← claimed too early
+   *     if (!hasOutput(outputFor(lastAnswer))) return;
+   *
+   * A streamed answer is created as an EMPTY assistant turn the moment you press
+   * send (`thread.ts`), so the effect ran once against empty text, burned the id
+   * on an answer that had nothing in it yet, and was then permanently barred
+   * from that turn. Every token that followed — including the seven tables —
+   * arrived under an id the effect had already dismissed. The pane went on
+   * showing the PREVIOUS answer's output, which is why the table on screen never
+   * matched the answer above it.
+   */
+  const lastOutput = React.useMemo<TurnOutput>(
+    () => (lastAnswer ? outputFor(lastAnswer) : { tables: [], artifact: null }),
+    [lastAnswer],
+  );
+
+  /**
+   * The answer the user pulled up by hand from an older turn's toolbar.
+   *
+   * Without it, keeping the pane in sync with the streaming answer would yank a
+   * deliberately-opened older output away again on the next token. A NEW answer
+   * still wins — the pane is a view of where the conversation is now — so this
+   * is cleared as soon as the latest answer changes.
+   */
+  const [pinned, setPinned] = React.useState<string | null>(null);
+
+  /** The turn we last tracked, and the turn we last auto-OPENED the pane for. */
+  const trackedId = React.useRef<string | null>(null);
+  const openedFor = React.useRef<string | null>(null);
+
   React.useEffect(() => {
-    if (!lastAnswer || filledFor.current === lastAnswer.id) return;
-    filledFor.current = lastAnswer.id;
-    const output = outputFor(lastAnswer);
-    if (!hasOutput(output)) return;
-    setPane((p) => ({ ...p, output, tab: output.tables.length ? "table" : "canvas" }));
-    setLayout((l) => (l.right ? l : { ...l, right: true }));
-  }, [lastAnswer]);
+    if (!lastAnswer) return;
+    if (trackedId.current !== lastAnswer.id) {
+      trackedId.current = lastAnswer.id;
+      setPinned(null);
+    }
+    if (pinned) return;
+    if (!hasOutput(lastOutput)) return;
+
+    // The id is claimed HERE — on the first render where the answer actually has
+    // something in it — not on sight of the turn. That single move is the fix.
+    const firstFill = openedFor.current !== lastAnswer.id;
+    setPane((p) => ({
+      ...p,
+      output: lastOutput,
+      // The tab is chosen once, when the pane opens for this answer. Re-choosing
+      // it on every token would drag the user off Sources mid-read.
+      ...(firstFill ? { tab: lastOutput.tables.length ? ("table" as const) : ("canvas" as const) } : {}),
+    }));
+    if (firstFill) {
+      openedFor.current = lastAnswer.id;
+      // Still once per answer: close the pane and it stays closed until the NEXT
+      // one arrives. Content keeps refreshing behind it either way.
+      setLayout((l) => (l.right ? l : { ...l, right: true }));
+    }
+  }, [lastAnswer, lastOutput, pinned]);
 
   // Keep the URL pointing at the thread on screen, so the page is refreshable
   // and shareable. `replace`, so switching conversations does not stack a dozen
@@ -186,8 +242,10 @@ export function AiWorkspace() {
   if (!aiEnabled) return <Navigate to="/" replace />;
 
   /** Manual re-open, from an older answer's toolbar. Auto-population handles
-   *  the latest one; this is how you pull a previous answer's output back. */
-  function openOutput(_turn: AiTurn, output: TurnOutput) {
+   *  the latest one; this is how you pull a previous answer's output back.
+   *  Pinning it stops the live answer's sync from taking it straight back. */
+  function openOutput(turn: AiTurn, output: TurnOutput) {
+    setPinned(turn.id);
     setPane((p) => ({ ...p, tab: output.tables.length ? "table" : "canvas", output }));
     setLayout((l) => ({ ...l, right: true }));
   }
@@ -276,10 +334,12 @@ export function AiWorkspace() {
                 onOpen={(id) => {
                   thread.openConversation(id);
                   setPane(EMPTY_PANE);
+                  setPinned(null);
                 }}
                 onNew={() => {
                   thread.newThread();
                   setPane(EMPTY_PANE);
+                  setPinned(null);
                 }}
               />
             </aside>
@@ -326,6 +386,7 @@ export function AiWorkspace() {
                 onClick={() => {
                   thread.newThread();
                   setPane(EMPTY_PANE);
+                  setPinned(null);
                 }}
                 disabled={thread.busy}
                 aria-label="Start a new conversation"

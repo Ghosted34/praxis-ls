@@ -204,6 +204,65 @@ function MergeModal({ kind, survivorId, survivorRef, loser, onClose, onDone }: {
   );
 }
 
+const CONVERT_CARRIED_OVER = [
+  "Legal name, trading name, and registrations (NIU, RCCM…)",
+  "Email, address, city, country",
+  "Industry, website, notes, tax residency, default currency, risk tier",
+];
+const CONVERT_TODO = ["Bank accounts", "Contacts", "Addresses", "KYC / compliance documents", "Verification"];
+
+/** Smart Copy conversion confirm modal (Hard Rule 2): shows what carries over to
+ *  the new draft automatically and what does not, requires an explicit
+ *  acknowledgement, then creates the draft — never a bare click-to-create. */
+function ConvertModal({ kind, partyId, partyName, onClose, onDone }: {
+  kind: api.PartyKind; partyId: string; partyName: string; onClose: () => void; onDone: (msg: string) => void;
+}) {
+  const targetLabel = kind === "client" ? "supplier" : "client";
+  const [ack, setAck] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function run() {
+    setBusy(true); setError(null);
+    try {
+      await (kind === "client" ? api.convertFromClient(partyId) : api.convertFromSupplier(partyId));
+      onDone(`Draft ${targetLabel} created`);
+      onClose();
+    } catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal open onClose={onClose} title={`Convert to ${targetLabel}`}
+      description={`Creates a new draft ${targetLabel} linked to "${partyName}" (Smart Copy).`}>
+      <div className="space-y-3 text-sm">
+        <div>
+          <p className="mb-1 font-medium text-foreground">Carried over automatically</p>
+          <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+            {CONVERT_CARRIED_OVER.map((c) => <li key={c}>{c}</li>)}
+          </ul>
+        </div>
+        <div className="rounded-lg border border-warn/40 bg-warn-fill/30 p-3">
+          <p className="mb-1 font-medium text-foreground">You&apos;ll need to complete before the draft can trade</p>
+          <ul className="list-disc space-y-1 pl-4 text-muted-foreground">
+            {CONVERT_TODO.map((t) => <li key={t}>{t}</li>)}
+          </ul>
+          <p className="mt-2 micro">
+            Nothing here copies automatically (Hard Rule 2) — once created, use &quot;Copy from origin&quot; on each
+            section of the new record if you want to reuse the same details.
+          </p>
+        </div>
+        <Checkbox checked={ack} onCheckedChange={setAck}
+          label={`I understand a new draft ${targetLabel} will be created and confirm this conversion.`} />
+        {error && <ErrorState message={error} />}
+      </div>
+      <div className="mt-4 flex justify-end gap-2">
+        <Button variant="ghost" onClick={onClose}>Cancel</Button>
+        <Button variant="default" loading={busy} disabled={!ack} onClick={run}>Create draft {targetLabel}</Button>
+      </div>
+    </Modal>
+  );
+}
+
 /** Lightweight inline-SVG horizontal bar chart (§3.2) — no chart library, so the
  *  single `vendor` bundle chunk stays acyclic. Colours come from ink tokens via
  *  currentColor (never a fill token used as type — the F13 contrast rule). */
@@ -221,6 +280,75 @@ function SvgBars({ data, ariaLabel, fmt }: { data: { label: string; value: numbe
         </g>
       ))}
     </svg>
+  );
+}
+
+const AGING_COLUMNS: { key: api.AgingBucket; label: string }[] = [
+  { key: "current", label: "Current" },
+  { key: "d1_30", label: "1–30" },
+  { key: "d31_60", label: "31–60" },
+  { key: "d61_90", label: "61–90" },
+  { key: "d90_plus", label: "90+" },
+];
+
+/** Aging card (§3.2) — receivables for a client, payables for a supplier. Same
+ *  shape both sides now that the API buckets supplier payables too. Each bucket
+ *  is a button: click it to drill into the invoices behind that figure. */
+function AgingCard({ title, aging, onOpen }: { title: string; aging: api.Aging; onOpen: (bucket: api.AgingBucket, label: string) => void }) {
+  return (
+    <div className="rounded-xl border bg-card p-4">
+      <h4 className="mb-3 text-sm font-semibold text-foreground">{title}</h4>
+      <div className="grid grid-cols-5 gap-2 text-center">
+        {AGING_COLUMNS.map(({ key, label }) => (
+          <button key={key} type="button" onClick={() => onOpen(key, label)}
+            className="rounded-lg border p-2 transition-colors hover:border-primary hover:bg-primary/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
+            <div className="num text-sm font-semibold text-foreground">{money(aging[key])}</div>
+            <div className="micro">{label}</div>
+          </button>
+        ))}
+      </div>
+      {/* Inline-SVG aging chart (§3.2) — no chart library (bundle stays acyclic). */}
+      <div className="mt-3">
+        <SvgBars ariaLabel={title} fmt={money} data={AGING_COLUMNS.map(({ key, label }) => ({ label, value: aging[key] }))} />
+      </div>
+    </div>
+  );
+}
+
+/** Aging drill-down (spec follow-up): the invoice list behind one Aging bucket,
+ *  with days overdue for a past-due bucket or days remaining for Current. */
+function AgingDetailModal({ kind, partyId, bucket, label, onClose }: { kind: api.PartyKind; partyId: string; bucket: api.AgingBucket; label: string; onClose: () => void }) {
+  const detail = useResource(() => api.agingDetail(kind, partyId, bucket), [kind, partyId, bucket]);
+  const isCurrent = bucket === "current";
+  return (
+    <Modal open onClose={onClose} title={`Aging — ${label}`}
+      description={kind === "client" ? "Open receivables in this bucket." : "Open payables in this bucket."} size="lg">
+      {detail.loading ? <LoadingRow label="Loading…" /> : detail.error ? <ErrorState message={detail.error} /> : !detail.data || detail.data.invoices.length === 0 ? (
+        <Empty />
+      ) : (
+        <div className="space-y-3">
+          <p className="micro">
+            {detail.data.count} invoice{detail.data.count === 1 ? "" : "s"} · {money(detail.data.total)} as of {dateFmt(detail.data.as_of)}
+          </p>
+          <MiniTable empty={false} head={<><Th>Invoice</Th><Th>Due date</Th><Th>{isCurrent ? "Due in" : "Overdue by"}</Th><Th r>Amount</Th></>}>
+            {detail.data.invoices.map((i) => (
+              <tr key={i.id}>
+                <Td>{i.doc_number || i.id.slice(0, 8)}</Td>
+                <Td>{dateFmt(i.due_on)}</Td>
+                <Td>
+                  {i.days_overdue > 0
+                    ? `${i.days_overdue} day${i.days_overdue === 1 ? "" : "s"} overdue`
+                    : i.days_until_due
+                      ? `Due in ${i.days_until_due} day${i.days_until_due === 1 ? "" : "s"}`
+                      : i.due_on ? "Due today" : "No due date"}
+                </Td>
+                <Td r>{money(i.amount)}</Td>
+              </tr>
+            ))}
+          </MiniTable>
+        </div>
+      )}
+    </Modal>
   );
 }
 
@@ -291,8 +419,10 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [adding, setAdding] = React.useState<null | "contact" | "address" | "bank" | "document" | "registration" | "owner">(null);
   const [blocking, setBlocking] = React.useState(false);
+  const [converting, setConverting] = React.useState(false);
   const [merging, setMerging] = React.useState<api.DedupeCandidate | null>(null);
   const [revealed, setRevealed] = React.useState<Record<string, string>>({});
+  const [aging, setAging] = React.useState<{ bucket: api.AgingBucket; label: string } | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -354,6 +484,16 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
             {comp.can_verify && p.verification_status !== "VERIFIED" && (
               <Button size="sm" variant="outline" loading={busy} onClick={() => act(() => api.verifyParty(kind, partyId), "Verified")}>Verify</Button>
             )}
+            {/* Lifecycle on/off (registration_status), independent of the hard block below. */}
+            {p.registration_status === "ACTIVE"
+              ? <Button size="sm" variant="outline" loading={busy}
+                  onClick={() => act(() => api.setRegistrationStatus(kind, partyId, "DEACTIVATED"), isClient ? "Client deactivated" : "Supplier deactivated")}>
+                  Deactivate
+                </Button>
+              : <Button size="sm" variant="outline" loading={busy}
+                  onClick={() => act(() => api.setRegistrationStatus(kind, partyId, "ACTIVE"), isClient ? "Client activated" : "Supplier activated")}>
+                  Activate
+                </Button>}
             {blocked
               ? <Button size="sm" variant="outline" loading={busy} onClick={() => act(() => api.unblockParty(kind, partyId), "Unblocked")}>Unblock</Button>
               : <Button size="sm" variant="outline" onClick={() => setBlocking(true)}>Block</Button>}
@@ -362,8 +502,7 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
               ? <Button size="sm" variant="ghost" onClick={() => openParty(isClient ? "supplier" : "client", linkedId)}>
                   {isClient ? "View supplier" : "View client"}
                 </Button>
-              : <Button size="sm" variant="ghost" loading={busy}
-                  onClick={() => act(() => (isClient ? api.convertFromClient(partyId) : api.convertFromSupplier(partyId)), isClient ? "Draft supplier created" : "Draft client created")}>
+              : <Button size="sm" variant="ghost" onClick={() => setConverting(true)}>
                   {isClient ? "→ Supplier" : "→ Client"}
                 </Button>}
           </div>
@@ -464,29 +603,7 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
               GL parity: {d.gl_parity.flagged ? <span className="text-bad">mismatch {money(d.gl_parity.mismatch)}</span> : "clean"} · docs {money(d.gl_parity.docTotal)} vs GL {money(d.gl_parity.gl)}
             </p>
           </div>
-          {isClient && (
-            <div className="rounded-xl border bg-card p-4">
-              <h4 className="mb-3 text-sm font-semibold text-foreground">Aging</h4>
-              <div className="grid grid-cols-5 gap-2 text-center">
-                {([["Current", d.kpis.aging.current], ["1–30", d.kpis.aging.d1_30], ["31–60", d.kpis.aging.d31_60], ["61–90", d.kpis.aging.d61_90], ["90+", d.kpis.aging.d90_plus]] as const).map(([lbl, v]) => (
-                  <div key={lbl} className="rounded-lg border p-2">
-                    <div className="num text-sm font-semibold text-foreground">{money(v)}</div>
-                    <div className="micro">{lbl}</div>
-                  </div>
-                ))}
-              </div>
-              {/* Inline-SVG aging chart (§3.2) — no chart library (bundle stays acyclic). */}
-              <div className="mt-3">
-                <SvgBars ariaLabel="Receivables aging" fmt={money} data={[
-                  { label: "Current", value: d.kpis.aging.current },
-                  { label: "1–30", value: d.kpis.aging.d1_30 },
-                  { label: "31–60", value: d.kpis.aging.d31_60 },
-                  { label: "61–90", value: d.kpis.aging.d61_90 },
-                  { label: "90+", value: d.kpis.aging.d90_plus },
-                ]} />
-              </div>
-            </div>
-          )}
+          <AgingCard title={isClient ? "Aging" : "Aging (payables)"} aging={d.kpis.aging} onOpen={(bucket, label) => setAging({ bucket, label })} />
           {!isClient && d.scorecard && <ScorecardCard s={d.scorecard} />}
           {!isClient && (
             <div className="rounded-xl border bg-card p-4">
@@ -642,6 +759,9 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
 
       {blocking && <BlockModal onClose={() => setBlocking(false)} onSubmit={async (reason) => { await act(() => api.blockParty(kind, partyId, reason), "Party blocked"); }} />}
       {merging && <MergeModal kind={kind} survivorId={partyId} survivorRef={p.ref || ""} loser={merging} onClose={() => setMerging(null)} onDone={(msg) => { toast.success(msg); reload(); }} />}
+      {converting && <ConvertModal kind={kind} partyId={partyId} partyName={p.legal_name || p.name}
+        onClose={() => setConverting(false)} onDone={(msg) => { toast.success(msg); reload(); }} />}
+      {aging && <AgingDetailModal kind={kind} partyId={partyId} bucket={aging.bucket} label={aging.label} onClose={() => setAging(null)} />}
     </div>
   );
 }

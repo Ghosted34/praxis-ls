@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 886,
+  "route_count": 888,
   "tiers": {
     "public": 19,
     "self-scoped": 58,
-    "gated": 809
+    "gated": 811
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -934,6 +934,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/clients/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/clients/:id/aging": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2428,6 +2434,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/suppliers/:id/addresses": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/suppliers/:id/aging": {
       "auth": true,
       "rbac": true,
       "validated": false,

@@ -15,6 +15,7 @@ module.exports = {
   creditCheck: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.creditCheck(c, { clientId: req.params.id, additionalAmount: Number(req.query.amount) || 0 })) })),
   // 360° dossier + lifecycle actions (shared with the supplier master).
   dossier: actions.dossier,
+  agingDetail: actions.agingDetail,
   block: actions.block,
   unblock: actions.unblock,
   verify: actions.verify,

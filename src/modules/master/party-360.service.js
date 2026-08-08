@@ -21,10 +21,112 @@ const { AppError } = require("../../utils/errors");
 
 const INVOICE_LOCKED = ["ISSUED_LOCKED", "APPROVED_LOCKED", "POSTED_LOCKED"];
 const SUPPLIER_POSTED = ["POSTED_LOCKED", "PAID"];
+const MS_DAY = 24 * 60 * 60 * 1000;
+const AGING_BUCKET_KEYS = ["current", "d1_30", "d31_60", "d61_90", "d90_plus"];
 
 async function one(c, sql, params) {
   const { rows } = await c.query(sql, params);
   return rows[0] || {};
+}
+
+/** Whole days from `dueOn` to `asOf` — positive once a due date is in the past,
+ *  null with no due date. A small local copy of smart_receivables' daysOverdue;
+ *  duplicated rather than imported so master does not reach across into finance. */
+function daysPastDue(dueOn, asOf) {
+  if (!dueOn) return null;
+  const a = new Date(dueOn).getTime();
+  const b = new Date(asOf).getTime();
+  if (Number.isNaN(a) || Number.isNaN(b)) return null;
+  return Math.floor((b - a) / MS_DAY);
+}
+
+/** Same bucket edges as the client aging SQL below, expressed on a day-count so
+ *  the invoice-level drill-down (`agingDetail`) and the supplier bucket sums
+ *  classify identically to it. */
+function bucketOf(daysOver) {
+  if (daysOver === null || daysOver <= 0) return "current";
+  if (daysOver <= 30) return "d1_30";
+  if (daysOver <= 60) return "d31_60";
+  if (daysOver <= 90) return "d61_90";
+  return "d90_plus";
+}
+
+/** Open (outstanding > 0) FINAL invoices for a client — the same population the
+ *  aging SQL in `clientKpis` sums, but row-level for the drill-down modal. */
+async function clientOpenInvoices(c, partyId) {
+  const { rows } = await c.query(
+    `WITH finals AS (
+       SELECT invoice_id, doc_number, total_ttc, payment_due_on FROM invoice
+        WHERE client_id = $1 AND type = 'FINAL' AND status = ANY($2)
+     ),
+     paid AS (
+       SELECT invoice_id, SUM(amount) amt FROM payment_allocation
+        WHERE invoice_id IN (SELECT invoice_id FROM finals) GROUP BY invoice_id
+     )
+     SELECT f.invoice_id AS id, f.doc_number, f.payment_due_on AS due_on,
+            GREATEST(f.total_ttc - COALESCE(p.amt, 0), 0) AS amount
+       FROM finals f LEFT JOIN paid p ON p.invoice_id = f.invoice_id
+      WHERE GREATEST(f.total_ttc - COALESCE(p.amt, 0), 0) > 0`,
+    [partyId, INVOICE_LOCKED],
+  );
+  return rows;
+}
+
+/** Open (POSTED_LOCKED, not yet PAID) bills for a supplier. There is no
+ *  partial-payment/allocation table on the AP side — a supplier invoice settles
+ *  whole — so its full amount_ttc is the outstanding balance. */
+async function supplierOpenInvoices(c, partyId) {
+  const { rows } = await c.query(
+    `SELECT supplier_invoice_id AS id, doc_number, due_on, amount_ttc AS amount
+       FROM supplier_invoice WHERE supplier_id = $1 AND status = 'POSTED_LOCKED'`,
+    [partyId],
+  );
+  return rows;
+}
+
+/** Bucket + day-count every open row as of one date. */
+function annotateAging(rows, asOf) {
+  return rows.map((r) => {
+    const daysOver = daysPastDue(r.due_on, asOf);
+    return {
+      id: r.id,
+      doc_number: r.doc_number || null,
+      due_on: r.due_on || null,
+      amount: Number(r.amount) || 0,
+      bucket: bucketOf(daysOver),
+      days_overdue: daysOver !== null && daysOver > 0 ? daysOver : 0,
+      days_until_due: daysOver !== null && daysOver < 0 ? -daysOver : null,
+    };
+  });
+}
+
+/** Aging bucket sums for the party 360 Aging card — client receivables or
+ *  supplier payables, same shape either side. */
+async function agingSums(c, kind, partyId, asOf) {
+  const rows = kind === "client" ? await clientOpenInvoices(c, partyId) : await supplierOpenInvoices(c, partyId);
+  const items = annotateAging(rows, asOf);
+  const sums = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+  for (const i of items) sums[i.bucket] = Math.round((sums[i.bucket] + i.amount) * 100) / 100;
+  return sums;
+}
+
+/**
+ * Invoice-level aging drill-down (party 360 Aging cards, both masters) —
+ * GET /clients/:id/aging and /suppliers/:id/aging, `bucket` required. Reads the
+ * SAME open-invoice population `agingSums` totals, so a card's figure and its
+ * modal's line items always foot to the same number.
+ */
+async function agingDetail(c, { kind, partyId, bucket, asOf }) {
+  if (!AGING_BUCKET_KEYS.includes(bucket)) {
+    throw new AppError("VALIDATION_ERROR", `bucket must be one of ${AGING_BUCKET_KEYS.join(", ")}`, 422, { bucket: ["invalid"] });
+  }
+  const at = asOf || new Date().toISOString().slice(0, 10);
+  const rows = kind === "client" ? await clientOpenInvoices(c, partyId) : await supplierOpenInvoices(c, partyId);
+  const invoices = annotateAging(rows, at)
+    .filter((i) => i.bucket === bucket)
+    .sort((a, b) => b.days_overdue - a.days_overdue || String(a.due_on || "").localeCompare(String(b.due_on || "")));
+  const totalMinor = invoices.reduce((s, i) => s + Math.round(i.amount * 100), 0);
+  return { as_of: at, bucket, count: invoices.length, total: Math.round(totalMinor) / 100, invoices };
 }
 
 /** Load the six child collections shared by both masters. */
@@ -140,12 +242,14 @@ async function supplierKpis(c, partyId) {
     [partyId, SUPPLIER_POSTED],
   );
   const pos = await one(c, "SELECT COUNT(*) AS n FROM purchase_order WHERE supplier_id = $1 AND status NOT IN ('CLOSED', 'CANCELLED')", [partyId]);
+  const aging = await agingSums(c, "supplier", partyId, new Date().toISOString().slice(0, 10));
   return {
     payables: Number(payable.payables) || 0,
     overdue_payables: Number(payable.overdue) || 0,
     oldest_due_date: payable.oldest_due || null,
     ytd_spend: Number(ytd.v) || 0,
     open_purchase_orders: Number(pos.n) || 0,
+    aging,
   };
 }
 
@@ -210,4 +314,4 @@ async function supplierDossier(c, { partyId, canSeeFinancials = false }) {
   return { party, kpis, compliance: comp, gl_parity: parity, ...coll, purchase_orders, supplier_invoices, scorecard, aliases, duplicate_candidates, pending_changes };
 }
 
-module.exports = { clientDossier, supplierDossier };
+module.exports = { clientDossier, supplierDossier, agingDetail };

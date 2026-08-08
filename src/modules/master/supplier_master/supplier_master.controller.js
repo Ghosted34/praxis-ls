@@ -10,6 +10,7 @@ module.exports = {
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req), env: req.env })) })),
   // 360° dossier + lifecycle actions (shared with the client master).
   dossier: actions.dossier,
+  agingDetail: actions.agingDetail,
   block: actions.block,
   unblock: actions.unblock,
   verify: actions.verify,

@@ -27,6 +27,10 @@ function build(kind) {
       const canSee = await canSeeFinancials(req);
       res.json({ data: await req.tenantDb((c) => dossier(c, { partyId: req.params.id, canSeeFinancials: canSee })) });
     }),
+    // Invoice-level aging drill-down for the 360's Aging cards (receivables for
+    // a client, payables for a supplier) — ?bucket=current|d1_30|d31_60|d61_90|d90_plus.
+    agingDetail: asyncHandler(async (req, res) =>
+      res.json({ data: await req.tenantDb((c) => party360.agingDetail(c, { kind, partyId: req.params.id, bucket: req.query.bucket, asOf: req.query.as_of })) })),
     block: asyncHandler(async (req, res) =>
       res.json({ data: await req.tenantDb((c) => lifecycle.block(c, { kind, partyId: req.params.id, reason: req.body.reason, actor: actorOf(req) })) })),
     unblock: asyncHandler(async (req, res) =>

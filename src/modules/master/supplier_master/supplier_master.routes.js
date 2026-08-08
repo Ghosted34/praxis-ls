@@ -21,6 +21,7 @@ router.post("/dedupe-check", requirePermission(MODULE, "view"), validate(partyCo
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
+router.get("/:id/aging", requirePermission(MODULE, "view"), controller.agingDetail);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 

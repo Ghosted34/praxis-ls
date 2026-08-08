@@ -719,7 +719,7 @@ export type Client360 = {
 };
 export type Supplier360 = {
   party: Supplier & PartyExtras & { avl_status?: string | null; withholding_rate?: number | null };
-  kpis: { payables: number; overdue_payables: number; oldest_due_date?: string | null; ytd_spend: number; open_purchase_orders: number };
+  kpis: { payables: number; overdue_payables: number; oldest_due_date?: string | null; ytd_spend: number; open_purchase_orders: number; aging: Aging };
   compliance: Compliance;
   gl_parity: GlParity;
   contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
@@ -732,6 +732,23 @@ export type Supplier360 = {
 };
 export const clientDossier = (id: string) => tenant<Client360>(`/clients/${id}/360`);
 export const supplierDossier = (id: string) => tenant<Supplier360>(`/suppliers/${id}/360`);
+
+/* ── Aging drill-down (Aging card → invoice list, both masters) ─────────────── */
+export type AgingBucket = keyof Aging;
+export type AgingInvoice = {
+  id: string;
+  doc_number?: string | null;
+  due_on?: string | null;
+  amount: number;
+  bucket: AgingBucket;
+  /** > 0 once the due date has passed; 0 otherwise. */
+  days_overdue: number;
+  /** Days remaining until due; null once overdue or with no due date. */
+  days_until_due: number | null;
+};
+export type AgingDetail = { as_of: string; bucket: AgingBucket; count: number; total: number; invoices: AgingInvoice[] };
+export const agingDetail = (kind: PartyKind, id: string, bucket: AgingBucket) =>
+  tenant<AgingDetail>(`${base(kind)}/${id}/aging?bucket=${encodeURIComponent(bucket)}`);
 
 /* ── Deduplication (PR3-C §5.1) ─────────────────────────────────────────────── */
 export type DedupeInput = {
@@ -768,8 +785,11 @@ export const revealBank = (kind: PartyKind, id: string, bankAccountId: string) =
 export const blockParty = (kind: PartyKind, id: string, reason: string) => tenant(`${base(kind)}/${id}/block`, { method: "POST", body: { reason } });
 export const unblockParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/unblock`, { method: "POST" });
 export const verifyParty = (kind: PartyKind, id: string) => tenant(`${base(kind)}/${id}/verify`, { method: "POST" });
-export const activateParty = (kind: PartyKind, id: string) =>
-  (kind === "client" ? updateClient(id, { registration_status: "ACTIVE" } as Partial<ClientInput>) : updateSupplier(id, { registration_status: "ACTIVE" } as Partial<SupplierInput>));
+/** Activate / deactivate — a direct `registration_status` transition (governed
+ *  like any other sensitive master field: applied at once in TEST/sandbox, opened
+ *  as a maker-checker change request in LIVE). */
+export const setRegistrationStatus = (kind: PartyKind, id: string, status: "ACTIVE" | "DEACTIVATED") =>
+  (kind === "client" ? updateClient(id, { registration_status: status } as Partial<ClientInput>) : updateSupplier(id, { registration_status: status } as Partial<SupplierInput>));
 /** Smart Copy — a supplier id → a draft client, or a client id → a draft supplier. */
 export const convertFromSupplier = (supplierId: string) => tenant<Client>(`/clients/convert-from-supplier/${supplierId}`, { method: "POST" });
 export const convertFromClient = (clientId: string) => tenant<Supplier>(`/suppliers/convert-from-client/${clientId}`, { method: "POST" });

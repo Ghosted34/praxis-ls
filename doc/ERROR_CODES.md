@@ -256,7 +256,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 107× | — |
+| `VALIDATION_ERROR` | 422 | 108× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

@@ -23,6 +23,7 @@ router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/credit", requirePermission(MODULE, "view"), controller.creditCheck);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.dossier);
+router.get("/:id/aging", requirePermission(MODULE, "view"), controller.agingDetail);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 

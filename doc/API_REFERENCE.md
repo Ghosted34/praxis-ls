@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 886 |
+| Routes | 888 |
 | Modules mounted | 106 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 886 mounted routes, grouped by path prefix.
+All 888 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -376,6 +376,7 @@ All 886 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/:id/addresses` | — |
 | DELETE | `/api/tenant/clients/:id/addresses/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/addresses/:childId` | — |
+| GET | `/api/tenant/clients/:id/aging` | — |
 | GET | `/api/tenant/clients/:id/banks` | — |
 | POST | `/api/tenant/clients/:id/banks` | — |
 | POST | `/api/tenant/clients/:id/banks/:bankId/reveal` | — |
@@ -1338,6 +1339,7 @@ All 886 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/suppliers/:id/addresses` | — |
 | DELETE | `/api/tenant/suppliers/:id/addresses/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/addresses/:childId` | — |
+| GET | `/api/tenant/suppliers/:id/aging` | — |
 | GET | `/api/tenant/suppliers/:id/banks` | — |
 | POST | `/api/tenant/suppliers/:id/banks` | — |
 | POST | `/api/tenant/suppliers/:id/banks/:bankId/reveal` | — |

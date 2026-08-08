@@ -107,7 +107,8 @@ async function deleteRule(id) {
 
 async function ruleLog(ruleId, limit = 50) {
   const { rows } = await db.query(
-    `SELECT log_id AS id, rule_id, error_id, signature, triggered_at, actions_taken, notes
+    `SELECT log_id AS id, rule_id, error_id, signature, triggered_at, actions_taken, notes,
+            (actions_taken @> '{"pending":true}'::jsonb) AS pending
        FROM platform.error_escalation_log
       WHERE ($1::uuid IS NULL OR rule_id = $1)
       ORDER BY triggered_at DESC LIMIT $2`,
@@ -141,23 +142,121 @@ async function matchesFor(rule) {
   return rows;
 }
 
-/** Has this rule already fired for this signature inside its repeat interval? */
+/**
+ * A row in error_escalation_log is a DELIVERY unless it carries `pending:true`,
+ * in which case it is an ARMING record for the delay clock below. Every query
+ * that asks "did this already fire" has to say which of the two it means —
+ * conflating them is what makes a delayed rule either fire immediately or never
+ * fire at all.
+ */
+const DELIVERED = `NOT (actions_taken @> '{"pending":true}'::jsonb)`;
+const PENDING = `actions_taken @> '{"pending":true}'::jsonb`;
+
+/**
+ * Dry-run an unsaved rule (POST /escalation/rules/preview).
+ *
+ * Takes a tenant SLUG rather than an id because that is what the settings form
+ * holds, and resolves it here so `matchesFor` keeps its single input shape. An
+ * unknown slug resolves to NULL, which would silently widen the preview to
+ * platform-wide — so it is rejected instead. A dry-run that quietly answers a
+ * different question than the one asked is worse than an error.
+ */
+async function previewMatches(body = {}) {
+  let tenantId = null;
+  if (body.tenant) {
+    const { rows } = await db.query("SELECT tenant_id FROM platform.tenant WHERE slug = $1", [body.tenant]);
+    if (!rows[0]) throw new AppError("NOT_FOUND", `No tenant with slug "${body.tenant}"`, 404);
+    tenantId = rows[0].tenant_id;
+  }
+  return matchesFor({
+    tenant_id: tenantId,
+    level_filter: body.level_filter || ["fatal"],
+    threshold_count: body.threshold_count ?? 5,
+    threshold_window_minutes: body.threshold_window_minutes ?? 15,
+  });
+}
+
+/** Has this rule already DELIVERED for this signature inside its repeat interval? */
 async function recentlyFired(rule, signature) {
   if (!rule.repeat_interval_minutes) {
     const { rows } = await db.query(
-      "SELECT 1 FROM platform.error_escalation_log WHERE rule_id = $1 AND signature = $2 LIMIT 1",
+      `SELECT 1 FROM platform.error_escalation_log
+        WHERE rule_id = $1 AND signature = $2 AND ${DELIVERED} LIMIT 1`,
       [rule.id, signature],
     );
     return rows.length > 0;
   }
   const { rows } = await db.query(
     `SELECT 1 FROM platform.error_escalation_log
-      WHERE rule_id = $1 AND signature = $2
+      WHERE rule_id = $1 AND signature = $2 AND ${DELIVERED}
         AND triggered_at > now() - make_interval(mins => $3::int)
       LIMIT 1`,
     [rule.id, signature, rule.repeat_interval_minutes],
   );
   return rows.length > 0;
+}
+
+/**
+ * ── The delay clock ─────────────────────────────────────────────────────────
+ *
+ * `escalation_delay_minutes` means "wait D minutes, and only page if the
+ * condition is STILL true". It was stored, validated and shown in the UI, but
+ * the evaluator gated on `repeat_interval_minutes` alone — so a rule with a
+ * 10-minute delay paged on the first sweep, and the field was decoration.
+ *
+ * The state has to be durable. The obvious implementation is a Map of
+ * first-matched timestamps, and it is wrong for the same reason the repeat
+ * interval is not held in memory: the sweeps that matter happen during an
+ * incident, which is exactly when the process restarts. A crash-loop would
+ * re-arm from zero on every boot and the delay would never elapse — a rule that
+ * silently never fires, which is the worst failure an alerting path has.
+ *
+ * So arming is a row, in the table that already exists for "why was I paged":
+ * `actions_taken = {"pending":true}`. The sweep that first sees a match writes
+ * it; a later sweep delivers once D has elapsed, and replaces it. If the
+ * condition stops matching in between, the arming row is deleted — that is the
+ * "still true" half of the semantics, and it is what makes a 30-second blip
+ * cost nothing.
+ */
+async function armedSince(rule, signature) {
+  const { rows } = await db.query(
+    `SELECT triggered_at FROM platform.error_escalation_log
+      WHERE rule_id = $1 AND signature = $2 AND ${PENDING}
+      ORDER BY triggered_at DESC LIMIT 1`,
+    [rule.id, signature],
+  );
+  return rows[0] ? rows[0].triggered_at : null;
+}
+
+async function arm(rule, match) {
+  await db.query(
+    `INSERT INTO platform.error_escalation_log (rule_id, error_id, signature, actions_taken, notes)
+     VALUES ($1, $2, $3, '{"pending":true}'::jsonb, $4)`,
+    [rule.id, match.error_id, match.signature, `armed — waiting ${rule.escalation_delay_minutes}m for the condition to persist`],
+  );
+}
+
+/**
+ * Drop arming rows for signatures this rule no longer matches. Called once per
+ * rule per sweep with the current match set, so recovery disarms the rule
+ * without anybody being paged.
+ */
+async function clearStaleArming(rule, signatures) {
+  await db.query(
+    `DELETE FROM platform.error_escalation_log
+      WHERE rule_id = $1 AND ${PENDING}
+        AND NOT (signature = ANY($2::text[]))`,
+    [rule.id, signatures],
+  );
+}
+
+/** Consume the arming row once the delivery it was waiting for has happened. */
+async function disarm(rule, signature) {
+  await db.query(
+    `DELETE FROM platform.error_escalation_log
+      WHERE rule_id = $1 AND signature = $2 AND ${PENDING}`,
+    [rule.id, signature],
+  );
 }
 
 /**
@@ -168,15 +267,31 @@ async function deliver(rule, match) {
   const taken = {};
 
   if (rule.action_email && rule.email_recipients.length) {
+    // Sent through the PLATFORM mailer, not the tenant email queue.
+    //
+    // This was `enqueue("email-send", { to, subject, text })`, which was wrong
+    // three ways and silent about all of them: the queue is registered as
+    // "email" (email-send is the handler FILE), `enqueue` takes
+    // (name, jobName, data) so the payload landed in the jobName slot, and
+    // handlers/email-send.js throws without `tenantMeta` — which a platform-wide
+    // escalation can never have.
+    //
+    // The damage was not the missing email; it was that `enqueue` RESOLVED, so
+    // `taken.email` recorded a success and error_escalation_log said the page
+    // went out. See services/platform/platform-mail.service.js.
     try {
-       
-      const { enqueue } = require("../../jobs/queue-producer");
-      await enqueue("email-send", {
+
+      const platformMail = require("./platform-mail.service");
+      const result = await platformMail.send({
         to: rule.email_recipients,
-        subject: `[PRAXIS-LS] [${match.level.toUpperCase()}] ${match.module || "Platform"} — ${String(match.message).slice(0, 80)}`,
+        subject: `[PRAXIS-LS] [${String(match.level).toUpperCase()}] ${match.module || "Platform"} — ${String(match.message).slice(0, 80)}`,
         text: renderEmailBody(match),
       });
-      taken.email = rule.email_recipients;
+      // Record what HAPPENED, not what was attempted. A rule whose recipients
+      // are configured but whose relay is not must read as a failure here, or
+      // the log becomes a record of intentions.
+      if (result.ok) taken.email = rule.email_recipients;
+      else taken.email_error = result.reason;
     } catch (err) {
       logger.warn({ err, rule: rule.id }, "escalation: email dispatch failed");
       taken.email_error = String(err.message || err);
@@ -199,14 +314,45 @@ async function deliver(rule, match) {
   }
 
   if (rule.action_inhouse) {
-    // Surfaced to connected consoles by the realtime layer; the row in
-    // error_escalation_log below is the durable record either way.
+    // TWO deliveries, and the order is the point.
+    //
+    // This used to be the socket broadcast ALONE. A socket reaches whoever has
+    // the console open at that instant — which, for a rule whose whole purpose
+    // is to catch a 3am outage, is nobody — and socket.io does not queue for
+    // absent clients, so the event was simply gone. The feature demonstrated
+    // perfectly and delivered nothing.
+    //
+    // The durable notification is now the delivery; the broadcast is the live
+    // nudge for anyone already watching. Failures are isolated from each other
+    // and from the email/webhook channels above.
     try {
-       
-      require("../../realtime/platform-ns").broadcastEscalation({ rule_id: rule.id, rule_name: rule.name, ...match });
-      taken.in_house = true;
-    } catch {
+
+      const notifications = require("./notifications.service");
+      const result = await notifications.notifyCapable({
+        title: `[${String(match.level).toUpperCase()}] ${match.module || "Platform"} — ${rule.name}`,
+        body: `${String(match.message).slice(0, 200)} — ${match.occurrence_count} occurrence${match.occurrence_count === 1 ? "" : "s"}`,
+        metadata: {
+          error_id: match.error_id,
+          error_signature: match.signature,
+          module: match.module,
+          route: match.route,
+          rule_id: rule.id,
+          rule_name: rule.name,
+          tenant: match.tenant_slug || null,
+        },
+      });
+      taken.in_house = result.sent;
+      if (result.suppressed) taken.in_house_suppressed = result.suppressed;
+    } catch (err) {
+      logger.warn({ err, rule: rule.id }, "escalation: in-house notification failed");
       taken.in_house = false;
+    }
+
+    try {
+
+      require("../../realtime/platform-ns").broadcastEscalation({ rule_id: rule.id, rule_name: rule.name, ...match });
+    } catch {
+      /* The notification row is the delivery; a dead socket changes nothing. */
     }
   }
 
@@ -254,14 +400,33 @@ async function evaluate() {
     try {
        
       const matches = await matchesFor(rule);
+      const delay = Number(rule.escalation_delay_minutes) || 0;
+
+      // Disarm first. A rule that has recovered must lose its pending rows even
+      // on a sweep where it matches nothing at all, or the next unrelated blip
+      // inherits a clock that started during the previous incident.
+
+      if (delay > 0) await clearStaleArming(rule, matches.map((m) => m.signature));
+
       for (const match of matches) {
-        // The delay clock: only escalate once the condition has been true for
-        // at least `escalation_delay_minutes`, measured from first_seen of this
-        // burst — which `last_seen - delay` approximates without extra state.
-         
+
         if (await recentlyFired(rule, match.signature)) continue;
-         
+
+        if (delay > 0) {
+
+          const since = await armedSince(rule, match.signature);
+          if (!since) {
+
+            await arm(rule, match);
+            continue;
+          }
+          if (Date.now() - new Date(since).getTime() < delay * 60000) continue;
+        }
+
+
         const taken = await deliver(rule, match);
+
+        if (delay > 0) await disarm(rule, match.signature);
         fired.push({ rule: rule.name, signature: match.signature, taken });
       }
     } catch (err) {
@@ -280,5 +445,11 @@ module.exports = {
   ruleLog,
   evaluate,
   matchesFor,
+  previewMatches,
   renderEmailBody,
+  // Exported for the delay-clock tests — the arming lifecycle is the part of
+  // this engine with no HTTP surface, so it is otherwise unreachable.
+  recentlyFired,
+  armedSince,
+  clearStaleArming,
 };

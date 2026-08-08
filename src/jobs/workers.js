@@ -40,6 +40,10 @@ const PROCESSORS = [
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
   { name: "error-maintenance", concurrency: 1, handler: require("./handlers/error-maintenance") },
+  // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
+  // performance choice — the uptime denominator assumes ONE sample per
+  // interval, and a second concurrent worker would double the numerator.
+  { name: "health-collect", concurrency: 1, handler: require("./handlers/health-collect") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];
@@ -189,6 +193,30 @@ async function scheduleRecurring() {
     logger.info({ every: escalateEvery }, "error escalation evaluator registered");
   }
 
+  // Health sampling (§8.2). Its retention purge shares the 02:00 UTC slot with
+  // the error purge above and also sweeps read notifications — see
+  // handlers/health-collect.js for why notifications are purged there.
+  await enqueue("health-collect", "purge", {}, {
+    repeat: { pattern: "0 2 * * *", tz: "UTC" },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+
+  const healthEvery = config.HEALTH_SAMPLE_INTERVAL_MS;
+  if (!healthEvery || healthEvery <= 0) {
+    logger.info("health sampling disabled (HEALTH_SAMPLE_INTERVAL_MS=0) — uptime will report null");
+  } else {
+    await enqueue("health-collect", "sample", {}, {
+      repeat: { every: healthEvery },
+      removeOnComplete: true,
+      // Deliberately low. A failed sample is worthless five minutes later, and
+      // retaining failures here would only hide the fact that the SAMPLES
+      // themselves are the record of failure.
+      removeOnFail: 20,
+    });
+    logger.info({ every: healthEvery }, "health sampler registered");
+  }
+
   // Live FX daily sync (MOD-08). FX_SYNC_CRON is a wall-clock cron (default
   // midnight), so use repeat.pattern with a tz — an interval-based repeat would
   // drift off midnight after every restart, the same reasoning as the error
@@ -216,8 +244,30 @@ async function shutdown(sig) {
 }
 
 async function main() {
-  process.on("unhandledRejection", (reason) => logger.error({ err: reason }, "unhandledRejection (worker)"));
-  process.on("uncaughtException", (err) => logger.error({ err }, "uncaughtException (worker)"));
+  // REPORTED, not just logged — spec §2.3 point 2.
+  //
+  // These two logged and stopped there, so a worker crash reached a log file on
+  // a box whose logs are wiped on every deploy (OBS-L7) and nothing else. The
+  // Error Center never saw it: `platform.error_event.origin` has a 'worker'
+  // value in its CHECK constraint that nothing outside a job handler ever wrote.
+  //
+  // That is the wrong process to leave silent. The worker is what evaluates
+  // escalation rules and samples uptime, so a worker that has died is also a
+  // worker that will not tell anyone anything — including that it died. The
+  // report goes through the same sink as the API's, which is durable.
+  //
+  // `report` is already imported at module scope; the local re-require that was
+  // here shadowed it. Harmless today, but a second binding to the reporter is a
+  // second copy of its dedupe and rate-limit state the moment anything resets
+  // the module registry — so it uses the one import, like the rest of the file.
+  process.on("unhandledRejection", (reason) => {
+    logger.error({ err: reason }, "unhandledRejection (worker)");
+    report(reason, { origin: "worker", severity: "error", route: "unhandledRejection" });
+  });
+  process.on("uncaughtException", (err) => {
+    logger.error({ err }, "uncaughtException (worker)");
+    report(err, { origin: "worker", severity: "fatal", route: "uncaughtException" });
+  });
 
   await initRedis();
   startWorkers();

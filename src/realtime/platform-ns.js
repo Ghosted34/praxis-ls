@@ -43,6 +43,17 @@ const NS = "/platform";
 const ROOM_ALL = "errors:all";
 const roomTenant = (slug) => `errors:t:${slug}`;
 const ROOM_PLATFORM = "errors:platform";
+/**
+ * A room per user, joined at connection and never left by `subscribe`.
+ *
+ * Notifications are ADDRESSED, unlike the error feed which is broadcast. Using
+ * the error rooms for them would mean an escalation aimed at one on-call admin
+ * reached everyone whose scope filter happened to match — and, worse, that
+ * changing the scope dropdown would silently unsubscribe you from your own
+ * notifications. The `unsubscribe` handler leaves every room but this one for
+ * exactly that reason.
+ */
+const roomUser = (userId) => `user:${userId}`;
 
 let ns = null;
 
@@ -106,14 +117,27 @@ function initPlatformNamespace(io) {
   ns.on("connection", (socket) => {
     // Every console starts on the combined feed — the spec's default view (§4.2).
     socket.join(ROOM_ALL);
+    // Personal channel for addressed notifications. Independent of the scope
+    // filter, so changing the feed's scope cannot cost you your own bell.
+    if (socket.data && socket.data.userId) socket.join(roomUser(socket.data.userId));
 
     // Spec §6 §4.1, client → server: { type: 'subscribe', tenant_id }.
     // Accepts a slug or the literal "platform"; an absent/"all" value returns
     // the socket to the combined feed.
+    // Leave the FEED rooms only. The socket's own id room is how socket.io
+    // addresses it at all, and the personal room carries notifications that have
+    // nothing to do with which tenant's errors you are currently looking at —
+    // clearing either here is a bug that presents as "the bell stopped working
+    // after I used the filter".
+    const leaveFeedRooms = () => {
+      const keep = new Set([socket.id, roomUser(socket.data && socket.data.userId)]);
+      for (const r of socket.rooms) if (!keep.has(r)) socket.leave(r);
+    };
+
     socket.on("subscribe", (msg, ack) => {
       try {
         const scope = typeof msg === "string" ? msg : (msg && (msg.tenant_id || msg.tenant)) || "all";
-        for (const r of socket.rooms) if (r !== socket.id) socket.leave(r);
+        leaveFeedRooms();
         if (scope === "platform") socket.join(ROOM_PLATFORM);
         else if (scope && scope !== "all") socket.join(roomTenant(String(scope)));
         else socket.join(ROOM_ALL);
@@ -123,9 +147,7 @@ function initPlatformNamespace(io) {
       }
     });
 
-    socket.on("unsubscribe", () => {
-      for (const r of socket.rooms) if (r !== socket.id) socket.leave(r);
-    });
+    socket.on("unsubscribe", leaveFeedRooms);
 
     // Lets the client show "Live" honestly rather than assuming the pipe works.
     socket.on("ping:check", (_m, ack) => {
@@ -188,10 +210,29 @@ function broadcastResolved({ signature, resolved_by, resolved_at, id }) {
   });
 }
 
-/** In-house escalation notification (§5.3) pushed to every connected console. */
+/**
+ * In-house escalation banner (§5.3), broadcast to every connected console.
+ *
+ * This is the LIVE nudge, not the delivery. The delivery is the row
+ * notifications.service writes — see the comment in error-escalation's
+ * `deliver()` for why a broadcast alone was the original bug.
+ */
 function broadcastEscalation(payload) {
   if (!ns) return;
   ns.emit("escalation", { type: "escalation", payload });
+}
+
+/**
+ * Push one addressed notification to a specific user's open consoles (§3.3).
+ *
+ * Fire-and-forget by contract: the caller has already committed the row, and a
+ * user with no console open must not turn into an error on the escalation path.
+ * Returns whether a room existed, purely so callers can log it.
+ */
+function pushNotification(userId, notification) {
+  if (!ns || !userId || !notification) return false;
+  ns.to(roomUser(userId)).emit("notification", { type: "notification", payload: notification });
+  return true;
 }
 
 module.exports = {
@@ -199,6 +240,7 @@ module.exports = {
   broadcastError,
   broadcastResolved,
   broadcastEscalation,
+  pushNotification,
   isReady: () => ns !== null,
   NS,
 };

@@ -6,8 +6,8 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 894 |
-| Modules mounted | 106 |
+| Routes | 911 |
+| Modules mounted | 107 |
 | API version | v1 |
 
 ## The out-of-band request contract
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 894 mounted routes, grouped by path prefix.
+All 911 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -101,6 +101,22 @@ All 894 mounted routes, grouped by path prefix.
 | PATCH | `/api/platform/escalation/rules/:id` | — |
 | PUT | `/api/platform/escalation/rules/:id` | — |
 | POST | `/api/platform/escalation/rules/preview` | — |
+
+### `platform/health`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/platform/health/summary` | — |
+
+### `platform/notifications`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/platform/notifications` | — |
+| POST | `/api/platform/notifications` | — |
+| POST | `/api/platform/notifications/:id/read` | — |
+| POST | `/api/platform/notifications/read-all` | — |
+| GET | `/api/platform/notifications/unread-count` | — |
 
 ### `platform/plans`
 
@@ -1423,6 +1439,7 @@ All 894 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/tax-jurisdictions/:id/active` | — |
 | GET | `/api/tenant/tax-jurisdictions/:id/codes` | — |
 | POST | `/api/tenant/tax-jurisdictions/:id/codes` | — |
+| POST | `/api/tenant/tax-jurisdictions/:id/codes/supersede` | — |
 | GET | `/api/tenant/tax-jurisdictions/:id/effective` | — |
 
 ### `tenant/trainings`
@@ -1456,7 +1473,22 @@ All 894 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/treasury-accounts/` | — |
 | GET | `/api/tenant/treasury-accounts/:id` | — |
 | PATCH | `/api/tenant/treasury-accounts/:id` | — |
+| GET | `/api/tenant/treasury-accounts/:id/360` | — |
 | POST | `/api/tenant/treasury-accounts/:id/active` | — |
+| POST | `/api/tenant/treasury-accounts/:id/primary` | — |
+| POST | `/api/tenant/treasury-accounts/:id/unverify` | — |
+| POST | `/api/tenant/treasury-accounts/:id/verify` | — |
+
+### `tenant/treasury-categories`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/tenant/treasury-categories/` | — |
+| POST | `/api/tenant/treasury-categories/` | — |
+| DELETE | `/api/tenant/treasury-categories/:id` | — |
+| GET | `/api/tenant/treasury-categories/:id` | — |
+| PATCH | `/api/tenant/treasury-categories/:id` | — |
+| POST | `/api/tenant/treasury-categories/:id/active` | — |
 
 ### `tenant/users`
 

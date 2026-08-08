@@ -14,11 +14,21 @@
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { errorsApi, type ErrorStats } from "@/lib/errors-api";
+import { errorsApi, ago, type ErrorStats, type HealthSummary } from "@/lib/errors-api";
 import { can } from "@/lib/api";
+
+/** "over the last 6 hours" / "30d" — see `measured_from` in HealthSummary. */
+function coverage(h: HealthSummary): string {
+  if (!h.measured_from) return `${h.window_days}d`;
+  const hours = (Date.now() - new Date(h.measured_from).getTime()) / 3_600_000;
+  if (hours < 1) return "<1h";
+  if (hours < 48) return `${Math.round(hours)}h`;
+  return `${Math.round(hours / 24)}d`;
+}
 
 export function SystemHealthWidget() {
   const [stats, setStats] = useState<ErrorStats | null>(null);
+  const [health, setHealth] = useState<HealthSummary | null>(null);
   const [failed, setFailed] = useState(false);
 
   useEffect(() => {
@@ -29,6 +39,9 @@ export function SystemHealthWidget() {
       .stats({ status: "all", from: new Date(Date.now() - 86_400_000).toISOString() })
       .then(setStats)
       .catch(() => setFailed(true));
+    // Independent of stats: uptime is a different measurement with a different
+    // failure mode, and a missing collector must not blank the error counts.
+    errorsApi.health().then(setHealth).catch(() => setHealth(null));
   }, []);
 
   if (failed || !can("errors.read")) return null;
@@ -36,13 +49,36 @@ export function SystemHealthWidget() {
   const today = stats?.today ?? null;
   const fatal = stats?.fatal ?? 0;
 
-  // Status is derived from what we can actually observe. Claiming "All systems
-  // operational" from a green constant would be worse than showing nothing.
+  /**
+   * Status now leads with MEASURED availability and falls back to the old
+   * error-derived heuristic only when nothing has been sampled.
+   *
+   * The order matters. "All systems operational" inferred from an absence of
+   * errors is a claim about our own logging, not about the platform — a process
+   * that is down logs nothing at all and would have read as perfectly healthy.
+   * A recorded outage in the window outranks a quiet error feed.
+   */
   const status =
-    today === null ? { label: "Checking…", tone: "var(--ink-3)" }
-      : fatal > 0 ? { label: "Degraded", tone: "var(--bad, #991B1B)" }
-      : today > 0 ? { label: "Errors logged", tone: "var(--warn, #854D0E)" }
-      : { label: "All systems operational", tone: "var(--ok, #166534)" };
+    health && health.uptime_percent !== null && health.incidents && health.incidents.length > 0
+      ? { label: `${health.incidents.length} outage${health.incidents.length === 1 ? "" : "s"} in ${coverage(health)}`, tone: "var(--bad, #991B1B)" }
+      : today === null ? { label: "Checking…", tone: "var(--ink-3)" }
+        : fatal > 0 ? { label: "Degraded", tone: "var(--bad, #991B1B)" }
+          : today > 0 ? { label: "Errors logged", tone: "var(--warn, #854D0E)" }
+            : { label: "All systems operational", tone: "var(--ok, #166534)" };
+
+  // Never fabricate a figure. `collector: "disabled"` and "no samples yet" are
+  // different answers from "100%", and conflating them is exactly why migration
+  // 0090 refused to create a metrics table with no producer.
+  //
+  // Pulled into a single local so the null check narrows once. Repeating
+  // `health?.uptime_percent !== null` at each use reads as safe and does not
+  // narrow `health.uptime_percent` for TypeScript at the comparison below.
+  const pct = health && health.uptime_percent !== null ? health.uptime_percent : null;
+  const uptimeValue = pct === null ? "—" : `${pct.toFixed(2)}%`;
+  const uptimeLabel =
+    !health || health.collector === "disabled" ? "Uptime (off)"
+      : pct === null ? "Uptime (no data)"
+        : `Uptime (${coverage(health)})`;
 
   return (
     <div className="card" style={{ marginBottom: 16 }}>
@@ -51,7 +87,17 @@ export function SystemHealthWidget() {
         <Link to="/error-center" className="btn-link">Error Center →</Link>
       </div>
       <div className="bd">
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px,1fr))", gap: 12 }}>
+          <Metric
+            value={uptimeValue}
+            label={uptimeLabel}
+            tone={pct !== null && pct < 99 ? "var(--warn, #854D0E)" : undefined}
+            title={
+              health && pct !== null
+                ? `${health.samples} of ${health.expected_samples} expected samples healthy. A missing sample counts as downtime.`
+                : undefined
+            }
+          />
           <Metric
             value={today === null ? "—" : String(today)}
             label="Errors today"
@@ -69,14 +115,43 @@ export function SystemHealthWidget() {
             </div>
           </div>
         </div>
+
+        {/*
+          Appendix A.5. The only failure in this module the dashboard cannot
+          show you as a wrong number — a broken capture path renders a clean,
+          empty, GREEN feed, and "zero errors" reads as "everything is fine".
+          So it gets a banner rather than a metric: the point is to interrupt
+          someone who is being reassured by silence.
+        */}
+        {health?.capture?.stale && (
+          <div
+            style={{
+              marginTop: 12, padding: "8px 10px", borderRadius: 8, fontSize: 11.5,
+              background: "#FEF9C3", color: "#854D0E", border: "1px solid #FDE047",
+            }}
+          >
+            ⚠ No errors captured in {health.capture.quiet_hours}h while the platform was up.
+            Either it has been a genuinely quiet day, or error capture has stopped —
+            those look identical here. Last error{" "}
+            {health.capture.last_error_at ? ago(health.capture.last_error_at) : "never"}.
+          </div>
+        )}
+
+        {health && health.p95_db_latency_ms !== null && (
+          <div className="muted" style={{ fontSize: 11, marginTop: 10 }}>
+            Database p95 {health.p95_db_latency_ms}ms
+            {health.avg_db_latency_ms !== null ? ` · avg ${health.avg_db_latency_ms}ms` : ""}
+            {health.degraded_samples > 0 ? ` · ${health.degraded_samples} degraded samples` : ""}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-function Metric({ value, label, tone }: { value: string; label: string; tone?: string }) {
+function Metric({ value, label, tone, title }: { value: string; label: string; tone?: string; title?: string }) {
   return (
-    <div>
+    <div title={title}>
       <div style={{ fontSize: 21, fontWeight: 700, fontVariantNumeric: "tabular-nums", color: tone || "var(--ink-1)", lineHeight: 1.1 }}>
         {value}
       </div>

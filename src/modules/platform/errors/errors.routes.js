@@ -49,6 +49,24 @@ router.put("/escalation/rules/:id", requireCap("errors.configure"), validateBody
 router.patch("/escalation/rules/:id", requireCap("errors.configure"), validateBody("ruleUpdate"), c.ruleUpdate);
 router.delete("/escalation/rules/:id", requireCap("errors.configure"), c.ruleDelete);
 
+// ── In-house notifications (§3.3) ───────────────────────────────────────────
+//
+// Reads are NOT capability-gated, deliberately. A notification addressed to you
+// is yours; gating it on errors.read would mean a PLATFORM_SUPPORT user can be
+// sent something they then cannot open, and the unread badge would count rows
+// they are forbidden to see. Sending IS gated, on errors.read — you may only
+// forward an error you are allowed to look at.
+router.get("/notifications", validateQuery("notificationList"), c.notificationList);
+router.get("/notifications/unread-count", c.notificationUnread);
+router.post("/notifications/read-all", c.notificationReadAll);
+router.post("/notifications", requireCap("errors.read"), validateBody("notificationSend"), c.notificationSend);
+router.post("/notifications/:id/read", validateParams("notificationId"), c.notificationRead);
+
+// ── Platform health / uptime (§8.2) ─────────────────────────────────────────
+// Historical, and therefore authenticated — unlike /api/health/ready, which is
+// a live probe for a load balancer and has no credentials to offer.
+router.get("/health/summary", requireCap("errors.read"), validateQuery("healthSummary"), c.healthSummary);
+
 // ── Single error ────────────────────────────────────────────────────────────
 router.get("/errors/:id", requireCap("errors.read"), validateParams("errorId"), c.get);
 router.get("/errors/:id/share", requireCap("errors.read"), validateParams("errorId"), c.shareTargets);

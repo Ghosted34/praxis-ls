@@ -127,6 +127,84 @@ export type EscalationLogRow = {
   triggered_at: string;
   actions_taken: Record<string, unknown>;
   notes: string | null;
+  /**
+   * A log row is either a DELIVERY or an ARMING record for the delay clock.
+   * `pending` distinguishes them — an armed row means "the condition is true and
+   * the delay is running", which is a state an operator needs to see, because
+   * otherwise a rule with a 10-minute delay looks like a rule that is not working.
+   */
+  pending: boolean;
+};
+
+export type NotificationType = "error_escalation" | "error_share" | "system";
+
+export type Notification = {
+  id: string;
+  to_user_id: string;
+  from_user_id: string | null;
+  from_name: string | null;
+  type: NotificationType;
+  title: string;
+  body: string;
+  metadata: Record<string, unknown>;
+  read_at: string | null;
+  created_at: string;
+};
+
+export type HealthIncident = {
+  started_at: string;
+  ended_at: string;
+  samples: number;
+  duration_seconds: number;
+};
+
+export type HealthSummary = {
+  /** null when nothing has been sampled — the widget must render "—", not 0%. */
+  uptime_percent: number | null;
+  window_days: number;
+  samples: number;
+  expected_samples: number;
+  /**
+   * The real start of the measured period. On a deployment younger than the
+   * window this is later than `now - window_days`, and the UI has to say so —
+   * "99.9% (last 6 hours)" is honest, "99.9% (30d)" from six hours of data is not.
+   */
+  measured_from: string | null;
+  last_sample: string | null;
+  degraded_samples: number;
+  avg_db_latency_ms: number | null;
+  p95_db_latency_ms: number | null;
+  collector: "running" | "disabled" | "no_samples";
+  incidents: HealthIncident[];
+  /**
+   * Appendix A.5 — is the error pipeline itself still capturing?
+   *
+   * `stale` is only ever true when the platform is demonstrably alive and yet
+   * nothing has been captured: a quiet night and a broken capture path look
+   * identical in the feed, and this is the only field that tells them apart.
+   */
+  capture: {
+    stale: boolean;
+    reason: "capturing" | "no_errors_while_healthy" | "collector_down" | "insufficient_history";
+    quiet_hours: number;
+    last_error_at: string | null;
+    errors_in_window: number;
+    last_sample_at: string | null;
+    sample_age_seconds: number | null;
+  };
+};
+
+/** One error group that a rule would currently fire on. */
+export type RuleMatch = {
+  error_id: string;
+  signature: string;
+  level: ErrorLevel;
+  message: string;
+  module: string | null;
+  route: string | null;
+  occurrence_count: number;
+  last_seen: string;
+  tenant_slug: string | null;
 };
 
 export type ErrorQuery = {
@@ -205,6 +283,36 @@ export const errorsApi = {
   deleteRule: (id: string) =>
     api(`/escalation/rules/${encodeURIComponent(id)}`, { method: "DELETE" }),
   escalationLog: (ruleId?: string) => api<EscalationLogRow[]>(`/escalation/log${qs({ rule_id: ruleId })}`),
+
+  /**
+   * Dry-run: what would this rule fire on right now? Takes the DRAFT thresholds
+   * rather than a rule id, so a rule can be tested before it is saved — which is
+   * the only moment the answer changes a decision.
+   */
+  previewRule: (body: {
+    level_filter: ErrorLevel[];
+    threshold_count: number;
+    threshold_window_minutes: number;
+    tenant?: string | null;
+  }) => api<RuleMatch[]>("/escalation/rules/preview", { method: "POST", body }),
+
+  // ── In-house notifications (§3.3) ─────────────────────────────────────────
+  notifications: (q: { status?: "unread" | "read" | "all"; limit?: number; before?: string } = {}) =>
+    api<Notification[]>(`/notifications${qs(q)}`),
+  unreadCount: () => api<{ unread: number }>("/notifications/unread-count"),
+  markNotificationRead: (id: string) =>
+    api<{ id: string; read_at: string }>(`/notifications/${encodeURIComponent(id)}/read`, { method: "POST" }),
+  markAllNotificationsRead: () => api<{ marked: number }>("/notifications/read-all", { method: "POST" }),
+  /**
+   * The spec's push endpoint. `error_id` is sent rather than a rendered title
+   * and body — the server rebuilds those from the error so a client cannot put
+   * arbitrary text into a colleague's alert feed with the system's name on it.
+   */
+  sendNotification: (body: { to_user_id: string; error_id?: string; note?: string }) =>
+    api<Notification>("/notifications", { method: "POST", body }),
+
+  // ── Platform health (§8.2) ────────────────────────────────────────────────
+  health: (days?: number) => api<HealthSummary>(`/health/summary${qs({ days })}`),
 };
 
 /** Spec §9.1 severity tokens. Exported so the feed, drawer and chart agree. */

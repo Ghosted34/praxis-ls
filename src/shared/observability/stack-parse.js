@@ -25,9 +25,41 @@
 /** Frames from node internals / dependencies are noise in a call chain. */
 const VENDOR = /[\\/](node_modules|internal)[\\/]|^node:/;
 
-const V8_NAMED = /^\s*at\s+(?:async\s+)?(.+?)\s+\((.+?):(\d+):(\d+)\)\s*$/;
-const V8_BARE = /^\s*at\s+(?:async\s+)?(.+?):(\d+):(\d+)\s*$/;
-const SPIDERMONKEY = /^\s*(.*?)@(.+?):(\d+):(\d+)\s*$/;
+/**
+ * PARSED WITH STRING OPERATIONS, NOT REGEX — deliberately, and this is a
+ * security fix rather than a style preference.
+ *
+ * The previous version used three regexes of the shape
+ *
+ *     /^\s*at\s+(?:async\s+)?(.+?)\s+\((.+?):(\d+):(\d+)\)\s*$/
+ *
+ * plus a `/^\s*(at\s|.*@)/` guard. Every one of them pairs a lazy `.+?` with an
+ * adjacent `\s+` or `@`, which is textbook polynomial backtracking: on
+ * `"at " + " ".repeat(4000)` the engine tries every split point and the match
+ * degrades to O(n²). CodeQL flagged all four as "polynomial regular expression
+ * used on uncontrolled data", and it was right about the "uncontrolled" part —
+ * which is what makes this worth fixing rather than suppressing:
+ *
+ *   `POST /api/client-errors` IS UNAUTHENTICATED, BY DESIGN. A browser cannot
+ *   present a token when the page it is on has just crashed, so the endpoint
+ *   takes a `stack` string from anyone, rate-limited to 30/min and capped at
+ *   4000 chars. Those caps bound the damage; they do not remove it. 4000 chars
+ *   of crafted whitespace across 40 frames, 30 times a minute, is sustained
+ *   quadratic work on a single-threaded event loop — and it lands on the ERROR
+ *   REPORTING path, i.e. the one that exists to survive an incident and must
+ *   never become one.
+ *
+ * Splitting on the known delimiters is linear, allocation-light, and reads more
+ * plainly than the regexes did. The only regex left is anchored, bounded, and
+ * runs on a string this module has already length-capped.
+ */
+
+/**
+ * A frame longer than this is not a frame. The longest real one in this
+ * codebase is ~140 chars; the cap is defence in depth behind the linear parser
+ * rather than the thing holding the line.
+ */
+const MAX_FRAME_LEN = 512;
 
 /**
  * Reduce an absolute path to the repo-relative form the spec's mockups show
@@ -76,13 +108,62 @@ function moduleOf(relPath) {
   return parts.length > 1 ? parts[parts.length - 2] : null;
 }
 
-function parseLine(line) {
-  let m = V8_NAMED.exec(line);
-  if (m) return { fn: m[1], file: m[2], line: +m[3], col: +m[4] };
-  m = V8_BARE.exec(line);
-  if (m) return { fn: "(anonymous)", file: m[1], line: +m[2], col: +m[3] };
-  m = SPIDERMONKEY.exec(line);
-  if (m) return { fn: m[1] || "(anonymous)", file: m[2], line: +m[3], col: +m[4] };
+/**
+ * Split a trailing `…:<line>:<col>` off a location.
+ *
+ * `lastIndexOf` twice rather than `/:(\d+):(\d+)$/`: an end-anchored regex with
+ * two `\d+` groups still costs O(n²) on a string of colons, because the engine
+ * retries from every start position. Two backward scans are O(n) and cannot be
+ * made to behave otherwise.
+ */
+function splitPosition(loc) {
+  const c2 = loc.lastIndexOf(":");
+  if (c2 < 1) return null;
+  const c1 = loc.lastIndexOf(":", c2 - 1);
+  if (c1 < 1) return null;
+
+  const line = Number(loc.slice(c1 + 1, c2));
+  const col = Number(loc.slice(c2 + 1));
+  if (!Number.isInteger(line) || !Number.isInteger(col)) return null;
+
+  return { file: loc.slice(0, c1), line, col };
+}
+
+/**
+ * One frame → `{ fn, file, line, col }`, or null.
+ *
+ * Handles the three V8 shapes and the Firefox/Safari `fn@url:1:2` form. Every
+ * step is an indexOf, a slice or a trim; there is no backtracking anywhere.
+ */
+function parseLine(raw) {
+  if (typeof raw !== "string") return null;
+  // Cap BEFORE any scanning, so a pathological line costs one slice.
+  const text = (raw.length > MAX_FRAME_LEN ? raw.slice(0, MAX_FRAME_LEN) : raw).trim();
+
+  if (text.startsWith("at ")) {
+    let rest = text.slice(3).trim();
+    if (rest.startsWith("async ")) rest = rest.slice(6).trim();
+
+    // "at fn (file:line:col)" — the location is inside the LAST parens, because
+    // a function name may legitimately contain them (`Object.<anonymous>`).
+    if (rest.endsWith(")")) {
+      const open = rest.lastIndexOf("(");
+      if (open > 0) {
+        const pos = splitPosition(rest.slice(open + 1, -1));
+        if (pos) return { fn: rest.slice(0, open).trim() || "(anonymous)", ...pos };
+      }
+    }
+    // "at file:line:col" — anonymous frame.
+    const pos = splitPosition(rest);
+    return pos ? { fn: "(anonymous)", ...pos } : null;
+  }
+
+  // SpiderMonkey / JavaScriptCore: "fn@https://host/asset.js:12:34".
+  const at = text.indexOf("@");
+  if (at !== -1) {
+    const pos = splitPosition(text.slice(at + 1));
+    if (pos) return { fn: text.slice(0, at) || "(anonymous)", ...pos };
+  }
   return null;
 }
 
@@ -99,7 +180,13 @@ function parseStack(stack) {
   const frames = [];
   for (const raw of stack.split("\n")) {
     // The first line is "Name: message", not a frame.
-    if (!/^\s*(at\s|.*@)/.test(raw)) continue;
+    //
+    // Was `/^\s*(at\s|.*@)/` — the `.*@` alternative is O(n²) on a line with no
+    // `@`, and this runs on every line of an attacker-supplied stack. Two
+    // linear string checks say the same thing; `parseLine` rejects anything
+    // that gets past them.
+    const t = raw.trimStart();
+    if (!(t.startsWith("at ") || t.includes("@"))) continue;
     const p = parseLine(raw);
     if (!p) continue;
     const file = relativise(p.file);

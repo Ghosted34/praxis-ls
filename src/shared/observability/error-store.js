@@ -38,14 +38,46 @@
 const { logger } = require("../../config/logger");
 const { parseStack } = require("./stack-parse");
 
-/** How long writes accumulate before a flush. */
+/**
+ * How long writes accumulate before a flush — for a signature ALREADY in the
+ * buffer. See LEADING_MS for why a first sighting does not wait this long.
+ */
 const FLUSH_MS = 2000;
+/**
+ * Leading-edge window for a signature we have not seen in this batch.
+ *
+ * SPEC §10 SAYS "< 500ms from backend log to UI render", AND THE 2s WINDOW
+ * ABOVE MISSED IT ON EVERY ERROR.
+ *
+ * The broadcast to the console happens in `flush()` — `onPersist` is only
+ * called after the UPSERT returns — so realtime latency was 0–2000ms with a ~1s
+ * average. Nothing was slow; it was waiting, and nobody had reconciled the
+ * waiting with the number in the spec.
+ *
+ * THE INSIGHT THAT MAKES BOTH ACHIEVABLE. The 2s window exists to survive a hot
+ * loop: thousands of occurrences of the SAME error collapsing into one
+ * statement. But a signature nobody has seen before is, by definition, not a hot
+ * loop — it is a first sighting, which is exactly the thing that needs to reach
+ * a screen quickly. Repeats can wait; they are already rendered and only their
+ * count is moving.
+ *
+ * So: a NEW signature flushes on the leading edge, an existing one keeps the
+ * long window. The 250ms floor caps flushes at four per second, so a storm of
+ * thousands of DISTINCT errors still batches rather than issuing one statement
+ * each — that case is now better than it was, not worse.
+ *
+ * Budget: 250ms + one UPSERT round trip, comfortably inside 500ms.
+ */
+const LEADING_MS = 250;
 /** Ceiling on distinct signatures held in the buffer between flushes. */
 const MAX_BUFFERED = 200;
 
 /** signature -> pending row */
 const buffer = new Map();
 let timer = null;
+/** When the current timer is due, so a leading-edge request can pull it in. */
+let timerDueAt = 0;
+let lastFlushAt = 0;
 let flushing = false;
 /** Set by realtime wiring; called with each persisted row. Optional. */
 let onPersist = null;
@@ -63,11 +95,26 @@ function db() {
   return queryFn;
 }
 
-/** Map the reporter's severity + origin onto the spec's five levels (§2.2). */
+/**
+ * Map the reporter's severity onto the spec's five levels (§2.2).
+ *
+ * This used to be three branches — fatal, warning, else error — so `notice` and
+ * `info` COULD NOT BE PRODUCED. Nothing failed: the column accepted them, the
+ * schema's CHECK listed them, §9.1 defined colour tokens for them, and the
+ * filter bar rendered chips for all five. Two of those chips were dead controls
+ * that returned an empty feed forever, which reads as "no notices today" rather
+ * than "this level does not exist".
+ *
+ * Passing the severity through when it is already one of the five costs nothing
+ * and lets a caller record a non-error event. Anything unrecognised still lands
+ * on `error`, which is the safe direction: an unknown severity is more useful
+ * over-reported than silently dropped into `info` where nobody looks.
+ */
+const LEVELS = ["fatal", "error", "warning", "notice", "info"];
+
 function levelOf(payload) {
-  if (payload.severity === "fatal") return "fatal";
-  if (payload.severity === "warning") return "warning";
-  return "error";
+  const severity = String((payload && payload.severity) || "").toLowerCase();
+  return LEVELS.includes(severity) ? severity : "error";
 }
 
 /**
@@ -84,6 +131,8 @@ function persist(payload) {
     if (existing) {
       existing.count += 1;
       existing.last_seen = payload.ts || new Date().toISOString();
+      // A repeat is already on screen; only its count is moving. It rides the
+      // long window, which is what keeps a hot loop to one statement.
       return;
     }
 
@@ -116,7 +165,11 @@ function persist(payload) {
       last_seen: payload.ts || new Date().toISOString(),
     });
 
-    schedule(FLUSH_MS);
+    // FIRST SIGHTING — leading edge, so spec §10's 500ms is met. See LEADING_MS.
+    // The floor is measured from the last flush, not from now, so a burst of
+    // distinct signatures is still batched at four flushes a second.
+    const sinceFlush = Date.now() - lastFlushAt;
+    schedule(sinceFlush >= LEADING_MS ? 0 : LEADING_MS - sinceFlush);
   } catch (err) {
     try {
       logger.warn({ err }, "error-store: failed to queue error for persistence");
@@ -126,10 +179,25 @@ function persist(payload) {
   }
 }
 
+/**
+ * Arm the flush timer.
+ *
+ * A pending timer is REPLACED when the new request is sooner. Without that,
+ * `if (timer) return` would let a repeat that armed the 2s window swallow the
+ * leading-edge request of a genuinely new error arriving 10ms later — the new
+ * error would then sit unrendered for the rest of that window, which is the
+ * exact latency this change exists to remove.
+ */
 function schedule(ms) {
-  if (timer) return;
+  const dueAt = Date.now() + ms;
+  if (timer) {
+    if (dueAt >= timerDueAt) return;
+    clearTimeout(timer);
+  }
+  timerDueAt = dueAt;
   timer = setTimeout(() => {
     timer = null;
+    timerDueAt = 0;
     flush().catch(() => {});
   }, ms);
   // Do not hold the process open just to flush telemetry.
@@ -139,7 +207,7 @@ function schedule(ms) {
 /**
  * UPSERT one buffered group.
  *
- * The conflict target matches migration 0080's expression index
+ * The conflict target matches migration 0090's expression index
  * (COALESCE(tenant_id, zero-uuid), signature) — a plain (tenant_id, signature)
  * unique constraint could not work, because NULL <> NULL means every
  * platform-wide error would insert a fresh row.
@@ -178,6 +246,29 @@ RETURNING error_id, signature, tenant_id, level, origin, message, module, route,
 async function flush() {
   if (flushing || buffer.size === 0) return;
   flushing = true;
+
+  // Cancel the pending wake-up: this call is doing the work it was scheduled
+  // for, and leaving it armed means the process holds a timer whose only job is
+  // to flush an empty buffer.
+  //
+  // It is unref'd, so it never blocked an exit — but it DID fire after Jest tore
+  // the environment down, and `db()` lazily `require()`s the platform pool on
+  // first use, which produced:
+  //
+  //   ReferenceError: You are trying to `import` a file after the Jest
+  //   environment has been torn down.  at db (error-store.js:65)
+  //
+  // — reported as "a worker process has failed to exit gracefully". Clearing it
+  // here removes the window rather than asking every test that reports an error
+  // to know this timer exists.
+  if (timer) {
+    clearTimeout(timer);
+    timer = null;
+    timerDueAt = 0;
+  }
+  // The leading-edge floor is measured from here, so back-to-back distinct
+  // errors cannot each buy their own immediate flush.
+  lastFlushAt = Date.now();
 
   const batch = [...buffer.values()];
   buffer.clear();
@@ -237,8 +328,12 @@ function __reset() {
   buffer.clear();
   if (timer) clearTimeout(timer);
   timer = null;
+  timerDueAt = 0;
+  // Reset to 0, not Date.now(): a test that persists immediately after a reset
+  // must take the leading edge, exactly as a freshly booted process does.
+  lastFlushAt = 0;
   flushing = false;
   onPersist = null;
 }
 
-module.exports = { persist, flush, setListener, __setQuery, __reset, FLUSH_MS };
+module.exports = { persist, flush, setListener, __setQuery, __reset, FLUSH_MS, LEADING_MS };

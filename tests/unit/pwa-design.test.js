@@ -534,8 +534,16 @@ describe("GET /manifest.webmanifest and /icons — resolved by Host, never cross
         .get("/manifest.webmanifest?theme=dark")
         .set("Host", "acme.praxis.test");
 
+      // The two colours are the only fields the ?theme hint is allowed to
+      // change, so the assertion is "everything else is identical".
+      //
+      // Deleted rather than destructured-and-discarded: the destructuring form
+      // trips no-unused-vars, and the config's `argsIgnorePattern: "^_"` only
+      // covers ARGUMENTS, so an underscore prefix does not exempt it either.
       const strip = (b) => {
-        const { theme_color, background_color, ...rest } = b;
+        const rest = { ...b };
+        delete rest.theme_color;
+        delete rest.background_color;
         return rest;
       };
       expect(strip(hinted.body)).toEqual(strip(plain.body));

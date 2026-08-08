@@ -159,4 +159,13 @@ async function verifyTransport(client, { purpose = "NOTIFICATIONS" } = {}) {
   }
 }
 
-module.exports = { send, resolveMail, verifyTransport };
+/**
+ * `transportFrom` is exported so `services/platform/mail.service.js` can build
+ * the SAME nodemailer transport for platform mail (escalation alerts), which
+ * has no tenant `client` and therefore cannot come through `send()` above.
+ *
+ * Exported rather than copied deliberately: TLS options, the `secure` port rule
+ * and the auth shape are deliverability-critical, and two copies drift silently
+ * — the first symptom being mail that sends in one path and bounces in the other.
+ */
+module.exports = { send, resolveMail, verifyTransport, transportFrom };

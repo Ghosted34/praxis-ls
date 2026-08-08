@@ -54,11 +54,26 @@ const QUERY_SCHEMAS = {
     scope: z.enum(["all", "platform"]).optional(),
     tenant: z.string().max(64).optional(),
     module: z.string().max(100).optional(),
+    // The drawer's §3.2 occurrence strip is ONE error's 30-day history, which
+    // means trends has to be filterable by signature. `buildFilter` has always
+    // supported it; this schema did not, and zod strips unknown keys silently —
+    // so the strip would have rendered every error in the platform under one
+    // error's heading, with nothing anywhere reporting a problem.
+    signature: z.string().max(500).optional(),
     status: z.enum(["active", "resolved", "all"]).optional(),
   }),
   escalationLog: z.object({
     rule_id: uuid.optional(),
     limit: z.coerce.number().int().positive().max(200).optional(),
+  }),
+  notificationList: z.object({
+    status: z.enum(["unread", "read", "all"]).optional(),
+    limit: z.coerce.number().int().positive().max(100).optional(),
+    // Keyset pagination cursor — the created_at of the oldest row already shown.
+    before: isoDate.optional(),
+  }),
+  healthSummary: z.object({
+    days: z.coerce.number().int().positive().max(30).optional(),
   }),
 };
 
@@ -104,7 +119,19 @@ const BODY_SCHEMAS = {
       active: z.boolean().optional(),
     })
     .refine((o) => Object.keys(o).length > 0, "no fields to update"),
+  notificationSend: z.object({
+    to_user_id: uuid,
+    // Optional: a notification with no error is a plain system message. When
+    // present the title/body are rebuilt server-side from the error, so this is
+    // the only client-supplied field that decides what the recipient reads.
+    error_id: uuid.optional(),
+    note: z.string().max(500).optional(),
+  }),
   rulePreview: z.object({
+    // Same scope field as ruleCreate, so a rule is dry-run against exactly the
+    // scope it will be saved with. Previewing platform-wide and then saving
+    // tenant-scoped would answer a question nobody asked.
+    tenant: z.string().max(64).nullish(),
     level_filter: z.array(LEVEL).min(1).default(["fatal"]),
     threshold_count: z.number().int().positive().default(5),
     threshold_window_minutes: z.number().int().positive().default(15),
@@ -113,6 +140,10 @@ const BODY_SCHEMAS = {
 
 const PARAM_SCHEMAS = {
   errorId: z.object({ id: uuid }),
+  // Same shape, different name. `validateParams("errorId")` on a notification
+  // route reads like a copy-paste mistake even when it is correct, and the next
+  // person to touch it has to stop and check.
+  notificationId: z.object({ id: uuid }),
 };
 
 function fail(next, message, err) {

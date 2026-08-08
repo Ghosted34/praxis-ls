@@ -249,6 +249,18 @@ const Schema = z.object({
   // schema floors threshold_window_minutes at 1).
   ERROR_ESCALATION_INTERVAL_MS: int(60000),
 
+  // Health sampling (§8.2 "99.97% Uptime (30d)"). The collector writes one row
+  // per tick to platform.health_sample, and this interval is ALSO the
+  // denominator uptime is computed against — a missing sample counts as
+  // downtime, because a collector that only records while it is running cannot
+  // see its own outage. Changing it therefore changes the meaning of historical
+  // rows: samples written at 60s and read back assuming 300s report a fifth of
+  // the real uptime. Change it once, early, or purge the table with it.
+  //
+  // 0 disables collection; uptime then reports null and the widget renders "—"
+  // rather than a figure nothing is measuring.
+  HEALTH_SAMPLE_INTERVAL_MS: int(60000),
+
   // Gmail push (optional): Cloud Pub/Sub topic for users.watch. Empty ⇒ Gmail
   // stays on delta polling (no push).
   GOOGLE_PUBSUB_TOPIC: z.string().default(""),

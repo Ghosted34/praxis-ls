@@ -33,6 +33,40 @@ const { CAP_CATALOGUE } = require("../../src/middleware/platform-auth");
  */
 const PUBLIC = new Set(["post /auth/login", "post /auth/refresh"]);
 
+/**
+ * Authenticated routes whose authorisation is per-ROW rather than per-ROLE.
+ *
+ * This list is NOT an exemption from authorisation — it is a different axis of
+ * it, and the distinction is the whole reason it exists separately from PUBLIC.
+ * Every other route on this router acts on a SHARED resource (a tenant, a plan,
+ * a credential, another user), where "which role are you" is the right question.
+ * These four act on rows that belong to the caller, where it is not: the query
+ * itself carries `to_user_id = <caller>`, so the check is made once per row and
+ * cannot be widened by a role grant.
+ *
+ * WHY NOT JUST ADD A CAPABILITY. Two bad options and no good one:
+ *   - Gate on `errors.read` — then a PLATFORM_SUPPORT user who is SENT a
+ *     notification (the Share modal lists every platform user) cannot open it.
+ *     The message is delivered, badged, and unreadable, with no error anywhere.
+ *   - Invent `notifications.read` and grant it to all three built-in roles —
+ *     a gate that denies nobody. This repo has a name for those: "a control
+ *     that is counted but does not bite."
+ *
+ * THE COST, STATED PLAINLY: a structural test cannot see a WHERE clause, so
+ * these four routes are the only ones on this router whose protection is not
+ * proven here. That protection is asserted behaviourally instead, in
+ * tests/unit/platform-notifications-health.test.js — "scopes markRead by
+ * recipient, so a guessed uuid is a 404" and its siblings. If you add a route
+ * to this list, add the matching row-scoping test in the same commit, or the
+ * guarantee moves from "tested elsewhere" to "asserted in a comment".
+ */
+const SELF_SCOPED = new Set([
+  "get /notifications",
+  "get /notifications/unread-count",
+  "post /notifications/read-all",
+  "post /notifications/:id/read",
+]);
+
 /** Flatten an Express router into [{ method, path, handlerNames }]. */
 function routesOf(r, prefix = "") {
   const out = [];
@@ -51,7 +85,7 @@ function routesOf(r, prefix = "") {
 }
 
 const routes = routesOf(router);
-const gated = routes.filter((r) => !PUBLIC.has(r.key));
+const gated = routes.filter((r) => !PUBLIC.has(r.key) && !SELF_SCOPED.has(r.key));
 
 describe("platform API — every authenticated route carries a capability gate", () => {
   it("introspects a non-trivial route table", () => {
@@ -129,5 +163,36 @@ const isGated = (names) => names.some((n) => GATE_NAMES.includes(n));
     // A deliberate tripwire. Widening the anonymous surface should require
     // editing a test that says, in words, what you are widening it to.
     expect([...PUBLIC].sort()).toEqual(["post /auth/login", "post /auth/refresh"]);
+  });
+
+  describe("self-scoped routes", () => {
+    it("the self-scoped allow-list has not grown", () => {
+      // Same tripwire as PUBLIC, for the same reason. Every entry here is a
+      // route this file cannot prove is protected.
+      expect([...SELF_SCOPED].sort()).toEqual([
+        "get /notifications",
+        "get /notifications/unread-count",
+        "post /notifications/:id/read",
+        "post /notifications/read-all",
+      ]);
+    });
+
+    it("every self-scoped entry is a real mounted route", () => {
+      // Stops the list rotting into a way to silence the gate: a typo'd or
+      // deleted path would otherwise sit here exempting nothing while looking
+      // like it exempts something.
+      for (const key of SELF_SCOPED) {
+        expect(routes.find((r) => r.key === key)).toBeDefined();
+      }
+    });
+
+    it("SENDING a notification is still capability-gated", () => {
+      // The asymmetry is the point. Reading your own mail needs no role;
+      // putting something in someone else's does — you may only forward an
+      // error you are allowed to see.
+      const send = routes.find((r) => r.key === "post /notifications");
+      expect(send).toBeDefined();
+      expect(isGated(send.names)).toBe(true);
+    });
   });
 });

@@ -12,6 +12,7 @@
 
 const db = require("./db");
 const { AppError } = require("../../utils/errors");
+const { logger } = require("../../config/logger");
 
 /** Spec §2.2 — the five severity levels, in severity order. */
 const LEVELS = ["fatal", "error", "warning", "notice", "info"];
@@ -26,12 +27,38 @@ const MAX_LIMIT = 100;
 /** Spec §2.2 — retention window; also the ceiling on trend queries. */
 const RETENTION_DAYS = 30;
 
+/**
+ * Spec §11 — "Audit log for error resolutions and shares".
+ *
+ * Reuses `platform.platform_audit`, the table the tenant/plan/role services
+ * already write to, rather than a feature-local log: "who did what on the
+ * platform" has to be answerable from one place, and a second audit trail is a
+ * second place to forget to look.
+ *
+ * `tenant_id` is NULL because the ACTOR is platform staff. The error's own
+ * tenant, when it has one, is on the error row.
+ *
+ * Never throws. An audit write failing must not turn a successful resolve into
+ * a 500 that the operator retries — producing, at best, a second audit row for
+ * one action.
+ */
+async function audit(actorId, action, entityRef, payload) {
+  try {
+    await db.query(
+      "INSERT INTO platform.platform_audit (actor_id, tenant_id, action, entity_ref, payload) VALUES ($1,NULL,$2,$3,$4)",
+      [actorId || null, action, String(entityRef || "").slice(0, 200), payload || {}],
+    );
+  } catch (err) {
+    logger.warn({ err, action }, "[errors] audit write failed");
+  }
+}
+
 const SELECT_COLUMNS = `
   e.error_id            AS id,
   e.signature,
   e.tenant_id,
   t.slug                AS tenant_slug,
-  t.name                AS tenant_name,
+  t.display_name        AS tenant_name,
   e.level,
   e.origin,
   e.message,
@@ -311,11 +338,12 @@ async function resolve(id, actorId) {
     [id, actorId],
   );
   if (!rows[0]) throw new AppError("NOT_FOUND", "Error not found", 404);
+  await audit(actorId, "error.resolved", rows[0].signature, { error_id: id });
   return rows[0];
 }
 
 /** POST /errors/:id/reopen — the inverse, for a premature resolve. */
-async function reopen(id) {
+async function reopen(id, actorId) {
   const { rows } = await db.query(
     `UPDATE platform.error_event
         SET resolved_at = NULL, resolved_by = NULL
@@ -324,6 +352,10 @@ async function reopen(id) {
     [id],
   );
   if (!rows[0]) throw new AppError("NOT_FOUND", "Error not found", 404);
+  // Audited as loudly as the resolve. Reopening ERASES `resolved_by`, so
+  // without this the only record of who called an error fixed is destroyed by
+  // whoever disagreed — and neither name survives.
+  await audit(actorId, "error.reopened", rows[0].signature, { error_id: id });
   return rows[0];
 }
 
@@ -366,6 +398,7 @@ async function purge({ days = RETENTION_DAYS } = {}) {
 }
 
 module.exports = {
+  audit,
   list,
   recent,
   get,

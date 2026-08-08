@@ -42,6 +42,32 @@ const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const requestContext = require("../../config/request-context");
 const store = require("./error-store");
+const { scrub, scrubObject } = require("./scrub");
+
+/**
+ * Severities that reach the ALERT CHANNEL. Everything else is recorded and
+ * counted, but never posted to the webhook and never charged against the rate
+ * limit.
+ *
+ * WHY THIS DISTINCTION HAD TO EXIST BEFORE §2.3 pt 4 COULD BE HONOURED
+ *
+ *   The spec says "Backend must capture errors from … 4. API validation
+ *   failures". That was deliberately not done, for a good reason: a 422 is a
+ *   client mistake, and a channel whose first week is full of "email is
+ *   required" gets muted — the OBS-A1 failure mode this module exists to avoid.
+ *
+ *   Both things are true at once, and the five-level scheme in §2.2 is what
+ *   reconciles them. A validation failure is captured at `notice`: it lands in
+ *   the feed, it is filterable, its count is tracked — and it does not page
+ *   anyone, because `notice` never reaches the webhook and escalation rules
+ *   default to `fatal`.
+ *
+ *   Skipping `withinRateLimit()` for these matters as much as skipping the post.
+ *   The ceiling is 20 outbound reports a minute; if a broken signup form could
+ *   spend it, a real 500 arriving in the same minute would be dropped. Noise
+ *   must not be able to starve signal.
+ */
+const NOTIFY_SEVERITIES = new Set(["fatal", "error", "warning"]);
 
 /** How long an identical error stays suppressed after being reported. */
 const DEDUPE_WINDOW_MS = 5 * 60 * 1000;
@@ -78,6 +104,30 @@ function fingerprint(err, extra = {}) {
       .replace(/:\d+:\d+\)?$/, ")")
       .slice(0, 120) || extra.source || "";
   return `${name}|${msg}|${frame}`;
+}
+
+/**
+ * Make a message safe to put in a log LINE.
+ *
+ * CodeQL "Log injection", Medium. `payload.message` is attacker-influenced —
+ * `POST /api/client-errors` is unauthenticated and takes it verbatim — and it
+ * is interpolated into pino's message string. A newline inside it forges a
+ * whole log entry: an attacker reports an error whose message contains
+ * `\n{"level":50,"msg":"payment settled"}` and the log stream now contains a
+ * line nobody wrote. Anything that later greps or ships those logs believes it.
+ *
+ * The STRUCTURED field is already safe — pino JSON-encodes it, so newlines
+ * survive as `\n` inside a string. Only the free-text line needs this, which is
+ * why the fix is here and not in the scrubber.
+ */
+function logSafe(text, max = 300) {
+  return String(text ?? "")
+    // Newlines and tabs collapse to a space \u2014 that is the forgery vector.
+    // C0 controls go entirely: a bare \u001b can inject an ANSI escape into
+    // whatever renders the log, and \b can rewrite a terminal line.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .slice(0, max);
 }
 
 function withinRateLimit() {
@@ -144,7 +194,21 @@ function format(p) {
  */
 function report(err, meta = {}) {
   try {
-    const fp = fingerprint(err, meta);
+    // SCRUB FIRST — spec §11. Everything downstream of this line (the
+    // fingerprint, the webhook, the log line, platform.error_event, and the AI
+    // explain prompt built from it) sees the sanitised text, because the
+    // alternative is four sinks each promising to scrub and one of them
+    // forgetting. See shared/observability/scrub.js for what is caught and, as
+    // importantly, what is deliberately left alone.
+    //
+    // Doing it before fingerprint() also collapses "no user marie@x.cm" and "no
+    // user paul@x.cm" onto ONE signature — the same treatment the fingerprint
+    // already gives uuids and bare numbers, applied to the identifier that was
+    // slipping through.
+    const safeMessage = scrub(String((err && err.message) || err || "unknown"));
+    const safeStack = scrub((err && err.stack) || null);
+
+    const fp = fingerprint({ name: (err && err.name) || "Error", message: safeMessage, stack: safeStack }, meta);
     const now = Date.now();
     const entry = seen.get(fp);
 
@@ -152,10 +216,10 @@ function report(err, meta = {}) {
     const payload = {
       origin: meta.origin || "server",
       severity: meta.severity || "error",
-      message: String((err && err.message) || err || "unknown"),
+      message: safeMessage,
       name: (err && err.name) || "Error",
-      stack: (err && err.stack) || null,
-      route: meta.route || null,
+      stack: safeStack,
+      route: scrub(meta.route || null),
       request_id: meta.request_id || null,
       tenant: ctx.tenant || meta.tenant || null,
       user_id: ctx.userId || meta.user_id || null,
@@ -164,7 +228,7 @@ function report(err, meta = {}) {
       fingerprint: fp,
       suppressed: entry ? entry.suppressed : 0,
       ts: new Date().toISOString(),
-      ...(meta.extra ? { extra: meta.extra } : {}),
+      ...(meta.extra ? { extra: scrubObject(meta.extra) } : {}),
     };
 
     // OBS-E3 / Error Command Center. Persist BEFORE the dedupe gate below.
@@ -177,6 +241,19 @@ function report(err, meta = {}) {
     //
     // Notification is deduped. Counting is not. They are different questions.
     store.persist(payload);
+
+    // RECORDED, NOT NOTIFIED. Below the notify threshold the work is already
+    // done: the row is written and counted. No webhook, no rate-limit spend, no
+    // dedupe bookkeeping (`seen` would otherwise fill with fingerprints that can
+    // never notify), and a log line at info rather than error so a validation
+    // failure does not read as a fault in the log stream either.
+    if (!NOTIFY_SEVERITIES.has(payload.severity)) {
+      logger.info(
+        { err_report: { ...payload, stack: undefined }, reported: false },
+        `recorded ${payload.severity} (${payload.origin}): ${logSafe(payload.message)}`,
+      );
+      return Promise.resolve({ reported: false, reason: "not_notifiable", fingerprint: fp });
+    }
 
     if (entry && now - entry.lastSent < DEDUPE_WINDOW_MS) {
       entry.suppressed += 1;
@@ -196,9 +273,12 @@ function report(err, meta = {}) {
     // Always log, whether or not a webhook is configured. The log line is the
     // durable record; the webhook is the notification.
     return post(payload).then((ok) => {
-      logger[payload.severity === "fatal" ? "error" : "error"](
+      // Was `severity === "fatal" ? "error" : "error"` — both branches the same,
+      // so the ternary decided nothing and a warning logged as an error.
+      const level = payload.severity === "warning" ? "warn" : "error";
+      logger[level](
         { err_report: { ...payload, stack: undefined }, reported: ok },
-        `reported ${payload.origin} error: ${payload.message}`,
+        `reported ${payload.origin} error: ${logSafe(payload.message)}`,
       );
       return { reported: ok, fingerprint: fp, suppressed };
     });
@@ -226,4 +306,5 @@ module.exports = {
   __reset,
   DEDUPE_WINDOW_MS,
   MAX_PER_MINUTE,
+  NOTIFY_SEVERITIES,
 };

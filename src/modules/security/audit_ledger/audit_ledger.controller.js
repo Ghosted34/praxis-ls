@@ -1,11 +1,51 @@
 "use strict";
-const { asyncHandler } = require("../../../utils/errors");
+const { asyncHandler, AppError } = require("../../../utils/errors");
 const { makeController } = require("../../../shared/crud/resource");
 const service = require("./audit_ledger.service");
+const { resolveEntityLabel } = require("./entity-label");
 
 // Base CRUD + soft-delete restore stay ENV-scoped: soft_delete rows and the
 // business records they restore are per-environment business data.
 const crud = makeController(service, "Audit entry");
+
+// GET /audit/:id — overrides crud.get (below `list` stays the generic one).
+//
+// WHY THIS ISN'T crud.get. makeController's default `db(req)` is always
+// req.tenantDb unless the WHOLE controller opts into `{ identity: true }` —
+// but a single ledger row can live in EITHER schema depending on what wrote
+// it. Auth/RBAC events (login, logout, password reset, 2FA, permission/role/
+// capability changes) are identity-pinned and always write via req.identityDb
+// (see middleware/tenant-context.js), while ordinary business writes (an
+// invoice, a corporate entity, a vacancy) go through req.tenantDb. myFeed
+// (below) already queries BOTH schemas and merges them for the list — but
+// this single-row fetch only ever checked req.tenantDb, so opening any
+// identity-schema row from that merged list 404'd as "Audit entry not
+// found" even though the list had just shown it.
+//
+// `?scope=identity|tenant` (set by the client from the `ledger_scope` myFeed
+// now tags each row with) picks the right schema on the first try. Without
+// it — an older cached client, or a direct API call — fall back to the OTHER
+// schema before giving up, so a hint-less caller still finds the row instead
+// of always 404ing on identity-side events. NOTE: ledger_id is a per-schema
+// serial, so the two schemas' ids CAN collide; that ambiguity is only
+// possible on this no-hint fallback path — the scope-hinted primary lookup
+// (the only path the shipped frontend takes) has none.
+const get = asyncHandler(async (req, res) => {
+  const scope = req.query.scope === "identity" || req.query.scope === "tenant" ? req.query.scope : null;
+  const primaryDb = scope === "identity" ? req.identityDb : req.tenantDb;
+  const secondaryDb = scope === "identity" ? req.tenantDb : req.identityDb;
+
+  let row = await primaryDb((c) => service.get(c, req.params.id));
+  if (!row) row = await secondaryDb((c) => service.get(c, req.params.id));
+  if (!row) throw new AppError("NOT_FOUND", "Audit entry not found", 404);
+
+  // Best-effort UUID -> human label for the Entity row (e.g.
+  // "corporate_entity:fc3f680f-…" -> "SLAS Cameroun"). See entity-label.js
+  // for which types resolve today; unmapped types come back null and the
+  // client falls back to the raw entity_ref, same as before this existed.
+  const entity_label = await resolveEntityLabel(req, row.entity_ref);
+  res.json({ data: { ...row, entity_label } });
+});
 
 const listSoftDeletes = asyncHandler(async (req, res) => {
   res.json({ data: await req.tenantDb((client) => service.listSoftDeletes(client, req.query)) });
@@ -69,7 +109,12 @@ const myFeed = asyncHandler(async (req, res) => {
     req.tenantDb((c) => service.myFeed(c, req.user.user_id, maxTotal)),
   ]);
 
-  const merged = [...idRows, ...tnRows]
+  // Tag each row with which ledger it came from. `get` (above) needs this to
+  // query the right schema on the first try — ledger_id is a per-schema
+  // serial, so a bare id doesn't say which of the two tables it's from.
+  const tag = (rows, ledger_scope) => rows.map((r) => ({ ...r, ledger_scope }));
+
+  const merged = [...tag(idRows, "identity"), ...tag(tnRows, "tenant")]
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .slice(0, maxTotal);
 
@@ -99,4 +144,7 @@ module.exports = {
   listReviews, createReview, getReview, completeReview, decideEntry,
   listSecurityEvents,
   myFeed,
+  // Must follow `...crud` — overrides crud.get with the scope-aware version
+  // above. `list` is intentionally left as crud.list, unchanged.
+  get,
 };

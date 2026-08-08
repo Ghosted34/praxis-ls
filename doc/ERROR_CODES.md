@@ -152,7 +152,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 252× | — |
+| `NOT_FOUND` | 404 | 253× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |

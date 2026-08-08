@@ -56,6 +56,18 @@ export type AuditLedgerEntry = {
   ip?: string | null;
   before_json?: unknown;
   after_json?: unknown;
+  /** Which schema this row's ledger lives in — see AuditFeedRow. Only present
+   *  on rows sourced from /audit/my-feed; Governance's full-row list doesn't
+   *  need it (never triggers the GET /audit/:id fetch this drives). No `null`
+   *  here — must match AuditFeedRow's type exactly, since `full` gets cast
+   *  through this type on its way into humanize(row: AuditFeedRow) below. */
+  ledger_scope?: "identity" | "tenant";
+  /** UUID -> human label for `entity_ref` (e.g. "corporate_entity:fc3f680f-…"
+   *  -> "SLAS Cameroun"), resolved server-side by GET /audit/:id. Only
+   *  populated after that fetch — absent on the initial thin my-feed row and
+   *  on Governance rows, both of which still just show the raw entity_ref
+   *  until/unless this arrives. */
+  entity_label?: string | null;
 };
 
 /** Compact JSON viewer — labelled field list rather than raw text (audit A4). */
@@ -96,8 +108,16 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
   // that's never. `useResource` returns null until it resolves, so we render
   // with the partial row and swap in fetched data as it arrives.
   const needsFetch = row.before_json === undefined && row.after_json === undefined;
+  // `ledger_scope` (set by /audit/my-feed) tells the server which of the two
+  // ledger schemas this row is actually in — auth/RBAC rows live in
+  // identity/live, everything else in the tenant/env schema — so the fetch
+  // doesn't 404 on identity-side rows (logins, permission changes, …). See
+  // audit_ledger.controller.js's `get` for the schema-selection logic this
+  // feeds; omitted entirely when absent, which that endpoint treats as
+  // "guess tenant, then fall back" for backward compatibility.
+  const scopeQuery = row.ledger_scope ? `?scope=${row.ledger_scope}` : "";
   const detail = useResource<AuditLedgerEntry | null>(
-    () => (needsFetch ? tenant<AuditLedgerEntry>(`/audit/${row.ledger_id}`) : Promise.resolve(row)),
+    () => (needsFetch ? tenant<AuditLedgerEntry>(`/audit/${row.ledger_id}${scopeQuery}`) : Promise.resolve(row)),
     // Only re-fetch when the id changes, not on every re-render.
     [row.ledger_id, needsFetch],
   );
@@ -128,7 +148,15 @@ export function AuditDetailModal({ row, actorName, onClose }: Props) {
           </div>
           <div>
             <div className="micro uppercase tracking-wide">Entity</div>
-            <span className="num">{row.entity_ref || "—"}</span>
+            {/* entity_label is the server-resolved UUID -> name join (e.g.
+                "corporate_entity:fc3f680f-…" -> "SLAS Cameroun"), populated
+                once the /audit/:id fetch resolves. Falls back to the raw
+                entity_ref — same as before this existed — for entity types
+                entity-label.js doesn't map yet, or before the fetch lands. */}
+            <span>{full.entity_label || row.entity_ref || "—"}</span>
+            {full.entity_label && row.entity_ref ? (
+              <span className="num text-muted-foreground"> · {row.entity_ref}</span>
+            ) : null}
           </div>
           <div>
             <div className="micro uppercase tracking-wide">Actor</div>

@@ -43,6 +43,16 @@ export type AuditFeedRow = {
   metadata: Record<string, unknown> | null;
   is_sensitive: boolean;
   actor_name_snapshot: string | null;
+  /**
+   * Which immutable_ledger this row came from — myFeed merges the
+   * identity/live schema (auth, RBAC) with the caller's tenant/env schema
+   * (everything else) into one list. AuditDetailModal passes this back as
+   * `?scope=` on `GET /audit/:id` so the single-row fetch queries the same
+   * schema the row actually lives in, instead of always guessing tenant
+   * (see audit_ledger.controller.js's `get` for why that guess used to 404
+   * on every identity-schema row).
+   */
+  ledger_scope?: "identity" | "tenant";
 };
 
 /**

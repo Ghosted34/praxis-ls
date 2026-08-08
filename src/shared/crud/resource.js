@@ -158,6 +158,28 @@ function makeRepo(cfg) {
 
 /** opts: { repo, moduleKey, entity, events:{CREATED,UPDATED,ARCHIVED}, beforeCreate? } */
 
+/**
+ * Denormalised attribution (0510: actor_name_snapshot/actor_email_snapshot on
+ * immutable_ledger) for the ~90 modules that go through this shared kit.
+ *
+ * `withActor()` in shared/events/emit.js already does this same mapping off
+ * `req.user` and has since 0510 shipped — but nothing calls it: every module
+ * on this kit only ever passed `actorUserId`, so every create/update/archive
+ * writes a ledger row with a NULL name snapshot, and the Control Tower's
+ * self-scoped feed falls back to showing the actor as a bare `…<8 hex chars>`
+ * (see actorLabel() in audit-detail-modal.tsx). `actor` here is `req.user`
+ * (middleware/auth.js: user_id, email, display_name, …), so this is a free
+ * property read, not a lookup — same shape withActor() reads, just inlined so
+ * every caller of makeService's create/update/archive picks it up at once
+ * instead of waiting on a 90-call-site migration.
+ */
+function actorAttribution(actor) {
+  return {
+    actorName: (actor && (actor.display_name || actor.email)) || null,
+    actorEmail: (actor && actor.email) || null,
+  };
+}
+
 function makeService(opts) {
   const { repo, moduleKey, entity, events } = opts;
   const ref = (row) => `${entity}:${row[repo.cfg.pk]}`;
@@ -178,7 +200,7 @@ function makeService(opts) {
         const payload = opts.beforeCreate ? opts.beforeCreate(data) : data;
         const row = await repo.create(client, payload);
         await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey, entityRef: ref(row), actorUserId: actor.user_id });
-        await audit(client, { actorUserId: actor.user_id, action: events.CREATED, moduleKey, entityRef: ref(row), after: row });
+        await audit(client, { actorUserId: actor.user_id, ...actorAttribution(actor), action: events.CREATED, moduleKey, entityRef: ref(row), after: row });
         return row;
       });
     },
@@ -188,7 +210,7 @@ function makeService(opts) {
         if (!before) return null;
         const row = await repo.update(client, id, patch);
         await emitEvent(client, { eventTypeKey: events.UPDATED, moduleKey, entityRef: ref(before), actorUserId: actor.user_id });
-        await audit(client, { actorUserId: actor.user_id, action: events.UPDATED, moduleKey, entityRef: ref(before), before, after: row });
+        await audit(client, { actorUserId: actor.user_id, ...actorAttribution(actor), action: events.UPDATED, moduleKey, entityRef: ref(before), before, after: row });
         return row;
       });
     },
@@ -255,7 +277,7 @@ function makeService(opts) {
         ? null
         : (repo.cfg.activeColumn ? await repo.findById(client, id) : before);
       await audit(client, {
-        actorUserId: actor.user_id, action: events.ARCHIVED, moduleKey,
+        actorUserId: actor.user_id, ...actorAttribution(actor), action: events.ARCHIVED, moduleKey,
         entityRef: ref(before), before, after,
       });
       return { archived: true, deleted: removed, [repo.cfg.pk]: id };

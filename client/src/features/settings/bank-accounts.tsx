@@ -2,6 +2,12 @@
  * Settings — treasury accounts (bank, cash, mobile money).
  *
  * Split out of `features/settings/config-pages.tsx` in Phase 4 (audit F7).
+ *
+ * SUPERSEDED — the running app renders `features/master/treasury/` instead
+ * (see master-data-page.tsx). This file is retained solely because
+ * features/screens.axe.test.tsx still imports `BankAccountsPage` to check
+ * accessibility of the LEGACY rendering; when that test moves over to the
+ * new page, this file goes with it. Do NOT wire this back into the app.
  */
 
 import { pageShell } from "@/lib/layout";

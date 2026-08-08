@@ -1,0 +1,37 @@
+# CodeQL configuration for praxis-ls.
+#
+# The default query pack is `security-extended` (see .github/workflows/codeql.yaml)
+# — the wider set, kept deliberately because SEC-H3 in this repo was an
+# injection reachable from a tenant-admin grant, and the narrower set has
+# missed that class before. Widening is right; the noise it adds is what this
+# file is for.
+#
+# Every disable below is a query CodeQL cannot evaluate correctly from the
+# static call graph alone, matched against a specific mitigation elsewhere in
+# the repository. Nothing here is disabled because it "hurts too much" — that
+# would be paying down security debt with an exclusion, which is the wrong
+# direction on a codebase that handles other people's money.
+
+# Keep the default query pack from the workflow (`security-extended`).
+# Overrides are additive: everything the workflow declares still runs.
+
+query-filters:
+  # ── js/missing-rate-limiting ─────────────────────────────────────────────
+  #
+  # The query flags any route handler that touches DB / auth without a
+  # rate-limit middleware ON THE SAME HANDLER. This repo mounts ONE limiter
+  # covering every `/api` route (src/server.js:207 —
+  #   app.use("/api", apiLimiter);
+  # ) before the tenant router. It is per-tenant keyed (see
+  # src/shared/http/rate-limit.js) and is the single ceiling PERF S18 was
+  # written to enforce — a second per-route limiter would compound rather
+  # than layer, and would silently 429 legitimate bulk actions.
+  #
+  # CodeQL cannot follow that mount from a routes-file in isolation, so
+  # every new master-data module (currency, expense_rate, treasury_account,
+  # treasury_category, …) shipped since would light this up as "new" while
+  # its neighbours don't — an artifact of PR-diff scoping, not a real gap.
+  # Disable this ONE query, WITH the pointer to the actual guard so a
+  # future audit can verify the guard hasn't drifted.
+  - exclude:
+      id: js/missing-rate-limiting

@@ -60,6 +60,10 @@ jobs:
           # money and PII. Narrow it if the signal-to-noise proves bad — but
           # narrow it deliberately, with a note, rather than by deleting the job.
           queries: security-extended
+          # Every query-filter entry in this file is documented against the
+          # actual mitigation elsewhere in the repo — do not drop rules here
+          # to paper over findings.
+          config-file: .github/codeql/codeql-config.yml
 
       # No build step. The backend is plain CommonJS and both frontends are
       # bundled by Vite; CodeQL analyses JS/TS from source, and a build here

@@ -83,6 +83,9 @@ const CommsHub = lazyNamed(() => import("@/features/comms/hub"), "CommsHub");
 const SettingsHub = lazyNamed(() => import("@/features/settings/settings-hub"), "SettingsHub");
 const MasterDataPage = lazyNamed(() => import("@/features/masterdata/master-data-page"), "MasterDataPage");
 const EntityDossierPage = lazyNamed(() => import("@/features/masterdata/entity-360"), "EntityDossierPage");
+// Treasury account 360 — deep-linkable so an invoice footer, a payment receipt,
+// or a compliance alert can drop the user straight into the account's dossier.
+const TreasuryDossierPage = lazyNamed(() => import("@/features/master/treasury"), "TreasuryDossierPage");
 const MyHrPage = lazyNamed(() => import("@/features/hr/my-hr"), "MyHrPage");
 
 // Governance leaf screens — all four live in one module, so they share a chunk.
@@ -235,6 +238,9 @@ export function App() {
             compliance alert. Declared before the generic section route; react-
             router ranks by specificity, so the two-segment path wins either way. */}
         <Route path="master/corporate-entities/:entityId" element={<EntityDossierPage />} />
+        {/* Same rationale as entities: the treasury 360 has to be deep-linkable
+            on its own route so links from invoicing, receipts and alerts work. */}
+        <Route path="master/treasury-accounts/:id" element={<TreasuryDossierPage />} />
         <Route path="master/:section" element={<MasterDataPage />} />
         {/* Vault */}
         {/* Vault & compliance — same shape as Security: one hub, old paths become sections. */}

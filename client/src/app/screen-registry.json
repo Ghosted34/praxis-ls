@@ -192,18 +192,30 @@
       ]
     },
     {
-      "id": "settings_bank_accounts",
-      "title": "Bank accounts",
+      "id": "master_treasury_accounts",
+      "title": "Treasury",
       "route": "/master/treasury-accounts",
-      "area": "settings",
+      "area": "master",
       "module_key": "MOD-09",
-      "purpose": "Company bank, cash and mobile-money accounts mapped to CoA codes.",
+      "purpose": "Bank, cash, petty-cash and mobile-money accounts — master-detail with a 360 dossier per account (balance, last debit/credit, statement, sub-account, timeline). Categories are user-editable so a new provider (e.g. Airtel SmartCash) is added inline.",
       "actions": [
         "list_treasury_accounts",
         "create_treasury_account",
+        "update_treasury_account",
         "set_treasury_account_active",
-        "get_treasury_account",
-        "update_treasury_account"
+        "list_treasury_categories",
+        "create_treasury_category"
+      ]
+    },
+    {
+      "id": "master_treasury_dossier",
+      "title": "Treasury 360",
+      "route": "/master/treasury-accounts/:id",
+      "area": "master",
+      "module_key": "MOD-09",
+      "purpose": "Full dossier for a single treasury account — Overview, Statement, Reconciliation, Sub-account (CoA leaf), Signatories, Documents, Timeline. Each manifest action is declared on exactly one screen (ai-readiness): `get_treasury_account` is the dossier's unique read, `list_treasury_accounts` / `list_treasury_categories` live on the list page above.",
+      "actions": [
+        "get_treasury_account"
       ]
     },
     {

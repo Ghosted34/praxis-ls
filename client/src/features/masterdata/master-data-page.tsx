@@ -23,13 +23,16 @@ import { ExpenseRatesPage } from "./expense-rates";
 import { FinancialDictionaryPage } from "./financial-dictionary";
 import { CurrenciesPage } from "@/features/settings/currencies";
 import { TaxJurisdictionsPage } from "@/features/settings/tax-jurisdictions";
-import { BankAccountsPage } from "@/features/settings/bank-accounts";
+// The old flat Bank accounts table is replaced by the rich Treasury master —
+// a master-detail with 360, category chips ("+ New category" for e.g. Airtel
+// SmartCash), and auto-minted CoA leaves. See 0520_treasury_master_rich.sql.
+import { TreasuryMasterPage } from "@/features/master/treasury";
 
 const TABS = hubTabs("/master", {
   clients: ClientsPage,
   suppliers: SuppliersPage,
   "corporate-entities": CorporateEntitiesPage,
-  "treasury-accounts": BankAccountsPage,
+  "treasury-accounts": TreasuryMasterPage,
   currencies: CurrenciesPage,
   "expense-rates": ExpenseRatesPage,
   "financial-dictionary": FinancialDictionaryPage,

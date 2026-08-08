@@ -216,7 +216,7 @@ export function RecentActivity() {
       aria-label="Recent activity"
       className="mb-5"
     >
-      <div className="mb-3 flex items-baseline justify-between gap-3">
+      <div className="mb-3 mt-6 flex items-baseline justify-between gap-3">
         <h2 className="text-title font-semibold tracking-tight">Recent activity</h2>
         <span className="micro uppercase tracking-wide text-muted-foreground">{sectionMeta}</span>
       </div>

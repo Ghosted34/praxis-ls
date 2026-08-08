@@ -196,16 +196,46 @@ const STUB = {
   usage: {},
 };
 
+/**
+ * Classify a vendor error as transient (timeout, 5xx, network → safe to
+ * fallback) or configuration (401, 403, 404 → the key/endpoint is wrong and
+ * falling back hides it). Audit 3.6: the old code silently fell back on
+ * every error, so a misconfigured primary key was invisible — every call
+ * quietly used the fallback vendor with a different cost structure.
+ *
+ * Returns "transient" for errors that should trigger fallback, "config" for
+ * errors that should be logged loudly and NOT fall back (the operator needs
+ * to see this).
+ */
+function classifyVendorError(err) {
+  const status = err.response && err.response.status;
+  // 401/403 = bad key; 404 = wrong endpoint/model. These are config errors.
+  if (status === 401 || status === 403 || status === 404) return "config";
+  // 429 = rate limited — transient but worth logging distinctly.
+  if (status === 429) return "rate_limited";
+  // 5xx, timeouts, network errors → transient, safe to fallback.
+  return "transient";
+}
+
 async function chat({ client, messages, tools, temperature = 0.2, vendorName = PRIMARY }) {
   for (const name of [vendorName, FALLBACK]) {
-     
     const vendor = await resolveVendor(client, name);
     if (!vendor) continue;
     try {
-       
       return await callVendor(vendor, { messages, tools, temperature });
     } catch (err) {
-      logger.warn({ err, vendor: name }, "LLM vendor failed");
+      const kind = classifyVendorError(err);
+      if (kind === "config") {
+        // Configuration error — log as ERROR (not warn), do NOT silently fall
+        // back. The operator needs to know the key is broken. Return the stub
+        // so the user sees a clear message rather than a silent wrong answer.
+        logger.error({ err, vendor: name, errorKind: kind },
+          "LLM vendor CONFIGURATION ERROR — API key or endpoint is invalid. " +
+          "Fix in AI Control > Vendors. Not falling back to hide this.");
+        return { ...STUB, text: `AI provider "${name}" has a configuration error (${err.response ? err.response.status : "connection"}). An administrator should check the vendor settings.`, provider: null };
+      }
+      // Transient or rate-limited — fallback is appropriate.
+      logger.warn({ err, vendor: name, errorKind: kind }, "LLM vendor failed, trying fallback");
     }
   }
   return STUB;
@@ -231,7 +261,15 @@ async function* chatStream({ client, messages, tools, temperature = 0.2, vendorN
       }
       return;
     } catch (err) {
-      logger.warn({ err, vendor: name }, "LLM streaming vendor failed");
+      const kind = classifyVendorError(err);
+      if (kind === "config") {
+        logger.error({ err, vendor: name, errorKind: kind },
+          "LLM streaming vendor CONFIGURATION ERROR — not falling back.");
+        const msg = `AI provider "${name}" has a configuration error. An administrator should check the vendor settings.`;
+        yield { delta: msg, done: true, toolCalls: [], text: msg, usage: {}, provider: null };
+        return;
+      }
+      logger.warn({ err, vendor: name, errorKind: kind }, "LLM streaming vendor failed, trying fallback");
     }
   }
   // No vendor — emit stub as a single chunk.

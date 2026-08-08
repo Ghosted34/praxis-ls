@@ -16,8 +16,13 @@ const schemas = {
   confirm: z.object({
     payload: z.record(z.string().max(64), z.unknown()).optional(),
   }).strict(),
+  // Bounded message length (audit 3.7). A very long message inflates the
+  // embedding cost, the system prompt, and every replayed turn. 10,000 chars
+  // is ~2,500 tokens — enough for a detailed question with pasted context,
+  // short enough that a runaway client can't burn the budget on embeddings
+  // alone. The streaming endpoint shares this schema.
   ask: z.object({
-    message: z.string().min(1),
+    message: z.string().min(1).max(10000),
     conversation_id: z.string().uuid().optional(),
   }),
   // Excel export of an answer's tables. Bounded rather than shaped-in-detail:

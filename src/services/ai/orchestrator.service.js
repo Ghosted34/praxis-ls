@@ -43,6 +43,15 @@ const SUMMARY_BATCH = 10;
 const SUMMARY_WORDS = 200;
 
 /**
+ * Narration uses a SMALLER replay window than the main ask (audit 3.8).
+ * The narration only needs to know what was just done and the immediately
+ * preceding step — not the full 20-turn context. 5 turns is enough for
+ * "confirm what was done, recap progress" without paying for 20 turns of
+ * history on every confirm.
+ */
+const NARRATION_TURNS = 5;
+
+/**
  * Conversation memory, isolated here so a failure in it can never take down an
  * answer. History is an enhancement: if the tables are unreachable the assistant
  * must still respond, just without recall — the same best-effort contract the
@@ -211,9 +220,17 @@ const toOpenAiTool = (a) => ({
 // to THIS turn (scored on the message + recent history so a "yes"/"go ahead"
 // still surfaces the tool the previous turn was about). Resolution/validation on
 // confirm still uses the full catalogue — scoping only limits what's OFFERED.
-// Phrases that mean "I'm about to act" — used to catch a stall (announcement with
-// no tool call). "let me know" is excluded so a normal closing doesn't match.
-const STALL_RE = /\b(let me(?! know)|i['’]?ll\b|i will\b|let['’]?s\b|one moment|hold on|allow me|give me a moment|now i)\b/i;
+// ── Tightened anti-stall detection (audit 3.4) ──
+// The old STALL_RE matched "I'll" and "let me" in ANY context — "I'll look
+// into that" (conversational, no tool intended) triggered an expensive nudge.
+// Now: a stall requires an ANNOUNCEMENT phrase AND an ACTION VERB in the same
+// response. "I'll look into that later" matches announce but not verb → no
+// nudge. "I'll create that for you now" matches both → nudge fires.
+const STALL_ANNOUNCE = /\b(let me(?! know)|i['\u2019]?ll\b|i will\b|let['\u2019]?s\b|one moment|hold on|allow me|give me a moment|now i)\b/i;
+const STALL_ACTION = /\b(create|check|fetch|get|find|look\s*up|pull|list|search|open|draft|raise|prepare|submit|send|record|post|update|calculate|run|read|retrieve|generate|add)\b/i;
+function isStall(text) {
+  return !!text && STALL_ANNOUNCE.test(text) && STALL_ACTION.test(text);
+}
 const TOOL_LIMIT = 64;
 const CORE_TOOLS = new Set([
   "create_client", "open_dossier", "list_dossiers", "list_clients", "list_leads",
@@ -272,7 +289,7 @@ function selectTools(tools, contextText, limit = TOOL_LIMIT) {
   return scored.slice(0, limit).map((x) => x.t);
 }
 
-// ── LENIENT payload validation ──
+// ── LENIENT payload validation with type checking ──
 // THE FIELD CONFUSION FIX. The old validatePayload rejected unknown keys — if
 // the model sent `client_name` instead of `client_id`, the action was rejected
 // as having an unknown field, and the user saw "validation failed: unknown
@@ -284,14 +301,43 @@ function selectTools(tools, contextText, limit = TOOL_LIMIT) {
 // form already handles field mapping via `field_meta` (dropdowns, refs), so
 // whatever the model pre-fills is either correct or editable by the user.
 //
-// Type checking is ALSO relaxed: a string "123" where a number is expected is
-// accepted — the executor or the module's own Zod validation will coerce or
-// reject it. The AI layer's job is to propose, not to be the final gate.
+// TYPE CHECKING is present but COERCIVE: a string "123" where a number is
+// expected is accepted (the model often stringifies). A boolean "true"/"false"
+// is accepted for boolean fields. The module's own Zod schema is the final
+// gate at execution time. We only reject CLEARLY wrong types: an object where
+// a string is expected, an array where a number is expected, etc.
 function validatePayload(schema, payload) {
   const errors = [];
+  const props = (schema && schema.properties) || {};
+  // Required field check.
   for (const req of (schema && schema.required) || []) {
     if (payload[req] === undefined || payload[req] === null || payload[req] === "") {
       errors.push(`missing '${req}'`);
+    }
+  }
+  // Type check for fields that ARE present — catches obviously wrong types
+  // (an object where a string is expected) while allowing coercible values.
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === undefined || value === null || value === "") continue;
+    const prop = props[key];
+    if (!prop || !prop.type) continue; // unknown field or no type declared — skip
+    const actual = typeof value;
+    if (prop.type === "string" && actual === "object" && !Array.isArray(value)) {
+      errors.push(`'${key}' must be a string, got object`);
+    } else if (prop.type === "number" && actual === "object") {
+      // Allow stringified numbers ("123" → 123), reject objects/arrays.
+      if (isNaN(Number(value))) errors.push(`'${key}' must be a number`);
+    } else if (prop.type === "boolean" && actual === "object") {
+      errors.push(`'${key}' must be a boolean`);
+    } else if (prop.type === "array" && !Array.isArray(value)) {
+      errors.push(`'${key}' must be an array`);
+    }
+    // Enum validation — if the schema declares enum values, check membership.
+    // Only for strings, since the model may stringify enum values.
+    if (Array.isArray(prop.enum) && prop.enum.length && typeof value === "string") {
+      if (!prop.enum.includes(value)) {
+        errors.push(`'${key}' must be one of: ${prop.enum.join(", ")}`);
+      }
     }
   }
   return errors;
@@ -487,7 +533,7 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // "I'll create it now") but emits no tool call, forcing the user to type
   // "continue". When that happens, nudge it ONCE to actually act in this turn.
   // The nudge message is not persisted — only the real question + final answer.
-  if (!res.toolCalls.length && STALL_RE.test(res.text || "")) {
+  if (!res.toolCalls.length && isStall(res.text || "")) {
     const retry = await llm.chat({
       client,
       messages: [
@@ -786,7 +832,9 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
   let nextActions = [];
   try {
     if (run.conversation_id) {
-      const hist = await history_.load(client, { user, conversationId: run.conversation_id });
+      // Smaller history window for narration (audit 3.8) — 5 turns instead
+      // of 20. The narration only needs recent context to recap progress.
+      const hist = await convo.recentMessages(client, run.conversation_id, NARRATION_TURNS);
       // Brief factual narration — no tools, just text. Confirms what was done
       // and recaps progress. The NEXT step is auto-proposed below.
       const sys =
@@ -800,7 +848,7 @@ async function confirmAction({ client, user, actionRunId, registry, payload: edi
         temperature: 0.3,
         messages: [
           { role: "system", content: sys },
-          ...hist.turns.map((m) => ({ role: m.role, content: redact(m.content) })),
+          ...hist.map((m) => ({ role: m.role, content: redact(m.content) })),
         ],
       });
       message = nar.text || null;
@@ -1003,7 +1051,7 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
 
   // ── Anti-stall (non-streaming, same as ask) ──
   let nudged = false;
-  if (!finalToolCalls.length && STALL_RE.test(fullText || "")) {
+  if (!finalToolCalls.length && isStall(fullText || "")) {
     const retry = await llm.chat({
       client,
       messages: [

@@ -82,8 +82,34 @@ async function getVendorFull(client, vendor) {
   const { rows } = await client.query("SELECT * FROM ai_vendor_credential WHERE vendor = $1", [vendor]);
   return rows[0] || null;
 }
+/**
+ * Writable columns for upsertVendor (audit 3.10).
+ *
+ * The service layer (`governance.service.setVendor`) already constrains which
+ * keys reach this function via an allowlist loop. But the repo function itself
+ * was NOT defensively coded — it interpolated `Object.keys(fields)` directly
+ * into SQL column positions. A future caller passing unchecked keys would
+ * introduce SQL injection in the column names. The same pattern in `setFlag`
+ * was already fixed (PERF S19/S20) to use `query-helpers.updateOne`.
+ *
+ * This allowlist is the defense-in-depth layer: even if the service's filter
+ * is bypassed, only these columns can be written. Keys not in this set are
+ * silently dropped.
+ */
+const WRITABLE_VENDOR_COLS = new Set([
+  "display_name", "api_key_enc", "endpoint_url", "default_model", "current_model",
+  "cost_per_1k_input_tokens", "cost_per_1k_output_tokens", "cost_per_audio_minute",
+  "cost_native_currency", "per_vendor_monthly_cap_xaf", "is_active",
+  "last_rotated_at", "last_rotated_by",
+]);
+
 async function upsertVendor(client, vendor, fields) {
-  const cols = Object.keys(fields);
+  // Filter to writable columns — silently drops anything not in the allowlist.
+  const cols = Object.keys(fields).filter((k) => WRITABLE_VENDOR_COLS.has(k));
+  if (cols.length === 0) {
+    // Nothing to write — just return the current row.
+    return getVendorSafe(client, vendor);
+  }
   const insertCols = ["vendor", ...cols].join(", ");
   const insertVals = ["$1", ...cols.map((_, i) => "$" + (i + 2))].join(", ");
   const updateSet = cols.map((k) => k + " = EXCLUDED." + k).join(", ");

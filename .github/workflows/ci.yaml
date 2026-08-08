@@ -1006,17 +1006,44 @@ jobs:
         # evidence is this field. Empty is the only acceptable value.
         run: |
           set -euo pipefail
-          skipped=$(docker exec -w /app praxis-ci node -e "
+
+          # STDERR, AND A MARKER. Two things made the first version of this step
+          # fail on a perfectly healthy image:
+          #
+          #   1. `console.warn` writes to stderr; `$( )` captures stdout only. So
+          #      `skipped` was always EMPTY. The JSON was visible in the run log
+          #      only because stderr flows straight to it — nothing had captured
+          #      it. `echo "" | jq '.skipped | length'` then emits nothing, and
+          #      "" != "0" is true, so a clean mount reported a failure.
+          #   2. Even with `2>&1`, the loader and pino may log on either stream,
+          #      so the captured blob is not reliably a single JSON document.
+          #
+          # Hence: merge both streams, and have the probe PREFIX its one line so
+          # the report can be picked out of whatever else was logged.
+          out=$(docker exec -w /app praxis-ci node -e "
             const express = require('express');
             const { mountTenantModules, mountReport } = require('./src/shared/http/module-loader');
             mountTenantModules(express.Router());
             const r = mountReport();
-            console.warn(JSON.stringify({ mounted: r.mounted.length, skipped: r.skipped }));
-          ")
-          echo "$skipped"
-          if [ "$(echo "$skipped" | jq '.skipped | length')" != "0" ]; then
+            console.warn('MOUNT_REPORT ' + JSON.stringify({ mounted: r.mounted.length, skipped: r.skipped }));
+          " 2>&1)
+          echo "$out"
+
+          # `|| true` because grep exits 1 on no match and `set -e` would abort
+          # the step before the explicit, more useful error below.
+          report=$(printf '%s\n' "$out" | grep -o 'MOUNT_REPORT .*' | tail -1 | cut -d' ' -f2- || true)
+
+          # No report at all is its own failure, and a different one: the probe
+          # did not run. Silently treating that as "nothing skipped" is how a
+          # broken assertion passes for months.
+          if [ -z "$report" ]; then
+            echo "::error::The mount report never came back — the probe itself failed. Output above."
+            exit 1
+          fi
+
+          if [ "$(printf '%s' "$report" | jq '.skipped | length')" != "0" ]; then
             echo "::error::Modules failed to mount inside the built image."
-            echo "$skipped" | jq .skipped
+            printf '%s' "$report" | jq .skipped
             exit 1
           fi
 

@@ -177,7 +177,7 @@ for (const file of sources()) {
 }
 
 if (violations.length === 0) {
-  console.log("Raw-palette gate: clean — every colour comes from a semantic token.");
+  console.warn("Raw-palette gate: clean — every colour comes from a semantic token.");
   process.exit(0);
 }
 

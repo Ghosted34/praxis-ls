@@ -123,7 +123,7 @@ async function checkTenant(slug) {
     try {
       r = await checkTenant(slug);
     } catch (err) {
-      console.log(`\n[${slug}] SKIPPED — ${err.message}`);
+      console.warn(`\n[${slug}] SKIPPED — ${err.message}`);
       continue;
     }
 
@@ -134,36 +134,36 @@ async function checkTenant(slug) {
         grandTotal += s.total;
         grandRows += s.rows.length;
       }
-      console.log(`\n[${slug} · ${schema}] ${s.rows.length} period(s) marked posted with NO journal entry`);
+      console.warn(`\n[${slug} · ${schema}] ${s.rows.length} period(s) marked posted with NO journal entry`);
       for (const row of s.rows) {
-        console.log(
+        console.warn(
           `   ${row.period_code}  ${String(row.amount).padStart(14)}  ${row.label}` +
             `${row.tag ? " (" + row.tag + ")" : ""}${row.asset_status === "DISPOSED" ? "  [DISPOSED]" : ""}`,
         );
       }
-      console.log(`   ${"".padStart(11)}  ${String(s.total.toFixed(2)).padStart(14)}  TOTAL not in the GL`);
-      if (s.fixed !== undefined) console.log(`   cleared posted flag on ${s.fixed} row(s)`);
+      console.warn(`   ${"".padStart(11)}  ${String(s.total.toFixed(2)).padStart(14)}  TOTAL not in the GL`);
+      if (s.fixed !== undefined) console.warn(`   cleared posted flag on ${s.fixed} row(s)`);
     }
   }
 
-  console.log("\n" + "─".repeat(72));
+  console.warn("\n" + "─".repeat(72));
   if (grandRows === 0) {
-    console.log("No phantom depreciation found. Register and GL agree on this measure.");
+    console.warn("No phantom depreciation found. Register and GL agree on this measure.");
     process.exit(0);
   }
 
-  console.log(`${grandRows} live period(s) across all tenants, ${grandTotal.toFixed(2)} of depreciation`);
-  console.log("that the fixed-asset register reports and the trial balance does not contain.");
-  console.log("");
-  console.log("Net book value is UNDERSTATED by that amount, and any asset disposed");
-  console.log("during this window computed its gain/loss from the wrong figure —");
-  console.log("check `dispose` events against these assets.");
+  console.warn(`${grandRows} live period(s) across all tenants, ${grandTotal.toFixed(2)} of depreciation`);
+  console.warn("that the fixed-asset register reports and the trial balance does not contain.");
+  console.warn("");
+  console.warn("Net book value is UNDERSTATED by that amount, and any asset disposed");
+  console.warn("during this window computed its gain/loss from the wrong figure —");
+  console.warn("check `dispose` events against these assets.");
   if (!FIX) {
-    console.log("");
-    console.log("Re-run with --fix to clear the false posted flags so the register tells");
-    console.log("the truth. It creates no journal entries: re-posting a corrected period");
-    console.log("is an accounting decision (period locks, prior-period adjustment) and");
-    console.log("belongs to whoever signs the accounts.");
+    console.warn("");
+    console.warn("Re-run with --fix to clear the false posted flags so the register tells");
+    console.warn("the truth. It creates no journal entries: re-posting a corrected period");
+    console.warn("is an accounting decision (period locks, prior-period adjustment) and");
+    console.warn("belongs to whoever signs the accounts.");
   }
   process.exit(1);
 })().catch((err) => {

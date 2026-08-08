@@ -70,7 +70,7 @@ function main() {
   }
 
   if (violations.length === 0) {
-    console.log("Actor-FK guard OK — every *_by write goes through resolveActorId.");
+    console.warn("Actor-FK guard OK — every *_by write goes through resolveActorId.");
     return 0;
   }
 

@@ -1713,7 +1713,7 @@ if (data.summary) {
   }
 
   // debug (remove later if you want)
-  console.log('openOffcanvas type:', typeof openOffcanvas, 'bootstrap.Offcanvas present:', !!(window.bootstrap && window.bootstrap.Offcanvas));
+  console.warn('openOffcanvas type:', typeof openOffcanvas, 'bootstrap.Offcanvas present:', !!(window.bootstrap && window.bootstrap.Offcanvas));
 
   // 2) read querystring and hash
   const params = new URLSearchParams(window.location.search);

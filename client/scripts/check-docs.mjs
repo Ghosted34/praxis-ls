@@ -136,7 +136,7 @@ const unbanded = SUPERSEDED.filter((f) => {
 
 /* ── report ───────────────────────────────────────────────────────────────── */
 
-console.log(`\nFrontend guide — ${claimed.size} component/hook name(s) checked against ${EXPORTED.size} exports\n`);
+console.warn(`\nFrontend guide — ${claimed.size} component/hook name(s) checked against ${EXPORTED.size} exports\n`);
 
 if (missing.length) {
   console.error(`✗ doc/FRONTEND_GUIDE.md names ${missing.length} thing(s) that do not exist:\n`);
@@ -161,4 +161,4 @@ if (unbanded.length) {
 }
 
 if (missing.length || unbanded.length) process.exit(1);
-console.log("✓ Every component the guide names exists, and every superseded doc points at it.\n");
+console.warn("✓ Every component the guide names exists, and every superseded doc points at it.\n");

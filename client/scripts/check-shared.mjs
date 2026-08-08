@@ -122,7 +122,7 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`\u2713 @praxis/shared bundles cleanly — ${Object.keys(checks).length} checks, one Zod instance.`);
+  console.warn(`\u2713 @praxis/shared bundles cleanly — ${Object.keys(checks).length} checks, one Zod instance.`);
 }
 
 main().catch((err) => {

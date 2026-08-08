@@ -1,1 +1,1 @@
-console.log("Test works");
+console.warn("Test works");

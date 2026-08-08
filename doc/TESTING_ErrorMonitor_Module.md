@@ -14,14 +14,14 @@ Zustand, React Query). The repo is different, so the contract was honoured and
 the implementation adapted. **Read this table before testing** — several spec
 paths deliberately resolve elsewhere.
 
-| Spec says | Actually built | Why |
-|---|---|---|
-| `/api/admin/errors/*` | `/api/platform/errors/*` | The admin API is `/api/platform`. There is no `/api/admin` namespace in this codebase. |
-| Route `/admin/error-center` | `#/error-center` (+ `#/admin/error-center` redirects) | `platform-console` **is** the admin app, host-gated to `admin.praxisls.com`. The `/admin` prefix would be doubled. |
-| NestJS exception filters | Express `middleware/error-handler.js` | The backend is plain JS/Express, not NestJS. |
-| Tailwind + Zustand + React Query | Console's existing `ui.tsx` + `useAsync` + CSS vars | The console is a deliberately 4-dependency app. Only `socket.io-client` was added. |
-| New error-capture layer | Extended the **existing** `shared/observability/error-reporter.js` | Capture, fingerprinting, dedupe and rate limiting already existed and were already wired into the error handler. |
-| `admin_error_logs` table | `platform.error_event` in the **platform** DB | Isolation is one DB per tenant; platform-wide errors have no tenant DB to live in, and the console holds no tenant connection. |
+| Spec says                        | Actually built                                                     | Why                                                                                                                            |
+| -------------------------------- | ------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------ |
+| `/api/admin/errors/*`            | `/api/platform/errors/*`                                           | The admin API is `/api/platform`. There is no `/api/admin` namespace in this codebase.                                         |
+| Route `/admin/error-center`      | `#/error-center` (+ `#/admin/error-center` redirects)              | `platform-console` **is** the admin app, host-gated to `admin.praxisls.com`. The `/admin` prefix would be doubled.             |
+| NestJS exception filters         | Express `middleware/error-handler.js`                              | The backend is plain JS/Express, not NestJS.                                                                                   |
+| Tailwind + Zustand + React Query | Console's existing `ui.tsx` + `useAsync` + CSS vars                | The console is a deliberately 4-dependency app. Only `socket.io-client` was added.                                             |
+| New error-capture layer          | Extended the **existing** `shared/observability/error-reporter.js` | Capture, fingerprinting, dedupe and rate limiting already existed and were already wired into the error handler.               |
+| `admin_error_logs` table         | `platform.error_event` in the **platform** DB                      | Isolation is one DB per tenant; platform-wide errors have no tenant DB to live in, and the console holds no tenant connection. |
 
 **Files added**
 
@@ -89,12 +89,12 @@ node scripts/db/check-migration-reversibility.js  # → all declared
 cd platform-console && npx tsc -p tsconfig.json --noEmit
 ```
 
-| Check | Result at handover |
-|---|---|
-| Backend lint (17 files) | 0 errors, 0 warnings |
-| Migration numbering | OK, no new collisions |
+| Check                   | Result at handover       |
+| ----------------------- | ------------------------ |
+| Backend lint (17 files) | 0 errors, 0 warnings     |
+| Migration numbering     | OK, no new collisions    |
 | Migration reversibility | 19 checked, all declared |
-| Console typecheck | 0 errors in `src/` |
+| Console typecheck       | 0 errors in `src/`       |
 
 ---
 
@@ -111,8 +111,8 @@ const r=parseStack(['TypeError: x',
  '    at createShipment (/app/src/modules/logistics/shipments/shipment.service.js:89:14)',
  '    at async assignDriver (/app/src/modules/logistics/shipments/shipment.controller.js:142:5)',
  '    at Layer.handle (/app/node_modules/express/lib/router/layer.js:95:5)'].join('\n'));
-console.log(r.primary.module, r.primary.file+':'+r.primary.line);
-console.log('vendor frame flagged:', r.frames[2].vendor);
+console.warn(r.primary.module, r.primary.file+':'+r.primary.line);
+console.warn('vendor frame flagged:', r.frames[2].vendor);
 "
 ```
 
@@ -129,7 +129,7 @@ const calls=[]; s.__setQuery(async(q,p)=>{calls.push(p);return{rows:[]}});
 const mk=m=>({fingerprint:'E|'+m,message:m,severity:'error',origin:'server',ts:new Date().toISOString(),stack:'E\n    at f (/app/src/modules/x/y.js:1:1)'});
 for(let i=0;i<5000;i++) s.persist(mk('hot'));
 s.persist(mk('other'));
-s.flush().then(()=>console.log('statements:',calls.length,'| count:',calls.find(c=>c[1]==='E|hot')[16]));
+s.flush().then(()=>console.warn('statements:',calls.length,'| count:',calls.find(c=>c[1]==='E|hot')[16]));
 "
 ```
 
@@ -138,7 +138,7 @@ s.flush().then(()=>console.log('statements:',calls.length,'| count:',calls.find(
 ### 3.3 The key invariant — counting is NOT deduped
 
 This is the single easiest thing to get wrong. The reporter suppresses repeat
-*notifications* for 5 minutes; if persistence inherited that suppression,
+_notifications_ for 5 minutes; if persistence inherited that suppression,
 `occurrence_count` would undercount massively and **every escalation threshold
 would silently never fire**.
 
@@ -151,7 +151,7 @@ const rep=require('./src/shared/observability/error-reporter');
 const e=new Error('same'); e.stack='E\n    at f (/app/src/modules/x/y.js:1:1)';
 Promise.all(Array.from({length:50},()=>rep.report(e))).then(async r=>{
   await s.flush();
-  console.log('deduped notifications:',r.filter(x=>x.reason==='deduped').length,'| persisted:',n);
+  console.warn('deduped notifications:',r.filter(x=>x.reason==='deduped').length,'| persisted:',n);
 });" 2>/dev/null | tail -2
 ```
 
@@ -167,7 +167,7 @@ const t=s.build({id:'e1',signature:'sig',level:'fatal',origin:'server',name:'Typ
  file_path:'shipment.controller.js',line_number:142,occurrence_count:23,tenant_slug:'smartlog',
  first_seen:new Date(Date.now()-3*3600e3).toISOString(),last_seen:new Date().toISOString(),stack_trace:[]},
  {baseUrl:'https://admin.praxisls.com'});
-console.log(t.whatsapp.text); console.log('---'); console.log(t.email.subject); console.log('---'); console.log(t.plain);
+console.warn(t.whatsapp.text); console.warn('---'); console.warn(t.email.subject); console.warn('---'); console.warn(t.plain);
 "
 ```
 
@@ -185,11 +185,11 @@ to be `[PRAXIS-LS] [FATAL] shipments — …`.
 ```bash
 node -e "
 const {QUERY_SCHEMAS:Q,BODY_SCHEMAS:B}=require('./src/modules/platform/errors/errors.validator');
-console.log('sort injection :', Q.errorList.safeParse({sort:'; DROP TABLE x'}).success);
-console.log('bad level      :', Q.errorList.safeParse({level:'banana'}).success);
-console.log('limit > 100    :', Q.errorList.safeParse({limit:'5000'}).success);
-console.log('webhook w/creds:', B.ruleCreate.safeParse({name:'r',action_webhook_url:'https://u:p@evil/x'}).success);
-console.log('ftp webhook    :', B.ruleCreate.safeParse({name:'r',action_webhook_url:'ftp://evil/x'}).success);
+console.warn('sort injection :', Q.errorList.safeParse({sort:'; DROP TABLE x'}).success);
+console.warn('bad level      :', Q.errorList.safeParse({level:'banana'}).success);
+console.warn('limit > 100    :', Q.errorList.safeParse({limit:'5000'}).success);
+console.warn('webhook w/creds:', B.ruleCreate.safeParse({name:'r',action_webhook_url:'https://u:p@evil/x'}).success);
+console.warn('ftp webhook    :', B.ruleCreate.safeParse({name:'r',action_webhook_url:'ftp://evil/x'}).success);
 "
 ```
 
@@ -213,22 +213,22 @@ curl -s -X POST http://localhost:8080/api/client-errors \
 
 Errors appear within ~2s (the store's flush window).
 
-| # | Criterion | How to verify | Expected |
-|---|---|---|---|
-| 1 | Real-time, no refresh | Open Error Center, fire the curl above | Card appears without reload; badge reads **🔴 Live** |
-| 2 | Exact module + line | Open any card | Module and `file:line` shown on the card and in the drawer |
-| 3 | AI explains in plain language | Drawer → **🤖 Explain this error** | Sections: what/why/which module/fix. Needs a DeepSeek or Gemini key in Integrations, else a clear `AI_UNAVAILABLE` message |
-| 4 | One-click LLM-friendly copy | Card → **📋 Copy** | Clipboard holds the `plain` block from §3.4 |
-| 5 | Share via 3 channels | Card → **🔗 Share** | WhatsApp opens `wa.me`, Email opens `mailto:`, in-house picks a platform user |
-| 6 | 30-day history + trend | Set range to *Last 30 days* | Activity chart renders with **empty buckets included** (quiet periods look quiet, not absent) |
-| 7 | Filter by level/module/time/**tenant & platform-wide** | Use the filter bar | Scope dropdown lists *All / Platform-wide / each tenant*; KPI cards move with the filter |
-| 8 | WebSocket → polling fallback | Stop the API, wait ~10s, restart | Badge: 🔴 Live → ⚠ Offline → 📡 Polling → 🔴 Live (retries every 30s) |
-| 9 | Manual resolve + who | Click **✓ Resolve** | Row leaves the Active feed; under *Resolved* it shows the resolver's name |
-| 10 | Rules per tenant + platform-wide | `#/error-center/settings` | Create/edit/delete; scope line shows tenant or platform-wide |
-| 11 | Email + in-house on rules | Set threshold 1/1min, trigger an error | Within `ERROR_ESCALATION_INTERVAL_MS`, a row lands in `platform.error_escalation_log` |
-| 12 | Overview shows uptime + error rate only | Open `#/overview` | Compact **System health** card; no full KPI row |
-| 13 | Error Center shows full KPIs | Open `#/error-center` | Total / Fatal / Unique / Resolved / Avg fix |
-| 14 | Theme consistency | Both pages | Uses the console's existing card/pill/button styles |
+| #   | Criterion                                              | How to verify                          | Expected                                                                                                                   |
+| --- | ------------------------------------------------------ | -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| 1   | Real-time, no refresh                                  | Open Error Center, fire the curl above | Card appears without reload; badge reads **🔴 Live**                                                                       |
+| 2   | Exact module + line                                    | Open any card                          | Module and `file:line` shown on the card and in the drawer                                                                 |
+| 3   | AI explains in plain language                          | Drawer → **🤖 Explain this error**     | Sections: what/why/which module/fix. Needs a DeepSeek or Gemini key in Integrations, else a clear `AI_UNAVAILABLE` message |
+| 4   | One-click LLM-friendly copy                            | Card → **📋 Copy**                     | Clipboard holds the `plain` block from §3.4                                                                                |
+| 5   | Share via 3 channels                                   | Card → **🔗 Share**                    | WhatsApp opens `wa.me`, Email opens `mailto:`, in-house picks a platform user                                              |
+| 6   | 30-day history + trend                                 | Set range to _Last 30 days_            | Activity chart renders with **empty buckets included** (quiet periods look quiet, not absent)                              |
+| 7   | Filter by level/module/time/**tenant & platform-wide** | Use the filter bar                     | Scope dropdown lists _All / Platform-wide / each tenant_; KPI cards move with the filter                                   |
+| 8   | WebSocket → polling fallback                           | Stop the API, wait ~10s, restart       | Badge: 🔴 Live → ⚠ Offline → 📡 Polling → 🔴 Live (retries every 30s)                                                      |
+| 9   | Manual resolve + who                                   | Click **✓ Resolve**                    | Row leaves the Active feed; under _Resolved_ it shows the resolver's name                                                  |
+| 10  | Rules per tenant + platform-wide                       | `#/error-center/settings`              | Create/edit/delete; scope line shows tenant or platform-wide                                                               |
+| 11  | Email + in-house on rules                              | Set threshold 1/1min, trigger an error | Within `ERROR_ESCALATION_INTERVAL_MS`, a row lands in `platform.error_escalation_log`                                      |
+| 12  | Overview shows uptime + error rate only                | Open `#/overview`                      | Compact **System health** card; no full KPI row                                                                            |
+| 13  | Error Center shows full KPIs                           | Open `#/error-center`                  | Total / Fatal / Unique / Resolved / Avg fix                                                                                |
+| 14  | Theme consistency                                      | Both pages                             | Uses the console's existing card/pill/button styles                                                                        |
 
 ---
 
@@ -237,20 +237,20 @@ Errors appear within ~2s (the store's flush window).
 All under `/api/platform`, `Authorization: Bearer <platform token>`, envelope
 `{ data }` / `{ error: { code, message, fields? } }`.
 
-| Method | Path | Cap |
-|---|---|---|
-| GET | `/errors` | `errors.read` |
-| GET | `/errors/recent` | `errors.read` |
-| GET | `/errors/stats` | `errors.read` |
-| GET | `/errors/trends` | `errors.read` |
-| GET | `/errors/modules` | `errors.read` |
-| GET | `/errors/export?format=csv\|json` | `errors.read` |
-| GET | `/errors/:id` | `errors.read` |
-| GET | `/errors/:id/share` | `errors.read` |
-| POST | `/errors/:id/explain` | `errors.read` + 10/min limit |
-| POST | `/errors/:id/resolve` · `/reopen` | `errors.resolve` |
-| GET/POST/PATCH/PUT/DELETE | `/escalation/rules[/:id]` | `errors.read` / `errors.configure` |
-| GET | `/escalation/log` | `errors.read` |
+| Method                    | Path                              | Cap                                |
+| ------------------------- | --------------------------------- | ---------------------------------- |
+| GET                       | `/errors`                         | `errors.read`                      |
+| GET                       | `/errors/recent`                  | `errors.read`                      |
+| GET                       | `/errors/stats`                   | `errors.read`                      |
+| GET                       | `/errors/trends`                  | `errors.read`                      |
+| GET                       | `/errors/modules`                 | `errors.read`                      |
+| GET                       | `/errors/export?format=csv\|json` | `errors.read`                      |
+| GET                       | `/errors/:id`                     | `errors.read`                      |
+| GET                       | `/errors/:id/share`               | `errors.read`                      |
+| POST                      | `/errors/:id/explain`             | `errors.read` + 10/min limit       |
+| POST                      | `/errors/:id/resolve` · `/reopen` | `errors.resolve`                   |
+| GET/POST/PATCH/PUT/DELETE | `/escalation/rules[/:id]`         | `errors.read` / `errors.configure` |
+| GET                       | `/escalation/log`                 | `errors.read`                      |
 
 `GET /errors` params: `page`, `limit` (≤100), `level` (csv), `status`
 (`active`\|`resolved`\|`all`, default `active`), `scope` (`all`\|`platform`),
@@ -287,13 +287,13 @@ is unexecuted**. Treat this as the highest-risk area and check it first.
 2. **The UPSERT conflict target resolves.** `error-store.js` infers
    `ON CONFLICT (COALESCE(tenant_id, '000…'::uuid), signature)`, which must match
    the expression index `ux_error_event_sig` exactly. If it does not, inserts
-   fail with *"no unique or exclusion constraint matching the ON CONFLICT
-   specification"*. Fire the same error twice and confirm `occurrence_count`
+   fail with _"no unique or exclusion constraint matching the ON CONFLICT
+   specification"_. Fire the same error twice and confirm `occurrence_count`
    becomes 2 rather than creating two rows.
 3. **Platform-wide dedupe.** Two errors with `tenant_id IS NULL` and the same
    signature must collapse to one row — this is why the index uses `COALESCE`
    (plain `NULL` never equals `NULL` in a unique index).
-4. **`trends` bucketing** — `date_trunc($n, …)` with a *parameterised* unit and
+4. **`trends` bucketing** — `date_trunc($n, …)` with a _parameterised_ unit and
    `generate_series` over timestamptz.
 5. **`platform.set_updated_at()`** exists (used by the three new triggers).
 6. **Reopen-on-recurrence** — resolve an error, fire it again, confirm
@@ -303,15 +303,15 @@ is unexecuted**. Treat this as the highest-risk area and check it first.
 
 ## 7. Known gaps / deliberate deferrals
 
-| Item | Status |
-|---|---|
-| In-house notification **delivery** | The Share modal copies the payload; `POST /api/admin/notifications/push` from the spec does not exist in this codebase. Escalation's in-house channel broadcasts over the socket and logs to `error_escalation_log`. Needs the console notification surface to land. |
-| `escalation_delay_minutes` | Stored, validated and surfaced in the UI; the evaluator currently gates on `repeat_interval_minutes` only. A rule with a non-zero delay fires on the first matching sweep rather than waiting. |
-| Rule dry-run (`/escalation/rules/preview`) | Endpoint exists; no UI button yet. |
-| `GET /api/admin/health` (uptime %) | Not built. The Overview widget derives status from error counts rather than showing a fabricated uptime figure. `platform.error_escalation_log`'s sibling `admin_health_metrics` table was intentionally **not** created — there is no collector to fill it. |
-| PII sanitisation (§11) | The AI explain path deliberately omits `context` (request_id, user_id, URL). There is no general-purpose scrubber over `message`; the logger's existing `REDACT_PATHS` is not applied to error text. |
-| Per-tenant escalation rules | Schema and API support `tenant_id`; the settings UI creates platform-wide rules only. |
-| Tests | No Jest specs added. §3 above is the executable substitute; the repo has `jest.config.js` if you want them formalised. |
+| Item                                       | Status                                                                                                                                                                                                                                                               |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| In-house notification **delivery**         | The Share modal copies the payload; `POST /api/admin/notifications/push` from the spec does not exist in this codebase. Escalation's in-house channel broadcasts over the socket and logs to `error_escalation_log`. Needs the console notification surface to land. |
+| `escalation_delay_minutes`                 | Stored, validated and surfaced in the UI; the evaluator currently gates on `repeat_interval_minutes` only. A rule with a non-zero delay fires on the first matching sweep rather than waiting.                                                                       |
+| Rule dry-run (`/escalation/rules/preview`) | Endpoint exists; no UI button yet.                                                                                                                                                                                                                                   |
+| `GET /api/admin/health` (uptime %)         | Not built. The Overview widget derives status from error counts rather than showing a fabricated uptime figure. `platform.error_escalation_log`'s sibling `admin_health_metrics` table was intentionally **not** created — there is no collector to fill it.         |
+| PII sanitisation (§11)                     | The AI explain path deliberately omits `context` (request_id, user_id, URL). There is no general-purpose scrubber over `message`; the logger's existing `REDACT_PATHS` is not applied to error text.                                                                 |
+| Per-tenant escalation rules                | Schema and API support `tenant_id`; the settings UI creates platform-wide rules only.                                                                                                                                                                                |
+| Tests                                      | No Jest specs added. §3 above is the executable substitute; the repo has `jest.config.js` if you want them formalised.                                                                                                                                               |
 
 ---
 

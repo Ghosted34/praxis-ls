@@ -146,4 +146,4 @@ if (violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`✓ Font gate: clean — every named family is one of the ${LIBRARY.length} in the library.`);
+console.warn(`✓ Font gate: clean — every named family is one of the ${LIBRARY.length} in the library.`);

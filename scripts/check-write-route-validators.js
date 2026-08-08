@@ -137,21 +137,21 @@ for (const routesFile of walk(MODULES)) {
 }
 
 if (violations.length === 0) {
-  console.log("Write-route validators: every body-reading write route is validated or allow-listed.");
+  console.warn("Write-route validators: every body-reading write route is validated or allow-listed.");
   process.exit(0);
 }
 
-console.log(`${violations.length} write route(s) accept an unvalidated body:\n`);
+console.warn(`${violations.length} write route(s) accept an unvalidated body:\n`);
 const byFile = new Map();
 for (const v of violations) {
   if (!byFile.has(v.file)) byFile.set(v.file, []);
   byFile.get(v.file).push(v.route);
 }
 for (const [file, routes] of byFile) {
-  console.log(`  ${file}`);
-  for (const r of routes) console.log(`      ${r}`);
+  console.warn(`  ${file}`);
+  for (const r of routes) console.warn(`      ${r}`);
 }
-console.log(`
+console.warn(`
 Fix either way:
   - give the route a zod validator (src/shared/http/validate.js: body/query/params), or
   - declare \`writable: [...]\` on the module's makeRepo config, which rejects

@@ -91,7 +91,7 @@ async function probeTenant(slug, constraints) {
     console.error("No constraints parsed from 0497 — has the migration moved?");
     process.exit(2);
   }
-  console.log(`Probing ${constraints.length} constraints.\n`);
+  console.warn(`Probing ${constraints.length} constraints.\n`);
 
   let tenants;
   if (SLUG) {
@@ -120,7 +120,7 @@ async function probeTenant(slug, constraints) {
     try {
       findings = await probeTenant(slug, constraints);
     } catch (err) {
-      console.log(`[${slug}] SKIPPED — ${err.message}`);
+      console.warn(`[${slug}] SKIPPED — ${err.message}`);
       continue;
     }
     const violations = findings.filter((f) => f.count);
@@ -130,41 +130,41 @@ async function probeTenant(slug, constraints) {
       clean.push(slug);
       continue;
     }
-    console.log(`[${slug}]`);
+    console.warn(`[${slug}]`);
     for (const v of violations) {
-      console.log(`   ${String(v.count).padStart(6)} row(s)  ${v.schema}.${v.table}  ${v.expr}`);
+      console.warn(`   ${String(v.count).padStart(6)} row(s)  ${v.schema}.${v.table}  ${v.expr}`);
       total += v.count;
     }
-    for (const e of errors) console.log(`   ! could not probe ${e.schema}.${e.table}: ${e.error}`);
-    console.log("");
+    for (const e of errors) console.warn(`   ! could not probe ${e.schema}.${e.table}: ${e.error}`);
+    console.warn("");
   }
 
-  if (clean.length) console.log(`Clean: ${clean.join(", ")}\n`);
+  if (clean.length) console.warn(`Clean: ${clean.join(", ")}\n`);
 
-  console.log("─".repeat(72));
+  console.warn("─".repeat(72));
   if (total === 0) {
-    console.log("No violations. Every constraint in 0497 can be VALIDATEd safely.\n");
+    console.warn("No violations. Every constraint in 0497 can be VALIDATEd safely.\n");
     if (PRINT_SQL) {
-      console.log("Run against each tenant database, with search_path set per schema:\n");
+      console.warn("Run against each tenant database, with search_path set per schema:\n");
       for (const c of constraints) {
-        console.log(`ALTER TABLE ${c.table} VALIDATE CONSTRAINT ${c.name};`);
+        console.warn(`ALTER TABLE ${c.table} VALIDATE CONSTRAINT ${c.name};`);
       }
     } else {
-      console.log("Re-run with --sql to print the VALIDATE statements.");
+      console.warn("Re-run with --sql to print the VALIDATE statements.");
     }
     process.exit(0);
   }
 
-  console.log(`${total} row(s) violate a constraint that is currently NOT VALID.`);
-  console.log("");
-  console.log("These rows predate the constraint and are still readable by every report");
-  console.log("in the product — a negative invoice total shows up in the trial balance");
-  console.log("exactly as it is stored.");
-  console.log("");
-  console.log("This script does NOT fix them. Correcting a money figure is an accounting");
-  console.log("decision (a correcting entry, not an UPDATE) and belongs to whoever signs");
-  console.log("the accounts. Once they are resolved, VALIDATE each constraint — it takes");
-  console.log("only a SHARE UPDATE EXCLUSIVE lock and does not block reads or writes.");
+  console.warn(`${total} row(s) violate a constraint that is currently NOT VALID.`);
+  console.warn("");
+  console.warn("These rows predate the constraint and are still readable by every report");
+  console.warn("in the product — a negative invoice total shows up in the trial balance");
+  console.warn("exactly as it is stored.");
+  console.warn("");
+  console.warn("This script does NOT fix them. Correcting a money figure is an accounting");
+  console.warn("decision (a correcting entry, not an UPDATE) and belongs to whoever signs");
+  console.warn("the accounts. Once they are resolved, VALIDATE each constraint — it takes");
+  console.warn("only a SHARE UPDATE EXCLUSIVE lock and does not block reads or writes.");
   process.exit(1);
 })().catch((err) => {
   console.error("probe-money-constraints failed:", err.message);

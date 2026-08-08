@@ -51,4 +51,4 @@ sections.push(run("TYPECHECK  (node_modules/typescript/bin/tsc -b)", "node", [jo
 sections.push(run("VITEST  (vitest run)", "node", [join("node_modules", "vitest", "vitest.mjs"), "run", "--no-color"]));
 
 writeFileSync(out, sections.join("\n") + "\n", "utf8");
-console.log(`\nWrote ${out}\nPaste that file back.\n`);
+console.warn(`\nWrote ${out}\nPaste that file back.\n`);

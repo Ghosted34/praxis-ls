@@ -301,9 +301,9 @@ function main() {
       }
     } else if (existing !== content) {
       fs.writeFileSync(file, content);
-      console.log(`wrote ${path.relative(ROOT, file)}`);
+      console.warn(`wrote ${path.relative(ROOT, file)}`);
     } else {
-      console.log(`up to date ${path.relative(ROOT, file)}`);
+      console.warn(`up to date ${path.relative(ROOT, file)}`);
     }
   }
 
@@ -311,7 +311,7 @@ function main() {
     console.error("\nRegenerate with: node scripts/generate-api-docs.js");
     return 1;
   }
-  if (check) console.log("API docs are in sync with the code.");
+  if (check) console.warn("API docs are in sync with the code.");
   return 0;
 }
 

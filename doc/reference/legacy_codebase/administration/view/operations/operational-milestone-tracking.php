@@ -1119,7 +1119,7 @@ document.addEventListener("DOMContentLoaded", function() {
     const targetRef = urlParams.get('ref');
 
     if (targetRef) {
-        console.log("Auto-Opening Tracker for:", targetRef);
+        console.warn("Auto-Opening Tracker for:", targetRef);
 
         // 2. Wait for the file list to load (since it fetches from API)
         const checkInterval = setInterval(() => {

@@ -816,11 +816,11 @@ async function viewDocuments(clientId) {
 
     try {
         // 1. Log the ID we are requesting
-        console.log("Requesting docs for Client ID:", clientId);
+        console.warn("Requesting docs for Client ID:", clientId);
 
         // 2. Build URL
         const url = `${CLIENT_DOCS_API}?client_id=${clientId}`; 
-        console.log("Fetching URL:", url);
+        console.warn("Fetching URL:", url);
 
         const res = await fetch(url);
 
@@ -831,7 +831,7 @@ async function viewDocuments(clientId) {
 
         // 4. Read text first to catch PHP errors
         const text = await res.text();
-        console.log("Raw Server Response:", text); // Check your browser console (F12) for this
+        console.warn("Raw Server Response:", text); // Check your browser console (F12) for this
 
         // 5. Try parsing JSON
         let json;
@@ -918,7 +918,7 @@ function previewDoc(url, title) {
     }
 
     docPreviewModal.show();
-     console.log("Preview URL (as received):", url);
+     console.warn("Preview URL (as received):", url);
     // Re-open list modal when preview closes? Optional. 
     // Usually simpler to just close preview.
 }

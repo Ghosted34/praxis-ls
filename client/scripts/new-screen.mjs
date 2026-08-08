@@ -277,16 +277,16 @@ const registerEntry = `      {
         populatedProof: /REF-2026-0001/,
       },`;
 
-console.log(`\n✓ Created src/features/${area}/${kebab}.tsx\n`);
-console.log("Two things this deliberately did NOT edit for you.\n");
-console.log("1. The route, in src/app/app.tsx — lazy, like every other one:\n");
-console.log(route);
-console.log(`\n   import { ${pascal}Page } from "@/features/${area}/${kebab}";  (via the lazy() wrapper)\n`);
-console.log("2. The axe register, in src/features/screens.axe.test.tsx. This is");
-console.log("   what gates the screen on every CI run — four states, axe-clean,");
-console.log("   exactly one <h1>:\n");
-console.log(registerEntry);
-console.log(`
+console.warn(`\n✓ Created src/features/${area}/${kebab}.tsx\n`);
+console.warn("Two things this deliberately did NOT edit for you.\n");
+console.warn("1. The route, in src/app/app.tsx — lazy, like every other one:\n");
+console.warn(route);
+console.warn(`\n   import { ${pascal}Page } from "@/features/${area}/${kebab}";  (via the lazy() wrapper)\n`);
+console.warn("2. The axe register, in src/features/screens.axe.test.tsx. This is");
+console.warn("   what gates the screen on every CI run — four states, axe-clean,");
+console.warn("   exactly one <h1>:\n");
+console.warn(registerEntry);
+console.warn(`
    GET THE FIXTURE'S PATHS AND FIELD NAMES FROM THE API TYPES, NOT FROM MEMORY.
    Building the register, the same mistake was made seven times: a fixture keyed
    on a path or field the screen does not use. Four crashed loudly. The other

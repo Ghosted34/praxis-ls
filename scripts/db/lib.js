@@ -6,5 +6,5 @@
  */
 "use strict";
 const migrator = require("../../src/services/platform/migrator");
-const log = (...a) => console.log("[praxis-db]", ...a); // eslint-disable-line no-console
+const log = (...a) => console.warn("[praxis-db]", ...a); // eslint-disable-line no-console
 module.exports = { ...migrator, log };

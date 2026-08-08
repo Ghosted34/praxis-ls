@@ -133,27 +133,27 @@ for (const [table, list] of defs) {
 const redefined = [...defs.entries()].filter(([, l]) => l.length > 1);
 
 if (conflicts.length === 0) {
-  console.log(
+  console.warn(
     `Schema drift: ${defs.size} tables across ${DIRS.join(", ")} (compared per database); ` +
       `${redefined.length} defined more than once, none with conflicting columns.`,
   );
   process.exit(0);
 }
 
-console.log(`${conflicts.length} table(s) redefined with DIFFERENT columns:\n`);
+console.warn(`${conflicts.length} table(s) redefined with DIFFERENT columns:\n`);
 for (const c of conflicts) {
-  console.log(`  ${c.table}`);
-  console.log(`     ${c.first.file}  (wins — sorts first)`);
-  console.log(`     ${c.other.file}`);
+  console.warn(`  ${c.table}`);
+  console.warn(`     ${c.first.file}  (wins — sorts first)`);
+  console.warn(`     ${c.other.file}`);
   if (c.onlyOther.length) {
-    console.log(`     declared only in the LATER file, so never created: ${c.onlyOther.join(", ")}`);
+    console.warn(`     declared only in the LATER file, so never created: ${c.onlyOther.join(", ")}`);
   }
   if (c.onlyFirst.length) {
-    console.log(`     present only in the earlier file: ${c.onlyFirst.join(", ")}`);
+    console.warn(`     present only in the earlier file: ${c.onlyFirst.join(", ")}`);
   }
-  console.log("");
+  console.warn("");
 }
-console.log(`Both definitions use CREATE TABLE IF NOT EXISTS, so the earlier file wins and the
+console.warn(`Both definitions use CREATE TABLE IF NOT EXISTS, so the earlier file wins and the
 later one is a no-op that reports success. Any column it adds does not exist on
 any database, and code written against the later file will fail at runtime.
 

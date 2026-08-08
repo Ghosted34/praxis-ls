@@ -106,7 +106,7 @@ async function main() {
   }
 
   const edgeCount = [...graph.values()].reduce((n, e) => n + e.size, 0);
-  console.log(`✓ Chunk graph is acyclic — ${graph.size} chunks, ${edgeCount} static edges.`);
+  console.warn(`✓ Chunk graph is acyclic — ${graph.size} chunks, ${edgeCount} static edges.`);
 }
 
 main().catch((err) => {

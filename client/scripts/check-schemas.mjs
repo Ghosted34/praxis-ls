@@ -134,11 +134,11 @@ const oneSided = domains
   .map((d) => ({ d, api: apiUses.has(d), client: clientUses.has(d) }))
   .filter((r) => !r.api || !r.client);
 
-console.log(`\nShared schemas — ${domains.length} domain(s): ${domains.join(", ")}\n`);
+console.warn(`\nShared schemas — ${domains.length} domain(s): ${domains.join(", ")}\n`);
 for (const d of domains) {
   const api = apiUses.has(d) ? "API ✓" : "API ✗";
   const cl = clientUses.has(d) ? "client ✓" : "client ✗";
-  console.log(`  ${apiUses.has(d) && clientUses.has(d) ? "PASS" : "FAIL"}  ${d.padEnd(16)} ${api}   ${cl}`);
+  console.warn(`  ${apiUses.has(d) && clientUses.has(d) ? "PASS" : "FAIL"}  ${d.padEnd(16)} ${api}   ${cl}`);
 }
 
 let failed = 0;
@@ -170,4 +170,4 @@ if (regressed.length) {
 }
 
 if (failed) process.exit(1);
-console.log(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.\n`);
+console.warn(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.\n`);

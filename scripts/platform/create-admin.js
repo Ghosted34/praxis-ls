@@ -28,7 +28,7 @@ const a = Object.fromEntries(
       "RETURNING platform_user_id, email, role",
     [a.email, a.name || a.email, hash],
   );
-  console.log(`[praxis] platform admin ready: ${rows[0].email} (${rows[0].role})`);
+  console.warn(`[praxis] platform admin ready: ${rows[0].email} (${rows[0].role})`);
   await platformDb.close();
 })()
   .then(() => process.exit(0))

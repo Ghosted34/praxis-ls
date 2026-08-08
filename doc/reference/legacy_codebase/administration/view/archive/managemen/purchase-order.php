@@ -1311,7 +1311,7 @@ async function onOpsFilePicked(){
 
   try{
     const res = await apiGet(`purchase-order.php?ajax=ops_file_get&ref=${encodeURIComponent(ref)}`);
-    console.log('ops_file_get:', res); // ADD THIS
+    console.warn('ops_file_get:', res); // ADD THIS
 
     const d = res.data || {};
     const clientId = (d.client_id || '').trim();

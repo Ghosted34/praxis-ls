@@ -212,15 +212,15 @@ let failed = 0;
 let skipped = 0;
 const aaaMisses = [];
 
-console.log("\nDesign-token contrast — WCAG 2.1 AA floor, AAA where it pays\n");
+console.warn("\nDesign-token contrast — WCAG 2.1 AA floor, AAA where it pays\n");
 
 /* 1. plain text on opaque surfaces */
-console.log("  Text on surface");
+console.warn("  Text on surface");
 for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
   const fg = token(body, fgName);
   const bg = token(body, bgName);
   if (!fg || !bg) {
-    console.log(`    SKIP  ${label} — token not found (${!fg ? fgName : bgName})`);
+    console.warn(`    SKIP  ${label} — token not found (${!fg ? fgName : bgName})`);
     skipped++;
     continue;
   }
@@ -229,7 +229,7 @@ for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
   const ratio = contrast(over(fg, bg.rgb), bg.rgb);
   const ok = ratio >= min;
   if (!ok) failed++;
-  console.log(`    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${min})  ${label}`);
+  console.warn(`    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${min})  ${label}`);
 }
 
 /*
@@ -241,7 +241,7 @@ for (const [label, fgName, bgName, body, min] of TEXT_PAIRS) {
  * measuring.
  */
 const pills = pillRules();
-console.log(`\n  Status pills — text on its own tinted ground (${pills.length} rules, parsed from index.css)`);
+console.warn(`\n  Status pills — text on its own tinted ground (${pills.length} rules, parsed from index.css)`);
 if (pills.length === 0) {
   console.error("    FAIL  no .st-* rules found — the parser or the stylesheet changed shape.");
   failed++;
@@ -254,7 +254,7 @@ for (const [themeName, body] of THEMES) {
       const ink = resolve(p.color, body);
       const tint = resolve(p.background, body);
       if (!ink || !tint) {
-        console.log(`    SKIP  .${p.name} (${themeName}/${surfaceName}) — could not resolve`);
+        console.warn(`    SKIP  .${p.name} (${themeName}/${surfaceName}) — could not resolve`);
         skipped++;
         continue;
       }
@@ -263,7 +263,7 @@ for (const [themeName, body] of THEMES) {
       const ok = ratio >= AA_NORMAL;
       if (!ok) failed++;
       else if (ratio < AAA_NORMAL) aaaMisses.push(`.${p.name} on --${surfaceName} (${themeName}) ${ratio.toFixed(2)}:1`);
-      console.log(
+      console.warn(
         `    ${ok ? "PASS" : "FAIL"}  ${ratio.toFixed(2).padStart(5)}:1  (min ${AA_NORMAL})  .${p.name} on --${surfaceName} (${themeName})`,
       );
     }
@@ -347,7 +347,7 @@ for (const file of sources()) {
   });
 }
 
-console.log(`\n  Fill tokens used as type — ${inkViolations.length} site(s)`);
+console.warn(`\n  Fill tokens used as type — ${inkViolations.length} site(s)`);
 if (inkViolations.length) {
   failed += inkViolations.length;
   console.error("");
@@ -361,13 +361,13 @@ if (inkViolations.length) {
       "    exactly this and are token-for-token brand-identical.\n",
   );
 } else {
-  console.log("    none — every foreground uses an ink token.");
+  console.warn("    none — every foreground uses an ink token.");
 }
 
 /* ── report ───────────────────────────────────────────────────────────────── */
 
 if (aaaMisses.length) {
-  console.log(
+  console.warn(
     `\n  AAA target (7:1) not met by ${aaaMisses.length} pill measurement(s). Not a failure:\n` +
       "  a pill's value is being legible AND recognisably coloured, and 7:1 on a\n" +
       "  tinted ground drives the tint to near-white or the ink to near-black,\n" +
@@ -380,4 +380,4 @@ if (failed) {
   console.error(`\n✗ ${failed} contrast pair(s) below threshold${note}.\n`);
   process.exit(1);
 }
-console.log(`\n✓ All pairs clear their floor${note}.\n`);
+console.warn(`\n✓ All pairs clear their floor${note}.\n`);

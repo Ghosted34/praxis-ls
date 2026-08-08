@@ -102,33 +102,33 @@ async function probeTenant(slug) {
     try {
       findings = await probeTenant(slug);
     } catch (err) {
-      console.log(`[${slug}] SKIPPED — ${err.message}`);
+      console.warn(`[${slug}] SKIPPED — ${err.message}`);
       continue;
     }
     const real = findings.filter((f) => f.count);
     if (!real.length && !findings.length) continue;
-    console.log(`[${slug}]`);
+    console.warn(`[${slug}]`);
     for (const f of real) {
-      console.log(`   ${f.schema}.${f.table}  "${f.doc_number}" appears ${f.count} times`);
+      console.warn(`   ${f.schema}.${f.table}  "${f.doc_number}" appears ${f.count} times`);
       dupes += 1;
     }
     for (const f of findings.filter((x) => x.error)) {
-      console.log(`   ! could not probe ${f.schema}.${f.table}: ${f.error}`);
+      console.warn(`   ! could not probe ${f.schema}.${f.table}: ${f.error}`);
     }
-    console.log("");
+    console.warn("");
   }
 
-  console.log("─".repeat(72));
+  console.warn("─".repeat(72));
   if (dupes === 0) {
-    console.log("No duplicate document numbers. Migration 0498 will apply cleanly.");
+    console.warn("No duplicate document numbers. Migration 0498 will apply cleanly.");
     process.exit(0);
   }
-  console.log(`${dupes} duplicated document number(s). MIGRATION 0498 WILL FAIL until these are resolved.`);
-  console.log("");
-  console.log("Each pair means two statutory documents share one number. Which of them");
-  console.log("is wrong is an accounting question, not a technical one — renumbering a");
-  console.log("document that has already been sent to a client or filed has consequences.");
-  console.log("Resolve with the accountant, then re-run this, then deploy.");
+  console.warn(`${dupes} duplicated document number(s). MIGRATION 0498 WILL FAIL until these are resolved.`);
+  console.warn("");
+  console.warn("Each pair means two statutory documents share one number. Which of them");
+  console.warn("is wrong is an accounting question, not a technical one — renumbering a");
+  console.warn("document that has already been sent to a client or filed has consequences.");
+  console.warn("Resolve with the accountant, then re-run this, then deploy.");
   process.exit(1);
 })().catch((err) => {
   console.error("probe-doc-numbers failed:", err.message);

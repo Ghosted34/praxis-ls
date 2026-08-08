@@ -24,42 +24,42 @@ const JSON_OUT = process.argv.includes("--json");
   const status = await fleetSchemaStatus();
 
   if (JSON_OUT) {
-    console.log(JSON.stringify(status, null, 2));
+    console.warn(JSON.stringify(status, null, 2));
     process.exit(status.drifted ? 1 : 0);
   }
 
-  console.log(`Expected live migrations: ${status.expected}\n`);
+  console.warn(`Expected live migrations: ${status.expected}\n`);
   const w = Math.max(6, ...status.tenants.map((t) => t.slug.length));
-  console.log(`${"tenant".padEnd(w)}  applied  behind  latest`);
-  console.log("-".repeat(w + 40));
+  console.warn(`${"tenant".padEnd(w)}  applied  behind  latest`);
+  console.warn("-".repeat(w + 40));
 
   for (const t of status.tenants) {
     if (t.error) {
-      console.log(`${t.slug.padEnd(w)}  UNREACHABLE — ${t.error}`);
+      console.warn(`${t.slug.padEnd(w)}  UNREACHABLE — ${t.error}`);
       continue;
     }
     const flag = t.behind > 0 ? " <-- BEHIND" : "";
-    console.log(
+    console.warn(
       `${t.slug.padEnd(w)}  ${String(t.applied).padStart(7)}  ${String(t.behind).padStart(6)}  ${t.latest || "-"}${flag}`,
     );
   }
 
-  console.log("");
+  console.warn("");
   if (!status.drifted) {
-    console.log("Every tenant is on the same schema version.");
+    console.warn("Every tenant is on the same schema version.");
     process.exit(0);
   }
 
   if (status.behind.length) {
-    console.log(`${status.behind.length} tenant(s) behind: ${status.behind.join(", ")}`);
-    console.log("  Bring them up:  node scripts/db/migrate-tenants.js --slug=<slug>");
+    console.warn(`${status.behind.length} tenant(s) behind: ${status.behind.join(", ")}`);
+    console.warn("  Bring them up:  node scripts/db/migrate-tenants.js --slug=<slug>");
   }
   if (status.unreachable.length) {
-    console.log(`${status.unreachable.length} tenant(s) unreachable: ${status.unreachable.join(", ")}`);
-    console.log("  Unreachable is not the same as behind — check the database is up before migrating.");
+    console.warn(`${status.unreachable.length} tenant(s) unreachable: ${status.unreachable.join(", ")}`);
+    console.warn("  Unreachable is not the same as behind — check the database is up before migrating.");
   }
-  console.log("");
-  console.log("A mixed fleet is not automatically an emergency, but it is never intentional.");
+  console.warn("");
+  console.warn("A mixed fleet is not automatically an emergency, but it is never intentional.");
   process.exit(1);
 })().catch((err) => {
   console.error(`fleet-status failed: ${err.message}`);

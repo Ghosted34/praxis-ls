@@ -208,7 +208,7 @@ if (!cases.length) {
   process.exit(2);
 }
 
-console.log(`\nProving ${cases.length} gate(s) catch a deliberately introduced regression.\n`);
+console.warn(`\nProving ${cases.length} gate(s) catch a deliberately introduced regression.\n`);
 
 let broken = 0;
 for (const c of cases) {
@@ -234,14 +234,14 @@ for (const c of cases) {
 
   const ok = regressed !== 0 && clean === 0;
   if (!ok) broken++;
-  console.log(
+  console.warn(
     `  ${ok ? "PASS" : "FAIL"}  ${c.name.padEnd(28)} regressed → exit ${regressed}, restored → exit ${clean}`,
   );
-  console.log(`        ${c.defect}`);
+  console.warn(`        ${c.defect}`);
 }
 
 if (broken) {
   console.error(`\n✗ ${broken} gate(s) did not behave as a gate. A gate that cannot fail is documentation.\n`);
   process.exit(1);
 }
-console.log(`\n✓ All ${cases.length} gates fail on the regression and pass without it.\n`);
+console.warn(`\n✓ All ${cases.length} gates fail on the regression and pass without it.\n`);

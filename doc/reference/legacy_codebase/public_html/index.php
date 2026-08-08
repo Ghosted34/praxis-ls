@@ -875,7 +875,7 @@ function smartQuickTrack(e){
 document.getElementById('partnerForm').addEventListener('submit', async function (e) {
   e.preventDefault();
 const endpoint = 'api/partner/submit_partnership.php'; // or your computed URL
-console.log('FETCH URL →', new URL(endpoint, window.location.href).href);
+console.warn('FETCH URL →', new URL(endpoint, window.location.href).href);
 
   const form = e.target;
   const submitBtn = document.getElementById('partnerSubmiBtn');

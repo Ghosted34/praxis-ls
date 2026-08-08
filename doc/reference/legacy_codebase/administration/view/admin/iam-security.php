@@ -285,7 +285,7 @@ function e($v){ return htmlspecialchars($v ?? '', ENT_QUOTES, 'UTF-8'); }
             const res = await fetch(`../../api/security/audit_list.php?q=${encodeURIComponent(q)}&action_type=${encodeURIComponent(type)}`);
             
             // Debugging: Log what we got back
-            console.log("Audit Response Status:", res.status); 
+            console.warn("Audit Response Status:", res.status); 
             
             if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
             

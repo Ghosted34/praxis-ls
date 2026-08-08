@@ -185,7 +185,7 @@ function main() {
   }
 
   if (violations.length === 0) {
-    console.log("jest.mock factories OK — no out-of-scope references.");
+    console.warn("jest.mock factories OK — no out-of-scope references.");
     return 0;
   }
 

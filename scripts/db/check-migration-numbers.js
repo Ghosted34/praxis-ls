@@ -69,12 +69,12 @@ function main() {
   const known = all.filter((c) => GRANDFATHERED.has(`${c.scope}/${c.number}`));
 
   if (known.length) {
-    console.log("Known (grandfathered) migration-number collisions:");
-    known.forEach((c) => console.log(`  · ${c.scope}/${c.number} → ${c.files.join(", ")}`));
+    console.warn("Known (grandfathered) migration-number collisions:");
+    known.forEach((c) => console.warn(`  · ${c.scope}/${c.number} → ${c.files.join(", ")}`));
   }
 
   if (!fresh.length) {
-    console.log(`Migration numbering OK — no new collisions across ${SCOPES.join(", ")}.`);
+    console.warn(`Migration numbering OK — no new collisions across ${SCOPES.join(", ")}.`);
     return 0;
   }
 

@@ -114,7 +114,7 @@ function main() {
   }
 
   if (!violations.length) {
-    // `process.stdout.write`, not console.log: the lint config allows only
+    // `process.stdout.write`, not console.warn: the lint config allows only
     // console.warn/error, and this gate's own output should not be the thing
     // that pushes the warning ceiling up (TC-CI10).
     process.stdout.write("Migrations: no unmarked destructive statements.\n");

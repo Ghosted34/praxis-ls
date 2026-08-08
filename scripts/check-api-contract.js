@@ -220,7 +220,7 @@ function main() {
   if (UPDATE) {
     fs.mkdirSync(path.dirname(SNAPSHOT), { recursive: true });
     fs.writeFileSync(SNAPSHOT, `${JSON.stringify(surface, null, 2)}\n`);
-    console.log(
+    console.warn(
       `Wrote ${path.relative(ROOT, SNAPSHOT)} — ` +
         `${surface.route_count} routes across ${surface.modules_mounted} modules. Commit it.`,
     );
@@ -251,35 +251,35 @@ function main() {
   const { removed, added, weakened, breaking } = diffSurface(before, after);
 
   if (added.length) {
-    console.log(`${added.length} route(s) added (not a failure):`);
-    for (const k of added.slice(0, 20)) console.log(`   + ${k}`);
-    if (added.length > 20) console.log(`   … and ${added.length - 20} more`);
-    console.log("");
+    console.warn(`${added.length} route(s) added (not a failure):`);
+    for (const k of added.slice(0, 20)) console.warn(`   + ${k}`);
+    if (added.length > 20) console.warn(`   … and ${added.length - 20} more`);
+    console.warn("");
   }
 
   if (breaking === 0) {
-    console.log(
+    console.warn(
       `API contract: ${surface.route_count} routes, no removals and no weakened gates` +
         `${added.length ? ` (${added.length} added)` : ""}.`,
     );
     if (added.length) {
-      console.log("Run with --update to record the additions.");
+      console.warn("Run with --update to record the additions.");
     }
     process.exit(0);
   }
 
-  console.log("API CONTRACT REGRESSION\n");
+  console.warn("API CONTRACT REGRESSION\n");
   if (removed.length) {
-    console.log(`${removed.length} route(s) REMOVED — every existing consumer of these breaks:`);
-    for (const k of removed) console.log(`   - ${k}`);
-    console.log("");
+    console.warn(`${removed.length} route(s) REMOVED — every existing consumer of these breaks:`);
+    for (const k of removed) console.warn(`   - ${k}`);
+    console.warn("");
   }
   if (weakened.length) {
-    console.log(`${weakened.length} route(s) LOST A SECURITY GATE:`);
-    for (const w of weakened) console.log(`   ! ${w}`);
-    console.log("");
+    console.warn(`${weakened.length} route(s) LOST A SECURITY GATE:`);
+    for (const w of weakened) console.warn(`   ! ${w}`);
+    console.warn("");
   }
-  console.log(`If this is deliberate, say so explicitly:
+  console.warn(`If this is deliberate, say so explicitly:
 
       node scripts/check-api-contract.js --update
 

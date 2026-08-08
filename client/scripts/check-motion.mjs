@@ -293,21 +293,21 @@ if (!globalKill) {
 
 /* ── report ───────────────────────────────────────────────────────────────── */
 
-console.log(`\nMotion budget — ${BUDGET_MS}ms in-app\n`);
+console.warn(`\nMotion budget — ${BUDGET_MS}ms in-app\n`);
 
 for (const e of exempted) {
   // `NaN` is a framework animation whose duration is not declared in this repo,
   // so there is no number to print — the reason is the whole point of the line.
   const at = Number.isNaN(e.worst) ? "      —" : `${String(Math.round(e.worst)).padStart(6)}ms`;
-  console.log(`  ALLOW ${at}  ${e.selector}  — ${e.reason}`);
+  console.warn(`  ALLOW ${at}  ${e.selector}  — ${e.reason}`);
 }
-console.log(`\n  ${checked} declaration(s) checked, ${exempted.length} exempt.`);
+console.warn(`\n  ${checked} declaration(s) checked, ${exempted.length} exempt.`);
 
 if (reducedMotion.length) {
   console.error("\n✗ prefers-reduced-motion is no longer honoured globally:");
   for (const r of reducedMotion) console.error(`    ${r}`);
 } else {
-  console.log("  prefers-reduced-motion: global kill present, covers animation + transition + pseudo-elements.");
+  console.warn("  prefers-reduced-motion: global kill present, covers animation + transition + pseudo-elements.");
 }
 
 if (failures.length) {

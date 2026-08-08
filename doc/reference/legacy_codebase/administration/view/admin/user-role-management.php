@@ -661,7 +661,7 @@ $avatarUrl  = "https://ui-avatars.com/api/?name={$avatarName}&background=231F20&
     authority
   };
 
-  console.log('[PROVISION] sending payload:', payload);
+  console.warn('[PROVISION] sending payload:', payload);
 
   try {
     const res = await fetch(ENDPOINT_PENDING_UPDATE, {

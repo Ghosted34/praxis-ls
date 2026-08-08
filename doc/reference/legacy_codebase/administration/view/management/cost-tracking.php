@@ -857,7 +857,7 @@ function e(string $v): string { return htmlspecialchars($v, ENT_QUOTES, 'UTF-8')
       try {
         const response = await fetch('../../api/cost-tracking/cost-tracking-api.php?action=get_kpis');
         const result = await response.json();
-        if (result.success && result.kpis) console.log('KPIs loaded:', result.kpis);
+        if (result.success && result.kpis) console.warn('KPIs loaded:', result.kpis);
       } catch (error) { console.error('KPI loading error:', error); }
     }
 

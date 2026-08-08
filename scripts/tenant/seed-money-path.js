@@ -55,9 +55,9 @@ const ymd = today.toISOString().slice(0, 10); // YYYY-MM-DD
 const period = ymd.slice(0, 7); // YYYY-MM
 
 let token = null;
-const ok = (m) => console.log(`  ✓ ${m}`);
-const skip = (m) => console.log(`  – ${m}`);
-const fail = (m) => console.log(`  ✗ ${m}`);
+const ok = (m) => console.warn(`  ✓ ${m}`);
+const skip = (m) => console.warn(`  – ${m}`);
+const fail = (m) => console.warn(`  ✗ ${m}`);
 
 // NB: NOT global fetch — undici treats Host as a forbidden header and silently
 // drops it, so the API would resolve the tenant from the URL's hostname (breaks
@@ -156,7 +156,7 @@ async function main() {
   ok(`tenant '${slug}' is not live — safe to seed sandbox`);
 
   // 0. Health preflight — fail fast (and clearly) if we're pointed at the wrong port.
-  console.log(`  → API target: ${BASE}  (Host: ${HOST})`);
+  console.warn(`  → API target: ${BASE}  (Host: ${HOST})`);
   try {
     const h = await rawRequest("GET", HEALTH, { Host: HOST });
     if (!h.ok || !/"ok"\s*:\s*true/.test(h.text)) throw new Error("no health JSON");
@@ -182,7 +182,7 @@ async function main() {
   const marker = await readMarker();
   if (marker && marker.period === period) {
     skip(`money-path already seeded for ${period} — wipe the sandbox to reseed`);
-    console.log("\nNothing to do. (Ledger was populated on a previous run.)");
+    console.warn("\nNothing to do. (Ledger was populated on a previous run.)");
     return;
   }
 
@@ -313,7 +313,7 @@ async function main() {
   }
 
   await writeMarker();
-  console.log("\nMoney-path seed complete. Open Statements / General Ledger (TEST mode) to see the posted entries.");
+  console.warn("\nMoney-path seed complete. Open Statements / General Ledger (TEST mode) to see the posted entries.");
 }
 
 main()

@@ -984,7 +984,7 @@ jobs:
             const { mountTenantModules, mountReport } = require('./src/shared/http/module-loader');
             mountTenantModules(express.Router());
             const r = mountReport();
-            console.log(JSON.stringify({ mounted: r.mounted.length, skipped: r.skipped }));
+            console.warn(JSON.stringify({ mounted: r.mounted.length, skipped: r.skipped }));
           ")
           echo "$skipped"
           if [ "$(echo "$skipped" | jq '.skipped | length')" != "0" ]; then

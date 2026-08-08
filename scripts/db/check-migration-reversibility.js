@@ -216,5 +216,5 @@ This guard does not fix that backlog — it stops it growing.
   process.exit(1);
 }
 
-console.log(`Migration reversibility: ${checked} checked, all declared.`);
+console.warn(`Migration reversibility: ${checked} checked, all declared.`);
 process.exit(0);

@@ -306,7 +306,7 @@ done
 # schema being deployed rather than the one currently running.
 # ---------------------------------------------------------------------------
 echo "── validating environment (before migrations)"
-if ! docker compose run --rm --no-deps api node -e "require('./src/config/env'); console.log('environment OK')"; then
+if ! docker compose run --rm --no-deps api node -e "require('./src/config/env'); console.warn('environment OK')"; then
   echo "!! DEPLOY ABORTED — the environment is not valid for this build."
   echo "   Nothing has been migrated. Fix .env on this host and re-run."
   echo "   scripts/check-env-template.js lists what the schema requires."

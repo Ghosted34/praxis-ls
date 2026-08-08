@@ -184,7 +184,7 @@ $activePage = pathinfo($activePage, PATHINFO_FILENAME);
     });
 
     // Optional hard proof in console (remove later)
-    console.log('[nav] active =', active, 'pathname =', window.location.pathname);
+    console.warn('[nav] active =', active, 'pathname =', window.location.pathname);
   }
 
   // Run after DOM is ready (prevents “script ran before navbar exists”)

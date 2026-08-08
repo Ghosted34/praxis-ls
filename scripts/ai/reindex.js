@@ -34,7 +34,7 @@ async function reindexGlobal() {
     await pf.end();
   }
   const r = await ingest.ingestGlobal(items);
-  console.log(`[praxis-ai] global: ${r.changed}/${r.total} sources (re)indexed`);
+  console.warn(`[praxis-ai] global: ${r.changed}/${r.total} sources (re)indexed`);
 }
 
 async function reindexTenant(slug) {
@@ -47,8 +47,8 @@ async function reindexTenant(slug) {
       ...(await buildEntityCards(cli)),
     ];
     const r = await ingest.ingestTenantCards(cli, cards);
-    if (r.skipped) console.log(`[praxis-ai] tenant ${slug}: skipped (${r.skipped})`);
-    else console.log(`[praxis-ai] tenant ${slug}: ${r.cards} cards indexed`);
+    if (r.skipped) console.warn(`[praxis-ai] tenant ${slug}: skipped (${r.skipped})`);
+    else console.warn(`[praxis-ai] tenant ${slug}: ${r.cards} cards indexed`);
   } finally {
     await cli.end();
   }
@@ -61,7 +61,7 @@ async function reindexTenant(slug) {
     for (const slug of await provisioning.listTenantSlugs()) await reindexTenant(slug);
   }
   if (!a.global && !a.tenant && !a.all) {
-    console.log("usage: reindex.js --global | --tenant=<slug> | --all");
+    console.warn("usage: reindex.js --global | --tenant=<slug> | --all");
   }
 })()
   .then(() => process.exit(0))

@@ -283,6 +283,24 @@ export const confirmAiBatch = (batchId: string) =>
  */
 export type AiExportTable = { title: string; header: string[]; rows: string[][] };
 
+/**
+ * Record feedback on an AI answer (thumbs up/down).
+ *
+ * This drives the self-improvement loop: bad answers with comments are
+ * periodically reviewed to tune the system prompt, and recent down-votes
+ * are injected into the prompt as "PATTERNS USERS DISLIKED" so the model
+ * actively avoids repeating known mistakes.
+ */
+export const submitAiFeedback = (feedback: {
+  conversation_id?: string;
+  message_id?: string;
+  question?: string;
+  answer?: string;
+  vote: "up" | "down";
+  comment?: string;
+  action_keys?: string[];
+}) => tenant<{ ok: boolean }>("/ai/feedback", { method: "POST", body: feedback });
+
 export async function downloadAiTables(tables: AiExportTable[], filename?: string): Promise<void> {
   await downloadPost(
     "/tenant/ai/export/tables",

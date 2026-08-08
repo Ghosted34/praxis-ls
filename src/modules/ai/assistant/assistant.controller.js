@@ -144,4 +144,30 @@ const clearHistory = asyncHandler(async (req, res) => {
   res.json({ data: out });
 });
 
-module.exports = { ask, askStream, confirm, confirmBatch, history, conversations, clearHistory, options, exportTables };
+/**
+ * Record user feedback on an AI answer (thumbs up/down).
+ *
+ * This is the self-improvement loop: bad answers are stored with the question,
+ * the answer, and any comment. Periodically reviewed to tune the system prompt.
+ * Good answers are also stored — they reinforce what works and provide positive
+ * examples for future prompt tuning.
+ *
+ * The feedback is also injected into the system prompt as "PATTERNS USERS
+ * DISLIKED" when there are recent down-votes with comments — so the model
+ * actively avoids repeating known mistakes.
+ */
+const feedback = asyncHandler(async (req, res) => {
+  const { conversation_id, message_id, question, answer, vote, comment, action_keys } = req.body;
+  const userId = (req.user && req.user.user_id) || null;
+  await req.tenantDb(async (client) => {
+    await client.query(
+      `INSERT INTO ai_answer_feedback
+         (conversation_id, message_id, user_id, question_text, answer_text, vote, comment, action_keys)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+      [conversation_id || null, message_id || null, userId, question || null, answer || null, vote, comment || null, action_keys || null],
+    );
+  });
+  res.json({ data: { ok: true } });
+});
+
+module.exports = { ask, askStream, confirm, confirmBatch, history, conversations, clearHistory, options, exportTables, feedback };

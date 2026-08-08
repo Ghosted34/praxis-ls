@@ -167,17 +167,10 @@ async function loadTools(client) {
  * Self-learning: recent successful action patterns.
  *
  * THE LEARNING FIX. The assistant used to have no memory of what it had
- * successfully done before. If a user asked it to "create a dossier like the
- * last one" or "do the same thing you did for client X", it had no way to know
- * what "the last one" was. This function pulls the last 10 successfully
+ * successfully done before. This function pulls the last 10 successfully
  * executed actions with their payloads, so the system prompt can include them
  * as "PATTERNS YOU HAVE SUCCESSFULLY EXECUTED" — the model can reference them
  * when the user asks for similar actions.
- *
- * This is not ML — it's pattern recall. The model sees concrete examples of
- * what worked and can replicate the structure. It's the difference between
- * "I don't know how to do that" and "I did something similar last week for
- * client Y — let me propose the same structure".
  *
  * Best-effort: a failure here never blocks the answer.
  */
@@ -193,14 +186,73 @@ async function recentPatterns(client) {
     );
     return rows.map((r) => ({
       action: r.action_key,
-      // Only include a summary of the payload (key fields, not everything) to
-      // keep the prompt compact. The model needs the STRUCTURE, not every value.
       fields: Object.keys(r.proposed_payload || {}).slice(0, 8),
       ref: r.executed_entity_ref,
     }));
   } catch {
     return [];
   }
+}
+
+/**
+ * Self-learning: recent NEGATIVE feedback (thumbs-down with comments).
+ *
+ * THE FEEDBACK LOOP. When users down-vote an answer AND leave a comment
+ * explaining what was wrong, that comment is gold — it tells the model
+ * specifically what to avoid. The last 5 recent down-votes with comments
+ * are injected into the system prompt as "PATTERNS USERS DISLIKED" so the
+ * model actively avoids repeating known mistakes.
+ *
+ * This is the cheapest form of prompt tuning: no fine-tuning, no RLHF,
+ * just telling the model "last time you did X, the user said Y — don't
+ * do that again."
+ *
+ * Best-effort: a failure here never blocks the answer.
+ */
+async function recentNegativeFeedback(client) {
+  try {
+    const { rows } = await client.query(
+      `SELECT answer_text, comment, action_keys
+         FROM ai_answer_feedback
+        WHERE vote = 'down'
+          AND comment IS NOT NULL
+          AND comment <> ''
+          AND created_at > now() - interval '30 days'
+        ORDER BY created_at DESC
+        LIMIT 5`,
+    );
+    return rows.map((r) => ({
+      comment: r.comment,
+      actions: r.action_keys || [],
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Per-user preferences.
+ *
+ * Users can set preferences like "always show amounts in XAF", "prefer tables
+ * over prose", "always include the dossier reference". These are injected
+ * into the system prompt so the model tailors its output to the user's
+ * stated preferences.
+ *
+ * Stored as a simple JSON blob on the user's conversation or a dedicated
+ * preferences table. For now, we read from ai_user_preference if it exists,
+ * otherwise return empty.
+ */
+async function userPreferences(client, userId) {
+  try {
+    const { rows } = await client.query(
+      "SELECT preferences FROM ai_user_preference WHERE user_id = $1",
+      [userId],
+    );
+    if (rows[0] && rows[0].preferences) return rows[0].preferences;
+  } catch {
+    // Table may not exist yet — that's fine.
+  }
+  return {};
 }
 
 const toOpenAiTool = (a) => ({
@@ -413,6 +465,20 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
     : "";
 
+  // ── Self-improvement: recent negative feedback ──
+  const feedback = await recentNegativeFeedback(client);
+  const feedbackBlock = feedback.length
+    ? "\n\nPATTERNS USERS DISLIKED (avoid these mistakes — users left specific feedback):\n" +
+      feedback.map((f, i) => `  ${i + 1}. User said: "${f.comment}"${f.actions.length ? ` (on actions: ${f.actions.join(", ")})` : ""}`).join("\n")
+    : "";
+
+  // ── Per-user preferences ──
+  const prefs = await userPreferences(client, user.user_id);
+  const prefsBlock = Object.keys(prefs).length
+    ? "\n\nUSER PREFERENCES (tailor your output to these):\n" +
+      Object.entries(prefs).map(([k, v]) => `  • ${k}: ${v}`).join("\n")
+    : "";
+
   const system =
     "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
     "Only call a function when the user asks to DO something; never invent data. " +
@@ -479,6 +545,8 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
     whoIsAsking(user) +
     patternBlock +
+    feedbackBlock +
+    prefsBlock +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 
@@ -959,6 +1027,20 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")}${p.ref ? ` (${p.ref})` : ""}`).join("\n")
     : "";
 
+  // ── Self-improvement: recent negative feedback ──
+  const feedback = await recentNegativeFeedback(client);
+  const feedbackBlock = feedback.length
+    ? "\n\nPATTERNS USERS DISLIKED (avoid these mistakes — users left specific feedback):\n" +
+      feedback.map((f, i) => `  ${i + 1}. User said: "${f.comment}"${f.actions.length ? ` (on actions: ${f.actions.join(", ")})` : ""}`).join("\n")
+    : "";
+
+  // ── Per-user preferences ──
+  const prefs = await userPreferences(client, user.user_id);
+  const prefsBlock = Object.keys(prefs).length
+    ? "\n\nUSER PREFERENCES (tailor your output to these):\n" +
+      Object.entries(prefs).map(([k, v]) => `  • ${k}: ${v}`).join("\n")
+    : "";
+
   const system =
     "You are Praxis LS, an OHADA-aware logistics ERP assistant. Ground answers in the CONTEXT. " +
     "Only call a function when the user asks to DO something; never invent data. " +
@@ -1012,6 +1094,8 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
     "  (e.g. look up the client by name to get their ID) before telling the user it failed. " +
     whoIsAsking(user) +
     patternBlock +
+    feedbackBlock +
+    prefsBlock +
     "\n\nCONTEXT:\n" +
     redact(toContextBlock(hits));
 

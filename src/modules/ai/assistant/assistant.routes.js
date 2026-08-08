@@ -42,6 +42,10 @@ router.get("/history", c.history);
 router.post("/history/clear", c.clearHistory);
 router.post("/actions/:id/confirm", validate("confirm"), c.confirm);
 router.post("/batches/:batchId/confirm", c.confirmBatch);
+// User feedback on AI answers (thumbs up/down). Drives the self-improvement
+// loop — bad answers with comments are injected into the system prompt as
+// "PATTERNS USERS DISLIKED" so the model avoids repeating known mistakes.
+router.post("/feedback", validate("feedback"), c.feedback);
 // Excel export of an answer's tables. POST because the tables ARE the payload —
 // they were never persisted, so there is no id to GET them by. Reads nothing,
 // so auth + the feature gate on this router are the whole access story.

@@ -16,6 +16,14 @@ const registry = buildExecutorMap();
 const ask = (client, { user, message, conversationId, allowed }) =>
   orchestrator.ask({ client, user, message, conversationId, allowed, registry });
 
+/**
+ * Streaming ask — returns an async generator of SSE events. The controller
+ * pipes these to the response as `text/event-stream`. The registry is the same
+ * shared executor map; nothing about streaming changes what can be executed.
+ */
+const askStream = (client, { user, message, conversationId, allowed }) =>
+  orchestrator.askStream({ client, user, message, conversationId, allowed, registry });
+
 const confirm = (client, { user, actionRunId, payload }) =>
   orchestrator.confirmAction({ client, user, actionRunId, registry, payload });
 
@@ -71,4 +79,4 @@ async function clearHistory(client, { user }) {
   return { conversation_id: conversationId, messages: [] };
 }
 
-module.exports = { ask, confirm, confirmBatch, history, conversations, clearHistory, options };
+module.exports = { ask, askStream, confirm, confirmBatch, history, conversations, clearHistory, options };

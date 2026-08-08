@@ -28,7 +28,11 @@ async function set({ vendor, apiKey = null, patch = {}, actorId = null }) {
     fields.last_rotated_at = new Date().toISOString();
     fields.last_rotated_by = actorId;
   }
-  const cols = Object.keys(fields);
+  // Defense-in-depth: only EDITABLE + key-rotation columns can be written.
+  // The loop above already constrains to EDITABLE, but this catches any future
+  // caller that bypasses it (audit 3.10 — same pattern fixed in governance.repo).
+  const WRITABLE = new Set([...EDITABLE, "api_key_enc", "last_rotated_at", "last_rotated_by"]);
+  const cols = Object.keys(fields).filter((k) => WRITABLE.has(k));
   if (cols.length === 0) {
     const { rows } = await platformDb.query(`SELECT ${SAFE} FROM ai_vendor_credential WHERE vendor = $1`, [vendor]);
     return rows[0] || null;

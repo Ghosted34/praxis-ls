@@ -60,7 +60,33 @@ async function retrieve(opts) {
   }
 
   hits.sort((a, b) => b.sim - a.sim);
-  return hits.slice(0, k);
+  const ranked = boostDomainHits(hits, opts.query || "");
+  return ranked.slice(0, k);
+}
+
+/**
+ * Boost OHADA/accounting domain docs when the query is about accounting, tax,
+ * VAT, journal entries, GL, débours, SYSCOHADA, etc. The OHADA KB is 1,640
+ * lines of domain-specific knowledge that the model doesn't have natively —
+ * when the user asks an accounting question, those chunks should rank higher
+ * than generic codebase chunks with similar cosine similarity.
+ *
+ * This is a post-retrieval re-rank, not a filter: non-OHADA hits still appear,
+ * just below the boosted ones. The boost is additive (not multiplicative) so
+ * a genuinely irrelevant OHADA chunk (sim=0.2) won't outrank a relevant
+ * codebase chunk (sim=0.85).
+ */
+const DOMAIN_KEYWORDS = /\b(ohada|syscohada|débours|debours|journal entry|posting|chart of accounts|VAT|TVA|tax declaration|withholding|précompte| acompte|IS\b|BIC|TVA|CNPS|NIU|patente|financial statement|bilan|compte de résultat|TAFIRE|GL|general ledger|double.entry|depreciation|amortissement)\b/i;
+const OHADA_REF = /ohada|OHADA_KB|Accounting.*KnowledgeBase|tax.*knowledge/i;
+
+function boostDomainHits(hits, query) {
+  if (!DOMAIN_KEYWORDS.test(query)) return hits; // not an accounting query → no boost
+  return hits.map((h) => {
+    if (OHADA_REF.test(h.ref || "") || OHADA_REF.test(h.title || "")) {
+      return { ...h, sim: Math.min(h.sim + 0.15, 1.0) };
+    }
+    return h;
+  }).sort((a, b) => b.sim - a.sim);
 }
 
 /** Format hits into a grounding block for the model prompt. */

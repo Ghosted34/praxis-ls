@@ -28,7 +28,6 @@
  */
 import * as React from "react";
 import {
-  askPraxis,
   askPraxisStream,
   clearAiHistory,
   confirmAiAction,

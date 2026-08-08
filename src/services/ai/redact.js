@@ -24,7 +24,10 @@ function redact(text) {
     // ── Structured financial identifiers (most specific first) ──
 
     // IBAN: 2-letter country code + 2 check digits + 10-30 alphanumeric.
-    .replace(/\b[A-Z]{2}\d{2}[A-Z0-9]{10,30}\b/g, "[IBAN]")
+    // Allows single spaces between groups, as IBANs/BBANs are often printed
+    // spaced (e.g. Cameroon "CM21 10003 00001 00200456789 41"). The uppercase
+    // char class means trailing lowercase words won't be swallowed.
+    .replace(/\b[A-Z]{2}\d{2}(?:[ ]?[A-Z0-9]){10,30}\b/g, "[IBAN]")
 
     // Credit/debit card numbers: 13-19 digits, optionally separated by spaces
     // or dashes in groups of 4. Catches "4111 1111 1111 1111" and

@@ -375,7 +375,14 @@ export function AiWorkspace() {
                       onOpenCanvas={openOutput}
                     />
                   ))}
-                  {thread.busy && <AiThinking />}
+                  {thread.busy && (() => {
+                    // Hide the thinking indicator once the streaming turn has
+                    // started receiving text — the growing answer IS the thinking.
+                    // Only show it while waiting for the first token.
+                    const last = thread.turns[thread.turns.length - 1];
+                    const streaming = last && last.role === "assistant" && last.text.length > 0;
+                    return streaming ? null : <AiThinking />;
+                  })()}
                 </div>
               </div>
 

@@ -123,10 +123,135 @@ export const askPraxis = (message: string, conversationId?: string, opts?: AskOp
     body: { message, conversation_id: conversationId, scope: opts?.scope, mode: opts?.mode },
   });
 
+/**
+ * One event in the SSE stream from `/ai/ask/stream`.
+ *
+ * `delta` carries an incremental text token (rendered immediately so the answer
+ * types out word by word). `answer`, `actions`, `sources`, `trace` arrive once
+ * at the end of the turn as the finalised, authoritative values. `done` signals
+ * the stream is complete. `error` is a recoverable failure.
+ */
+export type AiStreamEvent =
+  | { type: "delta"; text: string }
+  | { type: "answer"; text: string }
+  | { type: "actions"; actions: AiActionRun[]; batch_id?: string | null }
+  | { type: "sources"; sources: AiSourceLike[] }
+  | { type: "trace"; trace: string[] }
+  | { type: "done"; conversation_id?: string | null; provider?: string | null }
+  | { type: "error"; message: string };
+
+/**
+ * Streaming ask — yields SSE events as they arrive. The caller (useAiThread)
+ * updates the turn incrementally: text grows with each `delta`, action cards
+ * appear when `actions` arrives, and the turn completes on `done`.
+ *
+ * FALLBACK. If the streaming endpoint is unreachable (older server, proxy
+ * stripping SSE), we fall back to the non-streaming `askPraxis` and yield a
+ * single `answer` + `done` event. The client renders identically either way —
+ * the non-streaming path just shows the whole answer at once instead of word
+ * by word.
+ *
+ * Uses `fetch` directly rather than `EventSource` because: (1) EventSource is
+ * GET-only and we need POST with a body; (2) fetch streams work with the app's
+ * auth headers (EventSource cannot set custom headers); (3) fetch gives us
+ * abort control for when the user navigates away mid-stream.
+ */
+export async function* askPraxisStream(
+  message: string,
+  conversationId?: string,
+  opts?: AskOptions,
+  signal?: AbortSignal,
+): AsyncGenerator<AiStreamEvent> {
+  // Build the same request the `tenant()` helper would, but with raw fetch so
+  // we can consume the response as a stream. tokenStore supplies the auth
+  // token and the env header; the URL follows the same `/api/tenant${path}`
+  // convention.
+  const { tokenStore } = await import("./token-store");
+  const headers = new Headers();
+  headers.set("Content-Type", "application/json");
+  headers.set("Accept", "text/event-stream");
+  headers.set("X-Praxis-Env", tokenStore.getEnv());
+  const accessToken = tokenStore.getAccess();
+  if (accessToken) headers.set("Authorization", `Bearer ${accessToken}`);
+
+  let response: Response;
+  try {
+    response = await fetch("/api/tenant/ai/ask/stream", {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ message, conversation_id: conversationId, scope: opts?.scope, mode: opts?.mode }),
+      signal,
+    });
+  } catch {
+    // Network error or abort — fall back to non-streaming.
+    if (signal?.aborted) return;
+    const result = await askPraxis(message, conversationId, opts);
+    yield { type: "answer", text: result.answer };
+    if (result.actions?.length) yield { type: "actions", actions: result.actions, batch_id: result.batch_id };
+    if (result.sources?.length) yield { type: "sources", sources: result.sources };
+    if (result.trace?.length) yield { type: "trace", trace: result.trace };
+    yield { type: "done", conversation_id: result.conversation_id };
+    return;
+  }
+
+  if (!response.ok || !response.body) {
+    // Server returned an error or doesn't support streaming — fall back.
+    if (response.status === 404 || response.status === 501) {
+      const result = await askPraxis(message, conversationId, opts);
+      yield { type: "answer", text: result.answer };
+      if (result.actions?.length) yield { type: "actions", actions: result.actions, batch_id: result.batch_id };
+      if (result.sources?.length) yield { type: "sources", sources: result.sources };
+      if (result.trace?.length) yield { type: "trace", trace: result.trace };
+      yield { type: "done", conversation_id: result.conversation_id };
+      return;
+    }
+    const text = await response.text().catch(() => "Request failed");
+    yield { type: "error", message: text || `HTTP ${response.status}` };
+    yield { type: "done" };
+    return;
+  }
+
+  // Parse SSE from the readable stream.
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      // Process complete SSE events (terminated by \n\n).
+      const events = buffer.split("\n\n");
+      buffer = events.pop() || ""; // keep the incomplete tail
+
+      for (const raw of events) {
+        for (const line of raw.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed || trimmed.startsWith(":")) continue; // heartbeat or comment
+          if (!trimmed.startsWith("data:")) continue;
+          try {
+            const event = JSON.parse(trimmed.slice(5).trim()) as AiStreamEvent;
+            yield event;
+            if (event.type === "done" || event.type === "error") return;
+          } catch {
+            // Malformed JSON — skip.
+          }
+        }
+      }
+    }
+  } finally {
+    reader.releaseLock();
+  }
+}
+
 /** Confirm an action; pass `payload` to execute the form-edited values. `message`
- *  is Praxis's step-by-step recap + next-step question after a successful run. */
+ *  is Praxis's step-by-step recap after a successful run. `next_actions` carries
+ *  auto-proposed follow-up actions (the snooze fix: the server proposes the next
+ *  step instead of asking "shall I proceed?"). */
 export const confirmAiAction = (actionRunId: string, payload?: Record<string, unknown>) =>
-  tenant<{ ok: boolean; result?: unknown; message?: string | null }>(`/ai/actions/${actionRunId}/confirm`, {
+  tenant<{ ok: boolean; result?: unknown; message?: string | null; next_actions?: AiActionRun[] }>(`/ai/actions/${actionRunId}/confirm`, {
     method: "POST",
     body: payload ? { payload } : {},
   });
@@ -157,6 +282,24 @@ export const confirmAiBatch = (batchId: string) =>
  * spreadsheet you can sum and one you have to retype.
  */
 export type AiExportTable = { title: string; header: string[]; rows: string[][] };
+
+/**
+ * Record feedback on an AI answer (thumbs up/down).
+ *
+ * This drives the self-improvement loop: bad answers with comments are
+ * periodically reviewed to tune the system prompt, and recent down-votes
+ * are injected into the prompt as "PATTERNS USERS DISLIKED" so the model
+ * actively avoids repeating known mistakes.
+ */
+export const submitAiFeedback = (feedback: {
+  conversation_id?: string;
+  message_id?: string;
+  question?: string;
+  answer?: string;
+  vote: "up" | "down";
+  comment?: string;
+  action_keys?: string[];
+}) => tenant<{ ok: boolean }>("/ai/feedback", { method: "POST", body: feedback });
 
 export async function downloadAiTables(tables: AiExportTable[], filename?: string): Promise<void> {
   await downloadPost(

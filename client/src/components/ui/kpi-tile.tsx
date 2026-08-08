@@ -3,7 +3,11 @@
  *  an inline `icon · value · label` cluster; on desktop they share one divided
  *  row, on mobile they stack. Values use the `.num` tabular class. Optional
  *  `tone` tints the icon; `delta` shows a trend chip. Props are unchanged from
- *  the previous card version, so every existing screen inherits this for free. */
+ *  the previous card version, so every existing screen inherits this for free.
+ *
+ *  Passing `onClick` makes the tile a real `<button>` — used by the party 360
+ *  KPI strip, where each tile drills into a paginated list of the underlying
+ *  rows and deep-links them to their module. */
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
@@ -22,6 +26,8 @@ export function KpiTile({
   icon,
   delta,
   tone = "accent",
+  onClick,
+  ariaLabel,
 }: {
   label: string;
   value: React.ReactNode;
@@ -29,9 +35,13 @@ export function KpiTile({
   icon?: React.ReactNode;
   delta?: { value: React.ReactNode; dir?: "up" | "down" };
   tone?: "accent" | "ok" | "warn" | "bad" | "info";
+  /** When provided, the tile renders as a `<button>` and reacts to clicks. */
+  onClick?: () => void;
+  /** Accessible name override for the button variant (defaults to "Open <label>"). */
+  ariaLabel?: string;
 }) {
-  return (
-    <div className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5">
+  const body = (
+    <>
       {icon && (
         <span className={cn("grid h-6 w-6 shrink-0 place-items-center rounded-md text-[14px]", TONE[tone])}>
           {icon}
@@ -50,6 +60,28 @@ export function KpiTile({
         </span>
       )}
       {hint && !delta && <span className="ml-auto shrink-0 text-[11px] text-muted-foreground">{hint}</span>}
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-label={ariaLabel || `Open ${label}`}
+        // The tile keeps the same footprint as the static variant; the button
+        // just adds hover feedback, keyboard focus and a pointer cursor so the
+        // drill-in affordance reads without a chrome change.
+        className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      >
+        {body}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex min-w-[9rem] flex-1 items-center gap-2.5 px-4 py-2.5">
+      {body}
     </div>
   );
 }

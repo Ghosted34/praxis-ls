@@ -30,6 +30,7 @@ import { Pill } from "@/components/ui/pill";
 import { AiActions } from "@/components/ai-actions";
 import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
 import { useList, useListPaged } from "@/lib/use-resource";
+import { useFocusRow } from "@/lib/use-focus-row";
 import { useDebounced } from "@/lib/use-debounced";
 import { money0 } from "@/lib/format";
 import { errMsg } from "@/lib/use-resource";
@@ -85,6 +86,21 @@ export function OperationsFilesPage() {
     page,
     pageSize: PAGE_SIZE,
   });
+  // `?focus=<dossier_id>` from the client 360's dossiers drill-in. Operations
+  // already honours the friendlier `?ref=<ref>` (seeded into the search box
+  // above); this is the fallback for links that only had the uuid at hand.
+  const { focusId } = useFocusRow(list.rows);
+  // Auto-open the 360 modal if the focus id matches — "select that file"
+  // (parity with the click on any row here).
+  React.useEffect(() => {
+    if (!focusId || !list.rows) return;
+    const hit = list.rows.find((d) => d.dossier_id === focusId);
+    if (hit && !view) setView(hit);
+    // Only trigger the auto-open once per focus id — the deps intentionally
+    // exclude `view` so closing the modal doesn't re-pop it while the URL
+    // param is still there.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusId, list.rows]);
 
   /**
    * Chip counts, honestly.
@@ -211,6 +227,7 @@ export function OperationsFilesPage() {
       loading={list.loading}
       rowKey={(r) => r.dossier_id}
       onRowClick={(r) => setView(r)}
+      highlightRowKey={focusId}
       empty={{
         title: "No operation files yet",
         hint: "Open a dossier to start moving a shipment — route, milestones, costing and invoicing all hang off it.",

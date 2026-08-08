@@ -17,6 +17,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
+import { useFocusRow } from "@/lib/use-focus-row";
 import { RowActions } from "@/components/ui/row-actions";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
@@ -96,6 +97,8 @@ export function SupplierInvoicesPage() {
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const sname = map(suppliers, "supplier_id", "name");
   const list = rows || [];
+  // `?focus=<supplier_invoice_id>` from the supplier 360's payables drill-ins.
+  const { focusId } = useFocusRow(rows);
 
   async function post(inv: api.SupplierInvoice) {
     setBusyId(inv.supplier_invoice_id);
@@ -126,7 +129,7 @@ export function SupplierInvoicesPage() {
         <KpiTile label="Posted" value={num(list.filter((i) => String(i.status).includes("POSTED")).length)} />
         <KpiTile label="Payable" value={money(list.filter((i) => !String(i.status).includes("POSTED")).reduce((s, r) => s + (Number(r.amount_ttc) || 0), 0))} />
       </KpiRow>
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.supplier_invoice_id} empty={{ title: "No supplier invoices", hint: "Capture a vendor invoice to pay." }} />
+      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.supplier_invoice_id} highlightRowKey={focusId} empty={{ title: "No supplier invoices", hint: "Capture a vendor invoice to pay." }} />
       {open && <SupplierInvoiceForm onClose={() => setOpen(false)} onSaved={reload} />}
       <ScreenAi path="procurement/supplier-invoices" />
     </section>

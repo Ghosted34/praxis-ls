@@ -165,6 +165,7 @@ export function DataList<T extends Record<string, unknown>>({
   sticky,
   freezeFirstColumn,
   maxHeight,
+  highlightRowKey,
 }: {
   columns: Column<T>[];
   rows: T[] | null;
@@ -193,6 +194,13 @@ export function DataList<T extends Record<string, unknown>>({
   /** Keep the record's identity visible while scrolling a wide table right. */
   freezeFirstColumn?: boolean;
   maxHeight?: string;
+  /**
+   * Draw a ring around the row whose `rowKey(...)` matches this string, and
+   * mark it with `data-row-key` so the caller can scroll it into view. Used by
+   * `?focus=<id>` deep-links from the party-360 KPI drill-in and elsewhere.
+   * Undefined means no highlight.
+   */
+  highlightRowKey?: string | null;
 }) {
   const shiftRef = React.useRef(false);
   const roving = useRovingRows(rows?.length ?? 0, !!onRowClick);
@@ -251,15 +259,22 @@ export function DataList<T extends Record<string, unknown>>({
             {rows.map((r, i) => {
               const key = rowKey(r, i);
               const selected = selection?.isSelected(key) ?? false;
+              const focused = highlightRowKey && key === highlightRowKey;
               return (
                 <TR
                   key={key}
+                  data-row-key={key}
                   className={cn(
                     onRowClick && "cursor-pointer",
                     // Selected rows need a persistent ground, not just a ticked
                     // box: on a scrolled table the checkbox column may be the
                     // part that is off screen.
                     selected && "bg-[color-mix(in_srgb,var(--primary)_8%,transparent)]",
+                    // A deep-link brought the user here to look at THIS row.
+                    // The ring survives a re-render (unlike a transient scroll
+                    // flash) so it still reads as "you're here" if the table
+                    // repaints from a background refresh.
+                    focused && "outline outline-2 outline-primary bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]",
                   )}
                   onClick={onRowClick ? () => onRowClick(r) : undefined}
                 >
@@ -323,6 +338,7 @@ export function DataList<T extends Record<string, unknown>>({
         {rows.map((r, i) => {
           const key = rowKey(r, i);
           const selected = selection?.isSelected(key) ?? false;
+          const focused = highlightRowKey && key === highlightRowKey;
           return (
             // Same reasoning as the table branch: the card keeps click-anywhere,
             // and column 0 carries the real control. The card itself cannot BE a
@@ -331,10 +347,12 @@ export function DataList<T extends Record<string, unknown>>({
             // eslint-disable-next-line jsx-a11y/no-static-element-interactions, jsx-a11y/click-events-have-key-events
             <div
               key={key}
+              data-row-key={key}
               className={cn(
                 "lux-card p-3",
                 onRowClick && "cursor-pointer",
                 selected && "bg-[color-mix(in_srgb,var(--primary)_8%,var(--card))]",
+                focused && "ring-2 ring-primary bg-[color-mix(in_srgb,var(--primary)_10%,var(--card))]",
               )}
               onClick={onRowClick ? () => onRowClick(r) : undefined}
             >

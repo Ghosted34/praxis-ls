@@ -111,6 +111,7 @@ export function ListPage<T extends Record<string, unknown>>({
   sticky,
   freezeFirstColumn,
   maxHeight,
+  highlightRowKey,
   children,
 }: {
   title: string;
@@ -168,6 +169,9 @@ export function ListPage<T extends Record<string, unknown>>({
   freezeFirstColumn?: boolean;
   /** Only meaningful with `sticky`. Defaults to 70vh. */
   maxHeight?: string;
+  /** Forwarded to `DataList` — highlights the matching row and marks it with
+   *  `data-row-key`. See `useFocusRow` for the `?focus=<id>` receiving side. */
+  highlightRowKey?: string | null;
   /** Modals, drawers and anything else the screen owns. */
   children?: React.ReactNode;
 }) {
@@ -199,6 +203,7 @@ export function ListPage<T extends Record<string, unknown>>({
           sticky={sticky}
           freezeFirstColumn={freezeFirstColumn}
           maxHeight={maxHeight}
+          highlightRowKey={highlightRowKey}
         />
       )}
 

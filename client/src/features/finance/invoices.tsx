@@ -7,6 +7,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { tenant, ApiError } from "@/lib/api-client";
+import { useFocusRow } from "@/lib/use-focus-row";
 import { dateFmt, money as moneyFmt, enumLabel, smartCell } from "@/lib/format";
 import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { HubCrumb } from "@/components/tabbed-hub";
@@ -31,6 +32,9 @@ export function InvoicesPage() {
   const [clientName, setClientName] = React.useState<Record<string, string>>({});
   const navigate = useNavigate();
   const reload = () => setNonce((n) => n + 1);
+  // `?focus=<invoice_id>` from the client 360's KPI drill-in — surface the row
+  // (ring + scroll) so the user can act on it from the list.
+  const { focusId } = useFocusRow(rows);
 
   React.useEffect(() => {
     fin.loadClients()
@@ -103,6 +107,7 @@ export function InvoicesPage() {
         loading={rows === null}
         error={error}
         rowKey={(r, i) => String(invField(r, ["invoice_id", "id"]) ?? i)}
+        highlightRowKey={focusId}
         empty={{ title: "No invoices yet", hint: "Create a draft to get started." }}
       />
 

@@ -17,6 +17,7 @@ import { DocButton } from "@/components/doc-button";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
+import { useFocusRow } from "@/lib/use-focus-row";
 import { money, dateFmt, todayISO, enumLabel } from "@/lib/format";
 import type { Client, Entity } from "@/lib/masterdata-api";
 import * as api from "@/lib/finance-api";
@@ -177,6 +178,16 @@ export function ReceivablesPage() {
   const [view, setView] = React.useState<api.Receipt | null>(null);
   const clientName = nameMap(clients);
   const a = ageing.data;
+  // Deep-link from the client 360's KPI drill-in — `?focus=<receipt_id>`
+  // highlights the matching row, scrolls it into view and pops the detail
+  // drawer, so landing here reads as "opened that receipt", not "moved to a
+  // list where the record you were looking at is somewhere below the fold".
+  const { focusId } = useFocusRow(rows);
+  React.useEffect(() => {
+    if (!focusId || !rows) return;
+    const hit = rows.find((r) => r.receipt_id === focusId);
+    if (hit) setView(hit);
+  }, [focusId, rows]);
 
   const columns: Column<api.Receipt>[] = [
     { key: "received_on", label: "Received", render: (r) => <span className="num">{dateFmt(r.received_on)}</span> },
@@ -225,7 +236,7 @@ export function ReceivablesPage() {
         </div>
       )}
 
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.receipt_id} onRowClick={(r) => setView(r)} empty={{ title: "No receipts yet", hint: "Log a customer payment to start allocating against invoices." }} />
+      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.receipt_id} onRowClick={(r) => setView(r)} highlightRowKey={focusId} empty={{ title: "No receipts yet", hint: "Log a customer payment to start allocating against invoices." }} />
 
       {creating && <ReceiptForm onClose={() => setCreating(false)} onSaved={() => { reload(); ageing.reload(); dunning.reload(); }} />}
       {posting && <PostForm receipt={posting} onClose={() => setPosting(null)} onSaved={() => { reload(); ageing.reload(); dunning.reload(); }} />}

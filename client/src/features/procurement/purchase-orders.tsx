@@ -18,6 +18,7 @@ import { PageHeader, DataList, type Column } from "@/components/data-list";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { Pill } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
+import { useFocusRow } from "@/lib/use-focus-row";
 import { RowActions } from "@/components/ui/row-actions";
 import { money, num, todayISO } from "@/lib/format";
 import type { Entity, Supplier } from "@/lib/masterdata-api";
@@ -102,6 +103,8 @@ export function PurchaseOrdersPage() {
   const [actionError, setActionError] = React.useState<string | null>(null);
   const sname = map(suppliers, "supplier_id", "name");
   const list = rows || [];
+  // `?focus=<po_id>` from the supplier 360's "Open POs" drill-in.
+  const { focusId } = useFocusRow(rows);
 
   /**
    * The screen showed one button, "Approve", on DRAFT rows — and it could never
@@ -161,7 +164,7 @@ export function PurchaseOrdersPage() {
         <KpiTile label="Spend" value={money(list.reduce((s, r) => s + (Number(r.total_ttc) || 0), 0))} />
       </KpiRow>
       {actionError && <ErrorState message={actionError} />}
-      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.po_id} empty={{ title: "No purchase orders", hint: "Raise a PO to a supplier." }} />
+      <DataList columns={columns} rows={rows} error={error} loading={loading} rowKey={(r) => r.po_id} highlightRowKey={focusId} empty={{ title: "No purchase orders", hint: "Raise a PO to a supplier." }} />
       {open && <PoForm onClose={() => setOpen(false)} onSaved={reload} />}
       <ScreenAi path="procurement/purchase-orders" />
     </section>

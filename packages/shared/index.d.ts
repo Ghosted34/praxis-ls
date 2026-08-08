@@ -548,3 +548,20 @@ export declare namespace countries {
   function byCode(code: string): Country | undefined;
   function phoneCodeFor(code: string): string;
 }
+
+/** A currency as the ISO-4217 catalogue and the Smart Currency Picker render it. */
+export type Currency = { code: string; name: string; symbol: string; decimals: number; numeric: string };
+export type CurrencyRow = Currency & { country_code: string | null; sort_order: number };
+
+export declare namespace currencies {
+  const CURRENCIES: readonly Currency[];
+  const CATALOGUE: readonly CurrencyRow[];
+  function byCode(code: string): Currency | undefined;
+  function decimalsFor(code: string): number;
+  /** The countries that trade in a currency, priority-ordered; `[]` when none. */
+  function countriesFor(code: string): { code: string; name: string }[];
+  /** The currency a country trades in (full catalogue row), or undefined. */
+  function forCountry(countryCode: string): Currency | undefined;
+  /** The most representative country for a currency (for its flag), or null. */
+  function representativeCountry(code: string): string | null;
+}

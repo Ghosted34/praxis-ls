@@ -1,42 +1,22 @@
 /**
  * Worker job: fetch daily FX from exchangerate-api and upsert into fx_rate_daily
- * for a tenant. Job data: { tenantMeta, env, base, quotes[] }. The API key is
- * resolved in priority order, NOT from .env-only (BUILD_CONVENTIONS §7):
- *   1. encrypted integration_secret 'fx_exchangerate' (Settings, AES-256-GCM)
- *   2. legacy plaintext setting fx.exchangerate_api_key (back-compat)
- *   3. config.EXCHANGERATE_API_KEY (deploy default)
- * A manual override (is_override) always wins in the resolver, so a failed/late/
- * unconfigured feed never corrupts a hand-set rate.
+ * for one tenant. Job data: { tenantMeta, env, base?, quotes? }. Base and quotes
+ * are resolved from the tenant DB when omitted (base = the tenant's base
+ * currency, quotes = every other active currency), so the daily fan-out keeps
+ * every active pair fresh without the scheduler needing to know each tenant's
+ * currency set.
+ *
+ * The actual fetch/upsert and the key-resolution order live in
+ * currency.sync.syncRates — the SAME core the in-app "Sync now" button calls, so
+ * the two paths can never drift. A manual override (is_override) always wins in
+ * the resolver, so a failed/late/unconfigured feed never corrupts a hand-set rate.
  */
 "use strict";
-const axios = require("axios");
 const registry = require("../../services/tenant/registry.service");
-const currencyRepo = require("../../modules/master/currency/currency.repo");
-const { getSetting } = require("../../shared/config/settings");
-const settingService = require("../../modules/security/setting/setting.service");
-const { config } = require("../../config/env");
+const sync = require("../../modules/master/currency/currency.sync");
 
 module.exports = async function fxSync(job) {
-  const { tenantMeta, env = "live", base = "XAF", quotes = ["USD", "EUR"] } = job.data || {};
+  const { tenantMeta, env = "live", base, quotes } = job.data || {};
   if (!tenantMeta) throw new Error("fx-sync job needs tenantMeta");
-  return registry.withTenantConnection(tenantMeta, env, async (c) => {
-    const key =
-      (await settingService.readSecret(c, "fx_exchangerate")) ||
-      (await getSetting(c, "fx", "exchangerate_api_key", null)) ||
-      config.EXCHANGERATE_API_KEY ||
-      null;
-    if (!key) return { skipped: true, reason: "no fx exchangerate key configured (integration_secret 'fx_exchangerate', fx.exchangerate_api_key, or EXCHANGERATE_API_KEY)" };
-    const url = "https://v6.exchangerate-api.com/v6/" + key + "/latest/" + base;
-    const { data } = await axios.get(url, { timeout: 15000 });
-    const rates = (data && data.conversion_rates) || {};
-    const asOf = new Date().toISOString().slice(0, 10);
-    const done = [];
-    for (const quote of quotes) {
-      if (!rates[quote]) continue;
-       
-      await currencyRepo.upsertRate(c, { base, quote, rate: rates[quote], asOfDate: asOf, source: "exchangerate-api", isOverride: false });
-      done.push(quote);
-    }
-    return { base, asOf, updated: done };
-  });
+  return registry.withTenantConnection(tenantMeta, env, async (c) => sync.syncRates(c, { base, quotes }));
 };

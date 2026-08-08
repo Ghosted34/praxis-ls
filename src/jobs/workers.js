@@ -28,6 +28,7 @@ const PROCESSORS = [
   { name: "pdf", concurrency: 2, handler: require("./handlers/pdf-render") },
   { name: "email", concurrency: 3, handler: require("./handlers/email-send") },
   { name: "fx-sync", concurrency: 1, handler: require("./handlers/fx-sync") },
+  { name: "fx-sync-scheduler", concurrency: 1, handler: require("./handlers/fx-sync-scheduler") },
   { name: "ai-transcribe", concurrency: 2, handler: require("./handlers/ai-transcribe") },
   { name: "ai-vision", concurrency: 2, handler: require("./handlers/ai-vision") },
   { name: "scheduled-report", concurrency: 1, handler: require("./handlers/scheduled-report") },
@@ -186,6 +187,24 @@ async function scheduleRecurring() {
       removeOnFail: 50,
     });
     logger.info({ every: escalateEvery }, "error escalation evaluator registered");
+  }
+
+  // Live FX daily sync (MOD-08). FX_SYNC_CRON is a wall-clock cron (default
+  // midnight), so use repeat.pattern with a tz — an interval-based repeat would
+  // drift off midnight after every restart, the same reasoning as the error
+  // retention purge above. The scheduler fans out one fx-sync job per LIVE tenant
+  // (base → all active currencies). Empty FX_SYNC_CRON disables it; "Sync now"
+  // in the app still works.
+  const fxCron = config.FX_SYNC_CRON;
+  if (!fxCron) {
+    logger.info("fx sync scheduler disabled (FX_SYNC_CRON empty)");
+  } else {
+    await enqueue("fx-sync-scheduler", "tick", {}, {
+      repeat: { pattern: fxCron, tz: config.FX_SYNC_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: fxCron, tz: config.FX_SYNC_TZ || "UTC" }, "fx sync scheduler registered");
   }
 }
 

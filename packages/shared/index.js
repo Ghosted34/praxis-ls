@@ -15,6 +15,7 @@ const entityCommon = require("./schemas/entity-common");
 const ledger = require("./rules/ledger");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
+const currencies = require("./data/currencies");
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.
 //
@@ -43,6 +44,11 @@ exports.entityCommon = entityCommon;
 // Canonical ISO country reference (code, name, phone, currency, per-jurisdiction
 // registration requirements) — the API, the seed and the client picker's source.
 exports.countries = countries;
+// Canonical ISO 4217 currency reference (code, name, symbol, decimals, numeric,
+// and the countries that use each). The currency module enriches tenant rows
+// from it and the Smart Currency Picker searches it — by country too. See
+// data/currencies.js.
+exports.currencies = currencies;
 // NOTE: expectedRegistrations() lives in ./data/registrations.js as a ready
 // module but is deliberately NOT re-exported here yet. `check:schemas` requires
 // every index export to be consumed by BOTH the API and the client; the two

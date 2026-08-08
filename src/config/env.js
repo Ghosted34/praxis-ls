@@ -188,6 +188,10 @@ const Schema = z.object({
 
   EXCHANGERATE_API_KEY: z.string().default(""),
   FX_SYNC_CRON: z.string().default("0 0 * * *"),
+  // IANA tz the FX cron's wall-clock time is read in. CEMAC is UTC+1, so the
+  // default puts "midnight" at Douala midnight rather than UTC. Empty FX_SYNC_CRON
+  // disables the daily sync (manual "Sync now" still works).
+  FX_SYNC_TZ: z.string().default("Africa/Douala"),
 
   // ---- System-email FALLBACK sender (deploy-wide, see src/services/platform/mail-fallback.service.js) ----
   // Praxis-owned SMTP used when a TENANT has not configured their own mail

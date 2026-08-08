@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 106,
-  "route_count": 888,
+  "route_count": 894,
   "tiers": {
     "public": 19,
     "self-scoped": 58,
-    "gated": 811
+    "gated": 817
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -124,6 +124,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/contracts/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/currencies/:code": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1060,6 +1066,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/currencies/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/currencies/:code/360": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2901,6 +2913,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/currencies/:code": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/cycle-counts/:id": {
       "auth": true,
       "rbac": true,
@@ -3927,7 +3945,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/currencies/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/currencies/base": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/currencies/rates": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/currencies/sync": {
       "auth": true,
       "rbac": true,
       "validated": false,

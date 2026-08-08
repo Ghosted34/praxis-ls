@@ -20,5 +20,17 @@ module.exports = {
       effectiveFrom: b.effective_from, effectiveTo: b.effective_to, legalReference: b.legal_reference, actor: actor(req),
     })) });
   }),
+  supersede: asyncHandler(async (req, res) => {
+    const b = req.body;
+    res.status(201).json({ data: await req.tenantDb((c) => service.supersedeCode(c, {
+      jurisdictionId: req.params.id, code: b.code, effectiveFrom: b.effective_from,
+      newRow: {
+        kind: b.kind, ratePercent: b.rate_percent, baseRule: b.base_rule, appliesTo: b.applies_to,
+        recoverable: b.recoverable, postsDebitAccount: b.posts_debit_account, postsCreditAccount: b.posts_credit_account,
+        brackets: b.brackets, effectiveTo: b.effective_to, legalReference: b.legal_reference,
+      },
+      actor: actor(req),
+    })) });
+  }),
   effective: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.effectiveCode(c, { jurisdictionId: req.params.id, code: req.query.code, date: req.query.date })) })),
 };

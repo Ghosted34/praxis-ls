@@ -24,6 +24,22 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Tax rates & jurisdictions is now a working 360 (MOD-07).** The screen that
+  feeds every invoice's VAT/WHT postings — account determination reads the
+  effective-dated `tax_code` at the entry date — becomes a jurisdiction → dossier
+  master-detail, with a tab per tax family (TVA / IS / retenues / paie / autre)
+  showing each code's current effective rate and full version timeline. Fixes the
+  write path that made no-code amendment impossible: the Add-code **Kind** dropdown
+  sent `TVA/IS/MIN_TAX/PATENTE` — values the API enum rejects — so TVA and IS
+  codes could not be created from the UI at all; kinds are now the canonical
+  `VAT/WHT/INCOME/PAYROLL/OTHER` shown with Cameroon labels (the instrument stays
+  in the Code field). Adds GL posting-account pickers, a base-rule field, and a
+  **structured brackets/caps editor** for the IRPP progressive scale, CNPS caps and
+  work-injury risk classes (previously seed-only JSON). A new **Amend rate** action
+  wires the existing atomic `supersedeCode` to
+  `POST /tax-jurisdictions/:id/codes/supersede` — expire the current row, open the
+  new one, in one transaction — so a Finance-Law change is a new version, never an
+  overwrite.
 - **Counterparty governance (PR3-C).** The dedup detection shipped in §5.1 now
   has its UI (an amber "Possible duplicates" panel on both create forms and at
   the top of the 360), plus: a **governed merge** (`party_merge/`) that

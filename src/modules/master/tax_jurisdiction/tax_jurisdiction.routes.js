@@ -17,5 +17,8 @@ router.post("/", requirePermission(MODULE, "create"), validator.create, controll
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.post("/:id/active", requirePermission(MODULE, "edit"), validator.setActive, controller.setActive);
 router.post("/:id/codes", requirePermission(MODULE, "create"), validator.addCode, controller.addCode);
+// Amend a rate (Finance-Law change): atomic expire-current + open-new. Edits an
+// existing window, so it takes the "edit" grant rather than plain "create".
+router.post("/:id/codes/supersede", requirePermission(MODULE, "edit"), validator.supersede, controller.supersede);
 
 module.exports = { basePath: "/tax-jurisdictions", feature: null, router };

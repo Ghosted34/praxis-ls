@@ -26,3 +26,7 @@ CREATE TABLE IF NOT EXISTS ai_answer_feedback (
 
 CREATE INDEX IF NOT EXISTS ix_aifeedback_vote ON ai_answer_feedback(vote, created_at DESC);
 CREATE INDEX IF NOT EXISTS ix_aifeedback_convo ON ai_answer_feedback(conversation_id);
+
+
+-- DOWN --
+-- DROP TABLE IF EXISTS ai_answer_feedback;

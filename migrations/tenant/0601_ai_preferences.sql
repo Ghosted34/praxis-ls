@@ -13,3 +13,7 @@ CREATE TABLE IF NOT EXISTS ai_user_preference (
 
 CREATE TRIGGER trg_aiuserpref_updated BEFORE UPDATE ON ai_user_preference
   FOR EACH ROW EXECUTE FUNCTION set_updated_at();
+
+
+-- DOWN --
+-- DROP TABLE IF EXISTS ai_user_preference;

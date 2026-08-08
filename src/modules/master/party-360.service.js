@@ -268,7 +268,22 @@ async function clientDossier(c, { partyId, canSeeFinancials = false }) {
     await compliance.sync(c, { kind: "client", partyId }),
     await compliance.glParity(c, { kind: "client", partyId }),
   ];
-  const dossiers = (await c.query("SELECT dossier_id, ref, title, status, created_at FROM dossier WHERE client_id = $1 ORDER BY created_at DESC LIMIT 25", [partyId])).rows;
+  // Operations files for the dossier's Operations tab: each dossier with its
+  // status, billed value (FINAL invoices), and milestone progress. The value
+  // and milestone sub-queries reuse the exact shapes the operations list
+  // renders (operations_file.repo.listPaged) so both screens agree on a
+  // dossier's number and current stage.
+  const dossiers = (await c.query(
+    "SELECT d.dossier_id, d.ref, d.title, d.status, d.created_at, " +
+      "st.name_en AS service_name, " +
+      "(SELECT COALESCE(SUM(total_ttc) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) FROM invoice WHERE dossier_id = d.dossier_id AND type = 'FINAL') AS value, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
+      "FROM dossier d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "WHERE d.client_id = $1 ORDER BY d.created_at DESC LIMIT 25",
+    [partyId],
+  )).rows;
   const invoices = (await c.query("SELECT invoice_id, doc_number, type, total_ttc, status, payment_due_on, created_at FROM invoice WHERE client_id = $1 ORDER BY created_at DESC LIMIT 25", [partyId])).rows;
   const receipts = (await c.query("SELECT receipt_id, amount, method, received_on, status FROM payment_receipt WHERE client_id = $1 ORDER BY received_on DESC LIMIT 25", [partyId])).rows;
   const advances = (await c.query("SELECT advance_id, amount, applied_amount, received_on FROM advance WHERE client_id = $1 ORDER BY received_on DESC LIMIT 25", [partyId])).rows;

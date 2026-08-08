@@ -709,7 +709,7 @@ export type Client360 = {
   compliance: Compliance;
   gl_parity: GlParity;
   contacts: Contact[]; addresses: Address[]; banks: BankAccount[]; documents: PartyDocument[]; registrations: Registration[]; beneficial_owners: BeneficialOwner[];
-  dossiers: { dossier_id: string; ref?: string | null; title?: string | null; status?: string | null; created_at?: string }[];
+  dossiers: { dossier_id: string; ref?: string | null; title?: string | null; status?: string | null; created_at?: string; service_name?: string | null; value?: number | string | null; milestone_total?: number | null; milestone_done?: number | null; current_milestone?: string | null }[];
   invoices: { invoice_id: string; doc_number?: string | null; type?: string; total_ttc: number; status?: string; payment_due_on?: string | null }[];
   receipts: Receipt[];
   advances: { advance_id: string; amount: number | string; applied_amount?: number | string | null; received_on?: string | null }[];

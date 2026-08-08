@@ -47,6 +47,7 @@ const SEVERITY_TONE: Record<string, Tone> = { INFO: "mute", WARN: "warn", ESCALA
 const REG_TONE: Record<string, Tone> = { DRAFT: "mute", PENDING_REVIEW: "blue", ACTIVE: "ok", SUSPENDED: "orange", DEACTIVATED: "mute", ARCHIVED: "mute" };
 const AVL_TONE: Record<string, Tone> = { PROSPECT: "mute", PENDING_KYC: "warn", APPROVED: "ok", CONDITIONAL: "orange", SUSPENDED: "orange", BLOCKED: "bad", ARCHIVED: "mute" };
 const SCAN_TONE: Record<string, Tone> = { PENDING: "warn", SCANNED: "blue", VERIFIED: "ok", REJECTED: "bad", EXPIRED: "bad" };
+const DOSSIER_TONE: Record<string, Tone> = { OPEN: "blue", IN_PROGRESS: "warn", COMPLETED: "ok", CANCELLED: "mute" };
 const ADDRESS_TYPES = ["REGISTERED", "BILLING", "DELIVERY", "PICKUP", "WAREHOUSE", "REMITTANCE", "NOTIFY"];
 
 /* ── Small building blocks ─────────────────────────────────────────────────── */
@@ -113,8 +114,11 @@ function AddModal({ title, fields, onClose, onSubmit }: { title: string; fields:
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
-const CLIENT_TABS = ["Overview", "Documents", "Contacts", "Addresses", "Banks", "Registrations", "Owners", "Financial"] as const;
+const CLIENT_TABS = ["Overview", "Documents", "Contacts", "Addresses", "Banks", "Registrations", "Owners", "Operations", "Financial"] as const;
 type Tab = (typeof CLIENT_TABS)[number];
+// "Operations" lists the client's dossiers; suppliers have none, so the tab is
+// dropped on that side.
+const SUPPLIER_TABS = CLIENT_TABS.filter((t) => t !== "Operations");
 
 /* ── PR3-C: duplicates, governed merge, scorecard, pending changes ─────────── */
 
@@ -861,10 +865,11 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
 
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b">
-        {CLIENT_TABS.map((t) => {
+        {(isClient ? CLIENT_TABS : SUPPLIER_TABS).map((t) => {
           const counts: Partial<Record<Tab, number>> = {
             Documents: d.documents.length, Contacts: d.contacts.length, Addresses: d.addresses.length,
             Banks: d.banks.length, Registrations: d.registrations.length, Owners: d.beneficial_owners.length,
+            Operations: d.dossiers.length,
           };
           return (
             <button key={t} onClick={() => setTab(t)}
@@ -1037,6 +1042,51 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
             ))}
           </MiniTable>
         </Section>
+      )}
+
+      {tab === "Operations" && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <h4 className="text-sm font-semibold text-foreground">Operations files</h4>
+            <span className="micro">Dossiers for this client — status, milestone progress and billed value.</span>
+          </div>
+          <MiniTable empty={d.dossiers.length === 0}
+            head={<><Th>Reference</Th><Th>Service / title</Th><Th>Status</Th><Th>Milestone</Th><Th r>Value</Th><Th>Created</Th></>}>
+            {d.dossiers.map((ds) => {
+              const total = ds.milestone_total ?? 0;
+              const done = ds.milestone_done ?? 0;
+              const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+              return (
+                <tr key={ds.dossier_id}>
+                  <Td>
+                    <button type="button" className="text-primary-ink underline underline-offset-2 hover:opacity-80"
+                      onClick={() => navigate(dossierHref(ds.ref, ds.dossier_id))}>
+                      {ds.ref || ds.dossier_id.slice(0, 8)}
+                    </button>
+                  </Td>
+                  <Td>{ds.title || ds.service_name || "—"}</Td>
+                  <Td>{ds.status ? <Pill tone={DOSSIER_TONE[ds.status] || "mute"}>{enumLabel(ds.status)}</Pill> : "—"}</Td>
+                  <Td>
+                    {total > 0 ? (
+                      <div className="min-w-[8rem] space-y-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="micro">{ds.current_milestone || "—"}</span>
+                          <span className="micro">{done}/{total}</span>
+                        </div>
+                        <div className="h-1.5 overflow-hidden rounded bg-muted">
+                          <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+                        </div>
+                      </div>
+                    ) : <span className="micro">No milestones</span>}
+                  </Td>
+                  <Td r>{ds.value != null ? money(Number(ds.value)) : "—"}</Td>
+                  <Td>{dateFmt(ds.created_at)}</Td>
+                </tr>
+              );
+            })}
+          </MiniTable>
+          {d.dossiers.length >= 25 && <p className="micro">Showing the 25 most recent — open Operations for the full list.</p>}
+        </div>
       )}
 
       {tab === "Financial" && (

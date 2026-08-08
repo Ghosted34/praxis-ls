@@ -17,6 +17,11 @@ for (const k of [
   "DEEPSEEK_API_KEY",
   "OPENAI_API_KEY",
   "SMTP_HOST", "SMTP_USER", "SMTP_PASS",
+  // Mail-fallback defaults: a developer .env may set MAIL_FALLBACK_DOMAIN
+  // (e.g. nmail.praxisls.com) for real runtime, which would otherwise leak into
+  // mail-fallback.test.js and break its assertions against the code defaults.
+  // Pin them empty so the service's own "praxisls.com" fallbacks apply.
+  "MAIL_FALLBACK_DOMAIN", "MAIL_DEFAULT_FROM", "MAIL_SUPPORT_FROM", "MAIL_FALLBACK_FROM_NAME",
   // A unit test must never make a network call. error-reporter.report() POSTs
   // to ALERT_WEBHOOK_URL, and the orchestration dispatcher calls it when an
   // event goes DEAD — so a developer with a real webhook in .env had that path

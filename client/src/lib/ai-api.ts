@@ -82,6 +82,16 @@ export type AiHistoryMessage = {
   ai_message_id: string;
   role: "user" | "assistant";
   content: string;
+  /**
+   * The grounding the answer was given when it was written (0521).
+   *
+   * NULL on any message stored before that migration, and on every user turn —
+   * a question cites nothing. Both are `null | undefined | []` at the type level
+   * for the same reason the UI renders on presence: "we did not record this" and
+   * "this consulted nothing" must not become the same thing on screen.
+   */
+  sources?: AiSourceLike[] | null;
+  trace?: string[] | null;
   created_at: string;
 };
 export type AiHistory = { conversation_id: string; messages: AiHistoryMessage[] };

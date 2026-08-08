@@ -103,11 +103,19 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
     fetchAiHistory(id)
       .then((h) => {
         setConversationId(h.conversation_id);
+        // Grounding comes back WITH the transcript (0521). It used to be dropped
+        // here — the map built `{id, role, text}` and threw `sources`/`trace`
+        // away — so reopening a conversation emptied the Sources tab and removed
+        // every trace disclosure from answers that visibly had both minutes
+        // earlier. `?? undefined` because the columns are null for anything
+        // stored before the migration, and the renderers test presence.
         setTurns(
           (h.messages || []).map((m) => ({
             id: m.ai_message_id || nextId(),
             role: m.role === "user" ? "user" : "assistant",
             text: m.content,
+            sources: m.sources ?? undefined,
+            trace: m.trace ?? undefined,
           })),
         );
       })

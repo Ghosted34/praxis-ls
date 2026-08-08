@@ -52,6 +52,33 @@ const SUMMARY_WORDS = 200;
 const NARRATION_TURNS = 5;
 
 /**
+ * How many model↔tool round-trips one turn may take before the answer must be
+ * prose.
+ *
+ * WHY THIS EXISTS AT ALL. There used to be exactly one: the model called its
+ * reads, the rows came back, and the follow-up call was made WITHOUT tools so it
+ * could only narrate. That is fine for "list my clients" and wrong for every
+ * question this ERP is actually asked, because a real question is a chain — find
+ * the invoice, map it to a client, read that client's terms, then answer. The
+ * model would take step one, say "let me check the client list", and the turn
+ * would end there: no second read was possible, so a sentence of intent became
+ * the final answer. The user asked for two things and got neither, and the trace
+ * read "1 step" because one step was the ceiling.
+ *
+ * WHY IT IS BOUNDED, and why the bound is small. AI spend is capped per tenant
+ * per budget period (`governance.canUseFeature` hard-blocks on it), so an
+ * unbounded loop does not hang — it silently eats somebody's month. Five is
+ * sized to the chains this product has: two or three lookups plus a synthesis.
+ *
+ * WHY THE LAST ROUND DROPS THE TOOLS. Without that, hitting the cap mid-chain
+ * ends the turn on an unanswered tool call — the exact failure this constant was
+ * introduced to remove, just moved to round five. Offering no tools on the final
+ * pass makes prose the only thing the model can return, so the turn always ends
+ * with an answer, even if it is "I could not resolve this in the steps I had".
+ */
+const MAX_TOOL_ROUNDS = 5;
+
+/**
  * Conversation memory, isolated here so a failure in it can never take down an
  * answer. History is an enhancement: if the tables are unreachable the assistant
  * must still respond, just without recall — the same best-effort contract the
@@ -80,11 +107,31 @@ const history_ = {
       return { conversationId: conversationId || null, turns: [], summary: null };
     }
   },
-  async save(client, { conversationId, question, answer }) {
+  /**
+   * Store the exchange, grounding included (0521).
+   *
+   * The citations and the trace ride on the ASSISTANT row and only there: they
+   * describe how the answer was reached, and a question reaches nothing. Storing
+   * them was the fix for a reopened thread coming back as bare prose — the
+   * provenance existed for exactly as long as the browser tab did.
+   *
+   * Still best-effort, and that ordering matters: the answer is already on its
+   * way to the user by the time this runs, so a failure here costs recall, never
+   * the reply.
+   */
+  async save(client, { conversationId, question, answer, sources, trace }) {
     if (!conversationId) return;
     try {
       await convo.addMessage(client, { conversationId, role: "user", content: question });
-      if (answer) await convo.addMessage(client, { conversationId, role: "assistant", content: answer });
+      if (answer) {
+        await convo.addMessage(client, {
+          conversationId,
+          role: "assistant",
+          content: answer,
+          sources: sources || [],
+          trace: trace || [],
+        });
+      }
     } catch (err) {
       logger.warn({ err }, "[ai] conversation turn not persisted");
     }
@@ -627,14 +674,6 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   // from (buildFieldMeta only offers a picker whose read is in here).
   const availableReads = new Set(tools.filter((t) => !t.is_write).map((t) => t.action_key));
   const writeCalls = [];
-  const readCalls = [];
-  for (const call of res.toolCalls) {
-    const def = defFor(call);
-    if (!def) continue;
-    (def.is_write ? writeCalls : readCalls).push({ call, def });
-  }
-
-  let answer = res.text;
 
   /**
    * What every read actually returned — the ground truth behind the citations
@@ -645,12 +684,51 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
    * egress to the model, so a row count taken from them would be a count of what
    * survived the cap, not of what was read. Nothing in this array reaches a
    * model — only a label, a route and a row count reach the browser.
+   *
+   * It accumulates ACROSS ROUNDS, so a two-hop answer cites both hops.
    */
   const readTrace = [];
 
-  if (readCalls.length && registry) {
+  /**
+   * Every piece of prose the model produced this turn, in order.
+   *
+   * ACCUMULATED, NOT REPLACED — this is the other half of the bug the loop
+   * fixes. The old code did `answer = followup.text || answer`, so the narration
+   * after a read DISCARDED whatever the model had already said. In the streaming
+   * path that text had been rendered to the user token by token; replacing it
+   * meant the reply visibly vanished the moment the trace arrived, and the
+   * transcript was persisted missing the part the user had actually read.
+   * Whatever was shown is what is stored.
+   */
+  const answerParts = [];
+
+  /**
+   * THE LOOP (see `MAX_TOOL_ROUNDS`).
+   *
+   * Each round: split this response's calls into reads and writes, keep its
+   * prose, run the reads, feed the rows back, ask again. It stops when the model
+   * stops calling reads — which is the model saying it has what it needs.
+   *
+   * A WRITE ENDS THE CHAIN. A proposed write is a question to the user, not a
+   * step the assistant may take, so the round that proposes one is the last: its
+   * reads still run (they are what the write's payload was built from), the
+   * model gets one toolless pass to explain itself, and the turn ends on the
+   * action card awaiting a human.
+   */
+  const convo = [...messages];
+  let current = res;
+  for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    const roundReads = [];
+    for (const call of current.toolCalls || []) {
+      const def = defFor(call);
+      if (!def) continue;
+      (def.is_write ? writeCalls : roundReads).push({ call, def });
+    }
+    if (current.text && current.text.trim()) answerParts.push(current.text.trim());
+    if (!roundReads.length || !registry) break;
+
     const toolMsgs = [];
-    for (const { call, def } of readCalls) {
+    for (const { call, def } of roundReads) {
       let payload = {};
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
       let content;
@@ -680,21 +758,49 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       // Cap + redact so a big list can't blow the context or leak sensitive text.
       toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
     }
-    // No tools on the follow-up: the model must now narrate the fetched data as
-    // prose (passing tools risks it re-calling reads and returning empty text). A
-    // write it wants alongside a read should be proposed in the FIRST turn, which
-    // is already captured in writeCalls.
-    const followup = await llm.chat({
+
+    // The assistant message lists only the READ calls, because only those have
+    // tool results below it — a tool_call without a matching tool message is a
+    // malformed request to every provider.
+    convo.push(
+      { role: "assistant", content: current.text || null, tool_calls: roundReads.map((r) => r.call) },
+      ...toolMsgs,
+    );
+
+    const finalPass = round === MAX_TOOL_ROUNDS || writeCalls.length > 0;
+    current = await llm.chat({
       client,
-      messages: [
-        ...messages,
-        { role: "assistant", content: res.text || null, tool_calls: readCalls.map((r) => r.call) },
-        ...toolMsgs,
-      ],
+      messages: convo,
+      ...(finalPass ? {} : { tools: offered.map(toOpenAiTool) }),
     });
-    await recordUsage(client, { user, conversationId: history.conversationId, res: followup, feature });
-    answer = followup.text || answer;
+    await recordUsage(client, { user, conversationId: history.conversationId, res: current, feature });
+    if (finalPass) {
+      if (current.text && current.text.trim()) answerParts.push(current.text.trim());
+      break;
+    }
   }
+
+  const answer = answerParts.join("\n\n") || res.text;
+
+  /**
+   * Grounding, from the reads rather than from the prose.
+   *
+   * COMPUTED BEFORE THE SAVE (0521), which is why it sits here rather than
+   * beside the return. The citations and the answer are one fact about one turn;
+   * writing the prose now and the provenance never meant a reopened conversation
+   * came back stripped of everything that made its figures checkable.
+   *
+   * `sources` never includes a write: a proposed action is what the assistant
+   * wants to DO, not what the answer stands on. It appears in the trace, which
+   * is a record of the turn, not a citation list.
+   */
+  const sources = buildSources(readTrace);
+  const trace = buildTrace({
+    reads: readTrace,
+    writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })),
+    recalled: hits.length,
+    nudged,
+  });
 
   // Persist the exchange AFTER the answer is finalised (post read-narration), so
   // the stored assistant turn is what the user actually saw — not the empty text
@@ -703,6 +809,8 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
     conversationId: history.conversationId,
     question: message,
     answer: answer || null,
+    sources,
+    trace,
   });
 
   const actions = [];
@@ -740,26 +848,13 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
 
   const batchable = actions.filter((x) => x.requires_confirmation && (!x.validation_errors || x.validation_errors.length === 0));
 
-  /**
-   * Grounding, from the reads rather than from the prose.
-   *
-   * Both fields are OMITTED when empty rather than sent as `[]`, because the
-   * client renders on presence: the trace disclosure and the sources footer both
-   * test length, and an answer that consulted nothing should show nothing rather
-   * than an empty "Trace · 0 steps". `AskResult.sources` / `.trace` are already
-   * optional on the wire (`client/src/lib/ai-api.ts`).
-   *
-   * `sources` never includes a write: a proposed action is what the assistant
-   * wants to DO, not what the answer stands on. It appears in the trace, which
-   * is a record of the turn, not a citation list.
-   */
-  const sources = buildSources(readTrace);
-  const trace = buildTrace({
-    reads: readTrace,
-    writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })),
-    recalled: hits.length,
-    nudged,
-  });
+  // Both grounding fields are OMITTED from the response when empty rather than
+  // sent as `[]`, because the client renders on presence: the trace disclosure
+  // and the sources footer both test length, and an answer that consulted
+  // nothing should show nothing rather than an empty "Trace · 0 steps".
+  // `AskResult.sources` / `.trace` are already optional on the wire
+  // (`client/src/lib/ai-api.ts`). The COLUMNS keep `[]`, which is a different
+  // statement — see 0521 on why absent and empty are not the same fact.
 
   // conversation_id is returned so the client can keep sending the same thread
   // (and so a future multi-thread UI has the handle it would need).
@@ -1159,20 +1254,40 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   const defFor = (call) => tools.find((t) => t.action_key === call.function.name);
   const availableReads = new Set(tools.filter((t) => !t.is_write).map((t) => t.action_key));
   const writeCalls = [];
-  const readCalls = [];
-  for (const call of finalToolCalls) {
-    const def = defFor(call);
-    if (!def) continue;
-    (def.is_write ? writeCalls : readCalls).push({ call, def });
-  }
-
-  let answer = fullText;
   const readTrace = [];
 
-  // ── Reads: non-streaming narration ──
-  if (readCalls.length && registry) {
+  /**
+   * THE STREAMING INVARIANT, and the whole of bug #2.
+   *
+   * Every delta yielded here must survive into `answer`, because `answer` is
+   * what the final `{type:"answer"}` event carries and the client applies that
+   * as the turn's text. The old code streamed the post-read narration as a delta
+   * (append) and then set `answer = followup.text` (replace) — so the moment the
+   * closing events landed, everything the user had watched arrive was wiped and
+   * replaced by the last paragraph alone. The same truncated text was persisted,
+   * so reopening the thread showed the damage permanently.
+   *
+   * Parts in, parts out: what is streamed is what is answered is what is stored.
+   */
+  const answerParts = [];
+  if (fullText && fullText.trim()) answerParts.push(fullText.trim());
+
+  // ── The agent loop. Mirrors `ask` exactly; see MAX_TOOL_ROUNDS. ──
+  const convo = [...messages];
+  let current = { text: fullText, toolCalls: finalToolCalls };
+  for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
+    const roundReads = [];
+    for (const call of current.toolCalls || []) {
+      const def = defFor(call);
+      if (!def) continue;
+      (def.is_write ? writeCalls : roundReads).push({ call, def });
+    }
+    // Round 1's text is already in `answerParts` (it was streamed above); later
+    // rounds are added when their delta is yielded, so this never double-counts.
+    if (!roundReads.length || !registry) break;
+
     const toolMsgs = [];
-    for (const { call, def } of readCalls) {
+    for (const { call, def } of roundReads) {
       let payload = {};
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
       let content;
@@ -1192,24 +1307,49 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       readTrace.push(step);
       toolMsgs.push({ role: "tool", tool_call_id: call.id, content: redact(content).slice(0, 6000) });
     }
-    const followup = await llm.chat({
+
+    convo.push(
+      { role: "assistant", content: current.text || null, tool_calls: roundReads.map((r) => r.call) },
+      ...toolMsgs,
+    );
+
+    const finalPass = round === MAX_TOOL_ROUNDS || writeCalls.length > 0;
+    current = await llm.chat({
       client,
-      messages: [
-        ...messages,
-        { role: "assistant", content: fullText || null, tool_calls: readCalls.map((r) => r.call) },
-        ...toolMsgs,
-      ],
+      messages: convo,
+      ...(finalPass ? {} : { tools: offered.map(toOpenAiTool) }),
     });
-    await recordUsage(client, { user, conversationId: history.conversationId, res: followup, feature });
-    if (followup.text) {
-      // Stream the narration as a delta so the client appends it.
-      yield { type: "delta", text: "\n\n" + followup.text };
-      answer = followup.text;
+    await recordUsage(client, { user, conversationId: history.conversationId, res: current, feature });
+
+    // Yield and record in the same breath, so the two can never disagree.
+    if (current.text && current.text.trim()) {
+      yield { type: "delta", text: "\n\n" + current.text.trim() };
+      answerParts.push(current.text.trim());
     }
+    if (finalPass) break;
   }
 
+  const answer = answerParts.join("\n\n");
+
+  // Grounding is built BEFORE the save (0521) so the stored turn carries its own
+  // provenance. It is emitted further down, in the closing events, because the
+  // client wants the prose on screen before the citations under it.
+  const sources = buildSources(readTrace);
+  const trace = buildTrace({
+    reads: readTrace,
+    writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })),
+    recalled: hits.length,
+    nudged,
+  });
+
   // Persist the exchange.
-  await history_.save(client, { conversationId: history.conversationId, question: message, answer: answer || null });
+  await history_.save(client, {
+    conversationId: history.conversationId,
+    question: message,
+    answer: answer || null,
+    sources,
+    trace,
+  });
 
   // ── Writes: action cards ──
   const actions = [];
@@ -1248,8 +1388,6 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   yield { type: "answer", text: answer };
   if (actions.length) yield { type: "actions", actions, batch_id: batchId };
 
-  const sources = buildSources(readTrace);
-  const trace = buildTrace({ reads: readTrace, writes: writeCalls.map(({ def }) => ({ actionKey: def.action_key })), recalled: hits.length, nudged });
   if (sources.length) yield { type: "sources", sources };
   if (trace.length) yield { type: "trace", trace };
 

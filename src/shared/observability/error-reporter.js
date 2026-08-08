@@ -106,6 +106,30 @@ function fingerprint(err, extra = {}) {
   return `${name}|${msg}|${frame}`;
 }
 
+/**
+ * Make a message safe to put in a log LINE.
+ *
+ * CodeQL "Log injection", Medium. `payload.message` is attacker-influenced —
+ * `POST /api/client-errors` is unauthenticated and takes it verbatim — and it
+ * is interpolated into pino's message string. A newline inside it forges a
+ * whole log entry: an attacker reports an error whose message contains
+ * `\n{"level":50,"msg":"payment settled"}` and the log stream now contains a
+ * line nobody wrote. Anything that later greps or ships those logs believes it.
+ *
+ * The STRUCTURED field is already safe — pino JSON-encodes it, so newlines
+ * survive as `\n` inside a string. Only the free-text line needs this, which is
+ * why the fix is here and not in the scrubber.
+ */
+function logSafe(text, max = 300) {
+  return String(text ?? "")
+    // Newlines and tabs collapse to a space \u2014 that is the forgery vector.
+    // C0 controls go entirely: a bare \u001b can inject an ANSI escape into
+    // whatever renders the log, and \b can rewrite a terminal line.
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .slice(0, max);
+}
+
 function withinRateLimit() {
   const now = Date.now();
   if (now - windowStart > 60_000) {
@@ -226,7 +250,7 @@ function report(err, meta = {}) {
     if (!NOTIFY_SEVERITIES.has(payload.severity)) {
       logger.info(
         { err_report: { ...payload, stack: undefined }, reported: false },
-        `recorded ${payload.severity} (${payload.origin}): ${payload.message}`,
+        `recorded ${payload.severity} (${payload.origin}): ${logSafe(payload.message)}`,
       );
       return Promise.resolve({ reported: false, reason: "not_notifiable", fingerprint: fp });
     }
@@ -254,7 +278,7 @@ function report(err, meta = {}) {
       const level = payload.severity === "warning" ? "warn" : "error";
       logger[level](
         { err_report: { ...payload, stack: undefined }, reported: ok },
-        `reported ${payload.origin} error: ${payload.message}`,
+        `reported ${payload.origin} error: ${logSafe(payload.message)}`,
       );
       return { reported: ok, fingerprint: fp, suppressed };
     });

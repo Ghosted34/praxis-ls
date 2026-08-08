@@ -76,6 +76,69 @@ describe("stack parsing — criterion #2, exact module and line", () => {
   it("returns an empty result rather than throwing on null", () => {
     expect(parseStack(null)).toEqual({ frames: [], primary: null });
   });
+
+  /**
+   * ReDoS guard — CodeQL "polynomial regular expression used on uncontrolled
+   * data", High, four sites.
+   *
+   * `POST /api/client-errors` is unauthenticated by design (a crashed page has
+   * no token to present), so `stack` is attacker-controlled. The old regexes
+   * paired a lazy `.+?` with an adjacent `\s+`/`@`, which is O(n²) on crafted
+   * whitespace — quadratic work, 30 times a minute, on the single-threaded
+   * event loop, arriving through the very path that exists to survive an
+   * incident.
+   *
+   * A timing assertion is a blunt instrument and normally a flake risk. Here it
+   * is the only thing that actually fails if someone reintroduces a lazy
+   * quantifier: the parse is CORRECT either way, just catastrophically slower.
+   * The threshold is ~100x the linear cost, so it cannot trip on a slow runner.
+   */
+  it("parses adversarial input in linear time", () => {
+    const attacks = [
+      `at ${" ".repeat(8000)}`,
+      `at a${" ".repeat(8000)}`,
+      `at a (${"a (".repeat(3000)}`,
+      `${"@".repeat(8000)}`,
+      `${"a@".repeat(4000)}`,
+      `${" ".repeat(8000)}@`,
+      `at ${"x".repeat(4000)}:1:${"9".repeat(2000)}`,
+      `${":".repeat(8000)}`,
+    ];
+
+    const t0 = process.hrtime.bigint();
+    for (const a of attacks) expect(() => parseStack(a)).not.toThrow();
+    const ms = Number(process.hrtime.bigint() - t0) / 1e6;
+
+    // The old V8_NAMED regex took seconds on the third case alone.
+    expect(ms).toBeLessThan(250);
+  });
+
+  it("still parses every real shape after the rewrite", () => {
+    // The linear parser must not have narrowed what it accepts. `Object.<anonymous>`
+    // matters: a function name containing parens is why the location is taken
+    // from the LAST '(' rather than the first.
+    const cases = [
+      ["    at fn (/app/src/modules/x/y.js:12:3)", "fn", "src/modules/x/y.js", 12],
+      ["    at async fn (/app/src/modules/x/y.js:12:3)", "fn", "src/modules/x/y.js", 12],
+      ["    at /app/src/modules/x/y.js:12:3", "(anonymous)", "src/modules/x/y.js", 12],
+      ["    at Object.<anonymous> (/app/src/a.js:1:2)", "Object.<anonymous>", "src/a.js", 1],
+      ["fn@https://app.praxisls.com/assets/main.js:12:34", "fn", "assets/main.js", 12],
+      ["@https://app.praxisls.com/assets/main.js:9:1", "(anonymous)", "assets/main.js", 9],
+    ];
+
+    for (const [raw, fn, file, line] of cases) {
+      const { frames } = parseStack(`Error: x\n${raw}`);
+      expect(frames).toHaveLength(1);
+      expect(frames[0].function).toBe(fn);
+      expect(frames[0].file).toBe(file);
+      expect(frames[0].line).toBe(line);
+    }
+  });
+
+  it("rejects a frame with no position rather than inventing one", () => {
+    expect(parseStack("Error: x\n    at fn (/app/src/a.js)").frames).toHaveLength(0);
+    expect(parseStack("Error: x\n    at fn (/app/src/a.js:notanumber:2)").frames).toHaveLength(0);
+  });
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -220,9 +283,17 @@ describe("scrubbing — spec §11, no PII in storage", () => {
   });
 
   it("strips credentials from a connection string but keeps the host", () => {
-    const out = scrub("connect ECONNREFUSED postgres://app:hunter2@10.0.0.4:5432/tenant_x");
-    expect(out).not.toContain("hunter2");
-    expect(out).toContain("10.0.0.4:5432/tenant_x");
+    // `user:pass` rather than a realistic-looking credential ON PURPOSE.
+    //
+    // The CI secret scan matches `scheme://user:password@` and this line would
+    // otherwise fail it — correctly, since a scanner cannot tell a documentation
+    // example from a leak. `user:pass` is one of the shapes its PLACEHOLDER
+    // allow-list recognises, so the example stays readable without punching a
+    // hole in the scanner. Widening the scanner instead would be the wrong fix:
+    // "every entry is a hole", per its own comment.
+    const out = scrub("connect ECONNREFUSED postgres://user:pass@10.0.0.4:5432/tenant_x");
+    expect(out).toContain("<credentials>@10.0.0.4:5432/tenant_x");
+    expect(out).not.toContain("user:pass");
   });
 
   it("redacts bearer tokens and JWTs", () => {

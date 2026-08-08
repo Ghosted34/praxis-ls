@@ -28,11 +28,20 @@ const SCRIPT = path.join(__dirname, "../../scripts/db/check-migration-idempotenc
  */
 function loadViolations() {
   const src = fs.readFileSync(SCRIPT, "utf8").replace(/process\.exit\(main\(\)\);?\s*$/, "module.exports = { violations };");
-  const tmp = path.join(os.tmpdir(), `idem-${process.pid}.js`);
+  // mkdtempSync, not a predictable name in the shared temp dir.
+  //
+  // CodeQL "Insecure temporary file", High: `os.tmpdir()/idem-<pid>.js` is
+  // guessable, world-writable on a CI runner, and this file is then REQUIRED —
+  // so anyone who can predict the name can pre-create a symlink and get their
+  // own code executed inside the test process. mkdtempSync creates a
+  // 0700 directory with a random suffix, which removes both the guess and the
+  // pre-creation.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "praxis-idem-"));
+  const tmp = path.join(dir, "rules.js");
   fs.writeFileSync(tmp, src);
 
   const mod = require(tmp);
-  fs.unlinkSync(tmp);
+  fs.rmSync(dir, { recursive: true, force: true });
   return mod.violations;
 }
 

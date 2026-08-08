@@ -10,7 +10,7 @@
  *
  *     error: duplicate key value violates unique constraint "user_email_key"
  *            DETAIL: Key (email)=(marie@client.cm) already exists.
- *     error: connect ECONNREFUSED postgres://app:hunter2@10.0.0.4:5432/tenant_x
+ *     error: connect ECONNREFUSED postgres://user:pass@10.0.0.4:5432/tenant_x
  *     Error: 401 from provider (Authorization: Bearer eyJhbGciOi…)
  *
  *   There is no path to point pino at. Every one of those reached
@@ -62,7 +62,7 @@ const KEY_ALTERNATION = [...SENSITIVE_KEYS]
 /**
  * Ordered. Earlier rules consume text that later, broader rules would otherwise
  * mangle — the connection-string rule has to run before the generic key=value
- * rule, or `postgres://app:hunter2@host` loses only the word "pass".
+ * rule, or `postgres://user:pass@host` loses only the word "pass".
  */
 const RULES = [
   // ── Credentials in connection strings ────────────────────────────────────

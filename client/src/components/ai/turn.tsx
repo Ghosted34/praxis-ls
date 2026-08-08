@@ -34,6 +34,7 @@ import { Markdown } from "@/components/markdown";
 import { ActionForm } from "@/components/action-form";
 import { Tooltip } from "@/components/ui/tooltip";
 import { CheckIcon } from "@/components/ui/icons";
+import { submitAiFeedback } from "@/lib/ai-api";
 import { artifactTitle, documentBody, extractSources, extractTables, isLongForm, mergeSources, type AiSource, type AiTable } from "./grounding";
 import {
   CanvasIcon,
@@ -497,14 +498,36 @@ function TurnToolbar({
       <ToolButton
         label="Good answer"
         active={vote === "up"}
-        onClick={() => setVote((v) => (v === "up" ? null : "up"))}
+        onClick={() => {
+          const next = vote === "up" ? null : "up";
+          setVote(next);
+          if (next) {
+            submitAiFeedback({
+              conversation_id: (turn as any).conversationId,
+              answer: turn.text,
+              vote: next,
+              action_keys: turn.actions?.map((a) => a.action_key),
+            }).catch(() => {}); // fire-and-forget — feedback failure is silent
+          }
+        }}
       >
         <ThumbUpIcon />
       </ToolButton>
       <ToolButton
         label="Bad answer"
         active={vote === "down"}
-        onClick={() => setVote((v) => (v === "down" ? null : "down"))}
+        onClick={() => {
+          const next = vote === "down" ? null : "down";
+          setVote(next);
+          if (next) {
+            submitAiFeedback({
+              conversation_id: (turn as any).conversationId,
+              answer: turn.text,
+              vote: next,
+              action_keys: turn.actions?.map((a) => a.action_key),
+            }).catch(() => {}); // fire-and-forget — feedback failure is silent
+          }
+        }}
       >
         <ThumbDownIcon />
       </ToolButton>

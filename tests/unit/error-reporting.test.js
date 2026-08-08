@@ -43,6 +43,21 @@ beforeAll(async () => {
 
 afterAll(() => new Promise((r) => hook.close(r)));
 
+/**
+ * `report()` persists before it dedupes (see error-reporter's comment on why),
+ * and `persist()` arms a 2s flush timer. This file never flushes, so without
+ * this the timer outlives the suite, fires after teardown, and lazily requires
+ * the platform pool into an environment that no longer exists — Jest reports it
+ * as "a worker process has failed to exit gracefully".
+ *
+ * `flush()` now clears its own timer, which closes the common path; this closes
+ * the one where nothing ever flushes at all.
+ */
+afterEach(() => {
+
+  require("../../src/shared/observability/error-store").__reset();
+});
+
 /** Give the fire-and-forget POST time to land. */
 const settle = () => new Promise((r) => setTimeout(r, 150));
 
@@ -196,6 +211,123 @@ describe("OBS-E1 — only real failures page anyone", () => {
     expect(res.body.error.code).toBe("VALIDATION_ERROR");
     // The point of the test is unchanged: a client error pages nobody.
     expect(received).toHaveLength(0);
+  });
+});
+
+/**
+ * Spec §2.3 pt 4 — "Backend must capture … API validation failures".
+ *
+ * This was deliberately NOT done for most of the module's life, and the reason
+ * was sound: a channel whose first week is "email is required" gets muted. The
+ * requirement and the reason are reconciled by the five-level scheme — captured
+ * at `notice`, which records and counts but never notifies.
+ *
+ * The test above ("does NOT report a validation error") still passes unchanged,
+ * and that is the point: it measures what reaches the WEBHOOK, and nothing here
+ * changes that answer. These assert the other half — that it reaches the STORE.
+ */
+describe("§2.3 pt 4 — validation failures are recorded, never paged", () => {
+  const STORE = "../../src/shared/observability/error-store";
+
+  /** Capture what the store is asked to persist, without a database. */
+  function captureStore() {
+    const store = require(STORE);
+    const rows = [];
+    store.__reset();
+    store.__setQuery(async (_sql, params) => {
+      rows.push(params);
+      return { rows: [] };
+    });
+    return { store, rows };
+  }
+
+  function appThrowingValidation() {
+    const { errorHandler } = require("../../src/middleware/error-handler");
+    const { ZodError } = require("zod");
+    const app = express();
+    app.use((req, _res, next) => { req.request_id = "rid-422"; next(); });
+    app.post("/signup", () => {
+      throw new ZodError([
+        { code: "custom", path: ["email"], message: "Required" },
+        { code: "custom", path: ["password"], message: "Too short" },
+      ]);
+    });
+    app.use(errorHandler);
+    return app;
+  }
+
+  it("persists the failure at level `notice`", async () => {
+    freshReporter();
+    const { store, rows } = captureStore();
+
+    await request(appThrowingValidation()).post("/signup").send({}).expect(422);
+    await settle();
+    await store.flush();
+
+    expect(rows).toHaveLength(1);
+    // UPSERT params: [tenant, signature, level, origin, message, …]
+    expect(rows[0][2]).toBe("notice");
+    expect(rows[0][4]).toContain("email, password");
+  });
+
+  it("still reaches NO ONE — the 422 pages nobody, exactly as before", async () => {
+    freshReporter();
+    const { store } = captureStore();
+
+    await request(appThrowingValidation()).post("/signup").send({}).expect(422);
+    await settle();
+    await store.flush();
+
+    expect(received).toHaveLength(0);
+  });
+
+  it("does not spend the outbound rate limit that a real 500 needs", async () => {
+    // The ceiling is 20 reports a minute. If a broken form could burn it, a
+    // genuine 500 in the same minute would be dropped — noise starving signal.
+    const rep = freshReporter();
+    const { store } = captureStore();
+
+    const app = appThrowingValidation();
+    for (let i = 0; i < 30; i += 1) {
+
+      await request(app).post("/signup").send({}).expect(422);
+    }
+    await settle();
+
+    // A real error afterwards must still get through.
+    await rep.report(new Error("the actual outage"), {});
+    await settle();
+    await store.flush();
+
+    expect(received.some((r) => r && r.message === "the actual outage")).toBe(true);
+  });
+
+  it("groups repeated bad input into ONE row rather than one per attempt", async () => {
+    // A ZodError's own message is a JSON dump of every issue, so passing it
+    // through would fingerprint differently for each combination of bad fields
+    // and one broken form would produce hundreds of groups. The synthesised
+    // message keys on route + sorted field names instead.
+    freshReporter();
+    const { store, rows } = captureStore();
+
+    const app = appThrowingValidation();
+    for (let i = 0; i < 5; i += 1) {
+
+      await request(app).post("/signup").send({}).expect(422);
+    }
+    await settle();
+    await store.flush();
+
+    // NOT "one statement". The requests are sequential and each takes longer
+    // than the 250ms leading edge, so several flush cycles legitimately occur —
+    // the same reason the store batches at all. Grouping is done by the UPSERT's
+    // ON CONFLICT (signature), so the property to assert is that every statement
+    // carries the SAME signature and the counts add up to the attempts.
+    const signatures = new Set(rows.map((r) => r[1]));
+    expect(signatures.size).toBe(1);
+
+    const COUNT = rows[0].length - 1;
+    expect(rows.reduce((n, r) => n + r[COUNT], 0)).toBe(5);
   });
 });
 

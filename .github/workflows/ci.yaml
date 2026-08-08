@@ -279,6 +279,33 @@ jobs:
         # Stops the backlog growing while DATA 3.5 is worked.
         run: node scripts/db/check-migration-reversibility.js
 
+      - name: Migrations are rerunnable, and applied ones are immutable
+        # Two guards in one script, and the second is what makes the first safe.
+        #
+        # (1) A NEW migration must be idempotent. The trigger was a real
+        #     incident: two files written with the same number, one renamed to
+        #     resolve the collision, and the next migrate run died on "relation
+        #     already exists". The ledger keys on FILENAME, so a rename makes an
+        #     applied migration look new — see doc/DB_ARCHITECTURE.md §8.1 and
+        #     scripts/db/mark-migration-applied.js, which is the actual remedy.
+        #     Idempotency is the seatbelt, not the fix: a file that fails part
+        #     way re-runs whole, provision-tenant replays the set, and the job
+        #     below applies the tenant set twice on purpose.
+        #
+        # (2) A BASELINED migration must not change, byte for byte. This is the
+        #     half that stops (1) becoming a liability. `IF NOT EXISTS` silently
+        #     skips a table whose definition CHANGED — audit DATA 3.3, where
+        #     notification_preference was declared twice with different columns
+        #     and `created_at` ended up existing on no database at all. Editing
+        #     an applied migration makes a fresh database differ from a live one
+        #     with nothing anywhere reporting it. A changed definition goes in a
+        #     NEW migration.
+        #
+        # The 127 pre-existing files are grandfathered, same reasoning as the
+        # reversibility gate above: rewriting a migration that has already run in
+        # production is a bigger risk than the bug. `--report` shows the backlog.
+        run: node scripts/db/check-migration-idempotency.js
+
       - name: Destructive migrations must be declared
         # OBS-I3. `deploy.sh` applies migrations to EVERY tenant database before
         # the app rolls, the convention "keep them additive" was enforced by

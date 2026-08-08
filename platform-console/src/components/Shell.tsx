@@ -3,6 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { clearSession, session, can } from "@/lib/api";
 import { initials } from "@/lib/format";
 import { useToast } from "@/components/Toast";
+import { NotificationBell } from "@/components/NotificationBell";
 
 type Tab = { to: string; label: string; cap?: string };
 // `cap` (when set) hides the tab unless the signed-in role has that capability.
@@ -87,6 +88,10 @@ export function Shell({ children }: { children: ReactNode }) {
         </nav>
         <div className="grow" />
         <div className="row" style={{ gap: 12 }}>
+          {/* Not capability-gated: a notification addressed to you is yours,
+              and hiding the bell from a role that can still be SENT something
+              is how a message goes undelivered with no error anywhere. */}
+          <NotificationBell />
           <div style={{ textAlign: "right", lineHeight: 1.15 }}>
             <div style={{ fontSize: 12.5, fontWeight: 600 }}>{u?.full_name || u?.email || "—"}</div>
             <div className="muted" style={{ fontSize: 11 }}>{u?.role || ""}</div>

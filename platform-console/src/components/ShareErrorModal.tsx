@@ -50,14 +50,17 @@ export function ShareErrorModal({ errorId, onClose }: { errorId: string; onClose
     if (!toUser) return toast("Pick a recipient first");
     setSending(true);
     try {
-      // The in-house channel reuses the console's existing notification
-      // surface; until that endpoint exists the payload is copied so the
-      // escalation is still actionable rather than silently dropped.
-      await copy(
-        `${targets?.in_house.title}\n${targets?.in_house.body}\n\n${note}`.trim(),
-        "Notification",
-      );
-      toast("Notification payload copied — paste to the recipient");
+      // Sends `error_id`, not a rendered title and body. The server rebuilds
+      // both from the error, so the templates cannot drift between the bell and
+      // the email, and a client cannot put arbitrary text into a colleague's
+      // alert feed attributed to the system.
+      await errorsApi.sendNotification({ to_user_id: toUser, error_id: errorId, note: note || undefined });
+      const who = users.find((u) => u.platform_user_id === toUser);
+      toast(`Sent to ${who?.full_name || who?.email || "recipient"}`);
+      setNote("");
+      setToUser("");
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Could not send notification");
     } finally {
       setSending(false);
     }
@@ -96,7 +99,9 @@ export function ShareErrorModal({ errorId, onClose }: { errorId: string; onClose
           <div className="card">
             <div className="bd" style={{ padding: 12 }}>
               <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 2 }}>🔔 In-house notification</div>
-              <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>Send to a platform team member</div>
+              <div className="muted" style={{ fontSize: 11.5, marginBottom: 10 }}>
+                Send to a platform team member — appears in their bell, and stays there until read
+              </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 <select value={toUser} onChange={(e) => setToUser(e.target.value)}>
                   <option value="">Select recipient…</option>

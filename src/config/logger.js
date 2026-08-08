@@ -182,4 +182,9 @@ const logger = isDev
     })
   : pino(baseConfig);
 
-module.exports = { logger, REDACT_PATHS, contextMixin };
+// SENSITIVE_KEYS is exported alongside REDACT_PATHS for the same reason
+// REDACT_PATHS is: shared/observability/scrub.js has to redact the same key
+// NAMES out of free-form error text, where pino's path-based redaction cannot
+// reach. Restating the list there would let the two drift, and the half that
+// drifts is the half nobody is testing.
+module.exports = { logger, REDACT_PATHS, SENSITIVE_KEYS, contextMixin };

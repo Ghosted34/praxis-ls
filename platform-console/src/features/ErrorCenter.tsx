@@ -19,13 +19,21 @@ import {
   type ErrorLevel, type ErrorQuery, type ErrorRow, type ErrorStats, type Trends,
 } from "@/lib/errors-api";
 import { platform, can } from "@/lib/api";
+import type { TenantListRow } from "@/lib/types";
 import { useErrorStream } from "@/lib/useErrorStream";
 import { Button, Empty, Loading, PageHeader, Pill } from "@/components/ui";
 import { useToast } from "@/components/Toast";
 import { ErrorDetailDrawer } from "@/components/ErrorDetailDrawer";
 import { ShareErrorModal } from "@/components/ShareErrorModal";
 
-type Tenant = { slug: string; name: string };
+// The scope dropdown needs a slug and something human to show next to it.
+//
+// This was a local `{ slug: string; name: string }`, and `name` is not a field
+// GET /tenants returns — platform.tenant's column is `display_name`, so every
+// option silently fell through to the slug. Structural typing means TypeScript
+// had nothing to object to: the shape was simply declared wrong. Picking the
+// fields off the real TenantListRow is what stops that being possible.
+type Tenant = Pick<TenantListRow, "slug" | "display_name">;
 
 const TIME_RANGES = [
   { label: "Last hour", hours: 1 },
@@ -58,6 +66,11 @@ export function ErrorCenter() {
   const [tenants, setTenants] = useState<Tenant[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  /** Appendix A.8 — multi-select for bulk copy. Keyed by error id. */
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  /** §3.4 "Custom" time range. Empty strings until the user picks a date. */
+  const [customFrom, setCustomFrom] = useState("");
+  const [customTo, setCustomTo] = useState("");
 
   const [openId, setOpenId] = useState<string | null>(params.get("id"));
   const [shareId, setShareId] = useState<string | null>(null);
@@ -70,7 +83,18 @@ export function ErrorCenter() {
   }, [search]);
 
   const query: ErrorQuery = useMemo(() => {
-    const from = new Date(Date.now() - hours * 3600_000).toISOString();
+    // §3.4's "Custom" range. `hours === 0` is the sentinel for it, so the five
+    // preset windows keep working off a single number and only the custom case
+    // carries two dates. The API has always accepted from/to — it was only the
+    // control that was missing.
+    const custom = hours === 0 && (customFrom || customTo);
+    const from = custom
+      ? (customFrom ? new Date(`${customFrom}T00:00:00`).toISOString() : undefined)
+      : new Date(Date.now() - hours * 3600_000).toISOString();
+    // Inclusive of the chosen end DAY, not midnight at its start — "1st to the
+    // 3rd" that silently excludes the 3rd is the classic date-range bug.
+    const to = custom && customTo ? new Date(`${customTo}T23:59:59.999`).toISOString() : undefined;
+
     return {
       status,
       level: levels.length ? levels.join(",") : undefined,
@@ -80,10 +104,24 @@ export function ErrorCenter() {
       search: debouncedSearch || undefined,
       sort,
       from,
+      to,
       page,
       limit: 20,
     };
-  }, [status, levels, scope, moduleF, debouncedSearch, sort, hours, page]);
+  }, [status, levels, scope, moduleF, debouncedSearch, sort, hours, customFrom, customTo, page]);
+
+  /**
+   * The activity chart is sized in HOURS, but a custom range is two dates.
+   * `hours === 0` is the custom sentinel and the trends endpoint rejects a
+   * non-positive value (422), so derive a real span from the dates and clamp to
+   * the 720h retention ceiling the server enforces anyway.
+   */
+  const trendHours = useMemo(() => {
+    if (hours !== 0) return hours;
+    if (!query.from) return 24;
+    const span = (query.to ? Date.parse(query.to) : Date.now()) - Date.parse(query.from);
+    return Math.min(720, Math.max(1, Math.ceil(span / 3600_000)));
+  }, [hours, query.from, query.to]);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -91,7 +129,7 @@ export function ErrorCenter() {
       const [feed, s, t] = await Promise.all([
         errorsApi.list(query),
         errorsApi.stats(query),
-        errorsApi.trends({ ...query, hours }),
+        errorsApi.trends({ ...query, hours: trendHours }),
       ]);
       setRows(feed.items);
       setTotal(feed.total);
@@ -103,7 +141,7 @@ export function ErrorCenter() {
     } finally {
       setLoading(false);
     }
-  }, [query, hours]);
+  }, [query, trendHours]);
 
   useEffect(() => {
     void load();
@@ -186,6 +224,38 @@ export function ErrorCenter() {
     }
   };
 
+  /**
+   * Appendix A.8 — copy several errors at once.
+   *
+   * The legacy PHP monitor had this and it is the difference between pasting
+   * one error into a model and pasting the SHAPE of an incident. Three related
+   * failures across two modules are usually one cause, and a model given all
+   * three says so; given them one at a time it explains each in isolation.
+   *
+   * Sequential rather than Promise.all: this is N share-payload builds, and
+   * firing twenty at once at a database already under incident load is the
+   * behaviour the escalation evaluator was deliberately designed to avoid.
+   */
+  const copySelected = async () => {
+    const ids = [...selected];
+    if (!ids.length) return;
+    try {
+      const blocks: string[] = [];
+      for (const id of ids) {
+
+        const s = await errorsApi.share(id);
+        blocks.push(s.plain);
+      }
+      await navigator.clipboard.writeText(
+        `${ids.length} errors from Praxis LS — ${new Date().toISOString()}\n\n${blocks.join("\n\n──────────\n\n")}`,
+      );
+      toast(`${ids.length} error${ids.length === 1 ? "" : "s"} copied`);
+      setSelected(new Set());
+    } catch {
+      toast("Copy failed");
+    }
+  };
+
   const doExport = async () => {
     try {
       const blob = await errorsApi.exportUrl({ ...query, format: "csv" });
@@ -240,7 +310,7 @@ export function ErrorCenter() {
           <option value="all">All scopes</option>
           <option value="platform">Platform-wide</option>
           {tenants.map((t) => (
-            <option key={t.slug} value={t.slug}>{t.name || t.slug}</option>
+            <option key={t.slug} value={t.slug}>{t.display_name || t.slug}</option>
           ))}
         </select>
         <select value={moduleF} onChange={(e) => setModuleF(e.target.value)} style={{ width: "auto" }}>
@@ -253,7 +323,29 @@ export function ErrorCenter() {
           {TIME_RANGES.map((r) => (
             <option key={r.hours} value={r.hours}>{r.label}</option>
           ))}
+          {/* §3.4 — "Custom", with the date pair the spec's table asks for. */}
+          <option value={0}>Custom…</option>
         </select>
+        {hours === 0 && (
+          <>
+            <input
+              type="date"
+              value={customFrom}
+              max={customTo || undefined}
+              onChange={(e) => setCustomFrom(e.target.value)}
+              aria-label="From date"
+              style={{ width: "auto" }}
+            />
+            <input
+              type="date"
+              value={customTo}
+              min={customFrom || undefined}
+              onChange={(e) => setCustomTo(e.target.value)}
+              aria-label="To date"
+              style={{ width: "auto" }}
+            />
+          </>
+        )}
         <select value={sort} onChange={(e) => setSort(e.target.value as typeof sort)} style={{ width: "auto" }}>
           <option value="recent">Most recent</option>
           <option value="count">Most frequent</option>
@@ -304,11 +396,43 @@ export function ErrorCenter() {
         </Empty>
       ) : (
         <>
+          {/* Selection bar appears only once something is selected — an always-on
+              "0 selected" toolbar is a permanent reminder of a feature most
+              visits do not use. */}
+          {selected.size > 0 && (
+            <div
+              className="row between"
+              style={{
+                marginBottom: 10, padding: "8px 12px", borderRadius: 8,
+                background: "var(--panel-2, rgba(0,0,0,.25))", border: "1px solid var(--line-2)",
+              }}
+            >
+              <span style={{ fontSize: 12.5, fontWeight: 600 }}>
+                {selected.size} selected
+              </span>
+              <div className="row" style={{ gap: 8 }}>
+                <Button size="sm" variant="primary" onClick={() => void copySelected()}>
+                  📋 Copy {selected.size}
+                </Button>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
+              </div>
+            </div>
+          )}
+
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             {rows.map((row) => (
               <ErrorCard
                 key={row.id}
                 row={row}
+                selected={selected.has(row.id)}
+                onToggleSelect={() =>
+                  setSelected((cur) => {
+                    const next = new Set(cur);
+                    if (next.has(row.id)) next.delete(row.id);
+                    else next.add(row.id);
+                    return next;
+                  })
+                }
                 onOpen={() => setOpenId(row.id)}
                 onResolve={() => void resolve(row)}
                 onCopy={() => void copyPlain(row)}
@@ -426,9 +550,11 @@ function ActivityChart({ trends }: { trends: Trends }) {
 
 /* ── Feed card (§3.1) ───────────────────────────────────────────────────── */
 function ErrorCard({
-  row, onOpen, onResolve, onCopy, onShare, canResolve,
+  row, selected, onToggleSelect, onOpen, onResolve, onCopy, onShare, canResolve,
 }: {
   row: ErrorRow;
+  selected: boolean;
+  onToggleSelect: () => void;
   onOpen: () => void;
   onResolve: () => void;
   onCopy: () => void;
@@ -437,10 +563,23 @@ function ErrorCard({
 }) {
   const st = LEVEL_STYLE[row.level];
   return (
-    <div className="card" style={{ borderLeft: `3px solid ${st.fg}` }}>
+    <div
+      className="card"
+      style={{
+        borderLeft: `3px solid ${st.fg}`,
+        ...(selected ? { outline: "1px solid var(--accent, #3B82F6)", outlineOffset: -1 } : {}),
+      }}
+    >
       <div className="bd" style={{ padding: "12px 14px" }}>
         <div className="row between wrap" style={{ gap: 8, marginBottom: 6 }}>
           <div className="row" style={{ gap: 8, flexWrap: "wrap" }}>
+            <input
+              type="checkbox"
+              checked={selected}
+              onChange={onToggleSelect}
+              aria-label={`Select ${row.message.slice(0, 60)}`}
+              style={{ marginRight: 2, cursor: "pointer" }}
+            />
             <span
               className="pill"
               style={{ background: st.bg, color: st.fg, border: `1px solid ${st.border}`, fontWeight: 700 }}
@@ -474,6 +613,14 @@ function ErrorCard({
         </div>
 
         <div className="row wrap" style={{ gap: 6 }}>
+          {/*
+            §3.1's action row names Explain first. It opens the drawer rather
+            than generating inline, and that is the cost decision from §7.1
+            ("on-demand") applied to the FEED: a one-click Explain on every card
+            in a twenty-row list is twenty model calls one misclick apart. The
+            drawer is where the call is made, deliberately one step away.
+          */}
+          <Button size="sm" variant="ghost" onClick={onOpen}>🤖 Explain</Button>
           <Button size="sm" variant="ghost" onClick={onOpen}>🔍 Trace</Button>
           <Button size="sm" variant="ghost" onClick={onCopy}>📋 Copy</Button>
           <Button size="sm" variant="ghost" onClick={onShare}>🔗 Share</Button>

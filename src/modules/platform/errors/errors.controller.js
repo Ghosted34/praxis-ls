@@ -8,6 +8,8 @@ const errors = require("../../../services/platform/errors.service");
 const explainer = require("../../../services/platform/error-explain.service");
 const escalation = require("../../../services/platform/error-escalation.service");
 const share = require("../../../services/platform/error-share.service");
+const notifications = require("../../../services/platform/notifications.service");
+const health = require("../../../services/platform/health.service");
 const platformNs = require("../../../realtime/platform-ns");
 const { asyncHandler } = require("../../../utils/errors");
 
@@ -50,7 +52,7 @@ const resolve = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
-const reopen = asyncHandler(async (req, res) => res.json({ data: await errors.reopen(req.params.id) }));
+const reopen = asyncHandler(async (req, res) => res.json({ data: await errors.reopen(req.params.id, actor(req)) }));
 
 const explain = asyncHandler(async (req, res) =>
   res.json({
@@ -66,6 +68,11 @@ const explain = asyncHandler(async (req, res) =>
  *  WhatsApp, email and clipboard forms cannot drift apart across clients. */
 const shareTargets = asyncHandler(async (req, res) => {
   const row = await errors.get(req.params.id);
+  // §11 — "audit log for error resolutions and shares". Building the payload IS
+  // the share: the WhatsApp and mailto legs leave the browser without touching
+  // the server again, so this endpoint is the last point at which "who took a
+  // stack trace out of the console" can be recorded at all.
+  await errors.audit(actor(req), "error.shared", row.signature, { error_id: row.id, tenant: row.tenant_slug || null });
   res.json({ data: share.build(row, { baseUrl: share.consoleBaseUrl(req) }) });
 });
 
@@ -116,18 +123,102 @@ const ruleLog = asyncHandler(async (req, res) =>
 /** Dry-run a rule against live data before saving it — "would this have paged
  *  me?" is the question every threshold rule needs answered before it is armed. */
 const rulePreview = asyncHandler(async (req, res) =>
+  res.json({ data: await escalation.previewMatches(req.body) }),
+);
+
+// ── In-house notifications (§3.3) ───────────────────────────────────────────
+
+/**
+ * The spec's `POST /admin/notifications/push`.
+ *
+ * Gated on `errors.read` at the route, not on a notifications capability: the
+ * thing being shared is an error, so the question "may you send this" is the
+ * same question as "may you see this". A separate capability would let someone
+ * forward an error they are not allowed to open.
+ *
+ * The title and body are built SERVER-SIDE from the error id when one is given,
+ * for the same reason the share templates are — a client-supplied title on an
+ * error notification is a way to put arbitrary text in a colleague's alert
+ * feed attributed to the system.
+ */
+const notificationSend = asyncHandler(async (req, res) => {
+  const { to_user_id: toUserId, error_id: errorId, note } = req.body;
+
+  let title = "Shared with you";
+  let body = String(note || "").slice(0, 500);
+  let metadata = {};
+
+  if (errorId) {
+    const row = await errors.get(errorId);
+    const built = share.build(row, { baseUrl: share.consoleBaseUrl(req) });
+    title = built.in_house.title;
+    body = note ? `${built.in_house.body}\n\n— ${String(note).slice(0, 500)}` : built.in_house.body;
+    metadata = built.in_house.metadata;
+  }
+
+  const created = await notifications.create({
+    toUserId,
+    fromUserId: actor(req),
+    type: errorId ? "error_share" : "system",
+    title,
+    body,
+    metadata,
+  });
+  res.status(201).json({ data: created });
+});
+
+/** Everything below is scoped to the CALLER — there is no "read someone else's". */
+const notificationList = asyncHandler(async (req, res) =>
   res.json({
-    data: await escalation.matchesFor({
-      tenant_id: null,
-      level_filter: req.body.level_filter || ["fatal"],
-      threshold_count: req.body.threshold_count ?? 5,
-      threshold_window_minutes: req.body.threshold_window_minutes ?? 15,
+    data: await notifications.list(actor(req), {
+      status: req.query.status,
+      limit: req.query.limit,
+      before: req.query.before,
     }),
   }),
 );
+
+const notificationUnread = asyncHandler(async (req, res) =>
+  res.json({ data: await notifications.unreadCount(actor(req)) }),
+);
+
+const notificationRead = asyncHandler(async (req, res) =>
+  res.json({ data: await notifications.markRead(req.params.id, actor(req)) }),
+);
+
+const notificationReadAll = asyncHandler(async (req, res) =>
+  res.json({ data: await notifications.markAllRead(actor(req)) }),
+);
+
+// ── Platform health (§8.2) ──────────────────────────────────────────────────
+
+/**
+ * The spec's `GET /admin/health` — uptime % and dependency latency for the
+ * Overview widget.
+ *
+ * Distinct from the unauthenticated `/api/health/ready`, which answers "can
+ * this process serve RIGHT NOW" for a load balancer. This one answers "how has
+ * the platform behaved over the last 30 days" and is therefore historical,
+ * authenticated, and reads a table rather than probing anything.
+ */
+const healthSummary = asyncHandler(async (req, res) => {
+  const days = Number(req.query.days) || undefined;
+  const [uptime, incidents, capture] = await Promise.all([
+    health.uptime({ days }),
+    health.incidents({ days, limit: 10 }),
+    // Appendix A.5. Bundled here rather than given its own endpoint because the
+    // caller that needs it is the same widget, and a separate poll for "is the
+    // thing that tells me about problems still working" is a poll people forget
+    // to add.
+    health.captureHealth({}),
+  ]);
+  res.json({ data: { ...uptime, incidents, capture } });
+});
 
 module.exports = {
   list, recent, stats, trends, modules, get, resolve, reopen,
   explain, shareTargets, exportErrors,
   rulesList, ruleCreate, ruleUpdate, ruleDelete, ruleLog, rulePreview,
+  notificationSend, notificationList, notificationUnread, notificationRead, notificationReadAll,
+  healthSummary,
 };

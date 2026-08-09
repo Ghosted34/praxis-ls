@@ -69,11 +69,34 @@ function startWorkers() {
         // restored here, so a failed job traces back to the user action.
         const started = Date.now();
         const ctx = job.data && job.data.__ctx;
-        logger.info({ queue: p.name, job: job.name, id: job.id, request_id: ctx && ctx.request_id }, "job start");
+
+        // TENANT ATTRIBUTION FOR SCHEDULED JOBS.
+        //
+        // `__ctx` is only attached when something enqueued the job from INSIDE a
+        // request (queue-producer stamps the ambient AsyncLocalStorage). A cron
+        // fan-out has no ambient context, so every scheduled job ran with
+        // `tenant: null` — and error-reporter reads `ctx.tenant`, so a nightly
+        // fx-sync failure landed in the Error Center as **Platform-wide** even
+        // though it belongs to exactly one tenant.
+        //
+        // The tenant was never missing, only unread: every tenant-scoped job
+        // carries `tenantMeta` (the registry row) because the handler needs it
+        // to open a connection at all. Falling back to its slug fixes the whole
+        // class — fx-sync, mail-sync, orchestration-dispatch, scheduled-report —
+        // rather than one queue, and costs nothing: the row is already in hand.
+        const tenantSlug = (ctx && ctx.tenant)
+          || (job.data && job.data.tenantMeta && job.data.tenantMeta.slug)
+          || null;
+
+        logger.info({ queue: p.name, job: job.name, id: job.id, tenant: tenantSlug, request_id: ctx && ctx.request_id }, "job start");
         try {
-          const result = ctx
+          const result = (ctx || tenantSlug)
             ? await requestContext.run(
-                { tenant: ctx.tenant, userId: ctx.user_id, requestId: ctx.request_id },
+                {
+                  tenant: tenantSlug,
+                  userId: ctx && ctx.user_id,
+                  requestId: ctx && ctx.request_id,
+                },
                 () => p.handler(job),
               )
             : await p.handler(job);

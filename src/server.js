@@ -47,6 +47,34 @@ const { errorHandler, notFoundHandler } = require("./middleware/error-handler");
  * port. A wildcard cors() on a credentialed multi-tenant auth API was the prior
  * state (see doc/PHASE0_PRODUCTION_AUDIT.md).
  */
+/**
+ * A rejected origin is a CLIENT error, and has to say so.
+ *
+ * These were bare `new Error("Not allowed by CORS")` with no status, so the
+ * error handler fell through to its 500 branch: the caller got
+ * `500 INTERNAL_ERROR`, the line logged at error, and — since OBS-E1 wired the
+ * sink in — every one was persisted to platform.error_event and posted to the
+ * alert channel.
+ *
+ * It reached 27 occurrences in a day against `POST /api/graphql`, an endpoint
+ * this product does not have. That is a scanner walking the host, i.e. the
+ * allowlist WORKING, filed as if the server were broken. Exactly the failure
+ * API F-1 fixed for the other eighteen sites: "a brand-new alert channel whose
+ * first week is full of 'ticket not found' gets muted, and then it is
+ * decoration."
+ *
+ * 403 with `expose:false` — the handler's 4xx branch logs at warn and does not
+ * report, and the origin is not echoed back to whoever probed. The access log
+ * still records every one, which is where a spike in blocked origins belongs.
+ */
+function rejected(message) {
+  const err = new Error(message);
+  err.status = 403;
+  err.code = "ORIGIN_NOT_ALLOWED";
+  err.expose = false;
+  return err;
+}
+
 function buildCorsOptions() {
   const base = config.APP_BASE_DOMAIN.toLowerCase();
   const extra = new Set(
@@ -67,12 +95,12 @@ function buildCorsOptions() {
       try {
         host = new URL(origin).hostname.toLowerCase();
       } catch {
-        return cb(new Error("Bad origin"), false);
+        return cb(rejected("Bad origin"), false);
       }
       const onBaseDomain = host === base || host.endsWith("." + base);
       const devLocalhost = isDev && (host === "localhost" || host === "127.0.0.1");
       if (onBaseDomain || devLocalhost || extra.has(origin)) return cb(null, true);
-      return cb(new Error("Not allowed by CORS"), false);
+      return cb(rejected("Not allowed by CORS"), false);
     },
   };
 }

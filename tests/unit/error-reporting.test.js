@@ -360,6 +360,47 @@ describe("OBS-E2 — the browser can report", () => {
     expect(received[0].extra.kind).toBe("render");
   });
 
+  it("drops errors thrown by the user's browser EXTENSIONS", async () => {
+    // Wallet extensions inject content scripts into the page and share one
+    // window.onerror, so `Cannot redefine property: ethereum` — two wallets
+    // fighting over window.ethereum — arrived filed against Praxis, ×3.
+    // Unactionable by construction: not our code, not fixable, unbounded
+    // population. Left in, the feed fills with whatever its readers installed.
+    freshReporter();
+    const { router } = require("../../src/routes/client-errors");
+    const app = express();
+    app.use("/api", router);
+
+    const res = await request(app).post("/api/client-errors").send({
+      message: "Uncaught TypeError: Cannot redefine property: ethereum",
+      name: "TypeError",
+      stack: "TypeError: Cannot redefine property: ethereum\n    at r.inject (chrome-extension://bfnaelmomeimhlpmgjnjophhpkkoljpa/evmAsk.js:15:1)",
+    });
+    await settle();
+
+    // Still 204 — a rejected report is not an error either.
+    expect(res.status).toBe(204);
+    expect(received).toHaveLength(0);
+  });
+
+  it("still accepts an error that merely MENTIONS an extension", async () => {
+    // The filter matches the URL SCHEME, not the word. A same-origin script an
+    // extension happened to trigger is our bug and must still report.
+    freshReporter();
+    const { router } = require("../../src/routes/client-errors");
+    const app = express();
+    app.use("/api", router);
+
+    await request(app).post("/api/client-errors").send({
+      message: "Failed to load resource for chrome-extension compatibility shim",
+      name: "TypeError",
+      stack: "TypeError: x\n    at loadShim (https://smartls.praxisls.com/assets/main.js:1:2)",
+    });
+    await settle();
+
+    expect(received).toHaveLength(1);
+  });
+
   it("clamps a hostile payload", async () => {
     // The body reaches an alert channel a human reads. Treat it as untrusted.
     freshReporter();

@@ -132,14 +132,48 @@ async function _leaf(client, code) {
 }
 
 /**
- * Audit-log entries scoped to this treasury account. Same pattern
- * (`entity_ref = 'treasury_account:<id>'`) that emit.js uses everywhere.
+ * Audit entries scoped to this treasury account, from `immutable_ledger`.
+ *
+ * THIS QUERIED `audit_log`, WHICH HAS NEVER EXISTED — no tenant migration has
+ * ever created it. And because `load()` awaits this unconditionally while ONE
+ * 360 call feeds every tab, `relation "audit_log" does not exist` 500'd the
+ * entire dossier for every treasury account, every time.
+ *
+ * `immutable_ledger` (0130) is what `audit_log` was meant to be, and the match
+ * is near-exact — which is the evidence that this is the right table rather
+ * than a convenient one:
+ *
+ *   audit_log (never built)   immutable_ledger (real)
+ *   ───────────────────────   ────────────────────────
+ *   audit_id                  ledger_id
+ *   action                    action            ← same name, same meaning
+ *   actor_user_id             actor_user_id     ← same
+ *   before_snapshot           before_json
+ *   after_snapshot            after_json
+ *   occurred_at               created_at
+ *   entity_ref                entity_ref        ← same, and INDEXED
+ *
+ * NOT `event_log`, which was the first choice and the wrong one. Both tables
+ * carry `entity_ref` and both are written on every treasury mutation, but
+ * `event_log` is the workflow/notification stream — `event_type_key`, no
+ * before/after — whereas `audit()` in emit.js writes the actual audit trail
+ * here, with `before`/`after` payloads. `treasury_account.service.js` calls
+ * BOTH; the
+ * one this tab means by "every change to this account" is the ledger.
+ *
+ * `ix_ledger_entity` indexes `entity_ref`, and `trg_ledger_ro` forbids UPDATE
+ * and DELETE — so this is append-only history, which is what a timeline wants.
+ *
+ * Aliased to the shape the client already reads (`client/src/lib/treasury-api.ts`),
+ * so nothing downstream changes.
  */
 async function _timeline(client, id, limit = 25) {
   const { rows } = await client.query(
-    "SELECT audit_id, action, actor_user_id, before_snapshot, after_snapshot, occurred_at " +
-    "  FROM audit_log WHERE entity_ref = $1 " +
-    " ORDER BY occurred_at DESC LIMIT $2",
+    "SELECT ledger_id AS audit_id, action, actor_user_id, " +
+    "       before_json AS before_snapshot, after_json AS after_snapshot, " +
+    "       created_at AS occurred_at " +
+    "  FROM immutable_ledger WHERE entity_ref = $1 " +
+    " ORDER BY created_at DESC LIMIT $2",
     ["treasury_account:" + id, Math.min(Math.max(parseInt(limit, 10) || 25, 1), 200)],
   );
   return rows;
@@ -247,4 +281,10 @@ function buildReadiness(acc) {
   return { items, done, total, percent: total === 0 ? 0 : Math.round((done / total) * 100) };
 }
 
-module.exports = { load, buildReadiness };
+// `_timeline` is exported for tests only. It queried `audit_log` — a table no
+// tenant migration has ever created — and because `load()` awaits it
+// unconditionally and one 360 call feeds every tab, that 500'd the whole
+// dossier for every treasury account. Reachable only through `load`, it could
+// not be asserted without standing up the other nine sub-queries; exporting it
+// is cheaper than leaving the regression untested.
+module.exports = { load, buildReadiness, _timeline };

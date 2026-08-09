@@ -37,13 +37,29 @@ const ROW = {
   created_at: "2026-08-01T00:00:00Z",
 };
 
-/** Replace each repo method with a stub returning the given value; return a
- *  restore fn that puts the originals back. Uses direct assignment rather than
- *  jest.spyOn because the repo exports are the {...base, ...local} spread from
- *  `makeRepo`, so `get`/`update` are inherited own properties on the exports
- *  object but spyOn refuses to swap them for reasons that don't apply here. */
+/**
+ * Replace each repo method with a stub returning the given value; return a
+ * restore fn that puts the originals back. Direct assignment rather than
+ * jest.spyOn, because the repo exports are the `{...base, ...local}` spread
+ * from `makeRepo` and spyOn refuses to swap them.
+ *
+ * THE ASSERTION BELOW IS THE POINT, AND ITS ABSENCE IS WHY A BUG SHIPPED.
+ *
+ * This stubbed `repo.get`. `repo.get` does not exist — `makeRepo` returns
+ * `findById`, and only a SERVICE exposes `get` (shared/crud/resource.js:196).
+ * Because direct assignment CREATES a missing key rather than failing on it,
+ * the stub invented the method, all six tests passed, and
+ * `service_type_360.service.js` shipped calling `repo.get(...)`. Production
+ * answered `TypeError: repo.get is not a function` on every request to
+ * `GET /api/tenant/service-types/:id/360` — ×6 before anyone noticed.
+ *
+ * A mock that can conjure the API it is testing is not a test of that API. The
+ * guard makes the shape a precondition: stub something the repo does not
+ * export and the suite fails here, loudly, instead of going green against a
+ * fiction.
+ */
 function stubRepo({
-  get = ROW,
+  findById = ROW,
   templates = [],
   dictionary = { scoped: [], generic: [] },
   dossiers = [],
@@ -54,7 +70,7 @@ function stubRepo({
 } = {}) {
   const original = {};
   const replacements = {
-    get: () => Promise.resolve(get),
+    findById: () => Promise.resolve(findById),
     templatesWithStages: () => Promise.resolve(templates),
     dictionaryItemsFor: () => Promise.resolve(dictionary),
     dossiersFor: () => Promise.resolve(dossiers),
@@ -64,6 +80,15 @@ function stubRepo({
     stats: () => Promise.resolve(stats),
   };
   for (const k of Object.keys(replacements)) {
+    // Refuse to stub a method the repo does not actually have. See the header.
+    if (typeof repo[k] !== "function") {
+      throw new Error(
+        `stubRepo: service_type.repo has no \`${k}\` to stub. `
+        + "Assigning it would invent the method and test a fiction — which is exactly "
+        + "how `repo.get` reached production. Check shared/crud/resource.js for what "
+        + "makeRepo actually returns (findById, not get).",
+      );
+    }
     original[k] = repo[k];
     repo[k] = replacements[k];
   }
@@ -199,7 +224,7 @@ describe("service_type_360.dossier", () => {
   });
 
   test("throws NOT_FOUND when the service type does not exist", async () => {
-    const restore = stubRepo({ get: null });
+    const restore = stubRepo({ findById: null });
     try {
       await expect(service_360.dossier(fakeClient(), "st-missing")).rejects.toMatchObject({
         code: "NOT_FOUND",

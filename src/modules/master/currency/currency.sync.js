@@ -52,7 +52,36 @@ async function syncRates(client, { base, quotes } = {}) {
   if (!quoteCodes.length) return { base: baseCode, as_of_date: null, updated: [], skipped: [], reason: "no active quote currencies" };
 
   const url = "https://v6.exchangerate-api.com/v6/" + key + "/latest/" + baseCode;
-  const { data } = await axios.get(url, { timeout: 15000 });
+
+  // `validateStatus: () => true` — axios must NOT throw on a non-2xx here.
+  //
+  // It did, and that made the friendly branch below unreachable for exactly the
+  // failures worth naming. The nightly job surfaced as a bare
+  // `AxiosError: Request failed with status code 404` with the provider's own
+  // explanation discarded, which says nothing about whether the key is wrong,
+  // the plan lapsed, or the base currency is unsupported.
+  //
+  // The status codes matter and are distinct:
+  //   404 — the KEY SEGMENT is not a known key. exchangerate-api puts the key in
+  //         the PATH, so a stale, blank or truncated key makes the whole URL a
+  //         404 rather than an auth error. This is the one that fired.
+  //   200 + {result:"error"} — key recognised, request rejected (invalid-key on a
+  //         revoked key, inactive-account, quota-reached, unsupported-code).
+  const res = await axios.get(url, { timeout: 15000, validateStatus: () => true });
+  const data = res.data;
+
+  if (res.status === 404) {
+    // NEVER interpolate `url` — the API key is a path segment, and this message
+    // is stored in platform.error_event and rendered in the Error Center.
+    throw new Error(
+      "exchangerate-api: 404 — the API key in the request path was not recognised. "
+      + "Check integration_secret 'fx_exchangerate', the fx.exchangerate_api_key setting, "
+      + `or EXCHANGERATE_API_KEY (base was ${baseCode}).`,
+    );
+  }
+  if (res.status !== 200) {
+    throw new Error(`exchangerate-api: HTTP ${res.status}${data && data["error-type"] ? ` — ${data["error-type"]}` : ""}`);
+  }
   if (data && data.result === "error") {
     throw new Error("exchangerate-api: " + (data["error-type"] || "unknown error"));
   }

@@ -10,10 +10,16 @@
 import * as React from "react";
 import { cn } from "@/lib/cn";
 
+// `role="img"` because axe (rule aria-prohibited-attr) refuses aria-label on a
+// bare <span> — a span defaults to role "generic", which does not permit a
+// label. img is the semantically correct role for a spinner (it IS a loading
+// icon) and axe's screens.axe suite otherwise flagged every page that rendered
+// Spinner outside a <LoadingRow> wrapper.
 export const Spinner = ({ className }: { className?: string }) => (
   <span
-    className={cn("inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent", className)}
+    role="img"
     aria-label="Loading"
+    className={cn("inline-block h-5 w-5 animate-spin rounded-full border-2 border-current border-t-transparent", className)}
   />
 );
 

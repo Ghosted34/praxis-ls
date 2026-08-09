@@ -147,7 +147,7 @@ async function runDue(client, { tenantMeta = null, env = "live", actor = {} } = 
           await enqueue("email", "scheduled-report", { tenantMeta, env, to, subject: sr.name, html, attachments: attachments.length ? attachments : undefined, purpose: "reports", moduleKey: events.MODULE });
         }
       }
-    } catch (err) {
+    } catch {
       ok = false;
     }
     const next = sr.cadence === "on_event" ? null : nextRunAt(sr.cadence, new Date());

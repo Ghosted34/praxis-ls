@@ -27,7 +27,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
   "/sales": ["leads", "opportunities", "proposals", "meetings", "campaigns", "success-stories"],
   "/commercial": ["quotations", "margin-simulation", "extra-charge-simulation", "pricing-variance"],
   "/procurement": ["purchase-requests", "purchase-orders", "goods-received", "supplier-invoices"],
-  "/operations": ["files", "milestones", "transit-orders", "delivery-notes", "service-types"],
+  "/operations": ["files", "milestones", "transit-orders", "delivery-notes"],
   "/wms": ["locations", "inventory", "inbound", "outbound", "equipment", "cycle-counts"],
   "/fleet": ["vehicles", "compliance", "work-orders", "dispatch", "fuel", "drivers", "incidents"],
   "/finance": [
@@ -42,6 +42,7 @@ const HUB_COMPONENT_KEYS: Record<string, string[]> = {
   "/master": [
     "clients", "suppliers", "corporate-entities", "treasury-accounts",
     "currencies", "expense-rates", "financial-dictionary", "tax-jurisdictions",
+    "service-types",
   ],
   "/vault": ["overview", "documents", "signatures", "verification", "compliance-flags", "reports"],
   "/security": [

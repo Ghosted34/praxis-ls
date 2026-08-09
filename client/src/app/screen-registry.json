@@ -1062,15 +1062,16 @@
       ]
     },
     {
-      "id": "ops_service_types",
+      "id": "master_service_types",
       "title": "Service types",
-      "route": "/operations/service-types",
-      "area": "operations",
+      "route": "/master/service-types",
+      "area": "master",
       "module_key": "MOD-29",
-      "purpose": "Service taxonomy and its milestone templates.",
+      "purpose": "Service taxonomy (Master Data hub) with per-service 360°: milestone templates, applicable financial dictionary lines, dossiers, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29.",
       "actions": [
         "list_service_types",
-        "get_service_type"
+        "get_service_type",
+        "get_service_type_360"
       ]
     },
     {

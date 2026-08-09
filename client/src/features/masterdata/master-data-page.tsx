@@ -21,6 +21,7 @@ import { SuppliersPage } from "./suppliers";
 import { CorporateEntitiesPage } from "./corporate-entities";
 import { ExpenseRatesPage } from "./expense-rates";
 import { FinancialDictionaryPage } from "./financial-dictionary";
+import { ServiceTypesPage } from "./service-types";
 import { CurrenciesPage } from "@/features/settings/currencies";
 import { TaxJurisdictionsPage } from "@/features/settings/tax-jurisdictions";
 // The old flat Bank accounts table is replaced by the rich Treasury master —
@@ -37,6 +38,11 @@ const TABS = hubTabs("/master", {
   "expense-rates": ExpenseRatesPage,
   "financial-dictionary": FinancialDictionaryPage,
   "tax-jurisdictions": TaxJurisdictionsPage,
+  // Service types — the taxonomy IS master data (0310_operations.sql:7,
+  // "services as DATA, not code"). Backend module stays under operations and
+  // rides MOD-29 with the dossier (see service_type.events.js for why
+  // re-keying would 403 non-CEO users); this hub tab is a pure UI regrouping.
+  "service-types": ServiceTypesPage,
 });
 
 export function MasterDataPage() {

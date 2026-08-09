@@ -264,11 +264,11 @@ export const SPECS: ScreenSpec[] = [
     actions: ["Add milestone", "Complete"],
   },
   {
-    path: "operations/service-types",
-    area: "Operations",
+    path: "master/service-types",
+    area: "Master data",
     title: "Service types",
     purpose:
-      "The tenant's own service taxonomy (services as DATA, not code) plus the milestone template each one seeds onto a new dossier. Without a service type carrying an active template, dossiers are created with no milestone chain.",
+      "The tenant's own service taxonomy (services as DATA, not code) with a per-service 360°: milestone templates, applicable financial dictionary lines, dossiers, margin sims, invoices and money rollup. Backend module still lives under operations and rides MOD-29 — this is a Master Data UI regrouping.",
     module: "operations/service_type",
     status: "ready",
     columns: ["Service", "Territory", "Milestones", "Status"],
@@ -278,6 +278,11 @@ export const SPECS: ScreenSpec[] = [
         label: "List service types",
         kind: "read",
         describe: "List the service taxonomy and which service types have an active milestone template.",
+      },
+      {
+        label: "Get service type 360",
+        kind: "read",
+        describe: "Full dossier for one service type: templates, dictionary items, dossiers, margin sims, money rollup.",
       },
     ],
   },

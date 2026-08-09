@@ -100,7 +100,7 @@ async function authenticate(socket, next) {
     const env = !tenant.is_live && requested === "sandbox" ? "sandbox" : "live";
     socket.data = { tenant, tenantSlug: tenant.slug, env, userId: user.user_id };
     return next();
-  } catch (err) {
+  } catch {
     return next(new Error("AUTH_FAILED"));
   }
 }

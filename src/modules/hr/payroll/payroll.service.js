@@ -169,7 +169,7 @@ async function tryPost(client, run, actor) {
       actor,
     });
     return entry ? entry.entry_id || entry.entryId || null : null;
-  } catch (err) {
+  } catch {
     return null; // ledger not configured — degrade gracefully
   }
 }

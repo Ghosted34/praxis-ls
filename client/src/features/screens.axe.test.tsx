@@ -42,7 +42,7 @@ import { InvoicesPage } from "./finance/invoices";
 import { ChartOfAccountsPage } from "./finance/chart-of-accounts";
 import { JournalsPage } from "./finance/journals";
 import { OperationsFilesPage } from "./operations/operation-files";
-import { ServiceTypesPage } from "./operations/service-types";
+import { ServiceTypesPage } from "./masterdata/service-types";
 import { LeadsPage } from "./sales/leads";
 import { MeetingsPage } from "./sales/meetings";
 import { OpportunitiesPage } from "./sales/opportunities";
@@ -183,11 +183,6 @@ const AREAS: Area[] = [
           "/service-types": [{ service_type_id: "s1", service_key: "SEA_IMPORT", name: "Sea import" }],
         },
       },
-      {
-        name: "Service types",
-        render: () => <ServiceTypesPage />,
-        routes: { "/service-types": [{ service_type_id: "s1", service_key: "SEA_IMPORT", name: "Sea import", is_active: true }] },
-      },
     ],
   },
   {
@@ -315,6 +310,46 @@ const AREAS: Area[] = [
       { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
       { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", dictionary_item_id: "dddddddd-4444", shipping_line: "MAERSK", rate: 25000, currency: "XAF" }], "/financial-dictionary": [] }, populatedProof: /MAERSK/ },
       { name: "Financial dictionary", render: () => <FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
+      {
+        // Service types moved to Master Data as part of Option-B UI regrouping;
+        // backend still rides MOD-29 (see service_type.events.js for why). The
+        // populated state auto-selects the first row and loads its 360°, so the
+        // fixture mocks BOTH the list and the 360 aggregate.
+        name: "Service types",
+        render: () => <ServiceTypesPage />,
+        routes: {
+          "/service-types": [{ service_type_id: "s1", key: "SEA_IMPORT", name_fr: "Fret maritime import", name_en: "Sea import", is_active: true, has_active_template: true }],
+          "/service-types/s1/360": {
+            service_type: { service_type_id: "s1", key: "SEA_IMPORT", name_fr: "Fret maritime import", name_en: "Sea import", territory: "INTERNATIONAL_IMPORT", is_active: true, is_system: false, created_at: "2026-08-01T00:00:00Z" },
+            stats: { dossiers_total: 4, dossiers_open: 1, dossiers_in_progress: 2, dossiers_completed: 1, dossiers_cancelled: 0, template_versions: 1, active_template_version: 1, dictionary_items: 3, margin_simulations: 2 },
+            readiness: { has_active_template: true, active_template_version: 1, has_dictionary_line: true, ever_used: true, ever_billed: true },
+            templates: [
+              { milestone_template_id: "t1", version: 1, is_active: true, created_at: "2026-08-02T00:00:00Z", stages: [
+                { stage_id: "st1", stage_seq: 1, code: "BOOKING", label_fr: "Réservation", label_en: "Booking", default_offset_days: 0 },
+                { stage_id: "st2", stage_seq: 2, code: "DEPARTURE", label_fr: "Départ", label_en: "Departure", default_offset_days: 5 },
+              ]},
+            ],
+            dictionary_items: [
+              { dictionary_item_id: "di1", code: "SEA_HANDLING", label_fr: "Manutention portuaire", label_en: "Port handling", category: "service", is_debours: false, is_billable: true, default_price: 150000, currency: "XAF", shipping_line: null, service_type_key: "SEA_IMPORT", is_active: true },
+            ],
+            dictionary_items_generic: [],
+            dossiers: [
+              { dossier_id: "d1", ref: "SBX-2026-0007", title: "Container CMAU1234567", status: "IN_PROGRESS", created_at: "2026-08-03T00:00:00Z", client_id: "c1", client_name: "Bolloré Logistics", billed_ttc: 850000, milestone_total: 5, milestone_done: 3, current_milestone: "Customs clearance" },
+            ],
+            dossiers_more: 3,
+            margin_simulations: [
+              { margin_simulation_id: "m1", dossier_id: "d1", dossier_ref: "SBX-2026-0007", currency: "XAF", margin_percent: 18.5, total_cost: 690000, total_price: 850000, created_at: "2026-08-04T00:00:00Z" },
+            ],
+            margin_simulations_more: 1,
+            invoices: [],
+            money: { planned: [{ currency: "XAF", planned_total: 690000, planned_debours: 200000 }], billed: [{ currency: "XAF", billed_ttc: 850000, revenue_ht: 720339, invoice_count: 1 }], actual_total: 660000, masked: false },
+          },
+        },
+        // Populated state has data but the "invoices" sub-table is legitimately
+        // empty in this fixture (finance visibility on, no invoice rows). The
+        // dossier row and dictionary row prove data reached the screen.
+        populatedProof: /SBX-2026-0007|SEA_HANDLING|Sea import/,
+      },
     ],
   },
   {

@@ -1,0 +1,111 @@
+/**
+ * Service type 360° aggregation. One call returns everything the service-type
+ * page renders: the row itself, the header stat strip, every milestone template
+ * version with its stages, the financial dictionary items scoped to this
+ * service (plus the generic bucket), the recent dossiers, the margin sims and
+ * a per-currency money rollup (planned costing / actual GL / billed FINAL
+ * invoices), and a small readiness checklist.
+ *
+ * Built to render for a BRAND-NEW service type with zero downstream data — every
+ * collection defaults to `[]` and every figure to `0`, so the page after
+ * "New service type" is a working page rather than an error (matches the
+ * party-360 / entity-360 rule for freshly created records).
+ *
+ * WHY THIS EXISTS. `service_type.service.js` says it — "services as DATA, not
+ * code" — but the list screen only showed the row's own columns plus a template
+ * version count. Everything else the row governs (which dictionary lines
+ * surface, which dossiers were classified this way, whether an active template
+ * exists at all) sat in other modules with no rollup. This is the rollup.
+ *
+ * MONEY VISIBILITY. Billed / planned / actual arrive nulled for a caller without
+ * finance visibility (`canSeeFinancials`, MOD-09 read). Same rule as the two
+ * party masters; a service-type page a Sales/Ops user opens still renders, but
+ * without the money numbers. The `money.masked` flag tells the UI to say so
+ * rather than silently render zeros.
+ */
+"use strict";
+const repo = require("./service_type.repo");
+const { canSeeFinancials } = require("../../master/_shared/confidential");
+const { AppError } = require("../../../utils/errors");
+
+/**
+ * Zero-collection defaults. Kept in one place so a fresh service type and a
+ * missing sub-query both fall to the same empty shape — the UI's empty-state
+ * rendering has one contract to honour.
+ */
+const EMPTY_STATS = {
+  dossiers_total: 0,
+  dossiers_open: 0,
+  dossiers_in_progress: 0,
+  dossiers_completed: 0,
+  dossiers_cancelled: 0,
+  template_versions: 0,
+  active_template_version: null,
+  dictionary_items: 0,
+  margin_simulations: 0,
+};
+
+/**
+ * Money rollup masked to zeros for a caller who cannot see finance. The
+ * per-currency arrays become empty (rather than dropped) so the UI can still
+ * render "no billed revenue on this service yet" without special-casing masked
+ * vs. genuinely empty.
+ */
+function maskMoney(rollup, canSee) {
+  if (canSee) return { ...rollup, masked: false };
+  return { planned: [], billed: [], actual_total: 0, masked: true };
+}
+
+/**
+ * @param {object} c            tenant db client
+ * @param {string} serviceTypeId
+ * @param {object} opts         { canSeeFinancials? }
+ */
+async function dossier(c, serviceTypeId, { canSeeFinancials: canSee = false } = {}) {
+  const row = await repo.get(c, serviceTypeId);
+  if (!row) throw new AppError("NOT_FOUND", "Service type not found", 404);
+
+  // Sequential, not Promise.all: every sub-query runs on the SAME tenant
+  // client (one per request), and a pg client cannot execute two queries at
+  // once — same reason as party-360.service.js:180.
+  const stats = { ...EMPTY_STATS, ...(await repo.stats(c, serviceTypeId, row.key)) };
+  const templates = await repo.templatesWithStages(c, serviceTypeId);
+  const dictionary = await repo.dictionaryItemsFor(c, row.key);
+  const dossiers = await repo.dossiersFor(c, serviceTypeId, { limit: 25 });
+  const margin_simulations = await repo.marginSimulationsFor(c, serviceTypeId, { limit: 25 });
+  const invoices = canSee ? await repo.invoicesFor(c, serviceTypeId, { limit: 25 }) : [];
+  const money = maskMoney(await repo.moneyRollup(c, serviceTypeId), canSee);
+
+  const activeTemplate = templates.find((t) => t.is_active === true) || null;
+  // The four checkpoints the Overview banner keys off — a service type without
+  // an active template is the trap the list screen was built to surface, and
+  // the 360 keeps that visible at the top of the page rather than buried in a
+  // tab. `ever_billed` is finance-scoped; if the caller can't see billed money,
+  // it stays null so the banner doesn't imply "no revenue" from a masked view.
+  const readiness = {
+    has_active_template: !!activeTemplate,
+    active_template_version: activeTemplate ? activeTemplate.version : null,
+    has_dictionary_line: (dictionary.scoped || []).some((d) => d.is_active !== false),
+    ever_used: stats.dossiers_total > 0,
+    ever_billed: canSee
+      ? (money.billed || []).some((b) => Number(b.invoice_count || 0) > 0)
+      : null,
+  };
+
+  return {
+    service_type: row,
+    stats,
+    readiness,
+    templates,
+    dictionary_items: dictionary.scoped,
+    dictionary_items_generic: dictionary.generic,
+    dossiers,
+    dossiers_more: Math.max(0, (stats.dossiers_total || 0) - dossiers.length),
+    margin_simulations,
+    margin_simulations_more: Math.max(0, (stats.margin_simulations || 0) - margin_simulations.length),
+    invoices,
+    money,
+  };
+}
+
+module.exports = { dossier, canSeeFinancials };

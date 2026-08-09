@@ -126,7 +126,9 @@ export const AREAS: Area[] = [
       { key: "milestones", label: "Milestones" },
       { key: "transit-orders", label: "Transit orders" },
       { key: "delivery-notes", label: "Delivery notes" },
-      { key: "service-types", label: "Service types" },
+      // Service types moved to Master Data — the taxonomy IS master data
+      // (0310_operations.sql:7). Backend module stays under operations and
+      // rides MOD-29; only the UI regrouped.
     ],
   },
   {
@@ -219,6 +221,7 @@ export const AREAS: Area[] = [
       { key: "expense-rates", label: "Expense rates" },
       { key: "financial-dictionary", label: "Financial dictionary" },
       { key: "tax-jurisdictions", label: "Tax" },
+      { key: "service-types", label: "Service types" },
     ],
   },
   {

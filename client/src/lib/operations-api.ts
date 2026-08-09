@@ -123,6 +123,7 @@ export type ServiceType = {
   territory?: string | null;
   is_system?: boolean;
   is_active?: boolean;
+  created_at?: string | null;
   template_versions?: number;
   has_active_template?: boolean;
 };
@@ -155,6 +156,114 @@ export const updateServiceType = (id: string, body: ServiceTypeInput) =>
 /** Deactivates, not deletes — dossiers reference service types by FK. */
 export const archiveServiceType = (id: string) =>
   tenant<ServiceType>(`/service-types/${id}`, { method: "DELETE" });
+
+/* ── Service type 360° — every collection returned defaults to [] for a brand
+ * new service type, and money keys arrive masked (`money.masked`) for callers
+ * without finance visibility (MOD-09). Mirrors the party-360 shape. */
+export type ServiceTypeTemplateStage = {
+  stage_id: string;
+  stage_seq: number | string;
+  code: string;
+  label_fr: string;
+  label_en?: string | null;
+  default_offset_days: number;
+};
+export type ServiceTypeTemplate = {
+  milestone_template_id: string;
+  version: number;
+  is_active: boolean;
+  created_at?: string;
+  stages: ServiceTypeTemplateStage[];
+};
+export type ServiceTypeDictionaryItem = {
+  dictionary_item_id: string;
+  code: string;
+  label_fr: string;
+  label_en?: string | null;
+  category: "debours" | "service" | "overhead" | "asset" | "other";
+  is_debours: boolean;
+  is_billable: boolean;
+  default_price?: number | string | null;
+  currency?: string | null;
+  shipping_line?: string | null;
+  service_type_key?: string | null;
+  is_active: boolean;
+};
+export type ServiceTypeDossierRow = {
+  dossier_id: string;
+  ref: string;
+  title?: string | null;
+  status: string;
+  created_at?: string;
+  client_id?: string | null;
+  client_name?: string | null;
+  billed_ttc: number | string;
+  milestone_total: number;
+  milestone_done: number;
+  current_milestone?: string | null;
+};
+export type ServiceTypeMarginSim = {
+  margin_simulation_id: string;
+  dossier_id?: string | null;
+  dossier_ref?: string | null;
+  currency: string;
+  margin_percent?: number | string | null;
+  total_cost: number | string;
+  total_price: number | string;
+  created_at?: string;
+};
+export type ServiceTypeInvoiceRow = {
+  invoice_id: string;
+  doc_number?: string | null;
+  currency: string;
+  total_ttc: number | string;
+  status: string;
+  payment_due_on?: string | null;
+  created_at?: string;
+  dossier_id?: string | null;
+  dossier_ref?: string | null;
+  client_name?: string | null;
+};
+export type ServiceTypeMoneyRollup = {
+  planned: { currency: string; planned_total: number | string; planned_debours: number | string }[];
+  billed: { currency: string; billed_ttc: number | string; revenue_ht: number | string; invoice_count: number }[];
+  actual_total: number;
+  masked: boolean;
+};
+export type ServiceTypeDossier = {
+  service_type: ServiceType;
+  stats: {
+    dossiers_total: number;
+    dossiers_open: number;
+    dossiers_in_progress: number;
+    dossiers_completed: number;
+    dossiers_cancelled: number;
+    template_versions: number;
+    active_template_version: number | null;
+    dictionary_items: number;
+    margin_simulations: number;
+  };
+  readiness: {
+    has_active_template: boolean;
+    active_template_version: number | null;
+    has_dictionary_line: boolean;
+    ever_used: boolean;
+    /** null when finance is masked — the UI should not imply "no revenue" from a masked view. */
+    ever_billed: boolean | null;
+  };
+  templates: ServiceTypeTemplate[];
+  dictionary_items: ServiceTypeDictionaryItem[];
+  dictionary_items_generic: ServiceTypeDictionaryItem[];
+  dossiers: ServiceTypeDossierRow[];
+  dossiers_more: number;
+  margin_simulations: ServiceTypeMarginSim[];
+  margin_simulations_more: number;
+  invoices: ServiceTypeInvoiceRow[];
+  money: ServiceTypeMoneyRollup;
+};
+
+export const getServiceTypeDossier = (id: string) =>
+  tenant<ServiceTypeDossier>(`/service-types/${id}/360`);
 
 /**
  * Publish a NEW active milestone-template version for a service type.

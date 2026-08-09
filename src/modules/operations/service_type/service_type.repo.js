@@ -1,11 +1,16 @@
 /**
  * Service type repository (table `service_type`, migration 0310).
  *
- * Mostly the shared CRUD kit. `list` is overridden to add the one thing callers
- * actually need beyond the columns: how many milestone template versions exist
- * and whether an ACTIVE one does — because a service type without an active
- * template silently produces dossiers with no milestone chain, and that should
- * be visible in the list rather than discovered later on an empty 360° tab.
+ * The list override adds one thing beyond the columns: how many milestone
+ * template versions exist and whether an ACTIVE one does. A service type without
+ * an active template silently produces dossiers with no milestone chain, and
+ * that should be visible in the list rather than discovered later on an empty
+ * 360° tab.
+ *
+ * The rest is the 360° aggregator's building blocks — one query per collection
+ * so the aggregator can compose them and the tests can pin each in isolation.
+ * They return `[]` / `0` for a brand-new service type; the aggregator does not
+ * paper over an error with an empty result.
  */
 "use strict";
 const { makeRepo } = require("../../../shared/crud/resource");
@@ -45,4 +50,191 @@ async function list(client, q = {}) {
   return rows;
 }
 
-module.exports = { ...base, list };
+/**
+ * Every milestone_template version for a service type, each with its stages
+ * inlined as a JSON array — one round trip rather than one per version.
+ * Stages are ordered by `stage_seq` (numeric so a stage can be inserted between
+ * two without a renumber — 0310_operations.sql:59).
+ */
+async function templatesWithStages(client, serviceTypeId) {
+  const { rows } = await client.query(
+    "SELECT mt.milestone_template_id, mt.version, mt.is_active, mt.created_at, " +
+      "COALESCE((SELECT jsonb_agg(jsonb_build_object(" +
+      "  'stage_id', s.stage_id, 'stage_seq', s.stage_seq, 'code', s.code, " +
+      "  'label_fr', s.label_fr, 'label_en', s.label_en, " +
+      "  'default_offset_days', s.default_offset_days" +
+      ") ORDER BY s.stage_seq) FROM milestone_template_stage s " +
+      "  WHERE s.milestone_template_id = mt.milestone_template_id), '[]'::jsonb) AS stages " +
+      "FROM milestone_template mt " +
+      "WHERE mt.service_type_id = $1 " +
+      "ORDER BY mt.version DESC",
+    [serviceTypeId],
+  );
+  return rows;
+}
+
+/**
+ * Financial dictionary items applicable to a service type.
+ *
+ * `dictionary_item.service_type_key` is a citext scalar, not an FK, so this
+ * matches on the key. The generic bucket (NULL key) is loaded separately so the
+ * UI can present it as "also applicable to any service" — the two lists are
+ * displayed apart because a user picking a line for THIS service should not
+ * mistake generic items for scoped ones (spec §11.3, "services as DATA").
+ */
+async function dictionaryItemsFor(client, key) {
+  const scoped = (await client.query(
+    "SELECT dictionary_item_id, code, label_fr, label_en, category, is_debours, " +
+      "  is_billable, default_price, currency, shipping_line, service_type_key, is_active " +
+      "FROM dictionary_item WHERE service_type_key = $1 ORDER BY category, code",
+    [key],
+  )).rows;
+  const generic = (await client.query(
+    "SELECT dictionary_item_id, code, label_fr, label_en, category, is_debours, " +
+      "  is_billable, default_price, currency, shipping_line, is_active " +
+      "FROM dictionary_item WHERE service_type_key IS NULL AND is_active = true " +
+      "ORDER BY category, code",
+  )).rows;
+  return { scoped, generic };
+}
+
+/**
+ * The N most recent dossiers of this service type, each with its client name,
+ * milestone progress and locked-invoice total — the same shape the client-360
+ * dossiers list uses (party-360.service.js:279) so the two agree on a dossier's
+ * number and current stage.
+ */
+async function dossiersFor(client, serviceTypeId, { limit = 25 } = {}) {
+  const { rows } = await client.query(
+    "SELECT d.dossier_id, d.ref, d.title, d.status, d.created_at, d.client_id, " +
+      "cm.name AS client_name, " +
+      "(SELECT COALESCE(SUM(total_ttc) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) " +
+      " FROM invoice WHERE dossier_id = d.dossier_id AND type = 'FINAL') AS billed_ttc, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
+      "   AND mi.status IN ('IN_PROGRESS','PENDING') " +
+      "   ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
+      "FROM dossier d LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
+      "WHERE d.service_type_id = $1 ORDER BY d.created_at DESC LIMIT $2",
+    [serviceTypeId, limit],
+  );
+  return rows;
+}
+
+/**
+ * The N most recent margin simulations filed under this service type. Each row
+ * carries its dossier ref (for the deep-link), currency and margin_percent — no
+ * lines: those belong to the margin-sim screen the row links out to.
+ */
+async function marginSimulationsFor(client, serviceTypeId, { limit = 25 } = {}) {
+  const { rows } = await client.query(
+    "SELECT ms.margin_simulation_id, ms.dossier_id, d.ref AS dossier_ref, " +
+      "  ms.currency, ms.margin_percent, ms.total_cost, ms.total_price, ms.created_at " +
+      "FROM margin_simulation ms " +
+      "LEFT JOIN dossier d ON d.dossier_id = ms.dossier_id " +
+      "WHERE ms.service_type_id = $1 ORDER BY ms.created_at DESC LIMIT $2",
+    [serviceTypeId, limit],
+  );
+  return rows;
+}
+
+/**
+ * The N most recent FINAL invoices whose dossier carries this service type.
+ * Read-only rows for the Commercial tab — dossier ref, client, TTC, status.
+ * Filtered to `FINAL` type only: proforma isn't revenue (§8.2).
+ */
+async function invoicesFor(client, serviceTypeId, { limit = 25 } = {}) {
+  const { rows } = await client.query(
+    "SELECT i.invoice_id, i.doc_number, i.currency, i.total_ttc, i.status, " +
+      "  i.payment_due_on, i.created_at, i.dossier_id, d.ref AS dossier_ref, " +
+      "  cm.name AS client_name " +
+      "FROM invoice i " +
+      "JOIN dossier d ON d.dossier_id = i.dossier_id " +
+      "LEFT JOIN client_master cm ON cm.client_id = i.client_id " +
+      "WHERE d.service_type_id = $1 AND i.type = 'FINAL' " +
+      "ORDER BY i.created_at DESC LIMIT $2",
+    [serviceTypeId, limit],
+  );
+  return rows;
+}
+
+/**
+ * Money rollup across every dossier of this service type: planned (costing
+ * lines summed to their currency), actual (cost_entry summed to XAF via the
+ * costing exchange rate on the parent) and billed (locked FINAL invoices).
+ *
+ * `costing_line.qty * unit_cost` gives planned in the costing's own currency;
+ * `cost_entry.amount` is booked in the ledger currency, so we keep them in
+ * separate figures rather than pretending we can net two different currencies.
+ * The UI shows them per currency and the "planned − actual" delta belongs to
+ * the costing screen, where the FX conversion decision is already made.
+ */
+async function moneyRollup(client, serviceTypeId) {
+  const planned = (await client.query(
+    "SELECT c.currency, " +
+      "  COALESCE(SUM(cl.qty * cl.unit_cost), 0)::numeric AS planned_total, " +
+      "  COALESCE(SUM(CASE WHEN cl.is_debours THEN cl.qty * cl.unit_cost ELSE 0 END), 0)::numeric AS planned_debours " +
+      "FROM costing c " +
+      "JOIN dossier d ON d.dossier_id = c.dossier_id " +
+      "LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +
+      "WHERE d.service_type_id = $1 " +
+      "GROUP BY c.currency ORDER BY c.currency",
+    [serviceTypeId],
+  )).rows;
+
+  const actuals = (await client.query(
+    "SELECT COALESCE(SUM(ce.amount), 0)::numeric AS actual_total " +
+      "FROM cost_entry ce JOIN dossier d ON d.dossier_id = ce.dossier_id " +
+      "WHERE d.service_type_id = $1",
+    [serviceTypeId],
+  )).rows[0] || { actual_total: 0 };
+
+  const billed = (await client.query(
+    "SELECT i.currency, " +
+      "  COALESCE(SUM(i.total_ttc), 0)::numeric AS billed_ttc, " +
+      "  COALESCE(SUM(i.service_ht), 0)::numeric AS revenue_ht, " +
+      "  COUNT(*)::int AS invoice_count " +
+      "FROM invoice i JOIN dossier d ON d.dossier_id = i.dossier_id " +
+      "WHERE d.service_type_id = $1 AND i.type = 'FINAL' " +
+      "  AND i.status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED') " +
+      "GROUP BY i.currency ORDER BY i.currency",
+    [serviceTypeId],
+  )).rows;
+
+  return { planned, billed, actual_total: Number(actuals.actual_total || 0) };
+}
+
+/**
+ * Header stat row — one query rolls up the counts every tab's header uses so
+ * the aggregator doesn't fan out to eight sub-queries for numbers alone.
+ * Returns integers, so a fresh service type reads all zeros rather than blanks.
+ */
+async function stats(client, serviceTypeId, key) {
+  const { rows } = await client.query(
+    "SELECT " +
+      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1) AS dossiers_total, " +
+      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'OPEN') AS dossiers_open, " +
+      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'IN_PROGRESS') AS dossiers_in_progress, " +
+      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'COMPLETED') AS dossiers_completed, " +
+      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'CANCELLED') AS dossiers_cancelled, " +
+      "  (SELECT COUNT(*)::int FROM milestone_template WHERE service_type_id = $1) AS template_versions, " +
+      "  (SELECT version FROM milestone_template WHERE service_type_id = $1 AND is_active LIMIT 1) AS active_template_version, " +
+      "  (SELECT COUNT(*)::int FROM dictionary_item WHERE service_type_key = $2) AS dictionary_items, " +
+      "  (SELECT COUNT(*)::int FROM margin_simulation WHERE service_type_id = $1) AS margin_simulations",
+    [serviceTypeId, key],
+  );
+  return rows[0] || {};
+}
+
+module.exports = {
+  ...base,
+  list,
+  templatesWithStages,
+  dictionaryItemsFor,
+  dossiersFor,
+  marginSimulationsFor,
+  invoicesFor,
+  moneyRollup,
+  stats,
+};

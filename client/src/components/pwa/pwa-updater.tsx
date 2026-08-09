@@ -46,12 +46,41 @@ export function PwaUpdater() {
     // the update lifecycle so `onNeedRefresh` above resolves.
     onRegisteredSW(_url, r) {
       if (!r) return;
+
+      // In-flight guard + floor between checks.
+      //
+      // `tick` also runs on EVERY visibilitychange, so alt-tabbing fired an
+      // update() per focus — overlapping calls against one registration, which
+      // is one of the ways it lands in an invalid state to begin with.
+      let checking = false;
+      let lastCheck = 0;
+      const MIN_GAP_MS = 30_000;
+
       const tick = () => {
         // Don't check while offline — `update()` would just fail; wait for
         // the next visibility change or the next scheduled tick.
         if (navigator.onLine === false) return;
-        void r.update();
+        if (checking || Date.now() - lastCheck < MIN_GAP_MS) return;
+
+        checking = true;
+        lastCheck = Date.now();
+
+        // `.catch()`, NOT `void`.
+        //
+        // `update()` REJECTS — `InvalidStateError: Failed to update a
+        // ServiceWorker … The object is in an invalid state` — whenever the
+        // registration is no longer usable: it has been superseded, the user
+        // cleared site data, or a previous update is mid-lifecycle. A floating
+        // promise made every one of those an UNHANDLED REJECTION, which
+        // window.onunhandledrejection dutifully reported as an application
+        // error. It reached ×7 in a day and none of it was a fault: a failed
+        // update CHECK is benign by construction, because the next tick simply
+        // tries again.
+        r.update()
+          .catch(() => { /* benign — the app is fine, the next tick retries */ })
+          .finally(() => { checking = false; });
       };
+
       const timer = window.setInterval(tick, SW_UPDATE_POLL_MS);
       const onVisibility = () => {
         if (document.visibilityState === "visible") tick();

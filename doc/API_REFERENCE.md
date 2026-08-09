@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 914 |
+| Routes | 925 |
 | Modules mounted | 107 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 914 mounted routes, grouped by path prefix.
+All 925 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -708,6 +708,17 @@ All 914 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/financial-dictionary/` | — |
 | GET | `/api/tenant/financial-dictionary/:id` | — |
 | PATCH | `/api/tenant/financial-dictionary/:id` | — |
+| GET | `/api/tenant/financial-dictionary/:id/360` | — |
+| GET | `/api/tenant/financial-dictionary/:id/rate-history` | — |
+| POST | `/api/tenant/financial-dictionary/:id/rates/supersede` | — |
+| GET | `/api/tenant/financial-dictionary/:id/spend` | — |
+| POST | `/api/tenant/financial-dictionary/import/commit` | — |
+| POST | `/api/tenant/financial-dictionary/import/errors` | — |
+| GET | `/api/tenant/financial-dictionary/import/template` | — |
+| POST | `/api/tenant/financial-dictionary/import/validate` | — |
+| GET | `/api/tenant/financial-dictionary/refs` | — |
+| POST | `/api/tenant/financial-dictionary/refs` | — |
+| PATCH | `/api/tenant/financial-dictionary/refs/:id` | — |
 
 ### `tenant/financing`
 

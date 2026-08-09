@@ -71,6 +71,12 @@ export type ErrorStats = {
   total_occurrences: number;
   unique_errors: number;
   fatal: number;
+  /**
+   * Fatals still OPEN. `fatal` counts the whole window regardless of
+   * resolution — right for the KPI card, wrong for a status light, which has to
+   * describe NOW.
+   */
+  fatal_active: number;
   errors: number;
   warnings: number;
   resolved: number;

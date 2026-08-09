@@ -866,10 +866,17 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       {/* Tabs */}
       <div className="flex flex-wrap gap-1 border-b">
         {(isClient ? CLIENT_TABS : SUPPLIER_TABS).map((t) => {
+          // `Operations` is a client-only field on the 360 response (only clients
+          // have dossiers). Reading `d.dossiers.length` unconditionally throws on
+          // the supplier branch — the intersection type hides it — so the
+          // "Operations" count is added only when we are on a client. The `?? 0`
+          // on the other reads keeps a future server that omits, say, `banks`
+          // from surfacing as a screen-level ErrorBoundary crash instead of an
+          // empty tab count.
           const counts: Partial<Record<Tab, number>> = {
-            Documents: d.documents.length, Contacts: d.contacts.length, Addresses: d.addresses.length,
-            Banks: d.banks.length, Registrations: d.registrations.length, Owners: d.beneficial_owners.length,
-            Operations: d.dossiers.length,
+            Documents: d.documents?.length ?? 0, Contacts: d.contacts?.length ?? 0, Addresses: d.addresses?.length ?? 0,
+            Banks: d.banks?.length ?? 0, Registrations: d.registrations?.length ?? 0, Owners: d.beneficial_owners?.length ?? 0,
+            ...(isClient ? { Operations: d.dossiers?.length ?? 0 } : {}),
           };
           return (
             <button key={t} onClick={() => setTab(t)}

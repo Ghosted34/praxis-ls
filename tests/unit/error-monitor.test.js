@@ -226,6 +226,111 @@ describe("error-store — coalescing", () => {
     expect(at[at.length - 1] - at[0]).toBeLessThan(store.LEADING_MS);
   });
 
+  /**
+   * `Module: assets` — the useless label every browser error carried.
+   *
+   * `moduleOf()` looks for a `modules/`/`services/`/`jobs/` anchor. A production
+   * bundle has none, so it fell to the parent directory and §3.4's module filter
+   * had ONE bucket holding the entire client.
+   */
+  describe("module attribution for browser bundles", () => {
+    const MODULE_PARAM = 8;
+
+    /** persist one payload, flush, return the module column. */
+    async function moduleFor(payload) {
+      const rows = [];
+      store.__reset();
+      store.__setQuery(async (_q, p) => {
+        rows.push(p);
+        return { rows: [] };
+      });
+      store.persist({
+        fingerprint: `f-${Math.random()}`,
+        message: "m",
+        severity: "error",
+        ts: new Date().toISOString(),
+        ...payload,
+      });
+      await store.flush();
+      return rows[0][MODULE_PARAM];
+    }
+
+    it("names the feature from the chunk, hash stripped", async () => {
+      // The bounded {6,12} + `$` is what stops the hash's own hyphen
+      // (`Cn8-yJdR`) swallowing `-data-page` with it.
+      expect(await moduleFor({
+        origin: "browser",
+        route: "/master/suppliers",
+        stack: "E\n    at Dt (https://x/assets/master-data-page-Cn8-yJdR.js:1:1)",
+      })).toBe("master-data-page");
+    });
+
+    it("prefers the route over a generic chunk name", async () => {
+      // "vendor" is true and useless: an exception inside React internals is
+      // ABOUT the page that rendered them.
+      expect(await moduleFor({
+        origin: "browser",
+        route: "/master/clients",
+        stack: "E\n    at Vp (https://x/assets/vendor-Dx6jc4-T.js:38:1)",
+      })).toBe("master");
+    });
+
+    it("falls back to the route when there are no frames at all", async () => {
+      // A failed ServiceWorker update parses to zero frames — "No parsed frames
+      // for this error" in the drawer — and still has a route.
+      expect(await moduleFor({ origin: "browser", route: "/master/clients", stack: null })).toBe("master");
+    });
+
+    it("does NOT override a source-mapped stack", async () => {
+      // Shipping source maps must make attribution better, not worse: a real
+      // `src/...` path is what moduleOf is for.
+      expect(await moduleFor({
+        origin: "browser",
+        route: "/master/x",
+        stack: "E\n    at f (/app/src/features/masterdata/party-360.tsx:12:3)",
+      })).toBe("masterdata");
+    });
+
+    it("leaves server errors alone", async () => {
+      expect(await moduleFor({
+        origin: "server",
+        route: "GET /api/x",
+        stack: "E\n    at f (/app/src/modules/logistics/shipments/a.js:1:1)",
+      })).toBe("shipments");
+    });
+
+    it("returns null rather than guessing when there is nothing to go on", async () => {
+      expect(await moduleFor({ origin: "browser", stack: null })).toBeNull();
+    });
+  });
+
+  it("keeps tenants apart — one row per (tenant, signature), not per signature", async () => {
+    // The buffer's key must agree with the UPSERT's conflict target,
+    // `(COALESCE(tenant_id, zero-uuid), signature)`. Keyed on signature alone,
+    // two tenants hitting the same fault in one flush window merged into ONE
+    // statement carrying the first tenant's slug and BOTH counts — one tenant's
+    // incident filed under another's name, with an inflated number.
+    //
+    // Unreachable until browser errors gained a real tenant: everything used to
+    // arrive as tenant-null, so there was only ever one bucket.
+    const rows = [];
+    store.__setQuery(async (_q, p) => {
+      rows.push(p);
+      return { rows: [] };
+    });
+
+    const same = (tenant) => ({ ...mkPayload("shared-bug"), tenant });
+    store.persist(same("smartls"));
+    store.persist(same("acme"));
+    store.persist(same("smartls"));
+    store.persist(same(null)); // platform-wide
+    await store.flush();
+
+    expect(rows).toHaveLength(3);
+    const byTenant = Object.fromEntries(rows.map((r) => [String(r[0]), r[COUNT_PARAM]]));
+    expect(byTenant).toEqual({ smartls: 2, acme: 1, null: 1 });
+  });
+
   it("does not let one failing row discard the rest of the batch", async () => {
     const seen = [];
     store.__setQuery(async (_q, p) => {

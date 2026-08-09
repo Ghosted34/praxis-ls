@@ -118,6 +118,56 @@ function levelOf(payload) {
 }
 
 /**
+ * A useful `module` for a BROWSER error.
+ *
+ * `stack-parse.moduleOf()` looks for a `modules/`, `services/` or `jobs/` anchor
+ * in the path. A production bundle has none — `assets/master-data-page-Cn8-yJdR.js`
+ * — so it fell through to the parent directory and every browser error in the
+ * feed was filed under **`assets`**. Correct by its own rules, useless to read:
+ * §3.4's module filter had one meaningless bucket holding the entire client.
+ *
+ * Two better sources, tried in order of precision:
+ *
+ *   1. THE CHUNK NAME. Vite names a chunk after the route module it was split
+ *      from and appends a content hash, so `master-data-page-Cn8-yJdR.js` is
+ *      already saying "master data page" — strip the hash and it is the most
+ *      specific label available. The bounded `{6,12}` with the `$` anchor is
+ *      what makes this safe on a hash that itself contains a hyphen
+ *      (`Cn8-yJdR`): the length bound forces the match onto the LAST segment
+ *      rather than swallowing `-data-page-Cn8-yJdR`.
+ *   2. THE ROUTE. `/master/suppliers` → `master`. Coarser, but present even when
+ *      the stack is empty — which it is for the whole class of errors that carry
+ *      no frames at all (a failed ServiceWorker update, for one).
+ *
+ * Only consulted when the parsed frame has NOTHING to offer. A source-mapped
+ * stack resolves to real `src/...` paths, and `moduleOf` gets that right — so
+ * this must not override it, or shipping source maps would make attribution
+ * worse instead of better.
+ */
+/** Chunk names that name the bundler's plumbing rather than any feature. */
+const GENERIC_CHUNK = /^(index|main|app|vendor|vendors|assets|chunk|runtime|polyfills|commons)$/i;
+
+function browserModule(payload, primary) {
+  const file = primary && primary.file;
+
+  // A real source path (mapped, or a dev build) — trust the parser.
+  if (file && /(^|\/)src\//.test(file)) return null;
+
+  if (file) {
+    const base = String(file).split("/").pop().replace(/\.[a-z]+$/i, "");
+    const name = base.replace(/-[A-Za-z0-9_-]{6,12}$/, "");
+    // A generic chunk name is worse than the route. `vendor-Dx6jc4-T.js` strips
+    // to "vendor", which is true and useless: an exception raised inside React's
+    // internals is ABOUT the page that rendered them, so /master/clients tells
+    // you where to look and "vendor" does not.
+    if (name && !GENERIC_CHUNK.test(name)) return name.slice(0, 100);
+  }
+
+  const seg = String(payload.route || "").split("?")[0].split("/").filter(Boolean)[0];
+  return seg ? seg.slice(0, 100) : null;
+}
+
+/**
  * Queue an error group for persistence.
  * @param {object} payload the reporter's assembled payload
  * @param {string} payload.fingerprint stable signature
@@ -127,7 +177,23 @@ function persist(payload) {
     if (!payload || !payload.fingerprint) return;
 
     const sig = payload.fingerprint;
-    const existing = buffer.get(sig);
+
+    // KEYED BY (tenant, signature), NOT signature alone.
+    //
+    // The UPSERT's conflict target is
+    // `(COALESCE(tenant_id, zero-uuid), signature)` — one row PER TENANT per
+    // signature — so a buffer keyed on signature alone disagrees with the table
+    // it writes to. Two tenants hitting the same fault inside one flush window
+    // merged into a single statement carrying the FIRST tenant's slug and BOTH
+    // counts: one tenant's incident silently filed under another's name, with
+    // an inflated number.
+    //
+    // Latent until now, and this is worth recording: every browser error used to
+    // arrive with `tenant: null`, so there was only ever one bucket and the
+    // collision could not happen. Giving browser errors a real tenant is exactly
+    // what made it reachable — the fix and the bug landed together.
+    const key = `${payload.tenant || ""}|${sig}`;
+    const existing = buffer.get(key);
     if (existing) {
       existing.count += 1;
       existing.last_seen = payload.ts || new Date().toISOString();
@@ -141,7 +207,7 @@ function persist(payload) {
 
     const { frames, primary } = parseStack(payload.stack);
 
-    buffer.set(sig, {
+    buffer.set(key, {
       count: 1,
       signature: sig,
       tenant_slug: payload.tenant || null,
@@ -151,7 +217,10 @@ function persist(payload) {
       name: payload.name || "Error",
       frames,
       raw_stack: payload.stack ? String(payload.stack).slice(0, 20000) : null,
-      module: (primary && primary.module) || null,
+      // Browser bundles carry no module structure — see browserModule().
+      module: (payload.origin === "browser" ? browserModule(payload, primary) : null)
+        || (primary && primary.module)
+        || null,
       route: payload.route || null,
       file_path: (primary && primary.file) || null,
       line_number: (primary && primary.line) || null,

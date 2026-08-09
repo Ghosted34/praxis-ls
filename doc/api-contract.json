@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 107,
-  "route_count": 911,
+  "route_count": 914,
   "tiers": {
     "public": 19,
-    "self-scoped": 62,
-    "gated": 830
+    "self-scoped": 64,
+    "gated": 831
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2235,6 +2235,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/service-types/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/sessions/": {
       "auth": true,
       "rbac": true,
@@ -3549,6 +3555,12 @@
       "validated": false,
       "tier": "self-scoped"
     },
+    "POST /api/tenant/ai/ask/stream": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
     "POST /api/tenant/ai/batches/:batchId/confirm": {
       "auth": true,
       "rbac": false,
@@ -3556,6 +3568,12 @@
       "tier": "self-scoped"
     },
     "POST /api/tenant/ai/export/tables": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/ai/feedback": {
       "auth": true,
       "rbac": false,
       "validated": false,

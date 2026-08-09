@@ -62,7 +62,16 @@ function maskMoney(rollup, canSee) {
  * @param {object} opts         { canSeeFinancials? }
  */
 async function dossier(c, serviceTypeId, { canSeeFinancials: canSee = false } = {}) {
-  const row = await repo.get(c, serviceTypeId);
+  // `findById`, not `get`. The two factories in shared/crud/resource.js draw the
+  // line deliberately: a REPO exposes `findById` (line 143) and a SERVICE exposes
+  // `get` (line 196, itself a wrapper over repo.findById). Calling the
+  // service-level name on the repo threw `repo.get is not a function` on every
+  // request to this endpoint.
+  //
+  // It reads as a safe call because a dozen other modules do say `repo.get` —
+  // but those repos declare their own `get` on top of the factory. This one
+  // does not, so it inherited only `findById`.
+  const row = await repo.findById(c, serviceTypeId);
   if (!row) throw new AppError("NOT_FOUND", "Service type not found", 404);
 
   // Sequential, not Promise.all: every sub-query runs on the SAME tenant

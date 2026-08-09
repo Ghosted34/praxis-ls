@@ -20,7 +20,11 @@ const base = makeService({ repo, moduleKey: events.MODULE, entity: "service_type
 
 /** Rows shipped by provisioning are protected: renaming is fine, removing isn't. */
 async function assertNotSystem(client, id, verb) {
-  const row = await repo.get(client, id);
+  // Same `repo.get` → `repo.findById` fix as service_type_360.service.js — this
+  // repo inherits only the factory's `findById`. Not yet seen in production
+  // because it is on the delete/archive path rather than a page load, but it
+  // would have thrown the moment anyone tried to remove a service type.
+  const row = await repo.findById(client, id);
   if (!row) throw new AppError("NOT_FOUND", "Service type not found", 404);
   if (row.is_system) throw new AppError("SYSTEM_RECORD", `A system service type cannot be ${verb}`, 422);
   return row;

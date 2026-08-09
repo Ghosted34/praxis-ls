@@ -187,6 +187,14 @@ export type ServiceTypeDictionaryItem = {
   currency?: string | null;
   shipping_line?: string | null;
   service_type_key?: string | null;
+  /**
+   * The lowest bundle this line belongs to, from service_type_dictionary_item
+   * (0630). Nested: BASIC ⊆ ADVANCED ⊆ FULL, so a line tagged BASIC surfaces at
+   * every tier and a FULL one only at FULL. Present on SCOPED rows only — the
+   * "applies to any service" bucket has no tier because it is not scoped to
+   * this service at all.
+   */
+  tier?: "BASIC" | "ADVANCED" | "FULL" | null;
   is_active: boolean;
 };
 export type ServiceTypeDossierRow = {

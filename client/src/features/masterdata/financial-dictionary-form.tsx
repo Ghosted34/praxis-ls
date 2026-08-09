@@ -27,6 +27,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import * as ops from "@/lib/operations-api";
+import * as fin from "@/lib/finance-api";
 
 type Ctx = api.PostingContext;
 type RuleRow = { applies_context: Ctx; debit_account: string; credit_account: string; tax_code_id: string; is_debours: boolean };
@@ -57,8 +58,121 @@ function preferClass(ctx: Ctx, side: "debit" | "credit", direction: api.Directio
   return 4; // disbursement clears through class 4 (4731)
 }
 
-function AccountField({ label, value, onChange, preferredClass }: { label: string; value: string; onChange: (v: string) => void; preferredClass?: number }) {
+/**
+ * SYSCOHADA normal balance from an account class. Classes 1 (capital) and 7
+ * (revenue) are credit-normal; 2/3/5/6 (assets, stock, treasury, charges) are
+ * debit-normal. Class 4 (third parties) genuinely goes both ways — a supplier
+ * account is credit-normal and a client account is debit-normal — so the side
+ * the user is filling in is the better guess there than any fixed default.
+ */
+function defaultBalance(cls: number, side: "debit" | "credit"): "D" | "C" {
+  if (cls === 1 || cls === 7) return "C";
+  if (cls === 2 || cls === 3 || cls === 5 || cls === 6) return "D";
+  return side === "debit" ? "D" : "C";
+}
+
+/**
+ * Mint a missing CoA leaf without leaving the wizard.
+ *
+ * WHY THIS IS A PANEL AND NOT A ONE-CLICK "add". A dictionary item cannot be
+ * saved without its OHADA mapping, so hitting an account that does not exist
+ * yet is a dead end — the user abandons a half-filled wizard, goes to MOD-06,
+ * creates the account, and starts again. That is the gap this closes.
+ *
+ * But creating a chart-of-accounts row from a search term alone would be worse
+ * than the dead end: `class` and `normal_balance` are not optional and are not
+ * guessable from a label, and a wrong normal_balance silently reverses every
+ * balance that account ever reports. So the panel DERIVES sane defaults from
+ * the code (class = first digit, parent = longest existing ancestor, balance =
+ * SYSCOHADA convention) and shows them for confirmation. Every field is
+ * visible and editable before anything is written.
+ *
+ * Deliberately inline rather than a nested <Modal>: the wizard is already a
+ * modal, and stacking a second dialog inside it breaks the focus trap.
+ */
+function NewAccountPanel({
+  term, side, onCancel, onCreated,
+}: {
+  term: string; side: "debit" | "credit"; onCancel: () => void; onCreated: (code: string) => void;
+}) {
+  const accounts = useResource(() => fin.listAccounts(), []);
+  const looksLikeCode = /^\d{2,}$/.test(term.trim());
+  const [code, setCode] = React.useState(looksLikeCode ? term.trim() : "");
+  const [labelFr, setLabelFr] = React.useState(looksLikeCode ? "" : term.trim());
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState<string | null>(null);
+
+  const cls = Number(code[0]) || 0;
+  const valid = /^\d{2,}$/.test(code) && cls >= 1 && cls <= 9 && labelFr.trim().length > 0;
+  const [balance, setBalance] = React.useState<"D" | "C" | "">("");
+  const effectiveBalance: "D" | "C" = balance || defaultBalance(cls, side);
+
+  // The FK needs a parent that EXISTS, so take the longest existing code that is
+  // a strict prefix of the new one — "6272" under "627" if that exists, else
+  // "62", else none. Guessing `code.slice(0, -1)` would fail on a gap.
+  const parent = React.useMemo(() => {
+    const rows = accounts.data || [];
+    const candidates = rows
+      .map((a) => String(a.code))
+      .filter((c) => c.length < code.length && code.startsWith(c))
+      .sort((a, b) => b.length - a.length);
+    return candidates[0];
+  }, [accounts.data, code]);
+
+  const exists = (accounts.data || []).some((a) => String(a.code) === code);
+
+  async function create() {
+    setBusy(true); setErr(null);
+    try {
+      const row = await fin.createAccount({
+        code: code.trim(),
+        label_fr: labelFr.trim(),
+        class: cls,
+        normal_balance: effectiveBalance,
+        is_postable: true, // a leaf is what the picker needs; a header cannot be posted to
+        parent_code: parent,
+      });
+      onCreated(String(row.code));
+    } catch (e) { setErr(errMsg(e)); } finally { setBusy(false); }
+  }
+
+  return (
+    <div className="mt-2 rounded-lg border border-dashed bg-muted/30 p-3">
+      <p className="mb-2 text-xs font-semibold text-foreground">New account</p>
+      <div className="grid gap-2 sm:grid-cols-2">
+        <Field label="Code" required>
+          <Input value={code} onChange={(e) => setCode(e.target.value.replace(/\D/g, ""))} placeholder="6272" className="num" />
+        </Field>
+        <Field label="Label (FR)" required>
+          <Input value={labelFr} onChange={(e) => setLabelFr(e.target.value)} placeholder="Frais de transit" />
+        </Field>
+      </div>
+      <div className="mt-2 flex flex-wrap items-center gap-3">
+        <Segmented
+          label="Normal balance"
+          value={effectiveBalance}
+          onChange={(v) => setBalance(v as "D" | "C")}
+          options={[{ value: "D", label: "Debit" }, { value: "C", label: "Credit" }]}
+        />
+        <span className="micro">
+          Class {cls || "—"} · parent {parent || "none"}
+          {accounts.loading ? " · checking chart…" : ""}
+        </span>
+      </div>
+      {exists && <p className="mt-2 text-xs text-warn-ink">{code} already exists — pick it from the list instead.</p>}
+      {err && <div className="mt-2"><ErrorState message={err} /></div>}
+      <div className="mt-3 flex gap-2">
+        <Button type="button" size="sm" loading={busy} disabled={!valid || exists} onClick={create}>Create &amp; select</Button>
+        <Button type="button" size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
+function AccountField({ label, value, onChange, preferredClass, side }: { label: string; value: string; onChange: (v: string) => void; preferredClass?: number; side: "debit" | "credit" }) {
   const [restrict, setRestrict] = React.useState<boolean>(!!preferredClass);
+  const [creating, setCreating] = React.useState<string | null>(null);
+  const toast = useToast();
   return (
     <Field label={label}>
       <SearchSelect
@@ -70,7 +184,20 @@ function AccountField({ label, value, onChange, preferredClass }: { label: strin
         getLabel={(r) => `${r.code} — ${r.label_fr ?? ""}`.trim()}
         filter={(r) => r.is_postable !== false && (restrict && preferredClass ? Number(r.class) === preferredClass : true)}
         onSelect={(r) => onChange(String(r.code))}
+        // Only reachable when the search returned nothing — SearchSelect gates
+        // the "Add …" action on an empty result, so this never competes with
+        // picking an account that already exists.
+        onCreate={(t) => setCreating(t)}
+        createLabel={(t) => `Create account “${t}”`}
       />
+      {creating !== null && (
+        <NewAccountPanel
+          term={creating}
+          side={side}
+          onCancel={() => setCreating(null)}
+          onCreated={(code) => { setCreating(null); onChange(code); toast.success(`Account ${code} created`); }}
+        />
+      )}
       {preferredClass ? (
         <button type="button" onClick={() => setRestrict((v) => !v)} className="mt-1 text-xs text-muted-foreground underline">
           {restrict ? `Showing class ${preferredClass} only — browse all` : "Restrict to class " + preferredClass}
@@ -259,8 +386,8 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
                       <Button type="button" size="sm" variant="ghost" disabled={rules.length === 1} onClick={() => delRule(i)}>✕</Button>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-2">
-                      <AccountField label="Debit" value={r.debit_account} onChange={(v) => setRule(i, { debit_account: v })} preferredClass={preferClass(r.applies_context, "debit", f.direction)} />
-                      <AccountField label="Credit" value={r.credit_account} onChange={(v) => setRule(i, { credit_account: v })} preferredClass={preferClass(r.applies_context, "credit", f.direction)} />
+                      <AccountField label="Debit" side="debit" value={r.debit_account} onChange={(v) => setRule(i, { debit_account: v })} preferredClass={preferClass(r.applies_context, "debit", f.direction)} />
+                      <AccountField label="Credit" side="credit" value={r.credit_account} onChange={(v) => setRule(i, { credit_account: v })} preferredClass={preferClass(r.applies_context, "credit", f.direction)} />
                       <Field label="Tax code" hint={r.is_debours ? "Débours lines carry no tax of ours." : undefined}>
                         <Select value={r.tax_code_id} disabled={r.is_debours} onChange={(e) => setRule(i, { tax_code_id: e.target.value })}>
                           <option value="">None</option>

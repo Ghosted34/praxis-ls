@@ -3,7 +3,7 @@
  * treasury accounts + payment gateways, expense rates, financial dictionary.
  * Routes/fields mirror src/modules/master/*. All calls go through `tenant()`.
  */
-import { tenant } from "./api-client";
+import { tenant, tenantDownload, downloadPost } from "./api-client";
 
 /* ── Clients(/clients) ──────────────────────────────────────────── */
 export type Client = {
@@ -646,6 +646,140 @@ export const getDict = (id: string) => tenant<DictFull>(`/financial-dictionary/$
 export const dictDossier = (id: string) => tenant<DictDossier>(`/financial-dictionary/${id}/360`);
 export const createDict = (body: DictInput) => tenant<DictFull>("/financial-dictionary", { method: "POST", body });
 export const updateDict = (id: string, body: Partial<DictInput>) => tenant<DictFull>(`/financial-dictionary/${id}`, { method: "PATCH", body });
+
+/* ── Spend over a period (GET /financial-dictionary/:id/spend) ─────────────
+ * Three lenses, one dense month axis. The headline is `actual` — the only lens
+ * that has actually happened; `estimated` is what a costing planned and
+ * `committed` is what has been promised to a third party but may not be posted
+ * yet. The server zero-fills every month in the window, so a chart drawn from
+ * `months` never closes a gap it should show. */
+export type SpendLens = "estimated" | "committed" | "actual";
+export type SpendMonth = {
+  month: string; // "YYYY-MM"
+  estimated: number; estimated_count: number;
+  committed: number; committed_count: number;
+  actual: number; actual_count: number;
+};
+export type SpendTotals = {
+  estimated: number; committed: number; actual: number;
+  estimated_count: number; committed_count: number; actual_count: number;
+  headline: number;
+  variance_committed_actual: number;
+  variance_estimated_actual: number;
+};
+export type SpendDocument = {
+  lens: SpendLens;
+  doc_type: "costing" | "purchase_order" | "cash_request" | "cost_entry";
+  doc_id: string;
+  doc_number?: string | null;
+  status?: string | null;
+  dossier_id?: string | null;
+  dossier_ref?: string | null;
+  amount: number | string;
+  currency?: string | null;
+  doc_date?: string | null;
+  label?: string | null;
+};
+export type SpendPeriod = { from: string; to: string; swapped?: boolean };
+export type DictSpend = {
+  item: { dictionary_item_id: string; code: string; label_fr?: string; label_en?: string | null; currency: string; direction: Direction };
+  period: SpendPeriod;
+  months: SpendMonth[];
+  totals: SpendTotals;
+  documents: SpendDocument[];
+};
+export const dictSpend = (id: string, p: { from?: string; to?: string; include_documents?: boolean } = {}) => {
+  const q = new URLSearchParams();
+  if (p.from) q.set("from", p.from);
+  if (p.to) q.set("to", p.to);
+  if (p.include_documents === false) q.set("include_documents", "false");
+  const qs = q.toString();
+  return tenant<DictSpend>(`/financial-dictionary/${id}/spend${qs ? `?${qs}` : ""}`);
+};
+
+/* ── Cost evolution (GET /financial-dictionary/:id/rate-history) ───────────
+ * Grouped into SERIES — one per (provider, shipping line, variant) — because a
+ * 20ft and a 40ft price are both current and neither supersedes the other. */
+export type RatePoint = {
+  expense_rate_id: string;
+  rate: number;
+  currency?: string | null;
+  effective_from: string;
+  effective_to?: string | null;
+  in_force: boolean;
+  superseded: boolean;
+  note?: string | null;
+  provider_name?: string | null;
+};
+export type RateTrend = {
+  first: number | null; last: number | null; delta: number | null;
+  delta_pct: number | null; direction: "up" | "down" | "flat"; points: number;
+};
+export type RateSeries = {
+  key: string;
+  provider_kind?: string | null;
+  provider_supplier_id?: string | null;
+  provider_name?: string | null;
+  shipping_line?: string | null;
+  variant?: string | null;
+  currency: string;
+  points: RatePoint[];
+  current: RatePoint | null;
+  trend: RateTrend;
+};
+export type DictRateEvolution = {
+  item: { dictionary_item_id: string; code: string; label_fr?: string; label_en?: string | null; currency: string; provider_kind?: string | null };
+  series: RateSeries[];
+  trend: RateTrend;
+};
+export const dictRateHistory = (id: string, asOf?: string) =>
+  tenant<DictRateEvolution>(`/financial-dictionary/${id}/rate-history${asOf ? `?as_of=${asOf}` : ""}`);
+
+/** Amend a rate the only way an effective-dated series may be amended: the
+ *  server expires the open row the day before this one opens. Never an edit. */
+export type RateSupersedeInput = {
+  rate: number;
+  currency?: string;
+  effective_from: string;
+  effective_to?: string | null;
+  shipping_line?: string | null;
+  variant?: string | null;
+  provider_kind?: string | null;
+  provider_supplier_id?: string | null;
+  note?: string | null;
+};
+export const supersedeDictRate = (id: string, body: RateSupersedeInput) =>
+  tenant<DictRateEvolution>(`/financial-dictionary/${id}/rates/supersede`, { method: "POST", body });
+
+/* ── Bulk Excel import ─────────────────────────────────────────────────────
+ * Three steps, deliberately separate: download a template built from THIS
+ * tenant's accounts and service keys, upload it to see exactly what will be
+ * created and what will not, then commit — partially, so 400 good rows are
+ * never lost to one typo. */
+export type ImportStagingRow = { row?: number; raw: Record<string, unknown>; data?: Record<string, unknown>; reasons?: string[] };
+export type ImportRejectedRow = { row?: number; reasons: string[]; raw: Record<string, unknown> };
+export type ImportValidateResult = {
+  sheet: string;
+  parsed: number;
+  valid: ImportStagingRow[];
+  rejected: ImportRejectedRow[];
+  summary: { total: number; valid: number; rejected: number };
+};
+export type ImportCommitResult = {
+  created: { row?: number; dictionary_item_id: string; code: string; label_fr?: string }[];
+  rejected: ImportRejectedRow[];
+  summary: { attempted: number; created: number; rejected: number };
+};
+export const downloadDictImportTemplate = () =>
+  tenantDownload("/financial-dictionary/import/template", "financial-dictionary-template.xlsx");
+/** `file` is a base64 data URL (FileReader.readAsDataURL) — the same upload
+ *  shape the document vault uses, so there is one convention in the product. */
+export const validateDictImport = (file: string, filename?: string) =>
+  tenant<ImportValidateResult>("/financial-dictionary/import/validate", { method: "POST", body: { file, filename } });
+export const commitDictImport = (rows: ImportStagingRow[]) =>
+  tenant<ImportCommitResult>("/financial-dictionary/import/commit", { method: "POST", body: { rows } });
+export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
+  downloadPost("/tenant/financial-dictionary/import/errors", { rows }, "financial-dictionary-rejected.xlsx");
 
 /* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal). */
 export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND";

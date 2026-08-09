@@ -120,6 +120,179 @@ async function usageCounts(c, id) {
   return out;
 }
 
+/* ── SPEND OVER A PERIOD — three lenses, one item, grouped by month ─────────
+ *
+ * Each lens reads the document that owns that stage of the money, and dates it
+ * by the field that stage is actually keyed on. Getting the DATE right matters
+ * more than the amount: a costing drafted in March for a job posted in June
+ * belongs in March's estimate and June's actual, and a naive created_at on all
+ * three would pile the whole story into one month.
+ *
+ *   estimated  costing_line.qty * unit_cost, dated by its costing.created_at
+ *   committed  purchase_order_item (qty * unit_price) on a non-CANCELLED PO,
+ *              dated by the PO; PLUS cash_request_line.budget_amount on a
+ *              SUBMITTED/APPROVED (or later) cash request
+ *   actual     cost_entry.amount, dated by the journal_entry's entry_date —
+ *              the REAL posting date — falling back to cost_entry.created_at
+ *              when the entry is missing (a cost recorded outside a posting).
+ *
+ * All three are `>= from AND < to + 1 day` so an inclusive `to` really includes
+ * that whole day regardless of the column's timestamptz/date type.
+ */
+const MONTH = (expr) => `to_char((${expr})::date, 'YYYY-MM')`;
+
+async function spendEstimated(c, id, from, to) {
+  const { rows } = await c.query(
+    `SELECT ${MONTH("co.created_at")} AS month,
+            COALESCE(SUM(cl.qty * cl.unit_cost), 0) AS amount,
+            COUNT(*) AS count
+       FROM costing_line cl
+       JOIN costing co ON co.costing_id = cl.costing_id
+      WHERE cl.dictionary_item_id = $1
+        AND co.created_at >= $2::date AND co.created_at < ($3::date + 1)
+      GROUP BY 1 ORDER BY 1`,
+    [id, from, to],
+  );
+  return rows;
+}
+
+async function spendCommitted(c, id, from, to) {
+  const { rows } = await c.query(
+    `SELECT month, COALESCE(SUM(amount), 0) AS amount, COALESCE(SUM(cnt), 0) AS count FROM (
+       SELECT ${MONTH("po.created_at")} AS month, SUM(poi.qty * poi.unit_price) AS amount, COUNT(*) AS cnt
+         FROM purchase_order_item poi
+         JOIN purchase_order po ON po.po_id = poi.po_id
+        WHERE poi.dictionary_item_id = $1
+          AND po.status <> 'CANCELLED'
+          AND po.created_at >= $2::date AND po.created_at < ($3::date + 1)
+        GROUP BY 1
+       UNION ALL
+       SELECT ${MONTH("cr.created_at")} AS month, SUM(crl.budget_amount) AS amount, COUNT(*) AS cnt
+         FROM cash_request_line crl
+         JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+        WHERE crl.dictionary_item_id = $1
+          AND cr.status IN ('SUBMITTED','APPROVED','DISBURSED','JUSTIFIED')
+          AND cr.created_at >= $2::date AND cr.created_at < ($3::date + 1)
+        GROUP BY 1
+     ) u GROUP BY month ORDER BY month`,
+    [id, from, to],
+  );
+  return rows;
+}
+
+async function spendActual(c, id, from, to) {
+  const { rows } = await c.query(
+    `SELECT ${MONTH("COALESCE(je.entry_date, ce.created_at)")} AS month,
+            COALESCE(SUM(ce.amount), 0) AS amount,
+            COUNT(*) AS count
+       FROM cost_entry ce
+       LEFT JOIN journal_entry je ON je.entry_id = ce.entry_id
+      WHERE ce.dictionary_item_id = $1
+        AND COALESCE(je.entry_date, ce.created_at::date) >= $2::date
+        AND COALESCE(je.entry_date, ce.created_at::date) <= $3::date
+      GROUP BY 1 ORDER BY 1`,
+    [id, from, to],
+  );
+  return rows;
+}
+
+/**
+ * The documents behind the numbers — what a drill-in opens.
+ *
+ * Deliberately capped and ordered newest-first rather than paged: this is the
+ * "show me the receipts" list under a chart, not a browsable ledger. The module
+ * that owns each document is where a user goes to page through them, and each
+ * row carries the ref the deep-link needs.
+ */
+async function spendDocuments(c, id, from, to, limit = 100) {
+  const { rows } = await c.query(
+    `SELECT * FROM (
+       SELECT 'estimated' AS lens, 'costing' AS doc_type, co.costing_id AS doc_id,
+              co.doc_number, co.status, co.dossier_id, d.ref AS dossier_ref,
+              (cl.qty * cl.unit_cost) AS amount, co.currency, co.created_at::date AS doc_date, cl.label
+         FROM costing_line cl
+         JOIN costing co ON co.costing_id = cl.costing_id
+         LEFT JOIN dossier d ON d.dossier_id = co.dossier_id
+        WHERE cl.dictionary_item_id = $1 AND co.created_at >= $2::date AND co.created_at < ($3::date + 1)
+       UNION ALL
+       SELECT 'committed', 'purchase_order', po.po_id, po.doc_number, po.status, po.dossier_id, d.ref,
+              (poi.qty * poi.unit_price), NULL, po.created_at::date, poi.label
+         FROM purchase_order_item poi
+         JOIN purchase_order po ON po.po_id = poi.po_id
+         LEFT JOIN dossier d ON d.dossier_id = po.dossier_id
+        WHERE poi.dictionary_item_id = $1 AND po.status <> 'CANCELLED'
+          AND po.created_at >= $2::date AND po.created_at < ($3::date + 1)
+       UNION ALL
+       SELECT 'committed', 'cash_request', cr.cash_request_id, cr.doc_number, cr.status, cr.dossier_id, d.ref,
+              crl.budget_amount, NULL, cr.created_at::date, crl.label
+         FROM cash_request_line crl
+         JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
+         LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+        WHERE crl.dictionary_item_id = $1 AND cr.status IN ('SUBMITTED','APPROVED','DISBURSED','JUSTIFIED')
+          AND cr.created_at >= $2::date AND cr.created_at < ($3::date + 1)
+       UNION ALL
+       SELECT 'actual', 'cost_entry', ce.cost_entry_id, je.source_doc_ref, je.status, ce.dossier_id, d.ref,
+              ce.amount, NULL, COALESCE(je.entry_date, ce.created_at::date), ce.category
+         FROM cost_entry ce
+         LEFT JOIN journal_entry je ON je.entry_id = ce.entry_id
+         LEFT JOIN dossier d ON d.dossier_id = ce.dossier_id
+        WHERE ce.dictionary_item_id = $1
+          AND COALESCE(je.entry_date, ce.created_at::date) >= $2::date
+          AND COALESCE(je.entry_date, ce.created_at::date) <= $3::date
+     ) docs ORDER BY doc_date DESC, lens LIMIT $4`,
+    [id, from, to, limit],
+  );
+  return rows;
+}
+
+/* ── COST EVOLUTION — the effective-dated rate history per item + provider ─── */
+async function rateHistory(c, id) {
+  const { rows } = await c.query(
+    `SELECT er.*, s.name AS provider_name
+       FROM expense_rate er
+       LEFT JOIN supplier_master s ON s.supplier_id = er.provider_supplier_id
+      WHERE er.dictionary_item_id = $1
+      ORDER BY er.effective_from ASC, er.created_at ASC`,
+    [id],
+  );
+  return rows;
+}
+/** The open (never-expired) rate for one provider/variant series. */
+async function openRate(c, id, { shippingLine = null, variant = null, providerSupplierId = null }) {
+  const { rows } = await c.query(
+    `SELECT * FROM expense_rate
+      WHERE dictionary_item_id = $1
+        AND effective_to IS NULL
+        AND shipping_line IS NOT DISTINCT FROM $2
+        AND variant IS NOT DISTINCT FROM $3
+        AND provider_supplier_id IS NOT DISTINCT FROM $4
+      ORDER BY effective_from DESC LIMIT 1`,
+    [id, shippingLine, variant, providerSupplierId],
+  );
+  return rows[0] || null;
+}
+const insertRate = (c, d) => insertOne(c, "expense_rate", d);
+const expireRate = (c, rateId, effectiveTo) =>
+  updateOne(c, "expense_rate", "expense_rate_id", rateId, { effective_to: effectiveTo });
+
+/* ── IMPORT — the reference data a row is validated against ─────────────────
+ * One round-trip per catalogue rather than one per row: a 500-row upload
+ * validated row-by-row would be 1500 lookups against three small tables. */
+async function postableAccounts(c) {
+  const { rows } = await c.query(
+    "SELECT code, label_fr, class FROM chart_of_accounts WHERE is_postable = true AND is_active IS DISTINCT FROM false ORDER BY code",
+  );
+  return rows;
+}
+async function taxCodeIndex(c) {
+  const { rows } = await c.query("SELECT tax_code_id, code, rate_percent FROM tax_code ORDER BY code");
+  return rows;
+}
+async function serviceTypeIndex(c) {
+  const { rows } = await c.query("SELECT service_type_id, key, name_fr, name_en FROM service_type WHERE is_active ORDER BY key");
+  return rows;
+}
+
 /* ── dictionary_ref: the seeded-but-editable registry behind dropdowns ──────── */
 async function listRefs(c, kind, includeInactive = false) {
   const wh = ["kind = $1"];
@@ -138,5 +311,8 @@ module.exports = {
   createItem, createRule, updateItem, getItem, nextCode,
   listRules, deleteRules, listTiers, replaceTiers,
   listItems, usageCounts,
+  spendEstimated, spendCommitted, spendActual, spendDocuments,
+  rateHistory, openRate, insertRate, expireRate,
+  postableAccounts, taxCodeIndex, serviceTypeIndex,
   listRefs, createRef, updateRef, getRef,
 };

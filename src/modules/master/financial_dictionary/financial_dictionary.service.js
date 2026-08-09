@@ -2,6 +2,7 @@
 const repo = require("./financial_dictionary.repo");
 const events = require("./financial_dictionary.events");
 const rules = require("./financial_dictionary.rules");
+const importer = require("./financial_dictionary.import");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 
 // The only columns a caller may write on dictionary_item. `code`, ids and the
@@ -142,6 +143,245 @@ async function update(c, { id, patch, actor }) {
   } catch (err) { await c.query("ROLLBACK"); throw err; }
 }
 
+/* ═══════════════════ SPEND OVER A PERIOD (PR2 workstream 1) ═══════════════ */
+
+/**
+ * What this line cost us between two dates, through three lenses.
+ *
+ * The lenses are not three approximations of one number — they are three
+ * different questions, and a dossier that showed only one would answer the
+ * wrong one for two of its readers:
+ *
+ *   estimated   what a costing sheet SAID it would cost (the planner's number)
+ *   committed   what has been promised to a third party — an open PO, an
+ *               approved cash request (the treasurer's number)
+ *   actual      what the ledger records as posted (the accountant's number)
+ *
+ * The HEADLINE is actual, because that is the only one that has happened. The
+ * gap between committed and actual is the useful signal: money promised and not
+ * yet posted is either work in flight or a document someone forgot to close.
+ */
+async function spend(c, id, q = {}) {
+  const item = await repo.getItem(c, id);
+  if (!item) return null;
+  const period = rules.normalisePeriod({ from: q.from, to: q.to });
+  const months = rules.monthKeys(period.from, period.to);
+  // Sequential, NOT Promise.all. `req.tenantDb` hands every call in a request
+  // the SAME pinned pooled client (middleware/tenant-context.js), and pg
+  // serialises concurrent queries on one client through its internal queue —
+  // so a Promise.all here would buy no parallelism at all while breaking the
+  // invariant that file documents ("nothing runs req.tenantDb calls
+  // concurrently"). Three awaits are three round trips either way.
+  const estimated = await repo.spendEstimated(c, id, period.from, period.to);
+  const committed = await repo.spendCommitted(c, id, period.from, period.to);
+  const actual = await repo.spendActual(c, id, period.from, period.to);
+  const series = rules.spendSeries(months, { estimated, committed, actual });
+  const documents = q.include_documents === false ? [] : await repo.spendDocuments(c, id, period.from, period.to);
+  return {
+    item: { dictionary_item_id: item.dictionary_item_id, code: item.code, label_fr: item.label_fr, label_en: item.label_en, currency: item.currency || "XAF", direction: item.direction },
+    period,
+    months: series.months,
+    totals: series.totals,
+    documents,
+  };
+}
+
+/* ═══════════════════ COST EVOLUTION (PR2 workstream 2) ════════════════════ */
+
+/**
+ * The effective-dated rate history behind an item, plus its trend.
+ *
+ * Grouped into SERIES — one per (provider, shipping line, variant) — because a
+ * single item genuinely has several concurrent rates (a 20ft and a 40ft
+ * container price are both current, and neither supersedes the other), and a
+ * timeline that interleaved them would render a sawtooth that means nothing.
+ */
+async function rateEvolution(c, id, q = {}) {
+  const item = await repo.getItem(c, id);
+  if (!item) return null;
+  const timeline = rules.rateTimeline(await repo.rateHistory(c, id), q.as_of || null);
+  const groups = new Map();
+  for (const r of timeline) {
+    const key = [r.provider_supplier_id || "", r.shipping_line || "", r.variant || ""].join("|");
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        provider_kind: r.provider_kind || null,
+        provider_supplier_id: r.provider_supplier_id || null,
+        provider_name: r.provider_name || null,
+        shipping_line: r.shipping_line || null,
+        variant: r.variant || null,
+        currency: r.currency || item.currency || "XAF",
+        points: [],
+      });
+    }
+    groups.get(key).points.push(r);
+  }
+  const series = [...groups.values()].map((g) => ({
+    ...g,
+    current: g.points.find((p) => p.in_force) || null,
+    trend: rules.rateTrend(g.points),
+  }));
+  return {
+    item: { dictionary_item_id: item.dictionary_item_id, code: item.code, label_fr: item.label_fr, label_en: item.label_en, currency: item.currency || "XAF", provider_kind: item.provider_kind || null },
+    series,
+    // Overall movement across every point, for the headline pill.
+    trend: rules.rateTrend(timeline),
+  };
+}
+
+/**
+ * Amend a rate the ONLY way an effective-dated series may be amended: expire the
+ * open row the day before the new one opens, and insert the new one — never
+ * edit history in place.
+ *
+ * This is the tax-jurisdiction discipline (tax_jurisdiction.service.supersedeCode)
+ * applied to expense_rate, and it is copied deliberately rather than
+ * generalised: the two tables have different keys, and the shared thing worth
+ * keeping identical is the TRANSACTION BOUNDARY. Expiring the old row in one
+ * transaction and inserting the new one in another leaves a window with no
+ * effective rate — which for tax codes meant every invoice from that date
+ * failed to post until someone noticed by hand. Expire and replace are one unit
+ * here for exactly the same reason.
+ */
+async function supersedeRate(c, { id, data, actor }) {
+  const item = await repo.getItem(c, id);
+  if (!item) return null;
+  const effectiveFrom = data.effective_from;
+  const key = {
+    shippingLine: data.shipping_line || null,
+    variant: data.variant || null,
+    providerSupplierId: data.provider_supplier_id || null,
+  };
+  await c.query("BEGIN");
+  try {
+    const current = await repo.openRate(c, id, key);
+    if (current) {
+      if (Date.parse(current.effective_from) >= Date.parse(effectiveFrom)) {
+        const e = new Error(`the open rate already starts on ${current.effective_from}; a superseding rate must start after it`);
+        e.status = 422;
+        throw e;
+      }
+      await repo.expireRate(c, current.expense_rate_id, rules.dayBefore(effectiveFrom));
+    }
+    const row = await repo.insertRate(c, {
+      dictionary_item_id: id,
+      shipping_line: key.shippingLine,
+      variant: key.variant,
+      provider_kind: data.provider_kind || null,
+      provider_supplier_id: key.providerSupplierId,
+      rate: data.rate,
+      currency: data.currency || item.currency || "XAF",
+      effective_from: effectiveFrom,
+      effective_to: data.effective_to || null,
+      note: data.note || null,
+    });
+    await emitEvent(c, { eventTypeKey: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, actorUserId: actor.user_id || null });
+    await audit(c, { actorUserId: actor.user_id || null, action: events.RATE_SUPERSEDED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, before: current || null, after: row });
+    await c.query("COMMIT");
+    return rateEvolution(c, id);
+  } catch (err) { await c.query("ROLLBACK"); throw err; }
+}
+
+/* ═══════════════════ BULK EXCEL IMPORT (PR2 workstream 3) ═════════════════ */
+
+/** Everything a row is validated against, read once per upload, not per row. */
+async function importContext(c) {
+  // Sequential for the same reason as spend() above: one pinned client, pg
+  // serialises regardless. Six round trips ONCE per upload, not per row —
+  // which is the optimisation that actually matters here (a 500-row sheet
+  // validated row-by-row would be 1500 lookups against three small tables).
+  const accounts = await repo.postableAccounts(c);
+  const taxCodes = await repo.taxCodeIndex(c);
+  const serviceTypes = await repo.serviceTypeIndex(c);
+  const subcategories = await repo.listRefs(c, "SUBCATEGORY");
+  const units = await repo.listRefs(c, "UNIT");
+  const proofSources = await repo.listRefs(c, "PROOF_SOURCE");
+  return {
+    accounts, taxCodes, serviceTypes,
+    refs: { SUBCATEGORY: subcategories, UNIT: units, PROOF_SOURCE: proofSources },
+    // The lookup shapes rules.validateImportRow wants.
+    lookups: {
+      accounts: new Set(accounts.map((a) => String(a.code))),
+      taxCodes: new Map(taxCodes.map((t) => [String(t.code), t.tax_code_id])),
+      serviceTypes: new Map(serviceTypes.map((s) => [String(s.key), s.service_type_id])),
+    },
+  };
+}
+
+/** The .xlsx a user downloads: enum dropdowns + this tenant's real references. */
+async function importTemplate(c) {
+  const ctx = await importContext(c);
+  return importer.buildTemplate({ accounts: ctx.accounts, taxCodes: ctx.taxCodes, serviceTypes: ctx.serviceTypes, refs: ctx.refs });
+}
+
+/**
+ * Parse + validate an upload. Writes NOTHING.
+ *
+ * A separate step from commit on purpose: the user sees exactly what will be
+ * created, and what will not and why, BEFORE anything is minted. An importer
+ * that validates and commits in one call has to choose between all-or-nothing
+ * (400 good rows lost to one typo) and silent partial success (rows created
+ * that the user never saw); showing the staging table first makes that a
+ * decision rather than a policy.
+ */
+async function importValidate(c, { buffer }) {
+  const parsed = await importer.parseUpload(buffer);
+  const ctx = await importContext(c);
+  const { valid, rejected } = rules.partitionImport(parsed.rows, ctx.lookups);
+  return {
+    sheet: parsed.sheet,
+    parsed: parsed.rows.length,
+    valid,
+    rejected,
+    summary: { total: parsed.rows.length, valid: valid.length, rejected: rejected.length },
+  };
+}
+
+/**
+ * Commit the valid rows. PARTIAL by design.
+ *
+ * Re-validates server-side rather than trusting the staging payload: the client
+ * round-trip is a convenience, not a security boundary, and the tenant's
+ * accounts could have changed between validate and commit.
+ *
+ * Each row is its own transaction — NOT one transaction for the batch. A
+ * 400-row import that rolls back entirely because row 397 hit a code collision
+ * is the failure mode partial commit exists to avoid, and the rows are
+ * independent (an item is complete on its own). A row that fails at insert
+ * joins `rejected` with the database's own reason and the user re-uploads the
+ * error file.
+ */
+async function importCommit(c, { rows = [], actor }) {
+  const ctx = await importContext(c);
+  const created = [];
+  const rejected = [];
+  for (const entry of rows) {
+    const rowNumber = entry.row || null;
+    const check = rules.validateImportRow(entry.raw || entry.data || {}, ctx.lookups);
+    if (!check.valid) { rejected.push({ row: rowNumber, reasons: check.reasons, raw: entry.raw || entry.data || {} }); continue; }
+    try {
+       
+      const item = await create(c, { data: check.data, actor });
+      created.push({ row: rowNumber, dictionary_item_id: item.dictionary_item_id, code: item.code, label_fr: item.label_fr });
+    } catch (err) {
+      rejected.push({ row: rowNumber, reasons: [err.message || "could not be created"], raw: entry.raw || entry.data || {} });
+    }
+  }
+  const summary = { attempted: rows.length, created: created.length, rejected: rejected.length };
+  if (created.length) {
+    // One event and one audit row for the BATCH, not per item — `create()` has
+    // already emitted dictionary_item.created for each. A 400-row import that
+    // also emitted 400 batch events would drown the feed it is meant to inform.
+    await emitEvent(c, { eventTypeKey: events.IMPORTED, moduleKey: events.MODULE, entityRef: "dict:import", actorUserId: actor.user_id || null });
+    await audit(c, { actorUserId: actor.user_id || null, action: events.IMPORTED, moduleKey: events.MODULE, entityRef: "dict:import", after: { ...summary, codes: created.map((r) => r.code) } });
+  }
+  return { created, rejected, summary };
+}
+
+/** The rejected rows as an .xlsx the user fixes and re-uploads. */
+const importErrorFile = (rejected) => importer.buildErrorFile(rejected);
+
 /* ── dictionary_ref registry (dropdown values, gear-modal editable) ─────────── */
 const listRefs = (c, kind, includeInactive) => repo.listRefs(c, kind, includeInactive);
 
@@ -159,4 +399,9 @@ async function updateRef(c, { id, patch, actor }) {
   return row;
 }
 
-module.exports = { listItems, get, dossier, create, update, listRefs, createRef, updateRef };
+module.exports = {
+  listItems, get, dossier, create, update,
+  spend, rateEvolution, supersedeRate,
+  importTemplate, importValidate, importCommit, importErrorFile,
+  listRefs, createRef, updateRef,
+};

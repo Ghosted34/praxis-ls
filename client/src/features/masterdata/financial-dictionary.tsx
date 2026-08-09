@@ -8,8 +8,9 @@
  * posting map, the Basic/Advanced/Full service tiers, compliance controls, and
  * where the item is used across the system.
  *
- * Cost, cost-evolution and spend-over-a-period land in PR2 (this view already
- * shows the usage counts those money rollups will hang off).
+ * PR2 adds the money half: a Spend tab (estimated / committed / actual over a
+ * period, with drill-ins to the underlying documents), a Cost & evolution tab
+ * (the effective-dated rate history and its trend), and a bulk Excel import.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
@@ -29,6 +30,8 @@ import { money, num } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { DictForm } from "./financial-dictionary-form";
 import { FinancialDictionarySettings } from "./financial-dictionary-settings";
+import { SpendTab, CostEvolutionTab } from "./financial-dictionary-spend";
+import { DictImportModal } from "./financial-dictionary-import";
 
 const shell = pageShell.wide;
 
@@ -43,6 +46,7 @@ export function FinancialDictionaryPage() {
   const [selId, setSelId] = React.useState<string | null>(null);
   const [editing, setEditing] = React.useState<api.DictFull | "new" | null>(null);
   const [settings, setSettings] = React.useState(false);
+  const [importing, setImporting] = React.useState(false);
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
   React.useEffect(() => { if (!selId && rows.length) setSelId(rows[0].dictionary_item_id); }, [rows, selId]);
@@ -56,6 +60,7 @@ export function FinancialDictionaryPage() {
         action={
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="sm" onClick={() => setSettings(true)}>⚙ Settings</Button>
+            <Button variant="outline" size="sm" onClick={() => setImporting(true)}>Import</Button>
             <Button onClick={() => setEditing("new")}>New item</Button>
           </div>
         }
@@ -86,13 +91,16 @@ export function FinancialDictionaryPage() {
       )}
 
       {editing !== null && <DictForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={list.reload} />}
+      {/* onImported fires on COMMIT, not on close, so imported rows appear in
+          the rail immediately — the modal stays open showing what was rejected. */}
+      <DictImportModal open={importing} onClose={() => setImporting(false)} onImported={list.reload} />
       <FinancialDictionarySettings open={settings} onClose={() => setSettings(false)} />
       <ScreenAi path="master/financial-dictionary" />
     </section>
   );
 }
 
-const TABS = ["Overview", "OHADA posting", "Service tiers", "Compliance"] as const;
+const TABS = ["Overview", "Spend", "Cost & evolution", "OHADA posting", "Service tiers", "Compliance"] as const;
 type Tab = (typeof TABS)[number];
 
 function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.DictFull) => void; onChanged: () => void }) {
@@ -182,6 +190,12 @@ function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.Di
           </Panel>
         </div>
       )}
+
+      {/* Mounted only when selected: each owns its own fetch, and the spend
+          query is a four-table aggregate nobody should pay for on a tab they
+          are not looking at. */}
+      {tab === "Spend" && <SpendTab id={id} />}
+      {tab === "Cost & evolution" && <CostEvolutionTab id={id} />}
 
       {tab === "OHADA posting" && (
         <div className="overflow-hidden rounded-xl border">

@@ -50,21 +50,41 @@ export function SystemHealthWidget() {
   const fatal = stats?.fatal ?? 0;
 
   /**
-   * Status now leads with MEASURED availability and falls back to the old
-   * error-derived heuristic only when nothing has been sampled.
+   * STATUS DESCRIBES NOW. That is the whole fix.
    *
-   * The order matters. "All systems operational" inferred from an absence of
+   * This read `fatal > 0 → "Degraded"`, and `fatal` counts every fatal in the
+   * last 24h whether or not anyone fixed it. So the card sat there reading
+   *
+   *     100.00% UPTIME · 5 ERRORS TODAY · 2 FATAL (24H) · 100% RESOLVED · Degraded
+   *
+   * — self-contradictory on its own face: full uptime, everything resolved, and
+   * a red light. A status that will not go back to green after the work is done
+   * is one people stop reading, which is the same failure mode as a muted alert
+   * channel: the indicator survives, the information does not.
+   *
+   * `fatal_active` and `active` are the open counts. `fatal` stays on the KPI
+   * card beside it, where "2 fatal in 24h" is exactly the right number.
+   *
+   * Order still matters. "All systems operational" inferred from an absence of
    * errors is a claim about our own logging, not about the platform — a process
-   * that is down logs nothing at all and would have read as perfectly healthy.
-   * A recorded outage in the window outranks a quiet error feed.
+   * that is down logs nothing and would read as perfectly healthy. A MEASURED
+   * outage therefore outranks a quiet feed.
    */
+  const fatalActive = stats?.fatal_active ?? 0;
+  const active = stats?.active ?? 0;
+  const outages = health && health.uptime_percent !== null && health.incidents ? health.incidents.length : 0;
+
   const status =
-    health && health.uptime_percent !== null && health.incidents && health.incidents.length > 0
-      ? { label: `${health.incidents.length} outage${health.incidents.length === 1 ? "" : "s"} in ${coverage(health)}`, tone: "var(--bad, #991B1B)" }
+    outages > 0
+      ? { label: `${outages} outage${outages === 1 ? "" : "s"} in ${coverage(health as HealthSummary)}`, tone: "var(--bad, #991B1B)" }
       : today === null ? { label: "Checking…", tone: "var(--ink-3)" }
-        : fatal > 0 ? { label: "Degraded", tone: "var(--bad, #991B1B)" }
-          : today > 0 ? { label: "Errors logged", tone: "var(--warn, #854D0E)" }
-            : { label: "All systems operational", tone: "var(--ok, #166534)" };
+        : fatalActive > 0 ? { label: "Degraded", tone: "var(--bad, #991B1B)" }
+          : active > 0 ? { label: "Errors logged", tone: "var(--warn, #854D0E)" }
+            // Everything that happened has been dealt with. Distinct from a
+            // genuinely quiet window, because "we had five and fixed them all"
+            // and "nothing happened" are different facts about the day.
+            : today > 0 ? { label: "Recovered — all resolved", tone: "var(--ok, #166534)" }
+              : { label: "All systems operational", tone: "var(--ok, #166534)" };
 
   // Never fabricate a figure. `collector: "disabled"` and "no samples yet" are
   // different answers from "100%", and conflating them is exactly why migration

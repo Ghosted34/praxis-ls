@@ -235,6 +235,67 @@ describe("service_type repo exposes findById, not get", () => {
   });
 });
 
+/* ═══════════════════════════════════════════════════════════════════════════
+ * Overview read "Degraded" beside 100% uptime and 100% resolved
+ * ═══════════════════════════════════════════════════════════════════════════ */
+describe("system health status describes NOW, not the last 24 hours", () => {
+  const ERRORS = "../../src/services/platform/errors.service";
+  const DB = require.resolve("../../src/services/platform/db");
+
+  function statsWith(row) {
+    jest.resetModules();
+    jest.doMock(DB, () => ({ query: async () => ({ rows: [row] }) }));
+
+    return require(ERRORS).stats({});
+  }
+
+  /** The widget's decision, mirrored so the rule is asserted, not just the data. */
+  const label = (s) =>
+    (s.fatal_active > 0 ? "Degraded"
+      : s.active > 0 ? "Errors logged"
+        : s.today > 0 ? "Recovered — all resolved"
+          : "All systems operational");
+
+  const BASE = {
+    total_occurrences: "12", unique_errors: 5, fatal: 2, fatal_active: 0,
+    errors: 3, warnings: 0, resolved: 5, active: 0, today: 5, avg_resolution_seconds: 120,
+  };
+
+  it("exposes fatal_active separately from the 24h fatal count", async () => {
+    const s = await statsWith(BASE);
+    // Both numbers are wanted, for different jobs: `fatal` is the KPI card
+    // ("2 FATAL (24H)"), `fatal_active` is the status light.
+    expect(s.fatal).toBe(2);
+    expect(s.fatal_active).toBe(0);
+  });
+
+  it("does not say Degraded once everything is resolved — the reported card", async () => {
+    // 100.00% UPTIME · 5 ERRORS TODAY · 2 FATAL (24H) · 100% RESOLVED · Degraded
+    // A status that will not return to green after the work is done is one
+    // people stop reading.
+    const s = await statsWith(BASE);
+    expect(s.resolved_rate).toBe(100);
+    expect(label(s)).toBe("Recovered — all resolved");
+  });
+
+  it("still says Degraded while a fatal is OPEN", async () => {
+    const s = await statsWith({ ...BASE, fatal_active: 1, active: 1, resolved: 4 });
+    expect(label(s)).toBe("Degraded");
+  });
+
+  it("says Errors logged for open non-fatal errors", async () => {
+    const s = await statsWith({ ...BASE, fatal_active: 0, active: 2, resolved: 3 });
+    expect(label(s)).toBe("Errors logged");
+  });
+
+  it("says operational only when the window was genuinely quiet", async () => {
+    // Distinct from "recovered": "we had five and fixed them all" and "nothing
+    // happened" are different facts about the day.
+    const s = await statsWith({ ...BASE, fatal: 0, fatal_active: 0, active: 0, today: 0, resolved: 0, unique_errors: 0 });
+    expect(label(s)).toBe("All systems operational");
+  });
+});
+
 /** Guards the require paths above against a file move. */
 it("both services are where this suite thinks they are", () => {
   expect(path.basename(require.resolve(TREASURY))).toBe("treasury-360.service.js");

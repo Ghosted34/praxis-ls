@@ -304,6 +304,23 @@ DO UPDATE SET
   stack_trace      = EXCLUDED.stack_trace,
   raw_stack        = EXCLUDED.raw_stack,
   route            = COALESCE(EXCLUDED.route, platform.error_event.route),
+  -- module MUST move with route, and did not.
+  --
+  -- It was absent from this list, so it froze at whatever the first occurrence
+  -- said while route above kept following the latest. Invisible while module
+  -- came from the stack — that is stable across occurrences of one signature —
+  -- and immediately visible once browser errors began deriving module FROM the
+  -- route, which produced a card reading:
+  --
+  --     Module: ai        Route: /comms/mail
+  --
+  -- i.e. the module of the first occurrence beside the route of the most
+  -- recent, disagreeing on screen. Two fields from one source must be written
+  -- on one schedule.
+  --
+  -- (No backticks anywhere in this query: it is a JS template literal, so one
+  --  would end the string mid-SQL. Second time today.)
+  module           = COALESCE(EXCLUDED.module, platform.error_event.module),
   release          = COALESCE(EXCLUDED.release, platform.error_event.release),
   context          = EXCLUDED.context,
   resolved_at      = NULL,

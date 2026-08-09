@@ -255,6 +255,14 @@ async function stats(q = {}) {
        COALESCE(SUM(e.occurrence_count), 0)::bigint            AS total_occurrences,
        COUNT(*)::int                                            AS unique_errors,
        COUNT(*) FILTER (WHERE e.level = 'fatal')::int           AS fatal,
+       -- Fatals that are STILL OPEN. The column above counts everything in the
+       -- window whether or not anyone fixed it: right for a KPI card, wrong for
+       -- a STATUS light. A resolved fatal kept the Overview reading "Degraded"
+       -- next to 100% uptime and 100% resolved on the same card, and a status
+       -- that never returns to green is one people stop reading.
+       -- (No backticks in this comment: the whole query is a JS template
+       --  literal, so one would end the string mid-SQL.)
+       COUNT(*) FILTER (WHERE e.level = 'fatal' AND e.resolved_at IS NULL)::int AS fatal_active,
        COUNT(*) FILTER (WHERE e.level = 'error')::int           AS errors,
        COUNT(*) FILTER (WHERE e.level = 'warning')::int         AS warnings,
        COUNT(*) FILTER (WHERE e.resolved_at IS NOT NULL)::int   AS resolved,
@@ -272,6 +280,7 @@ async function stats(q = {}) {
     total_occurrences: Number(s.total_occurrences),
     unique_errors: s.unique_errors,
     fatal: s.fatal,
+    fatal_active: s.fatal_active,
     errors: s.errors,
     warnings: s.warnings,
     resolved: s.resolved,

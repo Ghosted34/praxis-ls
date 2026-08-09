@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 107,
-  "route_count": 914,
+  "route_count": 925,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 831
+    "gated": 842
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1450,6 +1450,36 @@
       "tier": "gated"
     },
     "GET /api/tenant/financial-dictionary/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/:id/360": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/:id/rate-history": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/:id/spend": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/import/template": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/refs": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3069,6 +3099,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/financial-dictionary/refs/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/financing/:id": {
       "auth": true,
       "rbac": true,
@@ -4252,6 +4288,36 @@
       "tier": "gated"
     },
     "POST /api/tenant/financial-dictionary/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/financial-dictionary/:id/rates/supersede": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/financial-dictionary/import/commit": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/financial-dictionary/import/errors": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/financial-dictionary/import/validate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/financial-dictionary/refs": {
       "auth": true,
       "rbac": true,
       "validated": false,

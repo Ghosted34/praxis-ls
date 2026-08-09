@@ -158,7 +158,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 269× | — |
+| `NOT_FOUND` | 404 | 271× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
 | `NOT_READY` | 409 | 1× | — |
@@ -268,7 +268,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 109× | — |
+| `VALIDATION_ERROR` | 422 | 110× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

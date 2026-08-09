@@ -540,45 +540,122 @@ export const deleteExpenseRate = (id: string) =>
   tenant<{ deleted: boolean }>(`/expense-rates/${id}`, { method: "DELETE" });
 
 /* ── Financial dictionary(/financial-dictionary) ────────────────── */
+export type PostingContext = "sale" | "purchase" | "disbursement";
 export type PostingRule = {
-  applies_context: "sale" | "purchase" | "disbursement";
-  debit_account?: string;
-  credit_account?: string;
-  tax_code_id?: string;
+  applies_context: PostingContext;
+  debit_account?: string | null;
+  credit_account?: string | null;
+  tax_code_id?: string | null;
   is_debours?: boolean;
+  // Resolved on the 360 read (joined from chart_of_accounts) — labels for display.
+  debit_label?: string | null;
+  credit_label?: string | null;
+  debit_class?: number | null;
+  credit_class?: number | null;
+};
+export type Direction = "REVENUE" | "EXPENSE" | "DEBOURS" | "ASSET";
+export type ApplicabilityMode = "SERVICE_SCOPED" | "ANY_OPERATIONS" | "NON_OPERATIONAL";
+export type ReceiptRequirement = "ALWAYS_REQUIRED" | "CONDITIONALLY_REQUIRED" | "NOT_REQUIRED";
+export type Tier = "BASIC" | "ADVANCED" | "FULL";
+export type ServiceTier = {
+  service_type_id: string;
+  service_key?: string | null;
+  name_fr?: string | null;
+  name_en?: string | null;
+  territory?: string | null;
+  tier: Tier;
+  sort_order?: number;
 };
 export type DictItem = {
   dictionary_item_id: string;
   code: string;
   label_fr?: string;
   label_en?: string | null;
+  description?: string | null;
   category: string;
+  direction: Direction;
+  subcategory?: string | null;
+  unit_of_measure?: string | null;
+  applicability_mode: ApplicabilityMode;
   currency?: string;
   is_debours?: boolean;
+  is_billable?: boolean;
   default_price?: number | null;
+  shipping_line?: string | null;
+  provider_kind?: string | null;
+  proof_source?: string | null;
+  requires_justification?: boolean;
+  receipt_requirement?: ReceiptRequirement;
+  debours_vat_transparent?: boolean;
   service_type_key?: string | null;
   is_active: boolean;
 };
 export type DictInput = {
-  code: string;
   label_fr: string;
-  label_en?: string;
-  description?: string;
+  label_en?: string | null;
+  description?: string | null;
   category: "debours" | "service" | "overhead" | "asset" | "other";
+  direction: Direction;
+  subcategory?: string | null;
+  unit_of_measure?: string | null;
+  applicability_mode?: ApplicabilityMode;
   is_debours?: boolean;
-  default_price?: number;
+  is_billable?: boolean;
+  default_price?: number | null;
   currency?: string;
-  shipping_line?: string;
-  service_type_key?: string;
+  shipping_line?: string | null;
+  provider_kind?: string | null;
+  proof_source?: string | null;
+  requires_justification?: boolean;
+  receipt_requirement?: ReceiptRequirement;
+  debours_vat_transparent?: boolean;
   posting_rules: PostingRule[];
+  service_tiers?: { service_type_id: string; service_key?: string | null; tier: Tier; sort_order?: number }[];
   is_active?: boolean;
 };
-export const listDict = () => tenant<DictItem[]>("/financial-dictionary");
-export const getDict = (id: string) =>
-  tenant<DictItem & { posting_rules: PostingRule[] }>(`/financial-dictionary/${id}`);
-export const createDict = (body: DictInput) => tenant<DictItem>("/financial-dictionary", { method: "POST", body });
-export const updateDict = (id: string, body: Partial<DictInput>) =>
-  tenant<DictItem>(`/financial-dictionary/${id}`, { method: "PATCH", body });
+export type DictFull = DictItem & { posting_rules: PostingRule[]; service_tiers: ServiceTier[] };
+export type DictUsage = {
+  costing_lines: number; cash_request_lines: number; purchase_order_items: number;
+  invoice_lines: number; supplier_invoice_lines: number; cost_entries: number; expense_rates: number;
+};
+export type DictCompliance = {
+  requires_justification: boolean; receipt_requirement: ReceiptRequirement; proof_source?: string | null;
+  is_debours: boolean; debours_vat_transparent: boolean; needs_attention: boolean;
+};
+export type DictDossier = {
+  item: DictFull; posting_rules: PostingRule[]; service_tiers: ServiceTier[];
+  usage: DictUsage; compliance: DictCompliance;
+};
+export type DictListFilter = {
+  q?: string; direction?: Direction; category?: string; applicability_mode?: ApplicabilityMode;
+  service_type_id?: string; tier?: string; include_inactive?: boolean;
+};
+export const listDict = (f: DictListFilter = {}) => {
+  const p = new URLSearchParams();
+  if (f.q) p.set("q", f.q);
+  if (f.direction) p.set("direction", f.direction);
+  if (f.category) p.set("category", f.category);
+  if (f.applicability_mode) p.set("applicability_mode", f.applicability_mode);
+  if (f.service_type_id) p.set("service_type_id", f.service_type_id);
+  if (f.tier) p.set("tier", f.tier);
+  if (f.include_inactive) p.set("include_inactive", "true");
+  const qs = p.toString();
+  return tenant<DictItem[]>(`/financial-dictionary${qs ? `?${qs}` : ""}`);
+};
+export const getDict = (id: string) => tenant<DictFull>(`/financial-dictionary/${id}`);
+export const dictDossier = (id: string) => tenant<DictDossier>(`/financial-dictionary/${id}/360`);
+export const createDict = (body: DictInput) => tenant<DictFull>("/financial-dictionary", { method: "POST", body });
+export const updateDict = (id: string, body: Partial<DictInput>) => tenant<DictFull>(`/financial-dictionary/${id}`, { method: "PATCH", body });
+
+/* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal). */
+export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND";
+export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; sort_order?: number; is_system?: boolean; is_active?: boolean };
+export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
+  tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);
+export const createDictRef = (body: { kind: DictRefKind; code: string; name_fr: string; name_en?: string; sort_order?: number }) =>
+  tenant<DictRef>("/financial-dictionary/refs", { method: "POST", body });
+export const updateDictRef = (id: string, body: Partial<{ name_fr: string; name_en: string; sort_order: number; is_active: boolean }>) =>
+  tenant<DictRef>(`/financial-dictionary/refs/${id}`, { method: "PATCH", body });
 
 /* ── Currencies(/currencies) — for selects ──────────────────────── */
 export type Currency = { code: string; name?: string; symbol?: string | null; is_active?: boolean };

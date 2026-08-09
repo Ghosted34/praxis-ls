@@ -309,7 +309,21 @@ const AREAS: Area[] = [
       { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
       { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
       { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", dictionary_item_id: "dddddddd-4444", shipping_line: "MAERSK", rate: 25000, currency: "XAF" }], "/financial-dictionary": [] }, populatedProof: /MAERSK/ },
-      { name: "Financial dictionary", render: () => <FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
+      {
+        name: "Financial dictionary",
+        render: () => <FinancialDictionaryPage />,
+        routes: {
+          "/financial-dictionary": [{ dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", category: "service", direction: "REVENUE", applicability_mode: "ANY_OPERATIONS", is_active: true }],
+          "/financial-dictionary/di1/360": {
+            item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", category: "service", direction: "REVENUE", applicability_mode: "ANY_OPERATIONS", currency: "XAF", is_billable: true, is_active: true, receipt_requirement: "NOT_REQUIRED" },
+            posting_rules: [{ applies_context: "sale", debit_account: "4111", credit_account: "7061", debit_label: "Clients locaux", credit_label: "Commission de transit" }],
+            service_tiers: [],
+            usage: { costing_lines: 0, cash_request_lines: 0, purchase_order_items: 0, invoice_lines: 0, supplier_invoice_lines: 0, cost_entries: 0, expense_rates: 0 },
+            compliance: { requires_justification: false, receipt_requirement: "NOT_REQUIRED", proof_source: null, is_debours: false, debours_vat_transparent: true, needs_attention: false },
+          },
+        },
+        populatedProof: /Transit fee/,
+      },
       {
         // Service types moved to Master Data as part of Option-B UI regrouping;
         // backend still rides MOD-29 (see service_type.events.js for why). The

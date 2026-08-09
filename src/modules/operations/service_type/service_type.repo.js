@@ -83,16 +83,26 @@ async function templatesWithStages(client, serviceTypeId) {
  * mistake generic items for scoped ones (spec §11.3, "services as DATA").
  */
 async function dictionaryItemsFor(client, key) {
+  // Scoped lines now come from the many-to-many tier join (Basic/Advanced/Full),
+  // ordered by tier so the ST-360 can group them. service_type_key is kept in
+  // step by the FD service, so this reads the same set either way.
   const scoped = (await client.query(
-    "SELECT dictionary_item_id, code, label_fr, label_en, category, is_debours, " +
-      "  is_billable, default_price, currency, shipping_line, service_type_key, is_active " +
-      "FROM dictionary_item WHERE service_type_key = $1 ORDER BY category, code",
+    "SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.category, di.direction, " +
+      "  di.is_debours, di.is_billable, di.default_price, di.currency, di.shipping_line, " +
+      "  di.service_type_key, di.is_active, sti.tier " +
+      "FROM service_type_dictionary_item sti " +
+      "JOIN dictionary_item di ON di.dictionary_item_id = sti.dictionary_item_id " +
+      "JOIN service_type st ON st.service_type_id = sti.service_type_id " +
+      "WHERE st.key = $1 " +
+      "ORDER BY (CASE sti.tier WHEN 'BASIC' THEN 1 WHEN 'ADVANCED' THEN 2 ELSE 3 END), di.category, di.code",
     [key],
   )).rows;
+  // Generic = surfaces on ANY operation (the new applicability mode). Overhead /
+  // non-operational lines are deliberately excluded from a service's pick-list.
   const generic = (await client.query(
-    "SELECT dictionary_item_id, code, label_fr, label_en, category, is_debours, " +
+    "SELECT dictionary_item_id, code, label_fr, label_en, category, direction, is_debours, " +
       "  is_billable, default_price, currency, shipping_line, is_active " +
-      "FROM dictionary_item WHERE service_type_key IS NULL AND is_active = true " +
+      "FROM dictionary_item WHERE applicability_mode = 'ANY_OPERATIONS' AND is_active = true " +
       "ORDER BY category, code",
   )).rows;
   return { scoped, generic };

@@ -5,11 +5,20 @@
  */
 "use strict";
 
+// The two dictionary-driven advisory rules are declared next to the code that
+// raises them inline (services/compliance/proof-obligation.service), and merged
+// in here so the checker, the catalogue endpoint and the flags screen all see
+// one catalogue. They are the targeted version of "cost_entry.missing_proof"
+// above: that rule flags EVERY unproven cost entry, these flag only the ones
+// whose dictionary item actually demands a document.
+const { CATALOGUE: PROOF_OBLIGATIONS } = require("../../../services/compliance/proof-obligation.service");
+
 const CATALOGUE = {
   "cost_entry.missing_proof": { severity: "WARN", describe: "A dossier cost entry has no proof document attached (KB §6 compliance)." },
   "procurement.unmatched": { severity: "WARN", describe: "A posted supplier invoice has no matched goods-received note (three-way match)." },
   "regie.aged_unjustified": { severity: "RED", describe: "A régie d'avance is aged and unjustified (581 unresolved)." },
   "debours.tax_violation": { severity: "RED", describe: "A débours journal line carries a tax code — débours must be tax-free (KB §23.5)." },
+  ...PROOF_OBLIGATIONS,
 };
 
 const ruleKeys = () => Object.keys(CATALOGUE);

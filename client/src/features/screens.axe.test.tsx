@@ -309,7 +309,55 @@ const AREAS: Area[] = [
       { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
       { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
       { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", dictionary_item_id: "dddddddd-4444", shipping_line: "MAERSK", rate: 25000, currency: "XAF" }], "/financial-dictionary": [] }, populatedProof: /MAERSK/ },
-      { name: "Financial dictionary", render: () => <FinancialDictionaryPage />, routes: { "/financial-dictionary": [{ dictionary_item_id: "di1", label: "Transit fee", category: "service", context: "sale" }] } },
+      {
+        name: "Financial dictionary",
+        render: () => <FinancialDictionaryPage />,
+        routes: {
+          "/financial-dictionary": [{ dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", category: "service", direction: "REVENUE", applicability_mode: "ANY_OPERATIONS", is_active: true }],
+          // PR2 tabs. The harness matches by LONGEST path prefix, so these must
+          // be listed even though the dossier only fetches them when the tab is
+          // selected — an unmocked path resolves to [] and the tab would render
+          // its empty state instead of the tree the scan is meant to check.
+          "/financial-dictionary/di1/spend": {
+            item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", currency: "XAF", direction: "REVENUE" },
+            period: { from: "2025-09-01", to: "2026-08-09", swapped: false },
+            months: [
+              { month: "2026-06", estimated: 120000, estimated_count: 1, committed: 100000, committed_count: 1, actual: 90000, actual_count: 2 },
+              { month: "2026-07", estimated: 0, estimated_count: 0, committed: 0, committed_count: 0, actual: 0, actual_count: 0 },
+              { month: "2026-08", estimated: 60000, estimated_count: 1, committed: 55000, committed_count: 1, actual: 50000, actual_count: 1 },
+            ],
+            totals: { estimated: 180000, committed: 155000, actual: 140000, estimated_count: 2, committed_count: 2, actual_count: 3, headline: 140000, variance_committed_actual: 15000, variance_estimated_actual: 40000 },
+            documents: [
+              { lens: "actual", doc_type: "cost_entry", doc_id: "ce1", doc_number: null, status: "validated", dossier_id: "d1", dossier_ref: "SBX-2026-0007", amount: 50000, currency: "XAF", doc_date: "2026-08-02", label: "Transit" },
+              { lens: "committed", doc_type: "purchase_order", doc_id: "po1", doc_number: "PO-2026-001", status: "ISSUED_LOCKED", dossier_id: "d1", dossier_ref: "SBX-2026-0007", amount: 55000, currency: null, doc_date: "2026-08-01", label: "Transit fee" },
+            ],
+          },
+          "/financial-dictionary/di1/rate-history": {
+            item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", currency: "XAF", provider_kind: "PORT_TERMINAL" },
+            series: [
+              {
+                key: "|MAERSK|20ft", provider_kind: "SHIPPING_LINE", provider_supplier_id: null, provider_name: null,
+                shipping_line: "MAERSK", variant: "20ft", currency: "XAF",
+                points: [
+                  { expense_rate_id: "er1", rate: 100000, currency: "XAF", effective_from: "2026-01-01", effective_to: "2026-05-31", in_force: false, superseded: true, note: null },
+                  { expense_rate_id: "er2", rate: 120000, currency: "XAF", effective_from: "2026-06-01", effective_to: null, in_force: true, superseded: false, note: "Annual review" },
+                ],
+                current: { expense_rate_id: "er2", rate: 120000, currency: "XAF", effective_from: "2026-06-01", effective_to: null, in_force: true, superseded: false, note: "Annual review" },
+                trend: { first: 100000, last: 120000, delta: 20000, delta_pct: 20, direction: "up", points: 2 },
+              },
+            ],
+            trend: { first: 100000, last: 120000, delta: 20000, delta_pct: 20, direction: "up", points: 2 },
+          },
+          "/financial-dictionary/di1/360": {
+            item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", category: "service", direction: "REVENUE", applicability_mode: "ANY_OPERATIONS", currency: "XAF", is_billable: true, is_active: true, receipt_requirement: "NOT_REQUIRED" },
+            posting_rules: [{ applies_context: "sale", debit_account: "4111", credit_account: "7061", debit_label: "Clients locaux", credit_label: "Commission de transit" }],
+            service_tiers: [],
+            usage: { costing_lines: 0, cash_request_lines: 0, purchase_order_items: 0, invoice_lines: 0, supplier_invoice_lines: 0, cost_entries: 0, expense_rates: 0 },
+            compliance: { requires_justification: false, receipt_requirement: "NOT_REQUIRED", proof_source: null, is_debours: false, debours_vat_transparent: true, needs_attention: false },
+          },
+        },
+        populatedProof: /Transit fee/,
+      },
       {
         // Service types moved to Master Data as part of Option-B UI regrouping;
         // backend still rides MOD-29 (see service_type.events.js for why). The
@@ -330,7 +378,9 @@ const AREAS: Area[] = [
               ]},
             ],
             dictionary_items: [
-              { dictionary_item_id: "di1", code: "SEA_HANDLING", label_fr: "Manutention portuaire", label_en: "Port handling", category: "service", is_debours: false, is_billable: true, default_price: 150000, currency: "XAF", shipping_line: null, service_type_key: "SEA_IMPORT", is_active: true },
+              // `tier` comes from the service_type_dictionary_item join (0630) and
+              // renders as the pill in the scoped table's Tier column.
+              { dictionary_item_id: "di1", code: "SEA_HANDLING", label_fr: "Manutention portuaire", label_en: "Port handling", category: "service", is_debours: false, is_billable: true, default_price: 150000, currency: "XAF", shipping_line: null, service_type_key: "SEA_IMPORT", tier: "BASIC", is_active: true },
             ],
             dictionary_items_generic: [],
             dossiers: [

@@ -90,6 +90,13 @@ const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
   COMPLETED: "ok",
   CANCELLED: "mute",
 };
+// Basic ⊆ Advanced ⊆ Full: a Basic line is in every bundle, a Full one only in
+// the largest, so the tone escalates with how exclusive the tier is.
+const TIER_TONE: Record<string, "ok" | "warn" | "blue"> = {
+  BASIC: "ok",
+  ADVANCED: "blue",
+  FULL: "warn",
+};
 const CATEGORY_TONE: Record<string, "ok" | "warn" | "mute" | "blue" | "bad"> = {
   service: "ok",
   debours: "blue",
@@ -285,10 +292,23 @@ function DictionaryTab({
   const [showGeneric, setShowGeneric] = React.useState(false);
   const dictHref = (code: string) => `/master/financial-dictionary?focus=${encodeURIComponent(code)}`;
 
-  const renderRow = (d: api.ServiceTypeDictionaryItem) => (
+  /**
+   * Tier column on SCOPED rows only. The generic bucket is by definition not
+   * scoped to this service, so it has no tier — a column of dashes there would
+   * imply the concept applies and the data is missing, which is the opposite of
+   * the truth.
+   */
+  const renderRow = (showTier: boolean) => (d: api.ServiceTypeDictionaryItem) => (
     <tr key={d.dictionary_item_id}>
       <Td><DeepLink href={dictHref(d.code)}>{d.code}</DeepLink></Td>
       <Td>{d.label_en || d.label_fr}</Td>
+      {showTier && (
+        <Td>
+          {/* Nested bundles: BASIC ⊆ ADVANCED ⊆ FULL. The tone escalates with
+              the tier so "which lines does a Basic job pull?" is scannable. */}
+          <Pill tone={TIER_TONE[d.tier || "BASIC"]}>{(d.tier || "BASIC")[0] + (d.tier || "BASIC").slice(1).toLowerCase()}</Pill>
+        </Td>
+      )}
       <Td><Pill tone={CATEGORY_TONE[d.category] || "mute"}>{d.category}</Pill></Td>
       <Td>{d.shipping_line || "—"}</Td>
       <Td r>{d.default_price != null && d.default_price !== "" ? money(d.default_price) : "—"}</Td>
@@ -313,12 +333,12 @@ function DictionaryTab({
         emptyLabel={`No dictionary line is scoped to ${serviceKey}. Add one from the financial dictionary and pick "${serviceKey}" as the applicable service.`}
         head={
           <>
-            <Th>Code</Th><Th>Label</Th><Th>Category</Th><Th>Shipping line</Th>
+            <Th>Code</Th><Th>Label</Th><Th>Tier</Th><Th>Category</Th><Th>Shipping line</Th>
             <Th r>Default price</Th><Th>Currency</Th><Th>State</Th>
           </>
         }
       >
-        {scoped.map(renderRow)}
+        {scoped.map(renderRow(true))}
       </MiniTable>
 
       {/* Generic bucket — collapsed by default so the tab reads about THIS
@@ -347,7 +367,7 @@ function DictionaryTab({
                 </>
               }
             >
-              {generic.map(renderRow)}
+              {generic.map(renderRow(false))}
             </MiniTable>
           </div>
         )}

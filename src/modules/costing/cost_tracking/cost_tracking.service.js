@@ -9,6 +9,7 @@ const repo = require("./cost_tracking.repo");
 const events = require("./cost_tracking.events");
 const { reconcile } = require("../costing/costing.rules");
 const journalEntry = require("../../finance/journal_entry/journal_entry.service");
+const proofObligations = require("../../../services/compliance/proof-obligation.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
@@ -39,6 +40,20 @@ async function recordCost(client, opts) {
     });
     const costEntry = await repo.insertCostEntry(client, {
       dossier_id: dossierId, dictionary_item_id: dictionaryItemId, category, amount, entry_id: entry.entry_id, proof_vault_id: proofVaultId,
+    });
+    // Advisory proof check (MOD-05 §Q4) — a cost whose dictionary item always
+    // requires a receipt, recorded without one, raises a WARN flag and tells the
+    // person who recorded it. Never throws and never blocks: the cost IS real
+    // and belongs in the ledger today; the paperwork is chased, not gated. See
+    // services/compliance/proof-obligation.service for why that is the design.
+    await proofObligations.check(client, {
+      kind: "cost_entry",
+      entityRef: "cost_entry:" + costEntry.cost_entry_id,
+      dictionaryItemId,
+      proofVaultId,
+      requesterUserId: actor.user_id || null,
+      amount,
+      docLabel: "cost entry",
     });
     await emitEvent(client, { eventTypeKey: events.RECORDED, moduleKey: events.MODULE, entityRef: "dossier:" + dossierId, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.RECORDED, moduleKey: events.MODULE, entityRef: "cost_entry:" + costEntry.cost_entry_id, after: costEntry, ip });

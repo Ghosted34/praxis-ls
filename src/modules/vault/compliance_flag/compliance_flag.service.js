@@ -26,7 +26,14 @@ async function run(client, { rules = null, actor = {} } = {}) {
       const offenders = await repo.scan(client, ruleKey);
       for (const o of offenders) {
          
-        const flag = await repo.insertFlag(client, { rule_key: ruleKey, entity_ref: o.entity_ref, severity: severityOf(ruleKey), message: o.message });
+        const flag = await repo.insertFlag(client, {
+          rule_key: ruleKey, entity_ref: o.entity_ref, severity: severityOf(ruleKey), message: o.message,
+          // 0631's advisory dimensions, when the scan can supply them: which
+          // catalogue line demanded the proof and who owes it. NULL for every
+          // rule that is not about a dictionary item, which is most of them.
+          dictionary_item_id: o.dictionary_item_id || null,
+          subject_user_id: o.subject_user_id || null,
+        });
         raised.push(flag);
       }
     }

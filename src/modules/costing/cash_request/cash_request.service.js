@@ -14,6 +14,7 @@ const regie = require("../regie/regie.service");
 const numbering = require("../../../services/documents/numbering.service");
 const documents = require("../../../services/documents/document.service");
 const executor = require("../../../services/workflow/executor");
+const proofObligations = require("../../../services/compliance/proof-obligation.service");
 const onApproved = require("../../../services/workflow/on-approved");
 const { assertNoPendingChain } = require("../../../services/workflow/pending-guard");
 const { emitEvent, audit } = require("../../../shared/events/emit");
@@ -22,18 +23,54 @@ const { AppError } = require("../../../utils/errors");
 const ref = (id) => "cash_request:" + id;
 
 async function replaceLines(client, id, lines) {
+  // Replace deletes and re-inserts, so every line gets a NEW id — and any open
+  // proof-obligation flag pointing at an old one would be orphaned, warning
+  // about a line that no longer exists and that nobody can ever satisfy.
+  // Resolve them before the delete; the re-check below re-raises whichever are
+  // still genuinely missing a document.
+  const previous = await repo.listLines(client, id);
+  for (const old of previous) {
+     
+    await proofObligations.clearFor(client, proofObligations.RULE_KEYS.cash_request_line, "cash_request_line:" + old.cash_request_line_id);
+  }
   await repo.deleteLines(client, id);
+  const written = [];
   for (const ln of lines) {
     /// eslint-disable-next-line no-await-in-loop
-    await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_debours: ln.is_debours === true });
+    const row = await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_debours: ln.is_debours === true, proof_vault_id: ln.proof_vault_id || null });
+    written.push(row);
   }
+  return written;
+}
+
+/**
+ * Advisory proof check over the lines just written (MOD-05 §Q4).
+ *
+ * ADVISORY, NOT A GATE — see services/compliance/proof-obligation.service. A
+ * line whose dictionary item always requires a receipt and carries no
+ * proof_vault_id raises a WARN flag and notifies the requester; the cash
+ * request proceeds regardless. Never throws: the whole point is that
+ * disbursements a forwarder needs today are not held up by paperwork that
+ * arrives this afternoon.
+ */
+async function checkProof(client, cr, lines) {
+  return proofObligations.checkLines(
+    client,
+    lines.filter((l) => l.dictionary_item_id).map((l) => ({
+      entityRef: "cash_request_line:" + l.cash_request_line_id,
+      dictionaryItemId: l.dictionary_item_id,
+      proofVaultId: l.proof_vault_id || null,
+      amount: l.budget_amount,
+    })),
+    { kind: "cash_request_line", requesterUserId: cr.requested_by || null, docLabel: "cash request " + (cr.doc_number || "(draft)") },
+  );
 }
 
 async function createDraft(client, { dossierId = null, costingId = null, requestedBy = null, lines = [], actor = {} }) {
   await client.query("BEGIN");
   try {
     const cr = await repo.insertCR(client, { dossier_id: dossierId, costing_id: costingId, requested_by: requestedBy || actor.user_id || null, status: "DRAFT", amount: sumField(lines, "budget_amount") });
-    if (lines.length) await replaceLines(client, cr.cash_request_id, lines);
+    if (lines.length) await checkProof(client, cr, await replaceLines(client, cr.cash_request_id, lines));
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(cr.cash_request_id), after: cr });
     await client.query("COMMIT");
     return get(client, cr.cash_request_id);
@@ -46,7 +83,10 @@ async function updateDraft(client, { id, lines = null, actor = {} }) {
   if (cr.status !== "DRAFT") throw new AppError("LOCKED", "Only a DRAFT cash request can be edited", 422);
   await client.query("BEGIN");
   try {
-    if (Array.isArray(lines)) { await replaceLines(client, id, lines); await repo.update(client, id, { amount: sumField(lines, "budget_amount") }); }
+    if (Array.isArray(lines)) {
+      await checkProof(client, cr, await replaceLines(client, id, lines));
+      await repo.update(client, id, { amount: sumField(lines, "budget_amount") });
+    }
     await client.query("COMMIT");
     return get(client, id);
   } catch (err) { await client.query("ROLLBACK"); throw err; }
@@ -112,7 +152,10 @@ async function justify(client, { id, lines = [], actor = {} }) {
   assertTransition(cr.status, "JUSTIFIED");
   await client.query("BEGIN");
   try {
-    if (lines.length) await replaceLines(client, id, lines);
+    // Justification is the LAST moment a receipt can still be produced, so the
+    // advisory check runs here too — a line justified without its supporting
+    // document is exactly what the Compliance module will want to see.
+    if (lines.length) await checkProof(client, cr, await replaceLines(client, id, lines));
     const updated = await repo.update(client, id, { status: "JUSTIFIED" });
     await audit(client, { actorUserId: actor.user_id || null, action: events.JUSTIFIED, moduleKey: events.MODULE, entityRef: ref(id), after: { spent: sumField(lines, "spent_amount") } });
     await client.query("COMMIT");

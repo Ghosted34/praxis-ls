@@ -277,6 +277,26 @@ function MailboxesSection() {
   const [busyId, setBusyId] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
 
+  // Surface the OAuth callback result. The provider redirect lands back on
+  // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
+  // refresh the mailbox list, then strip the query so a reload doesn't replay it.
+  React.useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    const ok = p.get("mail_connected");
+    const bad = p.get("mail_error");
+    if (!ok && !bad) return;
+    if (ok) {
+      const who = ok === "google" ? "Google" : "Microsoft";
+      const email = p.get("email");
+      setNote(`✓ Connected ${who}${email ? ` — ${email}` : ""}`);
+      conns.reload();
+    } else {
+      setNote(`✗ Connection failed (${bad})`);
+    }
+    window.history.replaceState({}, "", window.location.pathname);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function oauth(kind: "ms" | "gg") {
     try { const r = kind === "ms" ? await api.startMicrosoft() : await api.startGoogle(); window.location.href = r.url; }
     catch (err) { setNote(errMsg(err)); }

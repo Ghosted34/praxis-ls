@@ -52,6 +52,16 @@ export type AiTurn = {
   sources?: AiSourceLike[];
   /** Steps taken, when the backend sends them. Renders the trace disclosure. */
   trace?: string[];
+  /**
+   * What the assistant is doing RIGHT NOW, while it is doing it.
+   *
+   * Ephemeral by design: replaced on each step, cleared the moment the reply
+   * starts arriving, never persisted and never part of `text`. It exists so a
+   * turn that spends fifteen seconds reading six records has something honest to
+   * show, without that narration ending up in the answer — which is exactly what
+   * happened when the two shared a channel.
+   */
+  status?: string;
   /** What the user had the composer pointed at. Shown as meta on their turn. */
   scope?: string;
   mode?: AiMode;
@@ -194,12 +204,28 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
               accText += event.text;
               // Update the turn text in place. Using the stable id avoids
               // re-rendering the whole thread on every token.
+              // The reply starting is what retires the status line — a step
+              // description left standing under a finished answer reads as if
+              // the assistant is still working.
               const snap = accText;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap } : x)));
+              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap, status: undefined } : x)));
+            } else if (event.type === "status") {
+              // REPLACED, not appended. This is one line saying what is
+              // happening now, not a log — appending is how the last version
+              // ended up showing the model's whole train of thought.
+              const step = event.text;
+              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, status: step } : x)));
+            } else if (event.type === "reset") {
+              // The server began an answer optimistically and then reached for a
+              // tool, which means what we rendered was a preamble. Take it back
+              // rather than leaving "Let me check that…" sitting above the real
+              // reply forever.
+              accText = "";
+              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: "" } : x)));
             } else if (event.type === "answer") {
               accText = event.text || accText;
               const snap = accText;
-              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap } : x)));
+              setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: snap, status: undefined } : x)));
             } else if (event.type === "actions") {
               accActions = event.actions;
               accBatchId = event.batch_id;
@@ -221,7 +247,13 @@ export function useAiThread(start: ThreadStart, initialConversationId?: string |
             setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, text: errMsg(e), failed: true } : x)));
           }
         } finally {
-          if (!abort.signal.aborted) setBusy(false);
+          if (!abort.signal.aborted) {
+            setBusy(false);
+            // A status line is a claim that work is in progress. However the
+            // stream ended — cleanly, in error, or by giving up — it is not, so
+            // the line must not survive the turn.
+            setTurns((t) => t.map((x) => (x.id === assistantTurnId ? { ...x, status: undefined } : x)));
+          }
           if (streamAbort.current === abort) streamAbort.current = null;
         }
       })();

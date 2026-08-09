@@ -264,12 +264,19 @@ function slug(s: string): string {
 }
 
 /**
- * Every table the answer produced, stacked.
+ * Every table the CONVERSATION has produced, stacked, newest answer first.
  *
  * STACKED, NOT BEHIND A SELECTOR. A five-month projection arrives as Scenario A
  * / B / C, and those three only mean anything COMPARED — a picker that shows one
  * at a time hides two thirds of the point. Stacking also means the labels stay
  * visible, which is what turns seven grids of numbers back into an argument.
+ *
+ * ACROSS ANSWERS, NOT JUST THE LATEST ONE. The same argument, one level up: a
+ * pane holding only the newest answer's tables destroyed the comparison you were
+ * making the moment you asked the follow-up that continued it. "What would 25%
+ * margin look like" replaced the 20% table with the 25% one, which is precisely
+ * the pair you asked in order to see side by side. The thread accumulates them
+ * (`workspace.tsx`); this just draws what it is given.
  *
  * Each table sorts independently and exports on its own; the header exports all
  * of them as one workbook, one sheet each.

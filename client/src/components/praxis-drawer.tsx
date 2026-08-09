@@ -292,7 +292,13 @@ function DrawerBody({ onClose, initialPrompt }: { onClose: () => void; initialPr
             />
           ))
         )}
-        {thread.busy && <AiThinking compact />}
+        {thread.busy && (() => {
+          // Same rule as the workspace: the generic indicator stands down once
+          // the turn is showing its own text or naming the step it is on.
+          const last = thread.turns[thread.turns.length - 1];
+          const speaking = last && last.role === "assistant" && (last.text.length > 0 || !!last.status);
+          return speaking ? null : <AiThinking compact />;
+        })()}
       </div>
 
       <div className="border-t border-border px-3 pb-2.5 pt-2.5">

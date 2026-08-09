@@ -86,6 +86,7 @@ function mockMakeLease(schema) {
 jest.mock("../../src/services/tenant/registry.service", () => ({
   SCHEMA: Symbol.for("praxis.schema"),
   resolveByHost: async (host) => mockTenants[host] || null,
+  resolveBySlug: async (slug) => Object.values(mockTenants).find((t) => t.slug === slug) || null,
   acquire: async (tenant, env) => {
     mockStats.acquires += 1;
     return mockMakeLease(env === "sandbox" ? tenant.sandbox_schema || "sandbox" : tenant.live_schema || "live");
@@ -161,6 +162,11 @@ function buildApp() {
   // Reaches no database at all — the lazy-checkout case.
   tenantRouter.get("/ping", (_req, res) => res.json({ pong: true }));
 
+  // Mail OAuth callback — tenant is resolved from the signed `state`, so this
+  // works on the apex / a platform host with a single canonical redirect URI.
+  tenantRouter.get("/mail/oauth/microsoft/callback", (req, res) =>
+    res.json({ ok: true, tenant: req.tenant.slug, env: req.env }));
+
   app.use("/api", tenantRouter);
 
   // tenantContext with no resolver in front of it, to prove the ordering guard.
@@ -235,6 +241,33 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
     it("never reaches the identity cache when the chain is broken", async () => {
       await get("/bad/no-ctx", { token: tokenFor() }).expect(500);
       expect(mockStats.getAuthUser).toBe(0);
+    });
+  });
+
+  describe("the OAuth callback resolves its tenant from the signed state, not the host", () => {
+    it("lands on the apex (a platform host) and still resolves the right tenant", async () => {
+      // A single canonical redirect URI serves every tenant — Google forbids
+      // wildcard redirect URIs — so the tenant rides in the signed state.
+      const state = jwt.sign({ slug: "acme" }, config.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+      const res = await get(
+        `/api/mail/oauth/microsoft/callback?state=${encodeURIComponent(state)}`,
+        { host: config.APP_BASE_DOMAIN }, // the apex — normally a platform host
+      ).expect(200);
+      expect(res.body.tenant).toBe("acme");
+    });
+
+    it("without a valid state, the apex is still WRONG_HOST (no silent tenant)", async () => {
+      const res = await get("/api/mail/oauth/microsoft/callback", { host: config.APP_BASE_DOMAIN }).expect(400);
+      expect(res.body.error.code).toBe("WRONG_HOST");
+    });
+
+    it("a forged/expired state does not resolve a tenant", async () => {
+      const bad = jwt.sign({ slug: "acme" }, "wrong-secret", { expiresIn: "10m" });
+      const res = await get(
+        `/api/mail/oauth/microsoft/callback?state=${encodeURIComponent(bad)}`,
+        { host: config.APP_BASE_DOMAIN },
+      ).expect(400);
+      expect(res.body.error.code).toBe("WRONG_HOST");
     });
   });
 

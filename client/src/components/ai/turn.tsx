@@ -210,14 +210,20 @@ function AssistantTurn({
       <div className="min-w-0 flex-1">
         {turn.trace && turn.trace.length > 0 && <TraceDisclosure steps={turn.trace} />}
 
-        <div
-          className={cn(
-            "text-sm",
-            turn.failed && "rounded-lg border border-bad/30 bg-bad-fill/8 px-3 py-2 text-bad",
-          )}
-        >
-          {turn.failed ? turn.text : <Markdown text={turn.text} />}
-        </div>
+        {turn.status && <StatusLine text={turn.status} />}
+
+        {/* An empty body is normal while the assistant is still reading: the
+            status line above is carrying the turn until the reply starts. */}
+        {turn.text && (
+          <div
+            className={cn(
+              "text-sm",
+              turn.failed && "rounded-lg border border-bad/30 bg-bad-fill/8 px-3 py-2 text-bad",
+            )}
+          >
+            {turn.failed ? turn.text : <Markdown text={turn.text} />}
+          </div>
+        )}
 
         {pending.length > 0 && (
           <div className="mt-2.5 space-y-2">
@@ -531,6 +537,41 @@ function TurnToolbar({
       >
         <ThumbDownIcon />
       </ToolButton>
+    </div>
+  );
+}
+
+/**
+ * What the assistant is doing, while it is doing it.
+ *
+ * WHY IT LOOKS NOTHING LIKE THE ANSWER, deliberately: muted, small, one line,
+ * italic, no markdown. The failure this replaces was the model's working-out
+ * rendered in the reply's own typeface, so "Let me pull the dossier 360° view"
+ * was indistinguishable from a finding — and eight rounds of it read as an
+ * answer to a question about pricing. It has to be legible as scaffolding or it
+ * becomes the thing it is describing.
+ *
+ * ONE LINE, REPLACED. Not a growing log: a log of steps is the trace, it is
+ * already built, and it belongs in the disclosure above where it can be opened
+ * on purpose and ignored the rest of the time.
+ *
+ * `aria-live="polite"` rather than `assertive` — a screen reader user should
+ * hear that work is happening at a natural break, not have every lookup
+ * interrupt them.
+ */
+function StatusLine({ text }: { text: string }) {
+  return (
+    <div className="mb-1.5 flex items-start gap-2" role="status" aria-live="polite">
+      <span aria-hidden className="mt-1 flex shrink-0 gap-0.5">
+        {[0, 1, 2].map((i) => (
+          <span
+            key={i}
+            className="h-1 w-1 animate-pulse rounded-full bg-primary/50"
+            style={{ animationDelay: `${i * 160}ms`, animationDuration: "1.1s" }}
+          />
+        ))}
+      </span>
+      <span className="micro italic text-muted-foreground">{text}</span>
     </div>
   );
 }

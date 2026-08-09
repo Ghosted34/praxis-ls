@@ -38,7 +38,10 @@ const ask = asyncHandler(async (req, res) => {
  * improvement: first-token latency drops from seconds to ~500ms.
  *
  * Protocol: `text/event-stream`, one `data: {json}\n\n` per event. Event types:
- *   delta, answer, actions, sources, trace, done, error.
+ *   delta, status, reset, answer, actions, sources, trace, done, error.
+ * `status` and `reset` carry the assistant's working-out rather than its reply:
+ * status is an ephemeral "what I am doing now" line, and reset tells the client
+ * that what it has rendered so far was narration and should be taken back.
  * The client's `askPraxisStream` in `ai-api.ts` consumes this and updates the
  * thread incrementally.
  *

@@ -136,13 +136,24 @@ export const askPraxis = (message: string, conversationId?: string, opts?: AskOp
 /**
  * One event in the SSE stream from `/ai/ask/stream`.
  *
- * `delta` carries an incremental text token (rendered immediately so the answer
- * types out word by word). `answer`, `actions`, `sources`, `trace` arrive once
- * at the end of the turn as the finalised, authoritative values. `done` signals
- * the stream is complete. `error` is a recoverable failure.
+ * `delta` carries an incremental token OF THE REPLY (rendered immediately so the
+ * answer types out word by word). `answer`, `actions`, `sources`, `trace` arrive
+ * once at the end of the turn as the finalised, authoritative values. `done`
+ * signals the stream is complete. `error` is a recoverable failure.
+ *
+ * `status` and `reset` are the assistant's working-out, and exist because the
+ * two were once the same channel. Every round of "Let me pull the dossier 360°"
+ * went out as `delta`, so the model's thinking was rendered as its answer — a
+ * pricing question came back as fifteen repetitions of a lookup it was in the
+ * middle of. `status` is a single ephemeral line, REPLACED each time and never
+ * persisted; `reset` says "what I have sent you so far was narration, drop it",
+ * which the server sends when a reply it began optimistically turns out to have
+ * been a preamble to a tool call.
  */
 export type AiStreamEvent =
   | { type: "delta"; text: string }
+  | { type: "status"; text: string }
+  | { type: "reset" }
   | { type: "answer"; text: string }
   | { type: "actions"; actions: AiActionRun[]; batch_id?: string | null }
   | { type: "sources"; sources: AiSourceLike[] }

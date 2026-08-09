@@ -144,6 +144,30 @@ function invalidateHost(host) {
   hostCache.delete(normHost(host));
 }
 
+/**
+ * Resolve a tenant SLUG to connection metadata (same shape resolveByHost
+ * returns). Platform-pool read, uncached.
+ *
+ * Used where the tenant is carried in a trusted signed token rather than the
+ * Host header — specifically the mail OAuth callback, whose single canonical
+ * redirect URI serves every tenant (Google forbids wildcard redirect URIs), so
+ * the tenant rides in the signed `state` and is resolved here by slug.
+ */
+async function resolveBySlug(slug) {
+  const s = String(slug || "").toLowerCase().trim();
+  if (!s) return null;
+  const { rows } = await platform().query(
+    `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
+            td.db_host, td.db_port, td.db_name, td.app_role, td.live_schema, td.sandbox_schema, td.pool_max
+       FROM platform.tenant t
+       JOIN platform.tenant_database td ON td.tenant_id = t.tenant_id AND td.is_active
+      WHERE t.slug = $1
+      LIMIT 1`,
+    [s],
+  );
+  return rows[0] || null;
+}
+
 /** The schema this tenant's connections default to when nothing says otherwise. */
 const liveSchemaOf = (meta) => meta.live_schema || "live";
 const schemaFor = (meta, env) =>
@@ -312,6 +336,7 @@ async function closeAll() {
 
 module.exports = {
   resolveByHost,
+  resolveBySlug,
   invalidateHost,
   poolFor,
   acquire,

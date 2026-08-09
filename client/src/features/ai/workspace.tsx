@@ -50,7 +50,7 @@ import { AiComposer, type ComposerValue } from "@/components/ai/composer";
 import { AiThinking, AiTurnView, hasOutput, outputFor, type TurnOutput } from "@/components/ai/turn";
 import { useAiThread, type AiTurn } from "@/components/ai/thread";
 import { DESK_STARTERS, scopeByKey, useAiScopes, type AiMode } from "@/components/ai/context";
-import { extractSources, mergeSources, type AiSource } from "@/components/ai/grounding";
+import { extractSources, extractTables, mergeSources, type AiSource, type AiTable } from "@/components/ai/grounding";
 import { PanelLeftIcon, PanelRightIcon, PraxisMarkLarge } from "@/components/ai/icons";
 import { PlusIcon } from "@/components/ui/icons";
 import { AiHistoryRail } from "./history-rail";
@@ -135,6 +135,37 @@ export function AiWorkspace() {
   }, [allSources]);
 
   /**
+   * Every table the conversation has produced, newest answer first.
+   *
+   * STACKED, LIKE SOURCES, and for the same reason. The pane used to hold only
+   * the latest answer's tables, so asking a follow-up silently destroyed the
+   * comparison you were in the middle of making — the 20%-margin scenario you
+   * had open vanished the moment you asked what 25% would look like. Both halves
+   * of that comparison have to be on screen at once or the pane is answering a
+   * question nobody asked.
+   *
+   * Recomputed across the thread rather than accumulated as answers arrive, so
+   * switching conversations REPLACES the list instead of carrying the last
+   * thread's numbers into the next one. Deduplicated on title + shape, because
+   * an answer that restates a table it already showed should not double it.
+   */
+  const allTables: AiTable[] = React.useMemo(() => {
+    const out: AiTable[] = [];
+    const seen = new Set<string>();
+    for (let i = thread.turns.length - 1; i >= 0; i--) {
+      const t = thread.turns[i];
+      if (t.role !== "assistant" || t.failed) continue;
+      for (const table of extractTables(t.text)) {
+        const key = `${table.title}|${table.header.join("|")}|${table.rows.length}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        out.push(table);
+      }
+    }
+    return out;
+  }, [thread.turns]);
+
+  /**
    * THE PANE FILLS ITSELF. This is the behaviour that was missing.
    *
    * Before this, an answer's tables and drafts sat inert until you found the
@@ -216,7 +247,10 @@ export function AiWorkspace() {
     const firstFill = openedFor.current !== lastAnswer.id;
     setPane((p) => ({
       ...p,
-      output: lastOutput,
+      // Tables stack across the thread; the canvas does not. A document is a
+      // single artefact you are reading — three drafts stacked in one scroll is
+      // not a canvas, it is a pile — whereas tables are data you compare.
+      output: { tables: allTables, artifact: lastOutput.artifact },
       // The tab is chosen once, when the pane opens for this answer. Re-choosing
       // it on every token would drag the user off Sources mid-read.
       ...(firstFill ? { tab: lastOutput.tables.length ? ("table" as const) : ("canvas" as const) } : {}),
@@ -227,7 +261,22 @@ export function AiWorkspace() {
       // one arrives. Content keeps refreshing behind it either way.
       setLayout((l) => (l.right ? l : { ...l, right: true }));
     }
-  }, [lastAnswer, lastOutput, pinned]);
+  }, [lastAnswer, lastOutput, allTables, pinned]);
+
+  /**
+   * Tables are kept current INDEPENDENTLY of the effect above, the same way
+   * sources are.
+   *
+   * That effect is gated on the latest answer having output of its own, because
+   * that gate is what decides whether to intrude by opening the pane. Tying the
+   * table list to it too would mean a thread whose newest answer is a one-line
+   * "yes, that's right" quietly emptied the pane of the five tables above it —
+   * the pane going blank because the LAST thing said happened to contain no rows.
+   */
+  React.useEffect(() => {
+    if (pinned) return;
+    setPane((p) => (p.output.tables === allTables ? p : { ...p, output: { ...p.output, tables: allTables } }));
+  }, [allTables, pinned]);
 
   // Keep the URL pointing at the thread on screen, so the page is refreshable
   // and shareable. `replace`, so switching conversations does not stack a dozen
@@ -437,12 +486,14 @@ export function AiWorkspace() {
                     />
                   ))}
                   {thread.busy && (() => {
-                    // Hide the thinking indicator once the streaming turn has
-                    // started receiving text — the growing answer IS the thinking.
-                    // Only show it while waiting for the first token.
+                    // Hide the generic indicator once the turn has something
+                    // better to say for itself: a growing answer IS the thinking,
+                    // and a status line names the step. "Praxis is working…"
+                    // stacked above "Reading the dossier 360°…" is two spinners
+                    // for one wait.
                     const last = thread.turns[thread.turns.length - 1];
-                    const streaming = last && last.role === "assistant" && last.text.length > 0;
-                    return streaming ? null : <AiThinking />;
+                    const speaking = last && last.role === "assistant" && (last.text.length > 0 || !!last.status);
+                    return speaking ? null : <AiThinking />;
                   })()}
                 </div>
               </div>

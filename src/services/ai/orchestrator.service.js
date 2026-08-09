@@ -75,8 +75,69 @@ const NARRATION_TURNS = 5;
  * introduced to remove, just moved to round five. Offering no tools on the final
  * pass makes prose the only thing the model can return, so the turn always ends
  * with an answer, even if it is "I could not resolve this in the steps I had".
+ *
+ * WHY EIGHT AND NOT FIVE. Five was sized against a chain that does not repeat
+ * itself. A real costing question — service type → 360° → dossier → cost lines →
+ * price — is six or seven hops before a word of the answer exists, and five sent
+ * it over the cliff mid-lookup. Eight is only affordable alongside the duplicate
+ * guard below: without it the extra rounds are three more chances to call the
+ * same read again, which is spend with no information in it.
  */
-const MAX_TOOL_ROUNDS = 5;
+const MAX_TOOL_ROUNDS = 8;
+
+/**
+ * How many times a turn may call the SAME read with the SAME arguments before
+ * the model is cut off and made to answer.
+ *
+ * THE OBSERVED FAILURE. Asked to price a dossier, the model called the dossier
+ * list, could not pick the internal id out of the rows, and called the dossier
+ * list again. And again. Eight rounds, one distinct read, and a reply that was
+ * fifteen repetitions of "I need the dossier's internal ID. Let me look at the
+ * dossier list to find it." It was not stuck on the data — the rows were right
+ * there — it was stuck in a groove, and every extra round widened it.
+ *
+ * A repeated call is answered with a refusal rather than the rows (see
+ * `DUPLICATE_READ_NOTE`), because handing back the identical payload a second
+ * time is precisely what convinces the model to ask a third. Two strikes and the
+ * next pass is the final one: at that point more rounds have stopped producing
+ * information and are only producing tokens.
+ */
+const MAX_DUPLICATE_READS = 2;
+
+/** What a repeated read gets back instead of its rows. */
+const DUPLICATE_READ_NOTE =
+  "You already ran this exact action with these exact arguments earlier in this turn, and its result is " +
+  "in the messages above. Calling it again cannot return anything new. Re-read the result you already " +
+  "have; if the value you need is genuinely not in it, call a DIFFERENT action or tell the user plainly " +
+  "what is missing. Do not repeat this call.";
+
+/**
+ * What the final pass is told, in place of the tools it no longer has.
+ *
+ * Dropping the tools silently was half a fix. The model would reach the last
+ * round, find it could not call anything, and produce the only other thing it
+ * knew how to produce at that point — another sentence of intent ("Let me pull
+ * its 360° view…") — which is how a turn that had successfully read six things
+ * ended with an answer that read like it had read nothing. Saying so explicitly
+ * converts "I cannot act" into "then report", which is the behaviour wanted.
+ */
+const FINAL_PASS_NOTE =
+  "You have no more actions available for this turn. Answer the user NOW, in full, using only what the " +
+  "results above already contain. Do not say you will look something up, do not describe what you intend " +
+  "to do next, and do not ask whether to continue. If something the user asked for could not be " +
+  "established from what you read, say which part and why, then give them everything you did establish.";
+
+/** Order-insensitive key for "the same call with the same arguments". */
+function stableJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value) || "null";
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  return `{${Object.keys(value)
+    .sort()
+    .map((k) => `${JSON.stringify(k)}:${stableJson(value[k])}`)
+    .join(",")}}`;
+}
+
+const readKey = (actionKey, payload) => `${actionKey}(${stableJson(payload || {})})`;
 
 /**
  * Conversation memory, isolated here so a failure in it can never take down an
@@ -690,24 +751,27 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
   const readTrace = [];
 
   /**
-   * Every piece of prose the model produced this turn, in order.
+   * WHAT COUNTS AS THE ANSWER, and what is merely the model thinking aloud.
    *
-   * ACCUMULATED, NOT REPLACED — this is the other half of the bug the loop
-   * fixes. The old code did `answer = followup.text || answer`, so the narration
-   * after a read DISCARDED whatever the model had already said. In the streaming
-   * path that text had been rendered to the user token by token; replacing it
-   * meant the reply visibly vanished the moment the trace arrived, and the
-   * transcript was persisted missing the part the user had actually read.
-   * Whatever was shown is what is stored.
+   * They were briefly the same thing, and that was a mistake worth recording.
+   * Concatenating every round's prose fixed the wipe (the old code REPLACED it)
+   * but shipped the model's working-out to the user as the reply: eight rounds
+   * of "I need the dossier's internal ID. Let me look at the dossier list." glued
+   * end to end, presented as an answer to a pricing question.
+   *
+   * Interim prose is a step, and steps have a home already — the trace. Only the
+   * prose from the pass that had no tools to reach for is the answer. In the
+   * streaming path the interim text is still SHOWN, live, as an ephemeral status
+   * line; here there is nothing to stream to, so it is simply not the answer.
    */
-  const answerParts = [];
+  let answer = "";
 
   /**
-   * THE LOOP (see `MAX_TOOL_ROUNDS`).
+   * THE LOOP (see `MAX_TOOL_ROUNDS`, `MAX_DUPLICATE_READS`).
    *
-   * Each round: split this response's calls into reads and writes, keep its
-   * prose, run the reads, feed the rows back, ask again. It stops when the model
-   * stops calling reads — which is the model saying it has what it needs.
+   * Each round: split this response's calls into reads and writes, run the
+   * reads, feed the rows back, ask again. It stops when the model stops calling
+   * reads — which is the model saying it has what it needs.
    *
    * A WRITE ENDS THE CHAIN. A proposed write is a question to the user, not a
    * step the assistant may take, so the round that proposes one is the last: its
@@ -716,7 +780,10 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
    * action card awaiting a human.
    */
   const convo = [...messages];
+  const seenReads = new Map();
+  let duplicates = 0;
   let current = res;
+  let lastText = res.text || "";
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
     const roundReads = [];
     for (const call of current.toolCalls || []) {
@@ -724,13 +791,30 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       if (!def) continue;
       (def.is_write ? writeCalls : roundReads).push({ call, def });
     }
-    if (current.text && current.text.trim()) answerParts.push(current.text.trim());
-    if (!roundReads.length || !registry) break;
+    if (!roundReads.length || !registry) {
+      // No reads left to run: this pass had nothing to reach for, so its prose
+      // is the answer.
+      answer = (current.text || "").trim();
+      break;
+    }
 
     const toolMsgs = [];
     for (const { call, def } of roundReads) {
       let payload = {};
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
+
+      // ── Duplicate guard ──
+      // Refused BEFORE the executor runs, so a groove costs a round rather than
+      // a round plus a query. The refusal goes back as the tool result, which is
+      // the only channel the model is listening on at this point.
+      const key = readKey(def.action_key, payload);
+      if (seenReads.has(key)) {
+        duplicates += 1;
+        toolMsgs.push({ role: "tool", tool_call_id: call.id, content: DUPLICATE_READ_NOTE });
+        continue;
+      }
+      seenReads.set(key, true);
+
       let content;
       const step = { actionKey: def.action_key, payload, result: null, failed: false, error: null };
       try {
@@ -767,20 +851,26 @@ async function ask({ client, user, conversationId, message, allowed, registry, f
       ...toolMsgs,
     );
 
-    const finalPass = round === MAX_TOOL_ROUNDS || writeCalls.length > 0;
+    const finalPass =
+      round === MAX_TOOL_ROUNDS || writeCalls.length > 0 || duplicates >= MAX_DUPLICATE_READS;
     current = await llm.chat({
       client,
-      messages: convo,
+      // The final pass is TOLD it is final. Removing the tools without saying so
+      // just moved the stall to the last round.
+      messages: finalPass ? [...convo, { role: "system", content: FINAL_PASS_NOTE }] : convo,
       ...(finalPass ? {} : { tools: offered.map(toOpenAiTool) }),
     });
     await recordUsage(client, { user, conversationId: history.conversationId, res: current, feature });
+    if (current.text && current.text.trim()) lastText = current.text.trim();
     if (finalPass) {
-      if (current.text && current.text.trim()) answerParts.push(current.text.trim());
+      answer = (current.text || "").trim();
       break;
     }
   }
 
-  const answer = answerParts.join("\n\n") || res.text;
+  // A turn that produced no final prose at all falls back to the last thing the
+  // model said, rather than answering with silence.
+  if (!answer) answer = lastText;
 
   /**
    * Grounding, from the reads rather than from the prose.
@@ -1091,7 +1181,11 @@ async function recordUsage(client, { user, conversationId, res, feature, callTyp
 /**
  * Streaming variant of `ask`. Yields SSE-shaped events the controller forwards
  * to the client:
- *   { type: "delta",   text }               — incremental text token
+ *   { type: "delta",   text }               — incremental token OF THE REPLY
+ *   { type: "status",  text }               — what it is doing right now;
+ *                                             ephemeral, replaced, never stored
+ *   { type: "reset" }                       — discard the reply text so far: it
+ *                                             was narration, not an answer
  *   { type: "answer",  text }               — final, complete answer text
  *   { type: "actions", actions, batch_id }   — proposed write action cards
  *   { type: "sources", sources }             — grounding citations
@@ -1210,7 +1304,18 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   const contextText = [message, ...history.turns.map((m) => m.content || "")].join(" ");
   const offered = selectTools(tools, contextText);
 
-  // ── Stream the initial model call ──
+  /**
+   * ── Round 1, streamed OPTIMISTICALLY into the answer body ──
+   *
+   * Most turns are one round: a question with no tool call, answered in prose.
+   * Streaming that straight into the reply is what makes it type out instead of
+   * landing as a block, and it costs nothing extra when it is right.
+   *
+   * When it is wrong — the model was clearing its throat before a tool call —
+   * the turn emits `reset` below and the text is moved to the status line where
+   * it belongs. That is a deliberate trade: one frame of correction on
+   * tool-using turns, in exchange for no added latency on the common one.
+   */
   let fullText = "";
   let finalToolCalls = [];
   let finalUsage = {};
@@ -1257,24 +1362,29 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
   const readTrace = [];
 
   /**
-   * THE STREAMING INVARIANT, and the whole of bug #2.
+   * THE THREE CHANNELS, and why an answer needs more than one.
    *
-   * Every delta yielded here must survive into `answer`, because `answer` is
-   * what the final `{type:"answer"}` event carries and the client applies that
-   * as the turn's text. The old code streamed the post-read narration as a delta
-   * (append) and then set `answer = followup.text` (replace) — so the moment the
-   * closing events landed, everything the user had watched arrive was wiped and
-   * replaced by the last paragraph alone. The same truncated text was persisted,
-   * so reopening the thread showed the damage permanently.
+   *   delta   Prose that IS the reply. Appended, never retracted.
+   *   status  What the assistant is doing right now. Ephemeral, replaced each
+   *           round, gone the moment the reply starts. This is where "Let me
+   *           pull the dossier 360°" belongs.
+   *   reset   "What you have seen so far was thinking, not answering." Sent once,
+   *           when an optimistically-streamed round 1 turns out to have made a
+   *           tool call after all.
    *
-   * Parts in, parts out: what is streamed is what is answered is what is stored.
+   * They exist because collapsing them produced the two failures this rewrite
+   * removes. Everything through `delta` meant the model's working-out — eight
+   * near-identical rounds of it — was served to the user as the answer to a
+   * pricing question. Nothing through `delta` until the end meant the reply
+   * arrived as one pasted block after fifteen silent seconds.
    */
-  const answerParts = [];
-  if (fullText && fullText.trim()) answerParts.push(fullText.trim());
-
-  // ── The agent loop. Mirrors `ask` exactly; see MAX_TOOL_ROUNDS. ──
   const convo = [...messages];
+  const seenReads = new Map();
+  let duplicates = 0;
   let current = { text: fullText, toolCalls: finalToolCalls };
+  let usedTools = false;
+  let answer = "";
+
   for (let round = 1; round <= MAX_TOOL_ROUNDS; round++) {
     const roundReads = [];
     for (const call of current.toolCalls || []) {
@@ -1282,14 +1392,38 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       if (!def) continue;
       (def.is_write ? writeCalls : roundReads).push({ call, def });
     }
-    // Round 1's text is already in `answerParts` (it was streamed above); later
-    // rounds are added when their delta is yielded, so this never double-counts.
-    if (!roundReads.length || !registry) break;
+
+    if (!roundReads.length || !registry) {
+      // Nothing to reach for. If this turn never touched a tool, round 1's
+      // optimistic stream is already the answer, on screen, correctly typed out
+      // — take it as-is rather than paying for a pass that would only repeat it.
+      if (!usedTools) answer = (current.text || "").trim();
+      break;
+    }
+
+    // The first time a read appears, round 1's optimistic prose is revealed as
+    // narration. Take it out of the reply and put it where it belongs.
+    if (!usedTools) {
+      usedTools = true;
+      yield { type: "reset" };
+    }
+    if (current.text && current.text.trim()) yield { type: "status", text: current.text.trim() };
 
     const toolMsgs = [];
     for (const { call, def } of roundReads) {
       let payload = {};
       try { payload = JSON.parse(call.function.arguments || "{}"); } catch { payload = {}; }
+
+      // Duplicate guard — see MAX_DUPLICATE_READS. Refused before the executor
+      // runs, so a groove costs a round rather than a round plus a query.
+      const key = readKey(def.action_key, payload);
+      if (seenReads.has(key)) {
+        duplicates += 1;
+        toolMsgs.push({ role: "tool", tool_call_id: call.id, content: DUPLICATE_READ_NOTE });
+        continue;
+      }
+      seenReads.set(key, true);
+
       let content;
       const step = { actionKey: def.action_key, payload, result: null, failed: false, error: null };
       try {
@@ -1313,23 +1447,52 @@ async function* askStream({ client, user, conversationId, message, allowed, regi
       ...toolMsgs,
     );
 
-    const finalPass = round === MAX_TOOL_ROUNDS || writeCalls.length > 0;
-    current = await llm.chat({
-      client,
-      messages: convo,
-      ...(finalPass ? {} : { tools: offered.map(toOpenAiTool) }),
-    });
-    await recordUsage(client, { user, conversationId: history.conversationId, res: current, feature });
+    // Stop reaching when we are out of rounds, stuck in a groove, or holding a
+    // write that a human has to approve before anything else happens.
+    if (round === MAX_TOOL_ROUNDS || writeCalls.length > 0 || duplicates >= MAX_DUPLICATE_READS) break;
 
-    // Yield and record in the same breath, so the two can never disagree.
-    if (current.text && current.text.trim()) {
-      yield { type: "delta", text: "\n\n" + current.text.trim() };
-      answerParts.push(current.text.trim());
-    }
-    if (finalPass) break;
+    current = await llm.chat({ client, messages: convo, tools: offered.map(toOpenAiTool) });
+    await recordUsage(client, { user, conversationId: history.conversationId, res: current, feature });
   }
 
-  const answer = answerParts.join("\n\n");
+  /**
+   * ── The final pass ──
+   *
+   * A dedicated, toolless, STREAMED call whose only job is to answer. It costs
+   * one model call on tool-using turns and buys back the two things that were
+   * wrong with deriving the answer from whichever round happened to be last:
+   * the reply types out word by word instead of being pasted, and the model is
+   * told in so many words that there is nothing left to look up, so it reports
+   * what it found rather than announcing what it plans to do next.
+   *
+   * Skipped entirely when no tool was ever called — that answer is already on
+   * screen and already correct.
+   */
+  if (usedTools) {
+    yield { type: "status", text: "Writing the answer…" };
+    let finalText = "";
+    let finalPassUsage = {};
+    for await (const chunk of llm.chatStream({
+      client,
+      messages: [...convo, { role: "system", content: FINAL_PASS_NOTE }],
+    })) {
+      if (!chunk.done) {
+        finalText += chunk.delta || "";
+        if (chunk.delta) yield { type: "delta", text: chunk.delta };
+      } else {
+        finalText = chunk.text || finalText;
+        finalPassUsage = chunk.usage || {};
+        provider = chunk.provider || provider;
+      }
+    }
+    await recordUsage(client, {
+      user,
+      conversationId: history.conversationId,
+      res: { text: finalText, toolCalls: [], usage: finalPassUsage, provider },
+      feature,
+    });
+    answer = finalText.trim();
+  }
 
   // Grounding is built BEFORE the save (0521) so the stored turn carries its own
   // provenance. It is emitted further down, in the closing events, because the

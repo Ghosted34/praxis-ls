@@ -13,6 +13,7 @@ const { asyncHandler } = require("../../../utils/errors");
 const { authMiddleware } = require("../../../middleware/auth");
 const { requirePermission } = require("../../../middleware/rbac");
 const controller = require("./service_type.controller");
+const service = require("./service_type.service");
 const validator = require("./service_type.validator");
 const dossier360 = require("./service_type_360.service");
 const { MODULE } = require("./service_type.events");
@@ -35,6 +36,44 @@ router.get(
     res.json({ data });
   }),
 );
+/**
+ * The tier matrix (ST-360 → Dictionary). PUT is an upsert: setting a tier on a
+ * line that is not yet scoped to this service ADDS it, which is what "add a
+ * line at Basic" means from the UI's point of view — one verb, not a create and
+ * an update the caller has to choose between.
+ *
+ * Declared before "/:id" is irrelevant here (the path is longer and more
+ * specific), but it is gated `edit` rather than `view`: which lines a service
+ * pulls, and at which bundle, changes what every future costing of that type
+ * loads.
+ */
+router.put(
+  "/:id/dictionary/:itemId",
+  requirePermission(MODULE, "edit"),
+  validator.dictionaryTier,
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.setDictionaryTier(c, {
+      id: req.params.id,
+      dictionaryItemId: req.params.itemId,
+      tier: req.body.tier,
+      actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+router.delete(
+  "/:id/dictionary/:itemId",
+  requirePermission(MODULE, "edit"),
+  asyncHandler(async (req, res) => {
+    const data = await req.tenantDb((c) => service.removeDictionaryTier(c, {
+      id: req.params.id,
+      dictionaryItemId: req.params.itemId,
+      actor: req.user || {},
+    }));
+    res.json({ data });
+  }),
+);
+
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update, controller.update);
 router.delete("/:id", requirePermission(MODULE, "delete"), controller.archive);
 

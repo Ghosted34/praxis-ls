@@ -8,9 +8,11 @@
  *   Overview        — readiness checklist + inline-edit for the display name.
  *   Milestones      — every template version with stages inlined; publish new
  *                     version reuses the same form used by the create screen.
- *   Dictionary      — dictionary_item rows scoped to this service, plus a
- *                     collapsible "also applicable to any service" section.
- *                     Each row deep-links to /master/financial-dictionary.
+ *   Dictionary      — the TIER MATRIX. Every dictionary line scoped to this
+ *                     service with an inline Basic/Advanced/Full control, a
+ *                     search to add another, and a cumulative count of what
+ *                     each bundle loads. Plus a collapsible "also applicable to
+ *                     any service" section. Rows deep-link to the dictionary.
  *   Dossiers        — 25 most-recent files of this type with client / status /
  *                     milestone progress. Row → /operations/files?focus=<id>.
  *   Commercial      — margin sims, FINAL invoices, planned/actual money.
@@ -32,6 +34,9 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { useResource } from "@/lib/use-resource";
+import { useAction } from "@/lib/use-action";
+import { DictionaryFinder } from "@/components/dictionary-finder";
+import { cn } from "@/lib/cn";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
 import { reportActionError } from "@/lib/action-error";
@@ -89,13 +94,6 @@ const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
   IN_PROGRESS: "warn",
   COMPLETED: "ok",
   CANCELLED: "mute",
-};
-// Basic ⊆ Advanced ⊆ Full: a Basic line is in every bundle, a Full one only in
-// the largest, so the tone escalates with how exclusive the tier is.
-const TIER_TONE: Record<string, "ok" | "warn" | "blue"> = {
-  BASIC: "ok",
-  ADVANCED: "blue",
-  FULL: "warn",
 };
 const CATEGORY_TONE: Record<string, "ok" | "warn" | "mute" | "blue" | "bad"> = {
   service: "ok",
@@ -278,35 +276,119 @@ function MilestonesTab({
   );
 }
 
-/* ── Dictionary tab ─────────────────────────────────────────────────────── */
+/* ── Dictionary tab — the tier matrix ───────────────────────────────────── */
+
+const TIER_ORDER = ["BASIC", "ADVANCED", "FULL"] as const;
+const TIER_LABEL: Record<api.Tier, string> = { BASIC: "Basic", ADVANCED: "Advanced", FULL: "Full" };
+
+/**
+ * The tier control. One segmented choice per line, not three checkboxes,
+ * because the bundles NEST: `tier` is the LOWEST bundle a line appears in, so
+ * BASIC ⊆ ADVANCED ⊆ FULL. Three checkboxes would let someone express "Advanced
+ * but not Full", which the model cannot represent and the costing engine would
+ * silently reinterpret.
+ *
+ * Set inline, no modal: configuring a service means sweeping thirty lines, and a
+ * dialog per line turns a two-minute job into a twenty-minute one.
+ */
+function TierSegmented({
+  value,
+  busy,
+  onChange,
+}: {
+  value: api.Tier;
+  busy: boolean;
+  onChange: (t: api.Tier) => void;
+}) {
+  return (
+    <div role="group" aria-label="Tier" className="inline-flex overflow-hidden rounded-md border">
+      {TIER_ORDER.map((t) => {
+        const active = t === value;
+        return (
+          <button
+            key={t}
+            type="button"
+            disabled={busy}
+            aria-pressed={active}
+            onClick={() => { if (!active) onChange(t); }}
+            className={cn(
+              "px-2 py-1 text-xs transition-colors disabled:opacity-50",
+              active ? "bg-primary/15 font-medium text-foreground" : "text-muted-foreground hover:bg-muted",
+            )}
+          >
+            {TIER_LABEL[t]}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 function DictionaryTab({
   scoped,
   generic,
   serviceKey,
+  serviceTypeId,
+  reload,
 }: {
   scoped: api.ServiceTypeDictionaryItem[];
   generic: api.ServiceTypeDictionaryItem[];
   serviceKey: string;
+  serviceTypeId: string;
+  reload: () => void;
 }) {
   const [showGeneric, setShowGeneric] = React.useState(false);
+  const act = useAction();
   const dictHref = (code: string) => `/master/financial-dictionary?focus=${encodeURIComponent(code)}`;
 
   /**
-   * Tier column on SCOPED rows only. The generic bucket is by definition not
-   * scoped to this service, so it has no tier — a column of dashes there would
-   * imply the concept applies and the data is missing, which is the opposite of
-   * the truth.
+   * CUMULATIVE, not per-tier. "How many lines does a Basic job pull?" is the
+   * question someone configuring this is actually asking, and because the sets
+   * nest, an Advanced quote loads Basic + Advanced. Showing three independent
+   * counts would answer a question nobody has and invite the wrong mental model.
    */
+  const counts = React.useMemo(() => {
+    const basic = scoped.filter((d) => (d.tier || "BASIC") === "BASIC").length;
+    const advanced = scoped.filter((d) => d.tier === "ADVANCED").length;
+    const full = scoped.filter((d) => d.tier === "FULL").length;
+    return { basic, advanced: basic + advanced, full: basic + advanced + full };
+  }, [scoped]);
+
+  // No client-side permission gate: `nav-access` only carries read-level module
+  // keys, so the honest thing is to render the control and let the server's
+  // `requirePermission(MOD-29, edit)` answer. `useAction` puts the 403 next to
+  // the control rather than swallowing it (lib/use-action.ts).
+  const setTier = (d: api.ServiceTypeDictionaryItem, tier: api.Tier) =>
+    act.run(d.dictionary_item_id, () =>
+      api.setServiceTypeDictionaryTier(serviceTypeId, d.dictionary_item_id, tier).then(reload));
+
+  const unlink = (d: api.ServiceTypeDictionaryItem) =>
+    act.run(d.dictionary_item_id, () =>
+      api.removeServiceTypeDictionaryTier(serviceTypeId, d.dictionary_item_id).then(reload));
+
+  /**
+   * A line picked here is added at ADVANCED, not BASIC. Adding to BASIC changes
+   * what EVERY future costing of this type loads, which is not what "add this
+   * line to the service" has to mean — promoting it is one click away, and the
+   * reverse mistake is invisible until someone reads a quote.
+   */
+  const addLine = (dictionaryItemId: string) => {
+    if (!dictionaryItemId) return;
+    act.run(dictionaryItemId, () =>
+      api.setServiceTypeDictionaryTier(serviceTypeId, dictionaryItemId, "ADVANCED").then(reload));
+  };
+
   const renderRow = (showTier: boolean) => (d: api.ServiceTypeDictionaryItem) => (
     <tr key={d.dictionary_item_id}>
       <Td><DeepLink href={dictHref(d.code)}>{d.code}</DeepLink></Td>
       <Td>{d.label_en || d.label_fr}</Td>
       {showTier && (
         <Td>
-          {/* Nested bundles: BASIC ⊆ ADVANCED ⊆ FULL. The tone escalates with
-              the tier so "which lines does a Basic job pull?" is scannable. */}
-          <Pill tone={TIER_TONE[d.tier || "BASIC"]}>{(d.tier || "BASIC")[0] + (d.tier || "BASIC").slice(1).toLowerCase()}</Pill>
+          <TierSegmented
+            value={(d.tier || "BASIC") as api.Tier}
+            busy={act.busyId === d.dictionary_item_id}
+            onChange={(t) => setTier(d, t)}
+          />
         </Td>
       )}
       <Td><Pill tone={CATEGORY_TONE[d.category] || "mute"}>{d.category}</Pill></Td>
@@ -316,6 +398,19 @@ function DictionaryTab({
       <Td>
         {d.is_active === false ? <Pill tone="mute">Off</Pill> : d.is_debours ? <Pill tone="blue">Débours</Pill> : <Pill tone="ok">On</Pill>}
       </Td>
+      {showTier && (
+        <Td>
+          <button
+            type="button"
+            disabled={act.busyId === d.dictionary_item_id}
+            onClick={() => unlink(d)}
+            aria-label={`Remove ${d.code} from ${serviceKey}`}
+            className="text-xs text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          >
+            Remove
+          </button>
+        </Td>
+      )}
     </tr>
   );
 
@@ -328,13 +423,39 @@ function DictionaryTab({
         </p>
         <DeepLink href="/master/financial-dictionary">Open dictionary →</DeepLink>
       </div>
+
+      {/* What each bundle actually loads. Cumulative, because the sets nest. */}
+      <div className="grid grid-cols-3 gap-2">
+        <Stat label="A Basic job pulls" value={num(counts.basic)} />
+        <Stat label="Advanced pulls" value={num(counts.advanced)} />
+        <Stat label="Full pulls" value={num(counts.full)} />
+      </div>
+
+      <div className="flex flex-wrap items-end justify-between gap-2">
+        <div className="min-w-[18rem] flex-1">
+          <div className="micro mb-1">Add a line to this service</div>
+          <DictionaryFinder
+            label={`Add a dictionary line to ${serviceKey}`}
+            placeholder="Search a charge to add…"
+            allowEmpty={false}
+            onPick={(id) => addLine(id)}
+          />
+        </div>
+        <p className="micro max-w-sm">
+          Added at <strong>Advanced</strong> — promote to Basic once it belongs on every file of this type.
+          Tiers nest, so Basic lines load on Advanced and Full quotes too.
+        </p>
+      </div>
+
+      {act.error && <ErrorState message={act.error} />}
+
       <MiniTable
         empty={scoped.length === 0}
-        emptyLabel={`No dictionary line is scoped to ${serviceKey}. Add one from the financial dictionary and pick "${serviceKey}" as the applicable service.`}
+        emptyLabel={`No dictionary line is scoped to ${serviceKey} yet. Use the search above to add one.`}
         head={
           <>
             <Th>Code</Th><Th>Label</Th><Th>Tier</Th><Th>Category</Th><Th>Shipping line</Th>
-            <Th r>Default price</Th><Th>Currency</Th><Th>State</Th>
+            <Th r>Default price</Th><Th>Currency</Th><Th>State</Th><Th></Th>
           </>
         }
       >
@@ -802,7 +923,13 @@ export function ServiceTypeDossier({
       {tab === "Overview" && <OverviewTab d={d} onEditName={saveName} />}
       {tab === "Milestones" && <MilestonesTab templates={d.templates} onPublish={onPublishTemplate} />}
       {tab === "Dictionary" && (
-        <DictionaryTab scoped={d.dictionary_items} generic={d.dictionary_items_generic} serviceKey={st.key} />
+        <DictionaryTab
+          scoped={d.dictionary_items}
+          generic={d.dictionary_items_generic}
+          serviceKey={st.key}
+          serviceTypeId={st.service_type_id}
+          reload={reload}
+        />
       )}
       {tab === "Dossiers" && <DossiersTab dossiers={d.dossiers} more={d.dossiers_more} stats={d.stats} />}
       {tab === "Commercial" && <CommercialTab d={d} />}

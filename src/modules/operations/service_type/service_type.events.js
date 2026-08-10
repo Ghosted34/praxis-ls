@@ -15,4 +15,9 @@ module.exports = {
   CREATED: "service_type.created",
   UPDATED: "service_type.updated",
   ARCHIVED: "service_type.archived",
+  // Which dictionary lines a service pulls, and at which bundle, is a pricing
+  // decision — it changes what every future costing sheet of this type loads.
+  // Audited separately from the row's own edits so that history is readable.
+  TIER_SET: "service_type.dictionary_tier_set",
+  TIER_REMOVED: "service_type.dictionary_tier_removed",
 };

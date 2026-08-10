@@ -44,6 +44,70 @@ module.exports = {
   },
 
   /**
+   * Set a dictionary line's tier on this service (the tier matrix on ST-360).
+   *
+   * BASIC ⊆ ADVANCED ⊆ FULL, so `tier` is the LOWEST bundle the line appears
+   * in — moving a line to BASIC makes every ADVANCED and FULL costing pull it
+   * too. That is why this is one control and not three checkboxes.
+   *
+   * The item must exist and be operational: an overhead line (office rent,
+   * salaries) is NON_OPERATIONAL and has no business on a service's pick-list,
+   * and silently accepting it would put it on every costing sheet of that type.
+   */
+  async setDictionaryTier(client, { id, dictionaryItemId, tier, actor = {} }) {
+    const st = await repo.findById(client, id);
+    if (!st) throw new AppError("NOT_FOUND", "Service type not found", 404);
+
+    const { rows } = await client.query(
+      "SELECT dictionary_item_id, code, label_en, label_fr, applicability_mode, is_active " +
+        "FROM dictionary_item WHERE dictionary_item_id = $1",
+      [dictionaryItemId],
+    );
+    const item = rows[0];
+    if (!item) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);
+    if (item.applicability_mode === "NON_OPERATIONAL") {
+      throw new AppError(
+        "NOT_OPERATIONAL",
+        "This line is non-operational (an overhead) and cannot be scoped to a service",
+        422,
+        { dictionary_item_id: ["non-operational lines never surface on a dossier"] },
+      );
+    }
+
+    const link = await repo.setDictionaryTier(client, id, dictionaryItemId, tier);
+    await repo.syncServiceTypeKey(client, dictionaryItemId);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.TIER_SET,
+      moduleKey: events.MODULE,
+      entityRef: "service_type:" + id,
+      after: { dictionary_item_id: dictionaryItemId, code: item.code, tier },
+    });
+    return link;
+  },
+
+  /**
+   * Unlink a dictionary line from this service. Not a delete of the line — the
+   * catalogue row survives and stays available to every other service; only the
+   * mapping goes.
+   */
+  async removeDictionaryTier(client, { id, dictionaryItemId, actor = {} }) {
+    const st = await repo.findById(client, id);
+    if (!st) throw new AppError("NOT_FOUND", "Service type not found", 404);
+    const removed = await repo.removeDictionaryTier(client, id, dictionaryItemId);
+    if (!removed) throw new AppError("NOT_FOUND", "That line is not scoped to this service", 404);
+    await repo.syncServiceTypeKey(client, dictionaryItemId);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.TIER_REMOVED,
+      moduleKey: events.MODULE,
+      entityRef: "service_type:" + id,
+      before: removed,
+    });
+    return removed;
+  },
+
+  /**
    * Archive rather than delete.
    *
    * `dossier.service_type_id` is a plain FK with no ON DELETE, so removing a

@@ -279,6 +279,30 @@ export type ServiceTypeDossier = {
 export const getServiceTypeDossier = (id: string) =>
   tenant<ServiceTypeDossier>(`/service-types/${id}/360`);
 
+/* ── The tier matrix (ST-360 → Dictionary) ─────────────────────────────────
+ * `tier` is the LOWEST bundle a line appears in: the sets nest, so moving a
+ * line to BASIC makes every ADVANCED and FULL costing pull it too. PUT is an
+ * upsert, so "add this line at Basic" and "move it from Full to Basic" are the
+ * same call. DELETE unlinks the line from this service — it never deletes the
+ * catalogue row, which stays available to every other service. */
+/** The three nested bundles. Mirrors `Tier` in masterdata-api (the dictionary
+ *  side of the same join) — declared here so this module has no cross-import
+ *  just for a string union. */
+export type Tier = "BASIC" | "ADVANCED" | "FULL";
+export type ServiceTypeTierLink = {
+  service_type_id: string;
+  dictionary_item_id: string;
+  tier: Tier;
+  sort_order?: number;
+};
+export const setServiceTypeDictionaryTier = (serviceTypeId: string, itemId: string, tier: Tier) =>
+  tenant<ServiceTypeTierLink>(`/service-types/${serviceTypeId}/dictionary/${itemId}`, {
+    method: "PUT",
+    body: { tier },
+  });
+export const removeServiceTypeDictionaryTier = (serviceTypeId: string, itemId: string) =>
+  tenant<ServiceTypeTierLink>(`/service-types/${serviceTypeId}/dictionary/${itemId}`, { method: "DELETE" });
+
 /**
  * Publish a NEW active milestone-template version for a service type.
  *

@@ -52,7 +52,16 @@ const update = z.object({
   is_active: z.boolean().optional(),
 });
 
-const schemas = { create, update };
+/**
+ * The tier matrix write. `tier` is the LOWEST bundle a line belongs to, because
+ * the sets nest (BASIC ⊆ ADVANCED ⊆ FULL) — there is exactly one value per
+ * (service, line), which is why this is a scalar and not a set of flags.
+ */
+const dictionaryTier = z.object({
+  tier: z.enum(["BASIC", "ADVANCED", "FULL"]),
+});
+
+const schemas = { create, update, dictionaryTier };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
@@ -60,4 +69,4 @@ const mw = (k) => (req, _res, next) => {
   return next();
 };
 
-module.exports = { create: mw("create"), update: mw("update"), schemas, TERRITORIES: TERRITORY.options };
+module.exports = { create: mw("create"), update: mw("update"), dictionaryTier: mw("dictionaryTier"), schemas, TERRITORIES: TERRITORY.options };

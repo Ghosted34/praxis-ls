@@ -237,9 +237,73 @@ async function stats(client, serviceTypeId, key) {
   return rows[0] || {};
 }
 
+/**
+ * Set (or move) a dictionary line's tier on this service — the write behind the
+ * tier matrix on ST-360 → Dictionary.
+ *
+ * ON CONFLICT DO UPDATE rather than delete-then-insert: the PK is
+ * (service_type_id, dictionary_item_id), so an upsert is one statement and
+ * cannot leave the row briefly absent. `sort_order` is preserved on an existing
+ * link — the seed ordered lines within a tier deliberately, and moving a line
+ * from ADVANCED to BASIC should not throw that away.
+ */
+async function setDictionaryTier(client, serviceTypeId, dictionaryItemId, tier) {
+  const { rows } = await client.query(
+    `INSERT INTO service_type_dictionary_item (service_type_id, dictionary_item_id, tier, sort_order)
+     VALUES ($1, $2, $3, 100)
+     ON CONFLICT (service_type_id, dictionary_item_id)
+       DO UPDATE SET tier = EXCLUDED.tier
+     RETURNING service_type_id, dictionary_item_id, tier, sort_order`,
+    [serviceTypeId, dictionaryItemId, tier],
+  );
+  return rows[0] || null;
+}
+
+/** Unlink a dictionary line from this service. Returns the removed row, or null. */
+async function removeDictionaryTier(client, serviceTypeId, dictionaryItemId) {
+  const { rows } = await client.query(
+    `DELETE FROM service_type_dictionary_item
+      WHERE service_type_id = $1 AND dictionary_item_id = $2
+      RETURNING service_type_id, dictionary_item_id, tier`,
+    [serviceTypeId, dictionaryItemId],
+  );
+  return rows[0] || null;
+}
+
+/**
+ * Re-derive `dictionary_item.service_type_key` for one item after its tier links
+ * changed.
+ *
+ * That column is the denormalised single-value hint 0630 kept alive until the
+ * ST-360 finishes moving to the join, and `stats.dictionary_items` still counts
+ * on it. Editing tiers from the service side without re-deriving it would leave
+ * the header count disagreeing with the table directly beneath it.
+ *
+ * Same rule as financial_dictionary.rules.primaryServiceKey: the first BASIC
+ * service, else the first of any tier, else NULL when the item is no longer
+ * scoped to anything.
+ */
+async function syncServiceTypeKey(client, dictionaryItemId) {
+  const { rows } = await client.query(
+    `UPDATE dictionary_item di SET service_type_key = (
+       SELECT st.key FROM service_type_dictionary_item sti
+         JOIN service_type st ON st.service_type_id = sti.service_type_id
+        WHERE sti.dictionary_item_id = di.dictionary_item_id
+        ORDER BY CASE sti.tier WHEN 'BASIC' THEN 1 WHEN 'ADVANCED' THEN 2 ELSE 3 END, st.key
+        LIMIT 1)
+      WHERE di.dictionary_item_id = $1
+      RETURNING di.dictionary_item_id, di.service_type_key`,
+    [dictionaryItemId],
+  );
+  return rows[0] || null;
+}
+
 module.exports = {
   ...base,
   list,
+  setDictionaryTier,
+  removeDictionaryTier,
+  syncServiceTypeKey,
   templatesWithStages,
   dictionaryItemsFor,
   dossiersFor,

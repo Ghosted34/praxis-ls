@@ -643,6 +643,44 @@ export const listDict = (f: DictListFilter = {}) => {
   return tenant<DictItem[]>(`/financial-dictionary${qs ? `?${qs}` : ""}`);
 };
 export const getDict = (id: string) => tenant<DictFull>(`/financial-dictionary/${id}`);
+
+/* ── The shared finder (GET /financial-dictionary/search) ──────────────────
+ * Fuzzy, server-ranked search behind <DictionaryFinder>. Distinct from
+ * `loadDict({ q })`, which is a plain substring filter for browsing a list:
+ * this one matches seeded keywords (local names, abbreviations, misspellings,
+ * superseded and legacy codes) and trigram similarity, and returns a `score`
+ * so the caller can show the best answer first. Blank term returns []. */
+export type DictSearchHit = {
+  dictionary_item_id: string;
+  code: string;
+  label_fr?: string | null;
+  label_en?: string | null;
+  description?: string | null;
+  direction: Direction;
+  category: string;
+  subcategory?: string | null;
+  unit_of_measure?: string | null;
+  is_debours?: boolean;
+  is_billable?: boolean;
+  varies_by_equipment?: boolean;
+  is_active?: boolean;
+  score?: number;
+};
+export const searchDict = (opts: {
+  q: string;
+  limit?: number;
+  direction?: Direction;
+  service_type_id?: string;
+  include_inactive?: boolean;
+}) => {
+  const p = new URLSearchParams({ q: opts.q });
+  if (opts.limit) p.set("limit", String(opts.limit));
+  if (opts.direction) p.set("direction", opts.direction);
+  if (opts.service_type_id) p.set("service_type_id", opts.service_type_id);
+  if (opts.include_inactive) p.set("include_inactive", "true");
+  return tenant<DictSearchHit[]>(`/financial-dictionary/search?${p.toString()}`);
+};
+
 export const dictDossier = (id: string) => tenant<DictDossier>(`/financial-dictionary/${id}/360`);
 export const createDict = (body: DictInput) => tenant<DictFull>("/financial-dictionary", { method: "POST", body });
 export const updateDict = (id: string, body: Partial<DictInput>) => tenant<DictFull>(`/financial-dictionary/${id}`, { method: "PATCH", body });

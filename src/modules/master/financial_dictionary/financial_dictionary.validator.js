@@ -64,6 +64,17 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 // The spend window is a QUERY, so it is validated as one — and both bounds are
 // optional because `normalisePeriod` owns the default (the trailing 12 months).
 // A validator that required them would push that default into every caller.
+// The finder's query string. `q` is required and bounded — an unbounded term
+// would let a caller push an arbitrarily long string into three trigram
+// comparisons per row.
+const searchQuery = z.object({
+  q: z.string().min(1).max(80),
+  limit: z.coerce.number().int().min(1).max(50).optional(),
+  direction: z.enum(["REVENUE", "EXPENSE", "DEBOURS", "ASSET"]).optional(),
+  service_type_id: z.string().uuid().optional(),
+  include_inactive: z.enum(["true", "false"]).optional(),
+});
+
 const spendQuery = z.object({
   from: day.optional(),
   to: day.optional(),
@@ -108,7 +119,7 @@ const importErrors = z.object({
 
 const schemas = {
   create, update: create.partial(), refCreate, refUpdate,
-  spendQuery, rateSupersede, importUpload, importCommit, importErrors,
+  searchQuery, spendQuery, rateSupersede, importUpload, importCommit, importErrors,
 };
 
 /** Query-string validator — same shape as `mw`, but reads req.query. */
@@ -126,6 +137,7 @@ const mw = (k) => (req, _res, next) => {
 };
 module.exports = {
   create: mw("create"), update: mw("update"), refCreate: mw("refCreate"), refUpdate: mw("refUpdate"),
+  searchQuery: qmw("searchQuery"),
   spendQuery: qmw("spendQuery"),
   rateSupersede: mw("rateSupersede"),
   importUpload: mw("importUpload"),

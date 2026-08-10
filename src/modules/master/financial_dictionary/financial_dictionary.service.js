@@ -17,6 +17,9 @@ const ITEM_COLS = [
 ];
 
 const listItems = (c, q) => repo.listItems(c, q);
+// The shared finder. Thin on purpose — the ranking is the query's job (repo),
+// and every caller across costing/quotation/cash-request wants the same shape.
+const searchItems = (c, q) => repo.searchItems(c, q);
 
 async function get(c, id) {
   const item = await repo.getItem(c, id);
@@ -400,7 +403,7 @@ async function updateRef(c, { id, patch, actor }) {
 }
 
 module.exports = {
-  listItems, get, dossier, create, update,
+  listItems, searchItems, get, dossier, create, update,
   spend, rateEvolution, supersedeRate,
   importTemplate, importValidate, importCommit, importErrorFile,
   listRefs, createRef, updateRef,

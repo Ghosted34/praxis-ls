@@ -26,6 +26,73 @@ async function nextCode(c, direction) {
 }
 
 /**
+ * The shared finder's query (MOD-05). One endpoint behind one component, used
+ * from costing, quotation, cash request, supplier invoice and the dictionary
+ * itself — so "what is this charge called in the system?" has one answer
+ * everywhere.
+ *
+ * WHY THIS IS NOT `listItems({ q })`. That one is `ILIKE '%q%'` over code +
+ * label_fr + label_en: it finds nothing unless you already know roughly what
+ * the catalogue calls the thing. Operations staff do not. They type
+ * "surestarie" for Demurrage, "demurage" with one r, "gasoil" for Fuel, "BAD"
+ * for the delivery order, or the legacy "#-1119" off a filed document.
+ *
+ * Four matchers, unioned, then ranked:
+ *   1. an exact keyword hit (`keywords &&`) — the alternates seeded in 9081,
+ *      including every superseded and legacy code. Indexed GIN, and the
+ *      strongest signal there is, so it outranks everything.
+ *   2. a code prefix/substring — someone pasting a code wants that line.
+ *   3. a plain substring on either label — the old behaviour, kept.
+ *   4. trigram similarity over label_fr / label_en / description, which is what
+ *      survives a typo. `%` uses pg_trgm's threshold and the GIN indexes from
+ *      0633.
+ *
+ * `similarity()` and `%` are unqualified: pg_trgm lives in `public` (0504) and
+ * the runtime search_path is `<schema>, public` (middleware/tenant-context).
+ *
+ * Inactive lines are excluded unless asked for — a superseded duplicate must
+ * stop appearing in pickers while staying readable on the documents that
+ * already reference it.
+ */
+async function searchItems(c, { q, limit = 20, service_type_id = null, direction = null, include_inactive = false } = {}) {
+  const term = String(q || "").trim();
+  if (!term) return [];
+  const params = [term, term.toLowerCase(), Math.min(Number(limit) || 20, 50)];
+  const wh = [];
+  if (!include_inactive) wh.push("di.is_active = true");
+  if (direction) { params.push(String(direction).toUpperCase()); wh.push(`di.direction = $${params.length}`); }
+  let join = "";
+  if (service_type_id) {
+    params.push(service_type_id);
+    join = `JOIN service_type_dictionary_item sti
+              ON sti.dictionary_item_id = di.dictionary_item_id
+             AND sti.service_type_id = $${params.length}`;
+  }
+  const { rows } = await c.query(
+    `SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.description,
+            di.direction, di.category, di.subcategory, di.unit_of_measure,
+            di.is_debours, di.is_billable, di.varies_by_equipment, di.is_active,
+            GREATEST(
+              CASE WHEN di.keywords && ARRAY[$2] THEN 1.0 ELSE 0 END,
+              CASE WHEN di.code::text ILIKE '%' || $1 || '%' THEN 0.95 ELSE 0 END,
+              similarity(di.label_en, $1), similarity(di.label_fr, $1),
+              similarity(COALESCE(di.description, ''), $1) * 0.6
+            ) AS score
+       FROM dictionary_item di ${join}
+      ${wh.length ? "WHERE " + wh.join(" AND ") + " AND" : "WHERE"} (
+            di.keywords && ARRAY[$2]
+         OR di.code::text ILIKE '%' || $1 || '%'
+         OR di.label_en ILIKE '%' || $1 || '%'
+         OR di.label_fr ILIKE '%' || $1 || '%'
+         OR di.label_en % $1 OR di.label_fr % $1 OR COALESCE(di.description, '') % $1)
+      ORDER BY score DESC, di.label_en
+      LIMIT $3`,
+    params,
+  );
+  return rows;
+}
+
+/**
  * Posting rules resolved with account labels, so the 360 can show
  * "6271 — Customs & transit charges" without a second round-trip.
  */
@@ -310,7 +377,7 @@ const getRef = (c, id) => getById(c, "dictionary_ref", "ref_id", id);
 module.exports = {
   createItem, createRule, updateItem, getItem, nextCode,
   listRules, deleteRules, listTiers, replaceTiers,
-  listItems, usageCounts,
+  listItems, searchItems, usageCounts,
   spendEstimated, spendCommitted, spendActual, spendDocuments,
   rateHistory, openRate, insertRate, expireRate,
   postableAccounts, taxCodeIndex, serviceTypeIndex,

@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 107,
-  "route_count": 925,
+  "route_count": 928,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 842
+    "gated": 845
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -346,6 +346,12 @@
       "tier": "gated"
     },
     "DELETE /api/tenant/service-types/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "DELETE /api/tenant/service-types/:id/dictionary/:itemId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -1480,6 +1486,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/financial-dictionary/refs": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/financial-dictionary/search": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5524,6 +5536,12 @@
       "tier": "gated"
     },
     "PUT /api/tenant/reports/tiles": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PUT /api/tenant/service-types/:id/dictionary/:itemId": {
       "auth": true,
       "rbac": true,
       "validated": false,

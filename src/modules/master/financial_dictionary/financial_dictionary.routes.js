@@ -24,6 +24,11 @@ router.post("/import/validate", requirePermission(MODULE, "create"), v.importUpl
 router.post("/import/commit", requirePermission(MODULE, "create"), v.importCommit, c.importCommit);
 router.post("/import/errors", requirePermission(MODULE, "view"), v.importErrors, c.importErrors);
 
+// The shared finder, before "/:id" for the same reason as "refs": a literal
+// segment must not be read as an id. Only needs `view` — it is the read path
+// every other module's picker calls.
+router.get("/search", requirePermission(MODULE, "view"), v.searchQuery, c.search);
+
 router.get("/", requirePermission(MODULE, "view"), c.list);
 router.get("/:id/360", requirePermission(MODULE, "view"), c.dossier);
 router.get("/:id/spend", requirePermission(MODULE, "view"), v.spendQuery, c.spend);

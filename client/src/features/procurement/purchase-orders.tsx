@@ -79,7 +79,7 @@ function PoForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
           <div className="space-y-2">
             {items.map((it, i) => (
               <div key={i} className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2">
-                <Field label="Item"><DictionaryItemSelect value={it.dictionary_item_id} onPick={(id, label) => setItem(i, { dictionary_item_id: id, label })} /></Field>
+                <Field label="Item"><DictionaryItemSelect value={it.dictionary_item_id} valueLabel={it.label} onPick={(id, label) => setItem(i, { dictionary_item_id: id, label })} /></Field>
                 <Field label="Qty"><Input type="number" className="num text-right" value={String(it.qty ?? "")} onChange={(e) => setItem(i, { qty: Number(e.target.value) })} /></Field>
                 <Field label="Unit price"><Input type="number" className="num text-right" value={String(it.unit_price ?? "")} onChange={(e) => setItem(i, { unit_price: Number(e.target.value) })} /></Field>
                 <Button type="button" size="sm" variant="outline" disabled={items.length === 1} onClick={() => setItems((its) => its.filter((_, j) => j !== i))}>✕</Button>

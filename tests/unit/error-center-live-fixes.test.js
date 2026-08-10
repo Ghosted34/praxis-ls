@@ -171,6 +171,66 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
     expect(out.base).toBe("XAF");
     expect(out.updated.map((u) => u.quote).sort()).toEqual(["EUR", "USD"]);
   });
+
+  /*
+   * The bug behind this test: on a fully successful sync the old shape returned
+   * `skipped: []` — an empty array — and every consumer used JS truthiness on
+   * that field (`if (!result.skipped)` in service.syncNow, `if (r.skipped)` in
+   * currencies.tsx). Empty arrays are truthy, so the server never emitted the
+   * `RATE_SYNCED` audit for a good run and the client permanently rendered
+   * "Sync skipped — no API key configured." over green syncs, even after the
+   * user pasted a working exchangerate-api key. `skipped` must be an
+   * unambiguous boolean sentinel — the per-quote list lives on `unsupported`.
+   */
+  it("`skipped` is a boolean sentinel on success — never an array", async () => {
+    const sync = loadSync({
+      status: 200,
+      data: { result: "success", conversion_rates: { USD: 0.0016, EUR: 0.0015 } },
+    });
+    const out = await sync.syncRates(client, {});
+    expect(typeof out.skipped).toBe("boolean");
+    expect(out.skipped).toBe(false);
+  });
+
+  it("`skipped: true` marks a real no-op — including no active quote currencies", async () => {
+    // Same-shape sentinel whether the skip is "no key" or "no quotes"; both
+    // must be recognisable with a single `result.skipped === true` check.
+    jest.resetModules();
+    jest.doMock(AXIOS, () => ({ get: async () => ({ status: 200, data: {} }) }));
+    jest.doMock(REPO, () => ({
+      getBaseCode: async () => "XAF",
+      listActiveCodes: async () => ["XAF"], // base filters itself out → zero quotes
+      upsertRate: async () => ({}),
+    }));
+    jest.doMock(SETTINGS, () => ({ getSetting: async () => "a-test-key" }));
+    const sync = require(SYNC);
+
+    const out = await sync.syncRates({ query: async () => ({ rows: [] }) }, {});
+    expect(out.skipped).toBe(true);
+    expect(out.reason).toMatch(/no active quote currencies/);
+  });
+
+  it("codes the provider returned no rate for surface on `unsupported`, not `skipped`", async () => {
+    // XAF→USD priced, XAF→XYZ absent from the provider payload. The old code
+    // put "XYZ" into `skipped` (an array), which the consumers then read as
+    // "the whole sync was skipped". It belongs on its own field.
+    jest.resetModules();
+    jest.doMock(AXIOS, () => ({
+      get: async () => ({ status: 200, data: { result: "success", conversion_rates: { USD: 0.0016 } } }),
+    }));
+    jest.doMock(REPO, () => ({
+      getBaseCode: async () => "XAF",
+      listActiveCodes: async () => ["USD", "XYZ"],
+      upsertRate: async () => ({}),
+    }));
+    jest.doMock(SETTINGS, () => ({ getSetting: async () => "a-test-key" }));
+    const sync = require(SYNC);
+
+    const out = await sync.syncRates({ query: async () => ({ rows: [] }) }, {});
+    expect(out.skipped).toBe(false);
+    expect(out.updated.map((u) => u.quote)).toEqual(["USD"]);
+    expect(out.unsupported).toEqual(["XYZ"]);
+  });
 });
 
 /* ═══════════════════════════════════════════════════════════════════════════

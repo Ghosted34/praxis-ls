@@ -57,7 +57,7 @@ function PrForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void
           <div className="micro">Items</div>
           {lines.map((l, i) => (
             <div key={i} className="grid grid-cols-[1fr_70px_110px_auto] items-center gap-2">
-              <DictionaryItemSelect value={l.dictionary_item_id} onPick={(id, label) => setLine(i, { dictionary_item_id: id, label })} />
+              <DictionaryItemSelect value={l.dictionary_item_id} valueLabel={l.label} onPick={(id, label) => setLine(i, { dictionary_item_id: id, label })} />
               <Input type="number" min="0" step="any" className="num text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} placeholder="Qty" />
               <Input type="number" min="0" step="any" className="num text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} placeholder="Unit (XAF)" />
               <Button type="button" variant="ghost" size="sm" onClick={() => setLines((s) => (s.length > 1 ? s.filter((_, idx) => idx !== i) : s))}>✕</Button>

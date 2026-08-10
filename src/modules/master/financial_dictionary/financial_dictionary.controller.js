@@ -38,6 +38,18 @@ function decodeUpload(file) {
 
 module.exports = {
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.listItems(c, req.query)) })),
+  // The shared finder (DictionaryFinder). Returns [] for a blank term rather
+  // than the whole catalogue: a picker that dumps 176 rows before you type is
+  // not a finder, and the caller already has `list` if it wants to browse.
+  search: asyncHandler(async (req, res) => res.json({
+    data: await req.tenantDb((c) => service.searchItems(c, {
+      q: req.query.q,
+      limit: req.query.limit,
+      direction: req.query.direction,
+      service_type_id: req.query.service_type_id,
+      include_inactive: req.query.include_inactive === "true",
+    })),
+  })),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
     if (!r) throw new AppError("NOT_FOUND", "Dictionary item not found", 404);

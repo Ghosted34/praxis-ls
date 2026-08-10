@@ -508,6 +508,11 @@ describe("the phone gets the same families, not a scrolled ribbon", () => {
     access.current = TWO_TABS;
     renderChrome(<BottomNav onSearch={() => {}} />, "/wms");
     const bar = await screen.findByRole("navigation", { name: "Primary" });
+    // The SKELETON nav carries `aria-label="Primary"` too, so findByRole
+    // resolves on the loading bar and a synchronous getByRole for a tab races
+    // the access read. Every sibling test here waits first; this one did not,
+    // which is why it passed locally and failed on a slow CI runner.
+    await waitFor(() => expect(bar).not.toHaveAttribute("aria-busy"));
     await userEvent.click(within(bar).getByRole("button", { name: /Fulfil/ }));
 
     const sheet = await screen.findByRole("dialog");

@@ -15,11 +15,22 @@ const KEY = z
   .max(60)
   .regex(/^[A-Z][A-Z0-9_]*$/, "key must be SCREAMING_SNAKE_CASE, e.g. SEA_FREIGHT_IMPORT");
 
+/**
+ * Where the service happens. The last three landed with the seeded service
+ * taxonomy (seeds/9080_seed_dictionary.sql) and are not synonyms of the first
+ * four: hinterland transit is a bonded corridor to Chad/CAR rather than a plain
+ * border crossing, a customs-brokerage file never leaves the port/airport zone,
+ * and an end-to-end door-to-door movement is both an import and an export leg.
+ * Without them a manager editing a seeded row is forced to re-label it wrongly.
+ */
 const TERRITORY = z.enum([
   "INTERNATIONAL_IMPORT",
   "INTERNATIONAL_EXPORT",
   "DOMESTIC_INLAND",
   "CROSS_BORDER",
+  "TRANSIT_HINTERLAND",
+  "PORT_AIRPORT_ZONE",
+  "END_TO_END_INTERNATIONAL",
   "OTHER",
 ]);
 

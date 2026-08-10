@@ -134,11 +134,17 @@ export type ServiceTypeInput = {
   territory?: string | null;
   is_active?: boolean;
 };
+// Kept in step with TERRITORY in src/modules/operations/service_type/
+// service_type.validator.js — the seeded service types (9080) use the last
+// three, and a picker that cannot offer them makes those rows uneditable.
 export const TERRITORIES = [
   "INTERNATIONAL_IMPORT",
   "INTERNATIONAL_EXPORT",
   "DOMESTIC_INLAND",
   "CROSS_BORDER",
+  "TRANSIT_HINTERLAND",
+  "PORT_AIRPORT_ZONE",
+  "END_TO_END_INTERNATIONAL",
   "OTHER",
 ] as const;
 

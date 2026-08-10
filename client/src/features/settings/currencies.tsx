@@ -68,7 +68,7 @@ type Dossier = {
   usage: UsageRow[];
   usage_total: number;
 };
-type SyncResult = { skipped?: boolean; reason?: string; base?: string; updated?: { quote: string; rate: number }[]; fetched_at?: string; source?: string };
+type SyncResult = { skipped?: boolean; reason?: string; base?: string; updated?: { quote: string; rate: number }[]; unsupported?: string[]; fetched_at?: string; source?: string };
 
 /* ── Small helpers ────────────────────────────────────────────────────────── */
 
@@ -725,10 +725,16 @@ export function CurrenciesPage() {
     setSyncMsg(null);
     try {
       const r = await tenant<SyncResult>("/currencies/sync", { method: "POST" });
-      if (r.skipped) setSyncMsg({ ok: false, text: r.reason || "Sync skipped — no API key configured." });
+      // Strict `=== true`: the server's `skipped` is a sentinel boolean, not
+      // the per-quote list. Loose truthiness once mis-read a successful run's
+      // (unrelated) empty-array field as a skip and permanently rendered
+      // "Sync skipped — no API key configured." over green syncs.
+      if (r.skipped === true) setSyncMsg({ ok: false, text: r.reason || "Sync skipped — no API key configured." });
       else {
         const n = r.updated?.length ?? 0;
-        setSyncMsg({ ok: true, text: `Synced ${n} ${n === 1 ? "rate" : "rates"} for ${r.base} from ${r.source ?? "exchangerate-api"}${r.fetched_at ? ` at ${dateTimeFmt(r.fetched_at)}` : ""}.` });
+        const missing = r.unsupported?.length ?? 0;
+        const tail = missing ? ` (no rate from provider for ${r.unsupported!.join(", ")})` : "";
+        setSyncMsg({ ok: true, text: `Synced ${n} ${n === 1 ? "rate" : "rates"} for ${r.base} from ${r.source ?? "exchangerate-api"}${r.fetched_at ? ` at ${dateTimeFmt(r.fetched_at)}` : ""}${tail}.` });
       }
       reloadAll();
     } catch (e) {

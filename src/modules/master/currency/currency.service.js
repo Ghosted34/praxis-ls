@@ -45,7 +45,10 @@ async function setRate(client, { base, quote, rate, asOfDate, source = "manual",
 /** Run the live sync now (base→all active). Same core as the daily cron. */
 async function syncNow(client, actor = {}) {
   const result = await sync.syncRates(client, {});
-  if (!result.skipped) {
+  // Strict `=== true`: `skipped` is the sentinel boolean, never an array. See
+  // the syncRates JSDoc — an empty-array escape used to make this branch
+  // silently skip the audit on every successful sync.
+  if (result.skipped !== true) {
     await emitEvent(client, { eventTypeKey: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", actorUserId: actor.user_id || null, payload: { updated: result.updated ? result.updated.length : 0, base: result.base } });
     await audit(client, { actorUserId: actor.user_id || null, action: events.RATE_SYNCED, moduleKey: events.MODULE, entityRef: "fx:sync", after: result });
   }

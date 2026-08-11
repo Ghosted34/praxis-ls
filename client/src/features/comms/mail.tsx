@@ -20,6 +20,8 @@ import { getCommsSocket } from "@/lib/comms-socket";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/mail-api";
 import { reportActionError } from "@/lib/action-error";
+import * as RadixDialog from "@radix-ui/react-dialog";
+import { XIcon } from "@/components/ui/icons";
 
 const sendTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
@@ -248,8 +250,7 @@ function ImapConnectForm({ onDone }: { onDone: () => void }) {
   }
 
   return (
-    <form onSubmit={submit} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <h3 className="font-display text-base">Connect an IMAP / SMTP mailbox</h3>
+    <form onSubmit={submit}>
       <p className="micro mb-3">Any host (cPanel, private server, provider). Password is encrypted at rest.</p>
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Email address" required><Input value={f.email_address} onChange={(e) => set("email_address", e.target.value)} placeholder="info@company.cm" /></Field>
@@ -272,10 +273,43 @@ function ImapConnectForm({ onDone }: { onDone: () => void }) {
   );
 }
 
+/* Right-side sheet — a lightweight drawer (Radix dialog pinned to the right edge,
+   overlay not push) for the connect form. Distinct from the AI copilot drawer,
+   which is copilot-specific. */
+function RightDrawer({ open, onOpenChange, title, children }: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
+      <RadixDialog.Portal>
+        <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-fade-in" />
+        <RadixDialog.Content
+          aria-describedby={undefined}
+          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
+        >
+          <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
+            <RadixDialog.Title className="font-display text-base">{title}</RadixDialog.Title>
+            <RadixDialog.Close asChild>
+              <button type="button" aria-label="Close" className="tap-24 grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground">
+                <XIcon width={16} height={16} />
+              </button>
+            </RadixDialog.Close>
+          </div>
+          <div className="flex-1 overflow-y-auto px-5 py-5">{children}</div>
+        </RadixDialog.Content>
+      </RadixDialog.Portal>
+    </RadixDialog.Root>
+  );
+}
+
 function MailboxesSection() {
   const conns = useResource(() => api.listConnections(), []);
   const [busyId, setBusyId] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
+  const [imapOpen, setImapOpen] = React.useState(false);
 
   // Surface the OAuth callback result. The provider redirect lands back on
   // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
@@ -309,6 +343,7 @@ function MailboxesSection() {
       <div className="flex flex-wrap items-center gap-3">
         <Button variant="outline" onClick={() => oauth("ms")}>Connect Microsoft 365</Button>
         <Button variant="outline" onClick={() => oauth("gg")}>Connect Google Workspace</Button>
+        <Button variant="outline" onClick={() => setImapOpen(true)}>Connect IMAP / SMTP</Button>
         {note && <span className="micro">{note}</span>}
       </div>
 
@@ -333,7 +368,9 @@ function MailboxesSection() {
         {(conns.data || []).length === 0 && !conns.loading && <p className="micro">No mailboxes connected yet.</p>}
       </div>
 
-      <ImapConnectForm onDone={conns.reload} />
+      <RightDrawer open={imapOpen} onOpenChange={setImapOpen} title="Connect an IMAP / SMTP mailbox">
+        <ImapConnectForm onDone={() => { conns.reload(); setImapOpen(false); }} />
+      </RightDrawer>
     </div>
   );
 }

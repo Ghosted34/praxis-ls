@@ -71,7 +71,7 @@ describe("generated documents carry the faces", () => {
       entity: "Smart Logistics",
       client: "ACME",
       lines: [{ label: "Freight", line_ht: 100 }],
-      totals: { service_ht: 100, debours_total: 0, vat_total: 19.25 },
+      totals: { service_ht: 100, disbursement_total: 0, vat_total: 19.25 },
     });
     expect(html).toContain("@font-face");
     expect(html).toContain("data:font/woff2;base64,");

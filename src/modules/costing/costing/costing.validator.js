@@ -1,7 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional(), label: z.string().optional(), qty: z.number().positive().optional(), unit_cost: z.number().nonnegative().optional(), is_debours: z.boolean().optional(), tax_code_id: z.string().uuid().optional() });
+const line = z.object({ dictionary_item_id: z.string().uuid().optional(), label: z.string().optional(), qty: z.number().positive().optional(), unit_cost: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), tax_code_id: z.string().uuid().optional() });
 const create = z.object({ dossier_id: z.string().uuid(), currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
 const update = z.object({ currency: z.string().length(3).optional(), exchange_rate_to_xaf: z.number().positive().optional(), margin_percent: z.number().optional(), lines: z.array(line).optional() });
 const setStatus = z.object({ to: z.enum(["SUBMIT_VALIDATION", "SUBMIT_APPROVAL", "APPROVE", "REJECT"]) });

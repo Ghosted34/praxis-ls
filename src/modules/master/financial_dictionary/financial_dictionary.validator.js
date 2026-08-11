@@ -7,7 +7,7 @@ const rule = z.object({
   debit_account: z.string().nullish(),
   credit_account: z.string().nullish(),
   tax_code_id: z.string().uuid().nullish(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
 });
 
 const tier = z.object({
@@ -22,12 +22,12 @@ const create = z.object({
   label_fr: z.string().min(1),
   label_en: z.string().nullish(),
   description: z.string().nullish(),
-  category: z.enum(["debours", "service", "overhead", "asset", "other"]),
-  direction: z.enum(["REVENUE", "EXPENSE", "DEBOURS", "ASSET"]),
+  category: z.enum(["disbursement", "service", "overhead", "asset", "other"]),
+  direction: z.enum(["REVENUE", "EXPENSE", "DISBURSEMENT", "ASSET"]),
   subcategory: z.string().nullish(),
   unit_of_measure: z.string().nullish(),
   applicability_mode: z.enum(["SERVICE_SCOPED", "ANY_OPERATIONS", "NON_OPERATIONAL"]).optional(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
   is_billable: z.boolean().optional(),
   default_price: z.number().nonnegative().nullish(),
   currency: z.string().length(3).optional(),
@@ -36,7 +36,7 @@ const create = z.object({
   proof_source: z.string().nullish(),
   requires_justification: z.boolean().optional(),
   receipt_requirement: z.enum(["ALWAYS_REQUIRED", "CONDITIONALLY_REQUIRED", "NOT_REQUIRED"]).optional(),
-  debours_vat_transparent: z.boolean().optional(),
+  disbursement_vat_transparent: z.boolean().optional(),
   // FORMULA = priced by the Extra Charges Simulation module (Demurrage,
   // Storage), not by a flat rate card. Defaults to FLAT server-side.
   pricing_mode: z.enum(["FLAT", "FORMULA"]).optional(),
@@ -73,7 +73,7 @@ const day = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "expected YYYY-MM-DD");
 const searchQuery = z.object({
   q: z.string().min(1).max(80),
   limit: z.coerce.number().int().min(1).max(50).optional(),
-  direction: z.enum(["REVENUE", "EXPENSE", "DEBOURS", "ASSET"]).optional(),
+  direction: z.enum(["REVENUE", "EXPENSE", "DISBURSEMENT", "ASSET"]).optional(),
   service_type_id: z.string().uuid().optional(),
   include_inactive: z.enum(["true", "false"]).optional(),
 });

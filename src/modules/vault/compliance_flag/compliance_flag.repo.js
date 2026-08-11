@@ -25,9 +25,9 @@ const SCANS = {
     const { rows } = await client.query("SELECT regie_advance_id, amount FROM regie_advance WHERE state = 'AGED_UNJUSTIFIED'");
     return rows.map((r) => ({ entity_ref: "regie_advance:" + r.regie_advance_id, message: "Aged unjustified advance (" + r.amount + ")" }));
   },
-  "debours.tax_violation": async (client) => {
-    const { rows } = await client.query("SELECT line_id, entry_id FROM journal_line WHERE is_debours = true AND tax_code_id IS NOT NULL");
-    return rows.map((r) => ({ entity_ref: "journal_line:" + r.line_id, message: "Débours line carries a tax code (entry " + r.entry_id + ")" }));
+  "disbursement.tax_violation": async (client) => {
+    const { rows } = await client.query("SELECT line_id, entry_id FROM journal_line WHERE is_disbursement = true AND tax_code_id IS NOT NULL");
+    return rows.map((r) => ({ entity_ref: "journal_line:" + r.line_id, message: "Disbursement line carries a tax code (entry " + r.entry_id + ")" }));
   },
 
   /* ── Dictionary-driven proof obligations (MOD-05 §Q4) ─────────────────────

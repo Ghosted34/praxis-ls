@@ -20,7 +20,7 @@ const { uuid, isoDate, requiredText, positiveAmount } = require("./common");
 const line = z.object({
   dictionary_item_id: uuid,
   amount: positiveAmount,
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
   label: z.string().optional(),
 });
 

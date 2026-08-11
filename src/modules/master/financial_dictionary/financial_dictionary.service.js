@@ -10,9 +10,9 @@ const { emitEvent, audit } = require("../../../shared/events/emit");
 // whole row) is what keeps update from rewriting created_at or the PK.
 const ITEM_COLS = [
   "label_fr", "label_en", "description", "category", "direction", "subcategory",
-  "unit_of_measure", "applicability_mode", "is_debours", "is_billable",
+  "unit_of_measure", "applicability_mode", "is_disbursement", "is_billable",
   "default_price", "currency", "shipping_line", "provider_kind", "proof_source",
-  "requires_justification", "receipt_requirement", "debours_vat_transparent",
+  "requires_justification", "receipt_requirement", "disbursement_vat_transparent",
   "pricing_mode", "is_active", "service_type_key",
 ];
 
@@ -38,8 +38,8 @@ async function dossier(c, id) {
     requires_justification: !!item.requires_justification,
     receipt_requirement: item.receipt_requirement,
     proof_source: item.proof_source || null,
-    is_debours: !!item.is_debours,
-    debours_vat_transparent: !!item.debours_vat_transparent,
+    is_disbursement: !!item.is_disbursement,
+    disbursement_vat_transparent: !!item.disbursement_vat_transparent,
     // A billable item that always needs a receipt but names no valid source is
     // the onboarding gap the 360 should surface (not a hard failure).
     needs_attention: rules.needsAttention(item),
@@ -59,7 +59,7 @@ function normalise(data) {
   const direction = data.direction || "EXPENSE";
   const itemData = pickItem(data);
   itemData.direction = direction;
-  itemData.is_debours = rules.resolveDebours(direction, data.is_debours);
+  itemData.is_disbursement = rules.resolveDisbursement(direction, data.is_disbursement);
   return { itemData, posting_rules: data.posting_rules || [], service_tiers: data.service_tiers || [] };
 }
 
@@ -71,7 +71,7 @@ function withCreateDefaults(item) {
     is_billable: true,
     is_active: true,
     requires_justification: false,
-    debours_vat_transparent: true,
+    disbursement_vat_transparent: true,
     pricing_mode: "FLAT",
     ...item,
   };
@@ -82,14 +82,14 @@ function withCreateDefaults(item) {
 // it over to the join.
 const primaryServiceKey = rules.primaryServiceKey;
 
-function ruleRow(r, itemId, itemDebours) {
+function ruleRow(r, itemId, itemDisbursement) {
   return {
     dictionary_item_id: itemId,
     applies_context: r.applies_context,
     debit_account: r.debit_account || null,
     credit_account: r.credit_account || null,
     tax_code_id: r.tax_code_id || null,
-    is_debours: r.is_debours ?? itemDebours,
+    is_disbursement: r.is_disbursement ?? itemDisbursement,
   };
 }
 
@@ -107,7 +107,7 @@ async function create(c, { data, actor }) {
     try {
       const row = { ...base, code: await repo.nextCode(c, base.direction), service_type_key: primaryServiceKey(service_tiers) };
       const item = await repo.createItem(c, row);
-      for (const r of posting_rules) await repo.createRule(c, ruleRow(r, item.dictionary_item_id, item.is_debours));
+      for (const r of posting_rules) await repo.createRule(c, ruleRow(r, item.dictionary_item_id, item.is_disbursement));
       if (service_tiers.length) await repo.replaceTiers(c, item.dictionary_item_id, service_tiers);
       await c.query("COMMIT");
       await emitEvent(c, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: `dict:${item.code}`, actorUserId: actor.user_id });
@@ -137,7 +137,7 @@ async function update(c, { id, patch, actor }) {
     const row = await repo.updateItem(c, id, itemData);
     if (rulesSent) {
       await repo.deleteRules(c, id);
-      for (const r of posting_rules) await repo.createRule(c, ruleRow(r, id, row ? row.is_debours : before.is_debours));
+      for (const r of posting_rules) await repo.createRule(c, ruleRow(r, id, row ? row.is_disbursement : before.is_disbursement));
     }
     if (tiersSent) await repo.replaceTiers(c, id, service_tiers);
     await emitEvent(c, { eventTypeKey: events.UPDATED, moduleKey: events.MODULE, entityRef: `dict:${before.code}`, actorUserId: actor.user_id });

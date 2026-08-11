@@ -54,7 +54,7 @@ export type JournalLineInput = {
   debit?: number;
   credit?: number;
   dossier_id?: string;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
 };
 
 export type PostJournalInput = {
@@ -83,7 +83,7 @@ export type PayAdvanceInput = {
 export const payAdvance = (body: PayAdvanceInput) =>
   tenant("/proformas/pay", { method: "POST", body });
 
-export type InvoiceLineInput = { dictionary_item_id: string; amount: number; is_debours?: boolean; label?: string };
+export type InvoiceLineInput = { dictionary_item_id: string; amount: number; is_disbursement?: boolean; label?: string };
 
 export const createInvoiceDraft = (body: {
   entity_id: string;
@@ -101,7 +101,7 @@ export type InvoiceDetail = {
   client_id?: string | null;
   dossier_id?: string | null;
   status: string;
-  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; line_ht?: number | string; is_debours?: boolean }>;
+  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; line_ht?: number | string; is_disbursement?: boolean }>;
   [k: string]: unknown;
 };
 
@@ -176,7 +176,7 @@ export type CreditNoteLineInput = {
   label: string;
   amount: number;
   dictionary_item_id?: string;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
 };
 
 export type CreditNote = {
@@ -193,7 +193,7 @@ export type CreditNote = {
 
 export type CreditNoteDetail = CreditNote & {
   dossier_id?: string | null;
-  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; amount?: number | string; line_ht?: number | string; is_debours?: boolean }>;
+  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; amount?: number | string; line_ht?: number | string; is_disbursement?: boolean }>;
 };
 
 /** FINAL invoices only — a credit note reverses a finalised invoice. */
@@ -323,7 +323,7 @@ export async function loadDossiers(): Promise<Option[]> {
 
 /* read-only VAT/total preview for a draft invoice (HT / débours / TVA / TTC + open advance) */
 export type InvoiceTotals = {
-  totals: { subtotal_ht: number; debours_total: number; tax_total: number; total: number };
+  totals: { subtotal_ht: number; disbursement_total: number; tax_total: number; total: number };
   advance_open: number;
   line_count: number;
 };

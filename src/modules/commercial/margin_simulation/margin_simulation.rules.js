@@ -19,7 +19,7 @@ function cents(v, label) {
 
 /**
  * computeMargin(lines) where each line is
- *   { qty, unit_cost, unit_price, is_debours? }
+ *   { qty, unit_cost, unit_price, is_disbursement? }
  * Returns totals in major units plus the service-only margin.
  */
 function computeMargin(lines) {
@@ -30,7 +30,7 @@ function computeMargin(lines) {
   let priceC = 0;
   let svcCostC = 0;
   let svcPriceC = 0;
-  let deboursC = 0;
+  let disbursementC = 0;
   lines.forEach((ln, i) => {
     const at = `line ${i + 1}`;
     const qty = Number(ln.qty);
@@ -39,8 +39,8 @@ function computeMargin(lines) {
     const linePrice = Math.round(cents(ln.unit_price, `${at} unit_price`) * qty);
     costC += lineCost;
     priceC += linePrice;
-    if (ln.is_debours === true) {
-      deboursC += lineCost;
+    if (ln.is_disbursement === true) {
+      disbursementC += lineCost;
     } else {
       svcCostC += lineCost;
       svcPriceC += linePrice;
@@ -54,7 +54,7 @@ function computeMargin(lines) {
     total_price: round2(priceC / 100),
     service_cost: round2(svcCostC / 100),
     service_price: round2(svcPriceC / 100),
-    debours_total: round2(deboursC / 100),
+    disbursement_total: round2(disbursementC / 100),
     margin_amount: round2(marginC / 100),
     margin_percent: marginPercent,
     markup_percent: markupPercent,

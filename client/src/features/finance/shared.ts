@@ -56,6 +56,6 @@ export function optionLabel(o: Option) {
  * the same shape — amounts are held as STRINGS while typing so a half-entered
  * "1200." is not coerced to a number mid-keystroke.
  */
-export type InvLine = { dictionary_item_id: string; amount: string; is_debours: boolean; label: string };
+export type InvLine = { dictionary_item_id: string; amount: string; is_disbursement: boolean; label: string };
 
-export const blankInvLine = (): InvLine => ({ dictionary_item_id: "", amount: "", is_debours: false, label: "" });
+export const blankInvLine = (): InvLine => ({ dictionary_item_id: "", amount: "", is_disbursement: false, label: "" });

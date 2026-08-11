@@ -172,7 +172,7 @@ The mapping engine: **each Financial Dictionary item → one or more COA account
 **What to actually do:**
 - Move the **Main/Sub-account hierarchy into MOD-06 (COA)**. The COA is the hierarchy.
 - Re-scope **MOD-05** as the **Item Catalogue with account determination** (not a parallel chart).
-- Build **Layer 3** as a `posting_rules` table (see §22). Every dictionary item **must** carry: a default account (or accounts), a **tax_code**, and a **`is_debours` flag**. No dictionary item may be saved without a complete mapping — enforce this (see §23).
+- Build **Layer 3** as a `posting_rules` table (see §22). Every dictionary item **must** carry: a default account (or accounts), a **tax_code**, and a **`is_disbursement` flag**. No dictionary item may be saved without a complete mapping — enforce this (see §23).
 
 > **One-line answer for the dev team:** *"COA = statutory accounts (hierarchical, MOD-06). Dictionary = operational items you bill/cost (MOD-05). Never duplicate the account hierarchy inside the dictionary — instead, every dictionary item points to COA accounts through a posting rule that also carries its tax code and its débours flag."*
 
@@ -372,7 +372,7 @@ This is the concept that, if wrong, makes every downstream number wrong. A freig
 3. **Exact reimbursement** — re-invoiced at cost, no margin added.
 4. Shown as a **separate, non-taxable "Débours" line** on the SmartLS invoice.
 
-If any condition fails, it is **not** a débours — it becomes **refacturation** (see §6.5): the cost goes to class 6, the re-invoice to class 7, and **VAT applies to the whole thing**. Getting this classification right per Financial-Dictionary item (the `is_debours` flag, §4/§22) is a core system responsibility.
+If any condition fails, it is **not** a débours — it becomes **refacturation** (see §6.5): the cost goes to class 6, the re-invoice to class 7, and **VAT applies to the whole thing**. Getting this classification right per Financial-Dictionary item (the `is_disbursement` flag, §4/§22) is a core system responsibility.
 
 ### 6.3 The worked example (your ACME scenario), entry by entry
 
@@ -432,7 +432,7 @@ Example — subcontracted trucking 800,000 HT re-invoiced at 1,000,000 HT:
 - Cost: **Dr 613** 800,000 / **Dr 4453** (VAT recoverable on transport) 154,000 / **Cr 4013** 954,000.
 - Re-invoice: **Dr 411** 1,192,500 / **Cr 706** 1,000,000 / **Cr 4432** 192,500. Margin 200,000 flows to the P&L.
 
-> **System rule:** the **`is_debours` flag** on each Financial-Dictionary item (or per invoice line) decides the whole treatment. Débours → route to 4731, no VAT, no class 6/7. Refacturation → class 6 cost + class 7 revenue + VAT both sides. Never let a line be ambiguous.
+> **System rule:** the **`is_disbursement` flag** on each Financial-Dictionary item (or per invoice line) decides the whole treatment. Débours → route to 4731, no VAT, no class 6/7. Refacturation → class 6 cost + class 7 revenue + VAT both sides. Never let a line be ambiguous.
 
 ### 6.6 Withholding tax (précompte / acompte) variant
 
@@ -513,10 +513,10 @@ Repeat per débours (customs 4426-type receipt, port, shipping line). **No VAT, 
 
 ### 8.3 Final service invoice with débours recovery + VAT — MOD-51
 ```
-Dr  4111 Clients – <client> .......................... service_TTC + debours_total
+Dr  4111 Clients – <client> .......................... service_TTC + disbursement_total
     Cr  706x Services vendus (per service line) ...... service_HT
     Cr  4432 État, TVA facturée sur prestations ...... service_HT × 19.25%
-    Cr  4731 Mandants – <client> ..................... debours_total   (clears §8.2)
+    Cr  4731 Mandants – <client> ..................... disbursement_total   (clears §8.2)
 ```
 Then clear the advance:
 ```
@@ -999,8 +999,8 @@ chart_of_accounts(
 -- LAYER 2: operational catalogue (MOD-05, re-scoped)
 dictionary_item(
   id PK, code, label_fr, label_en,
-  category,                -- 'debours' | 'service' | 'overhead' | 'asset' ...
-  is_debours BOOLEAN,      -- THE flag (§6)
+  category,                -- 'disbursement' | 'service' | 'overhead' | 'asset' ...
+  is_disbursement BOOLEAN,      -- THE flag (§6)
   default_price, currency, shipping_line, source, -- (MOD-10 rates)
 )
 
@@ -1041,7 +1041,7 @@ advance(id, dossier_id, client_id, amount, received_date, applied_amount)  -- 41
 cash_advance(id, holder_id, amount, issued_date, state, justified_amount,  -- 581 régie d'avance, MOD-49 (§6.8)
              returned_amount, aged_after_days)  -- state: ISSUED|PARTIALLY_JUSTIFIED|JUSTIFIED|AGED_UNJUSTIFIED|QUERIED
 invoice(id, dossier_id, client_id, type, ...)                              -- proforma|final, MOD-50/51
-invoice_line(invoice_id, dictionary_item_id, qty, unit_price, is_debours, tax_code)
+invoice_line(invoice_id, dictionary_item_id, qty, unit_price, is_disbursement, tax_code)
 
 -- audit
 immutable_log(id, user, action, entity, before_json, after_json, date, ip, module) -- MOD-69
@@ -1049,7 +1049,7 @@ immutable_log(id, user, action, entity, before_json, after_json, date, ip, modul
 
 **Account-determination flow (how an invoice becomes a balanced entry):**
 1. For each `invoice_line`, read its `dictionary_item` and `posting_rule`.
-2. If `is_debours` → credit **4731** (recover), **no tax**. Else → credit the mapped **706/707** and add a **VAT line (4432)** from `tax_code`.
+2. If `is_disbursement` → credit **4731** (recover), **no tax**. Else → credit the mapped **706/707** and add a **VAT line (4432)** from `tax_code`.
 3. Debit **4111** for the line total (HT + VAT for services; cost for débours recovery).
 4. Sum lines; assert **Σ Dr = Σ Cr**; attach `dossier_id` to every line; write one `journal_entry`.
 5. Apply any `advance` (Dr 4191 / Cr 4111) and any WHT suffered (Dr 449).
@@ -1061,7 +1061,7 @@ immutable_log(id, user, action, entity, before_json, after_json, date, ip, modul
 1. **Balanced entries.** Reject any `journal_entry` where `Σ debit ≠ Σ credit`.
 2. **One side per line.** Each `journal_line` has exactly one of `debit`/`credit` > 0.
 3. **Postable accounts only.** Postings allowed only to leaf accounts (`is_postable = true`).
-4. **Débours never in class 6/7.** Any line where `is_debours = true` must post to **473** (or a client/advance account) — reject if it targets a class-6 or class-7 account.
+4. **Débours never in class 6/7.** Any line where `is_disbursement = true` must post to **473** (or a client/advance account) — reject if it targets a class-6 or class-7 account.
 5. **VAT only on the service/purchase base.** No output VAT line may be generated from a débours line.
 6. **No compensation.** Never net a receivable (411) against a payable (401), or income against expense, in one line (§2.6).
 7. **Advance ≠ revenue.** Money received before a final invoice posts to **4191**, never to class 7 (§7).

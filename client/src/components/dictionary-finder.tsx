@@ -34,14 +34,14 @@ import { cn } from "@/lib/cn";
 import { searchDict, type DictSearchHit, type Direction } from "@/lib/masterdata-api";
 
 /**
- * Direction → the shared status tones. Débours is `warn` deliberately: it is the
+ * Direction → the shared status tones. Disbursement is `warn` deliberately: it is the
  * one a picker most needs to catch the eye, because choosing it commits the line
  * to being re-billed at cost with no VAT of ours, and choosing revenue by
  * mistake books the client's money as turnover.
  */
 const DIRECTION_TONE: Record<Direction, { label: string; tone: Tone }> = {
   REVENUE: { label: "Revenue", tone: "ok" },
-  DEBOURS: { label: "Débours", tone: "warn" },
+  DISBURSEMENT: { label: "Disbursement", tone: "warn" },
   EXPENSE: { label: "Expense", tone: "blue" },
   ASSET: { label: "Asset", tone: "orange" },
 };

@@ -70,7 +70,7 @@ DECLARE
   v_emp6 uuid; v_emp7 uuid; v_emp8 uuid;
   -- dictionary items
   v_di_freight uuid; v_di_transit uuid; v_di_doc uuid; v_di_handling uuid;
-  v_di_customs uuid; v_di_thc uuid; v_di_fuel uuid; v_di_ins uuid;
+  v_di_customs uuid; v_di_thc uuid; v_di_fuel uuid; v_di_ins uuid; v_di_comm uuid;
   -- tax codes (looked up from the 9010 seed)
   v_tc_std uuid; v_tc_zero uuid;
   -- treasury
@@ -175,40 +175,53 @@ BEGIN
   INSERT INTO employee (entity_id,full_name,department,job_title,employment_type,cnps_number,base_salary,risk_class_rate)
     VALUES (v_ent2,'Henri Sadi','HR','Responsable RH','PERMANENT','CN-000008',900000,0.0175)                   RETURNING employee_id INTO v_emp8;
 
-  -- Dictionary items (each needs a posting_rule — same txn satisfies the
-  -- deferrable KB §23.14 constraint) --------------------------------------
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price,service_type_key)
-    VALUES ('FRET-MER','Fret maritime','Sea freight','service',false,1800000,'SEA_FREIGHT_IMPORT') RETURNING dictionary_item_id INTO v_di_freight;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,tax_code_id)
-    VALUES (v_di_freight,'sale','4111','7061',v_tc_std);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price)
-    VALUES ('COM-TRANSIT','Commission de transit','Transit commission','service',false,350000) RETURNING dictionary_item_id INTO v_di_transit;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,tax_code_id)
-    VALUES (v_di_transit,'sale','4111','7062',v_tc_std);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price)
-    VALUES ('FRAIS-DOC','Frais de documentation','Documentation fees','service',false,75000) RETURNING dictionary_item_id INTO v_di_doc;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,tax_code_id)
-    VALUES (v_di_doc,'sale','4111','7063',v_tc_std);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price)
-    VALUES ('MANUT','Manutention','Handling','service',false,220000) RETURNING dictionary_item_id INTO v_di_handling;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,tax_code_id)
-    VALUES (v_di_handling,'sale','4111','7064',v_tc_std);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,is_billable,default_price)
-    VALUES ('DROITS-DOUANE','Droits de douane (débours)','Customs duties (disbursement)','debours',true,true,0) RETURNING dictionary_item_id INTO v_di_customs;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,is_debours)
-    VALUES (v_di_customs,'disbursement','4731','4731',true);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price)
-    VALUES ('THC','Terminal handling (débours)','Terminal handling charge','debours',true,0) RETURNING dictionary_item_id INTO v_di_thc;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,is_debours)
-    VALUES (v_di_thc,'disbursement','4731','4731',true);
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price,shipping_line)
-    VALUES ('CARBURANT','Carburant flotte','Fleet fuel','overhead',false,0,NULL) RETURNING dictionary_item_id INTO v_di_fuel;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account)
-    VALUES (v_di_fuel,'purchase','6053','4011');
-  INSERT INTO dictionary_item (code,label_fr,label_en,category,is_debours,default_price)
-    VALUES ('ASSURANCE','Assurance marchandise','Cargo insurance','service',false,120000) RETURNING dictionary_item_id INTO v_di_ins;
-  INSERT INTO posting_rule (dictionary_item_id,applies_context,debit_account,credit_account,tax_code_id)
-    VALUES (v_di_ins,'sale','4111','7064',v_tc_std);
+  -- Dictionary items — RESOLVED FROM THE REAL CATALOGUE, NOT INVENTED HERE ---
+  --
+  -- This block used to mint eight of its own rows (FRET-MER, COM-TRANSIT,
+  -- FRAIS-DOC, MANUT, DROITS-DOUANE, THC, CARBURANT, ASSURANCE) with hand-
+  -- written codes and the pre-0630 lean schema. They were the ONLY free-form
+  -- codes anywhere in the product, and because they were written before
+  -- `direction` existed, 0630's category→direction backfill swept six of them
+  -- into REVENUE in one go. That is why TEST mode showed "Sea freight" and
+  -- "Cargo insurance" as revenue while LIVE had them, correctly, as
+  -- disbursements — and why an audit run against TEST reached wrong
+  -- conclusions about the catalogue.
+  --
+  -- The catalogue seeds (9080/9081/9082) run against EVERY schema, this one
+  -- included, so the real 210-row catalogue is already sitting here. The demo
+  -- data now points at it instead of shadowing it with duplicates.
+  --
+  -- DIRECTION OF TRAVEL IS ONE-WAY. LIVE is the source: a catalogue change
+  -- reaches sandbox on the next seed run. Nothing here can travel back —
+  -- `SET search_path = sandbox` at the top of this file means every write
+  -- below lands in the sandbox schema, and live.dictionary_item is not
+  -- reachable from it. The prices and shipping-line data set here are
+  -- deliberately sandbox-local for that reason.
+  SELECT dictionary_item_id INTO v_di_freight  FROM dictionary_item WHERE code = '#D081';  -- Ocean Freight
+  SELECT dictionary_item_id INTO v_di_transit  FROM dictionary_item WHERE code = '#R010';  -- Service Charges
+  SELECT dictionary_item_id INTO v_di_doc      FROM dictionary_item WHERE code = '#R002';  -- Documentation Fee
+  SELECT dictionary_item_id INTO v_di_handling FROM dictionary_item WHERE code = '#D049';  -- Equipment & Cargo Handling
+  SELECT dictionary_item_id INTO v_di_customs  FROM dictionary_item WHERE code = '#D030';  -- Customs Duties & Taxes
+  SELECT dictionary_item_id INTO v_di_thc      FROM dictionary_item WHERE code = '#D114';  -- Terminal Handling Charges
+  SELECT dictionary_item_id INTO v_di_fuel     FROM dictionary_item WHERE code = '#E011';  -- Fuel
+  SELECT dictionary_item_id INTO v_di_ins      FROM dictionary_item WHERE code = '#D078';  -- Local Insurance
+  SELECT dictionary_item_id INTO v_di_comm     FROM dictionary_item WHERE code = '#R001';  -- Commission on Disbursements
+
+  -- Fail loudly rather than seeding a half-wired sandbox: a NULL here would
+  -- surface much later as a dossier with no lines and no explanation.
+  IF v_di_freight IS NULL OR v_di_transit IS NULL OR v_di_doc IS NULL
+     OR v_di_handling IS NULL OR v_di_customs IS NULL OR v_di_thc IS NULL
+     OR v_di_fuel IS NULL OR v_di_ins IS NULL OR v_di_comm IS NULL THEN
+    RAISE EXCEPTION 'sandbox seed: financial dictionary not present in this schema — run the 90xx seeds first';
+  END IF;
+
+  -- Sandbox-local demo pricing on the shared catalogue rows.
+  UPDATE dictionary_item SET default_price = v.price, service_type_key = v.svc
+    FROM (VALUES ('#D081',1800000::numeric,'SEA_FREIGHT_IMPORT'),
+                 ('#R010', 350000,NULL), ('#R002',  75000,NULL),
+                 ('#D049', 220000,NULL), ('#D078', 120000,NULL))
+         AS v(code, price, svc)
+   WHERE dictionary_item.code = v.code;
 
   -- Expense rates (feeds costing simulators)
   INSERT INTO expense_rate (dictionary_item_id,shipping_line,variant,rate) VALUES
@@ -391,8 +404,12 @@ BEGIN
   -- ==========================================================================
   INSERT INTO costing (dossier_id,doc_number,margin_percent,status)
     VALUES (v_do1,'SBX-CST-0001',18.5,'APPROVED_LOCKED') RETURNING costing_id INTO v_co1;
-  INSERT INTO costing_line (costing_id,dictionary_item_id,label,qty,unit_cost,is_debours) VALUES
-    (v_co1,v_di_freight,'Fret maritime 40ft',40,2000000,false),
+  -- Ocean freight is a disbursement in the real catalogue (#D081): the carrier
+  -- bills it, we advance it, the client repays it at cost. The flag follows the
+  -- item's direction — a costing line that disagrees with its own dictionary
+  -- item teaches the operator the wrong thing.
+  INSERT INTO costing_line (costing_id,dictionary_item_id,label,qty,unit_cost,is_disbursement) VALUES
+    (v_co1,v_di_freight,'Fret maritime 40ft',40,2000000,true),
     (v_co1,v_di_customs,'Droits de douane',1,8500000,true),
     (v_co1,v_di_thc,'THC',40,180000,true);
   INSERT INTO costing (dossier_id,doc_number,margin_percent,status)
@@ -403,8 +420,8 @@ BEGIN
 
   INSERT INTO quotation (doc_number,entity_id,client_id,dossier_id,costing_id,opportunity_id,margin_percent,total_ht,total_ttc,status,valid_until)
     VALUES ('SBX-QUO-0001',v_ent1,v_cl1,v_do1,v_co1,v_op1,18.5,94800000,112318500,'SENT',CURRENT_DATE+20) RETURNING quotation_id INTO v_q1;
-  INSERT INTO quotation_line (quotation_id,dictionary_item_id,label,qty,unit_price,is_debours,tax_code_id,line_no) VALUES
-    (v_q1,v_di_freight,'Fret maritime 40ft',40,2400000,false,v_tc_std,1),
+  INSERT INTO quotation_line (quotation_id,dictionary_item_id,label,qty,unit_price,is_disbursement,tax_code_id,line_no) VALUES
+    (v_q1,v_di_freight,'Fret maritime 40ft',40,2400000,true,NULL,1),
     (v_q1,v_di_transit,'Commission de transit',40,350000,false,v_tc_std,2),
     (v_q1,v_di_customs,'Droits de douane (débours)',1,8500000,true,NULL,3);
   INSERT INTO quotation (doc_number,entity_id,client_id,dossier_id,margin_percent,total_ht,total_ttc,status,valid_until)
@@ -423,16 +440,26 @@ BEGIN
   -- ==========================================================================
   -- 5. FINANCE (documents in pre-posting states; entry_id NULL — see header)
   -- ==========================================================================
-  INSERT INTO invoice (entity_id,client_id,dossier_id,type,doc_number,service_ht,vat_total,total_ttc,status,payment_due_on,issued_by)
-    VALUES (v_ent1,v_cl1,v_do1,'PROFORMA','SBX-PRO-0001',35000000,6737500,41737500,'ISSUED_LOCKED',CURRENT_DATE+15,NULL) RETURNING invoice_id INTO v_inv1;
-  INSERT INTO invoice_line (invoice_id,dictionary_item_id,label,qty,unit_price,is_debours,tax_code_id,line_ht,line_no) VALUES
-    (v_inv1,v_di_freight,'Fret maritime (acompte 50%)',1,35000000,false,v_tc_std,35000000,1);
+  -- Freight advanced for the client (#D081, disbursement — no VAT of ours) plus
+  -- our commission on it (#R001, revenue — VAT at 19.25%). This is the shape a
+  -- forwarder's proforma actually takes, and the reason the catalogue keeps
+  -- "Commission on Disbursements" as a separate revenue line: the margin is
+  -- charged explicitly instead of being buried in a marked-up freight figure.
+  --   service_ht 3 500 000 · VAT 673 750 · disbursements 35 000 000
+  INSERT INTO invoice (entity_id,client_id,dossier_id,type,doc_number,service_ht,disbursement_total,vat_total,total_ttc,status,payment_due_on,issued_by)
+    VALUES (v_ent1,v_cl1,v_do1,'PROFORMA','SBX-PRO-0001',3500000,35000000,673750,39173750,'ISSUED_LOCKED',CURRENT_DATE+15,NULL) RETURNING invoice_id INTO v_inv1;
+  INSERT INTO invoice_line (invoice_id,dictionary_item_id,label,qty,unit_price,is_disbursement,tax_code_id,line_ht,line_no) VALUES
+    (v_inv1,v_di_freight,'Fret maritime (acompte 50%)',1,35000000,true,NULL,35000000,1),
+    (v_inv1,v_di_comm,'Commission sur débours',1,3500000,false,v_tc_std,3500000,2);
 
-  INSERT INTO invoice (entity_id,client_id,dossier_id,type,doc_number,service_ht,debours_total,vat_total,total_ttc,status,payment_due_on)
-    VALUES (v_ent1,v_cl2,v_do2,'FINAL','SBX-INV-0001',12000000,8500000,2310000,22810000,'APPROVED_LOCKED',CURRENT_DATE-5) RETURNING invoice_id INTO v_inv2;
-  INSERT INTO invoice_line (invoice_id,dictionary_item_id,label,qty,unit_price,is_debours,tax_code_id,line_ht,line_no) VALUES
+  --   service_ht 7 000 000 · VAT 1 347 500 · disbursements 13 500 000
+  -- Handling moved with its catalogue row (#D049): the terminal invoices it, so
+  -- it re-bills at cost and carries no VAT of ours.
+  INSERT INTO invoice (entity_id,client_id,dossier_id,type,doc_number,service_ht,disbursement_total,vat_total,total_ttc,status,payment_due_on)
+    VALUES (v_ent1,v_cl2,v_do2,'FINAL','SBX-INV-0001',7000000,13500000,1347500,21847500,'APPROVED_LOCKED',CURRENT_DATE-5) RETURNING invoice_id INTO v_inv2;
+  INSERT INTO invoice_line (invoice_id,dictionary_item_id,label,qty,unit_price,is_disbursement,tax_code_id,line_ht,line_no) VALUES
     (v_inv2,v_di_transit,'Commission de transit',1,7000000,false,v_tc_std,7000000,1),
-    (v_inv2,v_di_handling,'Manutention',1,5000000,false,v_tc_std,5000000,2),
+    (v_inv2,v_di_handling,'Manutention',1,5000000,true,NULL,5000000,2),
     (v_inv2,v_di_customs,'Droits de douane (débours)',1,8500000,true,NULL,8500000,3);
 
   INSERT INTO invoice (entity_id,client_id,dossier_id,type,doc_number,service_ht,vat_total,total_ttc,status,payment_due_on)

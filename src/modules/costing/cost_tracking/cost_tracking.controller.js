@@ -7,7 +7,7 @@ module.exports = {
     const b = req.body;
     const r = await req.tenantDb((c) => service.recordCost(c, {
       dossierId: b.dossier_id, entityId: b.entity_id, dictionaryItemId: b.dictionary_item_id, amount: b.amount,
-      category: b.category, isDebours: b.is_debours === true, expenseCoa: b.expense_coa, treasuryCoa: b.treasury_coa,
+      category: b.category, isDisbursement: b.is_disbursement === true, expenseCoa: b.expense_coa, treasuryCoa: b.treasury_coa,
       entryDate: b.entry_date, sourceDocRef: b.source_doc_ref, actor: actor(req), ip: req.ip,
     }));
     res.status(201).json({ data: r });

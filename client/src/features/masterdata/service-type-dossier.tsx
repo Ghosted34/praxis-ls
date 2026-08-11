@@ -97,7 +97,7 @@ const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
 };
 const CATEGORY_TONE: Record<string, "ok" | "warn" | "mute" | "blue" | "bad"> = {
   service: "ok",
-  debours: "blue",
+  disbursement: "blue",
   overhead: "mute",
   asset: "warn",
   other: "mute",
@@ -396,7 +396,7 @@ function DictionaryTab({
       <Td r>{d.default_price != null && d.default_price !== "" ? money(d.default_price) : "—"}</Td>
       <Td>{d.currency || "—"}</Td>
       <Td>
-        {d.is_active === false ? <Pill tone="mute">Off</Pill> : d.is_debours ? <Pill tone="blue">Débours</Pill> : <Pill tone="ok">On</Pill>}
+        {d.is_active === false ? <Pill tone="mute">Off</Pill> : d.is_disbursement ? <Pill tone="blue">Disbursement</Pill> : <Pill tone="ok">On</Pill>}
       </Td>
       {showTier && (
         <Td>
@@ -602,7 +602,7 @@ function CommercialTab({
                     <tr key={p.currency}>
                       <Td>{p.currency}</Td>
                       <Td r>{money(p.planned_total)}</Td>
-                      <Td r>{money(p.planned_debours)}</Td>
+                      <Td r>{money(p.planned_disbursement)}</Td>
                     </tr>
                   ))}
                 </MiniTable>

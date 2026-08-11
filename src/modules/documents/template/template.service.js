@@ -177,8 +177,8 @@ async function loadRecord(client, docType, recordId) {
         number: i.doc_number || String(i.invoice_id).slice(0, 8), date: i.issued_on, due: i.payment_due_on, status: i.status,
         original_ref: docType === "CREDIT_NOTE" ? null : undefined,
         party: { name: i.client_name || "—", lines: clientLines(i) },
-        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_debours ? null : 19.25, amount: Number(l.line_ht) })),
-        totals: { service_ht: Number(i.service_ht), debours_total: Number(i.debours_total), vat_total: Number(i.vat_total), total_ttc: Number(i.total_ttc) },
+        lines: lr.rows.map((l) => ({ label: l.label, qty: Number(l.qty), unit: Number(l.unit_price), tax: l.is_disbursement ? null : 19.25, amount: Number(l.line_ht) })),
+        totals: { service_ht: Number(i.service_ht), disbursement_total: Number(i.disbursement_total), vat_total: Number(i.vat_total), total_ttc: Number(i.total_ttc) },
         currency: i.currency,
       },
     };

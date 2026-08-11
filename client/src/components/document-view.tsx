@@ -265,7 +265,7 @@ export function DocumentPage() {
             <Card>
               <div className="ml-auto w-full max-w-xs space-y-1.5 text-sm">
                 {d.totals?.service_ht != null && <Row label="Total HT" value={money(d.totals.service_ht, ccy)} />}
-                {d.totals?.debours_total != null && <Row label="Débours" value={money(d.totals.debours_total, ccy)} />}
+                {d.totals?.disbursement_total != null && <Row label="Disbursement" value={money(d.totals.disbursement_total, ccy)} />}
                 {d.totals?.vat_total != null && <Row label="TVA" value={money(d.totals.vat_total, ccy)} />}
                 {d.totals?.total_ttc != null && <Row label="Total TTC" value={money(d.totals.total_ttc, ccy)} grand />}
                 {d.cost != null && <Row label="Total cost" value={money(d.cost, ccy)} grand />}

@@ -7,7 +7,7 @@ const record = z.object({
   dictionary_item_id: z.string().uuid().optional(),
   amount: z.number().positive(),
   category: z.string().optional(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
   expense_coa: z.string().optional(),
   treasury_coa: z.string().optional(),
   entry_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),

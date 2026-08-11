@@ -71,7 +71,7 @@ async function searchItems(c, { q, limit = 20, service_type_id = null, direction
   const { rows } = await c.query(
     `SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.description,
             di.direction, di.category, di.subcategory, di.unit_of_measure,
-            di.is_debours, di.is_billable, di.varies_by_equipment, di.is_active,
+            di.is_disbursement, di.is_billable, di.varies_by_equipment, di.is_active,
             GREATEST(
               CASE WHEN di.keywords && ARRAY[$2] THEN 1.0 ELSE 0 END,
               CASE WHEN di.code::text ILIKE '%' || $1 || '%' THEN 0.95 ELSE 0 END,

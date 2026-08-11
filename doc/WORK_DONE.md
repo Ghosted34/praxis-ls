@@ -959,7 +959,7 @@ endpoint** either, so they're not just-wire-a-button; noted in the backlog.)
   the linked contra entry. BE rejects reversing a draft (`NOT_REVERSIBLE`), surfaced.
 - **Invoice draft edit** (`PATCH /final-invoices/:id`, MOD-51 edit): **Edit** action on
   DRAFT rows opens a modal that loads `GET /final-invoices/:id` (returns `.lines`),
-  prefills client + lines (amount from `line_ht`, `is_debours`, dictionary item), and
+  prefills client + lines (amount from `line_ht`, `is_disbursement`, dictionary item), and
   saves the patch. Sits next to the existing Submit action.
 - **Guided monthly close** (`GET /statements/periods` + `POST /statements/periods/close`,
   MOD-59 edit): new **"Periods / close"** tab in `StatementsPage`. Lists periods with a
@@ -1022,7 +1022,7 @@ artifact is stripped — see the sandbox gotcha; validate on Windows with
   treasury-account/date/source-ref → posts to 4191, not revenue.
 - **Final invoice lifecycle** (MOD-51): rebuilt `InvoicesPage` as a custom table
   (was a generic `ResourceList`) with a **New draft** modal (`POST /final-invoices`,
-  optional dictionary-item lines with `is_debours`) and a per-row **Submit** action
+  optional dictionary-item lines with `is_disbursement`) and a per-row **Submit** action
   (`POST /final-invoices/:id/submit`, `entry_date` + `source_doc_ref`) shown only on
   DRAFT rows. Columns matched to the real `invoice` table (`doc_number`, `type`,
   `status`, `total_ttc`, `created_at`; PK `invoice_id`).

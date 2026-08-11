@@ -50,9 +50,9 @@ import { money, dateFmt, todayISO } from "@/lib/format";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
 
-const DIR_TONE: Record<string, React.ComponentProps<typeof Pill>["tone"]> = { REVENUE: "ok", EXPENSE: "warn", DEBOURS: "blue", ASSET: "orange" };
+const DIR_TONE: Record<string, React.ComponentProps<typeof Pill>["tone"]> = { REVENUE: "ok", EXPENSE: "warn", DISBURSEMENT: "blue", ASSET: "orange" };
 const dirLabel = (d?: string) => (d ? d[0] + d.slice(1).toLowerCase() : "—");
-const DIR_FILTER = [{ value: "", label: "All" }, { value: "DEBOURS", label: "Débours" }, { value: "EXPENSE", label: "Expense" }, { value: "REVENUE", label: "Revenue" }, { value: "ASSET", label: "Asset" }];
+const DIR_FILTER = [{ value: "", label: "All" }, { value: "DISBURSEMENT", label: "Disbursement" }, { value: "EXPENSE", label: "Expense" }, { value: "REVENUE", label: "Revenue" }, { value: "ASSET", label: "Asset" }];
 
 const seriesKey = (providerId: string | null, containerTypeId: string | null) => `${providerId || ""}|${containerTypeId || ""}`;
 

@@ -35,9 +35,9 @@ import { DictImportModal } from "./financial-dictionary-import";
 
 const shell = pageShell.wide;
 
-const DIR_TONE: Record<string, React.ComponentProps<typeof Pill>["tone"]> = { REVENUE: "ok", EXPENSE: "warn", DEBOURS: "blue", ASSET: "orange" };
+const DIR_TONE: Record<string, React.ComponentProps<typeof Pill>["tone"]> = { REVENUE: "ok", EXPENSE: "warn", DISBURSEMENT: "blue", ASSET: "orange" };
 const dirLabel = (d?: string) => (d ? d[0] + d.slice(1).toLowerCase() : "—");
-const DIR_FILTER = [{ value: "", label: "All" }, { value: "REVENUE", label: "Revenue" }, { value: "EXPENSE", label: "Expense" }, { value: "DEBOURS", label: "Débours" }, { value: "ASSET", label: "Asset" }];
+const DIR_FILTER = [{ value: "", label: "All" }, { value: "REVENUE", label: "Revenue" }, { value: "EXPENSE", label: "Expense" }, { value: "DISBURSEMENT", label: "Disbursement" }, { value: "ASSET", label: "Asset" }];
 
 export function FinancialDictionaryPage() {
   const [q, setQ] = React.useState("");
@@ -136,7 +136,7 @@ function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.Di
               <h2 className="truncate text-lg font-semibold text-foreground">{it.label_en || it.label_fr}</h2>
               <Pill tone={DIR_TONE[it.direction] || "mute"}>{dirLabel(it.direction)}</Pill>
               <Pill tone={it.is_active ? "ok" : "mute"}>{it.is_active ? "Active" : "Inactive"}</Pill>
-              {it.is_debours && <Pill tone="blue">Débours</Pill>}
+              {it.is_disbursement && <Pill tone="blue">Disbursement</Pill>}
             </div>
             <p className="mt-1 micro">{[it.label_fr, it.category, it.subcategory, it.applicability_mode?.replace(/_/g, " ").toLowerCase()].filter(Boolean).join(" · ")}</p>
           </div>
@@ -201,7 +201,7 @@ function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.Di
         <div className="overflow-hidden rounded-xl border">
           <table className="w-full text-sm">
             <thead><tr className="border-b bg-muted/50 text-left text-xs uppercase text-muted-foreground">
-              <th className="px-3 py-2">Context</th><th className="px-3 py-2">Debit</th><th className="px-3 py-2">Credit</th><th className="px-3 py-2">Tax</th><th className="px-3 py-2">Débours</th>
+              <th className="px-3 py-2">Context</th><th className="px-3 py-2">Debit</th><th className="px-3 py-2">Credit</th><th className="px-3 py-2">Tax</th><th className="px-3 py-2">Disbursement</th>
             </tr></thead>
             <tbody className="divide-y divide-border">
               {d.posting_rules.length === 0 ? <tr><td colSpan={5} className="px-3 py-4 micro">No posting rules.</td></tr> : d.posting_rules.map((r, i) => (
@@ -210,7 +210,7 @@ function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.Di
                   <td className="px-3 py-2 num text-xs">{r.debit_account || "—"}{r.debit_label ? <span className="block text-muted-foreground">{r.debit_label}</span> : null}</td>
                   <td className="px-3 py-2 num text-xs">{r.credit_account || "—"}{r.credit_label ? <span className="block text-muted-foreground">{r.credit_label}</span> : null}</td>
                   <td className="px-3 py-2 text-xs">{r.tax_code_id ? "Tax" : <span className="text-muted-foreground">—</span>}</td>
-                  <td className="px-3 py-2">{r.is_debours ? <Pill tone="blue">Débours</Pill> : <span className="text-muted-foreground">—</span>}</td>
+                  <td className="px-3 py-2">{r.is_disbursement ? <Pill tone="blue">Disbursement</Pill> : <span className="text-muted-foreground">—</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -248,10 +248,10 @@ function DictDossier({ id, onEdit, onChanged }: { id: string; onEdit: (d: api.Di
             <KV k="Justification required" v={d.compliance.requires_justification ? "Yes" : "No"} />
             <KV k="Proof source" v={d.compliance.proof_source || "—"} />
           </Panel>
-          <Panel title="Débours & VAT">
-            <KV k="Is débours" v={d.compliance.is_debours ? "Yes (pass-through)" : "No"} />
-            <KV k="Shows upstream VAT" v={d.compliance.debours_vat_transparent ? "Yes — client sees VAT paid on their behalf" : "No"} />
-            {d.compliance.is_debours && <p className="mt-2 micro">A débours re-bills the VAT-inclusive amount and adds no VAT of ours; the upstream supplier VAT is shown to the client as paid on their behalf, not retained.</p>}
+          <Panel title="Disbursement & VAT">
+            <KV k="Is débours" v={d.compliance.is_disbursement ? "Yes (pass-through)" : "No"} />
+            <KV k="Shows upstream VAT" v={d.compliance.disbursement_vat_transparent ? "Yes — client sees VAT paid on their behalf" : "No"} />
+            {d.compliance.is_disbursement && <p className="mt-2 micro">A débours re-bills the VAT-inclusive amount and adds no VAT of ours; the upstream supplier VAT is shown to the client as paid on their behalf, not retained.</p>}
           </Panel>
         </div>
       )}

@@ -64,6 +64,19 @@ module.exports = async function backupRun(job) {
     return { total: r.total, clean: r.clean };
   }
 
+  if (kind === "wal") {
+    // WS-B1 layer 2. archive_command deliberately writes no bookkeeping — it
+    // runs on the Postgres host's critical path once per segment — so this is
+    // the only thing that notices a dead archiver. Throwing on a stale archive
+    // is the point: a broken archiver silently downgrades the recovery
+    // objective from minutes to a full day, and nothing else would say so.
+    const status = await backup.recordWalStatus();
+    if (status.enabled && !status.healthy) {
+      throw new Error(status.error || "WAL archive is not healthy");
+    }
+    return { enabled: status.enabled, lag_minutes: status.lag_minutes ?? null, rpo_minutes: status.rpo_minutes };
+  }
+
   if (kind === "prune") {
     const r = await store.pruneRetention();
     logger.info({ removed: r.removed.length, kept: r.kept }, "backup retention applied");

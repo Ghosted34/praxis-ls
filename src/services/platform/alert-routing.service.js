@@ -25,6 +25,7 @@
 
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const platformSettings = require("./settings.service");
 
 /**
  * Severity ladder. `page` is for things that should wake someone, `notify` for
@@ -73,16 +74,44 @@ const EVENT_SEVERITY = {
 /**
  * The destination for a severity.
  *
- * ALERT_WEBHOOK_PAGE_URL is optional: when unset, `page` falls back to the
- * general webhook rather than going nowhere. A misconfiguration must degrade to
- * "too noisy", never to "silent" — silence is indistinguishable from health,
- * which is the exact failure `server.js` already warns about at boot.
+ * RESOLUTION ORDER: platform settings vault → env.
+ *
+ *   The vault is the primary store and the console is how it is written — the
+ *   same rule the AI vendor keys, S3, Geoapify and the mail fallback already
+ *   follow. `.env` is the last-resort fallback for a fresh deploy that has not
+ *   been configured yet, never the place a running deployment is expected to
+ *   keep this.
+ *
+ *   That distinction matters more here than elsewhere: an alert destination is
+ *   the setting you most need to be able to change at 3am, and requiring a
+ *   redeploy to repoint a webhook means it does not get repointed.
+ *
+ * ALERT_WEBHOOK_PAGE_URL / `alerts.page` is optional: when unset, `page` falls
+ * back to the general channel rather than going nowhere. A misconfiguration must
+ * degrade to "too noisy", never to "silent" — silence is indistinguishable from
+ * health, which is the exact failure `server.js` already warns about at boot.
+ *
+ * Never throws: a vault read that fails degrades to env rather than losing the
+ * alert. Alerting sits on the failure path, so it must not add a failure.
  */
-function destinationFor(severity) {
-  if (severity === "page" && config.ALERT_WEBHOOK_PAGE_URL) {
-    return { url: config.ALERT_WEBHOOK_PAGE_URL, channel: "page" };
+async function destinationFor(severity) {
+  const fromVault = async (key) => {
+    try {
+      const row = await platformSettings.resolve("alerts", key);
+      const url = row && row.secret ? String(row.secret).trim() : "";
+      return url || null;
+    } catch (err) {
+      logger.warn({ err, key }, "alert destination vault read failed — falling back to env");
+      return null;
+    }
+  };
+
+  if (severity === "page") {
+    const paged = (await fromVault("page")) || config.ALERT_WEBHOOK_PAGE_URL;
+    if (paged) return { url: paged, channel: "page" };
   }
-  if (config.ALERT_WEBHOOK_URL) return { url: config.ALERT_WEBHOOK_URL, channel: "default" };
+  const general = (await fromVault("default")) || config.ALERT_WEBHOOK_URL;
+  if (general) return { url: general, channel: "default" };
   return null;
 }
 
@@ -118,9 +147,9 @@ async function raise({ event, subject, detail = null, tenant = null, severity = 
 
   if (sev === "log") return { ...line, delivered: false, reason: "log-only severity" };
 
-  const dest = destinationFor(sev);
+  const dest = await destinationFor(sev);
   if (!dest) {
-    logger.warn(line, "ops alert had no destination — set ALERT_WEBHOOK_URL");
+    logger.warn(line, "ops alert had no destination — set one in Platform Console → Integrations → Alerts");
     return { ...line, delivered: false, reason: "no destination configured" };
   }
 

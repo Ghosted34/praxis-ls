@@ -1,5 +1,18 @@
 services:
   postgres:
+    # Stock upstream image, deliberately.
+    #
+    # WAL archiving (WS-B1 layer 2) needs a Node runtime inside THIS container,
+    # because archive_command is executed by the Postgres process. Building that
+    # here would mean every deploy rebuilds Postgres — pulling from the network
+    # on a cold cache, and failing the deploy BEFORE migrations if that network
+    # is unreachable — for a feature that is off by default.
+    #
+    # So it lives in an opt-in overlay instead. To enable WAL archiving:
+    #
+    #   docker compose -f docker-compose.yml -f docker-compose.wal.yml up -d postgres
+    #
+    # See docker-compose.wal.yml.
     image: pgvector/pgvector:pg16
     container_name: praxis_postgres
     # OBS-L7: no logging block anywhere meant Docker's json-file driver grew
@@ -99,6 +112,93 @@ services:
       retries: 5
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  # ── PgBouncer — transaction pooling for the tenant fleet (WS-S1 / D3) ─────
+  #
+  # Opt-in. Nothing routes through it until TENANT_DB_POOLER_HOST is set, so
+  # bringing the container up is safe on its own and switching over is one env
+  # change (plus a restart) that can be reverted just as fast.
+  #
+  # BEFORE FIRST USE: run `npm run db:pgbouncer-auth` once. It creates the
+  # lookup role and the SECURITY DEFINER function auth_query depends on. Without
+  # it every pooled connection fails authentication, which reads like a Postgres
+  # outage and is not one.
+  #
+  # Migrations, provisioning and pg_dump deliberately keep talking to Postgres
+  # directly — they need session state that transaction pooling does not keep.
+  pgbouncer:
+    image: edoburu/pgbouncer:v1.23.1-p2
+    container_name: praxis_pgbouncer
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    environment:
+      PGBOUNCER_UPSTREAM_HOST: postgres
+      PGBOUNCER_UPSTREAM_PORT: "5432"
+      PGBOUNCER_AUTH_USER: ${PGBOUNCER_AUTH_USER:-pgbouncer}
+      # No default, on purpose: an empty password would render a userlist entry
+      # that authenticates nothing while looking configured.
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:?PGBOUNCER_AUTH_PASSWORD must be set in .env}
+      PGBOUNCER_AUTH_DBNAME: ${DB_NAME:-praxislsdata}
+      PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
+      # default_pool_size × active tenants must stay under Postgres
+      # max_connections with headroom — one database per tenant multiplies this.
+      PGBOUNCER_DEFAULT_POOL_SIZE: ${PGBOUNCER_DEFAULT_POOL_SIZE:-5}
+      PGBOUNCER_RESERVE_POOL_SIZE: ${PGBOUNCER_RESERVE_POOL_SIZE:-2}
+      PGBOUNCER_MAX_DB_CONNECTIONS: ${PGBOUNCER_MAX_DB_CONNECTIONS:-80}
+    volumes:
+      - ./docker/pgbouncer/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro
+      - ./docker/pgbouncer/docker-entrypoint.sh:/usr/local/bin/praxis-pgbouncer-entrypoint.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/praxis-pgbouncer-entrypoint.sh"]
+    ports:
+      # loopback only, same rule as Postgres — the pooler is not a public service
+      - "127.0.0.1:6432:6432"
+    healthcheck:
+      # `pg_isready` through the pooler proves it is listening AND can reach
+      # Postgres; checking the port alone would pass while the upstream is down.
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${PGBOUNCER_AUTH_USER:-pgbouncer} || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── External uptime prober (WS-U1) ────────────────────────────────────────
+  #
+  # Its own container precisely so it does NOT share a fate with the API. A
+  # prober inside the API process cannot record the API being down — it isn't
+  # running to notice — which is the single failure the workstream exists for.
+  #
+  # Better still: run this on another host or region entirely. Same command, a
+  # DATABASE_URL pointing back here. In-compose is the honest minimum: it
+  # survives an API crash, though not a whole-host loss.
+  #
+  # Set UPTIME_PROBE_IN_PROCESS=false when this runs, or both probe and every
+  # host is sampled twice per interval, inflating availability.
+  uptime-probe:
+    build:
+      context: .
+      target: worker
+    container_name: praxis_uptime_probe
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "5"
+    restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
+    env_file: .env
+    environment:
+      NODE_ENV: production
+      DB_HOST: postgres
+      # No REDIS_URL and no tenant registry: this process talks to the platform
+      # database and to public hostnames over HTTP, and to nothing else.
+    command: ["node", "scripts/ops/uptime-probe.js"]
 
   # One-shot: runs platform + all-tenant migrations, then exits. api/worker wait
   # for it, so a plain `docker compose up -d` is always schema-current — on the

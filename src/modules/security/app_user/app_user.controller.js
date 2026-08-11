@@ -6,7 +6,11 @@ const actor = (req) => req.user || { user_id: null };
 const list = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listUsers(c, req.query)) }));
 const get = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.getUser(c, req.params.id)) }));
 const linkableEmployees = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listLinkableEmployees(c)) }));
-const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req) })) }));
+// `tenantId` is passed so the seat entitlement (WS-S3) can be checked against
+// the tenant's plan. Absent it the check is skipped, which is the correct
+// behaviour for any caller that has no tenant context rather than a silent
+// bypass — there is no such caller on this route.
+const create = asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.createUser(c, { data: req.body, actor: actor(req), tenantId: req.tenant && req.tenant.tenant_id })) }));
 const update = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateUser(c, { id: req.params.id, patch: req.body, actor: actor(req) })) }));
 const setPassword = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setPassword(c, { id: req.params.id, newPassword: req.body.new_password, actor: actor(req) })) }));
 const setStatus = asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setStatus(c, { id: req.params.id, status: req.body.status, actor: actor(req) })) }));

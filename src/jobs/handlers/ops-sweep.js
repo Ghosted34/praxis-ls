@@ -21,9 +21,11 @@
 "use strict";
 
 const { logger } = require("../../config/logger");
+const { config } = require("../../config/env");
 const health = require("../../services/platform/health-rollup.service");
 const uptime = require("../../services/platform/uptime.service");
 const alerts = require("../../services/platform/alert-routing.service");
+const entitlement = require("../../services/platform/entitlement.service");
 
 module.exports = async function opsSweep(job) {
   const kind = job.name || "health";
@@ -48,9 +50,27 @@ module.exports = async function opsSweep(job) {
     }
   }
 
+  if (kind === "usage") {
+    // WS-S3. Never throws: enforcement reads the last sweep's figures, so a
+    // failed run costs freshness, not correctness — and a metering error must
+    // not become a terminal job failure that pages someone at 3am over a
+    // number nobody is looking at until the end of the month.
+    try {
+      const r = await entitlement.measureFleet();
+      return { total: r.total, ok: r.ok, failed: r.failed.length };
+    } catch (err) {
+      logger.error({ err }, "usage metering sweep failed");
+      return { error: err.message };
+    }
+  }
+
   if (kind === "purge") {
     const h = await health.purge({ days: 30 });
-    const u = await uptime.purge({ days: 90 });
+    // Config-driven so the API and the external prober (which applies retention
+    // opportunistically on its own loop) cannot disagree about how much history
+    // to keep — two owners with two hardcoded numbers is how a series ends up
+    // truncated by whichever ran last.
+    const u = await uptime.purge({ days: Number(config.UPTIME_RETAIN_DAYS || 90) });
     logger.info({ health: h.deleted, uptime: u.deleted }, "ops retention applied");
     return { health_deleted: h.deleted, uptime_deleted: u.deleted };
   }

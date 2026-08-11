@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 932 |
+| Routes | 963 |
 | Modules mounted | 108 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 932 mounted routes, grouped by path prefix.
+All 963 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -117,6 +117,42 @@ All 932 mounted routes, grouped by path prefix.
 | POST | `/api/platform/notifications/:id/read` | — |
 | POST | `/api/platform/notifications/read-all` | — |
 | GET | `/api/platform/notifications/unread-count` | — |
+
+### `platform/ops`
+
+| Method | Path | Body validated |
+|---|---|---|
+| GET | `/api/platform/ops/backups` | — |
+| POST | `/api/platform/ops/backups` | — |
+| POST | `/api/platform/ops/backups/:slug` | — |
+| GET | `/api/platform/ops/backups/preflight` | — |
+| POST | `/api/platform/ops/backups/prune` | — |
+| GET | `/api/platform/ops/backups/runs` | — |
+| GET | `/api/platform/ops/backups/wal` | — |
+| GET | `/api/platform/ops/drills` | — |
+| POST | `/api/platform/ops/drills` | — |
+| POST | `/api/platform/ops/drills/:slug` | — |
+| GET | `/api/platform/ops/entitlements` | — |
+| PUT | `/api/platform/ops/entitlements/:planId` | — |
+| DELETE | `/api/platform/ops/entitlements/:planId/:metric` | — |
+| GET | `/api/platform/ops/health` | — |
+| GET | `/api/platform/ops/health/:tenantId` | — |
+| POST | `/api/platform/ops/health/collect` | — |
+| GET | `/api/platform/ops/maintenance` | — |
+| POST | `/api/platform/ops/maintenance` | — |
+| DELETE | `/api/platform/ops/maintenance/:id` | — |
+| GET | `/api/platform/ops/objects` | — |
+| POST | `/api/platform/ops/objects/:slug/scan` | — |
+| POST | `/api/platform/ops/objects/:slug/sync` | — |
+| GET | `/api/platform/ops/telemetry/:slug` | — |
+| GET | `/api/platform/ops/uptime` | — |
+| GET | `/api/platform/ops/uptime/incidents` | — |
+| POST | `/api/platform/ops/uptime/probe` | — |
+| GET | `/api/platform/ops/uptime/targets` | — |
+| GET | `/api/platform/ops/usage` | — |
+| GET | `/api/platform/ops/usage/:tenantId` | — |
+| POST | `/api/platform/ops/usage/measure` | — |
+| GET | `/api/platform/ops/usage/metrics` | — |
 
 ### `platform/plans`
 

@@ -31,6 +31,13 @@ router.use(platformAuth);
 // every route inside already has req.platformUser + req.platformCaps.
 router.use("/", require("./errors/errors.routes"));
 
+// Kaizen ops (doc/INFRASTRUCTURE_PLAN.md §3) — fleet health, backup freshness
+// and the run log, restore drills, uptime, maintenance windows. Its own router
+// for the same reason as the Error Command Center: 23 routes across three
+// capability tiers, and the jobs that write these tables all shipped before
+// anything could read them.
+router.use("/", require("./ops/ops.routes"));
+
 router.get("/catalogue/modules", requireCap("catalogue.read"), c.listModules);
 router.get("/catalogue/features", requireCap("catalogue.read"), c.listFeatures);
 router.get("/catalogue/capabilities", requireCap("roles.read"), c.capsCatalogue);

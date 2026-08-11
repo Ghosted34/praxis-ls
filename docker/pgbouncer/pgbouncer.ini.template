@@ -1,0 +1,108 @@
+;; ===========================================================================
+;; PgBouncer — transaction pooling for the tenant fleet (WS-S1, decision D3)
+;; ===========================================================================
+;;
+;; Rendered by docker-entrypoint.sh: ${VARS} are substituted from the
+;; environment so no credential is ever committed.
+;;
+;; WHY A WILDCARD DATABASE
+;;
+;;   Praxis is one physical database PER TENANT, created at provision time. A
+;;   stanza per tenant would mean regenerating this file and reloading PgBouncer
+;;   every time a tenant is onboarded — a step that can be forgotten, and whose
+;;   failure mode is a brand-new tenant that cannot connect at all. The `*` entry
+;;   forwards any database name straight through to Postgres, so provisioning
+;;   needs to know nothing about the pooler.
+;;
+;; WHY auth_query AND NOT A STATIC userlist
+;;
+;;   WS-S2 gives every tenant its OWN Postgres role and password. A static
+;;   userlist.txt would have to be regenerated and reloaded on every provision
+;;   and every credential rotation — the same drift problem as per-tenant
+;;   stanzas, but now the failure mode is an authentication error on a tenant
+;;   that was working yesterday. auth_query asks Postgres for the credential at
+;;   connect time, so a rotated password is live immediately with no pooler
+;;   involvement. userlist.txt therefore holds exactly ONE entry: the lookup
+;;   user itself, which is the one credential that cannot be looked up.
+;;
+;; WHY TRANSACTION MODE IS SAFE HERE (it was not always)
+;;
+;;   Transaction pooling breaks anything that holds session state across
+;;   statements. Two prerequisites made it safe, and both are already BUILT:
+;;   a single connection per request (tenant-context.js), and `search_path`
+;;   passed as a STARTUP PARAMETER rather than issued as a SET — a `SET` would
+;;   leak one tenant's schema onto another tenant's next transaction on the same
+;;   server connection, which is a data-isolation failure, not a bug.
+;;
+;;   Anything that legitimately needs session state must bypass the pooler.
+;;   Migrations, provisioning and pg_dump already connect directly.
+
+[databases]
+;; Wildcard: any dbname is forwarded to the Postgres host unchanged.
+* = host=${PGBOUNCER_UPSTREAM_HOST} port=${PGBOUNCER_UPSTREAM_PORT}
+
+[pgbouncer]
+listen_addr = 0.0.0.0
+listen_port = 6432
+
+;; --- Authentication ------------------------------------------------------
+auth_type = scram-sha-256
+auth_file = /etc/pgbouncer/userlist.txt
+auth_user = ${PGBOUNCER_AUTH_USER}
+;; The database PgBouncer connects to in order to RUN the auth query. It is the
+;; platform database because that is the one database guaranteed to exist on
+;; every deployment — the tenant databases come and go.
+auth_dbname = ${PGBOUNCER_AUTH_DBNAME}
+;; SECURITY DEFINER function created by scripts/db/setup-pgbouncer-auth.js.
+;; Reading pg_shadow directly would require the lookup user to be superuser,
+;; which is a much larger grant than "may resolve one username".
+auth_query = SELECT username, password FROM pgbouncer.get_auth($1)
+
+;; --- Pooling -------------------------------------------------------------
+pool_mode = transaction
+
+;; Client-side ceiling: how many app connections PgBouncer will accept. This is
+;; the number that decouples "tenants the fleet can serve" from Postgres's
+;; max_connections, and it is deliberately much larger than default_pool_size.
+max_client_conn = ${PGBOUNCER_MAX_CLIENT_CONN}
+
+;; Server-side: connections opened per (database, user) pair. With one database
+;; per tenant this multiplies by tenant count, so it is small on purpose —
+;; default_pool_size × active tenants must stay comfortably under Postgres's
+;; max_connections with headroom for migrations, backups and psql.
+default_pool_size = ${PGBOUNCER_DEFAULT_POOL_SIZE}
+min_pool_size = 0
+reserve_pool_size = ${PGBOUNCER_RESERVE_POOL_SIZE}
+reserve_pool_timeout = 3
+
+;; Total server connections across every pool — the hard stop that keeps the
+;; fleet under max_connections however many tenants go active at once.
+max_db_connections = ${PGBOUNCER_MAX_DB_CONNECTIONS}
+
+;; Idle server connections are closed so a burst on one tenant does not hold
+;; backends hostage from the rest of the fleet indefinitely.
+server_idle_timeout = 120
+server_lifetime = 3600
+
+;; --- Timeouts ------------------------------------------------------------
+;; How long a client waits for a server connection before erroring. Shorter than
+;; the app's own query timeout on purpose: an exhausted pool should surface as a
+;; fast, legible connection error rather than as requests hanging until something
+;; further up gives up.
+query_wait_timeout = 15
+
+;; --- Admin / observability ----------------------------------------------
+;; SHOW POOLS / SHOW STATS come from here; the health collector reads them to
+;; put server-vs-client connection counts into tenant_health.
+admin_users = ${PGBOUNCER_AUTH_USER}
+stats_users = ${PGBOUNCER_AUTH_USER}
+
+;; --- Logging -------------------------------------------------------------
+;; Connection logging OFF: at fleet scale it is one line per request per tenant,
+;; which drowns the log that actually matters. Disconnections stay on because an
+;; unexpected close is a signal.
+log_connections = 0
+log_disconnections = 0
+log_pooler_errors = 1
+
+ignore_startup_parameters = extra_float_digits,search_path

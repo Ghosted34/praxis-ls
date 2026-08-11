@@ -1,0 +1,95 @@
+# ============================================================================
+# WAL archiving overlay — point-in-time recovery (WS-B1 layer 2, decision D4)
+# ============================================================================
+#
+# OPT-IN. Nothing in the base compose file references this, and a normal deploy
+# never reads it.
+#
+# WHY IT IS SEPARATE
+#
+#   archive_command is executed BY THE POSTGRES PROCESS, so the archiver needs a
+#   Node runtime inside the Postgres container — which means building a custom
+#   image. Putting that build in docker-compose.yml would make EVERY deploy
+#   rebuild Postgres: slower always, and on a cold cache it pulls from the
+#   network and fails the deploy *before* migrations if that network is
+#   unreachable. That is a poor trade for a feature that is off by default.
+#
+#   Here, the cost is paid once, deliberately, when someone turns it on.
+#
+# WHAT IT BUYS
+#
+#   Nightly dumps alone mean a 24-hour recovery point: lose the host at 23:00
+#   and you lose the day. Continuous WAL archiving takes that down to minutes —
+#   D4's "RPO <= 5 min where PITR is available". Postgres is self-run on a VPS
+#   here, so it is available.
+#
+# TO ENABLE
+#
+#   1. In .env:
+#        WAL_ARCHIVE_MODE=on          # tells Postgres to archive
+#        WAL_ARCHIVE_ENABLED=true     # tells the app to watch it and alert
+#      Both are needed. Only the first archives with nobody watching; only the
+#      second reports an empty archive as broken, which it correctly is.
+#
+#   2. Build and restart Postgres — this IS a restart, so pick a window:
+#        docker compose -f docker-compose.yml -f docker-compose.wal.yml build postgres
+#        docker compose -f docker-compose.yml -f docker-compose.wal.yml up -d postgres
+#
+#   3. Check it took, in the console under Ops → Backup & restore. The recovery
+#      point should drop from 24h to minutes within one archive_timeout.
+#
+#   Every later `docker compose` command for Postgres must include BOTH -f
+#   flags, or compose will fall back to the stock image and silently stop
+#   archiving. Consider exporting:
+#        COMPOSE_FILE=docker-compose.yml:docker-compose.wal.yml
+#
+# TO DISABLE
+#
+#   Set WAL_ARCHIVE_MODE=off and restart Postgres with the base file only.
+#   Existing archived segments are left alone — they remain valid for recovery
+#   up to the moment archiving stopped.
+
+services:
+  postgres:
+    # pgvector/pgvector:pg16 plus Node. Identical upstream behaviour otherwise;
+    # see docker/postgres/Dockerfile for why the archiver ships segments offsite
+    # directly rather than copying them to a local spool.
+    build:
+      context: .
+      dockerfile: docker/postgres/Dockerfile
+      args:
+        POSTGRES_IMAGE: pgvector/pgvector:pg16
+    image: praxis/postgres-pgvector:pg16
+
+    # `wal_level=replica` is already the PG16 default; stated because archiving
+    # below it silently produces unusable WAL.
+    #
+    # archive_timeout=300 ships a segment every 5 minutes even on a quiet
+    # database. Without it, a low-traffic tenant's last writes sit unarchived in
+    # a partially-filled 16MB segment indefinitely — the recovery point would be
+    # "whenever the next 16MB happens to fill", which is not an objective.
+    #
+    # `|| exit 1` matters: without it a missing node binary exits 127 and some
+    # shells still report success, silently discarding WAL.
+    command:
+      - "postgres"
+      - "-c"
+      - "wal_level=replica"
+      - "-c"
+      - "archive_mode=${WAL_ARCHIVE_MODE:-off}"
+      - "-c"
+      - "archive_timeout=300"
+      - "-c"
+      - "archive_command=/usr/local/bin/praxis-wal-archive %p %f || exit 1"
+      - "-c"
+      - "max_wal_senders=3"
+
+    volumes:
+      - praxis_pgdata:/var/lib/postgresql/data
+      # The archiver runs inside this container, so it needs the script, the
+      # app's node_modules, and — when BACKUP_DRIVER=local — the destination.
+      - ./docker/postgres/praxis-wal-archive:/usr/local/bin/praxis-wal-archive:ro
+      - ./scripts:/app/scripts:ro
+      - ./src:/app/src:ro
+      - ./node_modules:/app/node_modules:ro
+      - ./data/backups:/app/data/backups

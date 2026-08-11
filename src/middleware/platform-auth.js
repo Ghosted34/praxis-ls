@@ -90,6 +90,11 @@ const CAP_CATALOGUE = [
   // sensitive one — raw traces and error context are the most revealing
   // non-credential data the platform stores.
   "errors.read", "errors.resolve", "errors.configure",
+  // Kaizen ops (migration 0096). `ops.read` is the dashboard; `ops.operate`
+  // re-runs real work against a shared Postgres host (a drill makes a full
+  // scratch copy of a tenant DB); `ops.maintain` is the only ops act tenant
+  // users can see — a window banners them, and READ_ONLY parks their writes.
+  "ops.read", "ops.operate", "ops.maintain",
 ];
 
 // Root Admin is the built-in superuser: it bypasses capability checks entirely

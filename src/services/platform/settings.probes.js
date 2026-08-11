@@ -68,4 +68,47 @@ function vapid(cfg) {
   return { public_key_len: pub.length, subject: cfg.subject || null };
 }
 
-module.exports = { s3, geoapify, smtp, vapid };
+/**
+ * WS-ER1 — the alert destination probe.
+ *
+ * "Test" here means SEND A REAL MESSAGE to the configured channel, not merely
+ * check that the URL parses. The failure this guards against is a webhook that
+ * was pasted wrong months ago and has been silently swallowing every page since
+ * — and the only way to find that out is for a human to look at the channel and
+ * see the test arrive. A probe that just validated the URL would pass on
+ * exactly the broken configuration it exists to catch.
+ *
+ * A non-2xx is a failure. Slack, Teams and Discord all answer 2xx on accept and
+ * 4xx on a dead or malformed hook, so the status is meaningful.
+ */
+async function alertWebhook(cfg) {
+  const url = String(cfg.url || "").trim();
+  if (!url) throw new Error("no webhook URL configured");
+  if (!/^https:\/\//i.test(url)) {
+    // http:// would put an alert payload — which names tenants and quotes error
+    // text — on the wire in clear.
+    throw new Error("alert webhook must be https");
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text:
+        "Praxis test alert — if you can read this, the ops alert channel is wired correctly. " +
+        "Backup failures, failed restore drills and RED tenants will arrive here.",
+      praxis: { event: "alert.test", severity: "notify" },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const err = new Error(`webhook returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+    err.statusCode = res.status;
+    throw err;
+  }
+  return { status: res.status, note: "test message sent — check the channel received it" };
+}
+
+module.exports = { s3, geoapify, smtp, vapid, alertWebhook };

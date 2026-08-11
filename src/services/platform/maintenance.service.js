@@ -31,7 +31,7 @@ let cache = { at: 0, rows: [] };
 async function loadWindows(force = false) {
   if (!force && Date.now() - cache.at < CACHE_TTL_MS) return cache.rows;
   const { rows } = await platformDb.query(
-    `SELECT maintenance_window_id, tenant_id, starts_at, ends_at, title, message, mode
+    `SELECT maintenance_window_id, tenant_id, starts_at, ends_at, title, message, mode, notice_hours
        FROM platform.maintenance_window
       WHERE cancelled_at IS NULL AND ends_at > now()
       ORDER BY starts_at`,
@@ -45,38 +45,104 @@ function invalidate() {
 }
 
 /**
- * The window in force for a tenant right now, or null.
+ * Pick the window that applies to a tenant from a candidate list.
  *
  * A fleet-wide window (`tenant_id IS NULL`) applies to everyone. Where both a
- * fleet window and a tenant-specific one are active, the tenant-specific one
- * wins — it is the more precise statement, and it is the one someone wrote
- * about this tenant deliberately.
+ * fleet window and a tenant-specific one qualify, the tenant-specific one wins —
+ * it is the more precise statement, and it is the one someone wrote about this
+ * tenant deliberately.
  */
-async function activeFor(tenantId) {
-  const now = Date.now();
-  const windows = (await loadWindows()).filter(
-    (w) => new Date(w.starts_at) <= now && new Date(w.ends_at) > now,
-  );
+function pickForTenant(windows, tenantId) {
   if (!windows.length) return null;
   const specific = windows.find((w) => w.tenant_id === tenantId);
   return specific || windows.find((w) => w.tenant_id === null) || null;
 }
 
-/** Is this tenant currently parked read-only by a maintenance window? */
-async function isReadOnly(tenantId) {
+/** When a window's banner should first appear: starts_at minus its notice. */
+function visibleFrom(w) {
+  const notice = Number(w.notice_hours ?? 24);
+  return new Date(w.starts_at).getTime() - notice * 3_600_000;
+}
+
+/** The window in force for a tenant RIGHT NOW (between starts_at and ends_at). */
+async function activeFor(tenantId) {
+  const now = Date.now();
+  const windows = (await loadWindows()).filter(
+    (w) => new Date(w.starts_at) <= now && new Date(w.ends_at) > now,
+  );
+  return pickForTenant(windows, tenantId);
+}
+
+/**
+ * The window a tenant should SEE — active, or upcoming and inside its notice
+ * period.
+ *
+ * Distinct from `activeFor` on purpose, and the distinction is the whole point
+ * of WS-M1. `activeFor` answers "are we in maintenance", which is what the
+ * write gate needs. This answers "should the user be told about maintenance",
+ * which is broader: an announcement that arrives at the same instant as the
+ * disruption is not an announcement. Conflating them is what made the banner
+ * useless before 0097.
+ *
+ * Returns the window plus `state` so the client can word it correctly —
+ * "starting in 3 hours" reads very differently from "in progress".
+ */
+async function visibleFor(tenantId) {
+  const now = Date.now();
+  const windows = (await loadWindows()).filter(
+    (w) => visibleFrom(w) <= now && new Date(w.ends_at).getTime() > now,
+  );
+  const w = pickForTenant(windows, tenantId);
+  if (!w) return null;
+
+  const starting = new Date(w.starts_at).getTime();
+  return {
+    maintenance_window_id: w.maintenance_window_id,
+    title: w.title,
+    message: w.message,
+    mode: w.mode,
+    starts_at: w.starts_at,
+    ends_at: w.ends_at,
+    state: starting <= now ? "ACTIVE" : "UPCOMING",
+    // Never negative: an ACTIVE window has already started, and a countdown
+    // that has gone past zero renders as nonsense like "starts in -4 minutes".
+    starts_in_minutes: Math.max(0, Math.round((starting - now) / 60000)),
+    // Whether writes are actually blocked right now. UPCOMING + READ_ONLY is
+    // the case worth getting right: the banner must warn without the client
+    // disabling anything yet.
+    writes_blocked: w.mode === "READ_ONLY" && starting <= now,
+  };
+}
+
+/**
+ * Is this tenant currently parked read-only by a maintenance window?
+ *
+ * THE WRITE-BLOCK POLICY LIVES HERE, IN ONE FUNCTION, DELIBERATELY.
+ *
+ *   Today the answer is "everyone in the tenant is blocked" — matching how
+ *   SUSPENDED already behaves, and on the reasoning that if writes were safe
+ *   for some users they were probably safe for everyone. That policy is
+ *   expected to change: the likely next step is letting a specific tenant role
+ *   through.
+ *
+ *   Keeping the decision in this one predicate means that change is an argument
+ *   and a condition here, not surgery across every route. The caller
+ *   (`applyTenant`) asks a question; it does not encode the answer.
+ */
+async function isReadOnly(tenantId /* , actor */) {
   const w = await activeFor(tenantId);
   return Boolean(w && w.mode === "READ_ONLY");
 }
 
-async function schedule({ tenantId = null, startsAt, endsAt, title, message = null, mode = "ANNOUNCE", createdBy = null }) {
+async function schedule({ tenantId = null, startsAt, endsAt, title, message = null, mode = "ANNOUNCE", noticeHours = 24, createdBy = null }) {
   if (!title) throw new Error("a maintenance window needs a title — it is what users will read");
   if (new Date(endsAt) <= new Date(startsAt)) throw new Error("ends_at must be after starts_at");
 
   const { rows } = await platformDb.query(
     `INSERT INTO platform.maintenance_window
-       (tenant_id, starts_at, ends_at, title, message, mode, created_by)
-     VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [tenantId, startsAt, endsAt, title, message, mode, createdBy],
+       (tenant_id, starts_at, ends_at, title, message, mode, notice_hours, created_by)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+    [tenantId, startsAt, endsAt, title, message, mode, noticeHours, createdBy],
   );
   invalidate();
   logger.info({ id: rows[0].maintenance_window_id, tenantId, mode }, "maintenance window scheduled");
@@ -94,11 +160,22 @@ async function cancel(id) {
   return rows[0] || null;
 }
 
+/**
+ * The slug is joined in rather than left to the caller.
+ *
+ * A window row carries `tenant_id`, but every surface that displays one — the
+ * console table, an audit line, an alert — wants the slug, and the tenant list
+ * endpoint does not return `tenant_id` to join against. Resolving it here means
+ * one query instead of a client-side lookup that cannot actually be performed.
+ * NULL slug keeps its meaning: a fleet-wide window belongs to no tenant.
+ */
 async function list({ includePast = false } = {}) {
   const { rows } = await platformDb.query(
-    `SELECT * FROM platform.maintenance_window
-      ${includePast ? "" : "WHERE ends_at > now() AND cancelled_at IS NULL"}
-      ORDER BY starts_at DESC LIMIT 100`,
+    `SELECT w.*, t.slug
+       FROM platform.maintenance_window w
+       LEFT JOIN platform.tenant t ON t.tenant_id = w.tenant_id
+      ${includePast ? "" : "WHERE w.ends_at > now() AND w.cancelled_at IS NULL"}
+      ORDER BY w.starts_at DESC LIMIT 100`,
   );
   return rows;
 }
@@ -152,6 +229,7 @@ async function telemetrySnapshot(slug) {
 
 module.exports = {
   activeFor,
+  visibleFor,
   isReadOnly,
   schedule,
   cancel,

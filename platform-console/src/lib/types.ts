@@ -83,6 +83,10 @@ export interface FeatureRow {
 }
 
 export interface Plan {
+  // The endpoint selects `p.*`, so this has always been present — it simply was
+  // never declared, which left it typed `unknown` via the index signature and
+  // unusable as a value. WS-S3 needs it to attach entitlements to a plan.
+  plan_id: string;
   code: string;
   name: string;
   description?: string | null;

@@ -512,9 +512,50 @@ async function runScheduledDrill() {
   return restoreTenant({ slug: rows[0].slug });
 }
 
+/**
+ * Drill history, newest first, plus per-tenant coverage.
+ *
+ * `drills` is the log; `coverage` is the question D4 actually cares about —
+ * which LIVE tenants have never been drilled, and how long since the last one
+ * for those that have. A tenant that has never appeared in a drill is the one
+ * whose backups are least trustworthy, so it sorts first and is counted
+ * separately rather than being one unremarkable row among many.
+ */
+async function recentDrills({ limit = 50 } = {}) {
+  const { rows: drills } = await platformDb.query(
+    `SELECT restore_drill_id, tenant_id, slug, backup_run_id, restored_to,
+            rto_seconds, ok, checks_json, error, ran_at
+       FROM platform.restore_drill
+      ORDER BY ran_at DESC
+      LIMIT $1`,
+    [Math.min(Number(limit) || 50, 500)],
+  );
+
+  const { rows: coverage } = await platformDb.query(
+    `SELECT t.slug,
+            max(d.ran_at)                              AS last_drill_at,
+            max(d.ran_at) FILTER (WHERE d.ok)          AS last_ok_drill_at,
+            count(d.restore_drill_id)::int             AS drill_count
+       FROM platform.tenant t
+       LEFT JOIN platform.restore_drill d ON d.tenant_id = t.tenant_id
+      WHERE t.status='LIVE'
+      GROUP BY t.slug
+      ORDER BY max(d.ran_at) ASC NULLS FIRST`,
+  );
+
+  const rtoTarget = Number(config.RESTORE_RTO_TARGET_SECONDS || 3600);
+  return {
+    drills,
+    coverage,
+    never_drilled: coverage.filter((c) => !c.last_drill_at).map((c) => c.slug),
+    rto_target_seconds: rtoTarget,
+  };
+}
+
 module.exports = {
   restoreTenant,
   runScheduledDrill,
+  recentDrills,
   cleanupDrillDatabases,
   latestBackup,
   keyFromLocation,

@@ -7,6 +7,7 @@ import { ShellProvider } from "@/app/layout/shell-providers";
 import { LandingPage } from "@/features/landing/landing-page";
 import { BootGate } from "@/app/boot-gate";
 import { PwaLayer } from "@/components/pwa/pwa-layer";
+import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { UserAppearanceSync } from "@/app/branding/user-appearance-sync";
 import { Spinner } from "@/components/ui/states";
 import { withChunkReload } from "@/lib/chunk-reload";
@@ -136,6 +137,11 @@ export function App() {
   return (
     <BootGate>
       <PwaLayer />
+      {/* WS-M1. ABOVE <Routes> so it renders on /login too: during a fleet-wide
+          window the people who most need the message are the ones staring at a
+          login screen wondering why nothing works. Its endpoint is
+          unauthenticated for the same reason. */}
+      <MaintenanceBanner />
       {/* Renders nothing. Sits here because it needs BOTH auth (for the token)
           and branding (to paint) — BrandingProvider is above AuthProvider in
           main.tsx, so this is the highest point where both are readable. */}

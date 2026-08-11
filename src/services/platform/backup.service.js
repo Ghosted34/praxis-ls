@@ -401,11 +401,166 @@ async function backupStatus({ rpoHours = 24, graceHours = 6 } = {}) {
   };
 }
 
+/**
+ * The raw run log, newest first — what the console shows under the freshness
+ * summary.
+ *
+ * `backupStatus` answers "is every tenant covered right now"; this answers "what
+ * has the backup system actually been doing", which is the question you ask when
+ * the first answer is bad. Failures are included by default and are the whole
+ * point: a run log filtered to successes cannot explain a gap.
+ */
+async function recentRuns({ limit = 100, kind = null, slug = null, status = null } = {}) {
+  const where = [];
+  const params = [];
+  if (kind) params.push(kind), where.push(`kind = $${params.length}`);
+  if (slug) params.push(slug), where.push(`slug = $${params.length}`);
+  if (status) params.push(status), where.push(`status = $${params.length}`);
+  params.push(Math.min(Number(limit) || 100, 500));
+
+  const { rows } = await platformDb.query(
+    `SELECT backup_run_id, tenant_id, slug, kind, status, bytes, location, checksum,
+            started_at, finished_at, duration_ms, error
+       FROM platform.backup_run
+      ${where.length ? "WHERE " + where.join(" AND ") : ""}
+      ORDER BY started_at DESC
+      LIMIT $${params.length}`,
+    params,
+  );
+  return rows;
+}
+
+/**
+ * WS-B1 layer 2 — is WAL archiving actually alive, and what RPO does it buy?
+ *
+ * `archive_command` deliberately does no bookkeeping: it runs on the Postgres
+ * host's critical path once per segment, and a platform-DB write per segment
+ * would couple WAL archiving to the availability of the thing it protects. The
+ * cost of that choice is that a silently dead archiver looks exactly like a
+ * quiet one — so this check is the other half, and it must run on a schedule.
+ *
+ * THE FAILURE THIS EXISTS TO CATCH
+ *
+ *   `archive_command` failing is loud in the Postgres log and nowhere else, and
+ *   Postgres keeps the un-archived WAL on disk while it retries — so the first
+ *   externally visible symptom of a broken archiver is the data volume filling
+ *   up, days later. Meanwhile the console would still be reporting a healthy
+ *   nightly dump, and the 5-minute RPO everyone believes in would have silently
+ *   reverted to 24 hours.
+ *
+ *   So: `lag_minutes` is the number that matters, and a stale archive is
+ *   recorded as a FAILED WAL run, which routes to the alert channel through the
+ *   same path a failed backup does.
+ */
+async function walStatus() {
+  const prefix = config.WAL_ARCHIVE_PREFIX || "wal";
+  const maxLag = Number(config.WAL_MAX_LAG_MINUTES || 15);
+
+  if (!config.WAL_ARCHIVE_ENABLED) {
+    return {
+      enabled: false,
+      // Said plainly, because the whole point of D4 was to ratify a number and
+      // this is the number that actually holds when WAL archiving is off.
+      rpo_minutes: 24 * 60,
+      note: "WAL archiving is off — recovery is limited to the nightly dump, so the real RPO is 24h, not 5 minutes.",
+    };
+  }
+
+  // The two switches disagreeing is the misconfiguration worth naming, because
+  // its symptom — a permanently empty archive — gives no clue which half is
+  // wrong, and the obvious guess (the upload is broken) is the wrong one.
+  if (config.WAL_ARCHIVE_MODE !== "on") {
+    return {
+      enabled: true,
+      healthy: false,
+      segments: 0,
+      rpo_minutes: 24 * 60,
+      error:
+        "WAL_ARCHIVE_ENABLED is true but Postgres has archive_mode=off, so nothing is being written to " +
+        "the archive. Set WAL_ARCHIVE_MODE=on and restart Postgres.",
+    };
+  }
+
+  try {
+    const segments = await store.list(prefix);
+    if (!segments.length) {
+      return {
+        enabled: true,
+        healthy: false,
+        segments: 0,
+        rpo_minutes: 24 * 60,
+        error:
+          "WAL archiving is on but the archive is EMPTY — Postgres has not shipped a segment yet. " +
+          "Check the postgres logs for archive_command failures.",
+      };
+    }
+
+    // Newest by modified time, not by name: a timeline switch makes names
+    // non-monotonic, and this question is "when did we last hear from the
+    // archiver", which is a clock question.
+    let newest = null;
+    for (const s of segments) {
+      if (!s.modified) continue;
+      if (!newest || new Date(s.modified) > new Date(newest)) newest = s.modified;
+    }
+
+    const lagMinutes = newest ? Math.round((Date.now() - new Date(newest).getTime()) / 60000) : null;
+    const healthy = lagMinutes !== null && lagMinutes <= maxLag;
+
+    return {
+      enabled: true,
+      healthy,
+      segments: segments.length,
+      newest_at: newest,
+      lag_minutes: lagMinutes,
+      max_lag_minutes: maxLag,
+      // Achievable RPO: roughly the archive lag while healthy, the nightly dump
+      // otherwise. Reporting 5 minutes off the back of a dead archiver is
+      // exactly the false assurance this function exists to prevent.
+      rpo_minutes: healthy ? Math.max(1, lagMinutes) : 24 * 60,
+      error: healthy
+        ? null
+        : `WAL archive is ${lagMinutes}m stale (limit ${maxLag}m) — PITR cannot reach later than ${newest}.`,
+    };
+  } catch (err) {
+    return {
+      enabled: true,
+      healthy: false,
+      rpo_minutes: 24 * 60,
+      error: `could not read the WAL archive: ${err.message}`,
+    };
+  }
+}
+
+/**
+ * Record the WAL archive's health as a `backup_run` row.
+ *
+ * Written as a run rather than only returned, so "has WAL archiving been alive"
+ * is answerable as history — and so a stale archive reaches the alert channel by
+ * the same route a failed dump does, instead of needing its own plumbing.
+ */
+async function recordWalStatus() {
+  const status = await walStatus();
+  if (!status.enabled) return status;
+
+  const runId = await startRun({ tenantId: null, slug: null, kind: "WAL" });
+  await finishRun(runId, {
+    status: status.healthy ? "OK" : "FAILED",
+    bytes: null,
+    location: `${config.BACKUP_DRIVER || "local"}:${config.WAL_ARCHIVE_PREFIX || "wal"}/`,
+    error: status.error,
+  });
+  return status;
+}
+
 module.exports = {
   preflight,
   backupTenant,
   backupFleet,
   backupStatus,
+  recentRuns,
+  walStatus,
+  recordWalStatus,
   backupKey,
   startRun,
   finishRun,

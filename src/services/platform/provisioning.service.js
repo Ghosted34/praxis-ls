@@ -556,6 +556,26 @@ async function fleetSchemaStatus() {
            FROM public.schema_migration GROUP BY scope ORDER BY scope`,
       );
       const live = rows.find((r) => r.scope === "live") || { applied: 0, latest: null };
+
+      // WS-S4. The count above answers "has this tenant run every file"; it
+      // cannot answer "is the file it ran still the file on disk". A migration
+      // edited after it was applied never re-runs — the ledger keys on filename
+      // — so the count is identical while the schemas have diverged. This is
+      // the only check that sees it.
+      //
+      // Isolated in its own try/catch DELIBERATELY. The count check is the
+      // primary signal and gates deploys; this one is newer and secondary, and
+      // it must not be able to take the primary down. Without this, a single
+      // unexpected ledger row throws, the tenant is reported UNREACHABLE, and a
+      // perfectly healthy fleet reads as drifted — failing a deploy for the
+      // wrong reason, which is worse than not having the check.
+      let content = { drifted: [], unhashed: [] };
+      try {
+        content = await m.contentDrift(cli, "live");
+      } catch (err) {
+        logger.warn({ err, slug }, "content-drift check failed — schema counts are still authoritative");
+      }
+
       out.push({
         slug,
         applied: live.applied,
@@ -563,6 +583,10 @@ async function fleetSchemaStatus() {
         latest: live.latest,
         last_applied_at: live.last_applied_at || null,
         behind: expected - live.applied,
+        content_drifted: content.drifted,
+        // Rows applied before the hash column existed. Reported apart from
+        // drift because "cannot tell" is not "changed".
+        unhashed: content.unhashed.length,
         scopes: rows,
       });
     } catch (err) {
@@ -575,13 +599,22 @@ async function fleetSchemaStatus() {
 
   const behind = out.filter((t) => t.behind > 0);
   const unreachable = out.filter((t) => t.error);
+  const contentDrifted = out.filter((t) => (t.content_drifted || []).length > 0);
+
   return {
     expected,
     tenants: out,
-    // `drifted` is the single fact a deploy or a health probe wants.
-    drifted: behind.length > 0 || unreachable.length > 0,
+    // `drifted` is the single fact a deploy or a health probe wants. Content
+    // drift counts: a tenant running an edited version of a migration everyone
+    // else ran the original of is drifted in the way that actually bites, even
+    // though its file count is perfect.
+    drifted: behind.length > 0 || unreachable.length > 0 || contentDrifted.length > 0,
     behind: behind.map((t) => t.slug),
     unreachable: unreachable.map((t) => t.slug),
+    content_drifted: contentDrifted.map((t) => ({
+      slug: t.slug,
+      files: t.content_drifted.map((d) => d.filename),
+    })),
   };
 }
 

@@ -211,8 +211,11 @@ describe("WS-ER1 — alert routing", () => {
    * A misconfiguration must degrade to "too noisy", never to "silent" — a
    * channel that goes quiet is indistinguishable from a healthy system.
    */
-  test("a page falls back to the general webhook when no page channel is set", () => {
-    const dest = alerts.destinationFor("page");
+  // ASYNC as of WS-ER1: the destination now resolves from the platform settings
+  // vault first (set and tested in Platform Console → Integrations → Ops
+  // alerts) and falls back to env, so it has to read the database.
+  test("a page falls back to the general webhook when no page channel is set", async () => {
+    const dest = await alerts.destinationFor("page");
     // With neither configured in the test env, there is simply no destination —
     // and that must be reported rather than silently swallowed.
     expect(dest === null || dest.channel === "default").toBe(true);

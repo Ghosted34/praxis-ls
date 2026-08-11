@@ -316,6 +316,26 @@ async function scheduleRecurring() {
       removeOnFail: 200,
     });
     logger.info({ objects: objectCron }, "object sync + weekly integrity scan registered");
+
+    // WAL archive health (WS-B1 layer 2). Every 15 minutes, NOT nightly: this
+    // is the check that protects a 5-minute recovery objective, and a check
+    // that runs once a day can only ever tell you the archive died sometime in
+    // the last 24 hours — which is the very window the archive exists to
+    // shorten. archive_command itself writes no bookkeeping (it sits on the
+    // Postgres host's critical path), so a dead archiver is invisible until
+    // this runs.
+    if (config.WAL_ARCHIVE_ENABLED) {
+      await enqueue("backup-run", "wal", {}, {
+        repeat: { every: 15 * 60_000 },
+        removeOnComplete: true,
+        removeOnFail: 200,
+      });
+      logger.info({ max_lag_minutes: config.WAL_MAX_LAG_MINUTES }, "WAL archive health check registered");
+    } else {
+      logger.info(
+        "WAL archiving is OFF (WAL_ARCHIVE_ENABLED=false) — recovery is limited to the nightly dump, so the real RPO is 24h",
+      );
+    }
   }
 
   // Monthly restore rehearsal (§3.2, WS-B3). On by default: an unrehearsed
@@ -351,8 +371,17 @@ async function scheduleRecurring() {
 
   // Uptime probing (§3.4, WS-U1). The interval is also the denominator of the
   // availability figure, so changing it changes what past percentages mean.
+  //
+  // UPTIME_PROBE_IN_PROCESS is the switch, NOT the interval. Once
+  // scripts/ops/uptime-probe.js runs as its own process — which is what WS-U1
+  // actually asks for, since a prober inside the API cannot observe the API
+  // being down — set it false. Leaving both on double-samples every host and
+  // inflates availability; zeroing the interval instead would stop this sweep
+  // but also redefine what every past percentage meant.
   const uptimeEvery = config.UPTIME_PROBE_INTERVAL_MS;
-  if (!uptimeEvery || uptimeEvery <= 0) {
+  if (!config.UPTIME_PROBE_IN_PROCESS) {
+    logger.info("in-process uptime probing off (UPTIME_PROBE_IN_PROCESS=false) — expecting the external prober");
+  } else if (!uptimeEvery || uptimeEvery <= 0) {
     logger.info("uptime probing disabled (UPTIME_PROBE_INTERVAL_MS=0)");
   } else {
     await enqueue("ops-sweep", "uptime", {}, {
@@ -360,7 +389,7 @@ async function scheduleRecurring() {
       removeOnComplete: true,
       removeOnFail: 20,
     });
-    logger.info({ every: uptimeEvery }, "uptime probe registered");
+    logger.info({ every: uptimeEvery }, "uptime probe registered (in-process)");
   }
 
   // Alert evaluation (§3.3, WS-ER1). Deliberately far less frequent than the
@@ -372,6 +401,22 @@ async function scheduleRecurring() {
     removeOnComplete: true,
     removeOnFail: 20,
   });
+
+  // Usage metering (§5, WS-S3). Hourly, not per-request: enforcement reads
+  // these figures, and re-counting seats or re-summing an AI ledger on every
+  // action would put a cross-database query on the critical path of the exact
+  // operations a busy tenant does most.
+  //
+  // The trade is stated where it is enforced: a tenant can sit slightly over a
+  // hard limit between sweeps. Hourly keeps that overshoot to a unit or two,
+  // and the seat path — the one that matters commercially — takes a live count
+  // anyway, because there the accuracy is free.
+  await enqueue("ops-sweep", "usage", {}, {
+    repeat: { every: Number(config.USAGE_METER_INTERVAL_MS || 3_600_000) },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+  logger.info("usage metering registered");
 
   // Ops retention shares the 02:00 UTC slot with the other purges.
   await enqueue("ops-sweep", "purge", {}, {

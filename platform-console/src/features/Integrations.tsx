@@ -27,6 +27,7 @@ export function Integrations() {
           <GeoapifyCard row={byKey["geocoding.geoapify"]} onSaved={reload} />
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
           <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
+          <AlertsCard rows={byKey} onSaved={reload} />
         </div>
       )}
       {/* AI providers are deploy-wide integrations too — one shared key set. */}
@@ -106,6 +107,103 @@ function S3Card({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }
       </div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+    </Card>
+  );
+}
+
+/* Ops alerts (WS-ER1) ------------------------------------------------------
+ * Where a failed backup, a failed restore drill or a RED tenant goes.
+ *
+ * The webhook URL is stored as a SECRET, not as config: a Slack/Teams/Discord
+ * incoming webhook is a bearer credential — anyone holding it can post as the
+ * integration — so it is encrypted at rest and read back as last4 only, exactly
+ * like an API key.
+ *
+ * Two channels rather than one, because the alternative is a single channel
+ * that is either noisy enough to be muted or quiet enough to miss things.
+ * `page` is optional and falls back to the default when unset: a
+ * misconfiguration must degrade to "too noisy", never to "silent".
+ * ------------------------------------------------------------------------- */
+function AlertsCard({ rows, onSaved }: { rows: Record<string, PlatformSetting>; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [def, setDef] = useState("");
+  const [page, setPage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const defaultRow = rows["alerts.default"];
+  const pageRow = rows["alerts.page"];
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (def) await platform.putSetting("alerts", "default", { value: {}, secret: def });
+      if (page) await platform.putSetting("alerts", "page", { value: {}, secret: page });
+      toast("Alert destinations saved");
+      setDef("");
+      setPage("");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Ops alerts"
+      actions={<TestButton section="alerts" keyName="default" />}
+    >
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+        Where failed backups, failed restore drills, corrupt documents and RED tenants are sent.
+        Until one of these is set, those events are written to a log and nobody is told.
+        <strong> Test sends a real message</strong> — check it arrives, because a webhook pasted
+        wrong looks identical to one that works right up until the night it matters.
+      </p>
+
+      <Field
+        label="Default channel"
+        hint={<SecretHint row={defaultRow} label="webhook" />}
+      >
+        <input
+          className="in"
+          type="password"
+          value={def}
+          onChange={(e) => setDef(e.target.value)}
+          placeholder="https://hooks.slack.com/services/…"
+        />
+      </Field>
+
+      <div style={{ marginTop: 12 }}>
+        <Field
+          label="Page channel (optional)"
+          hint={
+            <>
+              For <code className="tag">page</code> severity only — failed backups, failed drills,
+              corruption, a tenant that cannot serve. Leave empty and pages go to the default
+              channel. <SecretHint row={pageRow} label="webhook" />
+            </>
+          }
+        >
+          <input
+            className="in"
+            type="password"
+            value={page}
+            onChange={(e) => setPage(e.target.value)}
+            placeholder="https://hooks.slack.com/services/… (louder channel)"
+          />
+        </Field>
+      </div>
+
+      <div className="row" style={{ justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>
+          {pageRow?.secret_set ? "Page channel configured." : "No page channel — pages use the default."}
+        </span>
+        <div className="row" style={{ gap: 6 }}>
+          {pageRow?.secret_set && <TestButton section="alerts" keyName="page" />}
+          <Button variant="primary" onClick={save} loading={busy} disabled={!def && !page}>Save</Button>
+        </div>
       </div>
     </Card>
   );

@@ -1,4 +1,4 @@
-import { useEffect, useState, type ButtonHTMLAttributes, type ReactNode } from "react";
+import { useEffect, useState, type ButtonHTMLAttributes, type CSSProperties, type ReactNode } from "react";
 import { titleCase } from "@/lib/format";
 
 /* Button ------------------------------------------------------------------ */
@@ -53,9 +53,9 @@ export function SourcePill({ source }: { source: string }) {
 }
 
 /* Card -------------------------------------------------------------------- */
-export function Card({ title, actions, children, className = "" }: { title?: ReactNode; actions?: ReactNode; children?: ReactNode; className?: string }) {
+export function Card({ title, actions, children, className = "", style }: { title?: ReactNode; actions?: ReactNode; children?: ReactNode; className?: string; style?: CSSProperties }) {
   return (
-    <div className={"card " + className}>
+    <div className={"card " + className} style={style}>
       {(title || actions) && (
         <div className="hd">
           <h3 style={{ fontSize: 15 }}>{title}</h3>

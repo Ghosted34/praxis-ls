@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (251)
+## All codes (254)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -113,6 +113,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_FILE` | 422 | 1× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
+| `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |
 | `EXISTS` | 409 | 3× | — |
@@ -147,6 +148,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LOCKED` | 422 | 14× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MERGE_SAME_RECORD` | 422 | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
 | `MISSING_FIELDS` | 422 | 1× | — |
@@ -159,7 +161,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 281× | — |
+| `NOT_FOUND` | 404 | 284× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -265,12 +267,13 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_EVENT_TYPE` | 400 | 1× | — |
 | `UNKNOWN_FILTER` | — | 1× | — |
 | `UNKNOWN_JOURNAL` | 422 | 1× | — |
+| `UNKNOWN_METRIC` | 422 | 1× | — |
 | `UNKNOWN_REPORT` | 404, 422 | 4× | — |
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 112× | — |
+| `VALIDATION_ERROR` | 422 | 113× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

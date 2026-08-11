@@ -10,7 +10,7 @@
 | # | Decision | Resolution |
 |---|---|---|
 | D1 | Email domain onboarding | **Support both; default to full Cloudflare delegation; MX-only as fallback** |
-| D2 | Outbound transport | **Cloudflare authenticated SMTP first; REST `send_email` later** |
+| D2 | Outbound transport | **Free-tier transactional SMTP (Brevo) now; Amazon SES at scale — no paid subscription. Cloudflare handles inbound only (Email Routing, free).** |
 
 Those are treated as settled below — no longer open forks.
 
@@ -61,26 +61,29 @@ Each unit of work is a **WS-xx** with a rough **effort** (S ≈ ≤2 days, M ≈
 
 ### 3.0 Architecture
 
-Cloudflare does not store mail. **Email Routing** (free) creates addresses on a Cloudflare-managed zone and routes each inbound message to an **Email Worker** that POSTs it to Praxis. **Email Service** (public beta, April 2026; authenticated SMTP / REST / Workers binding; $0.35/1k out) sends outbound. So **Praxis is the mailbox store** — `email_inbound` + `email_attachment` + vault already are the destination — and Cloudflare is the transport both directions.
+Cloudflare does not store mail, and Praxis does not need it to — **Praxis is the mailbox store** (`email_inbound` + `email_attachment` + vault). Cloudflare handles **inbound only**: **Email Routing** (free, unlimited domains) creates addresses on a Cloudflare-managed zone and routes each inbound message to an **Email Worker** that POSTs it to Praxis. **Outbound is sent by a free-tier transactional provider over SMTP** (nodemailer is provider-agnostic), not by Cloudflare — so nothing here carries a subscription.
 
 ```
- OUTBOUND  module → email.service.send(section) → cloudflare_routing adapter
-                                                → CF Email Service (authenticated SMTP) → recipient
- INBOUND   sender → tenant MX (Cloudflare) → Email Routing → Email Worker
+ OUTBOUND  module → email.service.send(section) → nodemailer (SMTP, provider-agnostic)
+                                                → Brevo free tier  (Amazon SES at scale) → recipient
+ INBOUND   sender → tenant MX (Cloudflare) → Email Routing (free) → Email Worker
                   → POST /api/tenant/mail/ingest/cloudflare (HMAC) → email_inbound (+ vault, auto-link)
- CONTROL   provisionTenant() → CF API: create ≤5 addresses + MX/SPF/DKIM/DMARC
+ CONTROL   provisionTenant() → CF API: create ≤5 addresses + MX (inbound) + sender SPF/DKIM/DMARC
                              → email_connection + email_identity + section bindings + email_domain
 ```
 
-**Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound uses **authenticated SMTP** first (WS-E1).
+**Cost model — $0 now.** Inbound is free (Cloudflare Email Routing, unlimited). Outbound rides a **free transactional tier** (Brevo, ~9k/mo) for the low-volume system fallback and early tenants; tenants who connect their own mailbox send through their own provider at no cost to Praxis. The only future spend is **Amazon SES at ~$0.10/1,000** once outbound across many tenant domains outgrows the free tier — usage-based pennies, not a subscription, and by then revenue-funded. Swapping Brevo → SES is a creds change in the platform console; nodemailer and the code are unchanged.
 
-### WS-E1 — Cloudflare API client + vaulted token · **PLANNED · M**
+**Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound sends through a **free-tier transactional SMTP — Brevo now, Amazon SES at scale — via nodemailer, no paid subscription** (WS-E1).
 
-A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) for the Cloudflare v4 API: zones (verify), Email Routing (enable, create/list/delete addresses, catch-all → Worker), DNS (MX/TXT for SPF/DKIM/DMARC), Email Service (sending domain + DKIM, authenticated-SMTP credentials).
+### WS-E1 — Cloudflare (DNS + inbound routing) client + vaulted token · **PLANNED · M**
 
-- **File:** `src/services/integrations/cloudflare.service.js` — `verifyZone`, `enableRouting`, `createAddress`, `deleteAddress`, `setCatchAllWorker`, `putDnsRecord`, `enableSendingDomain`, `getSmtpCredential`, `getDeliverabilityDns`. Timeout + never-throw-into-caller contract with typed errors; ret/backoff on 429/5xx (respect CF's account rate limit).
-- **Auth:** a **scoped API token**, entered in **Platform Console → Integrations → Cloudflare** and stored encrypted — the deploy-wide **account token** in the platform settings vault (`cloudflare.account`), or a per-tenant **zone token** in that tenant's `integration_secret` (`cf_zone:<tenantId>`) when a tenant supplies their own. Never on a row; never primarily in `.env`.
-- **Non-secret config** (safe as env, no vault needed): `CLOUDFLARE_API_BASE` (default `https://api.cloudflare.com/client/v4`), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ROUTING_WORKER_NAME`, `CLOUDFLARE_SMTP_HOST`. **Secrets** (`CLOUDFLARE_INGEST_HMAC_SECRET`, the account/zone token) resolve platform-vault → env, env being fallback only.
+A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) for the Cloudflare v4 API, used for **inbound routing and DNS only** — Cloudflare does no sending here: zones (verify), Email Routing (enable, create/list/delete addresses, catch-all → Worker), DNS (MX for inbound + the sender's SPF/DKIM/DMARC TXT records).
+
+- **File:** `src/services/integrations/cloudflare.service.js` — `verifyZone`, `enableRouting`, `createAddress`, `deleteAddress`, `setCatchAllWorker`, `putDnsRecord`, `getDeliverabilityDns`. Timeout + never-throw-into-caller contract with typed errors; retry/backoff on 429/5xx (respect CF's account rate limit).
+- **Outbound is separate.** Sending goes through the free-tier SMTP provider (Brevo) via `email.service` + nodemailer; its SMTP creds live in the platform settings vault (**Platform Console → Integrations → Mail sender**), env fallback only. Amazon SES is a later drop-in — same nodemailer transport, different creds, no code change.
+- **Auth:** a **scoped Cloudflare API token**, entered in **Platform Console → Integrations → Cloudflare** and stored encrypted — the deploy-wide **account token** in the platform settings vault (`cloudflare.account`), or a per-tenant **zone token** in that tenant's `integration_secret` (`cf_zone:<tenantId>`) when a tenant supplies their own. Never on a row; never primarily in `.env`.
+- **Non-secret config** (safe as env): `CLOUDFLARE_API_BASE` (default `https://api.cloudflare.com/client/v4`), `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_ROUTING_WORKER_NAME`. **Secrets** (`CLOUDFLARE_INGEST_HMAC_SECRET`, the CF token, the Brevo SMTP key) resolve platform-vault → env, env being fallback only.
 - **Verification:** unit tests with mocked CF responses per method; one live smoke test against a sandbox zone that creates then deletes an address.
 
 ### WS-E2 — Auto-provision ≤5 addresses on tenant creation · **PLANNED · L**
@@ -88,7 +91,7 @@ A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) f
 Extend `provisionTenant()` (`provisioning.service.js`) with an email step, gated on the tenant's domain being onboarded (WS-E5):
 
 1. `verifyZone`; if not onboarded, mark email `PENDING_DOMAIN` and stop (non-fatal — the tenant still provisions).
-2. `enableRouting`; `putDnsRecord` for MX, SPF, DKIM (from `enableSendingDomain`), DMARC (`p=quarantine` default).
+2. `enableRouting` (inbound); `putDnsRecord` for the inbound **MX** and the **sender's SPF/DKIM/DMARC** TXT records (provided by Brevo/SES), DMARC `p=quarantine` default.
 3. `createAddress` × ≤5, each routed to the ingest Worker; default local-parts seeded from a template (`contact`, `billing`, `docs`, `hr`, `noreply`).
 4. Insert ≤5 `email_connection` (provider `cloudflare_routing`) each linked to an `email_identity`; write default `email_section_binding` rows (WS-E3); record `email_domain` (WS-E5).
 
@@ -123,7 +126,7 @@ ALTER TABLE email_identity ADD COLUMN IF NOT EXISTS label text;   -- the tenant'
 
 - **Cloudflare Email Worker** (one per account): the `email()` handler POSTs a JSON envelope to `POST /api/tenant/mail/ingest/cloudflare` on the tenant host, HMAC-signed (`CLOUDFLARE_INGEST_HMAC_SECRET`) with the recipient address (selects tenant + connection); large attachments to R2 by reference, small ones inline base64 under a cap.
 - **Ingest endpoint** (declared **before** `authMiddleware`, like the existing OAuth callback/webhook routes): verify HMAC + timestamp (replay window) → resolve tenant from recipient domain → resolve `email_connection` by address → run the **existing** ingest path (`cleanHtml`, dedup index `ux_email_inbound_dedup`, `persistAttachments`→vault, `autoLink`→dossier/client, `emitEvent('email.received')`, `publishMailEvent`→realtime). Unknown recipients 202-and-drop (no enumeration).
-- **New adapter** `providers/cloudflareRouting.provider.js`: `verify()` (zone + routing), `sendEmail()`/`createReply()` (via CF Email Service, WS-E1), inbound as **push** (`fetchSince` is a no-op — the webhook is the ingress). Business code stays provider-agnostic.
+- **New adapter** `providers/cloudflareRouting.provider.js`: `verify()` (zone + routing); inbound as **push** (`fetchSince` is a no-op — the webhook is the ingress). **Outbound** for these addresses goes through the shared free-tier SMTP (`email.service` + nodemailer, Brevo/SES), not Cloudflare — the adapter's `sendEmail`/`createReply` delegate to it. Business code stays provider-agnostic.
 - **Verification:** an email to a provisioned address appears in that tenant's Mail view within seconds, deduped on redelivery, attachments vaulted, auto-linked on a dossier ref — identical assertions to the IMAP path.
 
 ### WS-E5 — Domain onboarding (both paths) · **PLANNED · M**
@@ -259,7 +262,7 @@ Where a tenant needs a surface Praxis doesn't natively integrate, expose the con
 
 - **Security.** Every new secret (Cloudflare token, ingest HMAC, SMTP credential) lives in the vault, never on a row. Ingest and delivery webhooks are HMAC-signed with a replay window. The single canonical OAuth callback verifies the signed `state` before resolving a tenant, so a forged callback cannot bind a mailbox to the wrong tenant (BUILT). Rotation (WS-I2) is itself a security control — a rotatable credential is one you can respond to a leak with.
 - **Observability.** Every new job (ingest, domain-verification worker, re-verify sweep, deliverability webhook) emits to the existing metrics + structured-log + error-reporter stack (`workers.js` wraps handlers with duration + request-id + terminal-failure reporting). Integration state changes (`VERIFIED`→`ERROR`) feed the health view (WS-I1) and can raise an alert.
-- **Cost.** Cloudflare email is ~free inbound + $0.35/1k outbound; Microsoft/Google OAuth apps are free; the material new spend is negligible. Google's restricted-scope verification is a time cost, not a money cost.
+- **Cost — $0 now.** Inbound is free (Cloudflare Email Routing, unlimited); outbound rides a free transactional tier (Brevo, ~9k/mo); Microsoft/Google OAuth apps are free; tenants who bring their own mailbox send on their own dime. The only future spend is Amazon SES (~$0.10/1k) once outbound outgrows the free tier — usage-based pennies, revenue-funded, not a subscription. Google's restricted-scope verification is a time cost, not a money cost.
 - **Tenancy invariants.** Per-tenant integration data and secrets stay in the tenant DB; deploy-wide app config (OAuth apps, Cloudflare account token) in the platform DB / env. The ingest webhook resolves the tenant from the recipient domain and the OAuth callback from the signed state — neither trusts an unauthenticated host.
 
 ---
@@ -297,7 +300,7 @@ Verified against these files this pass:
 
 `src/modules/mail/mail.service.js` · `src/modules/mail/mail.controller.js` · `src/modules/mail/mail.routes.js` · `src/modules/mail/providers/*` · `src/services/email.service.js` · `src/services/platform/mail-fallback.service.js` · `src/services/platform/settings.probes.js` · `src/services/tenant/registry.service.js` (`resolveBySlug`) · `src/middleware/host-tenent-resolver.js` (state-based tenant resolution) · `src/services/platform/provisioning.service.js` · `client/src/features/comms/mail.tsx` · `migrations/tenant/0410_notifications_ux.sql` · `migrations/tenant/0483_email_connection.sql`
 
-Cloudflare capability claims (§3) verified against Cloudflare Email Service + Email Routing documentation, August 2026.
+Cloudflare capability claims (§3) verified against Cloudflare Email Routing documentation; Brevo/Amazon SES free-tier and pricing against their current docs, August 2026.
 
 ---
 

@@ -511,33 +511,87 @@ export const setGatewayRole = (provider: string, role: string) =>
 export const deleteGateway = (provider: string) =>
   tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, { method: "DELETE" });
 
+/* ── Rate providers(/rate-providers) — carriers & rate authorities ─────────
+ * Shipping lines, airlines, and rate-setting authorities (port/customs) an
+ * expense rate can be scoped to. Seeded-but-editable: a manager extends the
+ * list from the admin panel or inline from the Expense Rates grid. */
+export type RateProviderKind = "SHIPPING_LINE" | "AIRLINE" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+export type RateProvider = {
+  rate_provider_id: string;
+  kind: RateProviderKind;
+  code: string;
+  name: string;
+  carrier_code?: string | null;
+  sort_order?: number;
+  is_system?: boolean;
+  is_active?: boolean;
+};
+export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; sort_order?: number; is_active?: boolean };
+export const listRateProviders = (opts: { kind?: RateProviderKind; active?: boolean; q?: string } = {}) => {
+  const p = new URLSearchParams();
+  if (opts.kind) p.set("kind", opts.kind);
+  if (opts.active !== undefined) p.set("active", String(opts.active));
+  if (opts.q) p.set("q", opts.q);
+  const qs = p.toString();
+  return tenant<RateProvider[]>(`/rate-providers${qs ? `?${qs}` : ""}`);
+};
+export const createRateProvider = (body: RateProviderInput) => tenant<RateProvider>("/rate-providers", { method: "POST", body });
+export const updateRateProvider = (id: string, body: Partial<RateProviderInput>) =>
+  tenant<RateProvider>(`/rate-providers/${id}`, { method: "PATCH", body });
+
 /* ── Expense rates(/expense-rates) ──────────────────────────────── */
 export type ExpenseRate = {
   expense_rate_id: string;
   dictionary_item_id: string;
-  shipping_line: string;
-  variant?: string | null;
+  /** NULL = the item's plain default rate (no carrier/authority scope). */
+  rate_provider_id?: string | null;
+  /** NULL = no equipment dimension (authority fee per BL, air rate by weight). */
+  container_type_ref_id?: string | null;
   rate: number;
   currency?: string;
   effective_from?: string | null;
   effective_to?: string | null;
+  note?: string | null;
+  // Denormalised display fields, joined server-side.
+  provider_name?: string | null;
+  provider_kind_resolved?: RateProviderKind | null;
+  container_type_code?: string | null;
+  container_type_name?: string | null;
 };
 export type ExpenseRateInput = {
   dictionary_item_id: string;
-  shipping_line: string;
-  variant?: string;
+  rate_provider_id?: string | null;
+  container_type_ref_id?: string | null;
   rate: number;
   currency?: string;
   effective_from?: string;
-  effective_to?: string;
+  effective_to?: string | null;
+  note?: string | null;
 };
-export const listExpenseRates = () => tenant<ExpenseRate[]>("/expense-rates");
+export const listExpenseRates = (f: { dictionary_item_id?: string; rate_provider_id?: string } = {}) => {
+  const p = new URLSearchParams();
+  if (f.dictionary_item_id) p.set("dictionary_item_id", f.dictionary_item_id);
+  if (f.rate_provider_id) p.set("rate_provider_id", f.rate_provider_id);
+  const qs = p.toString();
+  return tenant<ExpenseRate[]>(`/expense-rates${qs ? `?${qs}` : ""}`);
+};
 export const createExpenseRate = (body: ExpenseRateInput) =>
   tenant<ExpenseRate>("/expense-rates", { method: "POST", body });
 export const updateExpenseRate = (id: string, body: Partial<ExpenseRateInput>) =>
   tenant<ExpenseRate>(`/expense-rates/${id}`, { method: "PATCH", body });
 export const deleteExpenseRate = (id: string) =>
   tenant<{ deleted: boolean }>(`/expense-rates/${id}`, { method: "DELETE" });
+/** Resolve the effective rate for an item at a date, cascading from the most
+ *  specific (carrier + container type) down to the item's plain default.
+ *  Throws (422 NO_RATE / NO_RATE_MATCH) when nothing is eligible — callers
+ *  (e.g. costing) should catch this and fall back to a free-typed rate. */
+export const resolveExpenseRate = (opts: { dictionary_item_id: string; date?: string; rate_provider_id?: string; container_type_ref_id?: string }) => {
+  const p = new URLSearchParams({ dictionary_item_id: opts.dictionary_item_id });
+  if (opts.date) p.set("date", opts.date);
+  if (opts.rate_provider_id) p.set("rate_provider_id", opts.rate_provider_id);
+  if (opts.container_type_ref_id) p.set("container_type_ref_id", opts.container_type_ref_id);
+  return tenant<ExpenseRate>(`/expense-rates/resolve?${p.toString()}`);
+};
 
 /* ── Financial dictionary(/financial-dictionary) ────────────────── */
 export type PostingContext = "sale" | "purchase" | "disbursement";
@@ -555,6 +609,11 @@ export type PostingRule = {
 };
 export type Direction = "REVENUE" | "EXPENSE" | "DEBOURS" | "ASSET";
 export type ApplicabilityMode = "SERVICE_SCOPED" | "ANY_OPERATIONS" | "NON_OPERATIONAL";
+/** FLAT = a rate card resolves the price (the default). FORMULA = the price
+ *  depends on a tariff and elapsed time (Demurrage, Storage) — the real
+ *  calculation lives in the Extra Charges Simulation module (MOD-28); Expense
+ *  Rates still shows a reference/typical rate and deep-links to the simulator. */
+export type PricingMode = "FLAT" | "FORMULA";
 export type ReceiptRequirement = "ALWAYS_REQUIRED" | "CONDITIONALLY_REQUIRED" | "NOT_REQUIRED";
 export type Tier = "BASIC" | "ADVANCED" | "FULL";
 export type ServiceTier = {
@@ -587,6 +646,8 @@ export type DictItem = {
   requires_justification?: boolean;
   receipt_requirement?: ReceiptRequirement;
   debours_vat_transparent?: boolean;
+  pricing_mode?: PricingMode;
+  varies_by_equipment?: boolean;
   service_type_key?: string | null;
   is_active: boolean;
 };
@@ -609,6 +670,7 @@ export type DictInput = {
   requires_justification?: boolean;
   receipt_requirement?: ReceiptRequirement;
   debours_vat_transparent?: boolean;
+  pricing_mode?: PricingMode;
   posting_rules: PostingRule[];
   service_tiers?: { service_type_id: string; service_key?: string | null; tier: Tier; sort_order?: number }[];
   is_active?: boolean;
@@ -755,11 +817,12 @@ export type RateTrend = {
 };
 export type RateSeries = {
   key: string;
-  provider_kind?: string | null;
-  provider_supplier_id?: string | null;
+  rate_provider_id?: string | null;
+  provider_kind?: RateProviderKind | null;
   provider_name?: string | null;
-  shipping_line?: string | null;
-  variant?: string | null;
+  container_type_ref_id?: string | null;
+  container_type_code?: string | null;
+  container_type_name?: string | null;
   currency: string;
   points: RatePoint[];
   current: RatePoint | null;
@@ -780,10 +843,10 @@ export type RateSupersedeInput = {
   currency?: string;
   effective_from: string;
   effective_to?: string | null;
-  shipping_line?: string | null;
-  variant?: string | null;
-  provider_kind?: string | null;
-  provider_supplier_id?: string | null;
+  /** NULL = the item's plain default rate (no carrier/authority scope). */
+  rate_provider_id?: string | null;
+  /** NULL = no equipment dimension. */
+  container_type_ref_id?: string | null;
   note?: string | null;
 };
 export const supersedeDictRate = (id: string, body: RateSupersedeInput) =>
@@ -819,8 +882,10 @@ export const commitDictImport = (rows: ImportStagingRow[]) =>
 export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
   downloadPost("/tenant/financial-dictionary/import/errors", { rows }, "financial-dictionary-rejected.xlsx");
 
-/* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal). */
-export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND";
+/* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal).
+ * CONTAINER_TYPE is read-only from here (managed via the Financial Dictionary's
+ * own seed/gear surface, not this one) — Expense Rates only lists it. */
+export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE";
 export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; sort_order?: number; is_system?: boolean; is_active?: boolean };
 export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
   tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);

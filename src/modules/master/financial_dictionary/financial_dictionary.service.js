@@ -13,7 +13,7 @@ const ITEM_COLS = [
   "unit_of_measure", "applicability_mode", "is_debours", "is_billable",
   "default_price", "currency", "shipping_line", "provider_kind", "proof_source",
   "requires_justification", "receipt_requirement", "debours_vat_transparent",
-  "is_active", "service_type_key",
+  "pricing_mode", "is_active", "service_type_key",
 ];
 
 const listItems = (c, q) => repo.listItems(c, q);
@@ -72,6 +72,7 @@ function withCreateDefaults(item) {
     is_active: true,
     requires_justification: false,
     debours_vat_transparent: true,
+    pricing_mode: "FLAT",
     ...item,
   };
 }
@@ -205,15 +206,16 @@ async function rateEvolution(c, id, q = {}) {
   const timeline = rules.rateTimeline(await repo.rateHistory(c, id), q.as_of || null);
   const groups = new Map();
   for (const r of timeline) {
-    const key = [r.provider_supplier_id || "", r.shipping_line || "", r.variant || ""].join("|");
+    const key = [r.rate_provider_id || "", r.container_type_ref_id || ""].join("|");
     if (!groups.has(key)) {
       groups.set(key, {
         key,
-        provider_kind: r.provider_kind || null,
-        provider_supplier_id: r.provider_supplier_id || null,
+        rate_provider_id: r.rate_provider_id || null,
+        provider_kind: r.provider_kind_resolved || r.provider_kind || null,
         provider_name: r.provider_name || null,
-        shipping_line: r.shipping_line || null,
-        variant: r.variant || null,
+        container_type_ref_id: r.container_type_ref_id || null,
+        container_type_code: r.container_type_code || null,
+        container_type_name: r.container_type_name || null,
         currency: r.currency || item.currency || "XAF",
         points: [],
       });
@@ -252,10 +254,17 @@ async function supersedeRate(c, { id, data, actor }) {
   if (!item) return null;
   const effectiveFrom = data.effective_from;
   const key = {
-    shippingLine: data.shipping_line || null,
-    variant: data.variant || null,
-    providerSupplierId: data.provider_supplier_id || null,
+    rateProviderId: data.rate_provider_id || null,
+    containerTypeRefId: data.container_type_ref_id || null,
   };
+  // provider_kind is a denormalised cache of rate_provider.kind (repo.js has
+  // no join for a single lookup, so this is the one place it is read fresh).
+  let providerKind = null;
+  if (key.rateProviderId) {
+    const { rows } = await c.query("SELECT kind FROM rate_provider WHERE rate_provider_id = $1", [key.rateProviderId]);
+    if (!rows[0]) { const e = new Error("rate provider not found"); e.status = 404; throw e; }
+    providerKind = rows[0].kind;
+  }
   await c.query("BEGIN");
   try {
     const current = await repo.openRate(c, id, key);
@@ -269,10 +278,9 @@ async function supersedeRate(c, { id, data, actor }) {
     }
     const row = await repo.insertRate(c, {
       dictionary_item_id: id,
-      shipping_line: key.shippingLine,
-      variant: key.variant,
-      provider_kind: data.provider_kind || null,
-      provider_supplier_id: key.providerSupplierId,
+      rate_provider_id: key.rateProviderId,
+      container_type_ref_id: key.containerTypeRefId,
+      provider_kind: providerKind,
       rate: data.rate,
       currency: data.currency || item.currency || "XAF",
       effective_from: effectiveFrom,

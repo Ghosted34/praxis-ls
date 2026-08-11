@@ -235,6 +235,7 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
     currency: row?.currency ?? "XAF",
     provider_kind: row?.provider_kind ?? "",
     proof_source: row?.proof_source ?? "",
+    pricing_mode: (row?.pricing_mode ?? "FLAT") as api.PricingMode,
     is_billable: row?.is_billable ?? true,
     is_debours: row?.is_debours ?? false,
     requires_justification: row?.requires_justification ?? false,
@@ -298,6 +299,7 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
       currency: f.currency || undefined,
       provider_kind: f.provider_kind || undefined,
       proof_source: f.proof_source || undefined,
+      pricing_mode: f.pricing_mode,
       is_billable: f.is_billable,
       is_debours: f.direction === "DEBOURS" ? true : f.is_debours,
       requires_justification: f.requires_justification,
@@ -419,6 +421,10 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
         {step === 2 && (
           <>
             <Field label="Description"><Textarea value={f.description} onChange={(e) => set({ description: e.target.value })} rows={2} placeholder="Optional notes / definition." /></Field>
+            <Field label="Pricing" hint="Formula-priced items (Demurrage, Storage…) are calculated by the Extra Charges Simulation module from a tariff; the Expense Rates tab still keeps a reference rate for them.">
+              <Segmented label="Pricing" value={f.pricing_mode} onChange={(v) => set({ pricing_mode: v as api.PricingMode })}
+                options={[{ value: "FLAT", label: "Flat rate card" }, { value: "FORMULA", label: "Formula (tariff-based)" }]} />
+            </Field>
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Unit of measure">
                 <Select value={f.unit_of_measure} onChange={(e) => set({ unit_of_measure: e.target.value })}>

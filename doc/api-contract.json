@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 107,
-  "route_count": 928,
+  "modules_mounted": 108,
+  "route_count": 932,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 845
+    "gated": 849
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -2133,6 +2133,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/rate-providers/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/rate-providers/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/receivables/": {
       "auth": true,
       "rbac": true,
@@ -3250,6 +3262,12 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/quotations/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/rate-providers/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4864,6 +4882,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/quotations/:id/transition": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/rate-providers/": {
       "auth": true,
       "rbac": true,
       "validated": false,

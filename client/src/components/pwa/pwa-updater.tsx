@@ -38,7 +38,6 @@ export function PwaUpdater() {
   const {
     offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
-    updateServiceWorker,
   } = useRegisterSW({
     // Poll for updates so a long-open tab actually sees a new deploy. `r` is
     // the ServiceWorkerRegistration from the registration call — `update()`
@@ -106,6 +105,88 @@ export function PwaUpdater() {
     return () => window.clearTimeout(t);
   }, [offlineReady, setOfflineReady]);
 
+  const [applying, setApplying] = React.useState(false);
+
+  /**
+   * Apply the update. We drive this ourselves instead of calling the plugin's
+   * `updateServiceWorker()`, because that path has two ways to do NOTHING AT
+   * ALL on a click — both of which shipped as a dead button:
+   *
+   *   1. workbox-window's `messageSkipWaiting()` is
+   *          if (this._registration && this._registration.waiting) { ...post... }
+   *      — a silent no-op when `waiting` is null. No error, no reload, no
+   *      feedback. Clicking again does nothing again, forever.
+   *
+   *   2. The reload itself is gated on `if (event.isUpdate)`, and `isUpdate` is
+   *      latched ONCE at registration as `Boolean(navigator.serviceWorker
+   *      .controller)`. A hard refresh (Ctrl+F5) BYPASSES the service worker,
+   *      so the page loads uncontrolled, `controller` is null, `isUpdate` is
+   *      false — and the reload line never runs. That is a trap with a latch:
+   *      hard-refreshing to escape a stuck banner is exactly what guarantees
+   *      the NEXT click is dead too.
+   *
+   * So: resolve the registration fresh (never a stale reference), talk to the
+   * waiting worker directly, reload on `controllerchange` with no `isUpdate`
+   * condition — and, above all, guarantee the click always ends in a reload.
+   * A button that sometimes does nothing is the actual bug being fixed here.
+   */
+  const applyUpdate = React.useCallback(() => {
+    if (applying) return;
+    setApplying(true);
+
+    let reloaded = false;
+    const reload = () => {
+      if (reloaded) return;
+      reloaded = true;
+      window.location.reload();
+    };
+
+    const sw = navigator.serviceWorker;
+    if (!sw) {
+      reload();
+      return;
+    }
+
+    // The real path: the new worker activates, claims this tab (clientsClaim in
+    // vite.config.ts is what makes it claim an UNCONTROLLED tab — the post-
+    // Ctrl+F5 case above), and we reload the moment control changes hands.
+    sw.addEventListener("controllerchange", reload, { once: true });
+
+    // Backstop. If control never changes — no waiting worker, a worker wedged
+    // mid-lifecycle, a browser that swallows the message — reload anyway rather
+    // than leave the user clicking a button that does nothing. Worst case they
+    // get the same version back and the banner returns; that is still strictly
+    // better than silence, which is what they have today.
+    window.setTimeout(reload, 1500);
+
+    sw.getRegistration()
+      .then((reg) => {
+        if (!reg) return reload();
+
+        // Already installed and parked: tell it to take over now.
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+          return;
+        }
+
+        // Still downloading: skip waiting as soon as it finishes, so a user who
+        // clicks the instant the toast appears is not punished for being quick.
+        const installing = reg.installing;
+        if (installing) {
+          installing.addEventListener("statechange", () => {
+            if (installing.state === "installed") installing.postMessage({ type: "SKIP_WAITING" });
+          });
+          return;
+        }
+
+        // Nothing waiting, nothing installing — the new build is already the
+        // active worker and this tab is just running old code. A plain reload
+        // is exactly the right move.
+        reload();
+      })
+      .catch(() => reload());
+  }, [applying]);
+
   if (!needRefresh && !offlineReady) return null;
 
   return (
@@ -124,10 +205,11 @@ export function PwaUpdater() {
         {needRefresh && (
           <button
             type="button"
-            onClick={() => updateServiceWorker(true)}
-            className="flex-none rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90"
+            onClick={applyUpdate}
+            disabled={applying}
+            className="flex-none rounded-lg bg-primary px-3.5 py-1.5 text-sm font-semibold text-primary-foreground transition-opacity hover:opacity-90 disabled:opacity-70"
           >
-            {pwa.updateButton || "Reload"}
+            {applying ? "Updating…" : pwa.updateButton || "Reload"}
           </button>
         )}
         <button

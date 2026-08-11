@@ -115,7 +115,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |
-| `EXISTS` | 409 | 2× | — |
+| `EXISTS` | 409 | 3× | — |
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
@@ -159,7 +159,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 278× | — |
+| `NOT_FOUND` | 404 | 281× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -251,7 +251,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
 | `SYSTEM_RECORD` | 422 | 1× | — |
 | `SYSTEM_ROLE` | 409 | 1× | — |
-| `SYSTEM_TYPE` | 422 | 1× | — |
+| `SYSTEM_TYPE` | 422 | 2× | — |
 | `TARIFF_GAP` | 422 | 1× | — |
 | `TEMPLATE_NOT_PUBLISHED` | 409 | 1× | — |
 | `TENANT_MISMATCH` | 400 | 1× | — |
@@ -270,7 +270,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 111× | — |
+| `VALIDATION_ERROR` | 422 | 112× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

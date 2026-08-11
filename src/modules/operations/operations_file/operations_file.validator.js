@@ -18,6 +18,10 @@ const create = z.object({
   pod_place_id: z.string().uuid().nullable().optional(),
   customs_regime: z.string().optional(),
   owner_ops_id: z.string().uuid().optional(), owner_sales_id: z.string().uuid().optional(),
+  // The carrier this job moves on (MOD-10 rate_provider) — scopes every
+  // costing line's expense-rate lookup. Nullable so it can be cleared, same
+  // convention as pol_place_id/pod_place_id above.
+  rate_provider_id: z.string().uuid().nullable().optional(),
 });
 const update = create.partial();
 const transition = z.object({ to: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED"]) });

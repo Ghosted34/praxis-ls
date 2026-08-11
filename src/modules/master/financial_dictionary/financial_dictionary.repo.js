@@ -315,26 +315,27 @@ async function spendDocuments(c, id, from, to, limit = 100) {
 /* ── COST EVOLUTION — the effective-dated rate history per item + provider ─── */
 async function rateHistory(c, id) {
   const { rows } = await c.query(
-    `SELECT er.*, s.name AS provider_name
+    `SELECT er.*, rp.name AS provider_name, rp.kind AS provider_kind_resolved,
+            ct.code AS container_type_code, COALESCE(ct.name_en, ct.name_fr) AS container_type_name
        FROM expense_rate er
-       LEFT JOIN supplier_master s ON s.supplier_id = er.provider_supplier_id
+       LEFT JOIN rate_provider rp ON rp.rate_provider_id = er.rate_provider_id
+       LEFT JOIN dictionary_ref ct ON ct.ref_id = er.container_type_ref_id
       WHERE er.dictionary_item_id = $1
       ORDER BY er.effective_from ASC, er.created_at ASC`,
     [id],
   );
   return rows;
 }
-/** The open (never-expired) rate for one provider/variant series. */
-async function openRate(c, id, { shippingLine = null, variant = null, providerSupplierId = null }) {
+/** The open (never-expired) rate for one provider/container-type series. */
+async function openRate(c, id, { rateProviderId = null, containerTypeRefId = null }) {
   const { rows } = await c.query(
     `SELECT * FROM expense_rate
       WHERE dictionary_item_id = $1
         AND effective_to IS NULL
-        AND shipping_line IS NOT DISTINCT FROM $2
-        AND variant IS NOT DISTINCT FROM $3
-        AND provider_supplier_id IS NOT DISTINCT FROM $4
+        AND rate_provider_id IS NOT DISTINCT FROM $2
+        AND container_type_ref_id IS NOT DISTINCT FROM $3
       ORDER BY effective_from DESC LIMIT 1`,
-    [id, shippingLine, variant, providerSupplierId],
+    [id, rateProviderId, containerTypeRefId],
   );
   return rows[0] || null;
 }

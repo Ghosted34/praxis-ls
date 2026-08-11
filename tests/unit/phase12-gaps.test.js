@@ -19,14 +19,20 @@ describe("treasury account rules (MOD-09)", () => {
 });
 
 describe("expense rate resolver (MOD-10)", () => {
+  const MAERSK = "11111111-1111-1111-1111-111111111111";
+  const FT40 = "22222222-2222-2222-2222-222222222222";
   const rows = [
-    { rate: 100, effective_from: "2026-01-01", effective_to: null, shipping_line: null, variant: null },
-    { rate: 120, effective_from: "2026-01-01", effective_to: null, shipping_line: "MAERSK", variant: "40ft" },
-    { rate: 90, effective_from: "2020-01-01", effective_to: "2021-01-01", shipping_line: null, variant: null },
+    { rate: 100, effective_from: "2026-01-01", effective_to: null, rate_provider_id: null, container_type_ref_id: null },
+    { rate: 120, effective_from: "2026-01-01", effective_to: null, rate_provider_id: MAERSK, container_type_ref_id: FT40 },
+    { rate: 90, effective_from: "2020-01-01", effective_to: "2021-01-01", rate_provider_id: null, container_type_ref_id: null },
   ];
-  test("most specific effective match wins", () => {
-    expect(er.pickRate(rows, { date: "2026-06-01", shippingLine: "MAERSK", variant: "40ft" }).rate).toBe(120);
+  test("most specific effective match wins, cascading down to the default", () => {
+    expect(er.pickRate(rows, { date: "2026-06-01", rateProviderId: MAERSK, containerTypeRefId: FT40 }).rate).toBe(120);
     expect(er.pickRate(rows, { date: "2026-06-01" }).rate).toBe(100);
+  });
+  test("a row scoped to one carrier never answers a different carrier's request", () => {
+    const OTHER = "33333333-3333-3333-3333-333333333333";
+    expect(er.pickRate(rows, { date: "2026-06-01", rateProviderId: OTHER, containerTypeRefId: FT40 }).rate).toBe(100);
   });
   test("throws when nothing effective", () => {
     expect(() => er.pickRate(rows, { date: "2015-01-01" })).toThrow();

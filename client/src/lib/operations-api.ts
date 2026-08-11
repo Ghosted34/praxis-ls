@@ -25,7 +25,12 @@ export type Dossier = {
   eta?: string | null;
   ata?: string | null;
   created_at?: string;
+  // The carrier this job moves on (MOD-10 rate_provider) — scopes every
+  // costing line's expense-rate lookup. NULL until confirmed.
+  rate_provider_id?: string | null;
   // enriched by list() join (read-only display fields)
+  rate_provider_name?: string | null;
+  rate_provider_kind?: string | null;
   client_name?: string | null;
   service_key?: string | null;
   service_name_en?: string | null;
@@ -49,6 +54,10 @@ export type DossierInput = {
   pol_place_id?: string | null;
   pod_place_id?: string | null;
   customs_regime?: string;
+  // Nullable, not just optional: clearing a picked carrier must send an
+  // explicit null so the stale reference is dropped, same convention as
+  // pol_place_id/pod_place_id above.
+  rate_provider_id?: string | null;
 };
 export const listDossiers = () => tenant<Dossier[]>("/operations");
 export const getDossier = (id: string) => tenant<Dossier & { lines?: unknown[] }>(`/operations/${id}`);

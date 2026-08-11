@@ -30,6 +30,9 @@ const WRITABLE = new Set([
   "pol", "pod", "pol_place_id", "pod_place_id",
   "customs_regime", "eta", "ata", "details_json",
   "owner_ops_id", "owner_sales_id",
+  // The carrier this job moves on (MOD-10 rate_provider) — feeds every
+  // costing line's expense-rate lookup for the dossier.
+  "rate_provider_id",
 ]);
 
 const insert = (client, data) => insertOne(client, "dossier", data, "*", WRITABLE);
@@ -76,6 +79,7 @@ async function listPaged(client, q = {}) {
   const sql =
     `SELECT d.*, cm.name AS client_name, ${TOTAL_COL}, ` +
     "st.key AS service_key, st.name_en AS service_name_en, st.name_fr AS service_name_fr, st.territory AS service_territory, " +
+    "rp.name AS rate_provider_name, rp.kind AS rate_provider_kind, " +
     "(SELECT COALESCE(SUM(cl.qty * cl.unit_cost), 0) FROM costing_line cl JOIN costing c ON c.costing_id = cl.costing_id WHERE c.dossier_id = d.dossier_id) AS costing_total, " +
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
@@ -83,6 +87,7 @@ async function listPaged(client, q = {}) {
     "FROM dossier d " +
     "LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
     "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+    "LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id " +
     where + " ORDER BY d.created_at DESC LIMIT $1 OFFSET $2";
   const { rows } = await client.query(sql, params);
   return splitTotal(rows);

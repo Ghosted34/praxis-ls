@@ -330,7 +330,10 @@ async function scheduleRecurring() {
         removeOnComplete: true,
         removeOnFail: 200,
       });
-      logger.info({ max_lag_minutes: config.WAL_MAX_LAG_MINUTES }, "WAL archive health check registered");
+      // The lag limit itself is vault-first and read per check, so it is not
+      // logged here — a value printed at registration would go stale the moment
+      // someone changed it in the console.
+      logger.info("WAL archive health check registered (every 15m)");
     } else {
       logger.info(
         "WAL archiving is OFF (WAL_ARCHIVE_ENABLED=false) — recovery is limited to the nightly dump, so the real RPO is 24h",

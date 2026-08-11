@@ -21,7 +21,16 @@ jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: je
 jest.mock("../../src/services/platform/backup-storage.service", () => ({
   putStream: jest.fn(),
   exists: jest.fn(),
-  driver: "local",
+  // `driver` used to be a constant read at import. The destination is
+  // configurable from the console now, so it is asked for per call — which
+  // means the mock has to answer rather than expose a string.
+  currentDriver: jest.fn(async () => "local"),
+  describe: jest.fn(async () => ({
+    driver: "local",
+    source: "env",
+    destination: "./data/backups",
+    credentials_set: true,
+  })),
 }));
 jest.mock("../../src/services/storage.service", () => ({ get: jest.fn() }));
 jest.mock("../../src/services/tenant/registry.service", () => ({
@@ -32,7 +41,10 @@ jest.mock("../../src/services/tenant/registry.service", () => ({
 }));
 jest.mock("../../src/services/platform/backup.service", () => ({
   startRun: jest.fn(async () => "run-1"),
-  finishRun: jest.fn(),
+  // ASYNC, because the caller does `finishRun(...).catch(...)` on the failure
+  // path. A mock returning undefined turns any error inside the try block into
+  // a confusing TypeError about `.catch` of undefined, hiding the real one.
+  finishRun: jest.fn(async () => {}),
   backupStatus: jest.fn(),
 }));
 

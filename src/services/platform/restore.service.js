@@ -43,6 +43,7 @@ const { Transform } = require("stream");
 const { Client } = require("pg");
 const platformDb = require("./db");
 const store = require("./backup-storage.service");
+const runtimeConfig = require("./runtime-config.service");
 const registry = require("../tenant/registry.service");
 const m = require("./migrator");
 const { config } = require("../../config/env");
@@ -435,14 +436,18 @@ async function restoreTenant({
   }
 
   const rtoSeconds = Math.round((Date.now() - started) / 1000);
-  const withinTarget = rtoSeconds <= Number(config.RESTORE_RTO_TARGET_SECONDS);
+  // The RTO target is vault-first (ops.tuning), so it is read at the point the
+  // drill is judged rather than captured at import — a target changed in the
+  // console applies to the next drill, not the next restart.
+  const rtoTargetSeconds = Number((await runtimeConfig.opsTuning()).restoreRtoTargetSeconds);
+  const withinTarget = rtoSeconds <= rtoTargetSeconds;
 
   const result = {
     ok,
     slug,
     target,
     rto_seconds: rtoSeconds,
-    rto_target_seconds: Number(config.RESTORE_RTO_TARGET_SECONDS),
+    rto_target_seconds: rtoTargetSeconds,
     within_rto_target: withinTarget,
     checks,
     error,
@@ -543,7 +548,7 @@ async function recentDrills({ limit = 50 } = {}) {
       ORDER BY max(d.ran_at) ASC NULLS FIRST`,
   );
 
-  const rtoTarget = Number(config.RESTORE_RTO_TARGET_SECONDS || 3600);
+  const rtoTarget = Number((await runtimeConfig.opsTuning()).restoreRtoTargetSeconds);
   return {
     drills,
     coverage,

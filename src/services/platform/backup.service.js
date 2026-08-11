@@ -36,6 +36,7 @@
 const { spawn } = require("child_process");
 const platformDb = require("./db");
 const store = require("./backup-storage.service");
+const runtimeConfig = require("./runtime-config.service");
 const registry = require("../tenant/registry.service");
 const dbCredentials = require("../tenant/db-credential.service");
 const { config } = require("../../config/env");
@@ -454,7 +455,7 @@ async function recentRuns({ limit = 100, kind = null, slug = null, status = null
  */
 async function walStatus() {
   const prefix = config.WAL_ARCHIVE_PREFIX || "wal";
-  const maxLag = Number(config.WAL_MAX_LAG_MINUTES || 15);
+  const maxLag = Number((await runtimeConfig.opsTuning()).walMaxLagMinutes);
 
   if (!config.WAL_ARCHIVE_ENABLED) {
     return {
@@ -547,7 +548,7 @@ async function recordWalStatus() {
   await finishRun(runId, {
     status: status.healthy ? "OK" : "FAILED",
     bytes: null,
-    location: `${config.BACKUP_DRIVER || "local"}:${config.WAL_ARCHIVE_PREFIX || "wal"}/`,
+    location: `${await store.currentDriver()}:${config.WAL_ARCHIVE_PREFIX || "wal"}/`,
     error: status.error,
   });
   return status;

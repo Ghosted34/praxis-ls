@@ -33,6 +33,7 @@ const restore = require("../../src/services/platform/restore.service");
 const platformDb = require("../../src/services/platform/db");
 const registry = require("../../src/services/tenant/registry.service");
 const { config } = require("../../src/config/env");
+const runtimeConfig = require("../../src/services/platform/runtime-config.service");
 
 const argv = process.argv.slice(2);
 const has = (f) => argv.includes(f);
@@ -54,13 +55,14 @@ async function cmdHistory() {
       "No restore drill has ever run. Until one does, the backups are untested.",
     );
   }
-  console.warn(`RTO target: ${config.RESTORE_RTO_TARGET_SECONDS}s\n`);
+  const tuning = await runtimeConfig.opsTuning();
+  console.warn(`RTO target: ${tuning.restoreRtoTargetSeconds}s (from ${tuning.source})\n`);
   console.warn("when              tenant      result   RTO");
   console.warn("-".repeat(52));
   for (const r of rows) {
     const rto = r.rto_seconds === null ? "-" : `${r.rto_seconds}s`;
     const over =
-      r.rto_seconds > Number(config.RESTORE_RTO_TARGET_SECONDS) ? "  <-- over target" : "";
+      r.rto_seconds > Number(tuning.restoreRtoTargetSeconds) ? "  <-- over target" : "";
     console.warn(
       `${new Date(r.ran_at).toISOString().slice(0, 16)}  ${String(r.slug).padEnd(10)}  ` +
         `${(r.ok ? "PASS" : "FAIL").padEnd(7)}  ${rto.padStart(6)}${over}`,

@@ -28,9 +28,13 @@
 const platformDb = require("./db");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const runtimeConfig = require("./runtime-config.service");
 
-const PROBE_TIMEOUT_MS = Number(config.UPTIME_PROBE_TIMEOUT_MS || 10_000);
-const PROBE_PATH = config.UPTIME_PROBE_PATH || "/api/health/ready";
+// The probe's path, scheme and timeout are vault-first now (ops.tuning), so they
+// are resolved per sweep rather than captured at import. The INTERVAL stays in
+// env on purpose — it is the denominator of the availability figure, and moving
+// it somewhere it can be changed casually would silently redefine every
+// historical percentage.
 
 /** Every host worth probing: each tenant's primary subdomain, plus the platform host. */
 async function probeTargets() {
@@ -52,12 +56,13 @@ async function probeTargets() {
  * Probe one host. Never throws — a failed probe is the data, not an error, so
  * letting it reject would drop the very sample that records the outage.
  */
-async function probeHost(target) {
-  const scheme = config.UPTIME_PROBE_SCHEME || "https";
-  const url = `${scheme}://${target.host}${PROBE_PATH}`;
+async function probeHost(target, tuning = null) {
+  const t = tuning || (await runtimeConfig.opsTuning());
+  const timeoutMs = Number(t.uptimeProbeTimeoutMs);
+  const url = `${t.uptimeProbeScheme}://${target.host}${t.uptimeProbePath}`;
   const started = Date.now();
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PROBE_TIMEOUT_MS);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const res = await fetch(url, {
@@ -79,7 +84,7 @@ async function probeHost(target) {
       // No latency on a failed probe: recording the timeout duration as latency
       // would make the average look worse the longer the timeout is set.
       latency_ms: null,
-      error: err.name === "AbortError" ? `timeout after ${PROBE_TIMEOUT_MS}ms` : err.message,
+      error: err.name === "AbortError" ? `timeout after ${timeoutMs}ms` : err.message,
     };
   } finally {
     clearTimeout(timer);
@@ -89,12 +94,15 @@ async function probeHost(target) {
 /** Probe every target and record the samples. */
 async function probeAll() {
   const targets = await probeTargets();
+  // Resolved once for the whole sweep: every host in one sweep must be probed
+  // on the same terms, or the samples are not comparable.
+  const tuning = await runtimeConfig.opsTuning();
   const results = [];
 
   // Parallel: these are network waits, not CPU, and a serial sweep of fifty
   // hosts at a ten-second timeout could exceed the probe interval itself —
   // which would silently thin the sample rate the uptime maths assumes.
-  const settled = await Promise.all(targets.map((t) => probeHost(t)));
+  const settled = await Promise.all(targets.map((t) => probeHost(t, tuning)));
 
   for (const r of settled) {
     try {

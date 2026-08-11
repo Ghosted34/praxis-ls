@@ -33,7 +33,13 @@ async function cmdStatus() {
     return s.stale_count === 0;
   }
   const w = Math.max(6, ...s.tenants.map((t) => t.slug.length));
-  console.warn(`Backup freshness (RPO ${s.rpo_hours}h, driver ${store.driver})\n`);
+  // `describe()` rather than a constant: the destination is configurable from
+  // the console now, so an operator running this wants to see where backups are
+  // ACTUALLY going — and whether that came from the vault or from .env.
+  const dest = await store.describe();
+  console.warn(
+    `Backup freshness (RPO ${s.rpo_hours}h, driver ${dest.driver} → ${dest.destination}, from ${dest.source})\n`,
+  );
   console.warn(`${"tenant".padEnd(w)}  last good backup      age     size`);
   console.warn("-".repeat(w + 42));
   for (const t of s.tenants) {

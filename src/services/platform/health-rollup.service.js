@@ -34,6 +34,7 @@ const registry = require("../tenant/registry.service");
 const provisioning = require("./provisioning.service");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
+const runtimeConfig = require("./runtime-config.service");
 
 /**
  * Decide a tenant's colour from its signals.
@@ -47,9 +48,25 @@ const { config } = require("../../config/env");
  * Returns the reasons alongside the status, because a colour with no reason is
  * a colour someone has to reverse-engineer at 3am.
  */
-function statusFor(signals) {
+/**
+ * `thresholds` is injected rather than read here, and the reason is cost, not
+ * purity: the amber limits now live in the vault, and this runs once PER TENANT
+ * inside the sweep. Resolving them here would be a settings lookup per tenant
+ * per collection. `collectFleetHealth` resolves once and passes them down.
+ *
+ * Left synchronous deliberately. This is the one function that decides a colour,
+ * it is the thing most worth being able to test with a plain object, and making
+ * it async to fetch three numbers would spread `await` across every caller for
+ * no gain. Omitting `thresholds` falls back to env, so existing callers and
+ * tests are unaffected.
+ */
+function statusFor(signals, thresholds = {}) {
   const reasons = [];
   let status = "GREEN";
+
+  const jobFailureAmber = Number(thresholds.healthJobFailureAmber ?? config.HEALTH_JOB_FAILURE_AMBER ?? 5);
+  const errorAmber = Number(thresholds.healthErrorAmber ?? config.HEALTH_ERROR_AMBER ?? 50);
+  const livenessSlowMs = Number(thresholds.healthLivenessSlowMs ?? config.HEALTH_LIVENESS_SLOW_MS ?? 2000);
 
   const red = (why) => {
     reasons.push(why);
@@ -80,14 +97,14 @@ function statusFor(signals) {
   if (signals.redis_ok === false) red("redis unreachable");
 
   if (signals.schema_behind > 0) amber(`schema ${signals.schema_behind} migration(s) behind`);
-  if (signals.jobs_failed_24h > Number(config.HEALTH_JOB_FAILURE_AMBER || 5)) {
+  if (signals.jobs_failed_24h > jobFailureAmber) {
     amber(`${signals.jobs_failed_24h} job failures in 24h`);
   }
-  if (signals.error_count_24h > Number(config.HEALTH_ERROR_AMBER || 50)) {
+  if (signals.error_count_24h > errorAmber) {
     amber(`${signals.error_count_24h} errors in 24h`);
   }
   if (signals.mail_verified === false) amber("mail domain not verified");
-  if (signals.liveness_ms && signals.liveness_ms > Number(config.HEALTH_LIVENESS_SLOW_MS || 2000)) {
+  if (signals.liveness_ms && signals.liveness_ms > livenessSlowMs) {
     amber(`tenant query slow (${signals.liveness_ms}ms)`);
   }
 
@@ -147,6 +164,12 @@ async function errorSignals(meta) {
 async function collectFleetHealth(opts = {}) {
   const tenants = opts.tenants || (await registry.listActiveTenants());
 
+  // Resolved ONCE per sweep, not per tenant. The amber thresholds live in the
+  // vault now, and a lookup per tenant would turn a settings read into a
+  // per-tenant cost for no benefit — every tenant in a sweep is judged against
+  // the same limits by definition.
+  const tuning = await runtimeConfig.opsTuning();
+
   // One fleet-wide schema read rather than one per tenant: it opens a
   // superuser connection per tenant DB internally and doing that twice per
   // sweep doubles the cost of the cheapest signal here.
@@ -180,7 +203,7 @@ async function collectFleetHealth(opts = {}) {
       ...liveness,
       ...errors,
     };
-    const { status, reasons } = statusFor(signals);
+    const { status, reasons } = statusFor(signals, tuning);
 
     try {
       await platformDb.query(

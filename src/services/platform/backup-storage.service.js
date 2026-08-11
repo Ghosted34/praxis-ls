@@ -35,8 +35,30 @@ const { pipeline } = require("stream/promises");
 const { Transform } = require("stream");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const runtimeConfig = require("./runtime-config.service");
 
-const DRIVER = config.BACKUP_DRIVER || "local";
+/**
+ * WHY THE DRIVER AND CREDENTIALS ARE RESOLVED PER CALL, NOT AT MODULE LOAD
+ *
+ *   They used to be read once when this file was required: `const DRIVER =
+ *   config.BACKUP_DRIVER`, an `impl` chosen from it, and the exports bound
+ *   straight to that object. That is fine when the only source is `.env`, which
+ *   cannot change while the process runs.
+ *
+ *   It stops being fine now the platform settings vault is the primary source.
+ *   An operator rotating a bucket key in the console expects the next backup to
+ *   use it — not the next deploy. Binding at load time would mean the console
+ *   reporting a change that the running process ignores, which is exactly the
+ *   "control that reports success and changes nothing" this codebase keeps
+ *   ruling out.
+ *
+ *   So every exported call resolves first. The cost is one cached lookup per
+ *   call (see runtime-config.service for the TTL); the streaming, hashing and
+ *   key-safety logic below is untouched.
+ */
+async function cfg() {
+  return runtimeConfig.backupStorage();
+}
 
 /**
  * Same key discipline as the document vault, and for the same reason: keys are
@@ -56,9 +78,9 @@ function assertSafeKey(key) {
   return k;
 }
 
-function localPath(key) {
+function localPath(key, root) {
   const safe = assertSafeKey(key);
-  const base = path.resolve(config.BACKUP_LOCAL_PATH);
+  const base = path.resolve(root || config.BACKUP_LOCAL_PATH);
   const full = path.resolve(base, safe);
   // The separator is part of the test: `startsWith(base)` alone accepts a
   // sibling directory whose name merely begins with the base.
@@ -111,8 +133,8 @@ class HashingCounter extends Transform {
 /* ── local driver ────────────────────────────────────────────────────────── */
 
 const local = {
-  async putStream(readable, key) {
-    const full = localPath(key);
+  async putStream(readable, key, c) {
+    const full = localPath(key, c.localPath);
     await fs.mkdir(path.dirname(full), { recursive: true });
     const tap = new HashingCounter();
     // Write to a temp name and rename on success. A crash mid-dump otherwise
@@ -146,31 +168,31 @@ const local = {
     }
   },
 
-  getStream(key) {
-    return fsSync.createReadStream(localPath(key));
+  getStream(key, c) {
+    return fsSync.createReadStream(localPath(key, c.localPath));
   },
 
-  async exists(key) {
+  async exists(key, c) {
     try {
-      await fs.access(localPath(key));
+      await fs.access(localPath(key, c.localPath));
       return true;
     } catch {
       return false;
     }
   },
 
-  async stat(key) {
+  async stat(key, c) {
     try {
-      const st = await fs.stat(localPath(key));
+      const st = await fs.stat(localPath(key, c.localPath));
       return { bytes: st.size, modified: st.mtime };
     } catch {
       return null;
     }
   },
 
-  async list(prefix = "") {
-    const base = path.resolve(config.BACKUP_LOCAL_PATH);
-    const root = prefix ? localPath(prefix) : base;
+  async list(prefix = "", c) {
+    const base = path.resolve(c.localPath);
+    const root = prefix ? localPath(prefix, c.localPath) : base;
     const out = [];
     async function walk(dir) {
       let entries;
@@ -198,8 +220,8 @@ const local = {
     return out;
   },
 
-  async remove(key) {
-    await fs.unlink(localPath(key)).catch((err) => {
+  async remove(key, c) {
+    await fs.unlink(localPath(key, c.localPath)).catch((err) => {
       if (err.code !== "ENOENT") throw err;
     });
   },
@@ -208,31 +230,40 @@ const local = {
 /* ── s3 driver (lazy client) ─────────────────────────────────────────────── */
 
 let _s3 = null;
+let _s3Key = null;
 
-async function s3Client() {
-  if (_s3) return _s3;
+/**
+ * The client is cached against the CREDENTIALS it was built from, not just
+ * "have we built one". A plain `if (_s3) return _s3` would keep serving a client
+ * created with the old key after an operator rotates the bucket credential in
+ * the console — backups would keep succeeding against the old account until the
+ * process restarted, which is the silent half-broken state this whole move is
+ * meant to remove.
+ */
+async function s3Client(c) {
+  const s3c = c.s3;
+  const identity = [s3c.endpoint, s3c.bucket, s3c.region, s3c.accessKey, s3c.secretKey, s3c.forcePathStyle].join("|");
+  if (_s3 && _s3Key === identity) return _s3;
 
   const { S3Client } = require("@aws-sdk/client-s3");
-  if (!config.BACKUP_S3_BUCKET) {
-    throw new Error("BACKUP_S3_BUCKET is not configured (BACKUP_DRIVER=s3)");
+  if (!s3c.bucket) {
+    throw new Error("no backup bucket configured (driver=s3) — set it in Platform Console → Integrations → Backup storage");
   }
   _s3 = new S3Client({
-    region: config.BACKUP_S3_REGION,
-    endpoint: config.BACKUP_S3_ENDPOINT || undefined,
-    forcePathStyle: config.BACKUP_S3_FORCE_PATH_STYLE,
+    region: s3c.region,
+    endpoint: s3c.endpoint || undefined,
+    forcePathStyle: s3c.forcePathStyle,
     credentials:
-      config.BACKUP_S3_ACCESS_KEY && config.BACKUP_S3_SECRET_KEY
-        ? {
-            accessKeyId: config.BACKUP_S3_ACCESS_KEY,
-            secretAccessKey: config.BACKUP_S3_SECRET_KEY,
-          }
+      s3c.accessKey && s3c.secretKey
+        ? { accessKeyId: s3c.accessKey, secretAccessKey: s3c.secretKey }
         : undefined, // fall back to the default credential chain (IAM role)
   });
+  _s3Key = identity;
   return _s3;
 }
 
 const s3 = {
-  async putStream(readable, key) {
+  async putStream(readable, key, c) {
     let Upload;
     try {
       ({ Upload } = require("@aws-sdk/lib-storage"));
@@ -242,7 +273,7 @@ const s3 = {
       );
     }
     const safe = assertSafeKey(key);
-    const client = await s3Client();
+    const client = await s3Client(c);
     const tap = new HashingCounter();
     // Transform, and `pipe` only as the plumbing between two streams neither of
     // which is in flowing mode yet — see HashingCounter's header for the data
@@ -254,7 +285,7 @@ const s3 = {
     const up = new Upload({
       client,
       params: {
-        Bucket: config.BACKUP_S3_BUCKET,
+        Bucket: c.s3.bucket,
         Key: safe,
         Body: tap,
         ContentType: "application/octet-stream",
@@ -268,7 +299,7 @@ const s3 = {
     try {
       const { HeadObjectCommand } = require("@aws-sdk/client-s3");
       const head = await client.send(
-        new HeadObjectCommand({ Bucket: config.BACKUP_S3_BUCKET, Key: safe }),
+        new HeadObjectCommand({ Bucket: c.s3.bucket, Key: safe }),
       );
       if (Number(head.ContentLength) !== counted.bytes) {
         throw new Error(
@@ -283,29 +314,29 @@ const s3 = {
 
     return {
       key: safe,
-      location: `s3://${config.BACKUP_S3_BUCKET}/${safe}`,
+      location: `s3://${c.s3.bucket}/${safe}`,
       ...counted,
     };
   },
 
-  getStream(key) {
+  getStream(key, c) {
     // Returns a promise for a stream; callers await via `openStream` below.
     return (async () => {
       const { GetObjectCommand } = require("@aws-sdk/client-s3");
-      const client = await s3Client();
+      const client = await s3Client(c);
       const out = await client.send(
-        new GetObjectCommand({ Bucket: config.BACKUP_S3_BUCKET, Key: assertSafeKey(key) }),
+        new GetObjectCommand({ Bucket: c.s3.bucket, Key: assertSafeKey(key) }),
       );
       return out.Body;
     })();
   },
 
-  async exists(key) {
+  async exists(key, c) {
     const { HeadObjectCommand } = require("@aws-sdk/client-s3");
-    const client = await s3Client();
+    const client = await s3Client(c);
     try {
       await client.send(
-        new HeadObjectCommand({ Bucket: config.BACKUP_S3_BUCKET, Key: assertSafeKey(key) }),
+        new HeadObjectCommand({ Bucket: c.s3.bucket, Key: assertSafeKey(key) }),
       );
       return true;
     } catch {
@@ -313,12 +344,12 @@ const s3 = {
     }
   },
 
-  async stat(key) {
+  async stat(key, c) {
     const { HeadObjectCommand } = require("@aws-sdk/client-s3");
-    const client = await s3Client();
+    const client = await s3Client(c);
     try {
       const head = await client.send(
-        new HeadObjectCommand({ Bucket: config.BACKUP_S3_BUCKET, Key: assertSafeKey(key) }),
+        new HeadObjectCommand({ Bucket: c.s3.bucket, Key: assertSafeKey(key) }),
       );
       return { bytes: Number(head.ContentLength), modified: head.LastModified };
     } catch {
@@ -326,15 +357,15 @@ const s3 = {
     }
   },
 
-  async list(prefix = "") {
+  async list(prefix = "", c) {
     const { ListObjectsV2Command } = require("@aws-sdk/client-s3");
-    const client = await s3Client();
+    const client = await s3Client(c);
     const out = [];
     let token;
     do {
       const page = await client.send(
         new ListObjectsV2Command({
-          Bucket: config.BACKUP_S3_BUCKET,
+          Bucket: c.s3.bucket,
           Prefix: prefix || undefined,
           ContinuationToken: token,
         }),
@@ -347,27 +378,83 @@ const s3 = {
     return out;
   },
 
-  async remove(key) {
+  async remove(key, c) {
     const { DeleteObjectCommand } = require("@aws-sdk/client-s3");
-    const client = await s3Client();
+    const client = await s3Client(c);
     await client.send(
-      new DeleteObjectCommand({ Bucket: config.BACKUP_S3_BUCKET, Key: assertSafeKey(key) }),
+      new DeleteObjectCommand({ Bucket: c.s3.bucket, Key: assertSafeKey(key) }),
     );
   },
 };
 
 /* ── driver selection ────────────────────────────────────────────────────── */
 
-const impl = DRIVER === "s3" ? s3 : local;
-
-/** Open a readable stream for a key, normalising the two drivers' shapes. */
-async function openStream(key) {
-  return impl.getStream(key);
+/**
+ * Pick the driver for THIS call.
+ *
+ * Previously a module-level constant. It is a function now because the driver
+ * itself is configurable from the console: an operator who switches a
+ * deployment from local disk to a bucket should not have to restart the API for
+ * the next backup to land in the right place.
+ */
+function driverFor(c) {
+  return c.driver === "s3" ? s3 : local;
 }
 
 /**
- * Retention sweep (D4): keep every dump for BACKUP_RETAIN_DAILY_DAYS, and keep
- * Sunday's for BACKUP_RETAIN_WEEKLY_WEEKS beyond that.
+ * Every export resolves the config, then dispatches.
+ *
+ * The drivers below are unchanged in behaviour — same streaming, same hashing,
+ * same short-write verification. All that moved is WHERE their settings come
+ * from, and the fact that the answer can now change while the process runs.
+ */
+async function putStream(readable, key) {
+  const c = await cfg();
+  return driverFor(c).putStream(readable, key, c);
+}
+
+/** Open a readable stream for a key, normalising the two drivers' shapes. */
+async function openStream(key) {
+  const c = await cfg();
+  return driverFor(c).getStream(key, c);
+}
+
+async function exists(key) {
+  const c = await cfg();
+  return driverFor(c).exists(key, c);
+}
+
+async function stat(key) {
+  const c = await cfg();
+  return driverFor(c).stat(key, c);
+}
+
+async function list(prefix = "") {
+  const c = await cfg();
+  return driverFor(c).list(prefix, c);
+}
+
+async function remove(key) {
+  const c = await cfg();
+  return driverFor(c).remove(key, c);
+}
+
+/** Which driver and destination are actually in force, and where that came from. */
+async function describe() {
+  const c = await cfg();
+  return {
+    driver: c.driver,
+    source: c.source,
+    destination: c.driver === "s3" ? `s3://${c.s3.bucket}` : c.localPath,
+    // Presence only. The secret itself is never returned by anything here.
+    credentials_set: c.driver === "s3" ? Boolean(c.s3.accessKey && c.s3.secretKey) : true,
+  };
+}
+
+/**
+ * Retention sweep (D4): keep every dump for the daily window, and keep Sunday's
+ * for the weekly window beyond that. Both windows now come from the vault
+ * (ops.tuning), falling back to env.
  *
  * Returns what it removed rather than removing silently — a retention job that
  * cannot say what it deleted is indistinguishable from one that deleted the
@@ -379,13 +466,16 @@ async function pruneRetention({
   // Injected rather than closed over. Retention is the one operation here that
   // DELETES, so it is the one that most needs to be testable without a live
   // bucket — and a function that reaches through a module-level closure cannot
-  // be exercised at all without one. Defaults are the selected driver.
-  list = impl.list,
-  remove = impl.remove,
+  // be exercised at all without one. Defaults dispatch to the selected driver.
+  list: listFn = list,
+  remove: removeFn = remove,
+  // Injectable for the same reason: a retention test should not need a vault.
+  tuning = null,
 } = {}) {
-  const dailyMs = Number(config.BACKUP_RETAIN_DAILY_DAYS) * 86_400_000;
-  const weeklyMs = Number(config.BACKUP_RETAIN_WEEKLY_WEEKS) * 7 * 86_400_000;
-  const objects = await list(prefix);
+  const t = tuning || (await runtimeConfig.opsTuning());
+  const dailyMs = Number(t.backupRetainDailyDays) * 86_400_000;
+  const weeklyMs = Number(t.backupRetainWeeklyWeeks) * 7 * 86_400_000;
+  const objects = await listFn(prefix);
   const removed = [];
   const kept = [];
 
@@ -400,7 +490,7 @@ async function pruneRetention({
       kept.push(o.key);
       continue;
     }
-    await remove(o.key);
+    await removeFn(o.key);
     removed.push(o.key);
   }
 
@@ -411,13 +501,18 @@ async function pruneRetention({
 }
 
 module.exports = {
-  putStream: impl.putStream,
+  putStream,
   openStream,
-  exists: impl.exists,
-  stat: impl.stat,
-  list: impl.list,
-  remove: impl.remove,
+  exists,
+  stat,
+  list,
+  remove,
   pruneRetention,
   assertSafeKey,
-  driver: DRIVER,
+  describe,
+  // `driver` was a constant read at import time. It is a function now because
+  // the answer can change while the process runs — anything still treating it
+  // as a string would silently compare against a function and always be wrong,
+  // which is why it is renamed rather than quietly changed in place.
+  currentDriver: async () => (await cfg()).driver,
 };

@@ -51,6 +51,35 @@ type MaintenanceWindow = {
  *  must be able to appear and disappear without the user reloading. */
 const POLL_MS = 60_000;
 
+/**
+ * Is this actually a maintenance window?
+ *
+ * The endpoint returns `null` almost always, and this component sits above
+ * every route including the login screen — so it is the one component most
+ * likely to be handed something unexpected: a stubbed response, a proxy's
+ * error page, a half-deployed API.
+ *
+ * Trusting truthiness alone is not enough. An empty object is truthy, and it
+ * renders as "undefined — scheduled in NaN" — which is worse than showing
+ * nothing twice over. It is nonsense in front of every user, and because
+ * `Callout` is a `role="status"` live region, a screen reader announces it.
+ *
+ * So: validate the fields this component actually reads, and render nothing
+ * unless they are all present and sane.
+ */
+function isWindow(w: unknown): w is MaintenanceWindow {
+  if (!w || typeof w !== "object") return false;
+  const c = w as Partial<MaintenanceWindow>;
+  return (
+    typeof c.maintenance_window_id === "string" &&
+    typeof c.title === "string" &&
+    c.title.length > 0 &&
+    (c.state === "ACTIVE" || c.state === "UPCOMING") &&
+    typeof c.ends_at === "string" &&
+    !Number.isNaN(new Date(c.ends_at).getTime())
+  );
+}
+
 function humanDuration(minutes: number): string {
   if (minutes < 1) return "shortly";
   if (minutes < 60) return `in ${minutes} minute${minutes === 1 ? "" : "s"}`;
@@ -76,8 +105,8 @@ export function MaintenanceBanner() {
     let live = true;
 
     const load = () => {
-      tenant<MaintenanceWindow | null>("/maintenance")
-        .then((w) => live && setWin(w ?? null))
+      tenant<unknown>("/maintenance")
+        .then((w) => live && setWin(isWindow(w) ? w : null))
         // Silent: a banner endpoint that cannot be reached must not produce an
         // error about the feature that exists to explain errors. Worst case the
         // user simply doesn't see the notice.

@@ -118,7 +118,9 @@ async function syncTenantObjects(meta, opts = {}) {
     await backup.finishRun(runId, {
       status: "OK",
       bytes,
-      location: `${backupStore.driver}:objects/`,
+      // The driver is resolved per call now (it is configurable from the
+      // console), so this asks rather than reading a constant captured at import.
+      location: `${await backupStore.currentDriver()}:objects/`,
     });
 
     const result = {

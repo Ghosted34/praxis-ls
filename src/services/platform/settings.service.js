@@ -36,6 +36,12 @@ const SPEC = {
   // exercised one of them would be the more dangerous half going unchecked.
   "alerts.default": { probe: probes.alertWebhook, cfg: (value, secret) => ({ url: secret, ...value }) },
   "alerts.page": { probe: probes.alertWebhook, cfg: (value, secret) => ({ url: secret, ...value }) },
+  // WS-B1 — where backups are written. The probe takes no arguments: it asks
+  // the storage service what is in force and exercises THAT, so the test proves
+  // the configuration the backup job will actually use rather than a copy of it
+  // reconstructed here. Testing a reconstruction is how a test passes against
+  // settings nothing else reads.
+  "storage.backup": { probe: probes.backupStorage, cfg: () => ({}) },
 };
 const specKey = (section, key) => section + "." + key;
 
@@ -101,6 +107,20 @@ async function put({ section, key, value = {}, secret, actor = null }) {
      RETURNING *`,
     [section, key, JSON.stringify(value || {}), secretEnc, last4, actor],
   );
+
+  // Drop the runtime-config cache so a change takes effect on the next read
+  // rather than after the TTL. Without this an operator saves a new bucket key,
+  // presses Test, and the probe exercises the OLD one for up to half a minute —
+  // which is the most confusing possible moment for a stale read.
+  //
+  // Required lazily and guarded: settings.service is loaded very early, and a
+  // cache invalidation must never be the thing that fails a save.
+  try {
+    require("./runtime-config.service").invalidate();
+  } catch {
+    /* the cache is an optimisation; losing the invalidation costs one TTL */
+  }
+
   return redact(rows[0]);
 }
 

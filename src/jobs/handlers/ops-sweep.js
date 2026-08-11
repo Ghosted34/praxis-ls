@@ -25,6 +25,7 @@ const { config } = require("../../config/env");
 const health = require("../../services/platform/health-rollup.service");
 const uptime = require("../../services/platform/uptime.service");
 const alerts = require("../../services/platform/alert-routing.service");
+const runtimeConfig = require("../../services/platform/runtime-config.service");
 const entitlement = require("../../services/platform/entitlement.service");
 
 module.exports = async function opsSweep(job) {
@@ -70,7 +71,7 @@ module.exports = async function opsSweep(job) {
     // opportunistically on its own loop) cannot disagree about how much history
     // to keep — two owners with two hardcoded numbers is how a series ends up
     // truncated by whichever ran last.
-    const u = await uptime.purge({ days: Number(config.UPTIME_RETAIN_DAYS || 90) });
+    const u = await uptime.purge({ days: Number((await runtimeConfig.opsTuning()).uptimeRetainDays) });
     logger.info({ health: h.deleted, uptime: u.deleted }, "ops retention applied");
     return { health_deleted: h.deleted, uptime_deleted: u.deleted };
   }

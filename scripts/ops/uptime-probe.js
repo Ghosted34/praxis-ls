@@ -45,6 +45,7 @@ require("dotenv").config({ path: path.resolve(__dirname, "../../.env") });
 
 const uptime = require("../../src/services/platform/uptime.service");
 const platformDb = require("../../src/services/platform/db");
+const runtimeConfig = require("../../src/services/platform/runtime-config.service");
 const { config } = require("../../src/config/env");
 const { logger } = require("../../src/config/logger");
 
@@ -52,7 +53,20 @@ const args = new Set(process.argv.slice(2));
 const ONCE = args.has("--once");
 const PURGE_ONLY = args.has("--purge");
 const INTERVAL_MS = Number(config.UPTIME_PROBE_INTERVAL_MS || 300_000);
-const RETAIN_DAYS = Number(config.UPTIME_RETAIN_DAYS || 90);
+
+/**
+ * Retention is resolved from the platform settings vault, not from this
+ * process's env.
+ *
+ * Both this prober and the API's own purge job delete from the same table. If
+ * each read its own env, the two could disagree about how much history to keep
+ * and the series would be truncated by whichever ran last — a silent, gradual
+ * loss of exactly the historical data the availability figures are computed
+ * from. One source, read at use time, removes the possibility.
+ */
+async function retainDays() {
+  return Number((await runtimeConfig.opsTuning()).uptimeRetainDays);
+}
 
 let stopping = false;
 let timer = null;
@@ -89,8 +103,9 @@ async function maybePurge() {
   if (Date.now() - lastPurge < 3_600_000) return;
   lastPurge = Date.now();
   try {
-    const { deleted } = await uptime.purge({ days: RETAIN_DAYS });
-    if (deleted) logger.info({ deleted, retain_days: RETAIN_DAYS }, "uptime retention applied");
+    const days = await retainDays();
+    const { deleted } = await uptime.purge({ days });
+    if (deleted) logger.info({ deleted, retain_days: days }, "uptime retention applied");
   } catch (err) {
     logger.warn({ err }, "uptime retention failed — will retry next hour");
   }
@@ -136,7 +151,7 @@ process.on("SIGINT", () => shutdown("SIGINT"));
   }
 
   if (PURGE_ONLY) {
-    const { deleted } = await uptime.purge({ days: RETAIN_DAYS });
+    const { deleted } = await uptime.purge({ days: await retainDays() });
     logger.info({ deleted }, "uptime retention applied");
     return shutdown("purge");
   }
@@ -146,13 +161,18 @@ process.on("SIGINT", () => shutdown("SIGINT"));
     process.exit(1);
   });
 
+  // Log the RESOLVED settings, not env. These are vault-first now, so printing
+  // the env values at startup would tell an operator the prober is using
+  // something it is not — the most expensive kind of log line.
+  const tuning = await runtimeConfig.opsTuning();
   logger.info(
     {
       targets: targets.length,
       interval_ms: INTERVAL_MS,
-      timeout_ms: config.UPTIME_PROBE_TIMEOUT_MS,
-      path: config.UPTIME_PROBE_PATH,
-      scheme: config.UPTIME_PROBE_SCHEME,
+      timeout_ms: tuning.uptimeProbeTimeoutMs,
+      path: tuning.uptimeProbePath,
+      scheme: tuning.uptimeProbeScheme,
+      settings_from: tuning.source,
       mode: ONCE ? "once" : "loop",
     },
     "external uptime prober starting",

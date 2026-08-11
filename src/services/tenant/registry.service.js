@@ -11,6 +11,7 @@ const { Pool } = require("pg");
 const { registerType } = require("pgvector/pg");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
+const dbCredentials = require("./db-credential.service");
 
 const HOST_TTL_MS = 60_000;
 const hostCache = new Map(); // host -> { meta, expires }  (insertion-ordered => LRU)
@@ -47,6 +48,10 @@ function trimHostCache() {
   }
 }
 const pools = new Map(); // db_name -> Pool  (insertion-ordered => LRU by re-insert)
+// db_name -> Promise<Pool>. WS-S2 made pool creation async (a vault read), so
+// concurrent first-requests for the same tenant must share one creation rather
+// than each building a pool and orphaning all but the last.
+const inflight = new Map();
 
 /**
  * PERF S1. Which schema a pooled connection is currently bound to.
@@ -120,7 +125,8 @@ async function resolveByHost(hostHeader) {
 
   const { rows } = await platform().query(
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
-            td.db_host, td.db_port, td.db_name, td.app_role, td.live_schema, td.sandbox_schema, td.pool_max
+            td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
+            td.live_schema, td.sandbox_schema, td.pool_max
        FROM platform.subdomain s
        JOIN platform.tenant t ON t.tenant_id = s.tenant_id
        JOIN platform.tenant_database td ON td.tenant_id = t.tenant_id AND td.is_active
@@ -158,7 +164,8 @@ async function resolveBySlug(slug) {
   if (!s) return null;
   const { rows } = await platform().query(
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
-            td.db_host, td.db_port, td.db_name, td.app_role, td.live_schema, td.sandbox_schema, td.pool_max
+            td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
+            td.live_schema, td.sandbox_schema, td.pool_max
        FROM platform.tenant t
        JOIN platform.tenant_database td ON td.tenant_id = t.tenant_id AND td.is_active
       WHERE t.slug = $1
@@ -192,8 +199,17 @@ function evictIfNeeded() {
   }
 }
 
-/** Get (or create) the pool for a tenant DB. */
-function poolFor(meta) {
+/**
+ * Get (or create) the pool for a tenant DB.
+ *
+ * WS-S2 made this async: the tenant's password is resolved from the platform
+ * vault, which is a query. That introduces a race the synchronous version could
+ * not have — two concurrent requests for a tenant with no cached pool would both
+ * miss, both await, and both construct a Pool, leaking one of them (its sockets
+ * are never closed because only the second is stored). `inflight` collapses
+ * concurrent creations onto one promise so exactly one pool is ever built.
+ */
+async function poolFor(meta) {
   const existing = pools.get(meta.db_name);
   if (existing) {
     // Re-insert to move to the end: the Map is insertion-ordered, so the first
@@ -202,7 +218,30 @@ function poolFor(meta) {
     pools.set(meta.db_name, existing);
     return existing;
   }
+  const pending = inflight.get(meta.db_name);
+  if (pending) return pending;
+
+  const creation = createPool(meta).finally(() => inflight.delete(meta.db_name));
+  inflight.set(meta.db_name, creation);
+  return creation;
+}
+
+/** Build a tenant pool. Only ever called through `poolFor`'s in-flight guard. */
+async function createPool(meta) {
   const schema = liveSchemaOf(meta);
+
+  // WS-S2: authenticate with THIS tenant's own credential when one has been
+  // provisioned, falling back to the shared deploy-wide password otherwise, so
+  // the rollout is incremental and a tenant that has not been rotated keeps
+  // working. See db-credential.service.js.
+  const cred = await dbCredentials.resolveCredential(meta);
+  if (cred.source === "shared") {
+    logger.debug(
+      { db: meta.db_name, slug: meta.slug },
+      "tenant pool using shared credential — WS-S2 backfill pending for this tenant",
+    );
+  }
+
   const pool = new Pool({
     // PERF S1 seam: point every tenant pool at PgBouncer by setting
     // TENANT_DB_POOLER_HOST. The tenant's own host/port stay in the registry so
@@ -211,8 +250,8 @@ function poolFor(meta) {
     host: config.TENANT_DB_POOLER_HOST || meta.db_host,
     port: config.TENANT_DB_POOLER_PORT || meta.db_port,
     database: meta.db_name,
-    user: config.TENANT_DB_APP_ROLE || config.DB_USER,
-    password: config.DB_PASSWORD, // per-tenant secret resolved from secret store in prod
+    user: cred.user,
+    password: cred.password,
     ssl: config.DB_SSL ? { rejectUnauthorized: false } : false,
     max: meta.pool_max || config.TENANT_POOL_MAX,
 
@@ -265,7 +304,7 @@ function poolFor(meta) {
  */
 async function acquire(meta, env) {
   const schema = schemaFor(meta, env);
-  const client = await poolFor(meta).connect();
+  const client = await (await poolFor(meta)).connect();
   try {
     if (client[SCHEMA] !== schema) {
       await client.query(`SET search_path = ${schema}, public`);
@@ -316,7 +355,8 @@ function poolStats() {
 async function listActiveTenants() {
   const { rows } = await platform().query(
     `SELECT t.slug, t.tenant_id, t.status, t.is_live, t.sandbox_wipe_days,
-            td.db_host, td.db_port, td.db_name, td.app_role, td.live_schema, td.sandbox_schema, td.pool_max
+            td.db_host, td.db_port, td.db_name, td.app_role, td.secret_ref,
+            td.live_schema, td.sandbox_schema, td.pool_max
        FROM platform.tenant t
        JOIN platform.tenant_database td ON td.tenant_id = t.tenant_id AND td.is_active
       WHERE t.status = 'LIVE'
@@ -325,9 +365,30 @@ async function listActiveTenants() {
   return rows;
 }
 
+/**
+ * Drop a tenant's cached pool so the next request rebuilds it.
+ *
+ * WS-S2: a pool holds the password it was constructed with, so rotating a
+ * tenant's credential is only half done until the pool built on the old one is
+ * discarded. `pool.end()` waits for in-flight queries, so this does not
+ * interrupt a request mid-flight — the same contract as LRU eviction.
+ */
+async function invalidatePool(dbName) {
+  const pool = pools.get(dbName);
+  if (!pool) return false;
+  pools.delete(dbName);
+  try {
+    await pool.end();
+  } catch (err) {
+    logger.warn({ err, db: dbName }, "tenant pool close failed during invalidation");
+  }
+  return true;
+}
+
 async function closeAll() {
   for (const p of pools.values()) await p.end();
   pools.clear();
+  inflight.clear();
   if (platformPool) {
     await platformPool.end();
     platformPool = null;
@@ -338,6 +399,7 @@ module.exports = {
   resolveByHost,
   resolveBySlug,
   invalidateHost,
+  invalidatePool,
   poolFor,
   acquire,
   withTenantConnection,

@@ -195,8 +195,8 @@ export type ServiceTypeDictionaryItem = {
   code: string;
   label_fr: string;
   label_en?: string | null;
-  category: "debours" | "service" | "overhead" | "asset" | "other";
-  is_debours: boolean;
+  category: "disbursement" | "service" | "overhead" | "asset" | "other";
+  is_disbursement: boolean;
   is_billable: boolean;
   default_price?: number | string | null;
   currency?: string | null;
@@ -248,7 +248,7 @@ export type ServiceTypeInvoiceRow = {
   client_name?: string | null;
 };
 export type ServiceTypeMoneyRollup = {
-  planned: { currency: string; planned_total: number | string; planned_debours: number | string }[];
+  planned: { currency: string; planned_total: number | string; planned_disbursement: number | string }[];
   billed: { currency: string; billed_ttc: number | string; revenue_ht: number | string; invoice_count: number }[];
   actual_total: number;
   masked: boolean;
@@ -448,12 +448,12 @@ export type DossierOverview = {
   /** Money breakdown; margin keys arrive nulled for roles masked on dossier.margin. */
   money?: {
     service_ht?: number | null;
-    debours_total?: number | null;
+    disbursement_total?: number | null;
     vat_total?: number | null;
     revenue_ht?: number | null;
     billed_ttc?: number | null;
     planned_service_cost?: number | null;
-    planned_debours?: number | null;
+    planned_disbursement?: number | null;
     planned_cost?: number | null;
     actual_cost?: number | null;
     dossier_margin?: number | null;

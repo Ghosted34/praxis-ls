@@ -28,7 +28,7 @@ function computeTotals(lines, vatRatePercent = 19.25) {
   (lines || []).forEach((l) => {
     const lineC = Math.round(cents(l.unit_price) * Number(l.qty || 1));
     htC += lineC;
-    if (l.is_debours !== true && l.tax_code_id) taxableC += lineC;
+    if (l.is_disbursement !== true && l.tax_code_id) taxableC += lineC;
   });
   const vatC = Math.round(taxableC * (Number(vatRatePercent) / 100));
   return { total_ht: round2(htC / 100), vat_total: round2(vatC / 100), total_ttc: round2((htC + vatC) / 100) };

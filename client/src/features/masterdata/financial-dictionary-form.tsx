@@ -30,16 +30,16 @@ import * as ops from "@/lib/operations-api";
 import * as fin from "@/lib/finance-api";
 
 type Ctx = api.PostingContext;
-type RuleRow = { applies_context: Ctx; debit_account: string; credit_account: string; tax_code_id: string; is_debours: boolean };
+type RuleRow = { applies_context: Ctx; debit_account: string; credit_account: string; tax_code_id: string; is_disbursement: boolean };
 type TierRow = { service_type_id: string; tier: api.Tier };
 
 const DIRECTIONS: { value: api.Direction; label: string; letter: string }[] = [
   { value: "REVENUE", label: "Revenue", letter: "R" },
   { value: "EXPENSE", label: "Expense", letter: "E" },
-  { value: "DEBOURS", label: "Débours", letter: "D" },
+  { value: "DISBURSEMENT", label: "Disbursement", letter: "D" },
   { value: "ASSET", label: "Asset", letter: "A" },
 ];
-const CATEGORIES = ["service", "debours", "overhead", "asset", "other"] as const;
+const CATEGORIES = ["service", "disbursement", "overhead", "asset", "other"] as const;
 const CONTEXTS: Ctx[] = ["sale", "purchase", "disbursement"];
 const APPLIC: { value: api.ApplicabilityMode; label: string }[] = [
   { value: "SERVICE_SCOPED", label: "Service-scoped" },
@@ -237,21 +237,21 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
     proof_source: row?.proof_source ?? "",
     pricing_mode: (row?.pricing_mode ?? "FLAT") as api.PricingMode,
     is_billable: row?.is_billable ?? true,
-    is_debours: row?.is_debours ?? false,
+    is_disbursement: row?.is_disbursement ?? false,
     requires_justification: row?.requires_justification ?? false,
     receipt_requirement: (row?.receipt_requirement ?? "NOT_REQUIRED") as api.ReceiptRequirement,
-    debours_vat_transparent: row?.debours_vat_transparent ?? true,
+    disbursement_vat_transparent: row?.disbursement_vat_transparent ?? true,
   }));
   const set = (patch: Partial<typeof f>) => setF((s) => ({ ...s, ...patch }));
 
   const [rules, setRules] = React.useState<RuleRow[]>(
     (row?.posting_rules || []).map((r) => ({
       applies_context: r.applies_context, debit_account: r.debit_account ?? "", credit_account: r.credit_account ?? "",
-      tax_code_id: r.tax_code_id ?? "", is_debours: !!r.is_debours,
+      tax_code_id: r.tax_code_id ?? "", is_disbursement: !!r.is_disbursement,
     })),
   );
   const [tiers, setTiers] = React.useState<TierRow[]>((row?.service_tiers || []).map((t) => ({ service_type_id: t.service_type_id, tier: t.tier })));
-  React.useEffect(() => { if (rules.length === 0) setRules([{ applies_context: "sale", debit_account: "", credit_account: "", tax_code_id: "", is_debours: false }]); }, [rules.length]);
+  React.useEffect(() => { if (rules.length === 0) setRules([{ applies_context: "sale", debit_account: "", credit_account: "", tax_code_id: "", is_disbursement: false }]); }, [rules.length]);
 
   // Autosave (new items only) — restore on mount, persist on change, clear on exit.
   React.useEffect(() => {
@@ -274,7 +274,7 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
   const clearDraft = () => { try { localStorage.removeItem(DRAFT_KEY); } catch { /* ignore */ } };
 
   const setRule = (i: number, patch: Partial<RuleRow>) => setRules((rs) => rs.map((r, j) => (j === i ? { ...r, ...patch } : r)));
-  const addRule = () => setRules((rs) => [...rs, { applies_context: "purchase", debit_account: "", credit_account: "", tax_code_id: "", is_debours: f.direction === "DEBOURS" }]);
+  const addRule = () => setRules((rs) => [...rs, { applies_context: "purchase", debit_account: "", credit_account: "", tax_code_id: "", is_disbursement: f.direction === "DISBURSEMENT" }]);
   const delRule = (i: number) => setRules((rs) => (rs.length === 1 ? rs : rs.filter((_, j) => j !== i)));
 
   const codeLetter = DIRECTIONS.find((d) => d.value === f.direction)?.letter ?? "X";
@@ -301,16 +301,16 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
       proof_source: f.proof_source || undefined,
       pricing_mode: f.pricing_mode,
       is_billable: f.is_billable,
-      is_debours: f.direction === "DEBOURS" ? true : f.is_debours,
+      is_disbursement: f.direction === "DISBURSEMENT" ? true : f.is_disbursement,
       requires_justification: f.requires_justification,
       receipt_requirement: f.receipt_requirement,
-      debours_vat_transparent: f.debours_vat_transparent,
+      disbursement_vat_transparent: f.disbursement_vat_transparent,
       posting_rules: rules.map((r) => ({
         applies_context: r.applies_context,
         debit_account: r.debit_account || undefined,
         credit_account: r.credit_account || undefined,
         tax_code_id: r.tax_code_id || undefined,
-        is_debours: r.is_debours,
+        is_disbursement: r.is_disbursement,
       })),
       service_tiers: scoped ? tiers.map((t) => ({ service_type_id: t.service_type_id, tier: t.tier })) : [],
     };
@@ -390,13 +390,13 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
                     <div className="grid gap-2 sm:grid-cols-2">
                       <AccountField label="Debit" side="debit" value={r.debit_account} onChange={(v) => setRule(i, { debit_account: v })} preferredClass={preferClass(r.applies_context, "debit", f.direction)} />
                       <AccountField label="Credit" side="credit" value={r.credit_account} onChange={(v) => setRule(i, { credit_account: v })} preferredClass={preferClass(r.applies_context, "credit", f.direction)} />
-                      <Field label="Tax code" hint={r.is_debours ? "Débours lines carry no tax of ours." : undefined}>
-                        <Select value={r.tax_code_id} disabled={r.is_debours} onChange={(e) => setRule(i, { tax_code_id: e.target.value })}>
+                      <Field label="Tax code" hint={r.is_disbursement ? "Disbursement lines carry no tax of ours." : undefined}>
+                        <Select value={r.tax_code_id} disabled={r.is_disbursement} onChange={(e) => setRule(i, { tax_code_id: e.target.value })}>
                           <option value="">None</option>
                           {taxRows.map((t) => <option key={t.tax_code_id} value={t.tax_code_id}>{t.code}{t.rate_percent != null ? ` (${t.rate_percent}%)` : ""}</option>)}
                         </Select>
                       </Field>
-                      <div className="flex items-end"><Checkbox checked={r.is_debours} onCheckedChange={(v) => setRule(i, { is_debours: !!v, tax_code_id: v ? "" : r.tax_code_id })} label={<span className="text-xs">Débours (pass-through)</span>} /></div>
+                      <div className="flex items-end"><Checkbox checked={r.is_disbursement} onCheckedChange={(v) => setRule(i, { is_disbursement: !!v, tax_code_id: v ? "" : r.tax_code_id })} label={<span className="text-xs">Disbursement (pass-through)</span>} /></div>
                     </div>
                   </div>
                 ))}
@@ -447,8 +447,8 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
                 </Select>
               </Field>
             </div>
-            {(f.direction === "DEBOURS" || f.is_debours) && (
-              <Checkbox checked={f.debours_vat_transparent} onCheckedChange={(v) => set({ debours_vat_transparent: !!v })}
+            {(f.direction === "DISBURSEMENT" || f.is_disbursement) && (
+              <Checkbox checked={f.disbursement_vat_transparent} onCheckedChange={(v) => set({ disbursement_vat_transparent: !!v })}
                 label={<span className="text-sm">Show the upstream supplier VAT to the client <span className="text-muted-foreground">(pass-through, not retained by us)</span></span>} />
             )}
           </>
@@ -460,7 +460,7 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
             <ReviewRow k="Name" v={`${f.label_fr}${f.label_en ? " · " + f.label_en : ""}`} />
             <ReviewRow k="Direction / category" v={<><Pill tone="blue">{f.direction}</Pill> <span className="text-muted-foreground">{f.category}{f.subcategory ? ` · ${f.subcategory}` : ""}</span></>} />
             <ReviewRow k="Applicability" v={f.applicability_mode.replace(/_/g, " ").toLowerCase() + (scoped ? ` · ${tiers.length} service tier(s)` : "")} />
-            <ReviewRow k="Posting rules" v={<div className="space-y-0.5">{rules.map((r, i) => <div key={i} className="num text-xs">{r.applies_context}: {r.debit_account || "—"} → {r.credit_account || "—"}{r.is_debours ? " · débours" : ""}</div>)}</div>} />
+            <ReviewRow k="Posting rules" v={<div className="space-y-0.5">{rules.map((r, i) => <div key={i} className="num text-xs">{r.applies_context}: {r.debit_account || "—"} → {r.credit_account || "—"}{r.is_disbursement ? " · débours" : ""}</div>)}</div>} />
             <ReviewRow k="Compliance" v={`${f.receipt_requirement.replace(/_/g, " ").toLowerCase()}${f.requires_justification ? " · justification" : ""}${f.is_billable ? " · billable" : ""}`} />
             {f.default_price ? <ReviewRow k="Default price" v={money(Number(f.default_price), f.currency)} /> : null}
             {!basicValid && <ErrorState message="Some required fields are missing — go back to Basics." />}

@@ -111,8 +111,8 @@ async function overview(client, dossierId) {
   const [costing] = await q(
     "SELECT COUNT(DISTINCT c.costing_id)::int AS count, " +
       "COALESCE(SUM(cl.qty * cl.unit_cost), 0) AS planned_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE NOT cl.is_debours), 0) AS planned_service_cost, " +
-      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE cl.is_debours), 0) AS planned_debours " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE NOT cl.is_disbursement), 0) AS planned_service_cost, " +
+      "COALESCE(SUM(cl.qty * cl.unit_cost) FILTER (WHERE cl.is_disbursement), 0) AS planned_disbursement " +
       "FROM costing c LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id WHERE c.dossier_id = $1",
   );
   const [actual] = await q("SELECT COUNT(*)::int AS entries, COALESCE(SUM(amount), 0) AS actual_cost FROM cost_entry WHERE dossier_id = $1");
@@ -120,7 +120,7 @@ async function overview(client, dossierId) {
     "SELECT COUNT(*)::int AS count, COALESCE(SUM(total_ttc), 0) AS invoiced_ttc, " +
       "COALESCE(SUM(total_ttc) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_ttc, " +
       "COALESCE(SUM(service_ht) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_service_ht, " +
-      "COALESCE(SUM(debours_total) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_debours, " +
+      "COALESCE(SUM(disbursement_total) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_disbursement, " +
       "COALESCE(SUM(vat_total) FILTER (WHERE status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED')), 0) AS billed_vat " +
       "FROM invoice WHERE dossier_id = $1 AND type = 'FINAL'",
   );

@@ -64,7 +64,7 @@ const sampleLines = [
   { label: "Manutention portuaire", qty: 1, unit: 180000, tax: 19.25, amount: 180000 },
   { label: "Débours douane (avance)", qty: 1, unit: 320000, tax: 0, amount: 320000 },
 ];
-const sampleTotals = { service_ht: 1080000, debours_total: 320000, vat_total: 207900, total_ttc: 1607900 };
+const sampleTotals = { service_ht: 1080000, disbursement_total: 320000, vat_total: 207900, total_ttc: 1607900 };
 
 /* ── the six templates ───────────────────────────────────────────────────── */
 const TEMPLATES = {
@@ -78,7 +78,7 @@ const TEMPLATES = {
       meta: (d) => [[{ fr: "Date", en: "Date" }, k.dateFmt(d.date)], [{ fr: "Échéance", en: "Due" }, k.dateFmt(d.due)], [{ fr: "Dossier", en: "File" }, d.dossier_ref]],
       totalsRows: (d, ccy) => [
         [{ fr: "Total HT", en: "Subtotal" }, k.money(d.totals.service_ht, ccy)],
-        [{ fr: "Débours", en: "Disbursements" }, k.money(d.totals.debours_total, ccy)],
+        [{ fr: "Débours", en: "Disbursements" }, k.money(d.totals.disbursement_total, ccy)],
         [{ fr: "TVA 19,25%", en: "VAT 19.25%" }, k.money(d.totals.vat_total, ccy)],
         [{ fr: "Total TTC", en: "Total" }, k.money(d.totals.total_ttc, ccy), { grand: true }],
       ],

@@ -117,7 +117,7 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
       <div className="space-y-1.5">
         <div className="micro mb-2">Billed (locked final invoices)</div>
         <MoneyRow label="Service HT" value={money(m.service_ht)} />
-        <MoneyRow label="Débours (pass-through)" value={money(m.debours_total)} />
+        <MoneyRow label="Disbursement (pass-through)" value={money(m.disbursement_total)} />
         <MoneyRow label="TVA" value={money(m.vat_total)} />
         <MoneyRow label="Revenue HT" value={money(m.revenue_ht)} />
         <MoneyRow label="Total TTC" value={money(m.billed_ttc)} strong />
@@ -125,7 +125,7 @@ function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
       <div className="space-y-1.5">
         <div className="micro mb-2">Costs</div>
         <MoneyRow label="Planned service cost" value={money(m.planned_service_cost)} />
-        <MoneyRow label="Planned débours" value={money(m.planned_debours)} />
+        <MoneyRow label="Planned débours" value={money(m.planned_disbursement)} />
         <MoneyRow label="Planned total" value={money(m.planned_cost)} />
         <MoneyRow label="Actual (GL)" value={money(m.actual_cost)} strong />
       </div>

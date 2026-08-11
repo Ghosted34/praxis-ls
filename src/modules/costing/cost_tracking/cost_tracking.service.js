@@ -15,8 +15,8 @@ const { AppError } = require("../../../utils/errors");
 
 async function recordCost(client, opts) {
   const {
-    dossierId, dictionaryItemId = null, amount, category = null, isDebours = false,
-    expenseCoa = null, treasuryCoa = "521", deboursAccount = "4731",
+    dossierId, dictionaryItemId = null, amount, category = null, isDisbursement = false,
+    expenseCoa = null, treasuryCoa = "521", disbursementAccount = "4731",
     entityId, entryDate, sourceDocRef, proofVaultId = null, actor = {}, ip = null,
   } = opts;
   if (!(Number(amount) > 0)) throw new AppError("BAD_AMOUNT", "amount must be > 0", 422);
@@ -25,7 +25,7 @@ async function recordCost(client, opts) {
   await client.query("BEGIN");
   try {
     let debitAccount = expenseCoa;
-    if (isDebours) debitAccount = deboursAccount;
+    if (isDisbursement) debitAccount = disbursementAccount;
     else if (!debitAccount) debitAccount = await repo.purchaseRuleAccount(client, dictionaryItemId);
     if (!debitAccount) throw new AppError("NO_EXPENSE_ACCOUNT", "no expense account (pass expenseCoa or map a purchase posting_rule)", 422);
 
@@ -33,7 +33,7 @@ async function recordCost(client, opts) {
       journalCode: "OD", entityId, entryDate,
       description: "Dossier cost" + (category ? " — " + category : ""), sourceDocRef, source: "SYSTEM_RULE",
       lines: [
-        { account_code: debitAccount, debit: amount, credit: 0, dossier_id: dossierId, dictionary_item_id: dictionaryItemId, is_debours: isDebours === true },
+        { account_code: debitAccount, debit: amount, credit: 0, dossier_id: dossierId, dictionary_item_id: dictionaryItemId, is_disbursement: isDisbursement === true },
         { account_code: treasuryCoa, debit: 0, credit: amount, dossier_id: dossierId },
       ],
       validate: true, actor, ip,

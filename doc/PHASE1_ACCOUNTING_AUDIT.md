@@ -33,7 +33,7 @@ data model is shaky. Here the data model is superb and the logic is absent.
 
 **Schema (`0200`–`0230`, `0342`)** models KB §22 almost exactly:
 - `chart_of_accounts` (code, parent_code hierarchy, class, normal_balance,
-  `is_postable`, `requires_analytic`), `dictionary_item` (with the `is_debours`
+  `is_postable`, `requires_analytic`), `dictionary_item` (with the `is_disbursement`
   flag), `posting_rule` (dict item → debit/credit account + `tax_code_id` +
   `applies_context` sale/purchase/disbursement).
 - `journal` / `accounting_period` / `journal_entry` (entry_no, source_doc_ref,

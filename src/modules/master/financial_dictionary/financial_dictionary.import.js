@@ -132,11 +132,11 @@ async function buildTemplate({ accounts = [], taxCodes = [], serviceTypes = [], 
   // One worked example, in the muted fill so it reads as a sample and not data.
   // Deleting it is a one-row delete; guessing the shape of 27 columns is not.
   const sample = ws.addRow({
-    label_fr: "Frais portuaires (THC)", label_en: "Port charges (THC)", category: "debours", direction: "DEBOURS",
+    label_fr: "Frais portuaires (THC)", label_en: "Port charges (THC)", category: "disbursement", direction: "DISBURSEMENT",
     subcategory: "THC", applicability_mode: "ANY_OPERATIONS", unit_of_measure: "CONTAINER_20",
     default_price: 85000, currency: "XAF", is_billable: "Y", provider_kind: "PORT_TERMINAL",
     proof_source: "PORT_TERMINAL", receipt_requirement: "ALWAYS_REQUIRED", requires_justification: "N",
-    debours_vat_transparent: "Y", description: "EXAMPLE ROW — delete before importing.",
+    disbursement_vat_transparent: "Y", description: "EXAMPLE ROW — delete before importing.",
     purchase_debit: accounts[0] ? accounts[0].code : "6271", purchase_credit: "4011",
   });
   sample.eachCell((cell) => { cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: MUTED } }; });

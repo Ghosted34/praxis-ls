@@ -48,7 +48,7 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
       const payloadLines: InvoiceLineInput[] = filled.map((l) => ({
         dictionary_item_id: l.dictionary_item_id,
         amount: Number(l.amount),
-        is_debours: l.is_debours || undefined,
+        is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
       }));
       await fin.createInvoiceDraft({
@@ -129,7 +129,7 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
                 onChange={(e) => setLine(i, { amount: e.target.value })}
               />
               <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} />
+                <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} />
                 débours
               </label>
               <Button
@@ -222,7 +222,7 @@ export function InvoiceSubmitForm({
             <div className="micro mb-2 uppercase tracking-wide">Computed before posting</div>
             <div className="grid grid-cols-2 gap-y-1">
               <span className="text-muted-foreground">Service (HT)</span><span className="num text-right">{amount(totals.totals.subtotal_ht)}</span>
-              <span className="text-muted-foreground">Débours (pass-through)</span><span className="num text-right">{amount(totals.totals.debours_total)}</span>
+              <span className="text-muted-foreground">Disbursement (pass-through)</span><span className="num text-right">{amount(totals.totals.disbursement_total)}</span>
               <span className="text-muted-foreground">TVA</span><span className="num text-right">{amount(totals.totals.tax_total)}</span>
               <span className="font-medium text-foreground">Total TTC</span><span className="num text-right font-medium text-primary-ink">{amount(totals.totals.total)}</span>
               {totals.advance_open > 0 && (<><span className="text-muted-foreground">Customer advance to apply</span><span className="num text-right">−{amount(totals.advance_open)}</span></>)}
@@ -274,7 +274,7 @@ export function InvoiceEditForm({
         const ls = (inv.lines || []).map((l) => ({
           dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
           amount: l.line_ht !== undefined && l.line_ht !== null ? String(l.line_ht) : "",
-          is_debours: !!l.is_debours,
+          is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
@@ -298,7 +298,7 @@ export function InvoiceEditForm({
       const payloadLines: InvoiceLineInput[] = filled.map((l) => ({
         dictionary_item_id: l.dictionary_item_id,
         amount: Number(l.amount),
-        is_debours: l.is_debours || undefined,
+        is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
       }));
       await fin.updateInvoiceDraft(invoiceId, {
@@ -358,7 +358,7 @@ export function InvoiceEditForm({
                   onChange={(e) => setLine(i, { amount: e.target.value })}
                 />
                 <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-                  <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} />
+                  <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} />
                   débours
                 </label>
                 <Button

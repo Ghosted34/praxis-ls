@@ -600,14 +600,14 @@ export type PostingRule = {
   debit_account?: string | null;
   credit_account?: string | null;
   tax_code_id?: string | null;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
   // Resolved on the 360 read (joined from chart_of_accounts) — labels for display.
   debit_label?: string | null;
   credit_label?: string | null;
   debit_class?: number | null;
   credit_class?: number | null;
 };
-export type Direction = "REVENUE" | "EXPENSE" | "DEBOURS" | "ASSET";
+export type Direction = "REVENUE" | "EXPENSE" | "DISBURSEMENT" | "ASSET";
 export type ApplicabilityMode = "SERVICE_SCOPED" | "ANY_OPERATIONS" | "NON_OPERATIONAL";
 /** FLAT = a rate card resolves the price (the default). FORMULA = the price
  *  depends on a tariff and elapsed time (Demurrage, Storage) — the real
@@ -637,7 +637,7 @@ export type DictItem = {
   unit_of_measure?: string | null;
   applicability_mode: ApplicabilityMode;
   currency?: string;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
   is_billable?: boolean;
   default_price?: number | null;
   shipping_line?: string | null;
@@ -645,7 +645,7 @@ export type DictItem = {
   proof_source?: string | null;
   requires_justification?: boolean;
   receipt_requirement?: ReceiptRequirement;
-  debours_vat_transparent?: boolean;
+  disbursement_vat_transparent?: boolean;
   pricing_mode?: PricingMode;
   varies_by_equipment?: boolean;
   service_type_key?: string | null;
@@ -655,12 +655,12 @@ export type DictInput = {
   label_fr: string;
   label_en?: string | null;
   description?: string | null;
-  category: "debours" | "service" | "overhead" | "asset" | "other";
+  category: "disbursement" | "service" | "overhead" | "asset" | "other";
   direction: Direction;
   subcategory?: string | null;
   unit_of_measure?: string | null;
   applicability_mode?: ApplicabilityMode;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
   is_billable?: boolean;
   default_price?: number | null;
   currency?: string;
@@ -669,7 +669,7 @@ export type DictInput = {
   proof_source?: string | null;
   requires_justification?: boolean;
   receipt_requirement?: ReceiptRequirement;
-  debours_vat_transparent?: boolean;
+  disbursement_vat_transparent?: boolean;
   pricing_mode?: PricingMode;
   posting_rules: PostingRule[];
   service_tiers?: { service_type_id: string; service_key?: string | null; tier: Tier; sort_order?: number }[];
@@ -682,7 +682,7 @@ export type DictUsage = {
 };
 export type DictCompliance = {
   requires_justification: boolean; receipt_requirement: ReceiptRequirement; proof_source?: string | null;
-  is_debours: boolean; debours_vat_transparent: boolean; needs_attention: boolean;
+  is_disbursement: boolean; disbursement_vat_transparent: boolean; needs_attention: boolean;
 };
 export type DictDossier = {
   item: DictFull; posting_rules: PostingRule[]; service_tiers: ServiceTier[];
@@ -722,7 +722,7 @@ export type DictSearchHit = {
   category: string;
   subcategory?: string | null;
   unit_of_measure?: string | null;
-  is_debours?: boolean;
+  is_disbursement?: boolean;
   is_billable?: boolean;
   varies_by_equipment?: boolean;
   is_active?: boolean;

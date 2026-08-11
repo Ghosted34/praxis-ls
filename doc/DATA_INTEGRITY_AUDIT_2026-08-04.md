@@ -33,7 +33,7 @@ Of ~103 `numeric` money/quantity columns in the tenant schema, exactly **three**
 
 Everything else accepts negatives, including:
 
-- `invoice.service_ht`, `debours_total`, `vat_total`, `total_ttc` (`0230_treasury_invoicing.sql`)
+- `invoice.service_ht`, `disbursement_total`, `vat_total`, `total_ttc` (`0230_treasury_invoicing.sql`)
 - `payment_receipt.amount`, `payment_allocation.amount` (same file)
 - `supplier_invoice.amount_ht / vat_total / wht_total / amount_ttc` (`0342_finance_gaps.sql`)
 - `asset.acquisition_cost`, `depreciation_schedule.amount`

@@ -132,7 +132,7 @@ Feature/module changes here are **projected** into each tenant DB's `feature_sta
 The three layers stay **separate** (never merge COA and Dictionary):
 
 1. `chart_of_accounts` — statutory SYSCOHADA, hierarchical (`code`, `parent_code`, `class 1–9`, `normal_balance D/C`, `is_postable`, `requires_analytic`). Seeded per tenant/entity; core is regulated, tenants add sub-accounts. Creating a treasury sub-account (a new bank/MoMo wallet) auto-creates the matching COA sub-account (transcript §11.3f).
-2. `dictionary_item` — operational, user-editable catalogue (friendly EN/FR names, category, **`is_debours`**, price/currency/shipping-line). What operators and AI interact with.
+2. `dictionary_item` — operational, user-editable catalogue (friendly EN/FR names, category, **`is_disbursement`**, price/currency/shipping-line). What operators and AI interact with.
 3. `posting_rule` — the glue: dict item → debit/credit account(s) + `tax_code` + context (`sale/purchase/disbursement`). **[RULE]** a dictionary item cannot be saved without a complete rule.
 4. `tax_jurisdiction` / `tax_code` — **versioned** with `effective_from/to` (never overwrite): TVA 19.25%, WHT 2.2%/5.5%, IS 33%/min 2.2%/5.5%, CNPS, CFC, FNE, IRPP brackets, CAC. Postings use the version effective at the entry date.
 
@@ -140,7 +140,7 @@ Execution layer:
 - `journal` (Achats/Ventes/Banque/Paie/OD), `journal_entry` (`entry_no` gap-free per journal/period, `status draft|validated`, `source SYSTEM_AUTO|SYSTEM_RULE|HUMAN_MANUAL|HUMAN_CORRECTION`, `review_status UNREVIEWED|ATTESTED|FLAGGED|CORRECTED`, `corrects_entry_id`, `source_doc_ref`, `period_id`), `journal_line` (`account_code`, exactly one of debit/credit > 0, **`dossier_id`** analytical dimension, `tax_code`, `currency`, `fx_rate`).
 - `accounting_period` — freeze/lock; validated entries immutable; corrections = reversal+replacement (never edit in place).
 - `regie_advance` (581 state machine `ISSUED→PARTIALLY_JUSTIFIED→JUSTIFIED`, `AGED_UNJUSTIFIED`, `QUERIED`) — aging auto-reclassifies 581→4211, never auto-allocates to 4731 (KB §6.8).
-- Invoicing: `advance` (4191), `invoice`/`invoice_line` (proforma/final; `is_debours` per line), receivables/allocations, assets/depreciation.
+- Invoicing: `advance` (4191), `invoice`/`invoice_line` (proforma/final; `is_disbursement` per line), receivables/allocations, assets/depreciation.
 
 **The KB §23 invariants are enforced in the DB** where possible (CHECK constraints + triggers): balanced entries (Σ Dr = Σ Cr), one side per line, postable-leaf-only, débours never in class 6/7, no VAT on débours, no compensation, advance≠revenue, gap-free `entry_no`, analytical completeness on 4731/706/707/direct-cost lines, immutability of validated entries, tax-code versioning, dictionary completeness. These are encoded as triggers so a bad write is rejected regardless of which service issues it.
 

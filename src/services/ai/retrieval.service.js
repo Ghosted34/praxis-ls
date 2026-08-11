@@ -76,7 +76,7 @@ async function retrieve(opts) {
  * a genuinely irrelevant OHADA chunk (sim=0.2) won't outrank a relevant
  * codebase chunk (sim=0.85).
  */
-const DOMAIN_KEYWORDS = /\b(ohada|syscohada|débours|debours|journal entry|posting|chart of accounts|VAT|TVA|tax declaration|withholding|précompte| acompte|IS\b|BIC|TVA|CNPS|NIU|patente|financial statement|bilan|compte de résultat|TAFIRE|GL|general ledger|double.entry|depreciation|amortissement)\b/i;
+const DOMAIN_KEYWORDS = /\b(ohada|syscohada|débours|disbursement|journal entry|posting|chart of accounts|VAT|TVA|tax declaration|withholding|précompte| acompte|IS\b|BIC|TVA|CNPS|NIU|patente|financial statement|bilan|compte de résultat|TAFIRE|GL|general ledger|double.entry|depreciation|amortissement)\b/i;
 const OHADA_REF = /ohada|OHADA_KB|Accounting.*KnowledgeBase|tax.*knowledge/i;
 
 function boostDomainHits(hits, query) {

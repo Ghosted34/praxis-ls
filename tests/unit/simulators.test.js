@@ -6,13 +6,13 @@ describe("margin simulator (MOD-27)", () => {
   test("margin is on services only; débours excluded", () => {
     const r = computeMargin([
       { qty: 1, unit_cost: 100, unit_price: 150 },              // service
-      { qty: 2, unit_cost: 50, unit_price: 50, is_debours: true }, // pass-through
+      { qty: 2, unit_cost: 50, unit_price: 50, is_disbursement: true }, // pass-through
     ]);
     expect(r.total_cost).toBe(200);   // 100 + 2*50
     expect(r.total_price).toBe(250);  // 150 + 2*50
     expect(r.service_cost).toBe(100);
     expect(r.service_price).toBe(150);
-    expect(r.debours_total).toBe(100);
+    expect(r.disbursement_total).toBe(100);
     expect(r.margin_amount).toBe(50);
     expect(r.margin_percent).toBeCloseTo(33.33, 1);
     expect(r.markup_percent).toBe(50);

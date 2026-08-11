@@ -3,7 +3,7 @@
  *
  * Split out of `features/commercial/pages.tsx` (1,056 lines) in Phase 4, audit
  * F7. The editor is the biggest write surface in the module: a quotation
- * carries priced lines, a debours flag per line and a tax code per line, and
+ * carries priced lines, a disbursement flag per line and a tax code per line, and
  * all three drive what the eventual invoice may legally contain.
  */
 
@@ -18,9 +18,9 @@ import { cell, money } from "@/lib/format";
 import { SearchSelect } from "@/components/ui/search-select";
 import { listSalesTaxCodes, type TaxCode } from "@/lib/masterdata-api";
 
-export type QLine = { dictionary_item_id: string | null; label: string; qty: string; unit_price: string; is_debours: boolean; tax_code_id: string | null };
+export type QLine = { dictionary_item_id: string | null; label: string; qty: string; unit_price: string; is_disbursement: boolean; tax_code_id: string | null };
 export const qLineTotal = (l: { qty?: unknown; unit_price?: unknown }) => (Number(l.qty) || 0) * (Number(l.unit_price) || 0);
-const blankLine = (): QLine => ({ dictionary_item_id: null, label: "", qty: "1", unit_price: "0", is_debours: false, tax_code_id: null });
+const blankLine = (): QLine => ({ dictionary_item_id: null, label: "", qty: "1", unit_price: "0", is_disbursement: false, tax_code_id: null });
 const taxCodeLabel = (c: TaxCode) => `${c.code}${c.rate_percent != null ? ` · ${c.rate_percent}%` : ""}`;
 
 export function entityText(en: Row): string {
@@ -55,7 +55,7 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
     setValidUntil(editing?.valid_until ? String(editing.valid_until).slice(0, 10) : "");
     setMarginPercent(editing?.margin_percent != null ? String(editing.margin_percent) : "");
     const el = (editing?.lines as Row[] | undefined) || [];
-    setLines(el.length ? el.map((l) => ({ dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null, label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_debours: l.is_debours === true, tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null })) : [blankLine()]);
+    setLines(el.length ? el.map((l) => ({ dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : null, label: cell(l.label) === "—" ? "" : String(l.label), qty: l.qty != null ? String(l.qty) : "1", unit_price: l.unit_price != null ? String(l.unit_price) : "0", is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id ? String(l.tax_code_id) : null })) : [blankLine()]);
     setError(null);
   }, [open, editing]);
 
@@ -94,7 +94,7 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
   async function submit() {
     setBusy(true);
     setError(null);
-    const cleanLines = lines.filter((l) => l.label.trim()).map((l) => ({ dictionary_item_id: l.dictionary_item_id || null, label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, is_debours: l.is_debours, tax_code_id: l.is_debours ? null : l.tax_code_id || null }));
+    const cleanLines = lines.filter((l) => l.label.trim()).map((l) => ({ dictionary_item_id: l.dictionary_item_id || null, label: l.label.trim(), qty: Number(l.qty) || 1, unit_price: Number(l.unit_price) || 0, is_disbursement: l.is_disbursement, tax_code_id: l.is_disbursement ? null : l.tax_code_id || null }));
     const common: Record<string, unknown> = {
       client_id: clientId || null,
       opportunity_id: opportunityId || null,
@@ -197,7 +197,7 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
                         dictionary_item_id: String(r.dictionary_item_id),
                         label: String(r.label_fr ?? r.label_en ?? r.code ?? ""),
                         unit_price: r.default_price != null ? String(r.default_price) : l.unit_price,
-                        is_debours: r.is_debours === true,
+                        is_disbursement: r.is_disbursement === true,
                       })
                     }
                     allowFreeText
@@ -213,18 +213,18 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-3 pl-1">
                 <label className="flex items-center gap-1 text-xs text-muted-foreground" title="Pass-through disbursement — never taxed">
-                  <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked, tax_code_id: e.target.checked ? null : l.tax_code_id })} />
+                  <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked, tax_code_id: e.target.checked ? null : l.tax_code_id })} />
                   débours
                 </label>
                 <div className="flex items-center gap-1">
                   <span className="text-xs text-muted-foreground">Tax</span>
                   <Select
                     value={l.tax_code_id ?? ""}
-                    disabled={l.is_debours}
+                    disabled={l.is_disbursement}
                     onChange={(e) => setLine(i, { tax_code_id: e.target.value || null })}
                     className="h-8 py-0 text-xs"
                   >
-                    <option value="">{l.is_debours ? "— untaxed —" : "— no VAT —"}</option>
+                    <option value="">{l.is_disbursement ? "— untaxed —" : "— no VAT —"}</option>
                     {taxCodes.map((c) => (
                       <option key={c.tax_code_id} value={c.tax_code_id}>
                         {taxCodeLabel(c)}

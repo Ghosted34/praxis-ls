@@ -18,27 +18,27 @@ const toCents = (v) => {
 };
 const major = (cents) => cents / 100;
 
-/** resolvedLines[]: { amount, isDebours?, taxRate? }  (taxRate = percent). */
+/** resolvedLines[]: { amount, isDisbursement?, taxRate? }  (taxRate = percent). */
 function computeTotals(resolvedLines) {
   if (!Array.isArray(resolvedLines) || resolvedLines.length === 0) {
     throw new AppError("NO_LINES", "at least one line is required", 422);
   }
   let serviceCents = 0;
-  let deboursCents = 0;
+  let disbursementCents = 0;
   let vatCents = 0;
   for (const ln of resolvedLines) {
     const ht = toCents(ln.amount);
-    if (ln.isDebours) {
-      deboursCents += ht;
+    if (ln.isDisbursement) {
+      disbursementCents += ht;
     } else {
       serviceCents += ht;
       if (ln.taxRate) vatCents += Math.round((ht * Number(ln.taxRate)) / 100);
     }
   }
-  const totalCents = serviceCents + vatCents + deboursCents;
+  const totalCents = serviceCents + vatCents + disbursementCents;
   return {
     service_ht: major(serviceCents),
-    debours_total: major(deboursCents),
+    disbursement_total: major(disbursementCents),
     vat_total: major(vatCents),
     total_ttc: major(totalCents),
   };

@@ -32,12 +32,12 @@ const BUILDERS = [
   },
   {
     key: "dictionary_item",
-    sql: `SELECT code, label_fr, label_en, category, is_debours FROM dictionary_item ORDER BY code LIMIT $1`,
+    sql: `SELECT code, label_fr, label_en, category, is_disbursement FROM dictionary_item ORDER BY code LIMIT $1`,
     card: (r) => ({
       ref: `dict:${r.code}`,
       title: `Dictionary item ${r.code}`,
       confidentiality: "normal",
-      text: `Billing item ${r.code}: ${r.label_en || r.label_fr} (${r.category}${r.is_debours ? ", débours" : ""}).`,
+      text: `Billing item ${r.code}: ${r.label_en || r.label_fr} (${r.category}${r.is_disbursement ? ", débours" : ""}).`,
     }),
   },
   // ── Expanded entity coverage ──

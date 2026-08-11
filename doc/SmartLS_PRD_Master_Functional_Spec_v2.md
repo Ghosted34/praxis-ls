@@ -330,7 +330,7 @@ This codifies the client's rules. There are two tiers of data:
 
 - **MOD-06 Chart of Accounts** = the statutory SYSCOHADA hierarchy (class→account→sub→detail). Seeded per tenant at onboarding from the KB Appendix.
 - **MOD-05 Financial Dictionary** = the operational item catalogue (what appears on costings/invoices/disbursements), friendly-named, carrying rate/price/currency/shipping-line data. **[FROM CODEBASE: `dict_code` on lines already links here.]**
-- **Layer 3 — Posting Rules (`posting_rules`)** = the account-determination engine: **every** dictionary item maps to COA account(s) + a **tax_code** + an **`is_debours` flag**. **[RULE]** No dictionary item may be saved without a complete posting rule; no invoice/costing line may reference a dict item lacking one **[KB §4, §23]**.
+- **Layer 3 — Posting Rules (`posting_rules`)** = the account-determination engine: **every** dictionary item maps to COA account(s) + a **tax_code** + an **`is_disbursement` flag**. **[RULE]** No dictionary item may be saved without a complete posting rule; no invoice/costing line may reference a dict item lacking one **[KB §4, §23]**.
 
 ### 8.8 The dossier as the analytical dimension **[KB §6.7]**
 
@@ -359,7 +359,7 @@ _All creates/edits push to the immutable ledger (8.6)._
 
 **MOD-04 Supplier / Partner Master.** _Grounding:_ `supplier_master` (SLAS-SS-…, supplier_type, NIU/RCCM, payment_method incl. **MOBILE_MONEY**, momo_network/number, bank details, rating 1–5, cached_payables). _Access:_ Procurement/Finance; cost rates per 7.3.
 
-**MOD-05 Financial Dictionary (Item Catalogue).** Per 8.7 — operational items with rate/currency/shipping-line data and a **mandatory posting rule**. _Access:_ Finance/Accountant maintain; Sales/Ops select. _Acceptance:_ cannot save an item without account(s)+tax_code+is_debours **[KB §4, §23]**.
+**MOD-05 Financial Dictionary (Item Catalogue).** Per 8.7 — operational items with rate/currency/shipping-line data and a **mandatory posting rule**. _Access:_ Finance/Accountant maintain; Sales/Ops select. _Acceptance:_ cannot save an item without account(s)+tax_code+is_disbursement **[KB §4, §23]**.
 
 **MOD-06 Chart of Accounts (OHADA).** The statutory SYSCOHADA hierarchy, seeded per tenant/entity **[KB §5]**. _Access:_ Accountant/Super Admin (add sub-accounts; core is regulated/locked). _Acceptance:_ every posting targets a valid COA account; class rules enforced.
 

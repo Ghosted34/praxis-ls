@@ -184,18 +184,18 @@ async function overview(client, id) {
   // ALL actual direct costs — débours are billed at cost so they net out of the
   // margin when re-invoiced 1:1 (KB §6.7).
   const serviceHt = Number(agg.invoices.billed_service_ht || 0);
-  const deboursBilled = Number(agg.invoices.billed_debours || 0);
+  const disbursementBilled = Number(agg.invoices.billed_disbursement || 0);
   const vatTotal = Number(agg.invoices.billed_vat || 0);
-  const revenueHt = round2(serviceHt + deboursBilled);
+  const revenueHt = round2(serviceHt + disbursementBilled);
   const dossierMargin = round2(revenueHt - actualCost);
   const money = {
     service_ht: serviceHt,
-    debours_total: deboursBilled,
+    disbursement_total: disbursementBilled,
     vat_total: vatTotal,
     revenue_ht: revenueHt,
     billed_ttc: billed,
     planned_service_cost: Number(agg.costing.planned_service_cost || 0),
-    planned_debours: Number(agg.costing.planned_debours || 0),
+    planned_disbursement: Number(agg.costing.planned_disbursement || 0),
     planned_cost: plannedCost,
     actual_cost: actualCost,
     dossier_margin: dossierMargin,

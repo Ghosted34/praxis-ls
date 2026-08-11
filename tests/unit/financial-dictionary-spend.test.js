@@ -215,7 +215,7 @@ describe("import — row validation", () => {
     serviceTypes: new Map([["SEA_IMPORT", "svc-1"], ["AIR_IMPORT", "svc-2"]]),
   };
   const good = () => ({
-    label_fr: "Frais portuaires", label_en: "Port charges", category: "debours", direction: "DEBOURS",
+    label_fr: "Frais portuaires", label_en: "Port charges", category: "disbursement", direction: "DISBURSEMENT",
     purchase_debit: "6271", purchase_credit: "4011",
   });
 
@@ -225,8 +225,8 @@ describe("import — row validation", () => {
     expect(res.data.posting_rules).toEqual([
       { applies_context: "purchase", debit_account: "6271", credit_account: "4011", tax_code_id: null },
     ]);
-    // A DEBOURS row always carries the flag — the same rule the HTTP path applies.
-    expect(res.data.is_debours).toBe(true);
+    // A DISBURSEMENT row always carries the flag — the same rule the HTTP path applies.
+    expect(res.data.is_disbursement).toBe(true);
   });
 
   test("THE rule: a row with no complete OHADA mapping is rejected", () => {

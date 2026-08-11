@@ -59,6 +59,19 @@ export default defineConfig({
       // tag is added manually in index.html since the plugin emits none here.
       manifest: false,
       workbox: {
+        // Without this, clicking "Reload" in the update toast can silently do
+        // nothing (or only take effect much later). The click sends SKIP_WAITING
+        // to the new SW, which activates — but activating alone does not hand it
+        // control of the ALREADY-OPEN tab. pwa-updater.tsx's reload is gated on
+        // the browser's `controllerchange` event, which only fires for this tab
+        // once the new SW calls `clients.claim()` in its activate handler.
+        // `clientsClaim: true` makes that happen the moment the user clicks, so
+        // control (and the reload) follow within the same tick. This is separate
+        // from `skipWaiting`, which we deliberately leave off: that would make
+        // every new build auto-activate on install, before the user consents —
+        // exactly the forced-reload-mid-task behavior "prompt" mode exists to
+        // avoid (see the file-level comment above).
+        clientsClaim: true,
         // Cache the app shell for offline; never precache the dynamic manifest.
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/, /^\/media/, /^\/manifest\.webmanifest$/, /^\/icons\//],

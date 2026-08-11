@@ -88,7 +88,7 @@ async function dictionaryItemsFor(client, key) {
   // step by the FD service, so this reads the same set either way.
   const scoped = (await client.query(
     "SELECT di.dictionary_item_id, di.code, di.label_fr, di.label_en, di.category, di.direction, " +
-      "  di.is_debours, di.is_billable, di.default_price, di.currency, di.shipping_line, " +
+      "  di.is_disbursement, di.is_billable, di.default_price, di.currency, di.shipping_line, " +
       "  di.service_type_key, di.is_active, sti.tier " +
       "FROM service_type_dictionary_item sti " +
       "JOIN dictionary_item di ON di.dictionary_item_id = sti.dictionary_item_id " +
@@ -100,7 +100,7 @@ async function dictionaryItemsFor(client, key) {
   // Generic = surfaces on ANY operation (the new applicability mode). Overhead /
   // non-operational lines are deliberately excluded from a service's pick-list.
   const generic = (await client.query(
-    "SELECT dictionary_item_id, code, label_fr, label_en, category, direction, is_debours, " +
+    "SELECT dictionary_item_id, code, label_fr, label_en, category, direction, is_disbursement, " +
       "  is_billable, default_price, currency, shipping_line, is_active " +
       "FROM dictionary_item WHERE applicability_mode = 'ANY_OPERATIONS' AND is_active = true " +
       "ORDER BY category, code",
@@ -184,7 +184,7 @@ async function moneyRollup(client, serviceTypeId) {
   const planned = (await client.query(
     "SELECT c.currency, " +
       "  COALESCE(SUM(cl.qty * cl.unit_cost), 0)::numeric AS planned_total, " +
-      "  COALESCE(SUM(CASE WHEN cl.is_debours THEN cl.qty * cl.unit_cost ELSE 0 END), 0)::numeric AS planned_debours " +
+      "  COALESCE(SUM(CASE WHEN cl.is_disbursement THEN cl.qty * cl.unit_cost ELSE 0 END), 0)::numeric AS planned_disbursement " +
       "FROM costing c " +
       "JOIN dossier d ON d.dossier_id = c.dossier_id " +
       "LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +

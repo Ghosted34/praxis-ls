@@ -12,9 +12,9 @@
 
 Everything financial hangs off one analytical cost object — the **dossier**. Every downstream money line carries `dossier_id` (the column is referenced across ~87 module files), and the dossier's 360° view (`operations_file.service.overview` → `operations_file.repo.overview`) aggregates the entire chain by `dossier_id`:
 
-- planned cost (`costing` + `costing_line`, split service vs `is_debours`),
+- planned cost (`costing` + `costing_line`, split service vs `is_disbursement`),
 - **actual** cost (`cost_entry`),
-- final invoices (locked: `service_ht` / `debours_total` / `vat_total`),
+- final invoices (locked: `service_ht` / `disbursement_total` / `vat_total`),
 - receivables outstanding (`invoice` − `payment_allocation`),
 - milestones (`milestone_instance` by status),
 - procurement (`purchase_order` count + total),

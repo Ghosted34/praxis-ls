@@ -21,6 +21,11 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(dirname, "src"),
+      // vite-plugin-pwa generates this module at build time and is not loaded
+      // here (see above), so it resolves to nothing under vitest and any test
+      // rendering a PWA component dies at import-analysis. The stub only has to
+      // exist — tests vi.mock() the specifier to script the update lifecycle.
+      "virtual:pwa-register/react": path.resolve(dirname, "src/test/stubs/pwa-register-react.ts"),
       // @shared + zod come from config/shared-alias.ts — the SAME module vite.config.ts
       // uses. They were duplicated here and drifted: the tests transformed
       // packages/shared one way and the build another, so the package passed its

@@ -266,7 +266,7 @@ function CommandCenter() {
       <header className="mb-5 border-b border-border pb-4">
         <div className="micro mb-1 uppercase tracking-wide">Hub › Finance · OHADA</div>
         <h1 className="font-display text-3xl tracking-tight text-foreground">Finance &amp; treasury</h1>
-        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Every money event posts to the SYSCOHADA ledger at source. Débours never inflate turnover.</p>
+        <p className="mt-1 max-w-2xl text-sm text-muted-foreground">Every money event posts to the SYSCOHADA ledger at source. Disbursement never inflate turnover.</p>
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
           <div className="chips">
             {MORE.map((m) => (

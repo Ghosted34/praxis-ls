@@ -7,15 +7,15 @@ describe("computeTotals", () => {
     const t = computeTotals([
       { amount: 1500000, taxRate: 19.25 },
       { amount: 500000, taxRate: 19.25 },
-      { amount: 8000000, isDebours: true },
+      { amount: 8000000, isDisbursement: true },
     ]);
     expect(t.service_ht).toBe(2000000);
     expect(t.vat_total).toBe(385000);
-    expect(t.debours_total).toBe(8000000);
+    expect(t.disbursement_total).toBe(8000000);
     expect(t.total_ttc).toBe(10385000);
   });
   it("no VAT on débours", () => {
-    const t = computeTotals([{ amount: 1000000, isDebours: true }]);
+    const t = computeTotals([{ amount: 1000000, isDisbursement: true }]);
     expect(t.vat_total).toBe(0);
     expect(t.total_ttc).toBe(1000000);
   });

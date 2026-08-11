@@ -1,7 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), budget_amount: z.number().nonnegative().optional(), spent_amount: z.number().nonnegative().optional(), is_debours: z.boolean().optional() });
+const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), budget_amount: z.number().nonnegative().optional(), spent_amount: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional() });
 const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const schemas = {
   create: z.object({ dossier_id: z.string().uuid().optional().nullable(), costing_id: z.string().uuid().optional().nullable(), requested_by: z.string().uuid().optional().nullable(), lines: z.array(line).optional() }),

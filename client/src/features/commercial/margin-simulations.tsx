@@ -26,11 +26,11 @@ const MARGIN_AI: AiAction[] = [
   { label: "Suggest pricing", kind: "assist", describe: "Suggest unit prices to hit a target margin on the service lines." },
 ];
 
-type MLine = { label: string; qty: string; unit_cost: string; unit_price: string; is_debours: boolean };
+type MLine = { label: string; qty: string; unit_cost: string; unit_price: string; is_disbursement: boolean };
 
 function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () => void; onSaved: () => void }) {
   const [currency, setCurrency] = React.useState("XAF");
-  const [lines, setLines] = React.useState<MLine[]>([{ label: "", qty: "1", unit_cost: "0", unit_price: "0", is_debours: false }]);
+  const [lines, setLines] = React.useState<MLine[]>([{ label: "", qty: "1", unit_cost: "0", unit_price: "0", is_disbursement: false }]);
   const [totals, setTotals] = React.useState<Row | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [previewing, setPreviewing] = React.useState(false);
@@ -39,13 +39,13 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
   React.useEffect(() => {
     if (!open) return;
     setCurrency("XAF");
-    setLines([{ label: "", qty: "1", unit_cost: "0", unit_price: "0", is_debours: false }]);
+    setLines([{ label: "", qty: "1", unit_cost: "0", unit_price: "0", is_disbursement: false }]);
     setTotals(null);
     setError(null);
   }, [open]);
 
   const setLine = (i: number, patch: Partial<MLine>) => setLines((rs) => rs.map((r, idx) => (idx === i ? { ...r, ...patch } : r)));
-  const payloadLines = () => lines.filter((l) => l.label.trim() || Number(l.unit_price) || Number(l.unit_cost)).map((l) => ({ label: l.label.trim() || "Line", qty: Number(l.qty) || 1, unit_cost: Number(l.unit_cost) || 0, unit_price: Number(l.unit_price) || 0, is_debours: l.is_debours }));
+  const payloadLines = () => lines.filter((l) => l.label.trim() || Number(l.unit_price) || Number(l.unit_cost)).map((l) => ({ label: l.label.trim() || "Line", qty: Number(l.qty) || 1, unit_cost: Number(l.unit_cost) || 0, unit_price: Number(l.unit_price) || 0, is_disbursement: l.is_disbursement }));
 
   async function preview() {
     setPreviewing(true);
@@ -79,7 +79,7 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
         <div className="space-y-2">
           <div className="flex items-center justify-between">
             <p className="text-sm font-medium">Lines</p>
-            <Button size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { label: "", qty: "1", unit_cost: "0", unit_price: "0", is_debours: false }])}>
+            <Button size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { label: "", qty: "1", unit_cost: "0", unit_price: "0", is_disbursement: false }])}>
               + Line
             </Button>
           </div>
@@ -97,7 +97,7 @@ function MarginSimForm({ open, onClose, onSaved }: { open: boolean; onClose: () 
               <Input type="number" min="0" className="num text-right" value={l.qty} onChange={(e) => setLine(i, { qty: e.target.value })} />
               <Input type="number" min="0" className="num text-right" value={l.unit_cost} onChange={(e) => setLine(i, { unit_cost: e.target.value })} />
               <Input type="number" min="0" className="num text-right" value={l.unit_price} onChange={(e) => setLine(i, { unit_price: e.target.value })} />
-              <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} aria-label="débours" />
+              <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} aria-label="débours" />
               <Button size="sm" variant="ghost" onClick={() => setLines((rs) => (rs.length > 1 ? rs.filter((_, idx) => idx !== i) : rs))}>
                 ✕
               </Button>

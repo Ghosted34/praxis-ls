@@ -29,10 +29,10 @@ import { loadPostableAccounts } from "@/lib/finance-api";
 import type { Option } from "@/lib/finance-api";
 import { Table, THead, TBody, TR, TH, TD } from "@/components/ui/table";
 import { LoadingRow, EmptyState, ErrorState } from "@/components/ui/states";
-import { SkeletonTable } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
+import { SplitPane } from "@/components/ui/split-pane";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -448,7 +448,7 @@ const DOSSIER_TABS = ["Overview", ...KINDS] as const;
 type DossierTab = (typeof DOSSIER_TABS)[number];
 const tabLabel = (t: DossierTab) => (t === "Overview" ? "Overview" : KIND_LABEL[t as Kind]);
 
-function JurisdictionDossier({ id, onBack }: { id: string; onBack: () => void }) {
+function JurisdictionDossier({ id }: { id: string }) {
   const reloadList = useRefresh();
   const d = useResource<Record<string, unknown> & { tax_codes?: Code[] }>(() => tenant<Record<string, unknown> & { tax_codes?: Code[] }>(`/tax-jurisdictions/${id}`), [id]);
   const [tab, setTab] = React.useState<DossierTab>("Overview");
@@ -497,11 +497,6 @@ function JurisdictionDossier({ id, onBack }: { id: string; onBack: () => void })
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <button type="button" onClick={onBack} className="micro text-muted-foreground hover:text-foreground">
-                ← All jurisdictions
-              </button>
-            </div>
-            <div className="mt-1 flex flex-wrap items-center gap-2">
               <h3 className="truncate text-lg font-semibold text-foreground">{String(j.name ?? "")}</h3>
               <Pill tone={(active ? "ok" : "mute") as Tone}>{active ? "active" : "inactive"}</Pill>
               <Pill tone="mute">{String(j.country_code ?? "")}</Pill>
@@ -603,61 +598,69 @@ function JurisdictionDossier({ id, onBack }: { id: string; onBack: () => void })
 
 export function TaxJurisdictionsPage() {
   const reload = useRefresh();
-  const { rows, error } = useList("/tax-jurisdictions");
+  const { rows, error, loading } = useList("/tax-jurisdictions");
   const [createOpen, setCreateOpen] = React.useState(false);
-  const [selectedId, setSelectedId] = React.useState<string | null>(null);
+  const [selId, setSelId] = React.useState<string | null>(null);
+  const [q, setQ] = React.useState("");
+
+  const list = React.useMemo(() => rows ?? [], [rows]);
+  const filtered = q
+    ? list.filter((r) => `${String(r.name ?? "")} ${String(r.country_code ?? "")}`.toLowerCase().includes(q.toLowerCase()))
+    : list;
+  const selected = list.find((r) => String(r.jurisdiction_id) === selId) || null;
+  React.useEffect(() => {
+    if (!selId && list.length) setSelId(String(list[0].jurisdiction_id));
+  }, [list, selId]);
 
   return (
     <section className={pageShell.wide}>
       <PageHeader
-        eyebrow={<HubCrumb area="Settings" to="/settings" />}
+        eyebrow={<HubCrumb area="Master data" to="/master" />}
         title="Tax rates & jurisdictions"
         description="Jurisdictions and their effective-dated tax codes (TVA/WHT/IS…) read by account determination."
-        action={!selectedId ? <Button onClick={() => setCreateOpen(true)}>New jurisdiction</Button> : undefined}
+        action={<Button onClick={() => setCreateOpen(true)}>New jurisdiction</Button>}
       />
       <HubTabs />
 
-      {selectedId ? (
-        <JurisdictionDossier id={selectedId} onBack={() => setSelectedId(null)} />
-      ) : error ? (
+      {error ? (
         <ErrorState message={error} />
-      ) : rows === null ? (
-        <SkeletonTable />
-      ) : rows.length === 0 ? (
-        <EmptyState title="No jurisdictions yet" hint="Create one to start adding tax codes." />
       ) : (
-        <Table>
-          <THead>
-            <TR>
-              <TH>Country</TH>
-              <TH>Name</TH>
-              <TH>Currency</TH>
-              <TH>Status</TH>
-              <TH>Actions</TH>
-            </TR>
-          </THead>
-          <TBody>
-            {rows.map((r) => {
-              const id = String(r.jurisdiction_id);
-              const active = r.is_active !== false;
-              return (
-                <TR key={id}>
-                  <TD className="text-sm font-medium">{String(r.country_code ?? "")}</TD>
-                  <TD className="text-sm">{String(r.name ?? "")}</TD>
-                  <TD className="text-sm">{String(r.currency ?? "")}</TD>
-                  <TD className="text-sm">
-                    {active ? <Pill tone="ok">active</Pill> : <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">inactive</span>}
-                  </TD>
-                  <TD>
-                    <Button size="sm" variant="outline" onClick={() => setSelectedId(id)}>
-                      Open
-                    </Button>
-                  </TD>
-                </TR>
-              );
-            })}
-          </TBody>
-        </Table>
+        <SplitPane storageKey="master.tax-jurisdictions" label="Jurisdiction list width" defaultSize={260} min={200} max={480}>
+          <div className="space-y-2">
+            <Input placeholder="Search jurisdiction…" value={q} onChange={(e) => setQ(e.target.value)} />
+            <div className="max-h-[70vh] space-y-1 overflow-auto rounded-lg border p-1">
+              {loading ? (
+                <LoadingRow label="Loading jurisdictions…" />
+              ) : filtered.length === 0 ? (
+                <div className="px-3 py-4 micro">No jurisdictions.</div>
+              ) : (
+                filtered.map((r) => {
+                  const id = String(r.jurisdiction_id);
+                  const active = r.is_active !== false;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setSelId(id)}
+                      className={`flex w-full items-center justify-between gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors ${id === selId ? "bg-primary/10 text-foreground" : "hover:bg-muted"}`}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{String(r.name ?? "")}</span>
+                        <span className="micro text-muted-foreground">{String(r.country_code ?? "")} · {String(r.currency ?? "")}</span>
+                      </span>
+                      <Pill tone={active ? "ok" : "mute"}>{active ? "Active" : "Off"}</Pill>
+                    </button>
+                  );
+                })
+              )}
+            </div>
+          </div>
+          {selected ? (
+            <JurisdictionDossier id={String(selected.jurisdiction_id)} />
+          ) : (
+            <EmptyState title="No jurisdiction selected" hint="Choose a jurisdiction from the list, or create one to start adding tax codes." />
+          )}
+        </SplitPane>
       )}
 
       <NewJurisdictionForm open={createOpen} onClose={() => setCreateOpen(false)} onCreated={reload} />

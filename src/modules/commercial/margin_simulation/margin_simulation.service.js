@@ -32,7 +32,7 @@ async function create(client, { dossierId = null, serviceTypeId = null, currency
       await repo.insertLine(client, {
         margin_simulation_id: sim.margin_simulation_id, dictionary_item_id: ln.dictionary_item_id || null,
         label: ln.label || "Line", qty: ln.qty || 1, unit_cost: ln.unit_cost || 0, unit_price: ln.unit_price || 0,
-        is_debours: ln.is_debours === true,
+        is_disbursement: ln.is_disbursement === true,
       });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(sim.margin_simulation_id), after: { totals } });

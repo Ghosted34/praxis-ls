@@ -47,7 +47,7 @@ module.exports = {
     const res = await costTracking.recordCost(client, {
       dossierId,
       amount: cost,
-      isDebours: false,
+      isDisbursement: false,
       expenseCoa,
       entityId,
       entryDate: new Date().toISOString().slice(0, 10),

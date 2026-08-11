@@ -34,7 +34,7 @@ function buildInvoiceHtml(data) {
     "<table><thead><tr><th>Désignation / Description</th><th class=\"num\">Montant HT</th></tr></thead><tbody>" + rows + "</tbody></table>" +
     "<table><tbody>" +
     "<tr><td>Total HT / Subtotal</td><td class=\"num\">" + xaf(data.totals && data.totals.service_ht) + "</td></tr>" +
-    "<tr><td>Débours</td><td class=\"num\">" + xaf(data.totals && data.totals.debours_total) + "</td></tr>" +
+    "<tr><td>Débours / Disbursements</td><td class=\"num\">" + xaf(data.totals && data.totals.disbursement_total) + "</td></tr>" +
     "<tr><td>TVA 19,25%</td><td class=\"num\">" + xaf(data.totals && data.totals.vat_total) + "</td></tr>" +
     "<tr><td><strong>Total TTC</strong></td><td class=\"num\"><strong>" + xaf(data.totals && data.totals.total_ttc) + "</strong></td></tr>" +
     "</tbody></table>" +

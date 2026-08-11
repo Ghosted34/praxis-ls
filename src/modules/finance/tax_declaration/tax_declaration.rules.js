@@ -27,7 +27,7 @@ function vatReturn(rows) {
   return { output_vat: output, input_vat: input, net, vat_due: Math.max(net, 0), vat_credit: round2(Math.max(-net, 0)) };
 }
 
-/** Turnover (chiffre d'affaires) = class 70 credit balances. Débours excluded by design. */
+/** Turnover (chiffre d'affaires) = class 70 credit balances. Disbursements excluded by design. */
 function turnoverFrom(rows) {
   let ca = 0;
   for (const r of rows) if (starts(r.account_code, "70")) ca += -bal(r);
@@ -59,7 +59,7 @@ function corporateTax({ result, turnover, isRate = 0.33, minRate = 0.022 }) {
  *     and must remit it. (4471 = IRPP+CAC on salaries; 4474 = WHT from suppliers.)
  *   - SUFFERED by SmartLS (précompte / advance on its own IS): account 449
  *     (4492), debit balance — a receivable that offsets the annual IS charge.
- * Débours never bear withholding (KB §6/§17), so they're already excluded.
+ * Disbursements never bear withholding (KB §6/§17), so they're already excluded.
  */
 function withholdingReturn(rows) {
   let withheldPayable = 0; // 447 credit-positive

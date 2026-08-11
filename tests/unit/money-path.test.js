@@ -116,11 +116,11 @@ describe("determination.compute — sales (TC-C5, TC-Q4)", () => {
       counterpartAccount: "4111",
       resolvedLines: [
         saleLine({ amount: 1_000_000 }),
-        { amount: 250_000, isDebours: true, creditAccount: "4731" },
+        { amount: 250_000, isDisbursement: true, creditAccount: "4731" },
       ],
     });
     expect(out.totals.subtotal_ht).toBe(1000000);
-    expect(out.totals.debours_total).toBe(250000);
+    expect(out.totals.disbursement_total).toBe(250000);
     expect(out.totals.tax_total).toBe(192500); // unchanged by the débours
     expect(out.totals.total).toBe(1442500);
     const { debit, credit } = sides(out.lines);
@@ -131,10 +131,10 @@ describe("determination.compute — sales (TC-C5, TC-Q4)", () => {
     const out = determination.compute({
       context: "sale",
       counterpartAccount: "4111",
-      resolvedLines: [{ amount: 250_000, isDebours: true, creditAccount: "4731" }],
+      resolvedLines: [{ amount: 250_000, isDisbursement: true, creditAccount: "4731" }],
     });
     const leg = out.lines.find((l) => l.account_code === "4731");
-    expect(leg.is_debours).toBe(true);
+    expect(leg.is_disbursement).toBe(true);
   });
 
   it("balances an untaxed line", () => {
@@ -202,7 +202,7 @@ describe("determination.compute — refusals", () => {
     ["no lines at all", { context: "sale", counterpartAccount: "4111", resolvedLines: [] }, "NO_LINES"],
     ["a zero-amount line", { context: "sale", counterpartAccount: "4111", resolvedLines: [saleLine({ amount: 0 })] }, "ZERO_LINE"],
     ["a service line with no revenue account", { context: "sale", counterpartAccount: "4111", resolvedLines: [saleLine({ creditAccount: null })] }, "NO_REVENUE_ACCOUNT"],
-    ["a débours with no credit account", { context: "sale", counterpartAccount: "4111", resolvedLines: [{ amount: 100, isDebours: true }] }, "NO_DEBOURS_ACCOUNT"],
+    ["a débours with no credit account", { context: "sale", counterpartAccount: "4111", resolvedLines: [{ amount: 100, isDisbursement: true }] }, "NO_DISBURSEMENT_ACCOUNT"],
     ["a taxed line with no VAT account", { context: "sale", counterpartAccount: "4111", resolvedLines: [saleLine({ taxCreditAccount: null })] }, "NO_VAT_ACCOUNT"],
     ["a purchase with no expense account", { context: "purchase", counterpartAccount: "4011", resolvedLines: [purchaseLine({ debitAccount: null })] }, "NO_EXPENSE_ACCOUNT"],
     ["a taxed purchase with no input-VAT account", { context: "purchase", counterpartAccount: "4011", resolvedLines: [purchaseLine({ taxDebitAccount: null })] }, "NO_VAT_ACCOUNT"],

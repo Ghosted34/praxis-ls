@@ -35,13 +35,13 @@
 -- opening, documentation, commission on disbursements, import declaration fee,
 -- extra legal work, service charges, lashing); the other 29 — customs
 -- clearance, formalities, liquidation, evaluation, transit title T1, import and
--- export formalities, origin charges — become DEBOURS. Dr 4731 / Cr 4011 on
+-- export formalities, origin charges — become DISBURSEMENT. Dr 4731 / Cr 4011 on
 -- the way in, Dr 4111 / Cr 4731 on the way out, no VAT on either leg.
 --
 -- DÉBOURS CARRY NO TAX CODE. Not "usually" — the ledger rejects it (§23.5,
--- assert_line_valid) and so does invoice_line (chk_debours_no_tax). The client
+-- assert_line_valid) and so does invoice_line (chk_disbursement_no_tax). The client
 -- is shown the upstream supplier VAT as paid on their behalf, which is what
--- `debours_vat_transparent` records, and the forwarder retains none of it.
+-- `disbursement_vat_transparent` records, and the forwarder retains none of it.
 --
 -- EQUIPMENT IS A RATE DIMENSION, NOT A LINE. Twelve legacy families were the
 -- same charge duplicated per box size — Port Charges 20 and 40, THC,
@@ -55,7 +55,7 @@
 -- WHAT IS PORTED VERSUS DERIVED. `is_billable`, `receipt_required`,
 -- `receipt_source`, `justification_required` and `vat_treatment` are the
 -- company's own answers and are carried across as written. `category`,
--- `is_debours`, `provider_kind`, `debours_vat_transparent` and the code are
+-- `is_disbursement`, `provider_kind`, `disbursement_vat_transparent` and the code are
 -- derived, so they cannot drift from the direction a line was authored with.
 -- `service_applicability` and `territory` are NOT ported as columns:
 -- applicability now lives in service_type_dictionary_item, and the legacy JSON
@@ -183,7 +183,7 @@ CREATE TEMP TABLE _dict_seed (
   key                    text PRIMARY KEY,
   label_fr               text NOT NULL,
   label_en               text NOT NULL,
-  direction              text NOT NULL,   -- REVENUE | EXPENSE | DEBOURS | ASSET
+  direction              text NOT NULL,   -- REVENUE | EXPENSE | DISBURSEMENT | ASSET
   subcategory            text NOT NULL,   -- dictionary_ref kind SUBCATEGORY
   applicability_mode     text NOT NULL,   -- SERVICE_SCOPED | ANY_OPERATIONS | NON_OPERATIONAL
   unit_of_measure        text,            -- dictionary_ref kind UNIT (NULL when the variant carries it)
@@ -192,7 +192,7 @@ CREATE TEMP TABLE _dict_seed (
   receipt_requirement    text NOT NULL,
   requires_justification boolean NOT NULL,
   vat                    text NOT NULL,   -- STD | STD_T (transport input) | ZERO (export) | NONE
-  account                text,            -- debit for EXPENSE/ASSET, credit for REVENUE, NULL for DEBOURS
+  account                text,            -- debit for EXPENSE/ASSET, credit for REVENUE, NULL for DISBURSEMENT
   svc                    text[] NOT NULL, -- service_type.key list this line applies to
   tier_default           text NOT NULL,   -- tier when the line is not in a BASIC set
   legacy_codes           text,            -- originating legacy row(s), NULL for a new line
@@ -287,7 +287,7 @@ INSERT INTO _dict_seed (direction,key,label_fr,label_en,subcategory,applicabilit
 ) AS v(key,label_fr,label_en,subcategory,applicability_mode,unit_of_measure,is_billable,proof_source,receipt_requirement,requires_justification,vat,account,svc,tier_default,legacy_codes)
 ON CONFLICT (key) DO NOTHING;
 
-INSERT INTO _dict_seed (direction,key,label_fr,label_en,subcategory,applicability_mode,unit_of_measure,is_billable,proof_source,receipt_requirement,requires_justification,vat,account,svc,tier_default,legacy_codes) SELECT 'DEBOURS', * FROM (VALUES
+INSERT INTO _dict_seed (direction,key,label_fr,label_en,subcategory,applicability_mode,unit_of_measure,is_billable,proof_source,receipt_requirement,requires_justification,vat,account,svc,tier_default,legacy_codes) SELECT 'DISBURSEMENT', * FROM (VALUES
  ('ADDITIONAL_CODE_APEC','Code additionnel / APEC','Additional Code / APEC','DECLARATION','SERVICE_SCOPED','DOSSIER',true,'GOVERNMENT_AUTHORITY','CONDITIONALLY_REQUIRED',false,'STD',NULL,'{BUSINESS_REPRESENTATION,INLAND_TRANSPORTATION,WAREHOUSING}'::text[],'FULL','#-1161'),
  ('ADDITIONAL_CODE_END','Code additionnel / END','Additional Code / END','DECLARATION','SERVICE_SCOPED','DOSSIER',true,'GOVERNMENT_AUTHORITY','CONDITIONALLY_REQUIRED',false,'STD',NULL,'{AIR_FREIGHT_IMPORT,END_TO_END_AIR_FREIGHT,END_TO_END_SEA_FREIGHT,SEA_FREIGHT_IMPORT}'::text[],'FULL','#-1162'),
  ('AGENCY_DOCS_FEE','Frais d''agence et de documentation','Agency & Documentation Fee','DOCUMENTATION','SERVICE_SCOPED','BL',true,'CARRIER_AIRLINE','ALWAYS_REQUIRED',true,'STD',NULL,'{AIR_FREIGHT_EXPORT,END_TO_END_AIR_FREIGHT,END_TO_END_SEA_FREIGHT,SEA_FREIGHT_EXPORT}'::text[],'ADVANCED','#-1024'),
@@ -457,36 +457,36 @@ UPDATE _dict_seed s SET code = m.new_code
     SELECT key,
            '#' || CASE direction
                     WHEN 'REVENUE' THEN 'R' WHEN 'EXPENSE' THEN 'E'
-                    WHEN 'DEBOURS' THEN 'D' ELSE 'A' END
+                    WHEN 'DISBURSEMENT' THEN 'D' ELSE 'A' END
                || lpad((row_number() OVER (PARTITION BY direction ORDER BY label_en))::text, 3, '0') AS new_code
       FROM _dict_seed
   ) m
  WHERE m.key = s.key;
 
 -- ── 8. The catalogue rows ───────────────────────────────────────────────────
--- category, is_debours, provider_kind and debours_vat_transparent are DERIVED
+-- category, is_disbursement, provider_kind and disbursement_vat_transparent are DERIVED
 -- from direction and proof_source, so they cannot drift from the nature the
 -- line was authored with. The compliance answers (receipt_requirement,
 -- requires_justification) and is_billable are the company's own and are carried
 -- across as written.
 INSERT INTO dictionary_item (
   code, label_fr, label_en, description, category, direction, subcategory,
-  unit_of_measure, applicability_mode, is_debours, is_billable, currency,
+  unit_of_measure, applicability_mode, is_disbursement, is_billable, currency,
   provider_kind, proof_source, requires_justification, receipt_requirement,
-  debours_vat_transparent, varies_by_equipment, is_active)
+  disbursement_vat_transparent, varies_by_equipment, is_active)
 SELECT
   s.code, s.label_fr, s.label_en, s.description,
-  CASE s.direction WHEN 'DEBOURS' THEN 'debours' WHEN 'REVENUE' THEN 'service'
+  CASE s.direction WHEN 'DISBURSEMENT' THEN 'disbursement' WHEN 'REVENUE' THEN 'service'
                    WHEN 'ASSET' THEN 'asset' ELSE 'overhead' END,
   s.direction, s.subcategory, s.unit_of_measure, s.applicability_mode,
-  s.direction = 'DEBOURS', s.is_billable, 'XAF',
+  s.direction = 'DISBURSEMENT', s.is_billable, 'XAF',
   CASE s.proof_source
     WHEN 'CARRIER_AIRLINE' THEN 'SHIPPING_LINE'
     WHEN 'PORT_TERMINAL' THEN 'PORT_TERMINAL'
     WHEN 'GOVERNMENT_AUTHORITY' THEN 'CUSTOMS_AUTHORITY'
     ELSE 'OTHER' END,
   s.proof_source, s.requires_justification, s.receipt_requirement,
-  s.direction = 'DEBOURS', s.varies, true
+  s.direction = 'DISBURSEMENT', s.varies, true
   FROM _dict_seed s
 ON CONFLICT (code) DO NOTHING;
 
@@ -495,25 +495,25 @@ ON CONFLICT (code) DO NOTHING;
 -- table has no natural unique constraint (an item legitimately carries a sale
 -- AND a purchase rule), so "already has a rule in this context" is the test.
 
--- DEBOURS, purchase leg: the supplier invoice lands in the client's clearing
+-- DISBURSEMENT, purchase leg: the supplier invoice lands in the client's clearing
 -- account, never in a class-6 charge. No tax code — §23.5.
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'purchase', '4731', '4011', NULL, true
   FROM _dict_seed s
   JOIN dictionary_item di ON di.code = s.code
- WHERE s.direction = 'DEBOURS'
+ WHERE s.direction = 'DISBURSEMENT'
    AND NOT EXISTS (SELECT 1 FROM posting_rule pr
                     WHERE pr.dictionary_item_id = di.dictionary_item_id
                       AND pr.applies_context = 'purchase')
 ON CONFLICT DO NOTHING;
 
--- DEBOURS, sale leg: re-billed at cost, clearing 4731 back out against the
+-- DISBURSEMENT, sale leg: re-billed at cost, clearing 4731 back out against the
 -- client. Nothing touches class 7, because none of it is revenue.
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'sale', '4111', '4731', NULL, true
   FROM _dict_seed s
   JOIN dictionary_item di ON di.code = s.code
- WHERE s.direction = 'DEBOURS'
+ WHERE s.direction = 'DISBURSEMENT'
    AND NOT EXISTS (SELECT 1 FROM posting_rule pr
                     WHERE pr.dictionary_item_id = di.dictionary_item_id
                       AND pr.applies_context = 'sale')
@@ -522,7 +522,7 @@ ON CONFLICT DO NOTHING;
 -- REVENUE: your fee, invoiced with output VAT (or zero-rated on an export of
 -- services). The credit account comes from the staging row — 7061 commission,
 -- 7071 re-billed ancillaries, 7063 logistics services sold.
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'sale', '4111', s.account, t.tax_code_id, false
   FROM _dict_seed s
   JOIN dictionary_item di ON di.code = s.code
@@ -536,7 +536,7 @@ ON CONFLICT DO NOTHING;
 -- EXPENSE: your own cost against the supplier, with recoverable input VAT where
 -- the charge carries it. Transport inputs use TVA_INPUT_TRANSPORT so the
 -- recoverable side lands on 4453 rather than 4452.
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'purchase', s.account, '4011', t.tax_code_id, false
   FROM _dict_seed s
   JOIN dictionary_item di ON di.code = s.code
@@ -548,7 +548,7 @@ SELECT di.dictionary_item_id, 'purchase', s.account, '4011', t.tax_code_id, fals
 ON CONFLICT DO NOTHING;
 
 -- ASSET: a refundable deposit is a class-2 balance, no VAT to recover on it.
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'purchase', s.account, '4011', NULL, false
   FROM _dict_seed s
   JOIN dictionary_item di ON di.code = s.code

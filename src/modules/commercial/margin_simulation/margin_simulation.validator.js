@@ -8,7 +8,7 @@ const line = z.object({
   qty: z.number().positive().optional(),
   unit_cost: z.number().nonnegative().optional(),
   unit_price: z.number().nonnegative().optional(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
 });
 
 const schemas = {

@@ -22,7 +22,7 @@ function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
       label: l.label.trim(),
       amount: Number(l.amount),
       dictionary_item_id: l.dictionary_item_id || undefined,
-      is_debours: l.is_debours || undefined,
+      is_disbursement: l.is_disbursement || undefined,
     }));
 }
 
@@ -49,7 +49,7 @@ function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLine
           </Select>
           <Input type="number" min="0" step="0.01" className="num text-right" placeholder="Amount" value={l.amount} onChange={(e) => setLine(i, { amount: e.target.value })} />
           <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
-            <input type="checkbox" checked={l.is_debours} onChange={(e) => setLine(i, { is_debours: e.target.checked })} />
+            <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} />
             débours
           </label>
           <Button type="button" size="icon" variant="ghost" disabled={lines.length <= 1} onClick={() => setLines((ls) => ls.filter((_, idx) => idx !== i))} aria-label="Remove line">
@@ -189,7 +189,7 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
         const ls = (cn.lines || []).map((l) => ({
           dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
           amount: l.amount != null ? String(l.amount) : l.line_ht != null ? String(l.line_ht) : "",
-          is_debours: !!l.is_debours,
+          is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
         }));
         setLines(ls.length ? ls : [blankInvLine()]);

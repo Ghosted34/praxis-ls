@@ -482,8 +482,8 @@ de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it
 
 **⭐ ~~Next (owed)~~ — DONE (2026-07-22, session 12): operations 360° modal full-match.**
 - **BE** — `operations_file.repo.overview()` extended: costing rollup now splits
-  `planned_service_cost` / `planned_debours` (FILTER on `cl.is_debours`); the FINAL-invoice rollup
-  adds `billed_service_ht` / `billed_debours` / `billed_vat` (locked statuses only, same filter as
+  `planned_service_cost` / `planned_disbursement` (FILTER on `cl.is_disbursement`); the FINAL-invoice rollup
+  adds `billed_service_ht` / `billed_disbursement` / `billed_vat` (locked statuses only, same filter as
   `billed_ttc`); new **people** queries (latest costing preferring `APPROVED_LOCKED` → validator +
   approver; latest locked FINAL invoice → issuer + validator + approver, names via `app_user`
   LEFT-joined **in the env schema** — sandbox relies on the identity mirror, missing mirror just
@@ -914,7 +914,7 @@ clean; BE edits `node --check` clean. Windows `npm run lint` + `npm run build --
 
 5. **Quotations — dictionary line items + tax-code picker** (`features/commercial/pages.tsx`
    `QuotationForm`). Each line's description is a `SearchSelect` over `/financial-dictionary` (selecting
-   an item fills label + default price + `is_debours` and sets `dictionary_item_id`); free text still
+   an item fills label + default price + `is_disbursement` and sets `dictionary_item_id`); free text still
    allowed. Added a per-line **tax-code `<Select>`** (disabled on débours) sourced from
    `listSalesTaxCodes()` (new in `lib/masterdata-api.ts` — aggregates VAT codes across
    `/tax-jurisdictions/:id/codes` since there's no flat endpoint). Lines now submit `dictionary_item_id`

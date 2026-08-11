@@ -31,14 +31,14 @@ async function replaceLines(client, invoiceId, lines) {
      
     await repo.insertLine(client, {
       invoice_id: invoiceId, dictionary_item_id: ln.dictionary_item_id,
-      label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_debours: ln.is_debours === true,
+      label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_disbursement: ln.is_disbursement === true,
       line_ht: ln.amount, line_no: i + 1,
     });
   }
 }
 
 const econLinesFrom = (lineRows, dossierId) =>
-  lineRows.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.line_ht), is_debours: l.is_debours, dossier_id: dossierId }));
+  lineRows.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.line_ht), is_disbursement: l.is_disbursement, dossier_id: dossierId }));
 
 /** Insert a DRAFT invoice. TX-AGNOSTIC: assumes the caller's transaction context
  *  (so it can run inside a costing-approval tx OR standalone). */
@@ -150,7 +150,7 @@ async function postCore(client, { invoice, econLines, entryDate, sourceDocRef, a
 
   const updated = await repo.updateInvoice(client, invoice.invoice_id, {
     status: "POSTED_LOCKED", doc_number: number, entry_id: saleEntry.entry.entry_id,
-    service_ht: determined.totals.subtotal_ht, debours_total: determined.totals.debours_total,
+    service_ht: determined.totals.subtotal_ht, disbursement_total: determined.totals.disbursement_total,
     vat_total: determined.totals.tax_total, total_ttc: determined.totals.total,
   });
   await documents.capture(client, { entityRef: ref(invoice.invoice_id), docType: "FINAL_INVOICE", status: "VERIFIED" });
@@ -204,7 +204,7 @@ onApproved.register("invoice", (client, { id, actor }) => postApproved(client, {
 
 /**
  * Read-only VAT/total preview for a DRAFT invoice. Runs determination WITHOUT
- * posting so the UI can show HT / debours / TVA / TTC (and any customer advance
+ * posting so the UI can show HT / disbursement / TVA / TTC (and any customer advance
  * that will net) before the user records the invoice.
  */
 async function previewTotals(client, { invoiceId, entryDate = null }) {
@@ -215,7 +215,7 @@ async function previewTotals(client, { invoiceId, entryDate = null }) {
   const econLines = econLinesFrom(lineRows, inv.dossier_id);
   const determined = econLines.length
     ? await determination.resolve(client, { context: "sale", counterpartAccount: "4111", entryDate: at, lines: econLines })
-    : { totals: { subtotal_ht: 0, debours_total: 0, tax_total: 0, total: 0 } };
+    : { totals: { subtotal_ht: 0, disbursement_total: 0, tax_total: 0, total: 0 } };
   const advances = await repo.openAdvances(client, { clientId: inv.client_id, dossierId: inv.dossier_id });
   const advanceOpen = (advances || []).reduce((acc, a) => acc + (Number(a.amount || 0) - Number(a.applied_amount || 0)), 0);
   return { totals: determined.totals, advance_open: advanceOpen, line_count: lineRows.length };

@@ -5,7 +5,7 @@
 import { tenant } from "./api-client";
 
 /* ── Costing sheets(/costings) ── */
-export type CostingLine = { dictionary_item_id?: string; label?: string; qty?: number; unit_cost?: number; is_debours?: boolean };
+export type CostingLine = { dictionary_item_id?: string; label?: string; qty?: number; unit_cost?: number; is_disbursement?: boolean };
 export type Costing = {
   costing_id: string; ref?: string | null; doc_number?: string | null; dossier_id?: string | null; currency?: string;
   margin_percent?: number | null; total_cost?: number | null; total?: number | null; status: string; created_at?: string;
@@ -20,14 +20,14 @@ export type CostingAction = "SUBMIT_VALIDATION" | "SUBMIT_APPROVAL" | "APPROVE" 
 export const setCostingStatus = (id: string, to: CostingAction) => tenant<Costing>(`/costings/${id}/status`, { method: "POST", body: { to } });
 
 /* ── Cost tracking(/cost-tracking) — actuals per dossier ── */
-export type CostEntry = { cost_entry_id?: string; dossier_id: string; label?: string; amount: number; category?: string; entry_date?: string; is_debours?: boolean };
-export type CostEntryInput = { dossier_id: string; entity_id: string; dictionary_item_id?: string; amount: number; category?: string; is_debours?: boolean; expense_coa?: string; treasury_coa?: string; entry_date: string };
+export type CostEntry = { cost_entry_id?: string; dossier_id: string; label?: string; amount: number; category?: string; entry_date?: string; is_disbursement?: boolean };
+export type CostEntryInput = { dossier_id: string; entity_id: string; dictionary_item_id?: string; amount: number; category?: string; is_disbursement?: boolean; expense_coa?: string; treasury_coa?: string; entry_date: string };
 export const costEntriesByDossier = (dossierId: string) => tenant<CostEntry[]>(`/cost-tracking/dossier/${dossierId}`);
 export const reconcileDossier = (dossierId: string) => tenant<Record<string, unknown>>(`/cost-tracking/dossier/${dossierId}/reconcile`);
 export const recordCostEntry = (body: CostEntryInput) => tenant<CostEntry>("/cost-tracking", { method: "POST", body });
 
 /* ── Cash requests(/cash-requests) ── */
-export type CashLine = { dictionary_item_id?: string | null; label?: string; budget_amount?: number; spent_amount?: number; is_debours?: boolean };
+export type CashLine = { dictionary_item_id?: string | null; label?: string; budget_amount?: number; spent_amount?: number; is_disbursement?: boolean };
 export type CashRequest = { cash_request_id: string; ref?: string | null; doc_number?: string | null; dossier_id?: string | null; status: string; total_budget?: number | null; created_at?: string };
 export type CashRequestInput = { dossier_id?: string; costing_id?: string; requested_by?: string; lines?: CashLine[] };
 export const listCashRequests = () => tenant<CashRequest[]>("/cash-requests");

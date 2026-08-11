@@ -6,7 +6,7 @@ const line = z.object({
   dictionary_item_id: z.string().uuid().optional().nullable(),
   label: z.string().min(1),
   amount: z.number().nonnegative(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
 });
 
 const schemas = {

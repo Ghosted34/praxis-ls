@@ -25,7 +25,7 @@ async function replaceLines(client, costingId, lines) {
      
     await repo.insertLine(client, {
       costing_id: costingId, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line",
-      qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_debours: l.is_debours === true, tax_code_id: l.tax_code_id || null,
+      qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id || null,
     });
   }
 }

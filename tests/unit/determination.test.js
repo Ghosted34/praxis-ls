@@ -16,14 +16,14 @@ describe("determination — sale (final invoice, KB §8.3/§24 ACME)", () => {
     resolvedLines: [
       { amount: 1500000, creditAccount: "7061", taxRate: 19.25, taxCreditAccount: "4432", taxCodeId: "tva" },
       { amount: 500000, creditAccount: "7062", taxRate: 19.25, taxCreditAccount: "4432", taxCodeId: "tva" },
-      { amount: 8000000, isDebours: true, creditAccount: "4731" },
+      { amount: 8000000, isDisbursement: true, creditAccount: "4731" },
     ],
   });
 
   it("computes turnover, VAT and débours per the KB", () => {
     expect(totals.subtotal_ht).toBe(2000000);
     expect(totals.tax_total).toBe(385000); // 2,000,000 x 19.25%
-    expect(totals.debours_total).toBe(8000000);
+    expect(totals.disbursement_total).toBe(8000000);
     expect(totals.total).toBe(10385000);
   });
 
@@ -33,10 +33,10 @@ describe("determination — sale (final invoice, KB §8.3/§24 ACME)", () => {
     expect(sum(lines, "debit")).toBe(sum(lines, "credit"));
   });
 
-  it("débours line carries is_debours and no VAT", () => {
+  it("débours line carries is_disbursement and no VAT", () => {
     const deb = lines.find((l) => l.account_code === "4731");
     expect(deb.credit).toBe(8000000);
-    expect(deb.is_debours).toBe(true);
+    expect(deb.is_disbursement).toBe(true);
     expect(deb.tax_code_id).toBeNull();
   });
 
@@ -66,7 +66,7 @@ describe("determination — purchase (supplier invoice, KB §8.5)", () => {
 
 describe("determination — guards", () => {
   it("rejects a débours line with no account", () => {
-    expect(() => compute({ context: "sale", counterpartAccount: "4111", resolvedLines: [{ amount: 100, isDebours: true }] })).toThrow(/débours/i);
+    expect(() => compute({ context: "sale", counterpartAccount: "4111", resolvedLines: [{ amount: 100, isDisbursement: true }] })).toThrow(/débours/i);
   });
   it("rejects an unknown context", () => {
     expect(() => compute({ context: "xfer", counterpartAccount: "4111", resolvedLines: [{ amount: 1 }] })).toThrow(/context/i);
@@ -80,7 +80,7 @@ describe("determination — resolve (DB wiring, mocked client)", () => {
     return {
       query: async (sql) => {
         if (/FROM posting_rule/.test(sql)) return { rows: cfg.rule ? [cfg.rule] : [] };
-        if (/is_debours FROM dictionary_item/.test(sql)) return { rows: [{ is_debours: !!cfg.itemDebours }] };
+        if (/is_disbursement FROM dictionary_item/.test(sql)) return { rows: [{ is_disbursement: !!cfg.itemDisbursement }] };
         if (/code, jurisdiction_id FROM tax_code/.test(sql)) return { rows: [{ code: "TVA", jurisdiction_id: "j1" }] };
         if (/FROM tax_code WHERE jurisdiction_id/.test(sql)) return { rows: cfg.effTax ? [cfg.effTax] : [] };
         return { rows: [] };
@@ -90,7 +90,7 @@ describe("determination — resolve (DB wiring, mocked client)", () => {
 
   it("resolves a sale line through posting_rule + effective tax code", async () => {
     const c = fakeClient({
-      rule: { debit_account: null, credit_account: "7061", tax_code_id: "tx-base", is_debours: false },
+      rule: { debit_account: null, credit_account: "7061", tax_code_id: "tx-base", is_disbursement: false },
       effTax: { tax_code_id: "tx-v2026", rate_percent: 19.25, posts_credit_account: "4432", posts_debit_account: null },
     });
     const { totals, lines } = await resolve(c, {

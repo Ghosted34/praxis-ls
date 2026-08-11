@@ -37,7 +37,7 @@ async function replaceLines(client, id, lines) {
   const written = [];
   for (const ln of lines) {
     /// eslint-disable-next-line no-await-in-loop
-    const row = await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_debours: ln.is_debours === true, proof_vault_id: ln.proof_vault_id || null });
+    const row = await repo.insertLine(client, { cash_request_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", budget_amount: ln.budget_amount || 0, spent_amount: ln.spent_amount || 0, is_disbursement: ln.is_disbursement === true, proof_vault_id: ln.proof_vault_id || null });
     written.push(row);
   }
   return written;

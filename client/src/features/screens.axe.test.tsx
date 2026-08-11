@@ -365,7 +365,7 @@ const AREAS: Area[] = [
             posting_rules: [{ applies_context: "sale", debit_account: "4111", credit_account: "7061", debit_label: "Clients locaux", credit_label: "Commission de transit" }],
             service_tiers: [],
             usage: { costing_lines: 0, cash_request_lines: 0, purchase_order_items: 0, invoice_lines: 0, supplier_invoice_lines: 0, cost_entries: 0, expense_rates: 0 },
-            compliance: { requires_justification: false, receipt_requirement: "NOT_REQUIRED", proof_source: null, is_debours: false, debours_vat_transparent: true, needs_attention: false },
+            compliance: { requires_justification: false, receipt_requirement: "NOT_REQUIRED", proof_source: null, is_disbursement: false, disbursement_vat_transparent: true, needs_attention: false },
           },
         },
         populatedProof: /Transit fee/,
@@ -392,7 +392,7 @@ const AREAS: Area[] = [
             dictionary_items: [
               // `tier` comes from the service_type_dictionary_item join (0630) and
               // renders as the pill in the scoped table's Tier column.
-              { dictionary_item_id: "di1", code: "SEA_HANDLING", label_fr: "Manutention portuaire", label_en: "Port handling", category: "service", is_debours: false, is_billable: true, default_price: 150000, currency: "XAF", shipping_line: null, service_type_key: "SEA_IMPORT", tier: "BASIC", is_active: true },
+              { dictionary_item_id: "di1", code: "SEA_HANDLING", label_fr: "Manutention portuaire", label_en: "Port handling", category: "service", is_disbursement: false, is_billable: true, default_price: 150000, currency: "XAF", shipping_line: null, service_type_key: "SEA_IMPORT", tier: "BASIC", is_active: true },
             ],
             dictionary_items_generic: [],
             dossiers: [
@@ -404,7 +404,7 @@ const AREAS: Area[] = [
             ],
             margin_simulations_more: 1,
             invoices: [],
-            money: { planned: [{ currency: "XAF", planned_total: 690000, planned_debours: 200000 }], billed: [{ currency: "XAF", billed_ttc: 850000, revenue_ht: 720339, invoice_count: 1 }], actual_total: 660000, masked: false },
+            money: { planned: [{ currency: "XAF", planned_total: 690000, planned_disbursement: 200000 }], billed: [{ currency: "XAF", billed_ttc: 850000, revenue_ht: 720339, invoice_count: 1 }], actual_total: 660000, masked: false },
           },
         },
         // Populated state has data but the "invoices" sub-table is legitimately

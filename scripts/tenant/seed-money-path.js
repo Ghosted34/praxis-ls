@@ -201,7 +201,7 @@ async function main() {
   const dossierId = dossier && dossier.dossier_id;
   const clientName = (clients.find((cl) => cl.client_id === clientId) || {}).name;
   const dict = unwrap(await call("GET", "/financial-dictionary"));
-  const service = dict.find((d) => d.is_debours === false && d.category === "service") || dict.find((d) => !d.is_debours);
+  const service = dict.find((d) => d.is_disbursement === false && d.category === "service") || dict.find((d) => !d.is_disbursement);
   const treasury = unwrap(await call("GET", "/treasury-accounts"));
   const bank = treasury.find((t) => t.kind === "BANK") || treasury[0];
   ok(`discovered entity=${entity.code} client=${clientName || "—"} dossier=${dossier ? dossier.ref : "—"} dict=${service ? service.code : "—"}`);

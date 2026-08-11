@@ -79,7 +79,7 @@
 -- Customs Evaluation, the stuffing requests and reports, PoA and guarantee
 -- letter authentication, Transshipment, Origin Charges, Stamp. Each is a fee
 -- that MIGHT be the forwarder's or MIGHT be a third-party charge advanced, and
--- getting it wrong in either direction misstates turnover. They stay DEBOURS
+-- getting it wrong in either direction misstates turnover. They stay DISBURSEMENT
 -- until someone who knows the commercial terms says otherwise; the list is in
 -- the pull request for exactly that.
 --
@@ -296,7 +296,7 @@ INSERT INTO _fd_amend (code,old_fr,new_fr,old_en,new_en,old_sub,new_sub,descr,ke
  ('#E034','Location de camion','Location de camion','Truck Rental',NULL,'TRUCKING',NULL,'Location d''un camion auprès d''un tiers. Hire of a truck from a third party.',ARRAY['affretement','camion','hire','location','rental','truck']::text[],NULL),
  ('#E035','Entretien des véhicules','Entretien des véhicules','Vehicle Maintenance',NULL,'TRUCKING',NULL,'Entretien et réparation des véhicules de la flotte. Maintenance and repair of fleet vehicles.',ARRAY['entretien','flotte','garage','maintenance','reparation','vehicule']::text[],NULL),
  ('#E036','Facture Eau','Facture eau','Water',NULL,'UTILITIES',NULL,'Consommation d''eau des locaux. Water consumption for the premises.',ARRAY['#-1003','camwater','consommation','eau','water']::text[],'#-1003'),
- ('#R001','Commissions sur Débours',NULL,'Commissions on Disbursement','Commission on Disbursements','AGENCY_FEE',NULL,'Notre marge sur les débours avancés pour le client. Our margin on the disbursements advanced on the client''s behalf.',ARRAY['#-1094','commission','commissions sur debours','debours','disbursement','marge','margin']::text[],'#-1094'),
+ ('#R001','Commissions sur Débours',NULL,'Commissions on Disbursement','Commission on Disbursements','AGENCY_FEE',NULL,'Notre marge sur les débours avancés pour le client. Our margin on the disbursements advanced on the client''s behalf.',ARRAY['#-1094','commission','commissions sur disbursement','disbursement','disbursement','marge','margin']::text[],'#-1094'),
  ('#R002','Frais de dossier',NULL,'Documentation Fee',NULL,'DOCUMENTATION',NULL,'Notre honoraire d''ouverture et de traitement documentaire du dossier (BL, timbre). Our documentation fee covering the file''s paperwork (BL, stamp).',ARRAY['#-1020','#-1153','bl fees','doc fee','documentation','dossier','frais de dossier','paperwork']::text[],'#-1153,#-1020'),
  ('#R003','Travail Extra-Légal','Travail juridique supplémentaire','Extra Legal Work',NULL,'AGENCY_FEE',NULL,'Prestation juridique hors forfait sur un dossier (contentieux, rédaction). Legal work on a file beyond the standard scope.',ARRAY['#-1057','contentieux','extra legal','juridique','legal','travail extra']::text[],'#-1057'),
  ('#R004','Ouverture de dossier',NULL,'File Opening',NULL,'AGENCY_FEE',NULL,'Notre honoraire d''ouverture de dossier, facturé une fois par opération. Our file-opening fee, charged once per operation.',ARRAY['#-1088','file opening','nouveau dossier','opening','ouverture','ouverture de dossier']::text[],'#-1088'),
@@ -350,7 +350,7 @@ UPDATE dictionary_item di
  WHERE di.code = r.old_code
    AND NOT (lower(r.old_code) = ANY (di.keywords));
 
--- The item itself. category, is_debours and debours_vat_transparent all follow
+-- The item itself. category, is_disbursement and disbursement_vat_transparent all follow
 -- direction — a revenue line is not a débours and does not carry the "VAT paid
 -- on your behalf" flag. proof_source becomes INTERNAL_SERVICE for the same
 -- reason 9080 applied it to the other revenue lines: your own fee is proven by
@@ -359,8 +359,8 @@ UPDATE dictionary_item di
    SET code                    = r.new_code,
        direction               = r.direction,
        category                = CASE r.direction WHEN 'REVENUE' THEN 'service' ELSE 'asset' END,
-       is_debours              = false,
-       debours_vat_transparent = false,
+       is_disbursement              = false,
+       disbursement_vat_transparent = false,
        proof_source            = CASE r.direction WHEN 'REVENUE' THEN 'INTERNAL_SERVICE' ELSE di.proof_source END,
        provider_kind           = CASE r.direction WHEN 'REVENUE' THEN 'OTHER' ELSE di.provider_kind END,
        is_billable             = CASE r.direction WHEN 'REVENUE' THEN true ELSE di.is_billable END
@@ -377,9 +377,9 @@ DELETE FROM posting_rule pr
  USING dictionary_item di, _fd_reclass r
  WHERE pr.dictionary_item_id = di.dictionary_item_id
    AND di.code = r.new_code
-   AND pr.is_debours = true;
+   AND pr.is_disbursement = true;
 
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'sale', '4111', r.account, t.tax_code_id, false
   FROM _fd_reclass r
   JOIN dictionary_item di ON di.code = r.new_code
@@ -390,7 +390,7 @@ SELECT di.dictionary_item_id, 'sale', '4111', r.account, t.tax_code_id, false
                       AND pr.applies_context = 'sale')
 ON CONFLICT DO NOTHING;
 
-INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_debours)
+INSERT INTO posting_rule (dictionary_item_id, applies_context, debit_account, credit_account, tax_code_id, is_disbursement)
 SELECT di.dictionary_item_id, 'purchase', r.account, '4011', NULL, false
   FROM _fd_reclass r
   JOIN dictionary_item di ON di.code = r.new_code
@@ -461,7 +461,7 @@ BEGIN
    WHERE code::text ~ '^#[RDEA][0-9]+$'
      AND left(right(code::text, -1), 1) <> CASE direction
            WHEN 'REVENUE' THEN 'R' WHEN 'EXPENSE' THEN 'E'
-           WHEN 'DEBOURS' THEN 'D' ELSE 'A' END;
+           WHEN 'DISBURSEMENT' THEN 'D' ELSE 'A' END;
   IF bad IS NOT NULL THEN
     RAISE EXCEPTION 'seed 9081: code letter disagrees with direction: %', bad;
   END IF;
@@ -471,7 +471,7 @@ BEGIN
   SELECT string_agg(di.code::text, ', ' ORDER BY di.code::text) INTO bad
     FROM dictionary_item di
     JOIN _fd_reclass r ON r.new_code = di.code
-   WHERE EXISTS (SELECT 1 FROM posting_rule pr WHERE pr.dictionary_item_id = di.dictionary_item_id AND pr.is_debours)
+   WHERE EXISTS (SELECT 1 FROM posting_rule pr WHERE pr.dictionary_item_id = di.dictionary_item_id AND pr.is_disbursement)
       OR NOT EXISTS (SELECT 1 FROM posting_rule pr
                       WHERE pr.dictionary_item_id = di.dictionary_item_id
                         AND pr.debit_account IS NOT NULL AND pr.credit_account IS NOT NULL);
@@ -489,11 +489,11 @@ END $$;
 --
 --   -- Restore the eight lines to débours (and re-mint their #D codes by hand —
 --   -- the originals are listed in the header):
---   UPDATE dictionary_item SET direction='DEBOURS', category='debours',
---          is_debours=true, debours_vat_transparent=true
+--   UPDATE dictionary_item SET direction='DISBURSEMENT', category='disbursement',
+--          is_disbursement=true, disbursement_vat_transparent=true
 --    WHERE code IN ('#R014','#R015','#R016','#R017','#R018','#R019','#R020');
---   UPDATE dictionary_item SET direction='DEBOURS', category='debours',
---          is_debours=true, debours_vat_transparent=true WHERE code = '#A003';
+--   UPDATE dictionary_item SET direction='DISBURSEMENT', category='disbursement',
+--          is_disbursement=true, disbursement_vat_transparent=true WHERE code = '#A003';
 --   DELETE FROM posting_rule WHERE dictionary_item_id IN
 --     (SELECT dictionary_item_id FROM dictionary_item
 --       WHERE code IN ('#R014','#R015','#R016','#R017','#R018','#R019','#R020','#A003'));

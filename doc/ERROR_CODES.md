@@ -174,7 +174,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_CONTROL_ACCOUNT` | 500 | 2× | — |
 | `NO_COUNTERPART` | 422 | 1× | — |
 | `NO_CUSTODIAN` | 422 | 2× | — |
-| `NO_DEBOURS_ACCOUNT` | 422 | 1× | — |
+| `NO_DISBURSEMENT_ACCOUNT` | 422 | 1× | — |
 | `NO_DOC_TYPE` | 422 | 1× | — |
 | `NO_DOSSIER` | 422 | 1× | — |
 | `NO_EFFECTIVE_CODE` | 422 | 1× | — |

@@ -44,7 +44,7 @@ function compute({ context, counterpartAccount, currency = "XAF", resolvedLines 
   const legs = [];
   let subtotalCents = 0;
   let taxTotalCents = 0;
-  let deboursCents = 0;
+  let disbursementCents = 0;
 
   const push = (account, side, cents, extra = {}) => {
     if (cents <= 0) return;
@@ -54,7 +54,7 @@ function compute({ context, counterpartAccount, currency = "XAF", resolvedLines 
       credit: side === "credit" ? major(cents) : 0,
       dossier_id: extra.dossierId || null,
       dictionary_item_id: extra.dictionaryItemId || null,
-      is_debours: extra.isDebours === true,
+      is_disbursement: extra.isDisbursement === true,
       tax_code_id: extra.taxCodeId || null,
       currency,
     });
@@ -65,10 +65,10 @@ function compute({ context, counterpartAccount, currency = "XAF", resolvedLines 
     if (htCents === 0) throw new AppError("ZERO_LINE", "a line amount must be > 0", 422);
 
     if (context === "sale") {
-      if (ln.isDebours) {
-        if (!ln.creditAccount) throw new AppError("NO_DEBOURS_ACCOUNT", "débours line needs a credit account (e.g. 4731)", 422);
-        push(ln.creditAccount, "credit", htCents, { dossierId: ln.dossierId, dictionaryItemId: ln.dictionaryItemId, isDebours: true });
-        deboursCents += htCents;
+      if (ln.isDisbursement) {
+        if (!ln.creditAccount) throw new AppError("NO_DISBURSEMENT_ACCOUNT", "débours line needs a credit account (e.g. 4731)", 422);
+        push(ln.creditAccount, "credit", htCents, { dossierId: ln.dossierId, dictionaryItemId: ln.dictionaryItemId, isDisbursement: true });
+        disbursementCents += htCents;
       } else {
         if (!ln.creditAccount) throw new AppError("NO_REVENUE_ACCOUNT", "service line needs a revenue account (706/707)", 422);
         push(ln.creditAccount, "credit", htCents, { dossierId: ln.dossierId, dictionaryItemId: ln.dictionaryItemId });
@@ -93,11 +93,11 @@ function compute({ context, counterpartAccount, currency = "XAF", resolvedLines 
     }
   }
 
-  const counterpartCents = subtotalCents + taxTotalCents + deboursCents;
+  const counterpartCents = subtotalCents + taxTotalCents + disbursementCents;
   if (context === "sale") {
-    legs.unshift({ account_code: counterpartAccount, debit: major(counterpartCents), credit: 0, dossier_id: null, dictionary_item_id: null, is_debours: false, tax_code_id: null, currency });
+    legs.unshift({ account_code: counterpartAccount, debit: major(counterpartCents), credit: 0, dossier_id: null, dictionary_item_id: null, is_disbursement: false, tax_code_id: null, currency });
   } else {
-    legs.push({ account_code: counterpartAccount, debit: 0, credit: major(counterpartCents), dossier_id: null, dictionary_item_id: null, is_debours: false, tax_code_id: null, currency });
+    legs.push({ account_code: counterpartAccount, debit: 0, credit: major(counterpartCents), dossier_id: null, dictionary_item_id: null, is_disbursement: false, tax_code_id: null, currency });
   }
 
   return {
@@ -105,7 +105,7 @@ function compute({ context, counterpartAccount, currency = "XAF", resolvedLines 
     totals: {
       subtotal_ht: major(subtotalCents),
       tax_total: major(taxTotalCents),
-      debours_total: major(deboursCents),
+      disbursement_total: major(disbursementCents),
       total: major(counterpartCents),
     },
   };
@@ -125,7 +125,7 @@ async function effectiveTax(client, taxCodeId, date) {
 
 /**
  * DB resolve: economic lines -> resolvedLines -> compute(). Each economic line is
- * { dictionary_item_id, amount, is_debours?, dossier_id? }.
+ * { dictionary_item_id, amount, is_disbursement?, dossier_id? }.
  */
 async function resolve(client, { context, counterpartAccount, entryDate, currency, lines }) {
   const resolvedLines = [];
@@ -136,11 +136,11 @@ async function resolve(client, { context, counterpartAccount, entryDate, currenc
     )).rows[0];
     if (!rule) throw new AppError("NO_POSTING_RULE", "No posting_rule for item " + ln.dictionary_item_id + " (" + context + ")", 422);
 
-    const item = (await client.query("SELECT is_debours FROM dictionary_item WHERE dictionary_item_id = $1", [ln.dictionary_item_id])).rows[0];
-    const isDebours = typeof ln.is_debours === "boolean" ? ln.is_debours : (rule.is_debours || (item && item.is_debours) || false);
+    const item = (await client.query("SELECT is_disbursement FROM dictionary_item WHERE dictionary_item_id = $1", [ln.dictionary_item_id])).rows[0];
+    const isDisbursement = typeof ln.is_disbursement === "boolean" ? ln.is_disbursement : (rule.is_disbursement || (item && item.is_disbursement) || false);
 
     let taxRate = null; let taxDebitAccount = null; let taxCreditAccount = null; let taxCodeId = null;
-    if (rule.tax_code_id && !isDebours) {
+    if (rule.tax_code_id && !isDisbursement) {
       const eff = await effectiveTax(client, rule.tax_code_id, entryDate);
       if (eff) {
         taxRate = eff.rate_percent;
@@ -152,7 +152,7 @@ async function resolve(client, { context, counterpartAccount, entryDate, currenc
 
     resolvedLines.push({
       amount: ln.amount,
-      isDebours,
+      isDisbursement,
       debitAccount: rule.debit_account,
       creditAccount: rule.credit_account,
       taxRate,

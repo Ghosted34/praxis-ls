@@ -27,14 +27,14 @@ async function replaceLines(client, invoiceId, lines) {
      
     await repo.insertLine(client, {
       invoice_id: invoiceId, dictionary_item_id: ln.dictionary_item_id || null,
-      label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_debours: ln.is_debours === true,
+      label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_disbursement: ln.is_disbursement === true,
       line_ht: ln.amount, line_no: i + 1,
     });
   }
 }
 
 const econLinesFrom = (lineRows, dossierId) =>
-  lineRows.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.line_ht), is_debours: l.is_debours, dossier_id: dossierId }));
+  lineRows.map((l) => ({ dictionary_item_id: l.dictionary_item_id, amount: Number(l.line_ht), is_disbursement: l.is_disbursement, dossier_id: dossierId }));
 
 async function createDraft(client, opts) {
   const { entityId, clientId = null, dossierId = null, reversesInvoiceId = null, lines = [], actor = {} } = opts;
@@ -112,7 +112,7 @@ async function postCore(client, { creditNoteId, entryDate, sourceDocRef = null, 
     const { number } = await numbering.allocate(client, { moduleKey: events.NUMBER_KEY, entityId: cn.entity_id, date });
     const updated = await repo.updateInvoice(client, creditNoteId, {
       status: "POSTED_LOCKED", doc_number: number, entry_id: saleEntry.entry.entry_id,
-      service_ht: determined.totals.subtotal_ht, debours_total: determined.totals.debours_total,
+      service_ht: determined.totals.subtotal_ht, disbursement_total: determined.totals.disbursement_total,
       vat_total: determined.totals.tax_total, total_ttc: determined.totals.total,
     });
     await documents.capture(client, { entityRef: ref(creditNoteId), docType: "CREDIT_NOTE", status: "VERIFIED" });

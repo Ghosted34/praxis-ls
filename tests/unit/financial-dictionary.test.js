@@ -1,29 +1,29 @@
 "use strict";
 const {
-  directionLetter, formatCode, resolveDebours, tierRank, tierIncludes, primaryServiceKey, needsAttention,
+  directionLetter, formatCode, resolveDisbursement, tierRank, tierIncludes, primaryServiceKey, needsAttention,
 } = require("../../src/modules/master/financial_dictionary/financial_dictionary.rules");
 
 describe("financial dictionary rules (MOD-05)", () => {
   test("code letter follows the direction", () => {
     expect(directionLetter("REVENUE")).toBe("R");
     expect(directionLetter("EXPENSE")).toBe("E");
-    expect(directionLetter("DEBOURS")).toBe("D");
+    expect(directionLetter("DISBURSEMENT")).toBe("D");
     expect(directionLetter("ASSET")).toBe("A");
     expect(directionLetter("NONSENSE")).toBe("X");
   });
 
   test("code is '#<L><NNN>' with at least three digits, rolling past 999", () => {
-    expect(formatCode("DEBOURS", 263)).toBe("#D263");
+    expect(formatCode("DISBURSEMENT", 263)).toBe("#D263");
     expect(formatCode("REVENUE", 1)).toBe("#R001");
     expect(formatCode("EXPENSE", 42)).toBe("#E042");
     expect(formatCode("ASSET", 1000)).toBe("#A1000"); // auto-rolls to 4 digits
   });
 
   test("débours always carries the flag; otherwise the toggle wins", () => {
-    expect(resolveDebours("DEBOURS", false)).toBe(true); // forced on
-    expect(resolveDebours("EXPENSE", true)).toBe(true);
-    expect(resolveDebours("EXPENSE", false)).toBe(false);
-    expect(resolveDebours("REVENUE", undefined)).toBe(false);
+    expect(resolveDisbursement("DISBURSEMENT", false)).toBe(true); // forced on
+    expect(resolveDisbursement("EXPENSE", true)).toBe(true);
+    expect(resolveDisbursement("EXPENSE", false)).toBe(false);
+    expect(resolveDisbursement("REVENUE", undefined)).toBe(false);
   });
 
   test("tiers nest: BASIC ⊆ ADVANCED ⊆ FULL", () => {

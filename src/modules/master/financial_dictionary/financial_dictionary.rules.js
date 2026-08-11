@@ -15,7 +15,7 @@
  *   - the proof obligation an item places on a document (proofObligation).
  */
 
-const LETTER = { REVENUE: "R", EXPENSE: "E", DEBOURS: "D", ASSET: "A" };
+const LETTER = { REVENUE: "R", EXPENSE: "E", DISBURSEMENT: "D", ASSET: "A" };
 
 /** Code letter for a direction ('X' for an unknown value — never minted). */
 function directionLetter(direction) { return LETTER[direction] || "X"; }
@@ -26,7 +26,7 @@ function formatCode(direction, serial) {
 }
 
 /** A débours item always carries the flag; otherwise the explicit toggle wins. */
-function resolveDebours(direction, isDebours) { return direction === "DEBOURS" ? true : !!isDebours; }
+function resolveDisbursement(direction, isDisbursement) { return direction === "DISBURSEMENT" ? true : !!isDisbursement; }
 
 const TIER_RANK = { BASIC: 1, ADVANCED: 2, FULL: 3 };
 function tierRank(tier) { return TIER_RANK[tier] || 3; }
@@ -249,8 +249,8 @@ function proofMessage(item = {}, { docLabel = "document", amount = null } = {}) 
 
 /* ═══════════════════ BULK IMPORT — the row contract ═══════════════════════ */
 
-const CATEGORIES = ["debours", "service", "overhead", "asset", "other"];
-const DIRECTIONS = ["REVENUE", "EXPENSE", "DEBOURS", "ASSET"];
+const CATEGORIES = ["disbursement", "service", "overhead", "asset", "other"];
+const DIRECTIONS = ["REVENUE", "EXPENSE", "DISBURSEMENT", "ASSET"];
 const APPLICABILITIES = ["SERVICE_SCOPED", "ANY_OPERATIONS", "NON_OPERATIONAL"];
 const RECEIPTS = ["ALWAYS_REQUIRED", "CONDITIONALLY_REQUIRED", "NOT_REQUIRED"];
 const PROVIDER_KINDS = ["SHIPPING_LINE", "CUSTOMS_AUTHORITY", "PORT_TERMINAL", "OTHER"];
@@ -283,7 +283,7 @@ const IMPORT_COLUMNS = [
   { key: "proof_source", header: "Proof source", width: 22, ref: "PROOF_SOURCE" },
   { key: "receipt_requirement", header: "Receipt requirement", width: 24, enum: RECEIPTS },
   { key: "requires_justification", header: "Justification (Y/N)", width: 18, bool: true },
-  { key: "debours_vat_transparent", header: "Show upstream VAT (Y/N)", width: 22, bool: true },
+  { key: "disbursement_vat_transparent", header: "Show upstream VAT (Y/N)", width: 22, bool: true },
   { key: "description", header: "Description", width: 40 },
   // OHADA mapping — one debit/credit pair per context. At least one complete
   // pair is what makes a row importable at all (see validateImportRow).
@@ -395,7 +395,7 @@ function validateImportRow(raw = {}, ctx = {}) {
     if (currency.length !== 3) reasons.push(`Currency "${currency}" must be a 3-letter code`);
     else out.currency = currency;
   }
-  for (const k of ["is_billable", "requires_justification", "debours_vat_transparent"]) {
+  for (const k of ["is_billable", "requires_justification", "disbursement_vat_transparent"]) {
     const b = parseBool(raw[k]);
     if (b === null) reasons.push(`${k.replace(/_/g, " ")} must be Y or N (got "${str(raw[k])}")`);
     else if (b !== undefined) out[k] = b;
@@ -444,7 +444,7 @@ function validateImportRow(raw = {}, ctx = {}) {
   out.posting_rules = postingRules;
 
   // A débours line always carries the flag — same rule as the HTTP path.
-  if (DIRECTIONS.includes(out.direction)) out.is_debours = resolveDebours(out.direction, out.is_debours);
+  if (DIRECTIONS.includes(out.direction)) out.is_disbursement = resolveDisbursement(out.direction, out.is_disbursement);
 
   return { valid: reasons.length === 0, reasons, data: reasons.length === 0 ? out : null };
 }
@@ -479,7 +479,7 @@ function partitionImport(rows = [], ctx = {}) {
 }
 
 module.exports = {
-  directionLetter, formatCode, resolveDebours, tierRank, tierIncludes, primaryServiceKey, needsAttention,
+  directionLetter, formatCode, resolveDisbursement, tierRank, tierIncludes, primaryServiceKey, needsAttention,
   // spend
   SPEND_LENSES, normalisePeriod, monthKeys, spendSeries,
   // cost evolution

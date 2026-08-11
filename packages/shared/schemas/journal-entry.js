@@ -46,7 +46,7 @@ const line = z.object({
   credit: side,
   dossier_id: uuid.optional(),
   dictionary_item_id: uuid.optional(),
-  is_debours: z.boolean().optional(),
+  is_disbursement: z.boolean().optional(),
   tax_code_id: uuid.optional(),
   currency: currency.optional(),
   fx_rate: z.number().positive("Rate must be greater than zero.").optional(),

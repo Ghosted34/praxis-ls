@@ -147,7 +147,7 @@ describe("service_type_360.dossier", () => {
   test("money is masked to zeros AND readiness.ever_billed is null when caller has no finance visibility", async () => {
     const restore = stubRepo({
       money: {
-        planned: [{ currency: "XAF", planned_total: 100, planned_debours: 20 }],
+        planned: [{ currency: "XAF", planned_total: 100, planned_disbursement: 20 }],
         billed: [{ currency: "XAF", billed_ttc: 500, revenue_ht: 400, invoice_count: 3 }],
         actual_total: 42,
       },

@@ -90,7 +90,7 @@ export function QuotationDetail({ quotation, entities, clientName, onClose, onCh
                   <div key={String(l.quotation_line_id)} className="grid grid-cols-[1fr_auto_auto_auto] gap-2 px-3 py-1.5 text-sm">
                     <span>
                       {cell(l.label)}
-                      {l.is_debours ? <span className="ml-1 text-xs text-muted-foreground">(débours)</span> : null}
+                      {l.is_disbursement ? <span className="ml-1 text-xs text-muted-foreground">(débours)</span> : null}
                     </span>
                     <span className="w-12 text-right">{cell(l.qty)}</span>
                     <span className="w-24 text-right">{money(l.unit_price, data?.currency)}</span>

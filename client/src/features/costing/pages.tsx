@@ -18,7 +18,9 @@ import { RowActions } from "@/components/ui/row-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
-import type { Entity, DictItem } from "@/lib/masterdata-api";
+import type { Entity, DictItem, DictRef, DictSearchHit } from "@/lib/masterdata-api";
+import { listDictRefs, resolveExpenseRate } from "@/lib/masterdata-api";
+import { DictionaryFinder } from "@/components/dictionary-finder";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 
@@ -30,21 +32,123 @@ const refOf = (rows: Dossier[] | null) => { const m: Record<string, string> = {}
 
 /* ═══════════════════ Costing sheets ═══════════════════ */
 
+/**
+ * One cost line's draft state. `dictionary_item_id` is what makes the line
+ * price itself: once it and (for equipment-varying items) a container type
+ * are known, the line resolves against the dossier's carrier via the same
+ * cascading resolver Expense Rates uses (specific carrier+type → carrier
+ * general → item default). `rateStatus` is purely a UI hint — the number
+ * that actually lands on the line is always `unit_cost`, editable either way.
+ */
+type CostingLineDraft = {
+  dictionary_item_id?: string;
+  label: string;
+  qty: number;
+  unit_cost: number;
+  variesByEquipment?: boolean;
+  containerTypeRefId?: string;
+  rateStatus?: "idle" | "resolving" | "resolved" | "manual";
+};
+const BLANK_LINE: CostingLineDraft = { label: "", qty: 1, unit_cost: 0, rateStatus: "idle" };
+
+function CostingLineRow({
+  line, containerTypes, onChange, onRemove, removable,
+}: {
+  line: CostingLineDraft; containerTypes: DictRef[];
+  onChange: (patch: Partial<CostingLineDraft>) => void; onRemove: () => void; removable: boolean;
+}) {
+  const pickItem = (id: string, label: string, hit?: DictSearchHit) => {
+    onChange({
+      dictionary_item_id: id || undefined,
+      label: id ? label : "",
+      variesByEquipment: id ? hit?.varies_by_equipment : false,
+      containerTypeRefId: undefined,
+      rateStatus: "idle",
+    });
+  };
+
+  return (
+    <div className="rounded-lg border bg-card p-2">
+      <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+        <Field label="Charge">
+          <DictionaryFinder value={line.dictionary_item_id} valueLabel={line.label} onPick={pickItem} placeholder="Search a charge…" />
+        </Field>
+        <div className="flex items-end">
+          <Button type="button" size="sm" variant="outline" disabled={!removable} onClick={onRemove}>✕</Button>
+        </div>
+      </div>
+      <div className="mt-2 grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
+        {line.variesByEquipment && (
+          <Field label="Container type">
+            <Select value={line.containerTypeRefId ?? ""} onChange={(e) => onChange({ containerTypeRefId: e.target.value || undefined, rateStatus: "idle" })}>
+              <option value="">—</option>
+              {containerTypes.map((ct) => <option key={ct.ref_id} value={ct.ref_id}>{ct.code}</option>)}
+            </Select>
+          </Field>
+        )}
+        <Field label="Qty"><Input type="number" className="num text-right" value={String(line.qty ?? "")} onChange={(e) => onChange({ qty: Number(e.target.value) })} /></Field>
+        <Field label="Unit cost"><Input type="number" className="num text-right" value={String(line.unit_cost ?? "")} onChange={(e) => onChange({ unit_cost: Number(e.target.value), rateStatus: "manual" })} /></Field>
+      </div>
+      {line.dictionary_item_id && (
+        <p className="mt-1 micro">
+          {line.rateStatus === "resolving" ? "Resolving rate…"
+            : line.rateStatus === "resolved" ? "Rate filled from the carrier's rate card — still editable."
+            : line.rateStatus === "manual" ? "No rate on file for this carrier/container type — entered manually."
+            : line.variesByEquipment && !line.containerTypeRefId ? "Pick a container type to look up the rate."
+            : null}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
+  const typesRes = useResource(() => listDictRefs("CONTAINER_TYPE"), []);
   const [dossierId, setDossierId] = React.useState("");
   const [margin, setMargin] = React.useState("");
-  const [lines, setLines] = React.useState<api.CostingLine[]>([{ label: "", qty: 1, unit_cost: 0 }]);
+  const [lines, setLines] = React.useState<CostingLineDraft[]>([{ ...BLANK_LINE }]);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const setLine = (i: number, p: Partial<api.CostingLine>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
+  const setLine = (i: number, p: Partial<CostingLineDraft>) => setLines((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
+
+  const dossierProviderId = (dossiers || []).find((d) => d.dossier_id === dossierId)?.rate_provider_id || undefined;
+
+  // Resolve one line's rate against the dossier's carrier — cascading from a
+  // carrier+container-type match down to the item's plain default. A miss
+  // (no rate on file for that scope) is not an error state for the form: the
+  // line just falls back to whatever the user types in Unit cost.
+  const resolveLine = React.useCallback(async (i: number, l: CostingLineDraft) => {
+    if (!l.dictionary_item_id || (l.variesByEquipment && !l.containerTypeRefId)) return;
+    setLine(i, { rateStatus: "resolving" });
+    try {
+      const resolved = await resolveExpenseRate({
+        dictionary_item_id: l.dictionary_item_id,
+        rate_provider_id: dossierProviderId,
+        container_type_ref_id: l.containerTypeRefId,
+      });
+      setLine(i, { unit_cost: Number(resolved.rate), rateStatus: "resolved" });
+    } catch {
+      setLine(i, { rateStatus: "manual" });
+    }
+  }, [dossierProviderId]);
+
+  // Re-resolve every priced line when the dossier (and so its carrier)
+  // changes — a line picked before the dossier was chosen is not stuck with
+  // no scope, and switching dossiers re-prices for the new carrier.
+  React.useEffect(() => {
+    lines.forEach((l, i) => { if (l.dictionary_item_id) resolveLine(i, l); });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dossierProviderId]);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
       await api.createCosting({
         dossier_id: dossierId, margin_percent: margin === "" ? undefined : Number(margin),
-        lines: lines.filter((l) => l.label).map((l) => ({ label: l.label, qty: Number(l.qty) || 1, unit_cost: Number(l.unit_cost) || 0 })),
+        lines: lines.filter((l) => l.label || l.dictionary_item_id).map((l) => ({
+          dictionary_item_id: l.dictionary_item_id, label: l.label, qty: Number(l.qty) || 1, unit_cost: Number(l.unit_cost) || 0,
+        })),
       });
       onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
@@ -57,24 +161,31 @@ function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
           <Field label="Dossier" required>
             <Select value={dossierId} onChange={(e) => setDossierId(e.target.value)}>
               <option value="">—</option>
-              {(dossiers || []).map((d) => <option key={d.dossier_id} value={d.dossier_id}>{d.ref}</option>)}
+              {(dossiers || []).map((d) => <option key={d.dossier_id} value={d.dossier_id}>{d.ref}{d.rate_provider_name ? ` — ${d.rate_provider_name}` : ""}</option>)}
             </Select>
+            {dossierId && !dossierProviderId && <p className="mt-1 micro">No carrier confirmed on this file yet — lines fall back to each item's default rate.</p>}
           </Field>
           <Field label="Margin %"><Input type="number" step="0.01" className="num text-right" value={margin} onChange={(e) => setMargin(e.target.value)} /></Field>
         </div>
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="micro">Cost lines</span>
-            <Button type="button" size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { label: "", qty: 1, unit_cost: 0 }])}>+ Add line</Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setLines((l) => [...l, { ...BLANK_LINE }])}>+ Add line</Button>
           </div>
           <div className="space-y-2">
             {lines.map((l, i) => (
-              <div key={i} className="grid grid-cols-[1fr_80px_120px_auto] items-end gap-2">
-                <Field label="Label"><Input value={l.label ?? ""} onChange={(e) => setLine(i, { label: e.target.value })} /></Field>
-                <Field label="Qty"><Input type="number" className="num text-right" value={String(l.qty ?? "")} onChange={(e) => setLine(i, { qty: Number(e.target.value) })} /></Field>
-                <Field label="Unit cost"><Input type="number" className="num text-right" value={String(l.unit_cost ?? "")} onChange={(e) => setLine(i, { unit_cost: Number(e.target.value) })} /></Field>
-                <Button type="button" size="sm" variant="outline" disabled={lines.length === 1} onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))}>✕</Button>
-              </div>
+              <CostingLineRow
+                key={i}
+                line={l}
+                containerTypes={typesRes.data || []}
+                removable={lines.length > 1}
+                onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
+                onChange={(patch) => {
+                  const next = { ...l, ...patch };
+                  setLine(i, patch);
+                  if (patch.dictionary_item_id !== undefined || patch.containerTypeRefId !== undefined) resolveLine(i, next);
+                }}
+              />
             ))}
           </div>
         </div>

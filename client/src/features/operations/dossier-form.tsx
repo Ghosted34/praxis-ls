@@ -11,8 +11,9 @@ import { Input } from "@/components/ui/input";
 import { FormButtons } from "@/components/ui/form-buttons";
 import { SearchSelect } from "@/components/ui/search-select";
 import { ErrorState } from "@/components/ui/states";
-import { useList, errMsg } from "@/lib/use-resource";
+import { useList, useResource, errMsg } from "@/lib/use-resource";
 import type { Entity, Client } from "@/lib/masterdata-api";
+import { listRateProviders } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
 
 export function DossierForm({
@@ -34,6 +35,10 @@ export function DossierForm({
   // mode from text. Active types only: archived ones stay valid on old dossiers
   // but must not be selectable for new ones.
   const { rows: serviceTypes } = useList<api.ServiceType>("/service-types");
+  // Sea + air carriers only — an authority (PAD/PAK) is a rate scope on a
+  // specific charge, not a property of the whole job.
+  const providers = useResource(() => listRateProviders({ active: true }), []);
+  const carriers = (providers.data || []).filter((p) => p.kind === "SHIPPING_LINE" || p.kind === "AIRLINE");
 
   const [f, setF] = React.useState({
     entity_id: row?.entity_id ?? "",
@@ -44,6 +49,7 @@ export function DossierForm({
     pod: row?.pod ?? "",
     customs_regime: row?.customs_regime ?? "",
     bl_mawb: row?.bl_mawb ?? "",
+    rate_provider_id: row?.rate_provider_id ?? "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
 
@@ -80,6 +86,7 @@ export function DossierForm({
       // would leave a stale reference pointing at the previously chosen port.
       pol_place_id: polPlaceId,
       pod_place_id: podPlaceId,
+      rate_provider_id: f.rate_provider_id || null,
     };
     try {
       if (isNew) await api.createDossier(body);
@@ -184,6 +191,16 @@ export function DossierForm({
           </Field>
           <Field label="Customs regime">
             <Input value={f.customs_regime} onChange={(e) => set("customs_regime", e.target.value)} />
+          </Field>
+          <Field label="Carrier" hint="Shipping line or airline — scopes the expense rate every costing line on this file resolves against.">
+            <Select value={f.rate_provider_id} onChange={(e) => set("rate_provider_id", e.target.value)}>
+              <option value="">— not confirmed yet —</option>
+              {carriers.map((c) => (
+                <option key={c.rate_provider_id} value={c.rate_provider_id}>
+                  {c.name}{c.kind === "AIRLINE" ? " (Air)" : " (Sea)"}
+                </option>
+              ))}
+            </Select>
           </Field>
           <Field label="BL / MAWB" className="sm:col-span-2">
             <Input value={f.bl_mawb} onChange={(e) => set("bl_mawb", e.target.value)} />

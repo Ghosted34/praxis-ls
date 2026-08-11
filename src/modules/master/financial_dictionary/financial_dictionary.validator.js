@@ -37,6 +37,9 @@ const create = z.object({
   requires_justification: z.boolean().optional(),
   receipt_requirement: z.enum(["ALWAYS_REQUIRED", "CONDITIONALLY_REQUIRED", "NOT_REQUIRED"]).optional(),
   debours_vat_transparent: z.boolean().optional(),
+  // FORMULA = priced by the Extra Charges Simulation module (Demurrage,
+  // Storage), not by a flat rate card. Defaults to FLAT server-side.
+  pricing_mode: z.enum(["FLAT", "FORMULA"]).optional(),
   is_active: z.boolean().optional(),
   posting_rules: z.array(rule).min(1),
   service_tiers: z.array(tier).optional(),
@@ -89,10 +92,11 @@ const rateSupersede = z.object({
   currency: z.string().length(3).optional(),
   effective_from: day,
   effective_to: day.nullish(),
-  shipping_line: z.string().nullish(),
-  variant: z.string().nullish(),
-  provider_kind: z.enum(["SHIPPING_LINE", "CUSTOMS_AUTHORITY", "PORT_TERMINAL", "OTHER"]).nullish(),
-  provider_supplier_id: z.string().uuid().nullish(),
+  // NULL = the item's plain default rate (no carrier/authority scope).
+  rate_provider_id: z.string().uuid().nullish(),
+  // NULL = no equipment dimension (an authority fee per BL, an air rate
+  // priced by weight rather than by box).
+  container_type_ref_id: z.string().uuid().nullish(),
   note: z.string().nullish(),
 });
 

@@ -308,7 +308,19 @@ const AREAS: Area[] = [
       { name: "Clients", render: () => <MasterClientsPage />, routes: { "/clients": CLIENTS, "/entities": ENTITIES } },
       { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
       { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
-      { name: "Expense rates", render: () => <ExpenseRatesPage />, routes: { "/expense-rates": [{ expense_rate_id: "er1", dictionary_item_id: "dddddddd-4444", shipping_line: "MAERSK", rate: 25000, currency: "XAF" }], "/financial-dictionary": [] }, populatedProof: /MAERSK/ },
+      {
+        name: "Expense rates", render: () => <ExpenseRatesPage />,
+        routes: {
+          "/financial-dictionary": [{ dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", category: "service", direction: "REVENUE", applicability_mode: "ANY_OPERATIONS", currency: "XAF", is_active: true, varies_by_equipment: false, pricing_mode: "FLAT" }],
+          "/rate-providers": [{ rate_provider_id: "rp1", kind: "SHIPPING_LINE", code: "MAERSK", name: "Maersk", is_active: true }],
+          "/financial-dictionary/di1/rate-history": {
+            item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", currency: "XAF", provider_kind: null },
+            series: [],
+            trend: { first: null, last: null, delta: null, delta_pct: null, direction: "flat", points: 0 },
+          },
+        },
+        populatedProof: /Transit fee/,
+      },
       {
         name: "Financial dictionary",
         render: () => <FinancialDictionaryPage />,
@@ -336,8 +348,8 @@ const AREAS: Area[] = [
             item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", currency: "XAF", provider_kind: "PORT_TERMINAL" },
             series: [
               {
-                key: "|MAERSK|20ft", provider_kind: "SHIPPING_LINE", provider_supplier_id: null, provider_name: null,
-                shipping_line: "MAERSK", variant: "20ft", currency: "XAF",
+                key: "rp1|ct1", rate_provider_id: "rp1", provider_kind: "SHIPPING_LINE", provider_name: "MAERSK",
+                container_type_ref_id: "ct1", container_type_code: "FT20", container_type_name: "20'", currency: "XAF",
                 points: [
                   { expense_rate_id: "er1", rate: 100000, currency: "XAF", effective_from: "2026-01-01", effective_to: "2026-05-31", in_force: false, superseded: true, note: null },
                   { expense_rate_id: "er2", rate: 120000, currency: "XAF", effective_from: "2026-06-01", effective_to: null, in_force: true, superseded: false, note: "Annual review" },

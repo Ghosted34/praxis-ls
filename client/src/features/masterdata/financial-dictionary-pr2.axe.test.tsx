@@ -51,8 +51,8 @@ const POINTS = [
 const RATES = {
   item: { dictionary_item_id: "di1", code: "#R001", label_fr: "Frais de transit", label_en: "Transit fee", currency: "XAF", provider_kind: "SHIPPING_LINE" },
   series: [{
-    key: "|MAERSK|20ft", provider_kind: "SHIPPING_LINE", provider_supplier_id: null, provider_name: null,
-    shipping_line: "MAERSK", variant: "20ft", currency: "XAF",
+    key: "rp1|ct1", rate_provider_id: "rp1", provider_kind: "SHIPPING_LINE", provider_name: "MAERSK",
+    container_type_ref_id: "ct1", container_type_code: "FT20", container_type_name: "20'", currency: "XAF",
     points: POINTS, current: POINTS[1],
     trend: { first: 100000, last: 120000, delta: 20000, delta_pct: 20, direction: "up" as const, points: 2 },
   }],

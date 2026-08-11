@@ -2,27 +2,39 @@
 "use strict";
 const { insertOne, getById, page, updateOne } = require("../../../shared/db/query-helpers");
 
-const insert = (client, data) => insertOne(client, "expense_rate", data);
+const WRITABLE = ["dictionary_item_id", "rate_provider_id", "container_type_ref_id", "rate", "currency", "effective_from", "effective_to", "provider_kind", "provider_supplier_id", "note"];
+
+const insert = (client, data) => insertOne(client, "expense_rate", data, "*", WRITABLE);
 const get = (client, id) => getById(client, "expense_rate", "expense_rate_id", id);
 
+// Joined with rate_provider + the container-type dictionary_ref row so every
+// caller gets display-ready names without a second round trip.
+const SELECT = `
+  SELECT er.*, rp.kind AS provider_kind_resolved, rp.name AS provider_name,
+         ct.code AS container_type_code, COALESCE(ct.name_en, ct.name_fr) AS container_type_name
+    FROM expense_rate er
+    LEFT JOIN rate_provider rp ON rp.rate_provider_id = er.rate_provider_id
+    LEFT JOIN dictionary_ref ct ON ct.ref_id = er.container_type_ref_id`;
+
 async function forItem(client, dictionaryItemId) {
-  const { rows } = await client.query("SELECT * FROM expense_rate WHERE dictionary_item_id = $1 ORDER BY effective_from DESC", [dictionaryItemId]);
+  const { rows } = await client.query(`${SELECT} WHERE er.dictionary_item_id = $1 ORDER BY er.effective_from DESC`, [dictionaryItemId]);
   return rows;
 }
 async function update(client, id, fields) {
   // PERF S19/S20: was a hand-rolled SET builder, which bypassed the
   // identifier validation and allow-list in query-helpers.
   if (!Object.keys(fields).length) return get(client, id);
-  return updateOne(client, "expense_rate", "expense_rate_id", id, fields, "*", null);
+  return updateOne(client, "expense_rate", "expense_rate_id", id, fields, "*", WRITABLE);
 }
 async function remove(client, id) { await client.query("DELETE FROM expense_rate WHERE expense_rate_id = $1", [id]); }
 async function list(client, q = {}) {
   const { limit, offset } = page(q);
   const params = [limit, offset];
   const wh = [];
-  if (q.dictionary_item_id) { params.push(q.dictionary_item_id); wh.push("dictionary_item_id = $" + params.length); }
+  if (q.dictionary_item_id) { params.push(q.dictionary_item_id); wh.push("er.dictionary_item_id = $" + params.length); }
+  if (q.rate_provider_id) { params.push(q.rate_provider_id); wh.push("er.rate_provider_id = $" + params.length); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
-  const { rows } = await client.query("SELECT * FROM expense_rate " + where + " ORDER BY effective_from DESC LIMIT $1 OFFSET $2", params);
+  const { rows } = await client.query(`${SELECT} ${where} ORDER BY er.effective_from DESC LIMIT $1 OFFSET $2`, params);
   return rows;
 }
 module.exports = { insert, get, forItem, update, remove, list };

@@ -227,6 +227,76 @@ const Schema = z.object({
   // S3-compatible providers; virtual-hosted style is the AWS default.
   S3_FORCE_PATH_STYLE: bool(true),
 
+  // ── Backups (INFRASTRUCTURE_PLAN §3.2, WS-B1/B3; decision D6) ────────────
+  //
+  // DELIBERATELY SEPARATE FROM THE STORAGE_* / S3_* SETTINGS ABOVE, and that
+  // separation is the entire security property, not a naming preference. D6
+  // ratified that offsite backups live in an INDEPENDENT provider/account from
+  // primary storage: backups that share a credential with the thing they are
+  // backing up do not survive the compromise of that credential, which is one
+  // of the scenarios they exist for. Pointing BACKUP_S3_* at the same bucket as
+  // S3_* is a supported configuration only for local development.
+  BACKUP_DRIVER: z.enum(["local", "s3"]).default("local"),
+  BACKUP_LOCAL_PATH: z.string().default("./data/backups"),
+  BACKUP_S3_ENDPOINT: z.string().default(""),
+  BACKUP_S3_BUCKET: z.string().default(""),
+  BACKUP_S3_ACCESS_KEY: z.string().default(""),
+  BACKUP_S3_SECRET_KEY: z.string().default(""),
+  BACKUP_S3_REGION: z.string().default("us-east-1"),
+  BACKUP_S3_FORCE_PATH_STYLE: bool(true),
+  // Retention, per D4: nightly kept 30 days, weekly (Sunday) kept 12 weeks.
+  BACKUP_RETAIN_DAILY_DAYS: int(30),
+  BACKUP_RETAIN_WEEKLY_WEEKS: int(12),
+  // 0 disables the nightly fleet backup (dev, or a deployment backing up by
+  // other means). Named as a cron because D4's RPO is a wall-clock promise.
+  BACKUP_CRON: z.string().default("0 1 * * *"),
+  // Monthly restore drill. An unrehearsed backup is the thing §3.2 warns about,
+  // so this is on by default; 0/"" disables it.
+  RESTORE_DRILL_CRON: z.string().default("0 4 1 * *"),
+  // A drill restores into a throwaway database on the same cluster; this is its
+  // name prefix. Anything matching it is treated as disposable.
+  RESTORE_DRILL_DB_PREFIX: z.string().default("praxis_drill_"),
+  // D4's ratified RTO target, in seconds. A drill that exceeds it is recorded
+  // and flagged rather than failed — a slow restore is still a restore.
+  RESTORE_RTO_TARGET_SECONDS: int(3600),
+  // pg_dump/pg_restore binaries, overridable where they are not on PATH or the
+  // cluster version needs a matching client.
+  PG_DUMP_BIN: z.string().default("pg_dump"),
+  PG_RESTORE_BIN: z.string().default("pg_restore"),
+
+  // ── Kaizen ops (§3.1, §3.4, §3.5) ────────────────────────────────────────
+  //
+  // Per-tenant health sweep. Distinct from HEALTH_SAMPLE_INTERVAL_MS (0093),
+  // which samples the PLATFORM: this one probes each tenant's own path, which
+  // is heavier, so it runs less often. 0 disables it.
+  TENANT_HEALTH_INTERVAL_MS: int(300000),
+  // AMBER thresholds. Named rather than inline so the rule is tunable per
+  // deployment without editing the status function every fleet has to share.
+  HEALTH_JOB_FAILURE_AMBER: int(5),
+  HEALTH_ERROR_AMBER: int(50),
+  HEALTH_LIVENESS_SLOW_MS: int(2000),
+
+  // Uptime probing (WS-U1). The interval is also the DENOMINATOR of the
+  // availability figure — a missing sample counts as downtime — so changing it
+  // changes what past percentages mean. 0 disables probing.
+  UPTIME_PROBE_INTERVAL_MS: int(300000),
+  UPTIME_PROBE_TIMEOUT_MS: int(10000),
+  UPTIME_PROBE_PATH: z.string().default("/api/health/ready"),
+  UPTIME_PROBE_SCHEME: z.enum(["http", "https"]).default("https"),
+  // The platform/admin host, probed alongside the tenant subdomains.
+  PLATFORM_HOST: z.string().default(""),
+
+  // Alert routing (WS-ER1). ALERT_WEBHOOK_URL (above) is the general channel;
+  // this optional second destination is for `page`-severity events only, so a
+  // fatal can reach somewhere noisier than the daily notice channel. When
+  // unset, pages fall back to the general webhook — a misconfiguration must
+  // degrade to "too noisy", never to "silent".
+  ALERT_WEBHOOK_PAGE_URL: z.string().default(""),
+  // How often the ops state is evaluated for alerting. Much less frequent than
+  // collection on purpose: a channel that repeats the same RED tenant every
+  // five minutes gets muted, and a muted channel is no alerting at all.
+  OPS_ALERT_INTERVAL_MS: int(1800000),
+
   PUPPETEER_EXECUTABLE_PATH: z.string().default(""),
   SANDBOX_WIPE_DAYS: int(14),
 

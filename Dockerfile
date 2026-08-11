@@ -7,8 +7,23 @@ FROM node:20-alpine AS base
 # instead and point Puppeteer at it (PUPPETEER_EXECUTABLE_PATH below) while
 # skipping its own download during `npm ci`. ttf-freefont gives PDF output
 # (e.g. the ₦ Naira sign in pdf.templates.js) broad glyph coverage.
+# postgresql16-client is PINNED TO THE SERVER MAJOR (docker-compose runs
+# pgvector/pgvector:pg16), not left as the floating `postgresql-client`.
+#
+# WS-B1 runs pg_dump from the worker container, and pg_dump REFUSES to dump a
+# server newer than itself — "server version 16.2; pg_dump version 15.6" and it
+# aborts. Unpinned, the client version rides whatever Alpine the current
+# node:20-alpine happens to be built on, so a base-image rebuild months from now
+# could move it under a server that has not changed. The failure would land at
+# 01:00 in a container nobody watches, and the symptom is silence: no dump, no
+# alert unless one is configured. Pinning makes the dependency explicit and
+# turns a future mismatch into a BUILD failure instead of a backup one.
+#
+# When the server major moves, this pin moves with it — and `npm run
+# db:backup:preflight` checks the pair at runtime either way.
 RUN apk add --no-cache \
-      ffmpeg postgresql-client tini \
+      ffmpeg tini \
+      postgresql16-client \
       chromium nss freetype harfbuzz ca-certificates ttf-freefont
 # Alpine's chromium package installs the binary at /usr/bin/chromium (the legacy
 # /usr/bin/chromium-browser name no longer exists on current Alpine). pdf.service

@@ -387,10 +387,19 @@ async function warnIfUnmonitored() {
   // wolf at every boot of a correctly-configured deployment — and a boot warning
   // people learn to ignore is worse than none, because it is the warning that
   // has to still work on the night it matters.
+  // `destinationsFor` rather than `destinationFor`: an email destination is a
+  // real destination now, and this check should count exactly what can deliver.
+  //
+  // INCIDENT 2026-08-12 — it used to count `config.ALERT_EMAIL` while nothing
+  // anywhere sent email. Filling that variable in SILENCED this warning and
+  // delivered nothing, which is the worst possible behaviour for the one check
+  // whose job is to say "nobody will be told". The variable now works, so
+  // counting it is honest; the fix was to make it true rather than to stop
+  // asking.
   let vaultConfigured = false;
   try {
     const alerts = require("./services/platform/alert-routing.service");
-    vaultConfigured = Boolean(await alerts.destinationFor("page"));
+    vaultConfigured = (await alerts.destinationsFor("page")).length > 0;
   } catch (err) {
     // The platform DB may not be reachable this early. Fall through to the env
     // check rather than failing boot over a warning.

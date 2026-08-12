@@ -541,6 +541,119 @@ jobs:
           echo "entity_id=$entity" >> "$GITHUB_OUTPUT"
           echo "Seeded corporate_entity $entity with journals BQ/VT/AC/OD and an OPEN period for $(date +%Y-%m)"
 
+      # -----------------------------------------------------------------------
+      # WS-S1 — the POOLED tenant path, exercised on every PR.
+      #
+      # PgBouncer is deployed in production and carries no traffic, deliberately.
+      # The problem with that is not the pooler, it is that the code path behind
+      # it has never run: `ALTER ROLE ... SET search_path`, the transaction-pinned
+      # sandbox, `auth_query`. All of it was written from documentation and would
+      # first execute on the day someone flipped the switch on production.
+      #
+      # 2026-08-12 is the argument. Enabling the pooler by accident — via a PORT
+      # left set beside an empty host — took tenant sites down twice, and the
+      # underlying question ("would it even have worked?") was unanswerable.
+      #
+      # So the cutover is rehearsed here instead, continuously and for free. This
+      # runs the SAME entrypoint and the SAME pgbouncer.ini.template the compose
+      # file uses, so what is tested is the real configuration rather than a
+      # convenient approximation of it.
+      # -----------------------------------------------------------------------
+      - name: Per-tenant DB credentials (WS-S2)
+        # The pooled path DEPENDS on this: the search_path arrives as a role
+        # default, and the role is created here. Running it also gives the
+        # isolation negative-test a place in CI it never had.
+        run: |
+          set -euo pipefail
+          node scripts/db/tenant-credentials.js --backfill
+          node scripts/db/tenant-credentials.js --verify
+
+      - name: Tenant path works DIRECT to Postgres (control)
+        # The control for the pooled run below. If this fails, the pooler is not
+        # the variable — and knowing that immediately is worth one extra step.
+        run: node scripts/ops/tenant-smoke.js --slug=citenant
+
+      - name: Stand up PgBouncer
+        env:
+          PGBOUNCER_AUTH_PASSWORD: ci-only-not-a-secret
+        run: |
+          set -euo pipefail
+          # The lookup role + SECURITY DEFINER function auth_query needs. This
+          # script could never have worked before 2026-08-12 (a DO block cannot
+          # take bind parameters), which is itself a reason to run it in CI.
+          node scripts/db/setup-pgbouncer-auth.js
+          node scripts/db/setup-pgbouncer-auth.js --check
+
+          # --network host so the container reaches the `postgres` SERVICE on the
+          # runner's localhost, and so the app can reach the pooler the same way.
+          docker run -d --name pgbouncer --network host \
+            -e PGBOUNCER_UPSTREAM_HOST=127.0.0.1 \
+            -e PGBOUNCER_UPSTREAM_PORT=5432 \
+            -e PGBOUNCER_AUTH_USER=pgbouncer \
+            -e PGBOUNCER_AUTH_PASSWORD=ci-only-not-a-secret \
+            -e PGBOUNCER_AUTH_DBNAME=praxis_platform \
+            -v "$PWD/docker/pgbouncer/pgbouncer.ini.template:/etc/pgbouncer/pgbouncer.ini.template:ro" \
+            -v "$PWD/docker/pgbouncer/docker-entrypoint.sh:/praxis-entrypoint.sh:ro" \
+            --entrypoint /bin/sh \
+            edoburu/pgbouncer:v1.23.1-p2 /praxis-entrypoint.sh
+
+          for i in $(seq 1 30); do
+            if pg_isready -h 127.0.0.1 -p 6432 -U pgbouncer >/dev/null 2>&1; then
+              echo "pgbouncer accepting connections after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::PgBouncer never started. Logs:"
+          docker logs pgbouncer 2>&1 | tail -40
+          exit 1
+
+      - name: Tenant path works THROUGH the pooler
+        # The assertion that matters. tenant-smoke.js checks current_schema(), so
+        # this fails if the connection opens but lands on `public` — the silent
+        # wrong-answer failure that `ignore_startup_parameters = options` would
+        # produce, and the reason that "fix" is not the fix.
+        env:
+          TENANT_DB_POOLER_HOST: 127.0.0.1
+          TENANT_DB_POOLER_PORT: "6432"
+        run: node scripts/ops/tenant-smoke.js --slug=citenant
+
+      - name: The SANDBOX schema is pinned under transaction pooling
+        # `live` comes from the role default and is the easy half. `sandbox` needs
+        # `SET LOCAL` inside an explicit transaction, because a bare `SET` runs in
+        # its own implicit transaction and PgBouncer may hand the next statement a
+        # different backend that never saw it. Between live and sandbox for one
+        # tenant that is a correctness bug, and it is invisible until it bites.
+        env:
+          TENANT_DB_POOLER_HOST: 127.0.0.1
+          TENANT_DB_POOLER_PORT: "6432"
+        run: |
+          set -euo pipefail
+          node -e "
+            const registry = require('./src/services/tenant/registry.service');
+            (async () => {
+              const meta = await registry.resolveBySlug('citenant');
+              for (const env of ['live', 'sandbox']) {
+                const got = await registry.withTenantConnection(meta, env, async (c) => {
+                  const { rows } = await c.query('SELECT current_schema() AS s');
+                  return rows[0].s;
+                });
+                if (got !== env) {
+                  console.error('::error::' + env + ' resolved to schema \"' + got + '\" through the pooler');
+                  process.exit(1);
+                }
+                console.warn(env + ' -> ' + got + ' OK');
+              }
+              await registry.closeAll();
+            })().catch((e) => { console.error(e); process.exit(1); });
+          "
+
+      - name: PgBouncer logs and teardown
+        if: always()
+        run: |
+          docker logs pgbouncer 2>&1 | tail -30 || true
+          docker rm -f pgbouncer || true
+
       - name: Integration suites against the real database
         # These 11 tests have been dark since they were written. Three of the
         # four suites need only a database and now get one; mail-imap.test.js

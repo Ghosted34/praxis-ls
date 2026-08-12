@@ -28,6 +28,56 @@
 if (process.env.PRAXIS_SKIP_DOTENV !== "1") require("dotenv").config();
 const { z } = require("zod");
 
+/**
+ * A value that starts with `#` is a comment that a parser failed to strip.
+ *
+ * INCIDENT 2026-08-12 (the real one). `.env` carried, copied verbatim out of
+ * `.env.example`:
+ *
+ *     TENANT_DB_POOLER_HOST=                # e.g. pgbouncer  (empty = direct to Postgres)
+ *
+ * Node's dotenv reads that as `""`. Docker Compose's `env_file` parser passes
+ * the comment through as the VALUE. Same file, two parsers, opposite answers —
+ * so every tenant pool in production tried to connect to a host named
+ * `# e.g. pgbouncer  (empty = direct to Postgres)`, failed DNS, and timed out
+ * after TENANT_POOL_ACQUIRE_TIMEOUT_MS. Tenant sites were down; the platform
+ * console was fine, because DB_HOST has a value before its comment and parses
+ * correctly. Only keys left EMPTY with a trailing comment are affected.
+ *
+ * It could not be reproduced locally — running through dotenv, the same file is
+ * correct — which is what made it expensive to find.
+ *
+ * COERCED TO EMPTY, NOT FATAL. Empty is what the operator meant: these are all
+ * optional keys whose comment says "e.g." or "empty = ...". Refusing to boot
+ * would turn a typo into a second outage. But it is announced loudly, because a
+ * silently-ignored setting is how `ALERT_WEBHOOK_URL` ends up looking configured
+ * while posting nowhere.
+ *
+ * If a value must genuinely begin with `#`, quote it — both parsers honour
+ * quotes, which is the actual fix for the ambiguity.
+ */
+function stripMisparsedComments(env) {
+  const spoiled = [];
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v === "string" && v.trimStart().startsWith("#")) {
+      spoiled.push(k);
+      env[k] = "";
+    }
+  }
+  if (spoiled.length) {
+    // console, not the logger: this runs before the logger is configured, and a
+    // warning nobody sees is the failure mode being fixed here.
+    console.warn(
+      `[env] IGNORED ${spoiled.length} setting(s) whose value was a COMMENT, not a value: ${spoiled.join(", ")}.\n` +
+        "      This happens when a key is left empty with a trailing `# comment` in .env — Docker Compose's\n" +
+        "      env_file parser keeps the comment as the value where dotenv discards it. Put the comment on its\n" +
+        "      own line above the key, or quote the value. Treated as empty for now.",
+    );
+  }
+  return spoiled;
+}
+const misparsedEnvKeys = stripMisparsedComments(process.env);
+
 const bool = (def) =>
   z.string().optional().transform((v) => (v === undefined ? def : /^(1|true|yes|on)$/i.test(v)));
 const int = (def) =>
@@ -583,4 +633,4 @@ const groups = Object.freeze({
   },
 });
 
-module.exports = { config, groups };
+module.exports = { config, groups, misparsedEnvKeys };

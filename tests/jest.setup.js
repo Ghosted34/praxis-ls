@@ -22,6 +22,30 @@
  */
 process.env.PRAXIS_SKIP_DOTENV = "1";
 
+/**
+ * A database password must exist, even though no unit test should use one.
+ *
+ * Not reading `.env` means `DB_PASSWORD` falls to its schema default of `""`,
+ * and pg treats an empty password as ABSENT: `ConnectionParameters` resolves it
+ * `config.password || PGPASSWORD || defaults.password`, and `""` is falsy, so it
+ * becomes `null`. A null password sends pg down its deprecated `~/.pgpass`
+ * lookup — `require('pgpass')`, which is not installed — and that surfaces as
+ * `TypeError: pgPass is not a function`, thrown asynchronously from inside the
+ * SASL handshake and reported against whichever test happened to be running.
+ *
+ * That is exactly what happened: portal-auth.test.js failed on an error from a
+ * pool it does not own and does not use.
+ *
+ * So: any non-empty value. It is never expected to authenticate — CI's
+ * build-test job has no Postgres at all and these suites pass there, which
+ * proves the code paths handle a failed connection. This only stops a MISSING
+ * password taking a different, undiagnosable route through pg's internals.
+ *
+ * Conditional, so the integration job (which sets real credentials in its job
+ * env) keeps them.
+ */
+if (!process.env.DB_PASSWORD) process.env.DB_PASSWORD = "unit-tests-never-connect";
+
 // Deterministic env for unit tests: development mode with dev-safe secrets so
 // modules that read config at require-time don't trip the production guard.
 process.env.NODE_ENV = process.env.NODE_ENV || "test";

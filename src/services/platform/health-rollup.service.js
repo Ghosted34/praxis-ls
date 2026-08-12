@@ -29,7 +29,16 @@
  */
 "use strict";
 
-const platformDb = require("./db");
+// INCIDENT 2026-08-12 — this service is BACKGROUND work, so it draws from the
+// ops pool, not the pool that serves requests. Sharing one pool let the fleet
+// sweeps exhaust the connections tenant logins needed for credential
+// resolution, and every tenant login timed out. A sweep may be slow; it may
+// not make a user request slow. See services/platform/db.js.
+const _db = require("./db");
+// Resolved per call, and tolerant of a double that stubs only `query`: the
+// unit tests replace this whole module, and which POOL a query used is not
+// what they are asserting — the SQL is. Production always exports both.
+const platformDb = { query: (t, p) => (_db.opsQuery || _db.query)(t, p) };
 const registry = require("../tenant/registry.service");
 const provisioning = require("./provisioning.service");
 const { logger } = require("../../config/logger");
@@ -112,6 +121,30 @@ function statusFor(signals, thresholds = {}) {
 }
 
 /**
+ * How long a single tenant's liveness probe may take before it is called dead.
+ *
+ * Deliberately under `TENANT_POOL_ACQUIRE_TIMEOUT_MS`: the collector must give
+ * up before the application would, so that measuring the fleet can never be a
+ * meaningful share of the load on it.
+ */
+const PROBE_DEADLINE_MS = Math.max(
+  500,
+  Math.floor(Number(config.TENANT_POOL_ACQUIRE_TIMEOUT_MS || 5000) / 2),
+);
+
+/** Resolve `p`, or reject once `ms` has passed. */
+function withDeadline(p, ms) {
+  let timer;
+  return Promise.race([
+    p,
+    new Promise((_, reject) => {
+      timer = setTimeout(() => reject(new Error(`probe exceeded ${ms}ms`)), ms);
+      if (typeof timer.unref === "function") timer.unref();
+    }),
+  ]).finally(() => clearTimeout(timer));
+}
+
+/**
  * WS-H2 — synthetic per-tenant liveness.
  *
  * A real query through the tenant's own pool. `SELECT 1` alone would prove only
@@ -122,14 +155,27 @@ function statusFor(signals, thresholds = {}) {
 async function probeTenant(meta) {
   const started = Date.now();
   try {
-    const ok = await registry.withTenantConnection(meta, "live", async (client) => {
-      await client.query("SELECT 1");
-      // Touching a real table catches the case where the connection works but
-      // the schema is missing or the role cannot read it — a wedge that
-      // `SELECT 1` reports as perfectly healthy.
-      await client.query("SELECT count(*) FROM app_user");
-      return true;
-    });
+    // INCIDENT 2026-08-12 — bounded, and shorter than the application's own
+    // acquire timeout.
+    //
+    // This probe opens the tenant's SERVING pool, which is the point: it has to
+    // exercise the real path to mean anything. But it runs against every tenant
+    // on a timer, so an unbounded probe against a saturated pool made the sweep
+    // itself part of the congestion — each tenant held a slot for the full
+    // acquire timeout while user requests queued behind it. Failing fast here
+    // records the tenant as unhealthy (which it is) without the collector
+    // contributing to the problem it is measuring.
+    const ok = await withDeadline(
+      registry.withTenantConnection(meta, "live", async (client) => {
+        await client.query("SELECT 1");
+        // Touching a real table catches the case where the connection works but
+        // the schema is missing or the role cannot read it — a wedge that
+        // `SELECT 1` reports as perfectly healthy.
+        await client.query("SELECT count(*) FROM app_user");
+        return true;
+      }),
+      PROBE_DEADLINE_MS,
+    );
     return { liveness_ok: ok === true, liveness_ms: Date.now() - started, liveness_error: null };
   } catch (err) {
     return { liveness_ok: false, liveness_ms: Date.now() - started, liveness_error: err.message };

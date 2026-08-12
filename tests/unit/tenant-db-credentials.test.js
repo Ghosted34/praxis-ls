@@ -154,6 +154,87 @@ describe("caching and rotation", () => {
   });
 });
 
+/**
+ * INCIDENT 2026-08-12 regression tests.
+ *
+ * The outage was not an error path — every error path above already degraded
+ * correctly. It was the SLOW path: the platform DB was reachable but saturated,
+ * so the lookup neither failed nor returned, and the tenant's pool creation waited
+ * behind it until the acquire timeout fired. These cases pin the two behaviours
+ * that close that gap, because both are invisible in normal operation and would
+ * otherwise be quietly refactored away.
+ */
+describe("slow platform DB (incident 2026-08-12)", () => {
+  const never = () => new Promise(() => {});
+
+  test("a cold lookup that hangs degrades to the shared credential instead of blocking the tenant", async () => {
+    platformDb.query.mockImplementation(never);
+
+    const started = Date.now();
+    const cred = await creds.resolveCredential(meta());
+    const elapsed = Date.now() - started;
+
+    // The tenant is served. This is the whole point: a secret-store hiccup costs
+    // ISOLATION for one pool creation, never AVAILABILITY.
+    expect(cred.source).toBe("shared");
+    expect(cred.password).toBe(config.DB_PASSWORD);
+
+    // And it is served promptly — well inside TENANT_POOL_ACQUIRE_TIMEOUT_MS,
+    // which is the timeout that actually fired during the incident.
+    expect(elapsed).toBeLessThan(config.TENANT_POOL_ACQUIRE_TIMEOUT_MS);
+  });
+
+  test("the shared fallback keeps the deploy-wide role, never app_role with the shared password", async () => {
+    platformDb.query.mockResolvedValue({ rows: [] });
+    const cred = await creds.resolveCredential(meta({ app_role: "praxis_acme" }));
+
+    // Pairing the per-tenant ROLE with the deploy-wide PASSWORD authenticates as
+    // a role that either does not exist or has a different password. The role and
+    // the password are one unit and are only ever used together.
+    expect(cred.source).toBe("shared");
+    expect(cred.user).not.toBe("praxis_acme");
+    expect(cred.user).toBe(config.TENANT_DB_APP_ROLE || config.DB_USER);
+  });
+
+  test("an expired entry is served from cache and refreshed behind the request", async () => {
+    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(first)" }] });
+    expect((await creds.resolveCredential(meta())).password).toBe("first");
+
+    // Expire it the way time would, without waiting an hour.
+    creds._expireForTest("acme");
+
+    // The request is served immediately from the stale entry — it does NOT pay
+    // for the platform round trip. That inline payment, once per tenant per
+    // minute, is what queued up behind the saturated platform DB.
+    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(second)" }] });
+    expect((await creds.resolveCredential(meta())).password).toBe("first");
+
+    // The refresh happened in the background, so the NEXT request sees the new
+    // value without anyone having waited for it.
+    await new Promise((r) => setImmediate(r));
+    expect((await creds.resolveCredential(meta())).password).toBe("second");
+  });
+
+  test("a stampede of concurrent requests triggers one background refresh, not one per request", async () => {
+    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(v1)" }] });
+    await creds.resolveCredential(meta());
+    creds._expireForTest("acme");
+
+    platformDb.query.mockClear();
+    let release;
+    platformDb.query.mockImplementation(
+      () => new Promise((resolve) => { release = () => resolve({ rows: [{ secret_enc: "enc(v2)" }] }); }),
+    );
+
+    await Promise.all(Array.from({ length: 25 }, () => creds.resolveCredential(meta())));
+
+    // 25 concurrent cold-ish reads used to mean 25 platform queries. De-duplication
+    // is what stops a fleet-wide expiry from becoming a self-inflicted load spike.
+    expect(platformDb.query).toHaveBeenCalledTimes(1);
+    if (release) release();
+  });
+});
+
 describe("putCredential", () => {
   test("encrypts before writing and never stores plaintext", async () => {
     platformDb.query.mockResolvedValue({ rows: [] });

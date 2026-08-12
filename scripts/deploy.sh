@@ -436,6 +436,49 @@ fi
 cat "$STATE_DIR/last-health.json"
 echo
 
+# ---------------------------------------------------------------------------
+# Tenant smoke gate — INCIDENT 2026-08-12.
+#
+# The readiness gate above passed throughout an outage in which EVERY tenant
+# login failed. It could not have caught it: /api/health/ready probes the
+# platform database and Redis, and both were fine. What was broken was the
+# tenant connection path — opening a pool for a tenant database — which the
+# readiness probe never touches.
+#
+# A health check that cannot see a tenant cannot see a tenant outage. This step
+# exercises the real path: resolve a tenant from the registry, open its pool,
+# run a query, release. It fails the deploy on the same timeout the application
+# would give a user, so a regression that makes tenant connections slow is a red
+# deploy rather than a red inbox.
+#
+# TENANT_SMOKE_SLUG names the tenant to probe. Unset = skipped with a warning,
+# because a fresh deployment may have no tenants yet — but a deployment that HAS
+# tenants and does not set this is choosing to keep the blind spot.
+# ---------------------------------------------------------------------------
+echo "── tenant smoke test"
+if [ -z "${TENANT_SMOKE_SLUG:-}" ]; then
+  echo "   ! TENANT_SMOKE_SLUG is not set — skipping."
+  echo "     The readiness gate above does NOT touch a tenant database. On 2026-08-12"
+  echo "     it passed while every tenant login timed out. Set TENANT_SMOKE_SLUG in .env"
+  echo "     to the slug of a real tenant to close that gap."
+else
+  if docker compose exec -T api node scripts/ops/tenant-smoke.js --slug="$TENANT_SMOKE_SLUG"; then
+    echo "   tenant path OK ($TENANT_SMOKE_SLUG)"
+  else
+    echo "!! DEPLOY FAILED TENANT SMOKE TEST"
+    echo "   The platform is healthy but tenant '$TENANT_SMOKE_SLUG' cannot be served."
+    echo "   This is the failure mode the readiness gate is blind to — most likely the"
+    echo "   tenant connection path: pool acquisition, per-tenant credentials, or the"
+    echo "   connection budget (see src/config/connection-budget.js)."
+    echo
+    echo "   Check:  docker compose logs --tail=50 api"
+    echo "           SELECT datname, count(*) FROM pg_stat_activity GROUP BY 1;"
+    echo "   Roll back:  bash scripts/rollback.sh $PREVIOUS_SHA"
+    announce "DEPLOY FAILED TENANT SMOKE on ${HOSTNAME_S}: ${BUILD_SHA:0:8} is healthy at the platform level but tenant ${TENANT_SMOKE_SLUG} cannot be served. Roll back: bash scripts/rollback.sh ${PREVIOUS_SHA:0:8}"
+    exit 1
+  fi
+fi
+
 # Only now is this build "current" — i.e. the thing a future deploy rolls back TO.
 echo "$PREVIOUS_SHA" > "$STATE_DIR/previous"
 echo "$BUILD_SHA" > "$STATE_DIR/current"

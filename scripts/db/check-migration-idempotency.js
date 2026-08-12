@@ -238,7 +238,26 @@ function violations(sql) {
   return out;
 }
 
-const sha = (s) => crypto.createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16);
+/**
+ * Fingerprint a migration's CONTENT — line endings normalised first.
+ *
+ * Without the normalisation this guard is platform-dependent, which is worse
+ * than having no guard. Git checks these files out as CRLF on a Windows
+ * developer machine (`core.autocrlf`) and as LF on Linux, so the same commit
+ * hashes two different ways: CI passes, the Windows checkout reports 62 applied
+ * migrations as "EDITED", and none of them were touched. A check that cries wolf
+ * on one platform is a check that gets re-baselined to silence it — at which
+ * point it starts crying wolf on the other, and then it gets deleted.
+ *
+ * `\r\n` → `\n` is the whole fix, and it needs no re-baseline: the committed
+ * baseline already holds LF hashes.
+ *
+ * The durable complement is a `.gitattributes` carrying `*.sql text eol=lf`, so
+ * the bytes stop diverging in the first place. That is a separate change because
+ * it rewrites every SQL file in a working copy.
+ */
+const sha = (s) =>
+  crypto.createHash("sha256").update(String(s).replace(/\r\n/g, "\n"), "utf8").digest("hex").slice(0, 16);
 
 function allFiles() {
   const out = [];

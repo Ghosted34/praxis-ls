@@ -5,7 +5,7 @@
  * Conversation rides in the URL (?channel=…). On our Control-Tower skin.
  */
 import * as React from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -185,7 +185,6 @@ export function TeamChatPage() {
   const [newChat, setNewChat] = React.useState(false);
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
-  const navigate = useNavigate();
 
   const nameOf = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -211,17 +210,7 @@ export function TeamChatPage() {
 
   return (
     <section className="animate-fade-in">
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight text-foreground">Messaging</h1>
-          <p className="micro">Unified inbox</p>
-        </div>
-        <button onClick={() => navigate("/comms/setup")} className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:text-foreground" aria-label="Setup & channels" title="Setup & channels">
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="3" /><path d="M19.4 13a7.9 7.9 0 000-2l2-1.5-2-3.5-2.4 1a8 8 0 00-1.7-1L14 3h-4l-.6 2.5a8 8 0 00-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 000 2l-2 1.5 2 3.5 2.4-1a8 8 0 001.7 1L10 21h4l.6-2.5a8 8 0 001.7-1l2.4 1 2-3.5z" /></svg>
-        </button>
-      </div>
-
-      <div className="grid h-[calc(100vh-11rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
+      <div className="grid h-[calc(100vh-8rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
         {/* conversation list */}
         <div className={cn("flex flex-col border-border md:border-r", activeId ? "hidden md:flex" : "flex")}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">

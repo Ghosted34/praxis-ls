@@ -49,6 +49,7 @@ module.exports = {
   inbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listInbox(c, req.query)) })),
   updateSender: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.updateIdentity(c, req.params.id, req.body || {})) })),
   upsertSender: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.upsertIdentity(c, req.body || {})) })),
+  archiveSender: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.archiveIdentity(c, req.params.id)) })),
 
   // ── Engine: connections ──
   autodiscover: asyncHandler(async (req, res) => res.json({ data: await service.autodiscover({ email: req.query.email }) })),

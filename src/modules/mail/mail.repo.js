@@ -7,7 +7,7 @@ const { insertOne, updateOne, getById, page } = require("../../shared/db/query-h
 async function listIdentities(client) {
   const { rows } = await client.query(
     "SELECT email_identity_id, purpose, from_address, from_name, reply_to, smtp_host, smtp_port, is_active " +
-      "FROM email_identity ORDER BY purpose",
+      "FROM email_identity WHERE archived_at IS NULL ORDER BY purpose",
   );
   return rows;
 }
@@ -74,6 +74,15 @@ async function upsertIdentity(client, d) {
     [d.purpose, d.from_address, d.from_name, d.reply_to || null, d.smtp_host || null, d.smtp_port || null, d.is_active],
   );
   return rows[0];
+}
+
+/** Soft-archive a sender identity — hidden from listIdentities, never deleted. */
+async function archiveIdentity(client, id) {
+  const { rows } = await client.query(
+    "UPDATE email_identity SET archived_at = now() WHERE email_identity_id = $1 AND archived_at IS NULL RETURNING email_identity_id",
+    [id],
+  );
+  return rows[0] || null;
 }
 
 // ── Engine: connections (email_connection, 0480) ──
@@ -209,7 +218,7 @@ async function listAttachments(client, inboundId) {
 }
 
 module.exports = {
-  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity,
+  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
   insertInbound, listInboundByConnection, getInbound, markInboundRead,
   findClientByEmail, findDossierByRefs, setEntityRef, timelineByEntity,

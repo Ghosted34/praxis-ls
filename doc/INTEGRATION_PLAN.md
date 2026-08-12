@@ -76,6 +76,9 @@ Cloudflare does not store mail, and Praxis does not need it to — **Praxis is t
 
 **Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound sends through a **free-tier transactional SMTP — Brevo now, Amazon SES at scale — via nodemailer, no paid subscription** (WS-E1).
 
+> **Admin note — why Brevo now, Amazon SES later, and not a self-hosted SMTP on our server.**
+> Sending mail is a *reputation* problem, not a configuration one. SPF/DKIM/DMARC (Google's sender rules) only prove *identity* — they get mail *considered*, not *inboxed*. Placement is decided by IP/domain reputation, complaint rates and warmup, none of which can be configured. A single server IP starts cold, often sits in a tainted range with port 25 blocked, and — worst — one bad tenant would sink *every* tenant's deliverability on the one shared IP. Managed senders run warmed, monitored IP pools, which is the genuinely hard part. So: **Brevo free tier now** — 300 emails/day, which suffices because only tenants *without* their own mailbox draw on it (own-mailbox tenants send through their own provider). **Past 300/day, sends queue until the next-day reset** — unacceptable for OTPs — so nearing that cap is the trigger to move the fallback to **Amazon SES** ($0.10/1k, no daily cap, unlimited domains; a creds-only swap). This is fully compatible with tenant provisioning — outbound is just SMTP creds swapped in the platform console (nodemailer and the code are unchanged), while **inbound for the 5 tenant addresses stays on free Cloudflare Email Routing**, independent of who sends. Self-hosting remains a future option only with a dedicated, clean IP plus ongoing deliverability ops.
+
 ### WS-E1 — Cloudflare (DNS + inbound routing) client + vaulted token · **PLANNED · M**
 
 A typed, axios-only client (matching the Graph/Gmail adapter style — no SDK) for the Cloudflare v4 API, used for **inbound routing and DNS only** — Cloudflare does no sending here: zones (verify), Email Routing (enable, create/list/delete addresses, catch-all → Worker), DNS (MX for inbound + the sender's SPF/DKIM/DMARC TXT records).
@@ -161,6 +164,17 @@ CREATE TABLE email_domain (
 
 The `email_connection` connect path (`mail.service.connect()` + Microsoft/Google OAuth, now with the canonical callback) already attaches a tenant's own mailbox. Remaining work: keep the section bindings pointed at the same slot when a provisioned CF address is swapped for an imported mailbox, plus the Comms UI affordance for the swap.
 - **Verification:** swapping a provisioned address for an imported M365 box preserves which ERP sections route to/from it.
+
+### WS-E8 — Direct compose surfaces + per-user mailbox ownership · **PLANNED · L**
+
+Opens **user-initiated** mail beyond the Document view: compose to any eligible recipient from Comms and from any 360. All of it is the user-initiated path — sends from the user's **connected mailbox**, audited to that user (never the system-identity path).
+
+- **Per-user mailbox ownership (schema change).** `email_connection` is tenant-shared today (no owner). Add `owner_user_id uuid REFERENCES app_user` (set from the OAuth state's connecting user, and from the actor on an IMAP connect) and `is_default boolean` (one default per user — partial unique index). A user **sees and sends from only their own** connected mailboxes; the default is the send-from box (switchable among the user's own). `listConnections` / test / sync / send all filter and guard by `owner_user_id = caller`.
+- **Eligible-recipient search.** `GET /mail/recipients?q=` over **all mailable parties — clients, suppliers, employees, leads/contacts** (any record with an email), returning name + email + type, RBAC-scoped; free-typed addresses allowed too.
+- **Surface A — Comms → New (+).** The (+) modal's **Email** option (alongside Group / In-house) opens a composer with the recipient search; sends from the user's default connected mailbox.
+- **Surface B — 360 mail icon.** A mail icon on every eligible 360 (client / supplier / employee / lead) opens the composer with the recipient pre-filled from that record.
+- **System mail unchanged.** Shared/section addresses (billing@, the provisioned tenant addresses) stay on the **system-identity** path (`email.service`, per-purpose) — personal connections are for personal sends. This is the confirmed rule: system-generated → per-purpose identity; user-initiated → the sender's own mailbox.
+- **Verification:** user A sees only A's mailboxes; a send logs `actor=A`, `From=A's default box`; the 360 icon pre-fills the party; recipient search finds a client, a supplier, an employee and a lead.
 
 ### 3.9 Email phasing
 

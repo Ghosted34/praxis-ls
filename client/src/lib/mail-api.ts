@@ -59,6 +59,9 @@ export const putSetting = (section: string, key: string, value: unknown) =>
 export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean }) =>
   tenant<Sender>("/mail/senders", { method: "POST", body });
 
+export const archiveSender = (id: string) =>
+  tenant<{ email_identity_id: string }>(`/mail/senders/${id}/archive`, { method: "POST" });
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Provider-agnostic email engine (Phase 1–3): connections, threads, send/reply.
  * See doc/EMAIL_ENGINE_PLAN.md.

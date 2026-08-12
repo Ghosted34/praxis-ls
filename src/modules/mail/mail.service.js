@@ -53,6 +53,7 @@ const listSent = (client, q = {}) => repo.listSentLog(client, { limit: q.limit, 
 const listInbox = (client, q = {}) => repo.listInbox(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id });
 const updateIdentity = (client, id, fields) => repo.updateIdentity(client, id, fields);
 const upsertIdentity = (client, d) => repo.upsertIdentity(client, d);
+const archiveIdentity = (client, id) => repo.archiveIdentity(client, id);
 
 // ── Engine helpers ──
 const secretKeyFor = (id) => `mail_conn:${id}`;
@@ -478,7 +479,7 @@ async function linkEntity(client, { inboundId, entity_ref }) {
 }
 
 module.exports = {
-  listIdentities, listSent, listInbox, updateIdentity, upsertIdentity,
+  listIdentities, listSent, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   listConnections, connect, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
   clientTimeline, linkEntity, autodiscover,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,

@@ -53,6 +53,7 @@ router.get("/sent", requirePermission(M, "view"), c.sent);
 router.get("/inbox", requirePermission(M, "view"), c.inbox);
 router.patch("/senders/:id", requirePermission(M, "edit"), v.senderPatch, c.updateSender);
 router.post("/senders", requirePermission(M, "create"), v.sender, c.upsertSender);
+router.post("/senders/:id/archive", requirePermission(M, "edit"), c.archiveSender);
 
 // Engine: connections
 router.get("/autodiscover", requirePermission(M, "view"), c.autodiscover);

@@ -12,9 +12,9 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/states";
-import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { DataList, type Column } from "@/components/data-list";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
+import { HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { dateFmt } from "@/lib/format";
@@ -23,12 +23,6 @@ import { reportActionError } from "@/lib/action-error";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { XIcon } from "@/components/ui/icons";
 
-const sendTone = (s?: string | null): Tone => {
-  const u = String(s || "").toUpperCase();
-  if (u === "SENT" || u === "DELIVERED") return "ok";
-  if (u === "QUEUED") return "blue";
-  return "bad";
-};
 const connTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
   if (u === "CONNECTED") return "ok";
@@ -375,66 +369,18 @@ function MailboxesSection() {
   );
 }
 
-/* ── Legacy sender log (Outbound / Inbound by purpose) ───────────────────── */
-
-function LegacyLog() {
-  const senders = useResource(() => api.listSenders(), []);
-  const [identityId, setIdentityId] = React.useState<string>("");
-  const [dir, setDir] = React.useState<"out" | "in">("out");
-  const sent = useResource(() => api.listSent(identityId || undefined), [identityId]);
-  const inbox = useResource(() => api.listInbox(identityId || undefined), [identityId]);
-  const list = senders.data || [];
-
-  const outCols: Column<api.SentMail>[] = [
-    { key: "to", label: "To", render: (m) => <span className="num text-foreground">{m.to_address}</span> },
-    { key: "subject", label: "Subject", render: (m) => m.subject || <span className="text-muted-foreground">(no subject)</span> },
-    { key: "section", label: "Section", render: (m) => (m.purpose ? <Pill tone="mute">{m.purpose}</Pill> : "—") },
-    { key: "status", label: "Status", render: (m) => <Pill tone={sendTone(m.status)}>{m.status}</Pill> },
-    { key: "sent", label: "Sent", render: (m) => dateFmt(m.sent_at || m.queued_at) },
-  ];
-  const inCols: Column<api.InboundMail>[] = [
-    { key: "from", label: "From", render: (m) => <span className="num">{m.from_address}</span> },
-    { key: "subject", label: "Subject", render: (m) => m.subject || <span className="text-muted-foreground">(no subject)</span> },
-    { key: "section", label: "Into", render: (m) => (m.purpose ? <Pill tone="mute">{m.purpose}</Pill> : "—") },
-    { key: "received", label: "Received", render: (m) => dateFmt(m.received_at) },
-  ];
-
-  return (
-    <>
-      <div className="mb-3 inline-flex gap-1 rounded-xl border bg-muted p-1">
-        {(["out", "in"] as const).map((d) => (
-          <button key={d} onClick={() => setDir(d)} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${dir === d ? "bg-primary font-semibold text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {d === "out" ? "Outbound" : "Inbound"}
-          </button>
-        ))}
-      </div>
-      <div className="chips mb-4">
-        <button onClick={() => setIdentityId("")} className={`chip ${!identityId ? "on" : ""}`}>All sections</button>
-        {list.map((s) => (
-          <button key={s.email_identity_id} onClick={() => setIdentityId(s.email_identity_id)} className={`chip ${identityId === s.email_identity_id ? "on" : ""}`}>{s.purpose}</button>
-        ))}
-      </div>
-      {dir === "out"
-        ? <DataList columns={outCols} rows={sent.data} error={sent.error} loading={sent.loading} rowKey={(m) => m.email_send_id} empty={{ title: "No mail sent yet", hint: "Outgoing mail from each section appears here." }} />
-        : <DataList columns={inCols} rows={inbox.data} error={inbox.error} loading={inbox.loading} rowKey={(m) => m.email_inbound_id} empty={{ title: "Inbox empty", hint: "Replies into these mailboxes appear here." }} />}
-    </>
-  );
-}
-
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-type Mode = "threads" | "mailboxes" | "log";
+type Mode = "threads" | "mailboxes";
 const MODES: { key: Mode; label: string }[] = [
   { key: "threads", label: "Threads" },
   { key: "mailboxes", label: "Mailboxes" },
-  { key: "log", label: "Send log" },
 ];
 
 export function MailPage() {
   const [mode, setMode] = React.useState<Mode>("threads");
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title="Mail" description="Connect any mailbox — Microsoft 365, Google, or IMAP/SMTP — and work every conversation in one place." />
       <HubTabs />
 
       <div className="mb-4 inline-flex gap-1 rounded-xl border bg-muted p-1">
@@ -447,7 +393,6 @@ export function MailPage() {
 
       {mode === "threads" && <ThreadsSection />}
       {mode === "mailboxes" && <MailboxesSection />}
-      {mode === "log" && <LegacyLog />}
     </section>
   );
 }

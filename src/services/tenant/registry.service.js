@@ -65,6 +65,46 @@ const inflight = new Map();
 const SCHEMA = Symbol.for("praxis.conn.schema");
 
 /**
+ * WS-S3. Which tenant a checked-out connection belongs to.
+ *
+ * WHY THIS EXISTS AT ALL
+ *
+ *   Entitlement lives in the PLATFORM database and is keyed by `tenant_id`.
+ *   Enforcement has to happen at the point of the action — inside the AI gate,
+ *   inside the mail sender — and those functions are handed a tenant CLIENT, not
+ *   a tenant id. `app_user.createUser` gets one only because its controller
+ *   threads `req.tenant.tenant_id` down by hand, and there are six more call
+ *   sites that would each need the same treatment.
+ *
+ *   Threading it through every one of them means changing signatures across
+ *   modules that have no business knowing about billing, and — worse — any
+ *   caller that forgets becomes a silent enforcement hole. The check would pass
+ *   because it never ran. That is the exact failure mode this work exists to
+ *   remove, so it must not be reintroduced by the plumbing.
+ *
+ *   `acquire()` is the single choke point every tenant connection passes
+ *   through, from HTTP requests and from background jobs alike. Stamping the id
+ *   here means anything holding a tenant client can resolve its tenant, and
+ *   "the caller forgot to pass it" stops being reachable.
+ *
+ * Symbol, for the same reason as SCHEMA: `pg` owns these objects and they are
+ * long-lived and shared.
+ */
+const TENANT_ID = Symbol.for("praxis.conn.tenant");
+
+/**
+ * The tenant a client belongs to, or null.
+ *
+ * Returns null rather than throwing: the callers are enforcement gates, and each
+ * has its own considered answer for "I could not determine the tenant" (see
+ * `entitlement.guard`). Throwing a different error from here would take that
+ * decision away from them.
+ */
+function tenantIdOf(client) {
+  return (client && client[TENANT_ID]) || null;
+}
+
+/**
  * WS-S1. Set by `acquire()` when the connection's schema is NOT the server-side
  * default and therefore has to be pinned inside a transaction — the pooled
  * sandbox case, and any tenant whose role predates the `ALTER ROLE ... SET
@@ -373,6 +413,12 @@ async function acquire(meta, env) {
   const schema = schemaFor(meta, env);
   const client = await (await poolFor(meta)).connect();
 
+  // WS-S3 — stamp the tenant before anything can use the connection, and on
+  // BOTH paths below. See the TENANT_ID comment: enforcement gates downstream
+  // resolve the tenant from the client rather than from an argument each caller
+  // has to remember to pass.
+  client[TENANT_ID] = meta.tenant_id || null;
+
   if (POOLED) {
     // Verify rather than assume, once per connection. A tenant provisioned before
     // the ALTER ROLE has no server-side default, and silently serving that tenant
@@ -520,4 +566,6 @@ module.exports = {
   hostCacheStats,
   closeAll,
   SCHEMA,
+  TENANT_ID,
+  tenantIdOf,
 };

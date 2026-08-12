@@ -66,8 +66,19 @@ const EVENT_SEVERITY = {
   "integrity.corrupt": "page",
   "tenant.red": "page",
   "host.down": "page",
+  // WS-S3. `page`, and that ranks it alongside a failed backup deliberately:
+  // an entitlement check that cannot be evaluated now BLOCKS the action it
+  // guards, so this event means tenants are being refused work. It is a
+  // platform fault with immediate user-visible effect, and it stays broken
+  // until someone looks.
+  "entitlement.unavailable": "page",
   "backup.stale": "notify",
   "tenant.amber": "notify",
+  // A tenant past a SOFT limit. Nothing was blocked and nothing is broken —
+  // this is a commercial signal (a conversation, or an upsell), not an
+  // operational one, and it is deduplicated to once per tenant/metric/month at
+  // the source.
+  "entitlement.soft_exceeded": "notify",
   "integrity.missing": "notify",
   "drill.slow": "notify",
   "maintenance.started": "log",

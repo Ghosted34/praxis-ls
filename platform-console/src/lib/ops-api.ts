@@ -267,6 +267,55 @@ export type Entitlement = {
   updated_at: string;
 };
 
+/**
+ * WS-M2 — everything the platform already knew about the reporting tenant,
+ * assembled for one ticket.
+ *
+ * Every block is independently nullable, and that is a contract rather than
+ * laziness: a tenant with no health samples, no backups yet, or a plan with no
+ * entitlements are all ordinary states. The screen renders what it has.
+ */
+export type SupportContext = {
+  ticket: SupportTicketRef;
+  health: {
+    status: "GREEN" | "AMBER" | "RED" | null;
+    reasons?: string[];
+    captured_at?: string;
+    liveness_ms?: number | null;
+    error_count_24h?: number | null;
+    last_error_at?: string | null;
+    schema_behind?: number | null;
+    pool_utilisation_pct?: number | null;
+    pool_max?: number | null;
+    pool_total?: number | null;
+    note?: string;
+  } | null;
+  uptime_7d: { host: string; availability_pct: number }[] | null;
+  history: {
+    window_hours: number;
+    green: number;
+    amber: number;
+    red: number;
+    // The flag that matters most: fine now, was not during the window.
+    degraded_in_window: boolean;
+    worst_seen: "GREEN" | "AMBER" | "RED" | null;
+    last_red_at: string | null;
+  } | null;
+  backups: {
+    last_ok_dump?: string | null;
+    last_ok_objects?: string | null;
+    failures_7d?: number;
+    age_hours?: number | null;
+    stale?: boolean;
+  } | null;
+  last_drill: { ok: boolean; rto_seconds: number | null; ran_at: string; restored_to: string | null } | null;
+  usage: UsageMetric[];
+  maintenance: { title: string; starts_at: string; ends_at: string }[];
+  summary: string;
+};
+
+type SupportTicketRef = { ticket_id: string; tenant_slug: string; created_at: string };
+
 /* ── Client ──────────────────────────────────────────────────────────────── */
 
 const qs = (params: Record<string, string | number | boolean | undefined | null>) => {
@@ -339,6 +388,12 @@ export const ops = {
 
   // Support telemetry (WS-M2)
   telemetry: (slug: string) => api<Record<string, unknown>>(`/ops/telemetry/${encodeURIComponent(slug)}`),
+  // Ticket-keyed: resolves the tenant from the ticket and adds what a
+  // slug-keyed snapshot cannot know — whether the tenant was degraded around
+  // the time the ticket was FILED, whether they are against a plan limit, and
+  // whether a maintenance window overlaps it.
+  supportContext: (ticketId: string, hours?: number) =>
+    api<SupportContext>(`/ops/support/${encodeURIComponent(ticketId)}/context${qs({ hours })}`),
 };
 
 /* ── Small shared formatters ─────────────────────────────────────────────── */

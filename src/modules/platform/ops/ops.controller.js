@@ -31,6 +31,7 @@ const restore = require("../../../services/platform/restore.service");
 const objects = require("../../../services/platform/object-backup.service");
 const uptime = require("../../../services/platform/uptime.service");
 const maintenance = require("../../../services/platform/maintenance.service");
+const support = require("../../../services/platform/support.service");
 const entitlement = require("../../../services/platform/entitlement.service");
 const store = require("../../../services/platform/backup-storage.service");
 const registry = require("../../../services/tenant/registry.service");
@@ -282,6 +283,24 @@ const telemetry = asyncHandler(async (req, res) =>
   res.json({ data: await maintenance.telemetrySnapshot(req.params.slug) }),
 );
 
+/**
+ * The same idea keyed by TICKET rather than by slug.
+ *
+ * `/ops/telemetry/:slug` needs the triager to already know which tenant filed
+ * the ticket and to go and look it up — which is most of the twenty minutes
+ * WS-M2 exists to remove. This resolves the tenant from the ticket, adds the
+ * things a slug-keyed snapshot cannot know (whether the tenant was degraded
+ * around the time it was FILED, whether they are against a plan limit, whether
+ * a maintenance window overlaps it) and leads with a one-line verdict.
+ */
+const supportContext = asyncHandler(async (req, res) =>
+  res.json({
+    data: await support.context(req.params.ticketId, {
+      historyHours: Number(req.query.hours) || 48,
+    }),
+  }),
+);
+
 module.exports = {
   fleetHealth,
   tenantHealth,
@@ -314,4 +333,5 @@ module.exports = {
   setEntitlement,
   removeEntitlement,
   telemetry,
+  supportContext,
 };

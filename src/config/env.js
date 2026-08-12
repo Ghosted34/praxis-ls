@@ -438,6 +438,11 @@ const Schema = z.object({
   HEALTH_JOB_FAILURE_AMBER: int(5),
   HEALTH_ERROR_AMBER: int(50),
   HEALTH_LIVENESS_SLOW_MS: int(2000),
+  // WS-S1 capacity headroom — the leading indicators. See runtime-config for
+  // why these defaults, and pooler-stats.service.js for why the second one is
+  // only ever populated once PgBouncer carries traffic.
+  HEALTH_POOL_UTILISATION_AMBER: int(80),
+  HEALTH_POOLER_MAXWAIT_AMBER_MS: int(100),
 
   // Uptime probing (WS-U1). The interval is also the DENOMINATOR of the
   // availability figure — a missing sample counts as downtime — so changing it
@@ -456,6 +461,17 @@ const Schema = z.object({
   // silently redefine every past percentage. Two writers on the same interval
   // would double-sample and inflate the numbers, so exactly one should be on.
   UPTIME_PROBE_IN_PROCESS: bool(true),
+
+  // Read by scripts/deploy.sh, not by the application — it decides whether the
+  // `uptime-probe` container is rolled in THIS compose stack. Declared here
+  // anyway so it validates like everything else and appears in the schema
+  // rather than being an undocumented string the deploy script greps for.
+  //
+  // Default true: on a single-host deployment the in-compose prober is the
+  // honest minimum (it survives an API crash, though not a host loss). Set
+  // false when a prober runs on another host or region, which is better and is
+  // what the service's own docstring recommends.
+  UPTIME_PROBE_IN_COMPOSE: bool(true),
   // Retention for uptime_sample. Longer than health (30d) because this series
   // feeds monthly and annual availability reporting.
   UPTIME_RETAIN_DAYS: int(90),

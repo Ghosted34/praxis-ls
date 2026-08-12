@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (272)
+## All codes (273)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -118,6 +118,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
 | `EMPTY_SET` | 422 | 1× | — |
+| `ENTITLEMENT_CHECK_UNAVAILABLE` | — | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |

@@ -283,7 +283,12 @@ docker compose build \
 
 # Tag what we just built so a rollback has something it can name. Without this
 # every image is `latest` and "the previous one" is not addressable.
-for svc in api worker; do
+#
+# uptime-probe is in this list because it is now rolled like the others (below).
+# A monitoring container that cannot be rolled back with the rest of the stack
+# is one you end up unable to revert during exactly the incident it is meant to
+# be observing.
+for svc in api worker uptime-probe; do
   img="$(docker compose images -q "$svc" 2>/dev/null | head -1 || true)"
   if [ -n "$img" ]; then docker tag "$img" "praxis-ls-$svc:$BUILD_SHA" || true; fi
 done
@@ -350,6 +355,99 @@ docker compose up -d --no-deps --wait api
 
 echo "── rolling worker"
 docker compose up -d --no-deps worker
+
+# ---------------------------------------------------------------------------
+# WS-U1 — the external uptime prober.
+#
+# THE BUG THIS FIXES, which is a silent one.
+#
+#   `uptime-probe` has been a service in docker-compose.yml with
+#   `restart: unless-stopped`, so a bare `docker compose up -d` starts it. But
+#   this script never named it, and it rolls services explicitly. Two
+#   consequences, both quiet:
+#
+#     1. On a host where the prober was never started, no deploy ever started
+#        it. It stayed off indefinitely and nothing said so — availability
+#        simply came from the in-process sampler, which cannot observe the API
+#        being down, which is the entire reason WS-U1 exists.
+#
+#     2. Worse, on a host where it WAS running: `restart: unless-stopped` keeps
+#        the existing container alive across deploys, and nothing recreated it.
+#        The prober went on running whatever image it started with, months after
+#        the rest of the stack moved on. A monitoring process pinned to old code
+#        is the last thing you want to discover during an incident.
+#
+#   `docker compose up -d` is idempotent and handles all three states in one
+#   command: starts it if it is down, recreates it if the image changed, leaves
+#   it alone if it is already current. That is the "check and switch on if it is
+#   not on" the deploy needed — no separate probe-for-state step, because the
+#   command already IS the check.
+#
+# WHY IT IS NOT `--wait`.
+#
+#   Unlike api-standby, this container exposes no health endpoint to wait on: it
+#   is a loop that sleeps between sweeps. Waiting would block on a condition
+#   that never arrives. Its first sample lands within UPTIME_PROBE_INTERVAL_MS.
+#
+# WHY IT CAN BE TURNED OFF.
+#
+#   The recommended arrangement is a prober on ANOTHER host or region — a probe
+#   sharing a host with its target cannot see the host die. A deployment doing
+#   that must not also run one here, so UPTIME_PROBE_IN_COMPOSE=false stops it,
+#   and stops it ACTIVELY: flipping the flag has to take effect on the next
+#   deploy, or "we turned it off" and "it is still running" stay indefinitely
+#   confusable.
+# ---------------------------------------------------------------------------
+IN_COMPOSE="$(grep -E '^UPTIME_PROBE_IN_COMPOSE=' .env 2>/dev/null | cut -d= -f2- | tr -d '"'"'"'' | tr -d '\r' || true)"
+IN_PROCESS="$(grep -E '^UPTIME_PROBE_IN_PROCESS=' .env 2>/dev/null | cut -d= -f2- | tr -d '"'"'"'' | tr -d '\r' || true)"
+
+if [ "${IN_COMPOSE:-true}" = "false" ]; then
+  echo "── uptime prober: disabled in this stack (UPTIME_PROBE_IN_COMPOSE=false)"
+  echo "   expecting an EXTERNAL prober elsewhere: node scripts/ops/uptime-probe.js"
+  docker compose stop uptime-probe >/dev/null 2>&1 || true
+
+# DOUBLE-SAMPLING GUARD, and the reason this refuses rather than warns.
+#
+#   UPTIME_PROBE_IN_PROCESS defaults to TRUE, so on most hosts the API is
+#   already sampling every tenant on the interval. Starting this container
+#   without flipping that flag samples every host TWICE per interval — and
+#   `availability()` divides recorded samples by the number EXPECTED from
+#   UPTIME_PROBE_INTERVAL_MS, so the figure comes out inflated. Not missing,
+#   not obviously broken: quietly wrong, in the optimistic direction, on the
+#   number that feeds the status page and the monthly report.
+#
+#   So the container is not started. Doing otherwise would mean this change
+#   introduced corrupted availability data on every existing deployment, which
+#   is a worse outcome than the prober staying off one more day. Existing
+#   behaviour is preserved exactly until someone makes a deliberate choice.
+elif [ "${IN_PROCESS:-true}" != "false" ]; then
+  echo "── uptime prober: NOT started (would double-count)"
+  echo "   UPTIME_PROBE_IN_PROCESS is not false, so the API is already sampling."
+  echo "   Running both samples every host twice per interval and INFLATES the"
+  echo "   availability figure on the status page and monthly report."
+  echo
+  echo "   To switch the external prober on, set in .env:"
+  echo "       UPTIME_PROBE_IN_PROCESS=false"
+  echo "   then re-run this deploy. To keep in-process probing, set:"
+  echo "       UPTIME_PROBE_IN_COMPOSE=false"
+  echo
+  echo "   (Not fatal — the deploy continues and in-process probing is unchanged.)"
+
+else
+  echo "── rolling uptime-probe (external prober)"
+  docker compose up -d --no-deps uptime-probe
+  # Prove it is actually up. `up -d` succeeding means Docker accepted the
+  # request, not that the process survived its first second — and a prober that
+  # crashed on boot looks identical to one quietly working, because both are
+  # silent by design.
+  sleep 2
+  if [ -z "$(docker compose ps -q uptime-probe 2>/dev/null)" ] || \
+     [ "$(docker inspect -f '{{.State.Running}}' "$(docker compose ps -q uptime-probe)" 2>/dev/null)" != "true" ]; then
+    echo "   ! uptime-probe is not running — check: docker compose logs --tail=50 uptime-probe"
+  else
+    echo "   uptime-probe up; first sample within UPTIME_PROBE_INTERVAL_MS"
+  fi
+fi
 
 # ---------------------------------------------------------------------------
 # Readiness gate.
@@ -509,7 +607,7 @@ echo "$BUILD_SHA" > "$STATE_DIR/current"
 # ---------------------------------------------------------------------------
 echo "── pruning (keeping the last $KEEP_IMAGES builds)"
 docker image prune -f --filter "until=168h" >/dev/null 2>&1 || true
-for svc in api worker; do
+for svc in api worker uptime-probe; do
   docker images "praxis-ls-$svc" --format '{{.Tag}} {{.CreatedAt}}' 2>/dev/null \
     | sort -k2 -r | tail -n +$((KEEP_IMAGES + 1)) | awk '{print $1}' \
     | while read -r tag; do

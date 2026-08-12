@@ -49,6 +49,12 @@ const _db = require("./db");
 // what they are asserting — the SQL is. Production always exports both.
 const platformDb = { query: (t, p) => (_db.opsQuery || _db.query)(t, p) };
 const registry = require("../tenant/registry.service");
+// Lazily required inside the functions that use it: alert-routing pulls in
+// platform mail and settings, and requiring it at module load creates a cycle
+// through the settings service back to here.
+const alerts = {
+  raise: (...a) => require("./alert-routing.service").raise(...a),
+};
 const { logger } = require("../../config/logger");
 const { AppError } = require("../../utils/errors");
 
@@ -359,6 +365,143 @@ async function check(tenantId, metric, { additional = 0, liveUsed = null } = {})
   };
 }
 
+/* ── The guard every enforcement point calls ─────────────────────────────── */
+
+/**
+ * Soft-breach alerts are deduplicated in-process.
+ *
+ * A soft limit is breached on EVERY subsequent action — a tenant 10 over their
+ * email allowance raises it once per send. Alerting on each would bury the
+ * channel and train people to filter the whole class, which is how a soft limit
+ * becomes invisible. One notice per tenant/metric/period is the useful rate: the
+ * console already carries the running number for anyone who wants detail.
+ *
+ * In-process and unbounded-by-time is fine: the key includes the period, so the
+ * map turns over monthly, and a restart re-alerting once is not a problem worth
+ * a table.
+ */
+const softAlerted = new Set();
+
+/**
+ * Enforcement, with the failure semantics every call site should share.
+ *
+ * ── WHY THIS FAILS CLOSED ──────────────────────────────────────────────────
+ *
+ *   The seat check used to swallow any non-breach error and allow the action,
+ *   reasoning that a platform-side hiccup should not stop the whole fleet
+ *   onboarding staff. That reasoning is sound and the implementation was not:
+ *   a check that yields whenever it cannot run is indistinguishable, from the
+ *   outside, from a check that ran and passed. The one condition under which
+ *   enforcement is most likely to be needed — something wrong on the platform
+ *   side — was the one condition under which it did not happen, silently.
+ *
+ *   So: an unevaluable check BLOCKS, with a distinct 503 that says so, and
+ *   raises a `page` alert. The trade is explicit and worth stating plainly,
+ *   because it is a real cost: while the platform database is unreachable,
+ *   entitlement-gated actions are refused. That is a visible, attributable,
+ *   short outage of specific features, and it is preferable to an invisible,
+ *   open-ended hole in the thing that will eventually gate revenue.
+ *
+ *   The blast radius is deliberately small. Only actions that pass through a
+ *   guard are affected, only tenants whose plan actually carries a limit reach
+ *   the throw, and `ENTITLEMENT_CHECK_UNAVAILABLE` is distinct from
+ *   `ENTITLEMENT_EXCEEDED` so an operator can tell "over their plan" from
+ *   "we cannot tell" without reading logs.
+ *
+ * `neverBlock` downgrades a hard breach to a soft one for callers where
+ * blocking is the wrong answer regardless of configuration — see the mail
+ * sender, which documents why.
+ */
+async function guard(
+  tenantId,
+  metric,
+  { additional = 0, liveUsed = null, slug = null, action = null, neverBlock = false } = {},
+) {
+  // No tenant resolved. This is not a policy question — it means the caller
+  // could not identify who is acting, which is a programming error, not a
+  // tenant over their plan. Allow, and say so loudly: turning it into a block
+  // would break platform-level and unauthenticated paths that legitimately have
+  // no tenant.
+  if (!tenantId) {
+    logger.debug({ metric, action }, "entitlement guard skipped — no tenant on the connection");
+    return { allowed: true, metric, limit: null, reason: "no tenant context" };
+  }
+
+  let result;
+  try {
+    result = await check(tenantId, metric, { additional, liveUsed });
+  } catch (err) {
+    // A real breach is the answer, not a failure. Pass it straight through.
+    if (err && err.code === "ENTITLEMENT_EXCEEDED") {
+      if (!neverBlock) throw err;
+      // neverBlock: the caller has declared that blocking is worse than
+      // overage. Record it as a soft breach and continue.
+      await notifySoft(tenantId, metric, { slug, action, forced: true });
+      return { allowed: true, metric, exceeded_soft: true, downgraded_from_hard: true };
+    }
+
+    // Anything else means the check could not be evaluated.
+    await alerts
+      .raise({
+        event: "entitlement.unavailable",
+        subject: `entitlement check failed for ${metric}`,
+        tenant: slug,
+        detail: { metric, action, error: err && err.message },
+      })
+      .catch(() => {});
+
+    if (neverBlock) {
+      logger.warn({ err, metric, slug }, "entitlement check unavailable — allowing (neverBlock)");
+      return { allowed: true, metric, limit: null, reason: "check unavailable" };
+    }
+
+    throw new AppError(
+      "ENTITLEMENT_CHECK_UNAVAILABLE",
+      "Plan limits cannot be verified right now, so this action was not completed. " +
+        "This is a platform-side fault, not a problem with your account — please retry shortly.",
+      // 503, not 402: nothing is known about the tenant's plan position. Telling
+      // a tenant they are over a limit that was never read would be a lie, and
+      // one they might pay to resolve.
+      503,
+      { metric, action },
+    );
+  }
+
+  if (result.exceeded_soft) await notifySoft(tenantId, metric, { slug, action });
+  return result;
+}
+
+/** Raise a soft-breach notice at most once per tenant/metric/period. */
+async function notifySoft(tenantId, metric, { slug = null, action = null, forced = false } = {}) {
+  const key = `${tenantId}:${metric}:${currentPeriod()}`;
+  if (softAlerted.has(key)) return;
+  softAlerted.add(key);
+
+  const spec = METRICS[metric] || {};
+  await alerts
+    .raise({
+      event: "entitlement.soft_exceeded",
+      subject: `${slug || tenantId} is over its ${spec.label || metric} allowance`,
+      tenant: slug,
+      detail: {
+        metric,
+        action,
+        // Says out loud that nothing was blocked, because the natural reading of
+        // an alert about a limit is that something stopped working.
+        enforced: false,
+        note: forced
+          ? "limit is configured hard, but this call site never blocks — see the caller"
+          : "soft limit: the action proceeded",
+      },
+    })
+    .catch(() => {});
+}
+
+/** Clear the soft-alert memo. Tests, and a console "re-notify" action. */
+function resetSoftAlerts() {
+  softAlerted.clear();
+}
+
 /** Fleet roll-up for the console and for whatever eventually bills. */
 async function fleetUsage({ period = currentPeriod() } = {}) {
   const { rows } = await platformDb.query(
@@ -417,5 +560,8 @@ module.exports = {
   measureFleet,
   statusFor,
   check,
+  guard,
+  notifySoft,
+  resetSoftAlerts,
   fleetUsage,
 };

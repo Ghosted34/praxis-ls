@@ -122,4 +122,14 @@ router.delete(
 // ticket but not the context the whole workstream exists to attach to it.
 router.get("/ops/telemetry/:slug", requireCap("support.read"), validateParams("slug"), c.telemetry);
 
+// Ticket-keyed, and the one the Support screen actually calls. The slug-keyed
+// route above stays: it is the right shape when an operator is looking at a
+// tenant rather than at a complaint.
+router.get(
+  "/ops/support/:ticketId/context",
+  requireCap("support.read"),
+  validateParams("ticketId"),
+  c.supportContext,
+);
+
 module.exports = router;

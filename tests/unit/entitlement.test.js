@@ -219,6 +219,74 @@ describe("metering", () => {
   });
 });
 
+/**
+ * `guard` is the enforcement wrapper every call site shares, and its failure
+ * semantics are the part most expensive to get wrong — so they are pinned here.
+ *
+ * The behaviour under test is a deliberate REVERSAL of what shipped first: the
+ * seat check used to swallow any non-breach error and allow the action. That
+ * made an unevaluable check indistinguishable from a passing one, which meant
+ * enforcement was absent precisely when the platform was unwell, and absent
+ * silently. These tests exist so that never quietly comes back.
+ */
+describe("guard — failure semantics", () => {
+  beforeEach(() => entitlement.resetSoftAlerts());
+
+  test("an unevaluable check BLOCKS with a distinct code, not ENTITLEMENT_EXCEEDED", async () => {
+    platformDb.query.mockRejectedValue(new Error("platform database unreachable"));
+
+    await expect(entitlement.guard(TENANT, "seats", { additional: 1 })).rejects.toMatchObject({
+      code: "ENTITLEMENT_CHECK_UNAVAILABLE",
+      // 503, not the 402 a real breach returns: nothing is known about the
+      // tenant's plan position, and telling them they are over a limit that was
+      // never read is a lie they might pay to resolve.
+      status: 503,
+    });
+  });
+
+  test("a real hard breach still surfaces as ENTITLEMENT_EXCEEDED / 402", async () => {
+    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
+
+    await expect(entitlement.guard(TENANT, "seats", { additional: 1 })).rejects.toMatchObject({
+      code: "ENTITLEMENT_EXCEEDED",
+      status: 402,
+    });
+  });
+
+  test("neverBlock downgrades a hard breach instead of throwing", async () => {
+    // The mail sender's case: this one transport carries invoices, resets and
+    // OTPs, so refusing a send over an email allowance locks users out of their
+    // own account and breaks the billing that would collect on the overage.
+    givenStatus([{ metric: "emails_month", used: 5000, limit_value: 5000, hard: true, measured_at: null }]);
+
+    const r = await entitlement.guard(TENANT, "emails_month", { additional: 1, neverBlock: true });
+    expect(r.allowed).toBe(true);
+    expect(r.downgraded_from_hard).toBe(true);
+  });
+
+  test("neverBlock also survives an unevaluable check", async () => {
+    platformDb.query.mockRejectedValue(new Error("platform database unreachable"));
+    const r = await entitlement.guard(TENANT, "emails_month", { neverBlock: true });
+    expect(r.allowed).toBe(true);
+  });
+
+  test("no tenant on the connection allows, rather than blocking", async () => {
+    // Platform-level and unauthenticated paths legitimately have no tenant.
+    // Turning that into a block would break them, and it is a programming
+    // condition rather than a commercial one.
+    const r = await entitlement.guard(null, "seats", { additional: 1 });
+    expect(r.allowed).toBe(true);
+    expect(platformDb.query).not.toHaveBeenCalled();
+  });
+
+  test("a soft breach allows and reports, and never throws", async () => {
+    givenStatus([{ metric: "emails_month", used: 5000, limit_value: 4000, hard: false, measured_at: null }]);
+    const r = await entitlement.guard(TENANT, "emails_month", { additional: 1 });
+    expect(r.allowed).toBe(true);
+    expect(r.exceeded_soft).toBe(true);
+  });
+});
+
 describe("the metric catalogue", () => {
   test("storage is declared but honestly marked as not yet metered", async () => {
     // document_vault records no byte size, so there is nothing to sum. Declaring

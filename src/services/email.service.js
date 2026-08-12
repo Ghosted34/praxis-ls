@@ -31,6 +31,8 @@ const { getSetting } = require("../shared/config/settings");
 const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
 const mailFallback = require("./platform/mail-fallback.service");
+const registry = require("./tenant/registry.service");
+const entitlement = require("./platform/entitlement.service");
 
 const fmtFrom = (id) => (id.from_name ? `"${id.from_name}" <${id.from_address}>` : id.from_address);
 
@@ -132,6 +134,40 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
         provider_message_id: (info && (info.messageId || info.message_id)) || null,
         error: null,
       }).catch(() => { /* log write is best-effort, never masks a sent mail */ });
+      // WS-S3 — email volume is WARN-ONLY, and after the send, not before.
+      //
+      // WHY IT NEVER BLOCKS, even if an operator marks the entitlement `hard`.
+      //   This one sender carries invoices, password resets and OTPs. Refusing a
+      //   send because a tenant is over an email allowance locks users out of
+      //   their own account and breaks the billing that would collect on the
+      //   overage — a limit that defends revenue by preventing it. Overage on
+      //   email is a conversation; it is not a thing worth an outage for. The
+      //   `neverBlock` flag says that explicitly rather than relying on nobody
+      //   ever ticking the box.
+      //
+      // WHY AFTER THE SEND.
+      //   A pre-send check would put a platform-database round trip in front of
+      //   every message. Since the answer can never stop the send, doing it
+      //   first buys nothing and costs latency on the hottest path here.
+      //
+      // Fire-and-forget, and un-awaited on purpose: the alert is deduplicated to
+      // once per tenant/metric/month inside `guard`, so the overwhelmingly
+      // common case is a no-op, and mail delivery must never wait on telemetry.
+      //
+      // Wrapped in try/catch as well as `.catch()`: the `.catch` only covers a
+      // REJECTED promise, and a synchronous throw here — a partially stubbed
+      // registry in a test double, a module load ordering problem — would
+      // escape it and fail a mail that has already been delivered. Nothing in
+      // this block may turn a sent message into an error.
+      try {
+        entitlement
+          .guard(registry.tenantIdOf?.(client), "emails_month", {
+            additional: 1,
+            action: `email.send:${purpose}`,
+            neverBlock: true,
+          })
+          ?.catch(() => { /* warn-only by definition; never touches the send */ });
+      } catch { /* telemetry must never mask a successful send */ }
     }
     return info;
   } catch (err) {

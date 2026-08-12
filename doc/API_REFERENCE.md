@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 996 |
+| Routes | 998 |
 | Modules mounted | 109 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 996 mounted routes, grouped by path prefix.
+All 998 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -144,6 +144,7 @@ All 996 mounted routes, grouped by path prefix.
 | GET | `/api/platform/ops/objects` | — |
 | POST | `/api/platform/ops/objects/:slug/scan` | — |
 | POST | `/api/platform/ops/objects/:slug/sync` | — |
+| GET | `/api/platform/ops/support/:ticketId/context` | — |
 | GET | `/api/platform/ops/telemetry/:slug` | — |
 | GET | `/api/platform/ops/uptime` | — |
 | GET | `/api/platform/ops/uptime/incidents` | — |
@@ -930,6 +931,7 @@ All 996 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |
 | PATCH | `/api/tenant/mail/senders/:id` | — |
+| POST | `/api/tenant/mail/senders/:id/archive` | — |
 | GET | `/api/tenant/mail/sent` | — |
 | GET | `/api/tenant/mail/thread` | — |
 | GET | `/api/tenant/mail/thread/:id` | — |

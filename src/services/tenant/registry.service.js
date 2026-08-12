@@ -9,6 +9,9 @@
 
 const { Pool } = require("pg");
 const { registerType } = require("pgvector/pg");
+// Must load before the first query on any pool: it makes `date` columns arrive
+// as `YYYY-MM-DD` strings rather than timezone-shifted Dates. See the module.
+require("../../shared/db/pg-date-types");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const dbCredentials = require("./db-credential.service");
@@ -60,6 +63,23 @@ const inflight = new Map();
  * handed back to `pg`, which owns the object.
  */
 const SCHEMA = Symbol.for("praxis.conn.schema");
+
+/**
+ * WS-S1. Set by `acquire()` when the connection's schema is NOT the server-side
+ * default and therefore has to be pinned inside a transaction — the pooled
+ * sandbox case, and any tenant whose role predates the `ALTER ROLE ... SET
+ * search_path` that `ensureTenantRole()` now applies.
+ */
+const NEEDS_PIN = Symbol.for("praxis.conn.needsPin");
+
+/**
+ * Whether a transaction pooler sits between this process and Postgres.
+ *
+ * Read once: it is deployment topology, not a runtime condition, and a value
+ * that could change mid-process would make the search_path handling below
+ * ambiguous in exactly the way that produces a silent wrong-schema read.
+ */
+const POOLED = Boolean(config.TENANT_DB_POOLER_HOST);
 
 /**
  * PERF S1 — the global connection budget.
@@ -247,8 +267,25 @@ async function createPool(meta) {
     // TENANT_DB_POOLER_HOST. The tenant's own host/port stay in the registry so
     // migrations and provisioning (which must NOT go through a transaction
     // pooler) keep talking to Postgres directly.
-    host: config.TENANT_DB_POOLER_HOST || meta.db_host,
-    port: config.TENANT_DB_POOLER_PORT || meta.db_port,
+    // HOST AND PORT MOVE TOGETHER, and that is the whole point of `POOLED`.
+    //
+    // INCIDENT 2026-08-12 (second half). These two resolved INDEPENDENTLY:
+    //
+    //     host: config.TENANT_DB_POOLER_HOST || meta.db_host,
+    //     port: config.TENANT_DB_POOLER_PORT || meta.db_port,
+    //
+    // `.env.example` ships `TENANT_DB_POOLER_PORT=6432` next to an empty
+    // `TENANT_DB_POOLER_HOST`, because a port with no host reads as harmless. It
+    // is not: 6432 is truthy, so a deployment that copied the template sent every
+    // tenant connection to the REAL Postgres host on the POOLER's port. Nothing
+    // listens there — `ECONNREFUSED <postgres-ip>:6432` — and every tenant
+    // request failed, with `TENANT_DB_POOLER_HOST` demonstrably empty and the
+    // comment above it promising that meant "direct to Postgres".
+    //
+    // Half a pooler configuration is not a configuration. Either both values come
+    // from the pooler or neither does.
+    host: POOLED ? config.TENANT_DB_POOLER_HOST : meta.db_host,
+    port: POOLED ? Number(config.TENANT_DB_POOLER_PORT) || 6432 : meta.db_port,
     database: meta.db_name,
     user: cred.user,
     password: cred.password,
@@ -267,11 +304,26 @@ async function createPool(meta) {
     // checkout and paying none: the value arrives with the connection handshake.
     // A sandbox request still issues one SET (see acquire()), which is the
     // uncommon case.
-    options: `-c search_path=${schema},public`,
+    //
+    // WS-S1 — NOT SENT WHEN A POOLER IS IN FRONT. PgBouncer rejects the `options`
+    // startup parameter, so this line is why enabling the pooler would have
+    // failed every tenant connection. Adding `options` to
+    // `ignore_startup_parameters` looks like the fix and is worse: PgBouncer then
+    // accepts the connection and DISCARDS the setting, so queries run on the
+    // wrong search_path. When pooled, the schema comes from the role instead
+    // (`ALTER ROLE ... IN DATABASE ... SET search_path`, set by
+    // `ensureTenantRole()`), which the pooler cannot strip.
+    ...(POOLED ? {} : { options: `-c search_path=${schema},public` }),
   });
   pool.on("connect", async (c) => {
     // Mirror the startup parameter so acquire() knows it need not re-SET.
-    c[SCHEMA] = schema;
+    //
+    // Only valid when we actually sent one. Under a pooler the schema is a role
+    // default: still correct, still not something this connection set — but the
+    // FIRST checkout must not assume it, because a tenant whose role predates the
+    // ALTER ROLE would then silently run on `public`. `acquire()` verifies once
+    // per connection instead.
+    c[SCHEMA] = POOLED ? null : schema;
     try {
       await registerType(c);
     } catch {
@@ -301,10 +353,49 @@ async function createPool(meta) {
  * A pooled connection that a sandbox request flipped is flipped back by the
  * next live request that lands on it. There is no reset-on-release, because a
  * reset is a round-trip too and the comparison already makes it unnecessary.
+ *
+ * WS-S1 — WHY THE POOLED PATH IS DIFFERENT
+ *
+ *   Under a TRANSACTION pooler, `SET search_path` issued outside a transaction is
+ *   not reliable: node-postgres runs it as its own implicit transaction, after
+ *   which PgBouncer may hand the underlying server connection to someone else.
+ *   The next statement can land on a different backend that never saw the SET.
+ *   Between `live` and `sandbox` for the SAME tenant that is a correctness bug;
+ *   it is not a cross-tenant leak, because PgBouncer pools per (database, user)
+ *   and each tenant has its own database and role.
+ *
+ *   So when pooled: `live` needs no statement at all — the role carries the
+ *   search_path as a server-side default — and `sandbox` is pinned inside an
+ *   explicit transaction by `withTenantConnection`, which is the only scope in
+ *   which `SET LOCAL` is guaranteed to apply to the statements that follow it.
  */
 async function acquire(meta, env) {
   const schema = schemaFor(meta, env);
   const client = await (await poolFor(meta)).connect();
+
+  if (POOLED) {
+    // Verify rather than assume, once per connection. A tenant provisioned before
+    // the ALTER ROLE has no server-side default, and silently serving that tenant
+    // from `public` is the failure mode worth one round-trip to rule out.
+    try {
+      if (client[SCHEMA] === null) {
+        const { rows } = await client.query("SHOW search_path");
+        client[SCHEMA] = String(rows[0].search_path || "").split(",")[0].trim();
+      }
+      if (client[SCHEMA] !== schema) {
+        // Not the role default (sandbox, or a tenant missing the ALTER ROLE).
+        // Caller must pin it transactionally — see withTenantConnection.
+        client[NEEDS_PIN] = schema;
+      } else {
+        client[NEEDS_PIN] = null;
+      }
+    } catch (err) {
+      client.release();
+      throw err;
+    }
+    return client;
+  }
+
   try {
     if (client[SCHEMA] !== schema) {
       await client.query(`SET search_path = ${schema}, public`);
@@ -320,8 +411,29 @@ async function acquire(meta, env) {
 /** Run `fn(client)` on the tenant DB with search_path bound to the environment. */
 async function withTenantConnection(meta, env, fn) {
   const client = await acquire(meta, env);
+  const pin = POOLED ? client[NEEDS_PIN] : null;
   try {
-    return await fn(client);
+    if (!pin) return await fn(client);
+
+    // WS-S1 — the pooled sandbox path (and any tenant whose role predates the
+    // server-side default). `SET LOCAL` is transaction-scoped, and a transaction
+    // is the only thing a transaction pooler guarantees stays on one backend, so
+    // this is the sole construct that makes the schema hold for `fn`'s
+    // statements. Outside a transaction the setting can be silently dropped.
+    await client.query("BEGIN");
+    try {
+      await client.query(`SET LOCAL search_path = ${pin}, public`);
+      const out = await fn(client);
+      await client.query("COMMIT");
+      return out;
+    } catch (err) {
+      try {
+        await client.query("ROLLBACK");
+      } catch {
+        /* the connection is going back to the pool either way */
+      }
+      throw err;
+    }
   } finally {
     client.release();
   }

@@ -25,6 +25,7 @@
  */
 "use strict";
 const repo = require("./service_type.repo");
+const detailRepo = require("../shipment_details/shipment_details.repo");
 const { canSeeFinancials } = require("../../master/_shared/confidential");
 const { AppError } = require("../../../utils/errors");
 
@@ -79,6 +80,14 @@ async function dossier(c, serviceTypeId, { canSeeFinancials: canSee = false } = 
   // once — same reason as party-360.service.js:180.
   const stats = { ...EMPTY_STATS, ...(await repo.stats(c, serviceTypeId, row.key)) };
   const templates = await repo.templatesWithStages(c, serviceTypeId);
+  // The shipment/service-detail form (0660). Every version, plus the fields of
+  // whichever one is live — the Fields tab renders the live one and offers the
+  // others as history, exactly like the Milestones tab does with templates.
+  const fieldSets = await detailRepo.fieldSetsFor(c, serviceTypeId);
+  const activeFieldSet = fieldSets.find((f) => f.is_active) || null;
+  const fields = activeFieldSet
+    ? await detailRepo.fieldsOf(c, activeFieldSet.service_type_field_set_id)
+    : [];
   const dictionary = await repo.dictionaryItemsFor(c, row.key);
   const dossiers = await repo.dossiersFor(c, serviceTypeId, { limit: 25 });
   const margin_simulations = await repo.marginSimulationsFor(c, serviceTypeId, { limit: 25 });
@@ -95,6 +104,12 @@ async function dossier(c, serviceTypeId, { canSeeFinancials: canSee = false } = 
     has_active_template: !!activeTemplate,
     active_template_version: activeTemplate ? activeTemplate.version : null,
     has_dictionary_line: (dictionary.scoped || []).some((d) => d.is_active !== false),
+    // A service type with no published detail form produces files that ask for
+    // nothing beyond client and dates — the same trap as a missing milestone
+    // template, and surfaced in the same banner rather than discovered on an
+    // empty form.
+    has_active_field_set: !!activeFieldSet,
+    active_field_set_version: activeFieldSet ? activeFieldSet.version : null,
     ever_used: stats.dossiers_total > 0,
     ever_billed: canSee
       ? (money.billed || []).some((b) => Number(b.invoice_count || 0) > 0)
@@ -106,6 +121,14 @@ async function dossier(c, serviceTypeId, { canSeeFinancials: canSee = false } = 
     stats,
     readiness,
     templates,
+    field_sets: fieldSets,
+    field_set: activeFieldSet ? { ...activeFieldSet, fields } : null,
+    // The equipment toggle lives on the service type row itself; lifted out so
+    // the Fields tab can render it without digging into `service_type`.
+    containers: {
+      captures_containers: row.captures_containers === true,
+      container_detail_mode: row.container_detail_mode || "GROUPED",
+    },
     dictionary_items: dictionary.scoped,
     dictionary_items_generic: dictionary.generic,
     dossiers,

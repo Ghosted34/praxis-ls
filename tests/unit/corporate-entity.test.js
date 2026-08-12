@@ -363,3 +363,82 @@ describe("fiscal year guard", () => {
     for (const m of [0, 13, -1, 1.5, "March"]) expect(() => rules.assertFiscalMonth(m)).toThrow(/1-12/);
   });
 });
+
+/**
+ * The AI surface — the tools the assistant is offered for this module.
+ *
+ * There was no test over this file at all, which is how re-parenting ended up
+ * being the one entity mutation with a route, a shared schema and a UI but no
+ * tool: `get_entity_360` returns the group structure, so the assistant could
+ * describe a hierarchy it had no way to correct. Nothing went red, because
+ * nothing was looking.
+ *
+ * These assert the shape every write must have rather than a fixed list, so a
+ * tool added later without a schema or a permission fails here instead of
+ * failing in front of a user.
+ */
+describe("AI tool surface", () => {
+  const ai = require("../../src/modules/master/corporate_entity/corporate_entity.ai");
+  const keyed = (xs) => Object.fromEntries(xs.map((x) => [x.key, x]));
+  const writes = keyed(ai.writes);
+  const reads = keyed(ai.reads);
+
+  it("offers a tool for every entity mutation the API exposes", () => {
+    // One per write route on corporate_entity.routes.js: PATCH /:id, POST
+    // /:id/status, /:id/active, /:id/structure, plus create.
+    for (const k of ["create_entity", "update_entity", "set_entity_status", "set_entity_active", "set_entity_structure"]) {
+      expect(Object.keys(writes)).toContain(k);
+    }
+  });
+
+  // Collected rather than asserted in the loop: jest's `expect` takes no message
+  // argument, so a bare assertion inside a for-loop reports "expected true,
+  // got false" and leaves you to work out which tool it meant. Naming the
+  // offenders in the diff is the whole value of a test over a list.
+  it("gates every write behind a schema, a permission and a confirmation", () => {
+    const ungated = ai.writes
+      .filter((w) => !w.schema || typeof w.service !== "function"
+        || !w.permission || w.permission.module !== "MOD-01"
+        // These all change a legal entity's record; none of them is a quiet write.
+        || w.confirm !== true)
+      .map((w) => w.key);
+    expect(ungated).toEqual([]);
+  });
+
+  it("describes every tool, since the description is what the model selects on", () => {
+    const undescribed = [...ai.reads, ...ai.writes]
+      .filter((t) => String(t.describe || "").length < 20)
+      .map((t) => t.key);
+    expect(undescribed).toEqual([]);
+  });
+
+  it("takes the entity id from the body — the assistant has no route parameter", () => {
+    const parsed = writes.set_entity_structure.schema.safeParse({
+      entity_id: "3f1a5b6c-1111-4222-8333-444455556666",
+      parent_entity_id: "3f1a5b6c-1111-4222-8333-444455557777",
+      relationship_type: "SUBSIDIARY",
+      ownership_percent: 100,
+      consolidates: true,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.entity_id).toBe("3f1a5b6c-1111-4222-8333-444455556666");
+  });
+
+  it("refuses a structure payload with no entity to apply it to", () => {
+    expect(writes.set_entity_structure.schema.safeParse({ consolidates: true }).success).toBe(false);
+  });
+
+  it("accepts a null parent, which is how an entity is detached from its group", () => {
+    const parsed = writes.set_entity_structure.schema.safeParse({
+      entity_id: "3f1a5b6c-1111-4222-8333-444455556666",
+      parent_entity_id: null,
+    });
+    expect(parsed.success).toBe(true);
+    expect(parsed.data.parent_entity_id).toBeNull();
+  });
+
+  it("still exposes the dated cap table the dossier now also offers", () => {
+    expect(reads.get_entity_cap_table).toBeTruthy();
+    expect(reads.get_entity_renewals).toBeTruthy();
+  });
+});

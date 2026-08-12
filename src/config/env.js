@@ -5,8 +5,78 @@
  */
 "use strict";
 
-require("dotenv").config();
+/**
+ * `.env` is NOT read when PRAXIS_SKIP_DOTENV=1 — set by tests/jest.setup.js.
+ *
+ * jest.setup.js already states the rule ("a unit test that reads a config
+ * default must not be able to see the developer's .env") and could not enforce
+ * it from where it stands: it deletes a key from `process.env`, and then THIS
+ * line runs and puts the key straight back from the file. Deleting is undone by
+ * the next `dotenv.config()`; blanking to "" defeats zod's `.default()`, which
+ * only fires on `undefined`. Neither works from outside.
+ *
+ * The result was a suite that passed in CI — where no `.env` file exists, so
+ * this call is already a no-op — and failed on a configured developer machine,
+ * pointing at code nobody had touched (`MAIL_FALLBACK_DOMAIN=nmail.praxisls.com`
+ * breaking mail-fallback.test.js; a real `PG_DUMP_BIN` breaking the backup
+ * preflight tests). Skipping the load under test makes a local run behave
+ * exactly like CI, which is the only behaviour worth having.
+ *
+ * An integration test that genuinely needs configuration gets it the same way CI
+ * does: real environment variables, not a file.
+ */
+if (process.env.PRAXIS_SKIP_DOTENV !== "1") require("dotenv").config();
 const { z } = require("zod");
+
+/**
+ * A value that starts with `#` is a comment that a parser failed to strip.
+ *
+ * INCIDENT 2026-08-12 (the real one). `.env` carried, copied verbatim out of
+ * `.env.example`:
+ *
+ *     TENANT_DB_POOLER_HOST=                # e.g. pgbouncer  (empty = direct to Postgres)
+ *
+ * Node's dotenv reads that as `""`. Docker Compose's `env_file` parser passes
+ * the comment through as the VALUE. Same file, two parsers, opposite answers —
+ * so every tenant pool in production tried to connect to a host named
+ * `# e.g. pgbouncer  (empty = direct to Postgres)`, failed DNS, and timed out
+ * after TENANT_POOL_ACQUIRE_TIMEOUT_MS. Tenant sites were down; the platform
+ * console was fine, because DB_HOST has a value before its comment and parses
+ * correctly. Only keys left EMPTY with a trailing comment are affected.
+ *
+ * It could not be reproduced locally — running through dotenv, the same file is
+ * correct — which is what made it expensive to find.
+ *
+ * COERCED TO EMPTY, NOT FATAL. Empty is what the operator meant: these are all
+ * optional keys whose comment says "e.g." or "empty = ...". Refusing to boot
+ * would turn a typo into a second outage. But it is announced loudly, because a
+ * silently-ignored setting is how `ALERT_WEBHOOK_URL` ends up looking configured
+ * while posting nowhere.
+ *
+ * If a value must genuinely begin with `#`, quote it — both parsers honour
+ * quotes, which is the actual fix for the ambiguity.
+ */
+function stripMisparsedComments(env) {
+  const spoiled = [];
+  for (const [k, v] of Object.entries(env)) {
+    if (typeof v === "string" && v.trimStart().startsWith("#")) {
+      spoiled.push(k);
+      env[k] = "";
+    }
+  }
+  if (spoiled.length) {
+    // console, not the logger: this runs before the logger is configured, and a
+    // warning nobody sees is the failure mode being fixed here.
+    console.warn(
+      `[env] IGNORED ${spoiled.length} setting(s) whose value was a COMMENT, not a value: ${spoiled.join(", ")}.\n` +
+        "      This happens when a key is left empty with a trailing `# comment` in .env — Docker Compose's\n" +
+        "      env_file parser keeps the comment as the value where dotenv discards it. Put the comment on its\n" +
+        "      own line above the key, or quote the value. Treated as empty for now.",
+    );
+  }
+  return spoiled;
+}
+const misparsedEnvKeys = stripMisparsedComments(process.env);
 
 const bool = (def) =>
   z.string().optional().transform((v) => (v === undefined ? def : /^(1|true|yes|on)$/i.test(v)));
@@ -102,6 +172,12 @@ const Schema = z.object({
   DB_SSL: bool(false),
   DB_POOL_MIN: int(2),
   DB_POOL_MAX: int(10),
+  // INCIDENT 2026-08-12 — background sweeps and request handling shared one
+  // platform pool, so the health collector could starve a login. They are two
+  // pools now (services/platform/db.js: `query` vs `opsQuery`). Small on
+  // purpose: background work may queue against itself, never against a user.
+  OPS_POOL_MAX: int(4),
+  DB_CONNECT_TIMEOUT_MS: int(10_000),
   DB_STATEMENT_TIMEOUT_MS: int(30000),
   DB_PLATFORM_SCHEMA: z.string().default("platform"),
   // RLS_READ_ENFORCE removed 2026-08-05 (DI-4.1): it gated a code path that set
@@ -113,7 +189,14 @@ const Schema = z.object({
   TENANT_DB_SUPERUSER: z.string().default("postgres"),
   TENANT_DB_SUPERUSER_PASSWORD: z.string().default(""),
   TENANT_DB_APP_ROLE: z.string().default(""),
-  TENANT_POOL_MAX: int(8),
+  // INCIDENT 2026-08-12 — was 8. Paired with TENANT_POOL_CACHE_MAX 24 that is a
+  // 192-connection per-process ceiling, 576 across api + api-standby + worker,
+  // against a Postgres default of 100. Lowered so the worst case FITS the
+  // budget src/config/connection-budget.js now checks at boot. Raise it again
+  // once PgBouncer carries traffic — a pooler is what makes a large client-side
+  // ceiling safe, and until then this number is a promise the database cannot
+  // keep.
+  TENANT_POOL_MAX: int(4),
 
   // PERF S1. One pg.Pool per tenant DB was cached in an unbounded Map, so
   // 12 warm tenants held 96 of Postgres's 100 connections and tenant 13 was
@@ -127,7 +210,11 @@ const Schema = z.object({
   //                  back to Postgres. With min:0 a quiet tenant holds none.
   //   ACQUIRE_TIMEOUT_MS — fail a checkout rather than hang behind a saturated
   //                  pool. A visible 503 beats a request that never returns.
-  TENANT_POOL_CACHE_MAX: int(24),
+  // INCIDENT 2026-08-12 — was 24. See TENANT_POOL_MAX above: the product of the
+  // two is the per-process connection ceiling, and it was never compared with
+  // what Postgres accepts. 4 × 12 = 48 (+ DB_POOL_MAX 10) fits three processes
+  // inside a 300-connection server with the 20% headroom the boot check wants.
+  TENANT_POOL_CACHE_MAX: int(12),
   TENANT_POOL_IDLE_MS: int(10_000),
   TENANT_POOL_ACQUIRE_TIMEOUT_MS: int(5_000),
 
@@ -140,15 +227,41 @@ const Schema = z.object({
   TENANT_DB_POOLER_PORT: int(0),
 
   // WS-S2. How long a decrypted per-tenant DB credential is cached in-process.
-  // Pool creation is rare, but eviction under TENANT_POOL_CACHE_MAX means a busy
-  // fleet re-creates pools steadily, and each one would otherwise cost a
-  // platform-DB round trip plus a decrypt. Short, so a rotation takes effect
-  // without a restart; `dbCredentials.invalidate()` makes it immediate.
+  //
+  // INCIDENT 2026-08-12 — this was 60s with a READ-THROUGH cache, so every
+  // tenant paid a platform-DB round trip every minute, inline, while holding the
+  // registry's in-flight guard. When the ops sweeps saturated the platform DB
+  // those lookups queued past TENANT_POOL_ACQUIRE_TIMEOUT_MS and tenant logins
+  // failed. The cache is now stale-while-revalidate, so this is a REFRESH
+  // interval rather than an expiry a request can block on, and it is long:
+  // rotation is made immediate by `dbCredentials.invalidate()`, which
+  // `putCredential()` already calls. The TTL only backstops a rotation performed
+  // outside this process.
   //
   // Declared here because db-credential.service.js reads it off `config` — an
   // undeclared key is stripped by the schema, so without this line the variable
   // could be set in .env and silently do nothing.
-  TENANT_DB_CRED_TTL_MS: int(60_000),
+  TENANT_DB_CRED_TTL_MS: int(3_600_000),
+
+  // The hard bound on how long a COLD credential lookup may delay a tenant
+  // connection. Past this the tenant is served on the shared credential and the
+  // vault read finishes in the background. Deliberately far below
+  // TENANT_POOL_ACQUIRE_TIMEOUT_MS: a secret-store hiccup must cost isolation
+  // for one pool creation, never availability.
+  TENANT_DB_CRED_TIMEOUT_MS: int(500),
+
+  // INCIDENT 2026-08-12 — the connection budget the app is willing to open,
+  // checked against Postgres's max_connections at boot. See
+  // src/config/connection-budget.js. `enforce` refuses to start when the
+  // configured ceiling does not fit; the default warns loudly instead, because
+  // failing to start is the wrong answer on a host whose limit we misread.
+  DB_BUDGET_CHECK: z.enum(["off", "warn", "enforce"]).default("warn"),
+  // Processes that share one Postgres: api + api-standby + worker by default.
+  // The ceiling is per-process, so the fleet total is this multiple of it.
+  DB_BUDGET_PROCESSES: int(3),
+  // Fraction of max_connections that must stay free for migrations, pg_dump,
+  // restore drills and a human with psql.
+  DB_BUDGET_HEADROOM_PCT: int(20),
 
   // WS-S1 — the PgBouncer auth_query lookup role. Read by
   // scripts/db/setup-pgbouncer-auth.js, which creates the role and the
@@ -520,4 +633,4 @@ const groups = Object.freeze({
   },
 });
 
-module.exports = { config, groups };
+module.exports = { config, groups, misparsedEnvKeys };

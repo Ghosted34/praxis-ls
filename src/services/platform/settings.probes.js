@@ -169,4 +169,50 @@ async function backupStorage() {
   };
 }
 
-module.exports = { s3, geoapify, smtp, vapid, alertWebhook, backupStorage };
+/**
+ * The email alert destination — SENDS A REAL MESSAGE, like every probe here.
+ *
+ * Checking that the address parses would prove nothing: the failure mode is not
+ * a malformed address, it is a correct address that never arrives because the
+ * mail fallback sender was never configured, or the relay rejects the domain, or
+ * it lands in spam. Only a real send finds those, and only a human confirming
+ * receipt finds the last one — hence the note.
+ *
+ * `platform-mail.send` never throws (it is built for the alerting path), so a
+ * failure comes back as `ok:false` with a reason and is converted to a throw
+ * here, because that is the contract `settings.test()` expects of a probe.
+ */
+async function alertEmail(cfg) {
+  const to = String(cfg.to || "").trim();
+  if (!to) throw new Error("no alert email address configured");
+  if (!/^[^@\s]+@[^@\s.]+\.[^@\s]+$/.test(to)) {
+    throw new Error(`"${to}" is not an email address`);
+  }
+
+  const platformMail = require("./platform-mail.service");
+  const r = await platformMail.send({
+    to,
+    subject: "[Praxis NOTICE] alert.test — ops alert email is wired",
+    text:
+      "Praxis test alert — if you can read this, the ops alert EMAIL channel is wired correctly.\n\n" +
+      "Backup failures, failed restore drills, corrupt documents and tenants that cannot serve " +
+      "will arrive here as well as in the webhook channel.\n\n" +
+      "Two channels on purpose: they fail independently, and a chat outage on the night a backup " +
+      "fails should not also be the night nobody is told.",
+  });
+
+  if (!r || !r.ok) {
+    // `no_smtp_configured` is the common one on a fresh deployment and is worth
+    // saying plainly: the address is fine, the SENDER is not set up.
+    const reason = (r && r.reason) || "unknown error";
+    const err = new Error(
+      reason === "no_smtp_configured"
+        ? "no system-email sender configured — set Integrations → Mail fallback first"
+        : `send failed: ${reason}`,
+    );
+    throw err;
+  }
+  return { message_id: r.message_id, note: "test email sent — check it arrives, and check the spam folder" };
+}
+
+module.exports = { s3, geoapify, smtp, vapid, alertWebhook, alertEmail, backupStorage };

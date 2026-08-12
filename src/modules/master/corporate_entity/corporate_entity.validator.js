@@ -30,6 +30,7 @@ const schemas = {
   aiUpdate: entityCommon.aiUpdate,
   aiSetActive: entityCommon.aiSetActive,
   aiSetStatus: entityCommon.aiSetStatus,
+  aiSetStructure: entityCommon.aiSetStructure,
   aiCapTable: entityCommon.aiCapTable,
 };
 

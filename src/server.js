@@ -387,10 +387,19 @@ async function warnIfUnmonitored() {
   // wolf at every boot of a correctly-configured deployment — and a boot warning
   // people learn to ignore is worse than none, because it is the warning that
   // has to still work on the night it matters.
+  // `destinationsFor` rather than `destinationFor`: an email destination is a
+  // real destination now, and this check should count exactly what can deliver.
+  //
+  // INCIDENT 2026-08-12 — it used to count `config.ALERT_EMAIL` while nothing
+  // anywhere sent email. Filling that variable in SILENCED this warning and
+  // delivered nothing, which is the worst possible behaviour for the one check
+  // whose job is to say "nobody will be told". The variable now works, so
+  // counting it is honest; the fix was to make it true rather than to stop
+  // asking.
   let vaultConfigured = false;
   try {
     const alerts = require("./services/platform/alert-routing.service");
-    vaultConfigured = Boolean(await alerts.destinationFor("page"));
+    vaultConfigured = (await alerts.destinationsFor("page")).length > 0;
   } catch (err) {
     // The platform DB may not be reachable this early. Fall through to the env
     // check rather than failing boot over a warning.
@@ -407,12 +416,40 @@ async function warnIfUnmonitored() {
   }
 }
 
+/**
+ * INCIDENT 2026-08-12 — add up the connection pools and compare them against
+ * what Postgres will actually accept.
+ *
+ * Every individual setting was defensible on the day tenant logins started
+ * timing out; nobody had ever summed them. See src/config/connection-budget.js
+ * for the arithmetic and why this warns rather than refuses by default.
+ *
+ * Deliberately awaited, unlike `warnIfUnmonitored`: under
+ * DB_BUDGET_CHECK=enforce this is allowed to stop the boot, and a check that can
+ * stop the boot must finish before the listener opens.
+ */
+async function checkConnectionBudget() {
+  const budget = require("./config/connection-budget");
+  const platformDb = require("./services/platform/db");
+  await budget.check(platformDb);
+}
+
 function start() {
   installProcessGuards();
   // Not awaited: it reads the platform DB, and boot must not block on a warning.
   // A rejection here would be an unhandled rejection over a log line, so it is
   // caught and dropped — the check is best-effort by design.
   warnIfUnmonitored().catch(() => {});
+  checkConnectionBudget().catch((err) => {
+    if (err && err.code === "DB_BUDGET_EXCEEDED") {
+      // Enforce mode. Exit rather than serve on a budget that cannot be met —
+      // the alternative is the 12 August failure, where the process looked
+      // healthy and only tenant requests failed.
+      logger.fatal({ err }, "refusing to start: connection budget exceeded");
+      process.exit(1);
+    }
+    logger.debug({ err }, "connection budget check could not run");
+  });
   const app = buildApp();
   initRedis()
     // SEC-C3/H5: the auth limiters are Redis-backed so a limit of N means N

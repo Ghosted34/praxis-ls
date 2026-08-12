@@ -97,15 +97,47 @@ function templateKeys() {
   return keys;
 }
 
+/**
+ * Keys left EMPTY with a trailing `# comment` — INCIDENT 2026-08-12.
+ *
+ * `.env.example` carried:
+ *
+ *     TENANT_DB_POOLER_HOST=                # e.g. pgbouncer  (empty = direct to Postgres)
+ *
+ * An operator copied it into the production `.env` verbatim, which is exactly
+ * what a template is for. Node's dotenv reads that as `""`; Docker Compose's
+ * `env_file` parser keeps the comment as the VALUE. Every tenant pool then tried
+ * to connect to a host named `# e.g. pgbouncer  (empty = direct to Postgres)`,
+ * failed DNS, and timed out. Tenant sites were down for hours, and it could not
+ * be reproduced locally — through dotenv the same file is correct.
+ *
+ * `src/config/env.js` now discards any value beginning with `#`, so the runtime
+ * survives it. This stops the TEMPLATE handing anyone the loaded gun: a comment
+ * on a key with no value goes on its own line, above the key.
+ *
+ * Only the empty case is caught. `PORT=8080  # the port` parses identically
+ * under both, and banning that would be a rule about style rather than a defect.
+ */
+function commentValuedKeys() {
+  const out = [];
+  const src = fs.readFileSync(TEMPLATE, "utf8").split(/\r?\n/);
+  src.forEach((line, i) => {
+    const m = /^([A-Z0-9_]+)=[ \t]+#/.exec(line);
+    if (m) out.push({ key: m[1], line: i + 1 });
+  });
+  return out;
+}
+
 function main() {
   const schema = schemaKeys();
   const template = templateKeys();
 
   const missing = [...schema.required].filter((k) => !template.has(k)).sort();
   const unknown = [...template].filter((k) => !schema.all.has(k)).sort();
+  const commented = commentValuedKeys();
 
   if (process.argv.includes("--json")) {
-    process.stdout.write(JSON.stringify({ missing, unknown }, null, 2) + "\n");
+    process.stdout.write(JSON.stringify({ missing, unknown, commented }, null, 2) + "\n");
   } else {
     process.stdout.write(
       `env template: ${schema.required.size} required / ${schema.optional.size} defaulted keys in the schema, `
@@ -117,9 +149,19 @@ function main() {
     for (const k of unknown) {
       console.error(`::error file=.env.example::${k} is documented in .env.example but no longer exists in src/config/env.js — setting it does nothing`);
     }
-    if (!missing.length && !unknown.length) process.stdout.write(".env.example matches the schema.\n");
+    for (const c of commented) {
+      console.error(
+        `::error file=.env.example,line=${c.line}::${c.key} is empty with a trailing comment. ` +
+        "Docker Compose's env_file parser keeps that comment as the VALUE (dotenv discards it), so anyone " +
+        "copying this line into .env gets a setting whose value is '# ...'. This took tenant sites down on " +
+        "2026-08-12. Put the comment on its own line ABOVE the key.",
+      );
+    }
+    if (!missing.length && !unknown.length && !commented.length) {
+      process.stdout.write(".env.example matches the schema.\n");
+    }
   }
-  process.exit(missing.length || unknown.length ? 1 : 0);
+  process.exit(missing.length || unknown.length || commented.length ? 1 : 0);
 }
 
 main();

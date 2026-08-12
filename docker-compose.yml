@@ -38,6 +38,28 @@ services:
       POSTGRES_DB: ${DB_NAME:-praxislsdata}
       POSTGRES_USER: ${DB_USER:-praxis-admin}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+    # INCIDENT 2026-08-12 — max_connections was never set here, so Postgres ran
+    # on the upstream default of 100 while the app was configured to open up to
+    # ~600 (DB_POOL_MAX 10 + TENANT_POOL_MAX 8 × TENANT_POOL_CACHE_MAX 24, across
+    # api + api-standby + worker). That gap was invisible until the Kaizen ops
+    # health collector began touching every tenant every five minutes and
+    # materialising pools that had previously stayed cold; tenant logins then
+    # failed in pool acquisition, not with a connection error, which is what made
+    # it slow to diagnose.
+    #
+    # 300 is chosen against the app's own arithmetic, not picked round: it clears
+    # the per-process ceiling with the headroom src/config/connection-budget.js
+    # requires for migrations, pg_dump, restore drills and a human with psql.
+    # That check now runs at boot, so this number and the pool settings cannot
+    # drift apart silently again.
+    #
+    # The real fix for the ceiling is PgBouncer (WS-S1), which is deployed but
+    # carries no traffic yet. When TENANT_DB_POOLER_HOST is set, the binding
+    # limit becomes PGBOUNCER_MAX_DB_CONNECTIONS and this can come back down.
+    command:
+      - postgres
+      - -c
+      - max_connections=${POSTGRES_MAX_CONNECTIONS:-300}
     ports:
       # loopback only — never expose Postgres to the public interface
       - "127.0.0.1:5432:5432"
@@ -141,9 +163,22 @@ services:
       PGBOUNCER_UPSTREAM_HOST: postgres
       PGBOUNCER_UPSTREAM_PORT: "5432"
       PGBOUNCER_AUTH_USER: ${PGBOUNCER_AUTH_USER:-pgbouncer}
-      # No default, on purpose: an empty password would render a userlist entry
-      # that authenticates nothing while looking configured.
-      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:?PGBOUNCER_AUTH_PASSWORD must be set in .env}
+      # An empty password must not silently render a userlist entry that
+      # authenticates nothing while looking configured — but the check belongs in
+      # the ENTRYPOINT, not here.
+      #
+      # This was `${...:?...}` until 2026-08-12, when it blocked four consecutive
+      # deploys. Compose's `:?` aborts interpolation of the WHOLE FILE, not just
+      # this service, so a production host without the variable could not run any
+      # `docker compose` command at all — including the `exec postgres` that
+      # deploy.sh uses for its pre-migration backup, which then failed reporting a
+      # missing DB_USER. A required variable for an inert, opt-in service took
+      # down every deploy on the box and pointed at the wrong cause.
+      #
+      # docker/pgbouncer/docker-entrypoint.sh already refuses to start without
+      # this, with a better message. One container failing to start is the
+      # correct blast radius; the whole compose file failing to parse is not.
+      PGBOUNCER_AUTH_PASSWORD: ${PGBOUNCER_AUTH_PASSWORD:-}
       PGBOUNCER_AUTH_DBNAME: ${DB_NAME:-praxislsdata}
       PGBOUNCER_MAX_CLIENT_CONN: ${PGBOUNCER_MAX_CLIENT_CONN:-1000}
       # default_pool_size × active tenants must stay under Postgres

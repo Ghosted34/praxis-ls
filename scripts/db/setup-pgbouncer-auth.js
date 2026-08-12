@@ -121,12 +121,32 @@ async function main() {
        END
        $do$;`,
     );
-    // Parameterised via format() so the password never lands in a log line the
-    // way a plain interpolated DDL string would.
-    await client.query(
-      `DO $do$ BEGIN EXECUTE format('ALTER ROLE ${AUTH_USER} WITH LOGIN PASSWORD %L', $1); END $do$;`,
-      [AUTH_PASSWORD],
+    // Build the DDL with format(), then execute it — two statements, on purpose.
+    //
+    // This was one statement: a `DO $do$ ... EXECUTE format(..., $1) ... $do$`
+    // with the password bound as a parameter. It could never have worked. A DO
+    // block's body is a dollar-quoted STRING LITERAL, so `$1` inside it is text,
+    // not a placeholder — Postgres parses the statement as taking no parameters
+    // and rejects the bind:
+    //
+    //     bind message supplies 1 parameters, but prepared statement "" requires 0
+    //
+    // PL/pgSQL DO blocks cannot be parameterised at all. The failure was silent
+    // in the worst way: the CREATE ROLE block above has no parameters, so it
+    // succeeded, leaving a `pgbouncer` role with NO PASSWORD and no schema or
+    // function behind it — a half-configured pooler that `--check` reports
+    // accurately and a casual read of the log does not.
+    //
+    // The intent was right and is preserved: `format('%L')` does the literal
+    // quoting in Postgres rather than interpolating a JS string into DDL, and
+    // `%I` now does the same for the role name. The SELECT is parameterised, so
+    // the password crosses the wire as a bound value; only the finished,
+    // correctly-quoted DDL is executed.
+    const { rows: ddlRows } = await client.query(
+      "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS ddl",
+      [AUTH_USER, AUTH_PASSWORD],
     );
+    await client.query(ddlRows[0].ddl);
 
     await client.query("CREATE SCHEMA IF NOT EXISTS pgbouncer");
 
@@ -184,7 +204,17 @@ async function main() {
     console.warn(`  function : pgbouncer.get_auth(text) SECURITY DEFINER, execute granted to ${AUTH_USER} only`);
     console.warn(`  probe    : resolved ${probe.length} row for ${config.DB_USER}`);
     console.warn("");
-    console.warn("Point the app at the pooler with TENANT_DB_POOLER_HOST / TENANT_DB_POOLER_PORT.");
+    console.warn("auth_query is ready. The pooler is NOT in the path yet, and should not be until:");
+    console.warn("  - `npm run db:creds:verify` passes (per-tenant roles carry the search_path)");
+    console.warn("  - `docker compose ps` shows the pgbouncer container actually Up");
+    console.warn("  - the pooled path has been exercised somewhere that is not production");
+    console.warn("");
+    console.warn("Then set TENANT_DB_POOLER_HOST — that ONE variable, in a deploy that changes");
+    console.warn("nothing else, so reverting is clearing it. Leave TENANT_DB_POOLER_PORT empty:");
+    console.warn("it defaults to 6432 when the host is set, and setting it ALONE routed tenant");
+    console.warn("connections to Postgres on the pooler's port on 2026-08-12 — an outage whose");
+    console.warn("cause was a variable that looked inert.");
+    console.warn("");
     console.warn("Migrations, provisioning and pg_dump keep connecting to Postgres directly — they");
     console.warn("need session state that transaction pooling does not preserve.");
   } finally {

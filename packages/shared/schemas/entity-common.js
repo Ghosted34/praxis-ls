@@ -461,6 +461,13 @@ exports.aiUpdate = withEntityId(exports.masterUpdate);
 exports.aiSetActive = z.object({ ...entityIdField, active: z.boolean() });
 exports.aiSetStatus = withEntityId(exports.setStatus);
 exports.aiCapTable = z.object({ ...entityIdField, as_of: optionalDate });
+// Re-parenting was the one entity mutation with a route, a shared schema and a
+// UI but no tool, so the assistant could describe a group structure it had no
+// way to correct. `setStructure` carries no `.refine()`, so this could have been
+// `.extend()` — the intersection is used anyway to keep all four envelopes the
+// same shape, and so adding a cross-field rule to setStructure later does not
+// silently drop it here.
+exports.aiSetStructure = withEntityId(exports.setStructure);
 
 /**
  * The writable keys of each nested collection, by route segment.

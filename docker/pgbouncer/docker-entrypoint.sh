@@ -35,7 +35,46 @@ export PGBOUNCER_AUTH_USER PGBOUNCER_UPSTREAM_HOST PGBOUNCER_UPSTREAM_PORT \
        PGBOUNCER_AUTH_DBNAME PGBOUNCER_MAX_CLIENT_CONN PGBOUNCER_DEFAULT_POOL_SIZE \
        PGBOUNCER_RESERVE_POOL_SIZE PGBOUNCER_MAX_DB_CONNECTIONS
 
-envsubst < "$CONF_DIR/pgbouncer.ini.template" > "$CONF_DIR/pgbouncer.ini"
+# Rendered with `sed`, not `envsubst`.
+#
+# `envsubst` ships with gettext, which this image does not have:
+#
+#     /praxis-entrypoint.sh: line 38: envsubst: not found
+#
+# So this entrypoint has NEVER rendered a config, and the pgbouncer container has
+# never started — in CI or in production. It was invisible because nothing
+# depended on the pooler: the container sat in `docker compose ps` output nobody
+# read, and the one time traffic was pointed at port 6432 the symptom was
+# ECONNREFUSED, which reads as "pooler not configured yet" rather than "pooler
+# has never once worked".
+#
+# The 2026-08-12 CI run is what found it, on its first execution, which is the
+# entire argument for rehearsing a cutover rather than planning one.
+#
+# `sed` is in every base image including busybox, so this has no dependency to
+# forget. `|` as the delimiter: hostnames, identifiers and integers are the only
+# values substituted here and none of them can contain one.
+cp "$CONF_DIR/pgbouncer.ini.template" "$CONF_DIR/pgbouncer.ini"
+for v in PGBOUNCER_UPSTREAM_HOST PGBOUNCER_UPSTREAM_PORT PGBOUNCER_AUTH_USER \
+         PGBOUNCER_AUTH_DBNAME PGBOUNCER_MAX_CLIENT_CONN PGBOUNCER_DEFAULT_POOL_SIZE \
+         PGBOUNCER_RESERVE_POOL_SIZE PGBOUNCER_MAX_DB_CONNECTIONS; do
+  eval "val=\${$v}"
+  sed -i "s|\${$v}|${val}|g" "$CONF_DIR/pgbouncer.ini"
+done
+
+# A placeholder left unsubstituted would be handed to PgBouncer as a literal
+# `${...}`, and it would either refuse to start with an opaque parse error or —
+# worse, for the numeric settings — quietly take a default nobody chose. Fail
+# here instead, naming what was missed.
+# Comment lines excluded: the template's own header explains that `${VARS}` are
+# substituted, and a check that trips over the documentation of itself is a check
+# that gets deleted. Only SETTINGS are inspected.
+if grep -vE '^[[:space:]]*;' "$CONF_DIR/pgbouncer.ini" | grep -q '\${'; then
+  echo "FATAL: pgbouncer.ini still contains unsubstituted placeholders:" >&2
+  grep -nvE '^[[:space:]]*;' "$CONF_DIR/pgbouncer.ini" | grep '\${' >&2
+  echo "       Add the variable to the loop in this script, or remove it from the template." >&2
+  exit 1
+fi
 
 # Plaintext in userlist.txt is correct with auth_type=scram-sha-256: PgBouncer
 # needs the cleartext to perform SCRAM as a client against Postgres. The file is

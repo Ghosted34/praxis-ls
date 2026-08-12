@@ -95,6 +95,22 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **Saved dates came back blank on every edit form, and could not be re-saved
+  (`NEW-11`).** node-postgres parsed a `date` column into a JS `Date` at midnight
+  in the API's timezone, so `res.json()` sent `2021-09-20T23:00:00.000Z` for a
+  registration issued on the 21st: the wrong day, in a format
+  `<input type="date">` cannot render. Re-opening a corporate entity or one of
+  its registrations, documents or tax registrations therefore showed an empty
+  Issued on / Expires on for dates that were saved, and pressing Save posted the
+  timestamp back — `issued_on: Use the format YYYY-MM-DD., That date doesn't
+  exist.` on a field nobody had touched. `date` columns now arrive as the
+  `YYYY-MM-DD` string Postgres sent (`src/shared/db/pg-date-types.js`), which is
+  the format the shared `isoDate` schema validates and the date inputs expect, so
+  the value round-trips unchanged. `dateFmt` reads a bare date as a calendar date
+  rather than a UTC instant, and the entity and nested-child forms normalise
+  whatever they are seeded with, so a timestamp reaching a date control degrades
+  to the right day instead of a blank box. Applies to every `date` column in the
+  product, not only master data; `timestamptz` columns are unaffected.
 - `win({ createDossier })` and the `opportunity.won` handler both 500'd or
   dead-lettered on every run (`NEW-08`).
 - Client test suite: a test that could only run on Linux, a Zod instance split,

@@ -65,9 +65,58 @@ export function num(value: number | string | null | undefined): string {
  */
 export function dateFmt(d: unknown): string {
   if (!d) return "—";
-  const dt = d instanceof Date ? d : new Date(String(d));
-  if (Number.isNaN(dt.getTime())) return "—";
+  const dt = d instanceof Date ? d : parseLoose(String(d));
+  if (!dt || Number.isNaN(dt.getTime())) return "—";
   return dt.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+/** `YYYY-MM-DD`, optionally with a time part after it. */
+const CALENDAR_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * Parse an API date value WITHOUT moving the day.
+ *
+ * `new Date("2021-09-21")` is midnight **UTC**, so `toLocaleDateString` in any
+ * negative-offset timezone renders it as the 20th. A `date` column carries no
+ * time and no zone — it is a calendar date — so a bare `YYYY-MM-DD` is built as
+ * LOCAL midnight instead, which is the only reading that survives formatting.
+ *
+ * Anything with a time part is a real instant (`created_at`, or a `date` from a
+ * server that predates `shared/db/pg-date-types`) and is parsed normally.
+ */
+function parseLoose(s: string): Date | null {
+  const m = CALENDAR_DATE_RE.exec(s);
+  if (m) return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+  const dt = new Date(s);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+/**
+ * An API value as `<input type="date">` needs it: `YYYY-MM-DD`, or `""`.
+ *
+ * THE DEFECT THIS CLOSES. A date input given anything else renders BLANK and
+ * keeps no value of its own, so a form seeded with `2021-09-21T00:00:00.000Z`
+ * showed an empty control for a date that was saved — and posted the timestamp
+ * back on save, which the API rejects (`Use the format YYYY-MM-DD.`). Users had
+ * to retype every date on every edit, on rows they had not touched.
+ *
+ * `shared/db/pg-date-types` fixes that at the source, so `date` columns now
+ * arrive already in this shape. This stays as the form-side guard: it is the one
+ * place that decides what a date control is seeded with, so a timestamp reaching
+ * a date field again (a `timestamptz` column bound to one, a cached response
+ * from an older API) degrades to the right day instead of a blank box.
+ *
+ * A timestamp is resolved in the LOCAL timezone rather than sliced, because the
+ * ten characters in front of the `T` are the UTC day: `2021-09-20T23:00:00Z` is
+ * the 21st for the reader who saved it, and slicing would silently rewind it.
+ */
+export function toDateInput(v: unknown): string {
+  if (v === null || v === undefined || v === "") return "";
+  if (typeof v === "string" && CALENDAR_DATE_RE.test(v)) return v;
+  const dt = v instanceof Date ? v : parseLoose(String(v));
+  if (!dt || Number.isNaN(dt.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())}`;
 }
 
 /** Short date + time, e.g. "21 Jul 2026, 23:00". */

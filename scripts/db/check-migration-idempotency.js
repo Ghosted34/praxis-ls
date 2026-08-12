@@ -212,9 +212,35 @@ function statementAt(sql, index) {
   return sql.slice(start, end === -1 ? sql.length : end);
 }
 
+/**
+ * Names of the TRANSACTION-SCOPED temp tables this file creates for itself.
+ *
+ * An INSERT into one of these is idempotent by construction and cannot be
+ * written any other way: `ON COMMIT DROP` means the table does not exist when
+ * the file starts, so a re-run recreates it empty and inserts into a clean
+ * table. Requiring `ON CONFLICT` there would be asking for a guard against a
+ * collision that cannot happen — and 9091/9092 use exactly this pattern to
+ * stage a seed's data before deriving the real rows from it.
+ *
+ * `ON COMMIT DROP` is required for the exemption, deliberately. A temp table
+ * without it survives the transaction, so a second run in the same session
+ * WOULD see the previous rows — and its own bare `CREATE TEMP TABLE` would fail
+ * first anyway. Only the self-cleaning form is safe to exempt.
+ */
+function selfScopedTempTables(sql) {
+  const names = new Set();
+  const re = /CREATE\s+(?:TEMP|TEMPORARY)\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)([\s\S]*?);/gi;
+  let m;
+  while ((m = re.exec(sql)) !== null) {
+    if (/\bON\s+COMMIT\s+DROP\b/i.test(m[2])) names.add(m[1].toLowerCase());
+  }
+  return names;
+}
+
 function violations(sql) {
   const clean = stripSql(sql);
   const blocks = doBlockRanges(clean);
+  const temps = selfScopedTempTables(clean);
   const out = [];
 
   for (const rule of RULES) {
@@ -232,13 +258,38 @@ function violations(sql) {
       }
       if (rule.statementNeeds && rule.statementNeeds.test(statementAt(clean, m.index))) continue;
 
+      // …into a temp table this same file creates and drops on commit.
+      if (rule.id === "insert-without-conflict") {
+        const target = /\bINSERT\s+INTO\s+([a-z_][a-z0-9_]*)/i.exec(clean.slice(m.index));
+        if (target && temps.has(target[1].toLowerCase())) continue;
+      }
+
       out.push({ rule: rule.id, line: lineOf(clean, m.index), fix: rule.fix });
     }
   }
   return out;
 }
 
-const sha = (s) => crypto.createHash("sha256").update(s, "utf8").digest("hex").slice(0, 16);
+/**
+ * Fingerprint a migration's CONTENT — line endings normalised first.
+ *
+ * Without the normalisation this guard is platform-dependent, which is worse
+ * than having no guard. Git checks these files out as CRLF on a Windows
+ * developer machine (`core.autocrlf`) and as LF on Linux, so the same commit
+ * hashes two different ways: CI passes, the Windows checkout reports 62 applied
+ * migrations as "EDITED", and none of them were touched. A check that cries wolf
+ * on one platform is a check that gets re-baselined to silence it — at which
+ * point it starts crying wolf on the other, and then it gets deleted.
+ *
+ * `\r\n` → `\n` is the whole fix, and it needs no re-baseline: the committed
+ * baseline already holds LF hashes.
+ *
+ * The durable complement is a `.gitattributes` carrying `*.sql text eol=lf`, so
+ * the bytes stop diverging in the first place. That is a separate change because
+ * it rewrites every SQL file in a working copy.
+ */
+const sha = (s) =>
+  crypto.createHash("sha256").update(String(s).replace(/\r\n/g, "\n"), "utf8").digest("hex").slice(0, 16);
 
 function allFiles() {
   const out = [];

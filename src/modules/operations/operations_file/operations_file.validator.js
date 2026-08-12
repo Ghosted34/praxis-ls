@@ -22,6 +22,20 @@ const create = z.object({
   // costing line's expense-rate lookup. Nullable so it can be cleared, same
   // convention as pol_place_id/pod_place_id above.
   rate_provider_id: z.string().uuid().nullable().optional(),
+  /**
+   * The service type's own shipment/service details, keyed by field key
+   * (migration 0660). Intentionally NOT typed further here: the shape is
+   * whatever the service type's active field set defines, and that is data a
+   * tenant edits — a zod schema could only ever be a stale copy of it.
+   *
+   * The real validation is `shipment_details.service.applyValues`, which knows
+   * the definitions: it refuses a key the service type does not define, coerces
+   * each value to its declared type, enforces options / min / max / pattern,
+   * and demands the fields marked required. So this is not a hole — it is the
+   * one place where the schema genuinely lives in the database rather than in
+   * the code, and the check happens one layer in.
+   */
+  details: z.record(z.string(), z.any()).optional(),
 });
 const update = create.partial();
 const transition = z.object({ to: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED"]) });

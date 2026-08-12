@@ -1,4 +1,4 @@
-import { useMemo, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { platform, type PlatformSetting, type SettingTestResult } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
@@ -239,12 +239,25 @@ function AlertsCard({ rows, onSaved }: { rows: Record<string, PlatformSetting>; 
 
   const defaultRow = rows["alerts.default"];
   const pageRow = rows["alerts.page"];
+  const emailRow = rows["alerts.email"];
+
+  /* The address is NOT a secret, so unlike the webhooks it is shown rather than
+   * masked — an operator has to be able to see where alerts are going. It also
+   * means the field is seeded with the saved value instead of sitting empty. */
+  const savedEmail = (emailRow?.value as { to?: string } | undefined)?.to ?? "";
+  const [email, setEmail] = useState(savedEmail);
+  useEffect(() => { setEmail(savedEmail); }, [savedEmail]);
 
   const save = async () => {
     setBusy(true);
     try {
       if (def) await platform.putSetting("alerts", "default", { value: {}, secret: def });
       if (page) await platform.putSetting("alerts", "page", { value: {}, secret: page });
+      /* Sent even when blank, so clearing the field actually removes the
+       * destination. A setting you can add and not remove is a trap. */
+      if (email !== savedEmail) {
+        await platform.putSetting("alerts", "email", { value: { to: email.trim() } });
+      }
       toast("Alert destinations saved");
       setDef("");
       setPage("");
@@ -302,13 +315,46 @@ function AlertsCard({ rows, onSaved }: { rows: Record<string, PlatformSetting>; 
         </Field>
       </div>
 
+      <div style={{ marginTop: 12 }}>
+        <Field
+          label="Email (optional, and independent)"
+          hint={
+            <>
+              Alerts go to <strong>every</strong> destination set here, not the first one that works.
+              A chat outage on the night a backup fails should not also be the night nobody is told,
+              and email leaves the building a different way — through the system mail sender, so
+              set <code className="tag">Mail fallback</code> first or the test will say so.
+              {savedEmail ? <> Currently sending to <strong>{savedEmail}</strong>.</> : " Not set."}
+            </>
+          }
+        >
+          {/* type=email, not password: an address is not a credential, and an
+              operator must be able to see which one is configured. */}
+          <input
+            className="in"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="ops@yourcompany.com"
+          />
+        </Field>
+      </div>
+
       <div className="row" style={{ justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
         <span className="muted" style={{ fontSize: 11.5 }}>
           {pageRow?.secret_set ? "Page channel configured." : "No page channel — pages use the default."}
         </span>
         <div className="row" style={{ gap: 6 }}>
           {pageRow?.secret_set && <TestButton section="alerts" keyName="page" />}
-          <Button variant="primary" onClick={save} loading={busy} disabled={!def && !page}>Save</Button>
+          {savedEmail && <TestButton section="alerts" keyName="email" />}
+          <Button
+            variant="primary"
+            onClick={save}
+            loading={busy}
+            disabled={!def && !page && email === savedEmail}
+          >
+            Save
+          </Button>
         </div>
       </div>
     </Card>

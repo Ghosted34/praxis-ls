@@ -97,3 +97,17 @@ CREATE INDEX IF NOT EXISTS idx_idempotency_expires ON idempotency_key (expires_a
 
 COMMENT ON TABLE idempotency_key IS
   'Replay protection for client-retried writes. Claimed by Idempotency-Key header; see src/middleware/idempotency.js.';
+
+-- DOWN
+-- DROP TABLE IF EXISTS idempotency_key;
+--
+-- Cleanly reversible, and losing the contents costs nothing durable: every row
+-- is a short-lived receipt for a write that has already happened, not the write
+-- itself. Dropping the table takes its index and constraints with it.
+--
+-- The one consequence worth knowing before running this at 3am: while the table
+-- is absent, `src/middleware/idempotency.js` catches the missing-relation error
+-- and passes requests through unprotected (it is a safety net, not a gate — the
+-- same path an un-migrated tenant takes). So a client replaying a queued write
+-- during that window can post it twice. Roll the client's outbox back with it,
+-- or accept the window knowingly.

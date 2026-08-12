@@ -12,24 +12,15 @@ import { Button } from "@/components/ui/button";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { ErrorState } from "@/components/ui/states";
 import { tenant } from "@/lib/api-client";
-import { tokenStore } from "@/lib/token-store";
+import { openVaultDoc } from "@/lib/vault-file";
 import { errMsg } from "@/lib/use-resource";
 import { num, money, dateFmt, enumLabel } from "@/lib/format";
 import { cn } from "@/lib/cn";
 import { LoadingRow } from "@/components/ui/states";
 
-/** Auth-gated binary fetch of a vaulted document → open the blob in a new tab.
- *  Used when a signed copy has been uploaded (served instead of regenerating). */
-async function openVaultDoc(id: string) {
-  const token = tokenStore.getAccess();
-  const res = await fetch(`/api/tenant/documents/${id}/download`, {
-    headers: { "X-Praxis-Env": tokenStore.getEnv(), ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-  });
-  if (!res.ok) throw new Error(res.status === 409 ? "This document hasn't been rendered yet." : "Download failed.");
-  const url = URL.createObjectURL(await res.blob());
-  window.open(url, "_blank", "noopener");
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
-}
+// The auth-gated fetch that serves a signed copy (uploaded, rather than
+// regenerated) is `lib/vault-file.openVaultDoc` — shared with the scan
+// attachments on every master-data register.
 
 const SENDABLE = new Set([
   "FINAL_INVOICE", "PROFORMA_ADVANCE", "QUOTATION", "CREDIT_NOTE", "PAYMENT_RECEIPT",

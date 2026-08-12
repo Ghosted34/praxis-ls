@@ -36,6 +36,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { ScanAttachment } from "@/components/scan-attachment";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
@@ -1275,7 +1276,6 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   const toast = useToast();
   const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
   const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(null);
-  const [attaching, setAttaching] = React.useState<string | null>(null);
   const [attachError, setAttachError] = React.useState<string | null>(null);
   // `types.data || []` is a fresh array each render, so it cannot be a useMemo
   // dependency — the memo would rebuild the field list on every keystroke.
@@ -1309,46 +1309,24 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   }
 
   /**
-   * Upload the scan, then point the document at it.
+   * Point the document at the file the vault just took.
    *
-   * Two calls rather than one because the vault owns the bytes: MOD-64 hashes,
-   * stores and audits them, and `entity_document.vault_id` is a reference to
-   * that record — not a second copy. `entity_ref` ties the vault row back here so
-   * a document found from the vault side can be traced to the entity it belongs
-   * to.
+   * The upload is `<ScanAttachment>`'s half; this is the second call, which only
+   * this screen can make — `entity_document.vault_id` is a reference to the
+   * vault row, not a second copy of the bytes.
    */
-  async function attachScan(doc: api.EntityDocument, file: File | null) {
-    if (!file) return;
-    setAttaching(doc.document_id);
-    setAttachError(null);
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const r = new FileReader();
-        r.onload = () => resolve(String(r.result));
-        r.onerror = () => reject(new Error("Could not read the file."));
-        r.readAsDataURL(file);
-      });
-      const vaulted = await api.uploadVaultDocument({
-        data_url: dataUrl,
-        doc_type: doc.document_type_code || "ENTITY_DOCUMENT",
-        entity_ref: `entity_document:${doc.document_id}`,
-      });
-      await api.updateEntityChild(entityId, "documents", doc.document_id, { vault_id: vaulted.doc_id });
-      // The API moves PENDING → SCANNED on its own once vault_id lands; saying so
-      // explains why the pill changed without the operator touching it.
-      toast.success("Scan attached — the document is now marked scanned.");
-      onSaved();
-    } catch (e) {
-      setAttachError(errMsg(e));
-    } finally {
-      setAttaching(null);
-    }
+  async function linkScan(doc: api.EntityDocument, vaultId: string) {
+    await api.updateEntityChild(entityId, "documents", doc.document_id, { vault_id: vaultId });
+    // The API moves PENDING → SCANNED on its own once vault_id lands; saying so
+    // explains why the pill changed without the operator touching it.
+    toast.success("Scan attached — the document is now marked scanned.");
+    onSaved();
   }
 
   return (
     <Section
       title="Administrative documents"
-      description="Statutes, tax clearances, licences and insurance. Anything with an expiry date feeds the Renewals tab."
+      description="Statutes, tax clearances, licences and insurance. Add the record first, then attach its PDF or photo on the row — anything with an expiry date feeds the Renewals tab."
       action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
@@ -1372,21 +1350,13 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
               {!doc.vault_id && doc.physical_ref ? <> <Pill tone="mute">Paper</Pill></> : null}
             </Td>
             <Td r>
-              <label className="cursor-pointer text-sm text-primary-ink underline hover:opacity-80">
-                {attaching === doc.document_id ? "Uploading…" : doc.vault_id ? "Replace scan" : "Attach scan"}
-                <input
-                  type="file"
-                  className="sr-only"
-                  accept="application/pdf,image/png,image/jpeg,image/webp"
-                  disabled={attaching !== null}
-                  onChange={(ev) => {
-                    const file = ev.target.files?.[0] ?? null;
-                    // Clear the input so re-picking the same file fires onChange.
-                    ev.target.value = "";
-                    void attachScan(doc, file);
-                  }}
-                />
-              </label>
+              <ScanAttachment
+                vaultId={doc.vault_id}
+                docType="ENTITY_DOCUMENT"
+                entityRef={`entity_document:${doc.document_id}`}
+                onAttached={(vaultId) => linkScan(doc, vaultId)}
+                onError={setAttachError}
+              />
               <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
               <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
             </Td>
@@ -1397,7 +1367,7 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
       {documents.length === 0 && (
         <EmptyState
           title="No documents recorded"
-          hint="Start with the certificate of incorporation and the statutes — the rest can follow as you gather them."
+          hint="Start with the certificate of incorporation and the statutes — the rest can follow as you gather them. Add document records the details; the scan (PDF or image, up to 25 MB) is attached on the row afterwards."
         />
       )}
 

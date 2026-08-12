@@ -47,5 +47,17 @@ module.exports = {
     { key: "update_entity", service: (c, p) => (({ entity_id, ...patch }) => service.update(c, { id: entity_id, patch }))(p), schema: validator.schemas.aiUpdate, permission: { module: "MOD-01", action: "edit" }, confirm: true, describe: "Edit a corporate entity by id." },
     { key: "set_entity_status", service: (c, p) => service.setStatus(c, { id: p.entity_id, status: p.status, reason: p.reason || null }), schema: validator.schemas.aiSetStatus, permission: { module: "MOD-01", action: "edit" }, confirm: true, describe: "Move an entity along its lifecycle (DRAFT, PENDING_REVIEW, ACTIVE, SUSPENDED, DEACTIVATED, ARCHIVED). A reason is required for the last three." },
     { key: "set_entity_active", service: (c, p) => service.setActive(c, { id: p.entity_id, active: p.active }), schema: validator.schemas.aiSetActive, permission: { module: "MOD-01", action: "edit" }, confirm: true, describe: "Activate/deactivate an entity by id." },
+    // Re-parenting was the one entity mutation the assistant could read and not
+    // perform: `get_entity_360` returns the group structure, and until now there
+    // was no tool to correct it. The service runs the multi-hop cycle check, so
+    // a loop comes back as a readable 422 rather than being accepted.
+    {
+      key: "set_entity_structure",
+      service: (c, p) => (({ entity_id, ...patch }) => service.setStructure(c, { id: entity_id, patch }))(p),
+      schema: validator.schemas.aiSetStructure,
+      permission: { module: "MOD-01", action: "edit" },
+      confirm: true,
+      describe: "Set an entity's place in the group: parent entity, relationship to it (HEADQUARTERS, SUBSIDIARY, BRANCH, REPRESENTATIVE_OFFICE, JOINT_VENTURE, ASSOCIATE, SPV), ownership percentage, whether it consolidates into the parent, and whether it is the group parent. Pass parent_entity_id null to detach. Refuses a change that would create a loop in the group tree.",
+    },
   ],
 };

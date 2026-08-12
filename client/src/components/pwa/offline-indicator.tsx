@@ -5,35 +5,50 @@
  * states. This pill makes the offline condition explicit so those failures read
  * as "you're offline" rather than "something broke". (Offline read-only DATA is
  * intentionally out of scope for v1 — app-shell-offline only.)
+ *
+ * IT NO LONGER READS `navigator.onLine`. That flag reports whether an interface
+ * is up, not whether anything is reachable, so it stayed `false`-negative in the
+ * three cases people actually hit — captive-portal wifi, a dropped VPN, and our
+ * own API being down — and the pill said nothing precisely when it was needed.
+ * The source of truth is now `lib/connection.ts`, which knows because our own
+ * requests are failing and its probe cannot get through either.
+ *
+ * IT ALSO REPORTS WHAT IS HELD. "You're offline" invites the question "so what
+ * happens to what I just did?", and leaving that unanswered is what made the
+ * old pill mildly alarming rather than reassuring. If the outbox is holding
+ * writes, the pill says so and promises they will go.
  */
 import * as React from "react";
 import { useBranding } from "@/app/branding/branding-context";
+import { useConnection } from "@/lib/connection";
+import { queuedCount, subscribeOutbox } from "@/lib/outbox";
 
 export function OfflineIndicator() {
   // Wording is tenant-authored (Settings › App & PWA › Offline & updates) — the
   // default names no product, but a tenant running this as their own app may
   // want it to.
   const { pwa } = useBranding();
-  const [offline, setOffline] = React.useState(typeof navigator !== "undefined" && !navigator.onLine);
+  const { status, probing } = useConnection();
 
-  React.useEffect(() => {
-    const on = () => setOffline(false);
-    const off = () => setOffline(true);
-    window.addEventListener("online", on);
-    window.addEventListener("offline", off);
-    return () => {
-      window.removeEventListener("online", on);
-      window.removeEventListener("offline", off);
-    };
-  }, []);
+  const [, bump] = React.useReducer((n: number) => n + 1, 0);
+  React.useEffect(() => subscribeOutbox(bump), []);
+  const queued = queuedCount();
 
-  if (!offline) return null;
+  if (status !== "unreachable") return null;
 
   return (
     <div className="fixed inset-x-0 top-0 z-[65] flex justify-center px-3 pt-[calc(env(safe-area-inset-top)+8px)]">
       <div className="pointer-events-none flex items-center gap-2 rounded-full border bg-popover px-3.5 py-1.5 text-[13px] font-medium text-muted-foreground shadow-m">
-        <span className="h-2 w-2 rounded-full bg-[rgb(var(--warn))]" aria-hidden />
+        <span
+          className={probing ? "h-2 w-2 rounded-full bg-[rgb(var(--brand-blue))] motion-safe:animate-pulse" : "h-2 w-2 rounded-full bg-[rgb(var(--warn))]"}
+          aria-hidden
+        />
         {pwa.offlineText || "You're offline — some data may be out of date."}
+        {queued > 0 && (
+          <span className="text-[rgb(var(--ok))]">
+            · {queued} {queued === 1 ? "change" : "changes"} held, will send
+          </span>
+        )}
       </div>
     </div>
   );

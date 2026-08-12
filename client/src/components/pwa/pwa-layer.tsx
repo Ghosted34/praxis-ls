@@ -6,10 +6,15 @@
 import { InstallBanner } from "./install-banner";
 import { PwaUpdater } from "./pwa-updater";
 import { OfflineIndicator } from "./offline-indicator";
+import { ConnectionWatcher } from "@/components/connection/connection-watcher";
 
 export function PwaLayer() {
   return (
     <>
+      {/* First: it installs the connection monitor and the outbox replay, which
+          `OfflineIndicator` below then reads. Both installers are idempotent, so
+          the order is for legibility rather than correctness. */}
+      <ConnectionWatcher />
       <OfflineIndicator />
       <PwaUpdater />
       <InstallBanner />

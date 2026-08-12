@@ -9,6 +9,25 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+    # `edited` is here because this workflow GATES ON THE PR TITLE (the
+    # changelog-format check in build-test), and the title is the one input to
+    # CI that can change without a commit.
+    #
+    # Without it the gate had no way to clear. The default types are
+    # opened/synchronize/reopened, so correcting a rejected title fired no
+    # event and left the red run standing — and re-running the failed job does
+    # not help either, because a re-run replays the ORIGINAL event payload and
+    # therefore re-reads the OLD title. The only route left was an empty commit
+    # to make `synchronize` fire: inventing history to satisfy a check about
+    # prose, which is the same anti-pattern `workflow_dispatch` above was added
+    # to remove.
+    #
+    # THE COST, stated plainly: `edited` also fires on a description edit, so a
+    # PR whose body is being polished re-runs the full suite including the image
+    # build. That is accepted as the cheaper of the two — a spare run costs
+    # runner minutes, an ungateable check costs a junk commit in the history of
+    # every PR that ever gets its title wrong.
+    types: [opened, synchronize, reopened, edited]
   # MANUAL KICK — added 2026-08-06, during the GitHub Actions incident of that
   # afternoon (githubstatus.com): *"Webhook triggers remain throttled to support
   # recovery. Many push and pull request events are not yet triggering new

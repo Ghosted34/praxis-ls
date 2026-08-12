@@ -40,6 +40,9 @@ import { cn } from "@/lib/cn";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
 import { ServiceTypeAssumptions } from "./service-type-assumptions";
+// The shipment/service-detail form (0660) — which fields a file of this
+// service type captures, and therefore what every document about it prints.
+import { ServiceTypeFieldsTab } from "./service-type-fields-tab";
 import { reportActionError } from "@/lib/action-error";
 
 /* ── Local building blocks (mirroring party-360's MiniTable / Th / Td) ───── */
@@ -87,7 +90,10 @@ function DeepLink({ href, children }: { href: string; children: React.ReactNode 
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 
-const TABS = ["Overview", "Milestones", "Assumptions", "Dictionary", "Dossiers", "Commercial", "Automation"] as const;
+// "Details" sits directly after Milestones: the two are the same kind of
+// per-service-type definition (a versioned template with one live version),
+// and a manager setting up a service works through them together.
+const TABS = ["Overview", "Milestones", "Details", "Assumptions", "Dictionary", "Dossiers", "Commercial", "Automation"] as const;
 type Tab = (typeof TABS)[number];
 
 const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
@@ -933,6 +939,13 @@ export function ServiceTypeDossier({
       {tab === "Milestones" && <MilestonesTab templates={d.templates} onPublish={onPublishTemplate} onEditPolicy={onEditPolicy} />}
       {/* The chain says WHEN; the register says what those dates depend on.
           Adjacent tabs because a client reads them together. */}
+      {tab === "Details" && (
+        <ServiceTypeFieldsTab
+          serviceTypeId={serviceTypeId}
+          containers={d.containers || { captures_containers: false, container_detail_mode: "GROUPED" }}
+          onChanged={reload}
+        />
+      )}
       {tab === "Assumptions" && <ServiceTypeAssumptions serviceTypeId={serviceTypeId} />}
       {tab === "Dictionary" && (
         <DictionaryTab

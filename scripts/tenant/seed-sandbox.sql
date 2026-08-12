@@ -127,12 +127,124 @@ BEGIN
   -- ==========================================================================
   -- 1. MASTER DATA
   -- ==========================================================================
-  INSERT INTO corporate_entity (code, legal_name, niu, rccm, address, doc_prefix, default_language)
-    VALUES ('SBX','Smart Logistics Sandbox SARL','M0209SBX0001','RC/DLA/2019/B/1234','Bonabéri, Douala, Cameroun','SBX','fr')
+  -- --------------------------------------------------------------------------
+  -- The corporate entities, COMPLETE.
+  --
+  -- These used to carry seven columns — code, legal_name, niu, rccm, address,
+  -- doc_prefix, default_language — and nothing else: no legal form, no
+  -- incorporation date, no share capital, no contact, and none of the child
+  -- rows (registrations, addresses, officers) the entity actually needs.
+  --
+  -- That was not a cosmetic gap. `corporate_entity.rules.readiness()` requires
+  -- legal form, incorporation date, share capital, a public email or phone, at
+  -- least one registration, a REGISTERED address and a director or legal
+  -- representative before an entity "can print a compliant letterhead" — so on
+  -- the sandbox the Entity 360's amber "not yet complete for statutory
+  -- documents" callout was PERMANENTLY UNSATISFIABLE, the letterhead's
+  -- share-capital block could be switched on but never filled, and
+  -- `reconcileCapTable`'s CAPITAL_MISMATCH / PERCENT_MISMATCH checks could
+  -- never fire because there was no cap table to reconcile.
+  --
+  -- A demo tenant whose flagship master record is half-empty teaches everyone
+  -- who opens it that the field does not matter. So both entities below are
+  -- filled to `readiness().ready === true`, and their cap tables are arithmetic
+  -- that BALANCES: shares × nominal equals the stated capital, and the
+  -- percentages sum to exactly 100, so the reconciliation renders green rather
+  -- than warning about numbers we made up.
+  -- --------------------------------------------------------------------------
+  INSERT INTO corporate_entity (
+      code, legal_name, trading_name, niu, rccm, address, doc_prefix, default_language,
+      legal_form, incorporation_date, incorporation_country, incorporation_place,
+      share_capital, share_capital_currency, share_capital_paid_up,
+      country_code, default_currency, accounting_framework, fiscal_year_start_month,
+      email, phone, website, industry, description, headcount, timezone,
+      vat_registered, registration_status)
+    VALUES ('SBX','Smart Logistics Sandbox SARL','Smart Logistics','M0209SBX0001','RC/DLA/2019/B/1234',
+            'Bonabéri, Douala, Cameroun','SBX','fr',
+            'SARL','2019-03-14','CM','Douala',
+            10000000, 'XAF', 10000000,
+            'CM','XAF','OHADA',1,
+            'contact@smartlogistics.example','+237 233 42 10 10','https://smartlogistics.example',
+            'Transit & logistique','Commissionnaire agréé en douane, transit maritime et aérien, entreposage.',
+            48,'Africa/Douala', true, 'ACTIVE')
     RETURNING entity_id INTO v_ent1;
-  INSERT INTO corporate_entity (code, legal_name, niu, rccm, address, doc_prefix, default_language)
-    VALUES ('SBX2','Smart Freight Yaoundé SARL','M0209SBX0002','RC/YAO/2021/B/5678','Centre-ville, Yaoundé, Cameroun','SBY','fr')
+  INSERT INTO corporate_entity (
+      code, legal_name, trading_name, niu, rccm, address, doc_prefix, default_language,
+      legal_form, incorporation_date, incorporation_country, incorporation_place,
+      share_capital, share_capital_currency, share_capital_paid_up,
+      country_code, default_currency, accounting_framework, fiscal_year_start_month,
+      email, phone, website, industry, description, headcount, timezone,
+      vat_registered, registration_status)
+    VALUES ('SBX2','Smart Freight Yaoundé SARL','Smart Freight','M0209SBX0002','RC/YAO/2021/B/5678',
+            'Centre-ville, Yaoundé, Cameroun','SBY','fr',
+            'SARL','2021-07-02','CM','Yaoundé',
+            5000000, 'XAF', 5000000,
+            'CM','XAF','OHADA',1,
+            'contact@smartfreight.example','+237 222 31 55 20','https://smartfreight.example',
+            'Transit & logistique','Transit hinterland et transport terrestre vers le Tchad et la RCA.',
+            17,'Africa/Douala', true, 'ACTIVE')
     RETURNING entity_id INTO v_ent2;
+
+  -- Registrations. The same NIU/RCCM already on the entity, as the CHILD rows
+  -- readiness() and the compliance screens actually read — the columns on
+  -- `corporate_entity` are the letterhead's copy, not the register.
+  INSERT INTO entity_registration (entity_id, country_code, kind, number, issuing_authority, issued_on, is_primary, verified)
+  VALUES
+    (v_ent1,'CM','NIU','M0209SBX0001','Direction Générale des Impôts','2019-03-20',true,true),
+    (v_ent1,'CM','RCCM','RC/DLA/2019/B/1234','Greffe du Tribunal de Première Instance de Douala','2019-03-14',false,true),
+    (v_ent2,'CM','NIU','M0209SBX0002','Direction Générale des Impôts','2021-07-08',true,true),
+    (v_ent2,'CM','RCCM','RC/YAO/2021/B/5678','Greffe du Tribunal de Première Instance de Yaoundé','2021-07-02',false,true);
+
+  -- A REGISTERED office each (what readiness() checks for), plus the trading
+  -- address that differs from it — which is the case the letterhead and the
+  -- statutory documents have to tell apart.
+  INSERT INTO entity_address (entity_id, type, line1, line2, city, region, country_code, po_box, is_primary)
+  VALUES
+    (v_ent1,'REGISTERED','Zone Industrielle de Bonabéri','Rue de la Douane','Douala','Littoral','CM','BP 4521',true),
+    (v_ent1,'TRADING','Port Autonome de Douala','Bâtiment C, Bureau 214','Douala','Littoral','CM',NULL,false),
+    (v_ent2,'REGISTERED','Avenue Kennedy','Immeuble Tsinga, 3e étage','Yaoundé','Centre','CM','BP 1180',true);
+
+  -- Officers and shareholders.
+  --
+  -- THE CAP TABLE BALANCES ON PURPOSE. 1 000 shares at 10 000 XAF nominal is
+  -- exactly the 10 000 000 XAF of stated capital, and 60 + 40 is exactly 100 —
+  -- so `reconcileCapTable` returns balanced:true with no findings. Seeding
+  -- numbers that did NOT reconcile would have every sandbox user meet a warning
+  -- banner on day one and learn to ignore it.
+  INSERT INTO entity_person (
+      entity_id, role, holder_type, full_name, title, nationality, country_of_residence,
+      email, phone, share_class, share_count, share_nominal_value, ownership_percent, voting_percent,
+      is_primary_contact, effective_from, is_active)
+  --
+  -- ONE ROW PER ROLE, even for the same human. `reconcileCapTable` counts only
+  -- rows whose role is SHAREHOLDER, so a gérant who also owns 60% needs a
+  -- LEGAL_REPRESENTATIVE row AND a SHAREHOLDER row — putting the shares on the
+  -- officer row instead leaves them invisible to the cap table, and the
+  -- reconciliation then reports UNDER_ALLOCATED and CAPITAL_MISMATCH against
+  -- capital that is in fact fully subscribed. (Found by running the real
+  -- reconciler over this seed rather than by reading it.)
+  VALUES
+    (v_ent1,'LEGAL_REPRESENTATIVE','PERSON','Marc-Aurèle Ngassa','Gérant','CM','CM',
+     'm.ngassa@smartlogistics.example','+237 699 10 20 30',NULL,NULL,NULL,NULL,NULL,true,'2019-03-14',true),
+    (v_ent1,'SHAREHOLDER','PERSON','Marc-Aurèle Ngassa',NULL,'CM','CM',
+     'm.ngassa@smartlogistics.example',NULL,'ORD',600,10000,60,60,false,'2019-03-14',true),
+    (v_ent1,'SHAREHOLDER','PERSON','Sylvie Ondoa Mballa',NULL,'CM','CM',
+     's.ondoa@smartlogistics.example',NULL,'ORD',400,10000,40,40,false,'2019-03-14',true),
+    (v_ent1,'DIRECTOR','PERSON','Jean-Pierre Fotso','Directeur des Opérations','CM','CM',
+     'jp.fotso@smartlogistics.example','+237 677 45 66 77',NULL,NULL,NULL,NULL,NULL,false,'2020-01-06',true),
+    (v_ent2,'LEGAL_REPRESENTATIVE','PERSON','Marc-Aurèle Ngassa','Gérant','CM','CM',
+     'm.ngassa@smartlogistics.example','+237 699 10 20 30',NULL,NULL,NULL,NULL,NULL,true,'2021-07-02',true),
+    (v_ent2,'SHAREHOLDER','COMPANY','Smart Logistics Sandbox SARL',NULL,NULL,'CM',
+     'contact@smartlogistics.example',NULL,'ORD',350,10000,70,70,false,'2021-07-02',true),
+    (v_ent2,'SHAREHOLDER','PERSON','Marc-Aurèle Ngassa',NULL,'CM','CM',
+     'm.ngassa@smartlogistics.example',NULL,'ORD',150,10000,30,30,false,'2021-07-02',true);
+
+  -- A named contact that is not an officer — the person a client actually
+  -- emails, which is a different question from who signs.
+  INSERT INTO entity_contact (entity_id, name, title, email, phone, is_primary, language)
+  VALUES
+    (v_ent1,'Aïcha Bouba','Responsable Clientèle','a.bouba@smartlogistics.example','+237 233 42 10 12',true,'fr'),
+    (v_ent2,'Rodrigue Etoa','Chef d''Agence','r.etoa@smartfreight.example','+237 222 31 55 21',true,'fr');
 
   INSERT INTO client_master (ref,entity_id,name,niu,payment_terms_days,credit_limit,cached_receivables,cached_overdue,is_withholding_agent)
     VALUES ('SBX-CL-0001',v_ent1,'Brasseries du Cameroun SA','M0100CL0001',30,50000000,7200000,1200000,true)  RETURNING client_id INTO v_cl1;

@@ -16,6 +16,7 @@ const finalInvoice = require("../../finance/final_invoice/final_invoice.service"
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
 const { AppError } = require("../../../utils/errors");
+const shipmentDetails = require("../../operations/shipment_details/shipment_details.service");
 
 const LOCKED = new Set(["APPROVED_LOCKED", "REJECTED"]);
 
@@ -81,6 +82,11 @@ async function setStatus(client, { id, to, actor = {}, viaChain = false }) {
   }
   if (status === "APPROVED_LOCKED") {
     await emitEvent(client, { eventTypeKey: events.APPROVED, moduleKey: events.MODULE, entityRef: "costing:" + id, actorUserId: actor.user_id || null });
+    // Freeze the file's shipment details onto the costing (0661). An approved
+    // costing must keep citing the vessel and route it was approved with, even
+    // after the carrier rolls the booking and ops updates the file. Never
+    // throws — see shipment_details.snapshotOnto.
+    await shipmentDetails.snapshotOnto(client, { table: "costing", id, dossierId: before.dossier_id });
     // SYNCHRONOUS handoff (A7 #3): open the DRAFT final invoice now, in-request.
     // TX-agnostic + idempotent; the async orchestration handler is a backstop and
     // no-ops once this has run. Best-effort — a draft-shell failure must not block

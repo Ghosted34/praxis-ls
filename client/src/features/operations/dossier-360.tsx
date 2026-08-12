@@ -25,15 +25,61 @@ import { MilestoneChain } from "./milestone-chain";
 import { QTickets } from "./q-tickets";
 import { humanizeKey, serviceLabel, tone } from "./shared";
 import { DocGroup, DocRow, MoneyRow, PersonRow } from "./components";
+// The shared shipment/service details (0660) — the same component every
+// document, costing and quotation renders, so what ops sees on the file and
+// what a client sees on an invoice are one projection, not two.
+import { ShipmentDetailsPanel } from "./shipment-details";
+import { ContainerEditor } from "./container-editor";
 
-type Tab360 = "milestones" | "queries" | "money" | "people" | "documents";
+type Tab360 = "details" | "milestones" | "queries" | "money" | "people" | "documents";
 const TABS_360: { value: Tab360; label: string }[] = [
+  // First: what is actually moving is the question every other tab is about.
+  { value: "details", label: "Details" },
   { value: "milestones", label: "Milestones" },
   { value: "queries", label: "Queries" },
   { value: "money", label: "Money" },
   { value: "people", label: "People" },
   { value: "documents", label: "Documents" },
 ];
+
+/**
+ * The shipment/service details of this file, plus the one control that edits
+ * its equipment.
+ *
+ * The panel itself is service-type-agnostic (see shipment-details.tsx) — a sea
+ * file shows a Bill of Lading and a route, a warehousing file shows a warehouse
+ * and a bonded status, and neither renders a placeholder for the other's
+ * vocabulary. The container button appears only when the service type captures
+ * equipment at all.
+ */
+function DetailsTab({ dossierId }: { dossierId: string }) {
+  const [editing, setEditing] = React.useState(false);
+  const details = useResource(() => api.getShipmentDetails(dossierId), [dossierId]);
+  const block = details.data?.containers;
+
+  return (
+    <>
+      <ShipmentDetailsPanel
+        data={details.data}
+        action={
+          block?.enabled ? (
+            <Button size="sm" variant="outline" onClick={() => setEditing(true)}>
+              {block.lines.length ? "Edit containers" : "Add containers"}
+            </Button>
+          ) : null
+        }
+      />
+      {editing && block && (
+        <ContainerEditor
+          dossierId={dossierId}
+          mode={block.mode}
+          onClose={() => setEditing(false)}
+          onSaved={() => details.reload()}
+        />
+      )}
+    </>
+  );
+}
 
 /** Lifecycle readiness banner (consumes the dossier.milestones_completed /
  *  dossier.fully_collected orchestration signals, surfaced via overview.readiness).
@@ -328,6 +374,7 @@ export function Dossier360Modal({
 
           <Segmented label="Dossier 360 section" value={tab} options={TABS_360} onChange={setTab} />
 
+          {tab === "details" && <DetailsTab dossierId={dossier.dossier_id} />}
           {tab === "milestones" && <MilestonesTab dossierId={dossier.dossier_id} />}
           {tab === "queries" && <QTickets dossierId={dossier.dossier_id} />}
           {tab === "money" && <MoneyTab m={d.money} />}

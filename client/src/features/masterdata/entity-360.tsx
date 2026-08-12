@@ -82,6 +82,20 @@ function MiniTable({ head, children, empty }: { head: React.ReactNode; children:
 const Th = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <th className={`px-3 py-2 font-medium ${r ? "text-right" : "text-left"}`}>{children}</th>;
 const Td = ({ children, r }: { children?: React.ReactNode; r?: boolean }) => <td className={`px-3 py-1.5 ${r ? "text-right num" : ""}`}>{children}</td>;
 
+/**
+ * Was this holding or mandate live on `on` (an ISO date)?
+ *
+ * The same window `rules.reconcileCapTable` applies server-side, so the rows the
+ * table dims are exactly the ones the totals leave out. Duplicated deliberately:
+ * the API returns aggregates, not the filtered rows, and a table whose footer
+ * disagrees with its body is worse than either alone.
+ */
+const heldOn = (p: { effective_from?: string | null; effective_to?: string | null }, on: string) => {
+  const from = p.effective_from ? String(p.effective_from).slice(0, 10) : null;
+  const to = p.effective_to ? String(p.effective_to).slice(0, 10) : null;
+  return !(from && from > on) && !(to && to < on);
+};
+
 /** A labelled read-only value. `—` for anything blank, so gaps are visible. */
 function Detail({ label, children }: { label: string; children?: React.ReactNode }) {
   const empty = children === null || children === undefined || children === "";
@@ -110,9 +124,48 @@ function Section({ title, description, action, children }: { title: string; desc
 
 type FieldSpec = {
   key: string; label: string;
-  type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea";
+  type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea" | "multiselect";
   options?: { value: string; label: string }[]; placeholder?: string; hint?: string;
+  /**
+   * Heading this field sits under. The person modal carries close to thirty
+   * controls spanning identity, shareholding, signing authority and the links to
+   * an employee or counterparty record — one undivided grid of thirty is a form
+   * people abandon halfway.
+   */
+  group?: string;
+  /**
+   * Seed for a NEW row only. `is_active` uses it so the box reflects what the
+   * column would actually default to; without it every add form offered an
+   * unticked "Active" for a record that is created active.
+   */
+  defaultValue?: unknown;
 };
+
+/**
+ * A checkbox list. `role_tags` is the only array column in these collections.
+ *
+ * A fieldset with a visible legend rather than a labelled control: the group has
+ * a name and each box has its own, which is what a screen reader needs to say
+ * "Departments, Billing, checked" instead of reading ten unrelated checkboxes.
+ */
+function MultiSelect({ label, value, options, onChange }: {
+  label: string;
+  value: string[];
+  options: { value: string; label: string }[];
+  onChange: (next: string[]) => void;
+}) {
+  const toggle = (v: string) => onChange(value.includes(v) ? value.filter((x) => x !== v) : [...value, v]);
+  return (
+    <fieldset className="rounded-lg border p-2">
+      <legend className="px-1 text-sm font-medium text-foreground">{label}</legend>
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+        {options.map((o) => (
+          <Checkbox key={o.value} checked={value.includes(o.value)} onCheckedChange={() => toggle(o.value)} label={<span className="text-sm">{o.label}</span>} />
+        ))}
+      </div>
+    </fieldset>
+  );
+}
 
 /** Generic "add / edit a nested item" modal — one implementation for every collection. */
 function ChildModal({ title, fields, initial, onClose, onSubmit }: {
@@ -120,11 +173,13 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
   onClose: () => void; onSubmit: (values: Record<string, unknown>) => Promise<void>;
 }) {
   const [values, setValues] = React.useState<Record<string, unknown>>(() => {
-    if (!initial) return {};
-    // Only carry the editable keys across — sending back server-owned fields
-    // (verified, created_at, the pk) would be rejected by the write allow-list.
     const seed: Record<string, unknown> = {};
-    for (const f of fields) if (initial[f.key] !== null && initial[f.key] !== undefined) seed[f.key] = initial[f.key];
+    for (const f of fields) {
+      // Only carry the editable keys across — sending back server-owned fields
+      // (verified, created_at, the pk) would be rejected by the write allow-list.
+      if (initial && initial[f.key] !== null && initial[f.key] !== undefined) seed[f.key] = initial[f.key];
+      else if (!initial && f.defaultValue !== undefined) seed[f.key] = f.defaultValue;
+    }
     return seed;
   });
   const [busy, setBusy] = React.useState(false);
@@ -137,37 +192,87 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
     catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
 
+  // Fields keep their declared order; the headings are inserted where a group
+  // first appears, so a spec stays a flat list and reads top to bottom.
+  const seenGroups = new Set<string>();
+
   return (
     <Modal open onClose={onClose} title={title} description="Blank fields are left unset.">
       <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map((f) => (
-          <label key={f.key} className={`space-y-1 text-sm ${f.type === "textarea" ? "sm:col-span-2" : ""} ${f.type === "checkbox" ? "flex items-center gap-2 space-y-0" : ""}`}>
-            <span className="font-medium text-foreground">{f.label}</span>
-            {f.type === "country" ? (
-              <SmartCountryPicker value={(values[f.key] as string) || ""} onChange={(c) => set(f.key, c)} label={f.label} />
-            ) : f.type === "checkbox" ? (
-              <Checkbox checked={!!values[f.key]} onCheckedChange={(v) => set(f.key, v)} label={<span className="sr-only">{f.label}</span>} />
-            ) : f.type === "select" ? (
-              <Select value={(values[f.key] as string) || ""} onChange={(e) => set(f.key, e.target.value)}>
-                <option value="">—</option>
-                {(f.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-              </Select>
-            ) : f.type === "textarea" ? (
-              <textarea
-                className="min-h-20 w-full rounded-lg border bg-background px-3 py-2 text-sm"
-                value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-            ) : (
-              <Input
-                type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
-                value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
-                onChange={(e) => set(f.key, e.target.value)}
-              />
-            )}
-            {f.hint && <span className="micro text-muted-foreground">{f.hint}</span>}
-          </label>
-        ))}
+        {fields.map((f) => {
+          const heading = f.group && !seenGroups.has(f.group) ? f.group : null;
+          if (heading) seenGroups.add(f.group as string);
+          const wide = f.type === "textarea" || f.type === "multiselect";
+          const cls = `space-y-1 text-sm ${wide ? "sm:col-span-2" : ""} ${f.type === "checkbox" ? "flex items-center gap-2 space-y-0" : ""}`;
+
+          /*
+           * Checkboxes and multiselects bring their OWN labels, so neither may
+           * sit inside this grid's generic `<label>`.
+           *
+           * `Checkbox` renders a `<label htmlFor>` internally. Nesting that in
+           * another label is invalid, and the accessible name computed from the
+           * pair is not the field's: `getByRole("checkbox", { name: "Active" })`
+           * could not find the control at all. It went unnoticed because the axe
+           * register never opens a modal and the only checkboxes here used to be
+           * two optional flags. `MultiSelect` is the same fault with a
+           * `<fieldset>`, where the outer label would additionally have toggled
+           * whichever box happened to be first.
+           */
+          if (f.type === "checkbox" || f.type === "multiselect") {
+            return (
+              <React.Fragment key={f.key}>
+                {heading && <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>}
+                <div className={cls}>
+                  {f.type === "checkbox" ? (
+                    <Checkbox checked={!!values[f.key]} onCheckedChange={(v) => set(f.key, v)} label={f.label} hint={f.hint} />
+                  ) : (
+                    <>
+                      <MultiSelect
+                        label={f.label}
+                        value={Array.isArray(values[f.key]) ? (values[f.key] as string[]) : []}
+                        options={f.options || []}
+                        onChange={(next) => set(f.key, next)}
+                      />
+                      {f.hint && <span className="micro text-muted-foreground">{f.hint}</span>}
+                    </>
+                  )}
+                </div>
+              </React.Fragment>
+            );
+          }
+
+          return (
+            <React.Fragment key={f.key}>
+              {heading && (
+                <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>
+              )}
+              <label className={cls}>
+                <span className="font-medium text-foreground">{f.label}</span>
+                {f.type === "country" ? (
+                  <SmartCountryPicker value={(values[f.key] as string) || ""} onChange={(c) => set(f.key, c)} label={f.label} />
+                ) : f.type === "select" ? (
+                  <Select value={(values[f.key] as string) || ""} onChange={(e) => set(f.key, e.target.value)}>
+                    <option value="">—</option>
+                    {(f.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </Select>
+                ) : f.type === "textarea" ? (
+                  <textarea
+                    className="min-h-20 w-full rounded-lg border bg-background px-3 py-2 text-sm"
+                    value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                ) : (
+                  <Input
+                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
+                    value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
+                    onChange={(e) => set(f.key, e.target.value)}
+                  />
+                )}
+                {f.hint && <span className="micro text-muted-foreground">{f.hint}</span>}
+              </label>
+            </React.Fragment>
+          );
+        })}
       </div>
       {error && <div className="mt-3"><ErrorState message={error} /></div>}
       <div className="mt-4 flex justify-end gap-2">
@@ -182,39 +287,116 @@ const opts = (xs: readonly string[]) => xs.map((v) => ({ value: v, label: enumLa
 
 /* ── Field specs per collection ────────────────────────────────────────────── */
 
-const PERSON_FIELDS: FieldSpec[] = [
-  { key: "role", label: "Role", type: "select", options: opts(entityCommon.PERSON_ROLES) },
+/**
+ * The rows a nested form needs to offer a real choice.
+ *
+ * Every one of these backs a foreign key the shared schema accepts and the
+ * dossier already RENDERS, but that no control could set. The tax-registration
+ * table printed `jurisdiction_name` from a `jurisdiction_id` nothing could
+ * write; the cap table printed a `holder_entity_code` pill for an
+ * entity-owns-entity holding that could not be recorded — in a module whose
+ * whole point is group structure. A uuid text box would technically close the
+ * gap and would never be used, so these are pickers.
+ */
+type Lookups = {
+  entities: { entity_id: string; code: string; legal_name: string }[];
+  employees: { employee_id: string; full_name?: string | null }[];
+  users: { user_id: string; full_name?: string | null; email?: string | null }[];
+  jurisdictions: api.TaxJurisdiction[];
+  clients: { client_id: string; name: string }[];
+  suppliers: { supplier_id: string; name: string }[];
+  establishments: api.EntityEstablishment[];
+};
+
+const EMPTY_LOOKUPS: Lookups = {
+  entities: [], employees: [], users: [], jurisdictions: [], clients: [], suppliers: [], establishments: [],
+};
+
+const nameOpts = <T,>(rows: T[], id: (r: T) => string, label: (r: T) => string) =>
+  rows.map((r) => ({ value: id(r), label: label(r) }));
+
+/**
+ * People: shareholders, directors, officers, signatories, UBOs.
+ *
+ * Grouped, because it is the largest form in the module and the groups are real
+ * distinctions — a director has no shareholding, a corporate holder has no date
+ * of birth. The API refuses the contradictory combinations either way
+ * (`withPersonRules`); the grouping is so a person does not have to discover
+ * that by being rejected.
+ */
+const personFields = (lk: Lookups): FieldSpec[] => [
+  { key: "role", label: "Role", type: "select", options: opts(entityCommon.PERSON_ROLES), group: "Who" },
   { key: "holder_type", label: "Holder type", type: "select", options: opts(entityCommon.HOLDER_TYPES), hint: "A shareholder can be a company." },
   { key: "full_name", label: "Full name" },
   { key: "title", label: "Title", placeholder: "Directeur Général" },
   { key: "email", label: "Email", type: "email" },
   { key: "phone", label: "Phone", placeholder: "+237690000000" },
-  { key: "date_of_birth", label: "Date of birth", type: "date", hint: "Natural persons only." },
+
+  { key: "date_of_birth", label: "Date of birth", type: "date", hint: "Natural persons only.", group: "Identity (AML/KYC)" },
   { key: "nationality", label: "Nationality", type: "country" },
+  { key: "country_of_residence", label: "Country of residence", type: "country", hint: "Drives which sanctions and tax-residency checks apply." },
   { key: "id_type", label: "ID type", placeholder: "PASSPORT / CNI" },
   { key: "id_number", label: "ID number" },
-  { key: "company_registration_number", label: "Company reg. number", hint: "Corporate holders only." },
+  { key: "is_pep", label: "Politically exposed", type: "checkbox" },
+
+  { key: "company_registration_number", label: "Company reg. number", hint: "Corporate holders only.", group: "Corporate holder" },
   { key: "company_country", label: "Company country", type: "country" },
-  { key: "share_class", label: "Share class", placeholder: "ORDINARY" },
+  {
+    key: "holder_entity_id", label: "Held by one of our entities", type: "select",
+    options: nameOpts(lk.entities, (e) => e.entity_id, (e) => `${e.code} — ${e.legal_name}`),
+    hint: "For an intra-group holding. The cap table shows this as a code beside the holder.",
+  },
+
+  { key: "share_class", label: "Share class", placeholder: "ORDINARY", group: "Shareholding" },
   { key: "share_count", label: "Number of shares", type: "number" },
   { key: "share_nominal_value", label: "Nominal value per share", type: "number" },
   { key: "ownership_percent", label: "Ownership %", type: "number" },
-  { key: "voting_percent", label: "Voting %", type: "number" },
-  { key: "effective_from", label: "Held from", type: "date" },
-  { key: "effective_to", label: "Held until", type: "date", hint: "Leave blank for a current holding." },
-  { key: "is_pep", label: "Politically exposed", type: "checkbox" },
+  { key: "voting_percent", label: "Voting %", type: "number", hint: "Differs from ownership where a class carries extra votes." },
+
+  {
+    key: "signature_limit_amount", label: "Signature limit", type: "number",
+    hint: "The most this person may commit alone.", group: "Authority and term",
+  },
+  { key: "signature_limit_currency", label: "Limit currency", placeholder: "XAF" },
+  { key: "effective_from", label: "Held / appointed from", type: "date" },
+  { key: "effective_to", label: "Until", type: "date", hint: "Leave blank for a current holding or mandate." },
+
+  {
+    key: "employee_id", label: "Is also an employee", type: "select",
+    options: nameOpts(lk.employees, (e) => e.employee_id, (e) => e.full_name || e.employee_id),
+    group: "Also on file as",
+  },
+  {
+    key: "client_id", label: "Is also a client", type: "select",
+    options: nameOpts(lk.clients, (c) => c.client_id, (c) => c.name),
+    hint: "A director who is also a counterparty — a related-party disclosure.",
+  },
+  {
+    key: "supplier_id", label: "Is also a supplier", type: "select",
+    options: nameOpts(lk.suppliers, (s) => s.supplier_id, (s) => s.name),
+  },
+  { key: "is_primary_contact", label: "Primary contact for the entity", type: "checkbox" },
+  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "Clear this to retire a mandate without deleting its history." },
   { key: "notes", label: "Notes", type: "textarea" },
 ];
 
-const CONTACT_FIELDS: FieldSpec[] = [
+const contactFields = (): FieldSpec[] => [
   { key: "name", label: "Name" },
   { key: "title", label: "Title" },
   { key: "email", label: "Email", type: "email" },
   { key: "phone", label: "Phone" },
+  {
+    key: "role_tags", label: "Departments", type: "multiselect",
+    options: opts(entityCommon.CONTACT_ROLE_TAGS),
+    hint: "What this contact is for. Nothing else made this section's \"departmental contact points\" real.",
+  },
+  { key: "language", label: "Language", placeholder: "fr", hint: "Two-letter code — what to write to them in." },
+  { key: "timezone", label: "Timezone", placeholder: "Africa/Douala", hint: "So a call is not scheduled at 3 a.m. their time." },
   { key: "is_primary", label: "Primary contact", type: "checkbox" },
+  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true },
 ];
 
-const ADDRESS_FIELDS: FieldSpec[] = [
+const addressFields = (): FieldSpec[] => [
   { key: "type", label: "Type", type: "select", options: opts(entityCommon.ADDRESS_TYPES), hint: "REGISTERED is what the letterhead prints." },
   { key: "line1", label: "Address line 1" },
   { key: "line2", label: "Address line 2" },
@@ -224,9 +406,10 @@ const ADDRESS_FIELDS: FieldSpec[] = [
   { key: "country_code", label: "Country", type: "country" },
   { key: "po_box", label: "PO box" },
   { key: "is_primary", label: "Primary", type: "checkbox" },
+  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "An old office stays on file rather than being deleted." },
 ];
 
-const REGISTRATION_FIELDS: FieldSpec[] = [
+const registrationFields = (): FieldSpec[] => [
   { key: "country_code", label: "Country", type: "country" },
   { key: "kind", label: "Type", placeholder: "NIU / RCCM / VAT / EORI", hint: "Whatever the jurisdiction issues." },
   { key: "number", label: "Number" },
@@ -234,26 +417,38 @@ const REGISTRATION_FIELDS: FieldSpec[] = [
   { key: "issued_on", label: "Issued on", type: "date" },
   { key: "expires_on", label: "Expires on", type: "date" },
   { key: "is_primary", label: "Primary for this country", type: "checkbox" },
+  { key: "notes", label: "Notes", type: "textarea", hint: "Where the original is filed, what the renewal needs." },
 ];
 
-const TAX_REGISTRATION_FIELDS: FieldSpec[] = [
+const taxRegistrationFields = (lk: Lookups): FieldSpec[] => [
   { key: "country_code", label: "Country", type: "country", hint: "Where this registration was issued." },
+  {
+    key: "jurisdiction_id", label: "Tax jurisdiction", type: "select",
+    options: nameOpts(lk.jurisdictions, (j) => j.jurisdiction_id, (j) => `${j.name}${j.country_code ? ` (${j.country_code})` : ""}`),
+    hint: "Links this registration to its rate card. The table's jurisdiction column reads from it.",
+  },
   { key: "tax_kind", label: "Tax", type: "select", options: opts(["VAT", "INCOME", "WHT", "PAYROLL", "CUSTOMS", "LOCAL", "OTHER"]) },
   { key: "tax_number", label: "Tax number", placeholder: "FR12345678901" },
   { key: "regime", label: "Regime", placeholder: "RÉEL / NORMAL / SIMPLIFIÉ" },
   { key: "filing_frequency", label: "Filing frequency", type: "select", options: opts(["MONTHLY", "QUARTERLY", "BIMONTHLY", "ANNUAL", "ON_EVENT"]) },
-  { key: "filing_due_day", label: "Filing due day", type: "number", hint: "Day of the month, 1–31." },
+  { key: "filing_due_day", label: "Filing due day", type: "number", hint: "Day of the month, 1–31. Needs a frequency to attach to." },
   { key: "currency", label: "Filing currency", placeholder: "XAF" },
   { key: "registered_on", label: "Registered on", type: "date" },
   { key: "deregistered_on", label: "Deregistered on", type: "date", hint: "Leave blank while it is live." },
   { key: "filing_portal_url", label: "Filing portal", placeholder: "https://…" },
+  {
+    key: "responsible_user_id", label: "Responsible", type: "select",
+    options: nameOpts(lk.users, (u) => u.user_id, (u) => u.full_name || u.email || u.user_id),
+    hint: "Who chases this filing. Without a name, a missed deadline belongs to nobody.",
+  },
   { key: "is_withholding_agent", label: "We withhold tax here", type: "checkbox" },
   { key: "reverse_charge_applies", label: "Reverse charge applies", type: "checkbox" },
   { key: "is_primary", label: "Primary for this country", type: "checkbox" },
+  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true },
   { key: "notes", label: "Notes", type: "textarea" },
 ];
 
-const ESTABLISHMENT_FIELDS: FieldSpec[] = [
+const establishmentFields = (lk: Lookups): FieldSpec[] => [
   { key: "name", label: "Name" },
   { key: "code", label: "Code" },
   { key: "kind", label: "Kind", type: "select", options: opts(entityCommon.ESTABLISHMENT_KINDS) },
@@ -263,9 +458,70 @@ const ESTABLISHMENT_FIELDS: FieldSpec[] = [
   { key: "tax_office_ref", label: "Tax office reference", hint: "SIRET, centre des impôts…" },
   { key: "registration_ref", label: "Registration reference" },
   { key: "customs_office", label: "Customs office" },
+  {
+    key: "manager_employee_id", label: "Site manager", type: "select",
+    options: nameOpts(lk.employees, (e) => e.employee_id, (e) => e.full_name || e.employee_id),
+    hint: "Who runs it. A site with no named manager is a site nobody is answerable for.",
+  },
   { key: "opened_on", label: "Opened on", type: "date" },
   { key: "closed_on", label: "Closed on", type: "date" },
+  { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "A closed site stays on file — old documents still reference it." },
 ];
+
+/**
+ * Build the field list for one collection, and fetch only the lookups it needs.
+ *
+ * `useList(null)` disables a query, so a contacts modal costs no requests while a
+ * people modal fetches four lists. They load when the modal opens rather than
+ * with the dossier: six extra requests on every entity view, for pickers most
+ * visits never open, is not a trade worth making.
+ */
+function useChildFields(seg: api.EntityCollection, establishments: api.EntityEstablishment[]) {
+  const needs = (...segs: api.EntityCollection[]) => segs.includes(seg);
+  const entities = useList<Lookups["entities"][number]>(needs("people") ? "/entities" : null);
+  const employees = useList<Lookups["employees"][number]>(needs("people", "establishments") ? "/employees" : null);
+  const users = useList<Lookups["users"][number]>(needs("tax-registrations") ? "/users" : null);
+  const jurisdictions = useList<api.TaxJurisdiction>(needs("tax-registrations") ? "/tax-jurisdictions" : null);
+  const clients = useList<Lookups["clients"][number]>(needs("people") ? "/clients" : null);
+  const suppliers = useList<Lookups["suppliers"][number]>(needs("people") ? "/suppliers" : null);
+
+  return React.useMemo(() => {
+    const lk: Lookups = {
+      ...EMPTY_LOOKUPS,
+      entities: entities.rows || [],
+      employees: employees.rows || [],
+      users: users.rows || [],
+      jurisdictions: jurisdictions.rows || [],
+      clients: clients.rows || [],
+      suppliers: suppliers.rows || [],
+      establishments,
+    };
+    switch (seg) {
+      case "people": return personFields(lk);
+      case "contacts": return contactFields();
+      case "addresses": return addressFields();
+      case "registrations": return registrationFields();
+      case "tax-registrations": return taxRegistrationFields(lk);
+      case "establishments": return establishmentFields(lk);
+      // Documents build their own list: it depends on the chosen document TYPE,
+      // which has to be loaded before the modal can be assembled. See DocumentsTab.
+      default: return [];
+    }
+  }, [seg, establishments, entities.rows, employees.rows, users.rows, jurisdictions.rows, clients.rows, suppliers.rows]);
+}
+
+/** A nested add/edit modal that has loaded whatever pickers its collection needs. */
+function EntityChildModal({ seg, title, row, establishments, onClose, onSubmit }: {
+  seg: api.EntityCollection;
+  title: string;
+  row?: Record<string, unknown> | null;
+  establishments: api.EntityEstablishment[];
+  onClose: () => void;
+  onSubmit: (values: Record<string, unknown>) => Promise<void>;
+}) {
+  const fields = useChildFields(seg, establishments);
+  return <ChildModal title={title} fields={fields} initial={row} onClose={onClose} onSubmit={onSubmit} />;
+}
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
@@ -293,9 +549,24 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
   const toast = useToast();
   const d = useResource<api.Entity360>(() => api.entityDossier(entityId), [entityId]);
   const [tab, setTab] = React.useState<Tab>("Overview");
-  const [editing, setEditing] = React.useState<null | { seg: api.EntityCollection; title: string; fields: FieldSpec[]; row?: Record<string, unknown> | null }>(null);
+  // The field list is no longer carried in this state: it depends on lookups
+  // fetched when the modal opens, so only the collection, the title and the row
+  // being edited live here.
+  const [editing, setEditing] = React.useState<null | { seg: api.EntityCollection; title: string; row?: Record<string, unknown> | null }>(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
+  // Blank means "today", which is what the /360 bundle already carries — so the
+  // common case costs no extra request and only a deliberate date fetches.
+  const [capAsOf, setCapAsOf] = React.useState("");
+  const [renewalAsOf, setRenewalAsOf] = React.useState("");
+  const datedCap = useResource<api.CapTable | null>(
+    () => (capAsOf ? api.entityCapTable(entityId, capAsOf) : Promise.resolve(null)),
+    [entityId, capAsOf],
+  );
+  const datedRenewals = useResource<api.Renewals | null>(
+    () => (renewalAsOf ? api.entityRenewals(entityId, renewalAsOf) : Promise.resolve(null)),
+    [entityId, renewalAsOf],
+  );
 
   const reload = () => { d.reload(); onChanged?.(); };
 
@@ -327,6 +598,10 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
   const currency = e.default_currency || "XAF";
   const shareholders = people.filter((p) => p.role === "SHAREHOLDER");
   const officers = people.filter((p) => p.role !== "SHAREHOLDER");
+  // The KPI row above the tabs stays on today; only the sections with a date
+  // picker follow it, so the headline figures do not silently become historical.
+  const capView = (capAsOf && datedCap.data) || cap;
+  const renewalsView = (renewalAsOf && datedRenewals.data) || d.data.renewals;
 
   return (
     <div className="space-y-4">
@@ -472,7 +747,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <Section
           title="Registrations"
           description="Tax and trade identifiers, one row per country. This is what keeps a multi-country group compliant in each system."
-          action={<Button size="sm" onClick={() => setEditing({ seg: "registrations", title: "Add registration", fields: REGISTRATION_FIELDS })}>Add registration</Button>}
+          action={<Button size="sm" onClick={() => setEditing({ seg: "registrations", title: "Add registration" })}>Add registration</Button>}
         >
           <MiniTable
             empty={registrations.length === 0}
@@ -487,7 +762,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                 <Td>{r.issued_on ? dateFmt(r.issued_on) : "—"}</Td>
                 <Td>{r.expires_on ? dateFmt(r.expires_on) : "—"}</Td>
                 <Td r>
-                  <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "registrations", title: "Edit registration", fields: REGISTRATION_FIELDS, row: r as unknown as Record<string, unknown> })}>Edit</Button>
+                  <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "registrations", title: "Edit registration", row: r as unknown as Record<string, unknown> })}>Edit</Button>
                   <Button size="sm" variant="ghost" onClick={() => removeChild("registrations", r.registration_id)}>Remove</Button>
                 </Td>
               </tr>
@@ -500,7 +775,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
         <DocumentsTab
           entityId={entityId}
           documents={d.data.documents}
-          onEdit={(row) => setEditing({ seg: "documents", title: row ? "Edit document" : "Add document", fields: [], row })}
+          establishments={establishments}
           onRemove={(id) => removeChild("documents", id)}
           onSaved={reload}
         />
@@ -514,7 +789,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
             action={
               <div className="flex gap-2">
                 <Button size="sm" variant="outline" onClick={() => navigate("/master/tax-jurisdictions")}>Open Tax module →</Button>
-                <Button size="sm" onClick={() => setEditing({ seg: "tax-registrations", title: "Add tax registration", fields: TAX_REGISTRATION_FIELDS, row: { country_code: e.country_code, tax_kind: "VAT" } })}>Add registration</Button>
+                <Button size="sm" onClick={() => setEditing({ seg: "tax-registrations", title: "Add tax registration", row: { country_code: e.country_code, tax_kind: "VAT" } })}>Add registration</Button>
               </div>
             }
           >
@@ -535,6 +810,9 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                   <Td>
                     {t.filing_frequency ? enumLabel(t.filing_frequency) : "—"}
                     {t.filing_due_day ? <span className="micro text-muted-foreground"> · day {t.filing_due_day}</span> : null}
+                    {/* A filing rhythm with nobody's name against it is how a
+                        deadline passes with everyone assuming someone else had it. */}
+                    {t.responsible_name ? <div className="micro text-muted-foreground">{t.responsible_name}</div> : null}
                   </Td>
                   <Td>
                     {t.deregistered_on
@@ -542,7 +820,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
                       : <Pill tone={t.is_active === false ? "mute" : "ok"}>{t.is_active === false ? "Inactive" : "Active"}</Pill>}
                   </Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "tax-registrations", title: "Edit tax registration", fields: TAX_REGISTRATION_FIELDS, row: t as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "tax-registrations", title: "Edit tax registration", row: t as unknown as Record<string, unknown> })}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => removeChild("tax-registrations", t.tax_registration_id)}>Remove</Button>
                   </Td>
                 </tr>
@@ -586,18 +864,31 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
       {tab === "Renewals" && (
         <Section
           title="Renewals"
-          description={`Everything on this entity that has expired or is approaching expiry, as of ${dateFmt(d.data.renewals.as_of)}. Nothing here blocks anything — these are recommendations for a person to act on.`}
+          description={`Everything on this entity that has expired or is approaching expiry, as of ${dateFmt(renewalsView.as_of)}. Nothing here blocks anything — these are recommendations for a person to act on.`}
+          action={
+            <div className="flex flex-wrap items-end gap-2">
+              {/* Forward, to plan a renewal run; back, to answer "what had already
+                  lapsed at the audit date". The endpoint took as_of from the
+                  start and the screen never offered one. */}
+              <label className="space-y-1 text-sm">
+                <span className="micro text-muted-foreground">As of</span>
+                <Input type="date" value={renewalAsOf} onChange={(ev) => setRenewalAsOf(ev.target.value)} className="w-40" />
+              </label>
+              {renewalAsOf && <Button size="sm" variant="ghost" onClick={() => setRenewalAsOf("")}>Today</Button>}
+            </div>
+          }
         >
+          {datedRenewals.error && <ErrorState message={errMsg(datedRenewals.error)} />}
           <KpiRow>
-            <KpiTile label="Expired" value={num(d.data.renewals.counts.expired)} />
-            <KpiTile label="Due now" value={num(d.data.renewals.counts.due)} />
-            <KpiTile label="Approaching" value={num(d.data.renewals.counts.approaching)} />
+            <KpiTile label="Expired" value={num(renewalsView.counts.expired)} />
+            <KpiTile label="Due now" value={num(renewalsView.counts.due)} />
+            <KpiTile label="Approaching" value={num(renewalsView.counts.approaching)} />
           </KpiRow>
           <MiniTable
-            empty={d.data.renewals.items.length === 0}
+            empty={renewalsView.items.length === 0}
             head={<><Th>Item</Th><Th>Kind</Th><Th>Country</Th><Th>Expires</Th><Th r>Days</Th><Th>State</Th></>}
           >
-            {d.data.renewals.items.map((i) => (
+            {renewalsView.items.map((i) => (
               <tr key={`${i.kind}-${i.id}`}>
                 <Td><span className="font-medium text-foreground">{i.label}</span></Td>
                 <Td>{enumLabel(i.kind)}</Td>
@@ -611,7 +902,7 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
               </tr>
             ))}
           </MiniTable>
-          {d.data.renewals.items.length === 0 && (
+          {renewalsView.items.length === 0 && (
             <EmptyState title="Nothing expiring" hint="Documents and registrations with an expiry date appear here as their deadline approaches." />
           )}
         </Section>
@@ -630,12 +921,26 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
 
           <Section
             title="Shareholding"
-            description={`Reconciled as of ${dateFmt(cap.as_of)}. Warnings never block saving — a partly-recorded cap table is normal during onboarding.`}
-            action={<Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add shareholder", fields: PERSON_FIELDS, row: { role: "SHAREHOLDER" } })}>Add shareholder</Button>}
+            description={`Reconciled as of ${dateFmt(capView.as_of)}. Warnings never block saving — a partly-recorded cap table is normal during onboarding.`}
+            action={
+              <div className="flex flex-wrap items-end gap-2">
+                {/* GET /cap-table?as_of= has always existed and the assistant's
+                    own tool passes a date; the screen only ever got today's
+                    snapshot out of the /360 bundle. "Who held what when the
+                    accounts were signed" is the question this table is asked. */}
+                <label className="space-y-1 text-sm">
+                  <span className="micro text-muted-foreground">As of</span>
+                  <Input type="date" value={capAsOf} onChange={(ev) => setCapAsOf(ev.target.value)} className="w-40" />
+                </label>
+                {capAsOf && <Button size="sm" variant="ghost" onClick={() => setCapAsOf("")}>Today</Button>}
+                <Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add shareholder", row: { role: "SHAREHOLDER" } })}>Add shareholder</Button>
+              </div>
+            }
           >
-            {cap.findings.length > 0 && (
+            {datedCap.error && <ErrorState message={errMsg(datedCap.error)} />}
+            {capView.findings.length > 0 && (
               <ul className="space-y-1">
-                {cap.findings.map((f, i) => (
+                {capView.findings.map((f, i) => (
                   <li key={i} className="text-sm">
                     <Pill tone={f.severity === "WARN" ? "warn" : "mute"}>{enumLabel(f.code)}</Pill> <span className="text-muted-foreground">{f.message}</span>
                   </li>
@@ -646,30 +951,42 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
               empty={shareholders.length === 0}
               head={<><Th>Holder</Th><Th>Class</Th><Th r>Shares</Th><Th r>Ownership</Th><Th r>Voting</Th><Th>Held from</Th><Th /></>}
             >
-              {shareholders.map((p) => (
-                <tr key={p.person_id}>
-                  <Td>
-                    <span className="font-medium text-foreground">{p.full_name}</span>
-                    {p.holder_type === "COMPANY" && <> <Pill tone="blue">Company</Pill></>}
-                    {p.is_pep && <> <Pill tone="orange">PEP</Pill></>}
-                    {p.holder_entity_code && <> <Pill tone="mute">{p.holder_entity_code}</Pill></>}
-                  </Td>
-                  <Td>{p.share_class || "—"}</Td>
-                  <Td r>{p.share_count != null ? num(p.share_count) : "—"}</Td>
-                  <Td r>{p.ownership_percent != null ? `${num(p.ownership_percent)}%` : "—"}</Td>
-                  <Td r>{p.voting_percent != null ? `${num(p.voting_percent)}%` : "—"}</Td>
-                  <Td>{p.effective_from ? dateFmt(p.effective_from) : "—"}</Td>
-                  <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit shareholder", fields: PERSON_FIELDS, row: p as unknown as Record<string, unknown> })}>Edit</Button>
-                    <Button size="sm" variant="ghost" onClick={() => removeChild("people", p.person_id)}>Remove</Button>
-                  </Td>
-                </tr>
-              ))}
+              {shareholders.map((p) => {
+                // The totals count only holdings current on the reconciliation
+                // date. Rows outside that window stay visible — a transfer is
+                // history worth seeing — but are marked, so a table summing to
+                // less than its own footer has a visible reason.
+                const current = heldOn(p, capView.as_of);
+                return (
+                  <tr key={p.person_id} className={!current || p.is_active === false ? "opacity-60" : undefined}>
+                    <Td>
+                      <span className="font-medium text-foreground">{p.full_name}</span>
+                      {p.holder_type === "COMPANY" && <> <Pill tone="blue">Company</Pill></>}
+                      {p.is_pep && <> <Pill tone="orange">PEP</Pill></>}
+                      {p.holder_entity_code && <> <Pill tone="mute">{p.holder_entity_code}</Pill></>}
+                      {p.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
+                      {!current && <> <Pill tone="mute">Not held on this date</Pill></>}
+                    </Td>
+                    <Td>{p.share_class || "—"}</Td>
+                    <Td r>{p.share_count != null ? num(p.share_count) : "—"}</Td>
+                    <Td r>{p.ownership_percent != null ? `${num(p.ownership_percent)}%` : "—"}</Td>
+                    <Td r>{p.voting_percent != null ? `${num(p.voting_percent)}%` : "—"}</Td>
+                    <Td>
+                      {p.effective_from ? dateFmt(p.effective_from) : "—"}
+                      {p.effective_to ? <span className="micro text-muted-foreground"> → {dateFmt(p.effective_to)}</span> : null}
+                    </Td>
+                    <Td r>
+                      <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit shareholder", row: p as unknown as Record<string, unknown> })}>Edit</Button>
+                      <Button size="sm" variant="ghost" onClick={() => removeChild("people", p.person_id)}>Remove</Button>
+                    </Td>
+                  </tr>
+                );
+              })}
             </MiniTable>
             {shareholders.length > 0 && (
               <p className="micro text-muted-foreground">
-                {num(cap.total_shares)} shares recorded · {num(cap.total_percent)}% allocated
-                {cap.issued_capital > 0 ? ` · issued capital ${money(cap.issued_capital, e.share_capital_currency || currency)}` : ""}
+                {num(capView.holder_count)} holder{capView.holder_count === 1 ? "" : "s"} · {num(capView.total_shares)} shares recorded · {num(capView.total_percent)}% allocated
+                {capView.issued_capital > 0 ? ` · issued capital ${money(capView.issued_capital, e.share_capital_currency || currency)}` : ""}
               </p>
             )}
           </Section>
@@ -677,21 +994,33 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Directors, officers and signatories"
             description="One person can hold several roles — add a row per role."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add person", fields: PERSON_FIELDS, row: { role: "DIRECTOR" } })}>Add person</Button>}
+            action={<Button size="sm" onClick={() => setEditing({ seg: "people", title: "Add person", row: { role: "DIRECTOR" } })}>Add person</Button>}
           >
             <MiniTable
               empty={officers.length === 0}
               head={<><Th>Name</Th><Th>Role</Th><Th>Title</Th><Th>Appointed</Th><Th>Until</Th><Th /></>}
             >
               {officers.map((p) => (
-                <tr key={p.person_id}>
-                  <Td><span className="font-medium text-foreground">{p.full_name}</span></Td>
+                <tr key={p.person_id} className={p.is_active === false ? "opacity-60" : undefined}>
+                  <Td>
+                    <span className="font-medium text-foreground">{p.full_name}</span>
+                    {p.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
+                  </Td>
                   <Td><Pill tone={ROLE_TONE[p.role] || "mute"}>{enumLabel(p.role)}</Pill></Td>
-                  <Td>{p.title || "—"}</Td>
+                  <Td>
+                    {p.title || "—"}
+                    {/* A signing limit is the whole point of an AUTHORISED_SIGNATORY
+                        row, and nothing rendered it before. */}
+                    {p.signature_limit_amount != null && (
+                      <div className="micro text-muted-foreground">
+                        up to {money(p.signature_limit_amount, p.signature_limit_currency || currency)}
+                      </div>
+                    )}
+                  </Td>
                   <Td>{p.effective_from ? dateFmt(p.effective_from) : "—"}</Td>
                   <Td>{p.effective_to ? dateFmt(p.effective_to) : "—"}</Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit person", fields: PERSON_FIELDS, row: p as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "people", title: "Edit person", row: p as unknown as Record<string, unknown> })}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => removeChild("people", p.person_id)}>Remove</Button>
                   </Td>
                 </tr>
@@ -706,17 +1035,20 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Addresses"
             description="REGISTERED is the statutory office the letterhead prints — often not where people actually work."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "addresses", title: "Add address", fields: ADDRESS_FIELDS, row: { type: "REGISTERED" } })}>Add address</Button>}
+            action={<Button size="sm" onClick={() => setEditing({ seg: "addresses", title: "Add address", row: { type: "REGISTERED" } })}>Add address</Button>}
           >
             <MiniTable empty={addresses.length === 0} head={<><Th>Type</Th><Th>Address</Th><Th>City</Th><Th>Country</Th><Th /></>}>
               {addresses.map((a) => (
-                <tr key={a.address_id}>
-                  <Td><Pill tone={a.type === "REGISTERED" ? "ok" : "mute"}>{enumLabel(a.type)}</Pill></Td>
+                <tr key={a.address_id} className={a.is_active === false ? "opacity-60" : undefined}>
+                  <Td>
+                    <Pill tone={a.type === "REGISTERED" ? "ok" : "mute"}>{enumLabel(a.type)}</Pill>
+                    {a.is_active === false && <> <Pill tone="mute">Inactive</Pill></>}
+                  </Td>
                   <Td>{[a.line1, a.line2, a.po_box].filter(Boolean).join(", ") || "—"}</Td>
                   <Td>{[a.postal_code, a.city].filter(Boolean).join(" ") || "—"}</Td>
                   <Td>{a.country_code || "—"}</Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "addresses", title: "Edit address", fields: ADDRESS_FIELDS, row: a as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "addresses", title: "Edit address", row: a as unknown as Record<string, unknown> })}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => removeChild("addresses", a.address_id)}>Remove</Button>
                   </Td>
                 </tr>
@@ -727,17 +1059,29 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Contacts"
             description="Departmental contact points for this entity — the AP inbox, the legal contact on a tender."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "contacts", title: "Add contact", fields: CONTACT_FIELDS })}>Add contact</Button>}
+            action={<Button size="sm" onClick={() => setEditing({ seg: "contacts", title: "Add contact" })}>Add contact</Button>}
           >
-            <MiniTable empty={contacts.length === 0} head={<><Th>Name</Th><Th>Title</Th><Th>Email</Th><Th>Phone</Th><Th /></>}>
+            {/* The department pills are the point of this section: "the AP inbox,
+                the legal contact on a tender" is answered by role_tags, and
+                without them every row reads as an undifferentiated person. */}
+            <MiniTable empty={contacts.length === 0} head={<><Th>Name</Th><Th>Departments</Th><Th>Title</Th><Th>Email</Th><Th>Phone</Th><Th /></>}>
               {contacts.map((c) => (
-                <tr key={c.contact_id}>
-                  <Td><span className="font-medium text-foreground">{c.name}</span>{c.is_primary ? <> <Pill tone="ok">Primary</Pill></> : null}</Td>
+                <tr key={c.contact_id} className={c.is_active === false ? "opacity-60" : undefined}>
+                  <Td>
+                    <span className="font-medium text-foreground">{c.name}</span>
+                    {c.is_primary ? <> <Pill tone="ok">Primary</Pill></> : null}
+                    {c.is_active === false ? <> <Pill tone="mute">Inactive</Pill></> : null}
+                  </Td>
+                  <Td>
+                    {c.role_tags?.length
+                      ? <span className="flex flex-wrap gap-1">{c.role_tags.map((t) => <Pill key={t} tone="blue">{enumLabel(t)}</Pill>)}</span>
+                      : "—"}
+                  </Td>
                   <Td>{c.title || "—"}</Td>
                   <Td>{c.email || "—"}</Td>
-                  <Td>{c.phone || "—"}</Td>
+                  <Td>{c.phone || "—"}{c.language ? <span className="micro text-muted-foreground"> · {c.language.toUpperCase()}</span> : null}</Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "contacts", title: "Edit contact", fields: CONTACT_FIELDS, row: c as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "contacts", title: "Edit contact", row: c as unknown as Record<string, unknown> })}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => removeChild("contacts", c.contact_id)}>Remove</Button>
                   </Td>
                 </tr>
@@ -790,18 +1134,22 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
           <Section
             title="Establishments"
             description="Sites that are not separate legal persons — a warehouse or branch office with its own tax-office reference but no separate books."
-            action={<Button size="sm" onClick={() => setEditing({ seg: "establishments", title: "Add establishment", fields: ESTABLISHMENT_FIELDS })}>Add establishment</Button>}
+            action={<Button size="sm" onClick={() => setEditing({ seg: "establishments", title: "Add establishment" })}>Add establishment</Button>}
           >
-            <MiniTable empty={establishments.length === 0} head={<><Th>Name</Th><Th>Kind</Th><Th>City</Th><Th>Country</Th><Th>Tax office</Th><Th /></>}>
+            <MiniTable empty={establishments.length === 0} head={<><Th>Name</Th><Th>Kind</Th><Th>City</Th><Th>Country</Th><Th>Manager</Th><Th>Tax office</Th><Th /></>}>
               {establishments.map((s) => (
-                <tr key={s.establishment_id}>
-                  <Td><span className="font-medium text-foreground">{s.name}</span></Td>
+                <tr key={s.establishment_id} className={s.is_active === false || s.closed_on ? "opacity-60" : undefined}>
+                  <Td>
+                    <span className="font-medium text-foreground">{s.name}</span>
+                    {s.closed_on ? <> <Pill tone="mute">Closed {dateFmt(s.closed_on)}</Pill></> : s.is_active === false ? <> <Pill tone="mute">Inactive</Pill></> : null}
+                  </Td>
                   <Td>{s.kind ? enumLabel(s.kind) : "—"}</Td>
                   <Td>{s.city || "—"}</Td>
                   <Td>{s.country_code || "—"}</Td>
+                  <Td>{s.manager_name || "—"}</Td>
                   <Td><span className="num">{s.tax_office_ref || "—"}</span></Td>
                   <Td r>
-                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "establishments", title: "Edit establishment", fields: ESTABLISHMENT_FIELDS, row: s as unknown as Record<string, unknown> })}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setEditing({ seg: "establishments", title: "Edit establishment", row: s as unknown as Record<string, unknown> })}>Edit</Button>
                     <Button size="sm" variant="ghost" onClick={() => removeChild("establishments", s.establishment_id)}>Remove</Button>
                   </Td>
                 </tr>
@@ -838,10 +1186,11 @@ export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h
       )}
 
       {editing && (
-        <ChildModal
+        <EntityChildModal
+          seg={editing.seg}
           title={editing.title}
-          fields={editing.fields}
-          initial={editing.row}
+          row={editing.row}
+          establishments={establishments}
           onClose={() => setEditing(null)}
           onSubmit={(values) => {
             const pkBySeg: Record<api.EntityCollection, string> = {
@@ -906,16 +1255,28 @@ export function EntityDossierPage() {
  * A document may be recorded paper-only: the digital scan is a VERIFICATION
  * gate, not a creation gate. Refusing to record a certificate you are holding in
  * your hand because it has not been scanned is how a register ends up incomplete.
+ *
+ * WHICH MADE THE MISSING ATTACH CONTROL WORSE, NOT BETTER. `vault_id` is what
+ * turns a paper-only record into a scanned one: `nested.js` advances PENDING →
+ * SCANNED only when it is set. Nothing in this form set it, so every entity
+ * document ever recorded sat at PENDING for good, the "Paper" pill never came
+ * off, and the renewals engine kept warning about a missing scan for documents
+ * that had been scanned and filed. Attaching one is now a two-step the operator
+ * never sees: upload the file to the vault (MOD-64), then patch the returned id
+ * onto the document.
  */
-function DocumentsTab({ entityId, documents, onRemove, onSaved }: {
+function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }: {
   entityId: string;
   documents: api.EntityDocument[];
-  onEdit: (row: Record<string, unknown> | null) => void;
+  establishments: api.EntityEstablishment[];
   onRemove: (id: string) => void;
   onSaved: () => void;
 }) {
+  const toast = useToast();
   const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
   const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(null);
+  const [attaching, setAttaching] = React.useState<string | null>(null);
+  const [attachError, setAttachError] = React.useState<string | null>(null);
   // `types.data || []` is a fresh array each render, so it cannot be a useMemo
   // dependency — the memo would rebuild the field list on every keystroke.
   const typeList = React.useMemo(() => types.data || [], [types.data]);
@@ -926,19 +1287,62 @@ function DocumentsTab({ entityId, documents, onRemove, onSaved }: {
     { key: "document_number", label: "Reference number" },
     { key: "issuing_authority", label: "Issuing authority", placeholder: "Direction Générale des Douanes" },
     { key: "country_code", label: "Country", type: "country" },
+    {
+      key: "establishment_id", label: "Belongs to establishment", type: "select",
+      options: establishments.map((s) => ({ value: s.establishment_id, label: s.name })),
+      hint: "For a licence issued to one branch rather than the company as a whole.",
+    },
     { key: "issued_on", label: "Issued on", type: "date" },
     { key: "expires_on", label: "Expires on", type: "date", hint: "Drives the renewals list." },
     { key: "renewal_lead_days", label: "Warn this many days ahead", type: "number", hint: "Blank uses the document type's own lead time." },
     { key: "physical_ref", label: "Paper original filed at", placeholder: "Box A-12", hint: "A document can be recorded before it is scanned." },
     { key: "scan_due_on", label: "Scan due by", type: "date" },
+    { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "A superseded certificate stays on file rather than being deleted." },
     { key: "notes", label: "Notes", type: "textarea" },
-  ], [typeList]);
+  ], [typeList, establishments]);
 
   async function save(values: Record<string, unknown>, id?: string) {
     const body = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined));
     if (id) await api.updateEntityChild(entityId, "documents", id, body);
     else await api.addEntityChild(entityId, "documents", body);
     onSaved();
+  }
+
+  /**
+   * Upload the scan, then point the document at it.
+   *
+   * Two calls rather than one because the vault owns the bytes: MOD-64 hashes,
+   * stores and audits them, and `entity_document.vault_id` is a reference to
+   * that record — not a second copy. `entity_ref` ties the vault row back here so
+   * a document found from the vault side can be traced to the entity it belongs
+   * to.
+   */
+  async function attachScan(doc: api.EntityDocument, file: File | null) {
+    if (!file) return;
+    setAttaching(doc.document_id);
+    setAttachError(null);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const r = new FileReader();
+        r.onload = () => resolve(String(r.result));
+        r.onerror = () => reject(new Error("Could not read the file."));
+        r.readAsDataURL(file);
+      });
+      const vaulted = await api.uploadVaultDocument({
+        data_url: dataUrl,
+        doc_type: doc.document_type_code || "ENTITY_DOCUMENT",
+        entity_ref: `entity_document:${doc.document_id}`,
+      });
+      await api.updateEntityChild(entityId, "documents", doc.document_id, { vault_id: vaulted.doc_id });
+      // The API moves PENDING → SCANNED on its own once vault_id lands; saying so
+      // explains why the pill changed without the operator touching it.
+      toast.success("Scan attached — the document is now marked scanned.");
+      onSaved();
+    } catch (e) {
+      setAttachError(errMsg(e));
+    } finally {
+      setAttaching(null);
+    }
   }
 
   return (
@@ -948,13 +1352,17 @@ function DocumentsTab({ entityId, documents, onRemove, onSaved }: {
       action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
+      {attachError && <ErrorState message={attachError} />}
       <MiniTable
         empty={documents.length === 0}
         head={<><Th>Document</Th><Th>Type</Th><Th>Number</Th><Th>Country</Th><Th>Expires</Th><Th>Scan</Th><Th /></>}
       >
         {documents.map((doc) => (
-          <tr key={doc.document_id}>
-            <Td><span className="font-medium text-foreground">{doc.title || doc.document_type_name || "Untitled"}</span></Td>
+          <tr key={doc.document_id} className={doc.is_active === false ? "opacity-60" : undefined}>
+            <Td>
+              <span className="font-medium text-foreground">{doc.title || doc.document_type_name || "Untitled"}</span>
+              {doc.establishment_name ? <div className="micro text-muted-foreground">{doc.establishment_name}</div> : null}
+            </Td>
             <Td>{doc.document_type_name || "—"}</Td>
             <Td><span className="num">{doc.document_number || "—"}</span></Td>
             <Td>{doc.country_code || "—"}</Td>
@@ -964,6 +1372,21 @@ function DocumentsTab({ entityId, documents, onRemove, onSaved }: {
               {!doc.vault_id && doc.physical_ref ? <> <Pill tone="mute">Paper</Pill></> : null}
             </Td>
             <Td r>
+              <label className="cursor-pointer text-sm text-primary-ink underline hover:opacity-80">
+                {attaching === doc.document_id ? "Uploading…" : doc.vault_id ? "Replace scan" : "Attach scan"}
+                <input
+                  type="file"
+                  className="sr-only"
+                  accept="application/pdf,image/png,image/jpeg,image/webp"
+                  disabled={attaching !== null}
+                  onChange={(ev) => {
+                    const file = ev.target.files?.[0] ?? null;
+                    // Clear the input so re-picking the same file fires onChange.
+                    ev.target.value = "";
+                    void attachScan(doc, file);
+                  }}
+                />
+              </label>
               <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
               <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
             </Td>

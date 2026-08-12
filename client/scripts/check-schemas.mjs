@@ -210,6 +210,66 @@ const uncovered = masterKeys.filter((k) => !entityControls.has(k) && !WRITTEN_EL
 // reason it was written and quietly excuse the next gap.
 const staleExemptions = Object.keys(WRITTEN_ELSEWHERE).filter((k) => entityControls.has(k));
 
+/* ── rule 5: the nested collections have controls too ─────────────────────── */
+
+/**
+ * Where each collection's `FieldSpec[]` is built, and what closes the slice.
+ *
+ * Documents are the odd one out: their fields depend on the chosen document
+ * TYPE, so the list is assembled inside `DocumentsTab` rather than beside the
+ * rest.
+ */
+const CHILD_BUILDERS = {
+  people: ["const personFields = ", "\n];"],
+  contacts: ["const contactFields = ", "\n];"],
+  addresses: ["const addressFields = ", "\n];"],
+  registrations: ["const registrationFields = ", "\n];"],
+  "tax-registrations": ["const taxRegistrationFields = ", "\n];"],
+  establishments: ["const establishmentFields = ", "\n];"],
+  documents: ["const fields = React.useMemo<FieldSpec[]>", "\n  ], ["],
+};
+
+/** Nested fields written by something other than a `FieldSpec`, and by what. */
+const CHILD_WRITTEN_ELSEWHERE = {
+  // A vault id is not typed, it is produced: the Documents tab uploads the scan
+  // to MOD-64 and patches back the id it is given. A uuid text box would satisfy
+  // this gate and help nobody.
+  "documents.vault_id": "the Attach scan control — POST /documents, then a PATCH with the returned id",
+};
+
+/** `{ key: "x", … }` — the one form every FieldSpec is written in. */
+const specKeys = (src) => [...src.matchAll(/\bkey:\s*"([a-z_][a-z0-9_]*)"/g)].map((m) => m[1]);
+
+const nestedShapes = shared.entityCommon?.nestedShapeKeys ?? {};
+const childGaps = [];
+const missingBuilders = [];
+for (const [seg, keys] of Object.entries(nestedShapes)) {
+  const [marker, closer] = CHILD_BUILDERS[seg] || [];
+  const body = marker ? sliceBody(dossierSrc, marker, closer) : null;
+  if (!body) { missingBuilders.push(seg); continue; }
+  const have = new Set(specKeys(body));
+  for (const k of keys) {
+    if (!have.has(k) && !CHILD_WRITTEN_ELSEWHERE[`${seg}.${k}`]) childGaps.push(`${seg}.${k}`);
+  }
+}
+
+/* ── rule 6: the letterhead designer names every column it can save ───────── */
+
+/**
+ * Looser than rules 4 and 5, deliberately. The designer is not a `FieldSpec`
+ * list — toggles come from one array, colours and heights from a draft object,
+ * the two enums from Selects that patch on change — so this asserts only that
+ * each column is MENTIONED in the tab. That is enough to catch what actually
+ * happened: six columns the API happily saved and the designer never named. A
+ * stricter parser over hand-written JSX would break on reformatting, and a gate
+ * that breaks on reformatting is a gate someone deletes.
+ */
+const letterheadTab = sliceBody(dossierSrc, "function LetterheadTab(", "\n}\n");
+const letterheadKeys = shared.entityCommon?.letterheadKeys ?? [];
+const letterheadGaps = letterheadTab
+  ? letterheadKeys.filter((k) => !new RegExp(`\\b${k}\\b`).test(letterheadTab))
+  : [];
+
 /* ── report ───────────────────────────────────────────────────────────────── */
 
 const oneSided = domains
@@ -283,6 +343,41 @@ if (staleExemptions.length) {
   console.error("\n  Drop the entry: an exemption nobody needs is one that excuses the next gap.\n");
 }
 
+if (missingBuilders.length) {
+  failed += missingBuilders.length;
+  console.error(`\n✗ Could not find the field builder for ${missingBuilders.length} nested collection(s):\n`);
+  for (const s of missingBuilders) console.error(`    ${s} — expected \`${(CHILD_BUILDERS[s] || ["(unregistered)"])[0]}\` in ${ENTITY_DOSSIER}`);
+  console.error(
+    "\n  Rule 5 reads those builders to learn which fields a person can set on a\n" +
+      "  child record. Point CHILD_BUILDERS at the new name rather than removing\n" +
+      "  the entry — an unwatched collection is how this drift started.\n",
+  );
+}
+
+if (childGaps.length) {
+  failed += childGaps.length;
+  console.error(`\n✗ ${childGaps.length} nested field(s) the API accepts but no control can write:\n`);
+  for (const k of childGaps) console.error(`    ${k}`);
+  console.error(
+    "\n  Same failure as rule 4, one level down: the dossier renders these columns\n" +
+      "  and nothing can fill them. Add a FieldSpec, or record what writes it in\n" +
+      "  CHILD_WRITTEN_ELSEWHERE.\n",
+  );
+}
+
+if (letterheadGaps.length) {
+  failed += letterheadGaps.length;
+  console.error(`\n✗ ${letterheadGaps.length} letterhead column(s) the designer never mentions:\n`);
+  for (const k of letterheadGaps) console.error(`    ${k}`);
+  console.error(
+    "\n  PUT /entities/:id/letterhead accepts these and the designer offers no way\n" +
+      "  to reach them, so the stored value can only ever be the default.\n",
+  );
+}
+
 if (failed) process.exit(1);
+const childCount = Object.values(nestedShapes).reduce((n, ks) => n + ks.length, 0);
 console.warn(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.`);
-console.warn(`✓ All ${masterKeys.length} corporate-entity master fields are writable (${Object.keys(WRITTEN_ELSEWHERE).length} outside the form, each with a reason).\n`);
+console.warn(`✓ All ${masterKeys.length} corporate-entity master fields are writable (${Object.keys(WRITTEN_ELSEWHERE).length} outside the form, each with a reason).`);
+console.warn(`✓ All ${childCount} nested fields across ${Object.keys(nestedShapes).length} collections have controls.`);
+console.warn(`✓ All ${letterheadKeys.length} letterhead columns are reachable in the designer.\n`);

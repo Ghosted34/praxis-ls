@@ -150,7 +150,17 @@ async function collections(client, id) {
   const contacts = await client.query("SELECT * FROM entity_contact WHERE entity_id = $1 ORDER BY is_primary DESC, name", [id]);
   const addresses = await client.query("SELECT * FROM entity_address WHERE entity_id = $1 ORDER BY is_primary DESC, type", [id]);
   const registrations = await client.query("SELECT * FROM entity_registration WHERE entity_id = $1 ORDER BY is_primary DESC, country_code, kind", [id]);
-  const establishments = await client.query("SELECT * FROM entity_establishment WHERE entity_id = $1 ORDER BY is_active DESC, name", [id]);
+  // The manager is joined for the same reason the holder entity is above: the
+  // dossier can only show a name it was given, and a bare uuid in a table column
+  // is indistinguishable from having no manager at all.
+  const establishments = await client.query(
+    `SELECT s.*, m.full_name AS manager_name
+       FROM entity_establishment s
+       LEFT JOIN employee m ON m.employee_id = s.manager_employee_id
+      WHERE s.entity_id = $1
+      ORDER BY s.is_active DESC, s.name`,
+    [id],
+  );
   return {
     people: people.rows,
     contacts: contacts.rows,
@@ -176,18 +186,22 @@ async function documentsAndTax(client, id) {
             t.default_severity,
             t.requires_expiry,
             t.renewal_lead_days AS type_renewal_lead_days,
-            v.storage_path, v.content_hash AS vault_hash, v.status AS vault_status
+            v.storage_path, v.content_hash AS vault_hash, v.status AS vault_status,
+            s.name AS establishment_name
        FROM entity_document d
-       LEFT JOIN party_document_type t ON t.document_type_id = d.document_type_id
-       LEFT JOIN document_vault v      ON v.doc_id = d.vault_id
+       LEFT JOIN party_document_type t   ON t.document_type_id = d.document_type_id
+       LEFT JOIN document_vault v        ON v.doc_id = d.vault_id
+       LEFT JOIN entity_establishment s  ON s.establishment_id = d.establishment_id
       WHERE d.entity_id = $1
       ORDER BY d.expires_on NULLS LAST, d.created_at DESC`,
     [id],
   );
   const taxRegistrations = await client.query(
-    `SELECT tr.*, j.name AS jurisdiction_name, j.currency AS jurisdiction_currency
+    `SELECT tr.*, j.name AS jurisdiction_name, j.currency AS jurisdiction_currency,
+            u.full_name AS responsible_name
        FROM entity_tax_registration tr
        LEFT JOIN tax_jurisdiction j ON j.jurisdiction_id = tr.jurisdiction_id
+       LEFT JOIN app_user u         ON u.user_id = tr.responsible_user_id
       WHERE tr.entity_id = $1
       ORDER BY tr.is_primary DESC, tr.country_code, tr.tax_kind`,
     [id],

@@ -462,6 +462,35 @@ exports.aiSetActive = z.object({ ...entityIdField, active: z.boolean() });
 exports.aiSetStatus = withEntityId(exports.setStatus);
 exports.aiCapTable = z.object({ ...entityIdField, as_of: optionalDate });
 
+/**
+ * The writable keys of each nested collection, by route segment.
+ *
+ * Exported for the same reason `masterShapeKeys` is: `client/scripts/check-schemas.mjs`
+ * diffs them against the controls the dossier actually renders. Being importable
+ * by both sides is not the same as being reachable by a person — this module
+ * shipped with `vault_id`, `jurisdiction_id`, `holder_entity_id`, `role_tags`
+ * and a dozen others accepted by the API, displayed by the dossier, and settable
+ * by nobody. `vault_id` was the sharpest: the service advances a document's
+ * `scan_status` from PENDING only when it is set, so no entity document could
+ * ever be recorded as scanned.
+ *
+ * Keyed by URL segment (`tax-registrations`, not `taxRegistrations`) so the
+ * gate's failure message names a route a reader can go and look at.
+ */
+exports.nestedShapeKeys = {
+  people: Object.keys(personShape),
+  contacts: Object.keys(contactShape),
+  addresses: Object.keys(addressShape),
+  registrations: Object.keys(registrationShape),
+  establishments: Object.keys(establishmentShape),
+  documents: Object.keys(documentShape),
+  "tax-registrations": Object.keys(taxRegistrationShape),
+};
+
+/** The letterhead designer's writable columns. `letterheadUpdate` carries no
+ *  `.refine()`, so it is a plain ZodObject and its shape is readable directly. */
+exports.letterheadKeys = Object.keys(exports.letterheadUpdate.shape);
+
 exports.PERSON_ROLES = PERSON_ROLES;
 exports.HOLDER_TYPES = HOLDER_TYPES;
 exports.ADDRESS_TYPES = ADDRESS_TYPES;

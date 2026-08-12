@@ -249,6 +249,8 @@ export type EntityPerson = {
   effective_from?: string | null;
   effective_to?: string | null;
   employee_id?: string | null;
+  client_id?: string | null;
+  supplier_id?: string | null;
   notes?: string | null;
   is_active?: boolean;
   /** Set when the caller lacks the governance grant — personal fields are stripped. */
@@ -276,7 +278,10 @@ export type EntityEstablishment = {
   kind?: "HEAD_OFFICE" | "OFFICE" | "WAREHOUSE" | "TERMINAL" | "WORKSHOP" | "SITE" | "AGENCY" | "OTHER";
   country_code?: string | null; city?: string | null; address_line?: string | null;
   tax_office_ref?: string | null; registration_ref?: string | null; customs_office?: string | null;
-  manager_employee_id?: string | null; opened_on?: string | null; closed_on?: string | null; is_active?: boolean;
+  manager_employee_id?: string | null;
+  /** Joined from `employee` so the table can print a name, not a uuid. */
+  manager_name?: string | null;
+  opened_on?: string | null; closed_on?: string | null; is_active?: boolean;
 };
 
 export type EntityDocument = {
@@ -292,6 +297,8 @@ export type EntityDocument = {
   expires_on?: string | null;
   country_code?: string | null;
   establishment_id?: string | null;
+  /** Joined from `entity_establishment` — which site the document belongs to. */
+  establishment_name?: string | null;
   vault_id?: string | null;
   scan_status: "PENDING" | "SCANNED" | "VERIFIED" | "REJECTED" | "EXPIRED";
   physical_ref?: string | null;
@@ -322,6 +329,9 @@ export type EntityTaxRegistration = {
   is_primary?: boolean;
   is_active?: boolean;
   filing_portal_url?: string | null;
+  responsible_user_id?: string | null;
+  /** Joined from `app_user` — who chases this filing. */
+  responsible_name?: string | null;
   notes?: string | null;
 };
 
@@ -449,7 +459,21 @@ export const setEntityStructure = (id: string, body: Record<string, unknown>) =>
 export const entityLetterhead = (id: string) => tenant<LetterheadBundle>(`/entities/${id}/letterhead`);
 export const saveEntityLetterhead = (id: string, body: Record<string, unknown>) =>
   tenant<LetterheadBundle>(`/entities/${id}/letterhead`, { method: "PUT", body });
-export const entityRenewals = (id: string) => tenant<Renewals>(`/entities/${id}/renewals`);
+/**
+ * Renewals and the cap table, both as of a chosen date.
+ *
+ * The `/360` bundle carries today's answer, which is the right default and the
+ * wrong only option. "Who held what when the 2024 accounts were signed" and
+ * "what had already lapsed at the last audit" are the questions these are asked,
+ * and the API has always taken `as_of` — the assistant's `aiCapTable` tool
+ * passes one. `entityCapTable` had no client function at all; `entityRenewals`
+ * existed and was called by nothing.
+ */
+const asOfQuery = (asOf?: string | null) => (asOf ? `?as_of=${encodeURIComponent(asOf)}` : "");
+export const entityRenewals = (id: string, asOf?: string | null) =>
+  tenant<Renewals>(`/entities/${id}/renewals${asOfQuery(asOf)}`);
+export const entityCapTable = (id: string, asOf?: string | null) =>
+  tenant<CapTable>(`/entities/${id}/cap-table${asOfQuery(asOf)}`);
 
 /** Generic nested-collection helpers — one implementation for all seven. */
 export type EntityCollection =
@@ -461,6 +485,31 @@ export const updateEntityChild = <T,>(id: string, seg: EntityCollection, childId
   tenant<T>(`/entities/${id}/${seg}/${childId}`, { method: "PATCH", body });
 export const deleteEntityChild = (id: string, seg: EntityCollection, childId: string) =>
   tenant<{ deleted: boolean }>(`/entities/${id}/${seg}/${childId}`, { method: "DELETE" });
+/**
+ * A row in the document vault (MOD-64), as returned when one is uploaded.
+ *
+ * Entity administrative documents reference it by `vault_id` rather than storing
+ * bytes of their own: the vault hashes, stores and audits the file once, and
+ * `entity_document` points at it. Nothing in the client could create one for an
+ * entity document before, which is why every such record was stuck at
+ * `scan_status: PENDING` — the API only advances that when `vault_id` is set.
+ */
+export type VaultDocument = {
+  doc_id: string;
+  doc_type?: string | null;
+  entity_ref?: string | null;
+  storage_path?: string | null;
+  content_hash?: string | null;
+  status?: string | null;
+};
+
+/** Store a file in the document vault. `entity_ref` traces it back to its owner. */
+export const uploadVaultDocument = (body: {
+  data_url: string;
+  doc_type?: string;
+  entity_ref?: string;
+}) => tenant<VaultDocument>("/documents", { method: "POST", body });
+
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
  *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */
 export const uploadEntityLogo = (id: string, dataUrl: string, variant: "light" | "dark" = "light") =>

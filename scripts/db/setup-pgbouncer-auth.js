@@ -204,7 +204,17 @@ async function main() {
     console.warn(`  function : pgbouncer.get_auth(text) SECURITY DEFINER, execute granted to ${AUTH_USER} only`);
     console.warn(`  probe    : resolved ${probe.length} row for ${config.DB_USER}`);
     console.warn("");
-    console.warn("Point the app at the pooler with TENANT_DB_POOLER_HOST / TENANT_DB_POOLER_PORT.");
+    console.warn("auth_query is ready. The pooler is NOT in the path yet, and should not be until:");
+    console.warn("  - `npm run db:creds:verify` passes (per-tenant roles carry the search_path)");
+    console.warn("  - `docker compose ps` shows the pgbouncer container actually Up");
+    console.warn("  - the pooled path has been exercised somewhere that is not production");
+    console.warn("");
+    console.warn("Then set TENANT_DB_POOLER_HOST — that ONE variable, in a deploy that changes");
+    console.warn("nothing else, so reverting is clearing it. Leave TENANT_DB_POOLER_PORT empty:");
+    console.warn("it defaults to 6432 when the host is set, and setting it ALONE routed tenant");
+    console.warn("connections to Postgres on the pooler's port on 2026-08-12 — an outage whose");
+    console.warn("cause was a variable that looked inert.");
+    console.warn("");
     console.warn("Migrations, provisioning and pg_dump keep connecting to Postgres directly — they");
     console.warn("need session state that transaction pooling does not preserve.");
   } finally {

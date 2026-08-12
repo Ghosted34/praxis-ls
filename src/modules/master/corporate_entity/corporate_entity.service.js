@@ -249,10 +249,10 @@ async function saveLetterhead(client, { id, patch = {}, actor = {} }) {
 async function letterhead(client, id, lang = null, { financials = false } = {}) {
   const entity = await repo.get(client, id);
   if (!entity) throw new AppError("NOT_FOUND", "Entity not found", 404);
-  const { addresses, registrations } = await repo.collections(client, id);
+  const { addresses, registrations, establishments } = await repo.collections(client, id);
   const { tax_registrations: taxRegistrations, letterhead: config } = await repo.documentsAndTax(client, id);
   const treasuryAccounts = await repo.treasuryAccounts(client, id);
-  const input = { entity, config, addresses, registrations, taxRegistrations, treasuryAccounts };
+  const input = { entity, config, addresses, registrations, taxRegistrations, treasuryAccounts, establishments };
   // Same confidentiality rule as the dossier: the payment block and the account
   // list both carry the number, and this route is MOD-01 `view`.
   const mask = (p) => dossierService.maskPaymentBlock(p, financials);

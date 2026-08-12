@@ -38,6 +38,46 @@ describe("letterhead assembly", () => {
     expect(lh.render({ entity: { ...ENTITY, default_language: null } }).language).toBe("en");
   });
 
+  /**
+   * `show_establishment` was a stored column with a default and a designer
+   * toggle that rendered nothing: switching it on printed no line and did not
+   * even report itself as an empty block, so the operator had no way to tell an
+   * enabled-but-blank block from a working one. These pin the line's content and
+   * the two ways it can legitimately be absent.
+   */
+  describe("issuing establishment", () => {
+    const SITES = [
+      { name: "Agence de Kribi", kind: "AGENCY", city: "Kribi", tax_office_ref: "CDI-KRI-7", is_active: true },
+      { name: "Siège social", kind: "HEAD_OFFICE", address_line: "BP 1234", city: "Douala", tax_office_ref: "CDI-DLA-2", is_active: true },
+    ];
+
+    it("prints the head office ahead of any other open site", () => {
+      const r = lh.render({ entity: ENTITY, config: { show_establishment: true }, establishments: SITES });
+      expect(r.footer.establishment_line).toBe("Siège social · BP 1234, Douala · CDI-DLA-2");
+    });
+
+    it("falls back to the first open site when no head office is recorded", () => {
+      const r = lh.render({ entity: ENTITY, config: { show_establishment: true }, establishments: [SITES[0]] });
+      expect(r.footer.establishment_line).toBe("Agence de Kribi · Kribi · CDI-KRI-7");
+    });
+
+    it("never prints a closed or deactivated site on a document issued today", () => {
+      const shut = [
+        { name: "Ancien siège", kind: "HEAD_OFFICE", city: "Douala", closed_on: "2024-01-31", is_active: true },
+        { name: "Entrepôt", kind: "WAREHOUSE", city: "Bonabéri", is_active: false },
+      ];
+      const r = lh.render({ entity: ENTITY, config: { show_establishment: true }, establishments: shut });
+      expect(r.footer.establishment_line).toBeNull();
+      expect(r.empty_blocks).toContain("establishment");
+    });
+
+    it("stays off — and out of empty_blocks — when the toggle is off", () => {
+      const r = lh.render({ entity: ENTITY, establishments: SITES });
+      expect(r.footer.establishment_line).toBeNull();
+      expect(r.empty_blocks).not.toContain("establishment");
+    });
+  });
+
   describe("registered address", () => {
     it("prefers a REGISTERED row over any other", () => {
       const addresses = [

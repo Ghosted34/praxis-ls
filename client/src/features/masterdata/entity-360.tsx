@@ -36,7 +36,7 @@ import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
-import { useResource, errMsg } from "@/lib/use-resource";
+import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
@@ -268,7 +268,7 @@ const ESTABLISHMENT_FIELDS: FieldSpec[] = [
 
 /* ── The dossier ───────────────────────────────────────────────────────────── */
 
-export function EntityDossier({ entityId, onEdit, onChanged }: {
+export function EntityDossier({ entityId, onEdit, onChanged, titleAs: Title = "h2" }: {
   entityId: string;
   /** Opens the entity's edit form — owned by the host screen (the master–detail
    *  list, or the deep-link page), so there is one form reachable from both. */
@@ -276,6 +276,17 @@ export function EntityDossier({ entityId, onEdit, onChanged }: {
   /** Fired after any change here, so a host list can refresh its rows — a status
    *  change on the dossier is visible in the list beside it. */
   onChanged?: () => void;
+  /**
+   * What level the entity's name is.
+   *
+   * It depends on the host, and getting it wrong is a real accessibility defect
+   * rather than a style question. Inline in the master–detail list the page's h1
+   * is "Corporate entities", so the entity name is an h2 and the `Section`
+   * headings below it are h3s. On the deep-link route there is no other heading,
+   * so the entity name IS the h1. It was hard-coded to h3 in both, which skipped
+   * a level under the list's h1 and left the deep-link page with no h1 at all.
+   */
+  titleAs?: "h1" | "h2";
 }) {
   const navigate = useNavigate();
   const toast = useToast();
@@ -283,6 +294,7 @@ export function EntityDossier({ entityId, onEdit, onChanged }: {
   const [tab, setTab] = React.useState<Tab>("Overview");
   const [editing, setEditing] = React.useState<null | { seg: api.EntityCollection; title: string; fields: FieldSpec[]; row?: Record<string, unknown> | null }>(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
+  const [structureOpen, setStructureOpen] = React.useState(false);
 
   const reload = () => { d.reload(); onChanged?.(); };
 
@@ -323,7 +335,7 @@ export function EntityDossier({ entityId, onEdit, onChanged }: {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="truncate text-lg font-semibold text-foreground">{e.legal_name}</h3>
+              <Title className="truncate text-lg font-semibold text-foreground">{e.legal_name}</Title>
               <Pill tone={LIFECYCLE_TONE[status] || "mute"}>{enumLabel(status)}</Pill>
               {e.legal_form && <Pill tone="mute">{e.legal_form}</Pill>}
               {e.country_code && <Pill tone="mute">{e.country_code}</Pill>}
@@ -733,7 +745,11 @@ export function EntityDossier({ entityId, onEdit, onChanged }: {
 
       {tab === "Structure" && (
         <div className="space-y-4">
-          <Section title="Position in the group" description="A subsidiary is its own entity with its own books — this records how it relates to the parent.">
+          <Section
+            title="Position in the group"
+            description="A subsidiary is its own entity with its own books — this records how it relates to the parent."
+            action={<Button size="sm" onClick={() => setStructureOpen(true)}>Edit structure</Button>}
+          >
             <dl className="grid gap-3 sm:grid-cols-3 xl:grid-cols-5">
               <Detail label="Parent">
                 {structure.ancestors.length
@@ -843,6 +859,15 @@ export function EntityDossier({ entityId, onEdit, onChanged }: {
           onSaved={reload}
         />
       )}
+
+      {structureOpen && (
+        <StructureModal
+          entityId={entityId}
+          structure={structure}
+          onClose={() => setStructureOpen(false)}
+          onSaved={reload}
+        />
+      )}
     </div>
   );
 }
@@ -861,7 +886,8 @@ export function EntityDossierPage() {
       <div className="micro">
         <Link to="/master/corporate-entities" className="text-muted-foreground hover:text-foreground">← Corporate entities</Link>
       </div>
-      <EntityDossier entityId={entityId} onEdit={() => navigate(`/master/corporate-entities?edit=${entityId}`)} />
+      {/* No PageHeader here — the entity's own name is this page's h1. */}
+      <EntityDossier entityId={entityId} titleAs="h1" onEdit={() => navigate(`/master/corporate-entities?edit=${entityId}`)} />
     </section>
   );
 }
@@ -990,7 +1016,9 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
       header_note_fr: c.header_note_fr ?? "", header_note_en: c.header_note_en ?? "",
       footer_note_fr: c.footer_note_fr ?? "", footer_note_en: c.footer_note_en ?? "",
       legal_mentions_fr: c.legal_mentions_fr ?? "", legal_mentions_en: c.legal_mentions_en ?? "",
-      brand_color: c.brand_color ?? "",
+      brand_color: c.brand_color ?? "", accent_color: c.accent_color ?? "",
+      header_height_mm: c.header_height_mm != null ? String(c.header_height_mm) : "",
+      footer_height_mm: c.footer_height_mm != null ? String(c.footer_height_mm) : "",
     });
     setDirty(false);
   }, [lh.data]);
@@ -1006,6 +1034,8 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
   async function saveText() {
     // Empty string clears the field rather than leaving the old value — these are
     // nullable columns and the schema maps "" to undefined, so send null.
+    // The two heights are millimetres: the shared `amount` primitive parses a
+    // numeric string, so the input's value goes through as it is.
     const body = Object.fromEntries(Object.entries(draft).map(([k, v]) => [k, v.trim() === "" ? null : v.trim()]));
     await patch(body);
     toast.success("Letterhead saved.");
@@ -1023,6 +1053,7 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
     { key: "show_registrations", label: "Tax & trade identifiers", hint: "NIU, RCCM, VAT, EORI." },
     { key: "show_contact", label: "Phone, email, website", hint: "" },
     { key: "show_bank_block", label: "Payment block", hint: "Bank details on invoices." },
+    { key: "show_establishment", label: "Establishment", hint: "The issuing site — a branch's own tax-office reference, where the law wants it." },
   ];
 
   return (
@@ -1074,17 +1105,59 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
               </label>
             );
           })}
-          <label className="block space-y-1 text-sm">
-            <span className="font-medium text-foreground">Brand colour</span>
-            <Input
-              value={draft.brand_color ?? ""}
-              placeholder="#C2703D"
-              onChange={(ev) => { setDraft((s) => ({ ...s, brand_color: ev.target.value })); setDirty(true); }}
-            />
-          </label>
+          <p className="micro text-muted-foreground">Saved with the brand settings below.</p>
+        </Section>
+
+        {/* Page geometry and colour. The two Selects save on change like the
+            toggles above — a discrete choice has nothing to draft. The colours
+            and heights are typed, so they ride the same draft as the wording. */}
+        <Section title="Page and brand" description="How the sheet is laid out and coloured. The preview is drawn from these, so a change here is visible immediately.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Paper size" hint="A4 outside North America.">
+              <Select value={c.paper_size ?? "A4"} disabled={busy} onChange={(ev) => patch({ paper_size: ev.target.value })}>
+                <option value="A4">A4 — 210 × 297 mm</option>
+                <option value="LETTER">US Letter — 216 × 279 mm</option>
+              </Select>
+            </Field>
+            <Field label="Logo position">
+              <Select value={c.logo_position ?? "LEFT"} disabled={busy} onChange={(ev) => patch({ logo_position: ev.target.value })}>
+                {(["LEFT", "CENTER", "RIGHT"] as const).map((p) => <option key={p} value={p}>{enumLabel(p)}</option>)}
+              </Select>
+            </Field>
+            <Field label="Brand colour" hint="The rule under the header.">
+              <Input
+                value={draft.brand_color ?? ""}
+                placeholder="#C2703D"
+                onChange={(ev) => { setDraft((s) => ({ ...s, brand_color: ev.target.value })); setDirty(true); }}
+              />
+            </Field>
+            <Field label="Accent colour" hint="Secondary rules and table headings.">
+              <Input
+                value={draft.accent_color ?? ""}
+                placeholder="#1F6F6B"
+                onChange={(ev) => { setDraft((s) => ({ ...s, accent_color: ev.target.value })); setDirty(true); }}
+              />
+            </Field>
+            <Field label="Header height (mm)" hint="10–120. Blank uses the renderer's default.">
+              <Input
+                type="number" min={10} max={120} step="any"
+                value={draft.header_height_mm ?? ""}
+                placeholder="35"
+                onChange={(ev) => { setDraft((s) => ({ ...s, header_height_mm: ev.target.value })); setDirty(true); }}
+              />
+            </Field>
+            <Field label="Footer height (mm)" hint="Reserve enough for the legal mentions, or they are clipped.">
+              <Input
+                type="number" min={10} max={120} step="any"
+                value={draft.footer_height_mm ?? ""}
+                placeholder="25"
+                onChange={(ev) => { setDraft((s) => ({ ...s, footer_height_mm: ev.target.value })); setDirty(true); }}
+              />
+            </Field>
+          </div>
           {error && <ErrorState message={error} />}
           <div className="flex justify-end">
-            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>Save wording</Button>
+            <Button loading={busy} disabled={!dirty || busy} onClick={saveText}>Save wording and brand</Button>
           </div>
         </Section>
 
@@ -1107,7 +1180,7 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
       </div>
 
       <div className="space-y-4">
-        <Section title="Preview" description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} — rendered by the same code the invoice generator uses.`}>
+        <Section title="Preview" description={`Exactly what a document prints in ${lang === "fr" ? "French" : "English"} on ${p.paper_size || "A4"} — rendered by the same code the invoice generator uses.`}>
           <article className="space-y-3 rounded-lg border bg-background p-4" style={p.brand_color ? { borderTopColor: p.brand_color, borderTopWidth: 3 } : undefined}>
             <header className={`space-y-1 ${p.logo_position === "CENTER" ? "text-center" : p.logo_position === "RIGHT" ? "text-right" : ""}`}>
               {p.header.logo
@@ -1132,10 +1205,13 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
               </div>
             )}
 
-            <footer className="space-y-0.5 border-t pt-2 text-center">
+            {/* The accent colour is the footer rule — a colour you can set but
+                never see is a colour nobody sets on purpose. */}
+            <footer className="space-y-0.5 border-t pt-2 text-center" style={p.accent_color ? { borderTopColor: p.accent_color } : undefined}>
               {p.footer.company_line && <p className="micro text-muted-foreground">{p.footer.company_line}</p>}
               {p.footer.address_line && <p className="micro text-muted-foreground">{p.footer.address_line}</p>}
               {p.footer.identifier_line && <p className="micro num text-muted-foreground">{p.footer.identifier_line}</p>}
+              {p.footer.establishment_line && <p className="micro text-muted-foreground">{p.footer.establishment_line}</p>}
               {p.footer.note && <p className="micro text-muted-foreground">{p.footer.note}</p>}
               {p.footer.legal_mentions && <p className="micro text-muted-foreground">{p.footer.legal_mentions}</p>}
             </footer>
@@ -1154,6 +1230,118 @@ function LetterheadTab({ entityId, onSaved }: { entityId: string; onSaved: () =>
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Group structure — parent, relationship, ownership, consolidation.
+ *
+ * These five columns were rendered read-only on the Structure tab with no way to
+ * set them: `api.setEntityStructure` existed and was called by nothing, so
+ * ownership percentage, consolidation and the group-parent flag had no write
+ * path at all, and the entity form could only ever set the first two.
+ *
+ * POST /structure rather than PATCH /entities/:id even though both accept these
+ * columns: the structure route emits its own `STRUCTURE_CHANGED` audit event, so
+ * "who re-parented this subsidiary" is answerable without diffing an entity
+ * update that also changed a phone number. The cycle check runs on both.
+ */
+function StructureModal({ entityId, structure, onClose, onSaved }: {
+  entityId: string;
+  structure: api.Entity360["structure"];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const { rows: entities } = useList<api.Entity>("/entities");
+  const [parentId, setParentId] = React.useState(structure.parent_entity_id ?? "");
+  const [relationship, setRelationship] = React.useState<string>(structure.relationship_type ?? "");
+  const [owned, setOwned] = React.useState(structure.ownership_percent != null ? String(structure.ownership_percent) : "");
+  const [consolidates, setConsolidates] = React.useState(structure.consolidates === true);
+  const [isGroupParent, setIsGroupParent] = React.useState(structure.is_group_parent === true);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  // Never offer this entity as its own parent, nor anything it already sits
+  // above — the API rejects both (rules.assertNoCycle), but a picker that leads
+  // straight to a 422 is a picker that should not have offered the option.
+  const descendants = React.useMemo(() => new Set(structure.children.map((c) => c.entity_id)), [structure.children]);
+  const parentOptions = (entities || []).filter((x) => x.entity_id !== entityId && !descendants.has(x.entity_id));
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      await api.setEntityStructure(entityId, {
+        parent_entity_id: parentId || null,
+        // A relationship with no parent is meaningless; clear it together so the
+        // pair can never disagree.
+        relationship_type: parentId ? (relationship || null) : null,
+        ownership_percent: owned.trim() === "" ? null : Number(owned),
+        consolidates,
+        is_group_parent: isGroupParent,
+      });
+      toast.success("Structure updated.");
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Group structure"
+      description="How this entity sits in the group. Changing it is recorded on the audit trail."
+    >
+      <div className="space-y-3">
+        <Field label="Parent entity" hint="Leave blank for a standalone or top-level company.">
+          <Select value={parentId} onChange={(ev) => setParentId(ev.target.value)}>
+            <option value="">— none —</option>
+            {parentOptions.map((p) => <option key={p.entity_id} value={p.entity_id}>{p.code} — {p.legal_name}</option>)}
+          </Select>
+        </Field>
+
+        {parentId && (
+          <>
+            <Field label="Relationship to parent">
+              <Select value={relationship} onChange={(ev) => setRelationship(ev.target.value)}>
+                <option value="">—</option>
+                {entityCommon.RELATIONSHIP_TYPES.filter((r) => r !== "HEADQUARTERS").map((r) => (
+                  <option key={r} value={r}>{enumLabel(r)}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Owned by the parent (%)" hint="What the parent holds. The cap table records who holds what in detail.">
+              <Input type="number" min={0} max={100} step="any" value={owned} onChange={(ev) => setOwned(ev.target.value)} placeholder="100" />
+            </Field>
+          </>
+        )}
+
+        <Checkbox
+          checked={consolidates}
+          onCheckedChange={setConsolidates}
+          label="Consolidates into the parent"
+          hint="Its results are included in the parent's consolidated accounts."
+        />
+        <Checkbox
+          checked={isGroupParent}
+          onCheckedChange={setIsGroupParent}
+          label="This is the group parent"
+          hint="The top of the tree — the entity consolidated reporting is produced for."
+        />
+
+        {parentId && isGroupParent && (
+          <Callout tone="warn">
+            An entity with a parent is not usually the group parent. Leave this off unless it heads a sub-group with its own consolidated accounts.
+          </Callout>
+        )}
+
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={busy} disabled={busy} onClick={save}>Save structure</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

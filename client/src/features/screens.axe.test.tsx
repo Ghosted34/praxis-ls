@@ -68,7 +68,7 @@ import { WorkflowsPage } from "./governance/workflows";
 import { ApprovalsPage } from "./governance/approvals";
 import { ClientsPage as MasterClientsPage } from "./master/clients";
 import { SuppliersPage as MasterSuppliersPage } from "./master/suppliers";
-import { CorporateEntitiesPage } from "./master/corporate-entities";
+import { CorporateEntitiesPage } from "./masterdata/corporate-entities";
 import { ExpenseRatesPage } from "./masterdata/expense-rates";
 import { FinancialDictionaryPage } from "./masterdata/financial-dictionary";
 import { PurchaseRequestsPage } from "./procurement/purchase-requests";
@@ -111,6 +111,51 @@ const CLIENTS = [
   { client_id: "c2", name: "Nestlé Cameroun", legal_name: "Nestlé Cameroun SA", is_active: true, credit_limit: 20_000_000 },
 ];
 const ENTITIES = [{ entity_id: "e1", code: "SBX", legal_name: "SmartBox SARL", name: "SmartBox", is_active: true }];
+
+/**
+ * The `/entities/:id/360` bundle the entity dossier renders from.
+ *
+ * `logo_light_ref` is set deliberately: the Overview tab's letterhead card draws
+ * a `border-dashed` "No logo" placeholder when it is blank, and the register's
+ * populated-state guard reads `.border-dashed` as "this screen is showing its
+ * empty state". A fixture with a logo keeps that guard meaning what it says.
+ */
+const ENTITY_360 = {
+  entity: {
+    entity_id: "e1", code: "SBX", legal_name: "SmartBox SARL", trading_name: "SmartBox",
+    legal_form: "SARL", country_code: "CM", registration_status: "ACTIVE", is_active: true,
+    incorporation_date: "2019-04-02", incorporation_place: "Douala", incorporation_country: "CM",
+    share_capital: 10_000_000, share_capital_paid_up: 10_000_000, share_capital_currency: "XAF",
+    email: "contact@smartbox.cm", phone: "+237690000000", website: "https://smartbox.cm",
+    industry: "Freight forwarding", headcount: 24, default_currency: "XAF", payroll_country: "CM",
+    default_language: "fr", fiscal_year_start_month: 1, accounting_framework: "OHADA",
+    doc_prefix: "SBX", numbering_reset: "ANNUAL", vat_registered: true,
+    logo_light_ref: "/media/tenant/smartbox-light.png",
+  },
+  structure: {
+    parent_entity_id: null, relationship_type: null, ownership_percent: null,
+    consolidates: false, is_group_parent: true, ancestors: [], children: [],
+  },
+  people: [{ person_id: "p1", role: "DIRECTOR", full_name: "Amina Ndoumbe", title: "Directrice Générale", effective_from: "2019-04-02" }],
+  contacts: [{ contact_id: "ct1", name: "Comptabilité", email: "compta@smartbox.cm", is_primary: true }],
+  addresses: [{ address_id: "ad1", type: "REGISTERED", line1: "BP 1234", city: "Douala", country_code: "CM", is_primary: true }],
+  registrations: [{ registration_id: "rg1", country_code: "CM", kind: "NIU", number: "P0123456789A", is_primary: true }],
+  establishments: [{ establishment_id: "es1", name: "Siège social", kind: "HEAD_OFFICE", city: "Douala", country_code: "CM" }],
+  documents: [],
+  tax_registrations: [],
+  tax_obligations: [],
+  treasury_accounts: [],
+  treasury_is_read_only: true,
+  cap_table: { as_of: "2026-07-01", holder_count: 1, total_percent: 100, total_shares: 1000, issued_capital: 10_000_000, balanced: true, findings: [] },
+  usage: { journal_entries: 42, employees: 24, treasury_accounts: 1, subsidiaries: 0 },
+  readiness: { ready: true, missing: [] },
+  expiring_registrations: [],
+  can_see_governance: true,
+  letterhead_config: null,
+  letterhead_source: {},
+  letterhead_preview: { language: "fr", paper_size: "A4", logo_position: "LEFT", header: {}, footer: {}, payment_block: { source: "none", accounts: [] }, identifiers: [], empty_blocks: [] },
+  renewals: { as_of: "2026-07-01", items: [], counts: { expired: 0, due: 0, approaching: 0 } },
+};
 const USERS = [{ user_id: "u1", full_name: "Amina Ndoumbe", email: "amina@example.test", is_active: true, roles: [] }];
 
 type ScreenCase = {
@@ -307,7 +352,16 @@ const AREAS: Area[] = [
     screens: [
       { name: "Clients", render: () => <MasterClientsPage />, routes: { "/clients": CLIENTS, "/entities": ENTITIES } },
       { name: "Suppliers", render: () => <MasterSuppliersPage />, routes: { "/suppliers": [{ supplier_id: "s1", name: "Total Energies", is_active: true }], "/entities": ENTITIES } },
-      { name: "Corporate entities", render: () => <CorporateEntitiesPage />, routes: { "/entities": ENTITIES } },
+      {
+        name: "Corporate entities",
+        render: () => <CorporateEntitiesPage />,
+        // Master–detail: the list on the left, the dossier inline on the right.
+        // The dossier is the half worth covering, so the fixture carries a whole
+        // `/360` bundle rather than just the list — without it the screen renders
+        // its error state and the pass would mean nothing.
+        routes: { "/entities": ENTITIES, "/entities/e1/360": ENTITY_360 },
+        populatedProof: /SmartBox SARL/,
+      },
       {
         name: "Expense rates", render: () => <ExpenseRatesPage />,
         routes: {

@@ -27,10 +27,34 @@
  *   3. No API validator that has been migrated still declares its own `z.object`
  *      — a migrated file is an adapter, and a `z.object` in it means the rules
  *      came back.
+ *   4. Every field in the corporate-entity master shape has a control that can
+ *      write it — see WHY RULE 4 below.
  *
  * Rule 3 has an escape hatch (`ALLOW_LOCAL_SCHEMA`) for a validator that
  * genuinely needs a local shape — a query-string parser, say — and each entry
  * carries its reason.
+ *
+ * WHY RULE 4
+ *
+ * Rules 1-3 prove a schema is IMPORTED by both sides. That is not the same as
+ * being USABLE, and the difference cost the corporate-entity module twenty
+ * fields. `entity-common.js` was imported by the client — for RELATIONSHIP_TYPES
+ * and PERSON_ROLES — so rule 1 passed, while `share_capital`,
+ * `share_capital_paid_up`, `incorporation_place`, `email`, `phone` and fifteen
+ * others were accepted by PATCH /entities/:id, listed in the repo's WRITABLE
+ * allow-list, and rendered on the dossier's Overview tab, with no input anywhere
+ * in the client. They could only ever read `—`.
+ *
+ * That was not cosmetic. `rules.readiness()` requires `share_capital` and a
+ * public email or phone before an entity "can print a compliant letterhead", so
+ * the dossier's amber "not yet complete for statutory documents" callout was
+ * permanently unsatisfiable through the UI; the letterhead's share-capital
+ * block — "mandatory on French invoices" — could be switched on but never
+ * filled; and the cap table's CAPITAL_MISMATCH check, which compares issued
+ * shares against `share_capital`, could never fire.
+ *
+ * A field with no control is a field that does not exist to the person using the
+ * system, however well the schema is shared. Hence: the shape is the checklist.
  *
  *   node scripts/check-schemas.mjs
  */
@@ -128,6 +152,64 @@ const regressed = migratedValidators.filter((f) => {
   return /z\.object\s*\(/.test(text);
 });
 
+/* ── rule 4: every entity master field has a control ──────────────────────── */
+
+const ENTITY_FORM = "client/src/features/masterdata/entity-form-fields.ts";
+const ENTITY_DOSSIER = "client/src/features/masterdata/entity-360.tsx";
+
+/**
+ * Columns no form writes, and what writes them instead.
+ *
+ * An entry here is a claim that the field is reachable another way — not a
+ * licence to skip it. Anything not listed and not in a form fails the build.
+ */
+const WRITTEN_ELSEWHERE = {
+  // Superseded by the dossier's collections. Both writers for one fact is how
+  // an entity ends up with a registered address in two places that disagree.
+  niu: "legacy single-value column — the registrations collection replaced it",
+  rccm: "legacy single-value column — the registrations collection replaced it",
+  address: "legacy free-text column — the addresses collection replaced it",
+  bank_block: "legacy jsonb — treasury accounts replaced it (letterhead falls back to it for old data only)",
+  // Written by their own endpoints rather than the PATCH body.
+  logo_light_ref: "POST /entities/:id/logo, from the form's upload control",
+  logo_dark_ref: "POST /entities/:id/logo, from the form's upload control",
+};
+
+/**
+ * The keys of an object literal, one per line — enough for the two bodies below.
+ *
+ * Both `key: value` and the shorthand `key,` count. The shorthand branch is not
+ * optional politeness: the first run of this gate reported `consolidates` as
+ * unwritable purely because the Structure modal passes it shorthand, and a gate
+ * that cries wolf is a gate someone switches off.
+ */
+const literalKeys = (src) => [...src.matchAll(/^\s+([a-z_][a-z0-9_]*)\s*(?::|,\s*$)/gim)].map((m) => m[1]);
+
+/** Everything between `marker` and the first line that closes it at `depth` 0. */
+function sliceBody(text, marker, closer) {
+  const start = text.indexOf(marker);
+  if (start === -1) return null;
+  const end = text.indexOf(closer, start);
+  return end === -1 ? null : text.slice(start, end);
+}
+
+const entityFormSrc = existsSync(join(repoRoot, ENTITY_FORM)) ? readFileSync(join(repoRoot, ENTITY_FORM), "utf8") : "";
+const dossierSrc = existsSync(join(repoRoot, ENTITY_DOSSIER)) ? readFileSync(join(repoRoot, ENTITY_DOSSIER), "utf8") : "";
+
+// The form's PATCH/POST body. Its keys ARE what the form sends — `entityFormBody`
+// is the single place the controls are mapped onto the request.
+const formBody = sliceBody(entityFormSrc, "export function entityFormBody", "\n}");
+// The Structure tab owns the four columns that describe the edge to the parent,
+// because POST /structure emits its own audit event for a re-parenting.
+const structureBody = sliceBody(dossierSrc, "api.setEntityStructure(", "\n      });");
+
+const entityControls = new Set([...literalKeys(formBody || ""), ...literalKeys(structureBody || "")]);
+const masterKeys = shared.entityCommon?.masterShapeKeys ?? [];
+const uncovered = masterKeys.filter((k) => !entityControls.has(k) && !WRITTEN_ELSEWHERE[k]);
+// An exemption for a field that IS in a form is stale — it will outlive the
+// reason it was written and quietly excuse the next gap.
+const staleExemptions = Object.keys(WRITTEN_ELSEWHERE).filter((k) => entityControls.has(k));
+
 /* ── report ───────────────────────────────────────────────────────────────── */
 
 const oneSided = domains
@@ -169,5 +251,38 @@ if (regressed.length) {
   );
 }
 
+if (!formBody || !structureBody) {
+  failed += 1;
+  console.error(
+    "\n✗ Could not read the corporate-entity write surface:\n" +
+      (formBody ? "" : `    ${ENTITY_FORM} — no \`export function entityFormBody\`\n`) +
+      (structureBody ? "" : `    ${ENTITY_DOSSIER} — no \`api.setEntityStructure(\` call\n`) +
+      "\n  Rule 4 reads those two bodies to learn which columns a person can\n" +
+      "  actually write. If one was renamed, point this script at the new name —\n" +
+      "  do not delete the check, or the twenty-field gap it was written for\n" +
+      "  reopens silently.\n",
+  );
+}
+
+if (uncovered.length) {
+  failed += uncovered.length;
+  console.error(`\n✗ ${uncovered.length} corporate-entity field(s) the API accepts but no control can write:\n`);
+  for (const k of uncovered) console.error(`    ${k}`);
+  console.error(
+    "\n  The dossier renders these, so each one reads `—` forever and the\n" +
+      "  readiness checklist that asks for them can never be satisfied.\n" +
+      "  Add a control in " + ENTITY_FORM + ", or — if something else\n" +
+      "  writes it — say what, in WRITTEN_ELSEWHERE.\n",
+  );
+}
+
+if (staleExemptions.length) {
+  failed += staleExemptions.length;
+  console.error(`\n✗ ${staleExemptions.length} WRITTEN_ELSEWHERE entr(y/ies) name a field that IS in a form now:\n`);
+  for (const k of staleExemptions) console.error(`    ${k} — ${WRITTEN_ELSEWHERE[k]}`);
+  console.error("\n  Drop the entry: an exemption nobody needs is one that excuses the next gap.\n");
+}
+
 if (failed) process.exit(1);
-console.warn(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.\n`);
+console.warn(`\n✓ Every shared domain is consumed by both sides; ${migratedValidators.length} validator(s) are adapters.`);
+console.warn(`✓ All ${masterKeys.length} corporate-entity master fields are writable (${Object.keys(WRITTEN_ELSEWHERE).length} outside the form, each with a reason).\n`);

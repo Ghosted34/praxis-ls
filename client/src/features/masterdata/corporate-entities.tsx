@@ -10,10 +10,25 @@
  * structure, treasury. It stays deep-linkable on its own route
  * (/master/corporate-entities/:id) for links from payroll, invoices and alerts.
  *
- * The form here stays deliberately narrow. Creating an entity asks for what is
- * needed to open the file (code, legal name, country, prefix) plus the document
- * and fiscal defaults; the statutory detail is gathered on the dossier over
- * several sittings, which is why an entity can be created as a DRAFT.
+ * THE FORM COVERS THE WHOLE MASTER RECORD, in sections. It used to ask for
+ * thirteen fields out of the shared schema's thirty-three, and the twenty it
+ * skipped were not skippable: `share_capital` is on the readiness checklist and
+ * on the letterhead, so the dossier's "not yet complete for statutory documents"
+ * callout could never be satisfied and the letterhead's share-capital block could
+ * never print. A column the API accepts and the dossier displays but no control
+ * writes reads `—` forever. `ENTITY_FORM_KEYS` below is the list of what this
+ * form writes, and a build gate diffs it against the shared schema so the gap
+ * cannot re-open silently.
+ *
+ * What it still does NOT write, deliberately:
+ *   - `niu` / `rccm` / `address` / `bank_block` — the legacy single-value columns,
+ *     superseded by the registrations, addresses and treasury collections on the
+ *     dossier. Offering both would be two writers for one fact.
+ *   - `ownership_percent` / `consolidates` / `is_group_parent` — the Structure
+ *     tab owns those, because they describe the edge to the parent rather than
+ *     the entity, and POST /structure runs the cycle check.
+ *   - `logo_light_ref` / `logo_dark_ref` — written by the upload control here,
+ *     via POST /entities/:id/logo, not by the PATCH body.
  */
 
 import * as React from "react";
@@ -28,6 +43,7 @@ import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { CountrySelect } from "@/components/country-select";
+import { SmartCurrencyPicker } from "@/components/smart-currency-picker";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { useList, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
@@ -35,6 +51,7 @@ import { entityCommon } from "@shared";
 import * as api from "@/lib/masterdata-api";
 import { shell } from "./shared";
 import { EntityDossier } from "./entity-360";
+import { entityFormBody, valuesFrom, type EntityFormValues } from "./entity-form-fields";
 
 const LIFECYCLE_TONE: Record<string, Tone> = {
   DRAFT: "mute", PENDING_REVIEW: "blue", ACTIVE: "ok",
@@ -51,6 +68,20 @@ const FRAMEWORKS: { value: api.AccountingFramework; label: string }[] = [
   { value: "LOCAL_OTHER", label: "Other local framework" },
 ];
 
+/** How an entity's document numbers restart. Null means "inherit the tenant default". */
+const NUMBERING_RESETS = ["NEVER", "ANNUAL", "MONTHLY"] as const;
+
+/** A titled block of fields — thirty controls in one flat grid is a wall. */
+function Fieldset({ legend, hint, children }: { legend: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <fieldset className="space-y-3 rounded-lg border p-3">
+      <legend className="px-1 text-sm font-semibold text-foreground">{legend}</legend>
+      {hint && <p className="micro text-muted-foreground">{hint}</p>}
+      <div className="grid gap-4 sm:grid-cols-2">{children}</div>
+    </fieldset>
+  );
+}
+
 function EntityForm({ row, entities, onClose, onSaved }: {
   row: api.Entity | null;
   entities: api.Entity[];
@@ -58,32 +89,24 @@ function EntityForm({ row, entities, onClose, onSaved }: {
   onSaved: (saved: api.Entity) => void;
 }) {
   const isNew = row === null;
-  const [code, setCode] = React.useState(row?.code ?? "");
-  const [legalName, setLegalName] = React.useState(row?.legal_name ?? "");
-  const [tradingName, setTradingName] = React.useState(row?.trading_name ?? "");
-  const [legalForm, setLegalForm] = React.useState(row?.legal_form ?? "");
-  const [country, setCountry] = React.useState(row?.country_code ?? "CM");
-  const [docPrefix, setDocPrefix] = React.useState(row?.doc_prefix ?? "");
-  const [lang, setLang] = React.useState(row?.default_language ?? "fr");
-  const [fyStart, setFyStart] = React.useState(row?.fiscal_year_start_month != null ? String(row.fiscal_year_start_month) : "1");
-  const [framework, setFramework] = React.useState<string>(row?.accounting_framework ?? "OHADA");
-  const [incorporated, setIncorporated] = React.useState(row?.incorporation_date ?? "");
-  const [description, setDescription] = React.useState(row?.description ?? "");
-  const [parentId, setParentId] = React.useState(row?.parent_entity_id ?? "");
-  const [relationship, setRelationship] = React.useState<string>(row?.relationship_type ?? "");
+  const [v, setV] = React.useState<EntityFormValues>(() => valuesFrom(row));
   const [logoLight, setLogoLight] = React.useState(row?.logo_light_ref ?? "");
-  const [logoBusy, setLogoBusy] = React.useState(false);
+  const [logoDark, setLogoDark] = React.useState(row?.logo_dark_ref ?? "");
+  const [logoBusy, setLogoBusy] = React.useState<"light" | "dark" | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const { rows: jurisdictions } = useList<api.TaxJurisdiction>("/tax-jurisdictions");
+
+  const set = (k: string, value: string) => setV((s) => ({ ...s, [k]: value }));
 
   // A subsidiary's parent can be any other entity — never itself, which the API
   // rejects anyway (rules.assertNoCycle), but offering it would be a trap.
   const parentOptions = entities.filter((x) => x.entity_id !== row?.entity_id);
 
   /** Entities must exist before a logo can be attached (the upload is keyed by id). */
-  async function pickLogo(file: File | null) {
+  async function pickLogo(file: File | null, variant: "light" | "dark") {
     if (!file || isNew || !row) return;
-    setLogoBusy(true);
+    setLogoBusy(variant);
     setError(null);
     try {
       const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -92,12 +115,13 @@ function EntityForm({ row, entities, onClose, onSaved }: {
         r.onerror = () => reject(new Error("Could not read the file."));
         r.readAsDataURL(file);
       });
-      const updated = await api.uploadEntityLogo(row.entity_id, dataUrl, "light");
-      setLogoLight(updated.logo_light_ref ?? "");
+      const updated = await api.uploadEntityLogo(row.entity_id, dataUrl, variant);
+      if (variant === "dark") setLogoDark(updated.logo_dark_ref ?? "");
+      else setLogoLight(updated.logo_light_ref ?? "");
     } catch (err) {
       setError(errMsg(err));
     } finally {
-      setLogoBusy(false);
+      setLogoBusy(null);
     }
   }
 
@@ -105,23 +129,13 @@ function EntityForm({ row, entities, onClose, onSaved }: {
     e.preventDefault();
     setBusy(true);
     setError(null);
-    const body: api.EntityInput = {
-      code,
-      legal_name: legalName,
-      trading_name: tradingName.trim() || null,
-      legal_form: legalForm.trim() || null,
-      country_code: country || undefined,
-      doc_prefix: docPrefix || undefined,
-      default_language: lang || undefined,
-      fiscal_year_start_month: fyStart === "" ? undefined : Number(fyStart),
-      accounting_framework: (framework || null) as api.AccountingFramework | null,
-      incorporation_date: incorporated || null,
-      description: description.trim() || null,
-      parent_entity_id: parentId || null,
-      relationship_type: (relationship || null) as api.EntityRelationship | null,
-    };
+    const body = entityFormBody(v);
     try {
-      const saved = isNew ? await api.createEntity(body) : await api.updateEntity(row!.entity_id, body);
+      const saved = isNew
+        // An entity may be opened as a DRAFT and completed over several sittings —
+        // gathering statutes, certificates and a cap table is not a one-form job.
+        ? await api.createEntity({ ...body, code: v.code.trim(), legal_name: v.legal_name.trim(), registration_status: (v.registration_status || undefined) as api.EntityLifecycle | undefined } as api.EntityInput)
+        : await api.updateEntity(row!.entity_id, body);
       onSaved(saved);
       onClose();
     } catch (err) {
@@ -131,30 +145,82 @@ function EntityForm({ row, entities, onClose, onSaved }: {
     }
   }
 
+  const logoField = (variant: "light" | "dark", current: string, hint: string) => (
+    <Field label={variant === "light" ? "Logo (light background)" : "Logo (dark background)"} hint={hint}>
+      <div className="flex items-center gap-3">
+        {current
+          ? <img src={current} alt="" className={`h-10 w-auto rounded border object-contain p-1 ${variant === "dark" ? "bg-foreground" : "bg-background"}`} />
+          : null}
+        <input
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+          disabled={logoBusy !== null}
+          onChange={(e) => pickLogo(e.target.files?.[0] ?? null, variant)}
+          className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
+        />
+      </div>
+    </Field>
+  );
+
   return (
     <Modal
       open
       onClose={onClose}
       title={isNew ? "New corporate entity" : "Edit corporate entity"}
-      description="A legal entity we bill and report from. The rest of its file — registrations, shareholders, addresses — is on the entity's own page."
+      description="A legal entity we bill and report from. Its registrations, shareholders and addresses are collections on the entity's own page."
     >
       <form className="space-y-4" onSubmit={submit}>
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Code" required hint="Short unique key"><Input value={code} onChange={(e) => setCode(e.target.value)} placeholder="SLAS" disabled={!isNew} /></Field>
-          <Field label="Legal name" required><Input value={legalName} onChange={(e) => setLegalName(e.target.value)} placeholder="Smart Logistics and Services Ltd" /></Field>
-          <Field label="Trading name" hint="If it trades under a different name"><Input value={tradingName ?? ""} onChange={(e) => setTradingName(e.target.value)} /></Field>
-          <Field label="Legal form" hint="SARL, SA, SAS, Ltd, GmbH…"><Input value={legalForm ?? ""} onChange={(e) => setLegalForm(e.target.value)} placeholder="SARL" /></Field>
-          <Field label="Country"><CountrySelect value={country} onChange={setCountry} allowEmpty={false} /></Field>
-          <Field label="Date of incorporation"><Input type="date" value={incorporated ?? ""} onChange={(e) => setIncorporated(e.target.value)} /></Field>
-          <Field label="Document prefix" hint="Leads this entity's invoice numbers"><Input value={docPrefix ?? ""} onChange={(e) => setDocPrefix(e.target.value)} placeholder="SLAS" /></Field>
+        <Fieldset legend="Identity">
+          <Field label="Code" required hint="Short unique key"><Input value={v.code} onChange={(e) => set("code", e.target.value)} placeholder="SLAS" disabled={!isNew} /></Field>
+          <Field label="Legal name" required><Input value={v.legal_name} onChange={(e) => set("legal_name", e.target.value)} placeholder="Smart Logistics and Services Ltd" /></Field>
+          <Field label="Trading name" hint="If it trades under a different name"><Input value={v.trading_name} onChange={(e) => set("trading_name", e.target.value)} /></Field>
+          <Field label="Legal form" hint="SARL, SA, SAS, Ltd, GmbH… — printed on the letterhead"><Input value={v.legal_form} onChange={(e) => set("legal_form", e.target.value)} placeholder="SARL" /></Field>
+          <Field label="Country"><CountrySelect value={v.country_code} onChange={(c) => set("country_code", c)} allowEmpty={false} label="Country" /></Field>
+          <Field label="Industry"><Input value={v.industry} onChange={(e) => set("industry", e.target.value)} placeholder="Freight forwarding" /></Field>
+          {isNew && (
+            <Field label="Opening status" hint="A file can be opened as a draft and completed later">
+              <Select value={v.registration_status} onChange={(e) => set("registration_status", e.target.value)}>
+                {["DRAFT", "PENDING_REVIEW", "ACTIVE"].map((s) => <option key={s} value={s}>{enumLabel(s)}</option>)}
+              </Select>
+            </Field>
+          )}
+          <Field label="Description" hint="Shown on the entity picker and internal directories" className="sm:col-span-2">
+            <Input value={v.description} onChange={(e) => set("description", e.target.value)} placeholder="Handles European clients and EU customs clearance." />
+          </Field>
+        </Fieldset>
+
+        <Fieldset legend="Public contact" hint="Printed in the letterhead's contact line. The readiness checklist wants at least one of email or phone.">
+          <Field label="Email"><Input type="email" value={v.email} onChange={(e) => set("email", e.target.value)} placeholder="contact@example.cm" /></Field>
+          <Field label="Phone"><Input value={v.phone} onChange={(e) => set("phone", e.target.value)} placeholder="+237690000000" /></Field>
+          <Field label="Website"><Input value={v.website} onChange={(e) => set("website", e.target.value)} placeholder="https://example.cm" /></Field>
+          <Field label="Headcount" hint="Indicative — HR holds the real establishment"><Input type="number" min={0} value={v.headcount} onChange={(e) => set("headcount", e.target.value)} /></Field>
+          <Field label="Timezone" hint="Used when a document's date matters locally"><Input value={v.timezone} onChange={(e) => set("timezone", e.target.value)} placeholder="Africa/Douala" /></Field>
+        </Fieldset>
+
+        <Fieldset legend="Incorporation and capital" hint="The statutory facts documents print. Share capital is mandatory on French invoices and is on the readiness checklist.">
+          <Field label="Date of incorporation"><Input type="date" value={v.incorporation_date} onChange={(e) => set("incorporation_date", e.target.value)} /></Field>
+          <Field label="Place of incorporation" hint="The registry town, not the trading address"><Input value={v.incorporation_place} onChange={(e) => set("incorporation_place", e.target.value)} placeholder="Douala" /></Field>
+          <Field label="Country of incorporation" hint="Differs from the country above for a redomiciled company">
+            <CountrySelect value={v.incorporation_country} onChange={(c) => set("incorporation_country", c)} label="Country of incorporation" />
+          </Field>
+          <Field label="Dissolution date" hint="Leave blank while the company exists"><Input type="date" value={v.dissolution_date} onChange={(e) => set("dissolution_date", e.target.value)} /></Field>
+          <Field label="Share capital" hint="The registered figure, as stated in the statutes"><Input type="number" min={0} step="any" value={v.share_capital} onChange={(e) => set("share_capital", e.target.value)} placeholder="10000000" /></Field>
+          <Field label="Paid up" hint="How much of it has actually been called and paid"><Input type="number" min={0} step="any" value={v.share_capital_paid_up} onChange={(e) => set("share_capital_paid_up", e.target.value)} /></Field>
+          <Field label="Capital currency" hint="Often not the reporting currency">
+            <SmartCurrencyPicker value={v.share_capital_currency} onChange={(c) => set("share_capital_currency", c)} label="Capital currency" />
+          </Field>
+        </Fieldset>
+
+        <Fieldset legend="Documents and reporting">
+          <Field label="Document prefix" hint="Leads this entity's invoice numbers"><Input value={v.doc_prefix} onChange={(e) => set("doc_prefix", e.target.value)} placeholder="SLAS" /></Field>
           <Field label="Default language">
-            <Select value={lang ?? "fr"} onChange={(e) => setLang(e.target.value)}>
+            <Select value={v.default_language} onChange={(e) => set("default_language", e.target.value)}>
               <option value="fr">Français</option>
               <option value="en">English</option>
             </Select>
           </Field>
           <Field label="Fiscal year start month">
-            <Select value={fyStart} onChange={(e) => setFyStart(e.target.value)}>
+            <Select value={v.fiscal_year_start_month} onChange={(e) => set("fiscal_year_start_month", e.target.value)}>
               {Array.from({ length: 12 }).map((_, i) => <option key={i + 1} value={i + 1}>{new Date(2000, i, 1).toLocaleString("en", { month: "long" })}</option>)}
             </Select>
           </Field>
@@ -162,19 +228,52 @@ function EntityForm({ row, entities, onClose, onSaved }: {
               France subsidiary reporting under IFRS, and consolidation needs to
               know which is which. */}
           <Field label="Accounting framework" hint="What this entity reports under">
-            <Select value={framework} onChange={(e) => setFramework(e.target.value)}>
+            <Select value={v.accounting_framework} onChange={(e) => set("accounting_framework", e.target.value)}>
               {FRAMEWORKS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
             </Select>
           </Field>
+          <Field label="Numbering resets" hint="When this entity's document counters restart">
+            <Select value={v.numbering_reset} onChange={(e) => set("numbering_reset", e.target.value)}>
+              <option value="">— tenant default —</option>
+              {NUMBERING_RESETS.map((n) => <option key={n} value={n}>{enumLabel(n)}</option>)}
+            </Select>
+          </Field>
+        </Fieldset>
+
+        <Fieldset legend="Defaults carried into other modules" hint="What HR, payroll and billing inherit when someone picks this entity.">
+          <Field label="Default currency" hint="What this entity invoices and reports in">
+            <SmartCurrencyPicker value={v.default_currency} onChange={(c) => set("default_currency", c)} label="Default currency" />
+          </Field>
+          <Field label="Payroll country" hint="Which country's payroll rules apply to its staff">
+            <CountrySelect value={v.payroll_country} onChange={(c) => set("payroll_country", c)} label="Payroll country" />
+          </Field>
+          <Field label="Default tax jurisdiction" hint="Which rate card a new document reaches for first">
+            <Select value={v.default_tax_jurisdiction_id} onChange={(e) => set("default_tax_jurisdiction_id", e.target.value)}>
+              <option value="">— none —</option>
+              {(jurisdictions || []).map((j) => (
+                <option key={j.jurisdiction_id} value={j.jurisdiction_id}>{j.name}{j.country_code ? ` (${j.country_code})` : ""}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="VAT registered" hint="Drives whether its documents carry VAT">
+            <Select value={v.vat_registered} onChange={(e) => set("vat_registered", e.target.value)}>
+              <option value="">— not stated —</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </Select>
+          </Field>
+        </Fieldset>
+
+        <Fieldset legend="Group" hint="Ownership percentage and consolidation live on the entity's Structure tab, which runs the cycle check.">
           <Field label="Parent entity" hint="Leave blank for a standalone or top-level company" className="sm:col-span-2">
-            <Select value={parentId ?? ""} onChange={(e) => setParentId(e.target.value)}>
+            <Select value={v.parent_entity_id} onChange={(e) => set("parent_entity_id", e.target.value)}>
               <option value="">— none —</option>
               {parentOptions.map((p) => <option key={p.entity_id} value={p.entity_id}>{p.code} — {p.legal_name}</option>)}
             </Select>
           </Field>
-          {parentId && (
+          {v.parent_entity_id && (
             <Field label="Relationship to parent">
-              <Select value={relationship} onChange={(e) => setRelationship(e.target.value)}>
+              <Select value={v.relationship_type} onChange={(e) => set("relationship_type", e.target.value)}>
                 <option value="">—</option>
                 {entityCommon.RELATIONSHIP_TYPES.filter((r) => r !== "HEADQUARTERS").map((r) => (
                   <option key={r} value={r}>{enumLabel(r)}</option>
@@ -182,28 +281,17 @@ function EntityForm({ row, entities, onClose, onSaved }: {
               </Select>
             </Field>
           )}
-          <Field label="Description" hint="Shown on the entity picker and internal directories" className="sm:col-span-2">
-            <Input value={description ?? ""} onChange={(e) => setDescription(e.target.value)} placeholder="Handles European clients and EU customs clearance." />
-          </Field>
-        </div>
+        </Fieldset>
 
         {!isNew && (
-          <Field label="Letterhead logo" hint="PNG/JPG/WebP/SVG, max 512 KB — used on this entity's documents">
-            <div className="flex items-center gap-3">
-              {logoLight ? <img src={logoLight} alt="" className="h-10 w-auto rounded border bg-background object-contain p-1" /> : null}
-              <input
-                type="file"
-                accept="image/png,image/jpeg,image/webp,image/svg+xml"
-                disabled={logoBusy}
-                onChange={(e) => pickLogo(e.target.files?.[0] ?? null)}
-                className="block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-primary file:px-3 file:py-2 file:text-sm file:font-medium file:text-primary-foreground hover:file:opacity-90"
-              />
-            </div>
-          </Field>
+          <Fieldset legend="Letterhead logos" hint="PNG/JPG/WebP/SVG, max 512 KB. The dark variant is used on dark document themes and on the app's dark mode.">
+            {logoField("light", logoLight, "Printed on white paper and light headers.")}
+            {logoField("dark", logoDark, "Optional — the light logo is used when this is blank.")}
+          </Fieldset>
         )}
 
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} disabled={!code || !legalName || busy} onCancel={onClose} saveLabel={isNew ? "Create entity" : "Save changes"} />
+        <FormButtons busy={busy} disabled={!v.code || !v.legal_name || busy} onCancel={onClose} saveLabel={isNew ? "Create entity" : "Save changes"} />
       </form>
     </Modal>
   );

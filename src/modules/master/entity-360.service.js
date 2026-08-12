@@ -241,7 +241,7 @@ async function dossier(c, id, { governance = false, financials = false } = {}) {
     letterhead_config: letterhead,
     letterhead_preview: maskPaymentBlock(
       letterheadService.render(
-        { entity, config: letterhead, addresses, registrations, taxRegistrations, treasuryAccounts: treasury },
+        { entity, config: letterhead, addresses, registrations, taxRegistrations, treasuryAccounts: treasury, establishments },
         entity.default_language,
       ),
       financials,

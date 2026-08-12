@@ -862,6 +862,17 @@ jobs:
         if: matrix.app == 'client'
         run: npm run check:shared --prefix client
 
+      - name: Shared-schema gate
+        # `check:shared` proves the package RESOLVES. This proves it is USED:
+        # every domain imported by both sides, no migrated validator re-declaring
+        # its own rules, and every corporate-entity master field reachable by a
+        # control. The script has existed since the schemas were extracted and
+        # was never wired into CI, which is how twenty entity fields became
+        # writable by the API and unwritable by a person without anything going
+        # red. Client only — it reads both trees but runs from there.
+        if: matrix.app == 'client'
+        run: npm run check:schemas --prefix client
+
       - name: Install Chromium for the layout gate
         # Only the browser, and only for the client. `--with-deps` pulls the
         # shared libraries headless Chromium needs on a bare runner; the version

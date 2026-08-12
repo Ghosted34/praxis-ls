@@ -364,7 +364,8 @@ export type LetterheadPreview = {
   };
   footer: {
     company_line?: string | null; address_line?: string | null; identifier_line?: string | null;
-    contact_line?: string | null; note?: string | null; legal_mentions?: string | null;
+    contact_line?: string | null; establishment_line?: string | null;
+    note?: string | null; legal_mentions?: string | null;
   };
   payment_block: { source: "treasury" | "bank_block_legacy" | "none" | "hidden"; accounts: PaymentAccount[] };
   identifiers: { kind: string; number: string }[];
@@ -908,9 +909,19 @@ export type TaxCode = {
   rate_percent?: number | null;
   applies_to?: string | null;
 };
-type Jurisdiction = { jurisdiction_id: string };
+/** A tax jurisdiction, as the entity form's default-jurisdiction picker and the
+ *  entity tax-registration modal need it (0210's `tax_jurisdiction`). */
+export type TaxJurisdiction = {
+  jurisdiction_id: string;
+  country_code?: string | null;
+  name: string;
+  currency?: string | null;
+  is_active?: boolean;
+};
+export const listTaxJurisdictions = () => tenant<TaxJurisdiction[]>("/tax-jurisdictions");
+
 export async function listSalesTaxCodes(): Promise<TaxCode[]> {
-  const jurs = await tenant<Jurisdiction[]>("/tax-jurisdictions").catch(() => []);
+  const jurs = await tenant<TaxJurisdiction[]>("/tax-jurisdictions").catch(() => []);
   const perJur = await Promise.all(
     (jurs || []).map((j) => tenant<TaxCode[]>(`/tax-jurisdictions/${j.jurisdiction_id}/codes`).catch(() => [])),
   );

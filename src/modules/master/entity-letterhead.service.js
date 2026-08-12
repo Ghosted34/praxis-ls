@@ -57,6 +57,26 @@ function registeredAddress(entity, addresses = []) {
 }
 
 /**
+ * The establishment a document is issued FROM.
+ *
+ * Not the same fact as the registered office: a branch invoices under the
+ * company's legal identity but from its own site, and several jurisdictions want
+ * that site's own reference on the document (France's établissement SIRET, a
+ * customs office code on a transit document). Head office wins, then whatever
+ * else is open — a closed site must never appear on a document being issued now.
+ */
+function issuingEstablishment(establishments = []) {
+  const open = establishments.filter((s) => s.is_active !== false && !s.closed_on);
+  return open.find((s) => s.kind === "HEAD_OFFICE") || open[0] || null;
+}
+
+/** One establishment as its printed line, or null when there is nothing to print. */
+function establishmentLine(s) {
+  if (!s) return null;
+  return join([s.name, join([s.address_line, s.city], ", "), s.tax_office_ref, s.customs_office]) || null;
+}
+
+/**
  * Tax and trade identifiers, registration rows winning over the legacy niu/rccm
  * columns. 0512 backfilled those columns into rows, so a divergence means
  * somebody edited the row — which is the newer intent.
@@ -147,9 +167,10 @@ const DEFAULT_CONFIG = {
  * @param {object[]} [input.registrations]   entity_registration rows
  * @param {object[]} [input.taxRegistrations] entity_tax_registration rows
  * @param {object[]} [input.treasuryAccounts] treasury_account rows
+ * @param {object[]} [input.establishments]  entity_establishment rows
  * @param {string}   [lang]                  'fr' | 'en'; defaults to the entity's
  */
-function render({ entity, config, addresses = [], registrations = [], taxRegistrations = [], treasuryAccounts = [] }, lang) {
+function render({ entity, config, addresses = [], registrations = [], taxRegistrations = [], treasuryAccounts = [], establishments = [] }, lang) {
   const e = entity || {};
   const c = { ...DEFAULT_CONFIG, ...(config || {}) };
   const language = lang || e.default_language || "en";
@@ -158,6 +179,7 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
   const address = registeredAddress(e, addresses);
   const capital = formatAmount(e.share_capital);
   const payment = paymentBlock(e, treasuryAccounts);
+  const establishment = c.show_establishment ? establishmentLine(issuingEstablishment(establishments)) : null;
 
   // The company line as it appears under the logo: "Smart Logistics SARL au
   // capital de 100 000 000 XAF". Assembled rather than typed.
@@ -201,6 +223,9 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
       address_line: c.show_registered_address ? address : null,
       identifier_line: identifierLine || null,
       contact_line: contactLine || null,
+      // The issuing site sits in the FOOTER, beside the identifiers it belongs
+      // with — a branch's own reference is a statutory mention, not branding.
+      establishment_line: establishment,
       note: pick(language, c.footer_note_fr, c.footer_note_en),
       legal_mentions: pick(language, c.legal_mentions_fr, c.legal_mentions_en),
     },
@@ -215,10 +240,12 @@ function render({ entity, config, addresses = [], registrations = [], taxRegistr
       c.show_contact && !contactLine ? "contact" : null,
       c.show_bank_block && payment.source === "none" ? "payment_block" : null,
       c.show_legal_form && !e.legal_form ? "legal_form" : null,
+      c.show_establishment && !establishment ? "establishment" : null,
     ].filter(Boolean),
   };
 }
 
 module.exports = {
-  render, registeredAddress, identifiers, paymentBlock, addressLine, formatAmount, DEFAULT_CONFIG,
+  render, registeredAddress, identifiers, paymentBlock, addressLine, formatAmount,
+  issuingEstablishment, establishmentLine, DEFAULT_CONFIG,
 };

@@ -264,8 +264,25 @@ async function createPool(meta) {
     // TENANT_DB_POOLER_HOST. The tenant's own host/port stay in the registry so
     // migrations and provisioning (which must NOT go through a transaction
     // pooler) keep talking to Postgres directly.
-    host: config.TENANT_DB_POOLER_HOST || meta.db_host,
-    port: config.TENANT_DB_POOLER_PORT || meta.db_port,
+    // HOST AND PORT MOVE TOGETHER, and that is the whole point of `POOLED`.
+    //
+    // INCIDENT 2026-08-12 (second half). These two resolved INDEPENDENTLY:
+    //
+    //     host: config.TENANT_DB_POOLER_HOST || meta.db_host,
+    //     port: config.TENANT_DB_POOLER_PORT || meta.db_port,
+    //
+    // `.env.example` ships `TENANT_DB_POOLER_PORT=6432` next to an empty
+    // `TENANT_DB_POOLER_HOST`, because a port with no host reads as harmless. It
+    // is not: 6432 is truthy, so a deployment that copied the template sent every
+    // tenant connection to the REAL Postgres host on the POOLER's port. Nothing
+    // listens there — `ECONNREFUSED <postgres-ip>:6432` — and every tenant
+    // request failed, with `TENANT_DB_POOLER_HOST` demonstrably empty and the
+    // comment above it promising that meant "direct to Postgres".
+    //
+    // Half a pooler configuration is not a configuration. Either both values come
+    // from the pooler or neither does.
+    host: POOLED ? config.TENANT_DB_POOLER_HOST : meta.db_host,
+    port: POOLED ? Number(config.TENANT_DB_POOLER_PORT) || 6432 : meta.db_port,
     database: meta.db_name,
     user: cred.user,
     password: cred.password,

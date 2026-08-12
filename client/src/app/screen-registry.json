@@ -264,7 +264,8 @@
         "create_entity",
         "update_entity",
         "set_entity_status",
-        "set_entity_active"
+        "set_entity_active",
+        "set_entity_structure"
       ]
     },
     {

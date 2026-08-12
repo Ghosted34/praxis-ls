@@ -155,10 +155,17 @@ function idempotency(req, res, next) {
   if (!/^Bearer\s+\S/i.test(authorization)) return next();
 
   if (!KEY_PATTERN.test(key)) {
+    // The message below is deliberately comma-free, and this note is outside
+    // the call for the same reason. `scripts/generate-api-docs.js` pulls the
+    // status out of `new AppError(...)` with a regex whose message segment is
+    // `[^,]*`, so a comma ANYWHERE between the code and the status — in the
+    // message or in a comment sitting between them — silently costs the
+    // generated ERROR_CODES.md row its status column. Twelve existing codes
+    // are already missing theirs for this reason; this one need not join them.
     return next(
       new AppError(
         "IDEMPOTENCY_KEY_INVALID",
-        "Idempotency-Key must be 8–200 characters of letters, digits, dot, underscore, colon or hyphen.",
+        "Idempotency-Key must be 8-200 characters drawn from A-Z a-z 0-9 and . _ : -",
         400,
       ),
     );

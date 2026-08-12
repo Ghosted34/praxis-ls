@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (258)
+## All codes (261)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -125,6 +125,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
 | `HAS_SUBSIDIARIES` | 409 | 1× | — |
+| `IDEMPOTENCY_IN_PROGRESS` | 409 | 1× | — |
+| `IDEMPOTENCY_KEY_INVALID` | 400 | 1× | — |
+| `IDEMPOTENCY_KEY_REUSED` | 422 | 1× | — |
 | `IMAGE_PROCESSING_FAILED` | 422 | 1× | — |
 | `IMAGE_TOO_LARGE` | 413 | 5× | — |
 | `INVALID_2FA_CODE` | 401 | 3× | — |

@@ -18,6 +18,7 @@
  * function rather than a claim about a screen.
  */
 import type * as api from "@/lib/masterdata-api";
+import { toDateInput } from "@/lib/format";
 
 /**
  * The form's values, one key per control.
@@ -103,6 +104,18 @@ export function entityFormBody(v: EntityFormValues): Record<string, unknown> {
   };
 }
 
+/**
+ * Keys bound to an `<input type="date">`, which renders ONLY `YYYY-MM-DD`.
+ *
+ * `String(raw)` is right for every other column and wrong for these: a date that
+ * reached the form as a timestamp left the control blank while the form state
+ * still held the timestamp, so re-opening an entity showed no incorporation date
+ * and Save posted the unrenderable value back for the API to reject. Named
+ * explicitly rather than sniffed from the value, so a text field that happens to
+ * contain something date-shaped is never rewritten.
+ */
+const DATE_KEYS = new Set(["incorporation_date", "dissolution_date"]);
+
 /** Seed the controls from an existing row; sensible defaults for a new one. */
 export function valuesFrom(row: api.Entity | null): EntityFormValues {
   if (!row) {
@@ -115,7 +128,8 @@ export function valuesFrom(row: api.Entity | null): EntityFormValues {
   const v: EntityFormValues = { ...EMPTY_VALUES };
   for (const k of Object.keys(EMPTY_VALUES)) {
     const raw = (row as unknown as Record<string, unknown>)[k];
-    v[k] = raw === null || raw === undefined ? "" : String(raw);
+    if (DATE_KEYS.has(k)) v[k] = toDateInput(raw);
+    else v[k] = raw === null || raw === undefined ? "" : String(raw);
   }
   return v;
 }

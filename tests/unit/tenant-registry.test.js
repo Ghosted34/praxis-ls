@@ -89,7 +89,12 @@ class mockFakePool {
   }
 }
 
-jest.mock("pg", () => ({ Pool: mockFakePool }));
+// `types` as well as `Pool`: the registry requires `shared/db/pg-date-types`,
+// which registers the `date` passthrough parser on the pg module singleton
+// before any pool can query. A double that omits it makes the registry
+// unloadable — which is the point of including it rather than making the
+// parser registration tolerate a missing `types` in production.
+jest.mock("pg", () => ({ Pool: mockFakePool, types: { setTypeParser: () => {} } }));
 jest.mock("pgvector/pg", () => ({ registerType: async () => {} }));
 
 const SCHEMA = Symbol.for("praxis.conn.schema");

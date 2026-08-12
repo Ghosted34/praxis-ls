@@ -60,12 +60,21 @@ export default defineConfig({
      * stable everywhere. Determinism has to come from pinning the zone.
      *
      * UTC because it matches CI and Docker, so a failure reproduces where it was
-     * reported. NOTE what this deliberately does NOT do: it does not make the
-     * app's date handling correct. `eta` is a Postgres `date` serialised to a
-     * UTC instant at the API's local midnight and then formatted in the
-     * browser's zone, so a viewer in a different zone from the API still sees
-     * the wrong day. That is NEW-11, and it needs a decision about where dates
-     * are rendered, not a test setting.
+     * reported.
+     *
+     * NEW-11 — "a Postgres `date` serialised to a UTC instant at the API's local
+     * midnight and then formatted in the browser's zone, so a viewer in a
+     * different zone from the API sees the wrong day" — IS NOW FIXED, at the
+     * source rather than in the renderer: `src/shared/db/pg-date-types.js` hands
+     * `date` columns back as the `YYYY-MM-DD` string Postgres sent, and
+     * `lib/format.ts` parses that as a calendar date instead of a UTC instant.
+     * A `timestamptz` like `created_at` is still an instant and still renders in
+     * the reader's zone, which is correct for an instant.
+     *
+     * The pin STAYS, and this is the caveat it now carries: UTC is the one zone
+     * where a date that shifts by a day looks fine, so a suite that only ran
+     * here could not see that class of bug at all. Tests that care about it set
+     * `process.env.TZ` themselves — see `lib/format-dates.test.ts`.
      */
     env: { TZ: "UTC" },
   },

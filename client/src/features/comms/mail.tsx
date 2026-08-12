@@ -109,7 +109,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
  * (client / supplier / staff / lead, via recipient search) or a typed address.
  * Reusable: pass `connections` (Threads view) or let it self-fetch (New(+) / a
  * 360 mail icon), and optionally prefill `initialTo`. WS-E8. */
-export function ComposeModal({ connections, initialTo, onClose, onSent }: { connections?: api.Connection[]; initialTo?: string; onClose: () => void; onSent?: () => void }) {
+export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }: { connections?: api.Connection[]; initialTo?: string; lockTo?: boolean; onClose: () => void; onSent?: () => void }) {
   // Self-fetch when the caller didn't hand us connections (New(+) / 360).
   const owned = useResource(() => api.listConnections(), []);
   const conns = (connections ?? owned.data ?? []).filter((c) => c.status === "CONNECTED");
@@ -123,19 +123,23 @@ export function ComposeModal({ connections, initialTo, onClose, onSent }: { conn
   const [sent, setSent] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
-  // Recipient search over clients / suppliers / employees / leads.
-  const [rq, setRq] = React.useState("");
+  // The To field IS the recipient search: typing the current token (after the
+  // last comma) queries clients / suppliers / staff / leads; picking one fills it
+  // in. Locked (mail-icon entry) pins To to the prefilled address — no edit, no search.
+  const locked = !!lockTo && !!initialTo;
   const [results, setResults] = React.useState<api.Recipient[]>([]);
+  const lastToken = (s: string) => { const i = s.lastIndexOf(","); return s.slice(i + 1).trim(); };
   React.useEffect(() => {
-    const term = rq.trim();
+    if (locked) { setResults([]); return; }
+    const term = lastToken(f.to);
     if (term.length < 2) { setResults([]); return; }
     let live = true;
     const t = setTimeout(() => { api.searchRecipients(term).then((r) => { if (live) setResults(r); }).catch(() => {}); }, 200);
     return () => { live = false; clearTimeout(t); };
-  }, [rq]);
-  function addRecipient(r: api.Recipient) {
-    setF((s) => ({ ...s, to: s.to ? `${s.to}, ${r.email}` : r.email }));
-    setRq(""); setResults([]);
+  }, [f.to, locked]);
+  function pickRecipient(r: api.Recipient) {
+    setF((s) => { const i = s.to.lastIndexOf(","); const head = i >= 0 ? `${s.to.slice(0, i + 1)} ` : ""; return { ...s, to: `${head}${r.email}, ` }; });
+    setResults([]);
   }
 
   async function submit(e: React.FormEvent) {
@@ -164,13 +168,13 @@ export function ComposeModal({ connections, initialTo, onClose, onSent }: { conn
             {conns.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}{c.is_default ? " (default)" : ""}</option>)}
           </Select>
         </Field>
-        <Field label="Find recipient" hint="Search clients, suppliers, staff and leads — or just type an address in To.">
+        <Field label="To" required hint={locked ? undefined : "Type a name or email to find a client, supplier, staff or lead — or enter any address."}>
           <div className="relative">
-            <Input value={rq} onChange={(e) => setRq(e.target.value)} placeholder="Search by name or email…" />
-            {results.length > 0 && (
+            <Input value={f.to} onChange={set("to")} disabled={locked} placeholder="name or recipient@company.cm" />
+            {!locked && results.length > 0 && (
               <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg">
                 {results.map((r) => (
-                  <button type="button" key={`${r.type}:${r.id}`} onClick={() => addRecipient(r)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent">
+                  <button type="button" key={`${r.type}:${r.id}`} onClick={() => pickRecipient(r)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent">
                     <span className="truncate"><span className="text-foreground">{r.name}</span> <span className="num text-muted-foreground">{r.email}</span></span>
                     <Pill tone="mute">{r.type}</Pill>
                   </button>
@@ -179,7 +183,6 @@ export function ComposeModal({ connections, initialTo, onClose, onSent }: { conn
             )}
           </div>
         </Field>
-        <Field label="To" required><Input value={f.to} onChange={set("to")} placeholder="recipient@company.cm, another@company.cm" /></Field>
         <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
         <Field label="Subject"><Input value={f.subject} onChange={set("subject")} placeholder="Subject" /></Field>
         <Field label="Body"><Textarea value={f.body} onChange={set("body")} rows={7} placeholder="Write your message…" /></Field>
@@ -204,7 +207,7 @@ export function ComposeIconButton({ to, className }: { to?: string; className?: 
         className={className || "grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"}>
         <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
       </button>
-      {open && <ComposeModal initialTo={to} onClose={() => setOpen(false)} onSent={() => setOpen(false)} />}
+      {open && <ComposeModal initialTo={to} lockTo onClose={() => setOpen(false)} onSent={() => setOpen(false)} />}
     </>
   );
 }

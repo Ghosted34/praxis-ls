@@ -64,13 +64,20 @@ describe("RBAC enforcement (TC-C3)", () => {
     MOCK_SCOPE_IDS = [];
     MOCK_CAPS = { capabilities: [], is_line_manager: false };
     jest.resetModules();
-    ({ requirePermission, requireCapability, requireCeo } = require("../../src/middleware/rbac"));
+    ({
+      requirePermission,
+      requireCapability,
+      requireCeo,
+    } = require("../../src/middleware/rbac"));
   });
 
   describe("requirePermission — the grant check", () => {
     it("allows a user holding the right column", async () => {
       MOCK_GRANTS = [{ can_update: true }];
-      const { error, nexted } = await run(requirePermission("MOD-35", "edit"), makeReq(clerk));
+      const { error, nexted } = await run(
+        requirePermission("MOD-35", "edit"),
+        makeReq(clerk),
+      );
       expect(error).toBeNull();
       expect(nexted).toBe(true);
     });
@@ -79,7 +86,10 @@ describe("RBAC enforcement (TC-C3)", () => {
       // The most likely real-world denial, and the one a broken map would let
       // through: read access must not confer write access.
       MOCK_GRANTS = [{ can_read: true }];
-      const { error, nexted } = await run(requirePermission("MOD-35", "edit"), makeReq(clerk));
+      const { error, nexted } = await run(
+        requirePermission("MOD-35", "edit"),
+        makeReq(clerk),
+      );
       expect(nexted).toBe(false);
       expect(error.code).toBe("PERMISSION_DENIED");
       expect(error.status).toBe(403);
@@ -87,37 +97,53 @@ describe("RBAC enforcement (TC-C3)", () => {
 
     it("denies a user with no grants at all", async () => {
       MOCK_GRANTS = [];
-      const { error } = await run(requirePermission("MOD-35", "view"), makeReq(clerk));
+      const { error } = await run(
+        requirePermission("MOD-35", "view"),
+        makeReq(clerk),
+      );
       expect(error.code).toBe("PERMISSION_DENIED");
     });
 
     it("allows when ANY of several role grants carries the column", async () => {
       MOCK_GRANTS = [{ can_read: true }, { can_delete: true }];
-      const { error } = await run(requirePermission("MOD-35", "delete"), makeReq(clerk));
+      const { error } = await run(
+        requirePermission("MOD-35", "delete"),
+        makeReq(clerk),
+      );
       expect(error).toBeNull();
     });
 
     it("treats a missing column as denied, not as undefined-is-fine", async () => {
       MOCK_GRANTS = [{ can_read: true }]; // can_approve absent entirely
-      const { error } = await run(requirePermission("MOD-35", "approve"), makeReq(clerk));
+      const { error } = await run(
+        requirePermission("MOD-35", "approve"),
+        makeReq(clerk),
+      );
       expect(error.code).toBe("PERMISSION_DENIED");
     });
 
     it("requires the column to be exactly true, not merely truthy", async () => {
       MOCK_GRANTS = [{ can_update: "false" }]; // a truthy string
-      const { error } = await run(requirePermission("MOD-35", "edit"), makeReq(clerk));
+      const { error } = await run(
+        requirePermission("MOD-35", "edit"),
+        makeReq(clerk),
+      );
       expect(error.code).toBe("PERMISSION_DENIED");
     });
 
     it("rejects an unauthenticated request with 401, not 403", async () => {
-      const { error } = await run(requirePermission("MOD-35", "view"), { identityDb: (f) => f({}) });
+      const { error } = await run(requirePermission("MOD-35", "view"), {
+        identityDb: (f) => f({}),
+      });
       expect(error.code).toBe("AUTH_REQUIRED");
       expect(error.status).toBe(401);
     });
 
     it("fails loudly when tenantContext has not run", async () => {
       MOCK_GRANTS = [{ can_read: true }];
-      const { error } = await run(requirePermission("MOD-35", "view"), { user: clerk });
+      const { error } = await run(requirePermission("MOD-35", "view"), {
+        user: clerk,
+      });
       expect(error.code).toBe("NO_TENANT_CONTEXT");
       expect(error.status).toBe(500);
     });
@@ -140,7 +166,10 @@ describe("RBAC enforcement (TC-C3)", () => {
     for (const [action, column] of CASES) {
       it(`maps "${action}" to ${column}`, async () => {
         MOCK_GRANTS = [{ [column]: true }];
-        const { error } = await run(requirePermission("MOD-35", action), makeReq(clerk));
+        const { error } = await run(
+          requirePermission("MOD-35", action),
+          makeReq(clerk),
+        );
         expect(error).toBeNull();
       });
     }
@@ -159,14 +188,20 @@ describe("RBAC enforcement (TC-C3)", () => {
   describe("requirePermission — the CEO bypass", () => {
     it("admits the CEO with no grants whatsoever", async () => {
       MOCK_GRANTS = [];
-      const { error, req } = await run(requirePermission("MOD-35", "delete"), makeReq(ceo));
+      const { error, req } = await run(
+        requirePermission("MOD-35", "delete"),
+        makeReq(ceo),
+      );
       expect(error).toBeNull();
       expect(req.permission_scope).toBe("all");
     });
 
     it("leaves the CEO unscoped so no record-level filter applies", async () => {
       MOCK_SCOPE_IDS = ["scope-douala"];
-      const { req } = await run(requirePermission("MOD-35", "view"), makeReq(ceo));
+      const { req } = await run(
+        requirePermission("MOD-35", "view"),
+        makeReq(ceo),
+      );
       expect(req.scope_ids).toBeNull();
     });
   });
@@ -175,7 +210,10 @@ describe("RBAC enforcement (TC-C3)", () => {
     it("passes the closure through when the user is assigned to part of the tree", async () => {
       MOCK_GRANTS = [{ can_read: true }];
       MOCK_SCOPE_IDS = ["scope-hq", "scope-douala"];
-      const { req } = await run(requirePermission("MOD-35", "view"), makeReq(clerk));
+      const { req } = await run(
+        requirePermission("MOD-35", "view"),
+        makeReq(clerk),
+      );
       expect(req.scope_ids).toEqual(["scope-hq", "scope-douala"]);
       expect(req.permission_scope).toBe("scoped");
     });
@@ -187,7 +225,10 @@ describe("RBAC enforcement (TC-C3)", () => {
       // rolled back.
       MOCK_GRANTS = [{ can_read: true }];
       MOCK_SCOPE_IDS = [];
-      const { req } = await run(requirePermission("MOD-35", "view"), makeReq(clerk));
+      const { req } = await run(
+        requirePermission("MOD-35", "view"),
+        makeReq(clerk),
+      );
       expect(req.scope_ids).toBeNull();
       expect(req.permission_scope).toBe("all");
     });
@@ -196,32 +237,53 @@ describe("RBAC enforcement (TC-C3)", () => {
   describe("requireCapability — segregation of duties", () => {
     it("denies a user without the authority even when they hold the module grant", async () => {
       MOCK_CAPS = { capabilities: ["ISSUER"], is_line_manager: false };
-      const { error } = await run(requireCapability("APPROVER"), makeReq(clerk));
+      const { error } = await run(
+        requireCapability("APPROVER"),
+        makeReq(clerk),
+      );
       expect(error.code).toBe("CAPABILITY_REQUIRED");
       expect(error.status).toBe(403);
     });
 
     it("allows a user holding the authority", async () => {
-      MOCK_CAPS = { capabilities: ["ISSUER", "APPROVER"], is_line_manager: false };
-      const { error } = await run(requireCapability("APPROVER"), makeReq(clerk));
+      MOCK_CAPS = {
+        capabilities: ["ISSUER", "APPROVER"],
+        is_line_manager: false,
+      };
+      const { error } = await run(
+        requireCapability("APPROVER"),
+        makeReq(clerk),
+      );
       expect(error).toBeNull();
     });
 
     it("resolves LINE_MANAGER from the role flag rather than the capability list", async () => {
       MOCK_CAPS = { capabilities: [], is_line_manager: true };
-      const { error } = await run(requireCapability("LINE_MANAGER"), makeReq(clerk));
+      const { error } = await run(
+        requireCapability("LINE_MANAGER"),
+        makeReq(clerk),
+      );
       expect(error).toBeNull();
     });
 
     it("denies LINE_MANAGER when the flag is false, whatever else is held", async () => {
-      MOCK_CAPS = { capabilities: ["APPROVER", "VALIDATOR"], is_line_manager: false };
-      const { error } = await run(requireCapability("LINE_MANAGER"), makeReq(clerk));
+      MOCK_CAPS = {
+        capabilities: ["APPROVER", "VALIDATOR"],
+        is_line_manager: false,
+      };
+      const { error } = await run(
+        requireCapability("LINE_MANAGER"),
+        makeReq(clerk),
+      );
       expect(error.code).toBe("CAPABILITY_REQUIRED");
     });
 
     it("gives the CEO every authority without a lookup", async () => {
       MOCK_CAPS = { capabilities: [], is_line_manager: false };
-      const { error, req } = await run(requireCapability("APPROVER"), makeReq(ceo));
+      const { error, req } = await run(
+        requireCapability("APPROVER"),
+        makeReq(ceo),
+      );
       expect(error).toBeNull();
       expect(req.capabilities).toContain("APPROVER");
       expect(req.is_line_manager).toBe(true);
@@ -244,7 +306,15 @@ describe("RBAC enforcement (TC-C3)", () => {
     });
 
     it("denies an ordinary user however privileged their grants", async () => {
-      MOCK_GRANTS = [{ can_create: true, can_read: true, can_update: true, can_delete: true, can_approve: true }];
+      MOCK_GRANTS = [
+        {
+          can_create: true,
+          can_read: true,
+          can_update: true,
+          can_delete: true,
+          can_approve: true,
+        },
+      ];
       const { error, nexted } = await run(requireCeo(), makeReq(clerk));
       expect(nexted).toBe(false);
       expect(error.code).toBe("PERMISSION_DENIED");
@@ -258,7 +328,10 @@ describe("RBAC enforcement (TC-C3)", () => {
     });
 
     it("requires is_ceo to be exactly true", async () => {
-      const { error } = await run(requireCeo(), makeReq({ ...clerk, is_ceo: "yes" }));
+      const { error } = await run(
+        requireCeo(),
+        makeReq({ ...clerk, is_ceo: "yes" }),
+      );
       expect(error.code).toBe("PERMISSION_DENIED");
     });
   });

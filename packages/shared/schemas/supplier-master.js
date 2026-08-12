@@ -33,10 +33,19 @@ const {
 } = require("./common");
 const partyCommon = require("./party-common");
 
-const language = blankToUndefined(z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase());
-const nonNegativeRate = blankToUndefined(amount.refine((n) => n >= 0, "Cannot be negative."));
+const language = blankToUndefined(
+  z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
+);
+const nonNegativeRate = blankToUndefined(
+  amount.refine((n) => n >= 0, "Cannot be negative."),
+);
 const registrationStatus = z.enum([
-  "DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED",
+  "DRAFT",
+  "PENDING_REVIEW",
+  "ACTIVE",
+  "SUSPENDED",
+  "DEACTIVATED",
+  "ARCHIVED",
 ]);
 
 /** BANK | BANK_TRANSFER (legacy) | CASH | MOBILE_MONEY | CHEQUE → normalised. */
@@ -67,7 +76,9 @@ const base = {
   evaluation_notes: optionalText,
   risk_tier: optionalText,
   tax_residency_country: countryCode,
-  default_currency: blankToUndefined(z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase()),
+  default_currency: blankToUndefined(
+    z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase(),
+  ),
   default_language: language,
   preferred_channel: optionalText,
   relationship_manager_user_id: blankToUndefined(uuid),
@@ -76,8 +87,13 @@ const base = {
   momo_number: optionalText,
   is_non_resident: z.boolean().optional(),
   rating: blankToUndefined(
-    z.union([z.number(), z.string()]).transform((v) => (typeof v === "number" ? v : Number(v)))
-      .refine((n) => Number.isInteger(n) && n >= 1 && n <= 5, "Rating is 1 to 5."),
+    z
+      .union([z.number(), z.string()])
+      .transform((v) => (typeof v === "number" ? v : Number(v)))
+      .refine(
+        (n) => Number.isInteger(n) && n >= 1 && n <= 5,
+        "Rating is 1 to 5.",
+      ),
   ),
   withholding_rate: nonNegativeRate,
   withholding_certificate_ref: optionalText,

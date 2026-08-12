@@ -17,7 +17,10 @@
  *      worse than a window that briefly fails to apply.
  */
 
-jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: jest.fn() }));
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(),
+  close: jest.fn(),
+}));
 jest.mock("../../src/services/tenant/registry.service", () => ({
   resolveByHost: jest.fn(),
   resolveBySlug: jest.fn(),
@@ -26,7 +29,9 @@ jest.mock("../../src/services/tenant/registry.service", () => ({
 const platformDb = require("../../src/services/platform/db");
 const registry = require("../../src/services/tenant/registry.service");
 const maintenance = require("../../src/services/platform/maintenance.service");
-const { hostTenantResolver } = require("../../src/middleware/host-tenent-resolver");
+const {
+  hostTenantResolver,
+} = require("../../src/middleware/host-tenent-resolver");
 
 const TENANT = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const OTHER = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
@@ -58,7 +63,13 @@ beforeEach(() => {
 
 describe("visibleFor — announcement, not just the disruption", () => {
   test("an upcoming window inside its notice period is visible and marked UPCOMING", async () => {
-    given([win({ starts_at: hoursFromNow(3), ends_at: hoursFromNow(5), notice_hours: 24 })]);
+    given([
+      win({
+        starts_at: hoursFromNow(3),
+        ends_at: hoursFromNow(5),
+        notice_hours: 24,
+      }),
+    ]);
     const v = await maintenance.visibleFor(TENANT);
     expect(v.state).toBe("UPCOMING");
     expect(v.starts_in_minutes).toBeGreaterThan(150);
@@ -66,12 +77,24 @@ describe("visibleFor — announcement, not just the disruption", () => {
 
   test("an upcoming window OUTSIDE its notice period is not visible yet", async () => {
     // Starts in 3 days, one hour's notice — nobody should see it today.
-    given([win({ starts_at: hoursFromNow(72), ends_at: hoursFromNow(74), notice_hours: 1 })]);
+    given([
+      win({
+        starts_at: hoursFromNow(72),
+        ends_at: hoursFromNow(74),
+        notice_hours: 1,
+      }),
+    ]);
     expect(await maintenance.visibleFor(TENANT)).toBeNull();
   });
 
   test("notice_hours = 0 means the banner appears only once it starts", async () => {
-    given([win({ starts_at: hoursFromNow(2), ends_at: hoursFromNow(4), notice_hours: 0 })]);
+    given([
+      win({
+        starts_at: hoursFromNow(2),
+        ends_at: hoursFromNow(4),
+        notice_hours: 0,
+      }),
+    ]);
     expect(await maintenance.visibleFor(TENANT)).toBeNull();
   });
 
@@ -84,7 +107,13 @@ describe("visibleFor — announcement, not just the disruption", () => {
   });
 
   test("an UPCOMING read-only window warns without claiming writes are blocked yet", async () => {
-    given([win({ starts_at: hoursFromNow(2), ends_at: hoursFromNow(4), mode: "READ_ONLY" })]);
+    given([
+      win({
+        starts_at: hoursFromNow(2),
+        ends_at: hoursFromNow(4),
+        mode: "READ_ONLY",
+      }),
+    ]);
     const v = await maintenance.visibleFor(TENANT);
     expect(v.state).toBe("UPCOMING");
     expect(v.writes_blocked).toBe(false);
@@ -102,8 +131,16 @@ describe("visibleFor — announcement, not just the disruption", () => {
 
   test("a tenant-specific window beats a fleet-wide one — it is the deliberate statement", async () => {
     given([
-      win({ maintenance_window_id: "fleet", tenant_id: null, title: "Fleet migration" }),
-      win({ maintenance_window_id: "mine", tenant_id: TENANT, title: "Just us" }),
+      win({
+        maintenance_window_id: "fleet",
+        tenant_id: null,
+        title: "Fleet migration",
+      }),
+      win({
+        maintenance_window_id: "mine",
+        tenant_id: TENANT,
+        title: "Just us",
+      }),
     ]);
     expect((await maintenance.visibleFor(TENANT)).title).toBe("Just us");
     // ...and the other tenant still gets the fleet one.
@@ -117,11 +154,21 @@ describe("visibleFor — announcement, not just the disruption", () => {
 });
 
 describe("the tenant write gate", () => {
-  const LIVE = { slug: "acme", tenant_id: TENANT, status: "LIVE", is_live: true };
+  const LIVE = {
+    slug: "acme",
+    tenant_id: TENANT,
+    status: "LIVE",
+    is_live: true,
+  };
 
   function run({ method = "POST", tenant = LIVE } = {}) {
     registry.resolveByHost.mockResolvedValue(tenant);
-    const req = { headers: { host: "acme.praxisls.com" }, method, path: "/api/tenant/clients", query: {} };
+    const req = {
+      headers: { host: "acme.praxisls.com" },
+      method,
+      path: "/api/tenant/clients",
+      query: {},
+    };
     const res = {};
     return new Promise((resolve) => {
       hostTenantResolver(req, res, (err) => resolve({ err, req }));
@@ -163,7 +210,13 @@ describe("the tenant write gate", () => {
   });
 
   test("an UPCOMING read-only window does not block writes yet", async () => {
-    given([win({ starts_at: hoursFromNow(2), ends_at: hoursFromNow(4), mode: "READ_ONLY" })]);
+    given([
+      win({
+        starts_at: hoursFromNow(2),
+        ends_at: hoursFromNow(4),
+        mode: "READ_ONLY",
+      }),
+    ]);
     const { err } = await run({ method: "POST" });
     expect(err).toBeUndefined();
   });
@@ -189,7 +242,10 @@ describe("the tenant write gate", () => {
 
   test("the gate runs after the status gates — suspended still wins", async () => {
     given([win({ mode: "READ_ONLY" })]);
-    const { err } = await run({ method: "POST", tenant: { ...LIVE, status: "SUSPENDED" } });
+    const { err } = await run({
+      method: "POST",
+      tenant: { ...LIVE, status: "SUSPENDED" },
+    });
     expect(err.code).toBe("TENANT_SUSPENDED");
   });
 

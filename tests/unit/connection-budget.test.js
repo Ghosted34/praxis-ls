@@ -18,7 +18,13 @@
 
 jest.mock("../../src/config/env", () => ({ config: {} }));
 jest.mock("../../src/config/logger", () => ({
-  logger: { info: jest.fn(), error: jest.fn(), fatal: jest.fn(), debug: jest.fn(), warn: jest.fn() },
+  logger: {
+    info: jest.fn(),
+    error: jest.fn(),
+    fatal: jest.fn(),
+    debug: jest.fn(),
+    warn: jest.fn(),
+  },
 }));
 
 const budget = require("../../src/config/connection-budget");
@@ -59,7 +65,12 @@ describe("connection budget", () => {
   });
 
   test("the corrected configuration fits", async () => {
-    given({ ...AS_OF_INCIDENT, OPS_POOL_MAX: 4, TENANT_POOL_MAX: 4, TENANT_POOL_CACHE_MAX: 12 });
+    given({
+      ...AS_OF_INCIDENT,
+      OPS_POOL_MAX: 4,
+      TENANT_POOL_MAX: 4,
+      TENANT_POOL_CACHE_MAX: 12,
+    });
     const r = await budget.evaluate(dbReporting(300));
     expect(r.ok).toBe(true);
     expect(r.ceiling).toBe(186); // (10 + 4 + 48) × 3
@@ -70,7 +81,12 @@ describe("connection budget", () => {
     // It exists to stop background work starving requests, but it is still real
     // connections against the same server. A budget that omits the pool added to
     // fix the last incident is how the next one starts.
-    given({ ...AS_OF_INCIDENT, TENANT_POOL_MAX: 0, TENANT_POOL_CACHE_MAX: 0, OPS_POOL_MAX: 7 });
+    given({
+      ...AS_OF_INCIDENT,
+      TENANT_POOL_MAX: 0,
+      TENANT_POOL_CACHE_MAX: 0,
+      OPS_POOL_MAX: 7,
+    });
     const r = await budget.evaluate(dbReporting(300));
     expect(r.per.ops).toBe(7);
     expect(r.ceiling).toBe(51); // (10 + 7) × 3
@@ -96,7 +112,11 @@ describe("connection budget", () => {
     // Oversubscribing max_connections is the entire purpose of a transaction
     // pooler, so the server limit stops being the binding constraint and
     // PGBOUNCER_MAX_DB_CONNECTIONS starts. Failing here would block the fix.
-    given({ ...AS_OF_INCIDENT, DB_BUDGET_CHECK: "enforce", TENANT_DB_POOLER_HOST: "pgbouncer" });
+    given({
+      ...AS_OF_INCIDENT,
+      DB_BUDGET_CHECK: "enforce",
+      TENANT_DB_POOLER_HOST: "pgbouncer",
+    });
     const r = await budget.evaluate(dbReporting(100));
     expect(r.ok).toBe(true);
     expect(r.pooled).toBe(true);
@@ -118,7 +138,9 @@ describe("connection budget", () => {
 
   test("enforce throws, warn does not", async () => {
     given({ ...AS_OF_INCIDENT, DB_BUDGET_CHECK: "warn" });
-    await expect(budget.check(dbReporting(100))).resolves.toMatchObject({ ok: false });
+    await expect(budget.check(dbReporting(100))).resolves.toMatchObject({
+      ok: false,
+    });
 
     given({ ...AS_OF_INCIDENT, DB_BUDGET_CHECK: "enforce" });
     await expect(budget.check(dbReporting(100))).rejects.toMatchObject({

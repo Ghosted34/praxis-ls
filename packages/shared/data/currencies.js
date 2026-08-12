@@ -39,8 +39,22 @@ const countries = require("./countries");
 
 // Minor units that are NOT 2. Everything not listed here is 2 decimals.
 const DECIMALS_0 = new Set([
-  "BIF", "CLP", "DJF", "GNF", "ISK", "JPY", "KMF", "KRW", "PYG", "RWF",
-  "UGX", "VND", "VUV", "XAF", "XOF", "XPF",
+  "BIF",
+  "CLP",
+  "DJF",
+  "GNF",
+  "ISK",
+  "JPY",
+  "KMF",
+  "KRW",
+  "PYG",
+  "RWF",
+  "UGX",
+  "VND",
+  "VUV",
+  "XAF",
+  "XOF",
+  "XPF",
 ]);
 const DECIMALS_3 = new Set(["BHD", "IQD", "JOD", "KWD", "LYD", "OMR", "TND"]);
 
@@ -51,13 +65,23 @@ const RAW = [
   { code: "AFN", name: "Afghan Afghani", symbol: "؋", numeric: "971" },
   { code: "ALL", name: "Albanian Lek", symbol: "L", numeric: "008" },
   { code: "AMD", name: "Armenian Dram", symbol: "֏", numeric: "051" },
-  { code: "ANG", name: "Netherlands Antillean Guilder", symbol: "ƒ", numeric: "532" },
+  {
+    code: "ANG",
+    name: "Netherlands Antillean Guilder",
+    symbol: "ƒ",
+    numeric: "532",
+  },
   { code: "AOA", name: "Angolan Kwanza", symbol: "Kz", numeric: "973" },
   { code: "ARS", name: "Argentine Peso", symbol: "$", numeric: "032" },
   { code: "AUD", name: "Australian Dollar", symbol: "A$", numeric: "036" },
   { code: "AWG", name: "Aruban Florin", symbol: "ƒ", numeric: "533" },
   { code: "AZN", name: "Azerbaijani Manat", symbol: "₼", numeric: "944" },
-  { code: "BAM", name: "Bosnia-Herzegovina Convertible Mark", symbol: "KM", numeric: "977" },
+  {
+    code: "BAM",
+    name: "Bosnia-Herzegovina Convertible Mark",
+    symbol: "KM",
+    numeric: "977",
+  },
   { code: "BBD", name: "Barbadian Dollar", symbol: "$", numeric: "052" },
   { code: "BDT", name: "Bangladeshi Taka", symbol: "৳", numeric: "050" },
   { code: "BGN", name: "Bulgarian Lev", symbol: "лв", numeric: "975" },
@@ -172,7 +196,12 @@ const RAW = [
   { code: "SOS", name: "Somali Shilling", symbol: "Sh", numeric: "706" },
   { code: "SRD", name: "Surinamese Dollar", symbol: "$", numeric: "968" },
   { code: "SSP", name: "South Sudanese Pound", symbol: "£", numeric: "728" },
-  { code: "STN", name: "São Tomé & Príncipe Dobra", symbol: "Db", numeric: "930" },
+  {
+    code: "STN",
+    name: "São Tomé & Príncipe Dobra",
+    symbol: "Db",
+    numeric: "930",
+  },
   { code: "SYP", name: "Syrian Pound", symbol: "£", numeric: "760" },
   { code: "SZL", name: "Swazi Lilangeni", symbol: "L", numeric: "748" },
   { code: "THB", name: "Thai Baht", symbol: "฿", numeric: "764" },
@@ -181,7 +210,12 @@ const RAW = [
   { code: "TND", name: "Tunisian Dinar", symbol: "د.ت", numeric: "788" },
   { code: "TOP", name: "Tongan Paʻanga", symbol: "T$", numeric: "776" },
   { code: "TRY", name: "Turkish Lira", symbol: "₺", numeric: "949" },
-  { code: "TTD", name: "Trinidad & Tobago Dollar", symbol: "TT$", numeric: "780" },
+  {
+    code: "TTD",
+    name: "Trinidad & Tobago Dollar",
+    symbol: "TT$",
+    numeric: "780",
+  },
   { code: "TWD", name: "New Taiwan Dollar", symbol: "NT$", numeric: "901" },
   { code: "TZS", name: "Tanzanian Shilling", symbol: "TSh", numeric: "834" },
   { code: "UAH", name: "Ukrainian Hryvnia", symbol: "₴", numeric: "980" },
@@ -193,9 +227,19 @@ const RAW = [
   { code: "VND", name: "Vietnamese Dong", symbol: "₫", numeric: "704" },
   { code: "VUV", name: "Vanuatu Vatu", symbol: "VT", numeric: "548" },
   { code: "WST", name: "Samoan Tala", symbol: "WS$", numeric: "882" },
-  { code: "XAF", name: "Central African CFA Franc BEAC", symbol: "FCFA", numeric: "950" },
+  {
+    code: "XAF",
+    name: "Central African CFA Franc BEAC",
+    symbol: "FCFA",
+    numeric: "950",
+  },
   { code: "XCD", name: "East Caribbean Dollar", symbol: "$", numeric: "951" },
-  { code: "XOF", name: "West African CFA Franc BCEAO", symbol: "CFA", numeric: "952" },
+  {
+    code: "XOF",
+    name: "West African CFA Franc BCEAO",
+    symbol: "CFA",
+    numeric: "952",
+  },
   { code: "XPF", name: "CFP Franc", symbol: "₣", numeric: "953" },
   { code: "YER", name: "Yemeni Rial", symbol: "﷼", numeric: "886" },
   { code: "ZAR", name: "South African Rand", symbol: "R", numeric: "710" },
@@ -225,9 +269,12 @@ function byCode(code) {
  */
 function countriesFor(code) {
   const cur = String(code || "").toUpperCase();
-  return countries.COUNTRIES
-    .filter((c) => c.currency === cur)
-    .map((c) => ({ code: c.code, name: c.name, sort_order: countries.sortOrder(c.code) }))
+  return countries.COUNTRIES.filter((c) => c.currency === cur)
+    .map((c) => ({
+      code: c.code,
+      name: c.name,
+      sort_order: countries.sortOrder(c.code),
+    }))
     .sort((a, b) => a.sort_order - b.sort_order || a.name.localeCompare(b.name))
     .map(({ code: cc, name }) => ({ code: cc, name }));
 }
@@ -253,12 +300,14 @@ function representativeCountry(code) {
  * country and a `sort_order` derived from that country's priority, sorted
  * lanes-first then by code. Computed once at module load.
  */
-const CATALOGUE = CURRENCIES
-  .map((c) => {
-    const rep = representativeCountry(c.code);
-    return { ...c, country_code: rep, sort_order: rep == null ? 10_000 : countries.sortOrder(rep) };
-  })
-  .sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
+const CATALOGUE = CURRENCIES.map((c) => {
+  const rep = representativeCountry(c.code);
+  return {
+    ...c,
+    country_code: rep,
+    sort_order: rep == null ? 10_000 : countries.sortOrder(rep),
+  };
+}).sort((a, b) => a.sort_order - b.sort_order || a.code.localeCompare(b.code));
 
 exports.CURRENCIES = CURRENCIES;
 exports.CATALOGUE = CATALOGUE;

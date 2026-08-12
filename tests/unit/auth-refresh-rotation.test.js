@@ -14,7 +14,9 @@ describe("refresh-token rotation — reuse detection", () => {
   });
 
   test("rotated-away token (jti mismatch) IS reuse", () => {
-    expect(svc.refreshTokenReused({ refresh_jti: jti }, { jti: other })).toBe(true);
+    expect(svc.refreshTokenReused({ refresh_jti: jti }, { jti: other })).toBe(
+      true,
+    );
   });
 
   test("legacy session (null / absent refresh_jti) is grandfathered — not reuse", () => {

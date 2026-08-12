@@ -22,11 +22,15 @@
  * character once turned every feature off.
  */
 const {
-  enforceDependencies, toDepsArray,
+  enforceDependencies,
+  toDepsArray,
 } = require("../../src/services/platform/provisioning.service");
 
 const f = (feature_key, state, depends_on = []) => ({
-  feature_key, state, source: "plan", depends_on,
+  feature_key,
+  state,
+  source: "plan",
+  depends_on,
 });
 const byKey = (rows) => Object.fromEntries(rows.map((r) => [r.feature_key, r]));
 
@@ -55,67 +59,82 @@ describe("toDepsArray", () => {
 
 describe("enforceDependencies", () => {
   it("forces a child off when its parent is off", () => {
-    const out = byKey(enforceDependencies([
-      f("ai.assistant", "off"),
-      f("ai.assistant.backend", "on", ["ai.assistant"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([
+        f("ai.assistant", "off"),
+        f("ai.assistant.backend", "on", ["ai.assistant"]),
+      ]),
+    );
     expect(out["ai.assistant.backend"].state).toBe("off");
   });
 
   it("preserves `source` — feature_state.source has a CHECK", () => {
-    const out = byKey(enforceDependencies([
-      f("ai.assistant", "off"),
-      f("ai.assistant.backend", "on", ["ai.assistant"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([
+        f("ai.assistant", "off"),
+        f("ai.assistant.backend", "on", ["ai.assistant"]),
+      ]),
+    );
     expect(out["ai.assistant.backend"].source).toBe("plan");
   });
 
   it("cascades transitively — a grandchild falls with the grandparent", () => {
-    const out = byKey(enforceDependencies([
-      f("sales.crm", "off"),
-      f("sales.proposals", "on", ["sales.crm"]),
-      f("sales.deep", "on", ["sales.proposals"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([
+        f("sales.crm", "off"),
+        f("sales.proposals", "on", ["sales.crm"]),
+        f("sales.deep", "on", ["sales.proposals"]),
+      ]),
+    );
     expect(out["sales.proposals"].state).toBe("off");
     expect(out["sales.deep"].state).toBe("off");
   });
 
   it("leaves a child alone when its parent is on", () => {
-    const out = byKey(enforceDependencies([
-      f("accounting.core", "on"),
-      f("accounting.tax", "on", ["accounting.core"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([
+        f("accounting.core", "on"),
+        f("accounting.tax", "on", ["accounting.core"]),
+      ]),
+    );
     expect(out["accounting.tax"].state).toBe("on");
   });
 
   it("is one-directional: enabling a child never enables its parent", () => {
     // Entitlement is the plan's business. This only removes the incoherent
     // state; it does not grant anything.
-    const out = byKey(enforceDependencies([
-      f("costing", "off"),
-      f("commercial.simulators", "on", ["costing"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([
+        f("costing", "off"),
+        f("commercial.simulators", "on", ["costing"]),
+      ]),
+    );
     expect(out.costing.state).toBe("off");
     expect(out["commercial.simulators"].state).toBe("off");
   });
 
   it("treats an unknown dependency as unmet", () => {
-    const out = byKey(enforceDependencies([f("x", "on", ["not.in.catalogue"])]));
+    const out = byKey(
+      enforceDependencies([f("x", "on", ["not.in.catalogue"])]),
+    );
     expect(out.x.state).toBe("off");
   });
 
   it("leaves a feature with no dependencies alone", () => {
     // The regression toDepsArray exists to prevent: this must stay on whether
     // depends_on arrives as [] or as the literal "{}".
-    expect(byKey(enforceDependencies([f("solo", "on", [])])).solo.state).toBe("on");
-    expect(byKey(enforceDependencies([f("solo", "on", "{}")])).solo.state).toBe("on");
+    expect(byKey(enforceDependencies([f("solo", "on", [])])).solo.state).toBe(
+      "on",
+    );
+    expect(byKey(enforceDependencies([f("solo", "on", "{}")])).solo.state).toBe(
+      "on",
+    );
   });
 
   it("terminates on a cycle instead of spinning the deploy", () => {
-    const out = byKey(enforceDependencies([
-      f("a", "on", ["b"]),
-      f("b", "on", ["a"]),
-    ]));
+    const out = byKey(
+      enforceDependencies([f("a", "on", ["b"]), f("b", "on", ["a"])]),
+    );
     // Mutually-on is self-consistent; the point is that it returns at all.
     expect(out.a.state).toBe("on");
     expect(out.b.state).toBe("on");

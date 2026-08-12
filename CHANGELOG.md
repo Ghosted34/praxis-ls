@@ -8,8 +8,8 @@ system — no tags, no GitHub releases, no changelog, and all three
 deploys. Every commit was silently a deployment, and the only way to answer
 "what changed between Tuesday and Thursday?" was to read `git log` and hope the
 messages were useful. They often were not: the merge commits — the ones a
-changelog would be built from — include *"Lots of changes"*, *"a lot"* and
-*"audit portan and opportunities board list"* (TC-R4).
+changelog would be built from — include _"Lots of changes"_, _"a lot"_ and
+_"audit portan and opportunities board list"_ (TC-R4).
 
 **How to use it.** Add a line under `## Unreleased` in the same PR as the
 change. At release time, rename that heading to the version and date, tag the
@@ -76,7 +76,7 @@ Dates are ISO-8601, UTC.
 - Backend coverage is measured in CI, with the threshold expressed in functions
   rather than lines (`TC-CI3`, `TC-Q1`).
 - `.env.example` is reconciled against the config schema in CI, and the
-  environment is now validated *before* migrations rather than after
+  environment is now validated _before_ migrations rather than after
   (`TC-E1`).
 - Destructive migrations must carry an explicit `-- DESTRUCTIVE:` marker
   (`OBS-I3`).
@@ -103,7 +103,7 @@ Dates are ISO-8601, UTC.
   its registrations, documents or tax registrations therefore showed an empty
   Issued on / Expires on for dates that were saved, and pressing Save posted the
   timestamp back — `issued_on: Use the format YYYY-MM-DD., That date doesn't
-  exist.` on a field nobody had touched. `date` columns now arrive as the
+exist.` on a field nobody had touched. `date` columns now arrive as the
   `YYYY-MM-DD` string Postgres sent (`src/shared/db/pg-date-types.js`), which is
   the format the shared `isoDate` schema validates and the date inputs expect, so
   the value round-trips unchanged. `dateFmt` reads a bare date as a calendar date

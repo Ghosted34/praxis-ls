@@ -123,7 +123,8 @@ function resolveTitlebar(cfg, theme) {
   const dark = theme === "dark";
   let base;
   if (cfg.titlebarMode === "brand") base = cfg.themeColor;
-  else if (cfg.titlebarMode === "custom") base = dark ? cfg.titlebarDark : cfg.titlebarLight;
+  else if (cfg.titlebarMode === "custom")
+    base = dark ? cfg.titlebarDark : cfg.titlebarLight;
   else base = dark ? SURFACE_DARK : SURFACE_LIGHT;
 
   return {
@@ -136,8 +137,10 @@ function resolveTitlebar(cfg, theme) {
   };
 }
 
-const pick = (val, fallback) => (val === null || val === undefined || val === "" ? fallback : val);
-const bool = (val, fallback) => (val === null || val === undefined ? fallback : Boolean(val));
+const pick = (val, fallback) =>
+  val === null || val === undefined || val === "" ? fallback : val;
+const bool = (val, fallback) =>
+  val === null || val === undefined ? fallback : Boolean(val);
 const clamp = (n, [min, max]) => Math.min(max, Math.max(min, n));
 
 /**
@@ -162,7 +165,10 @@ function effectivePwa(pwa, brand) {
     // manifest identity
     name,
     shortName: String(pick(p.shortName, name)).slice(0, 12),
-    description: pick(p.description, name + " — logistics & accounting platform"),
+    description: pick(
+      p.description,
+      name + " — logistics & accounting platform",
+    ),
     display: pick(p.display, PWA_DEFAULTS.display),
     orientation: pick(p.orientation, PWA_DEFAULTS.orientation),
     themeColor: primary,
@@ -181,7 +187,9 @@ function effectivePwa(pwa, brand) {
     // inherits the BRAND colour, not the plain icon's background, which is
     // usually white and would read as a missing icon on a light launcher.
     maskableBackground: pick(p.maskableBackground, primary),
-    maskablePadding: Number(pick(p.maskablePadding, PWA_DEFAULTS.maskablePadding)),
+    maskablePadding: Number(
+      pick(p.maskablePadding, PWA_DEFAULTS.maskablePadding),
+    ),
 
     // boot splash
     splashEnabled: bool(p.splashEnabled, PWA_DEFAULTS.splashEnabled),
@@ -189,7 +197,10 @@ function effectivePwa(pwa, brand) {
     splashDuration: Number(pick(p.splashDuration, PWA_DEFAULTS.splashDuration)),
     splashBackground: pick(p.splashBackground, SPLASH_FALLBACK_BG),
     splashTagline: pick(p.splashTagline, PWA_DEFAULTS.splashTagline),
-    splashShowProgress: bool(p.splashShowProgress, PWA_DEFAULTS.splashShowProgress),
+    splashShowProgress: bool(
+      p.splashShowProgress,
+      PWA_DEFAULTS.splashShowProgress,
+    ),
     // The splash shows the app icon when one is set, so what the tenant sees on
     // boot matches what they installed; the wordmark logo is the fallback.
     splashLogoUrl: pick(p.iconUrl, pick(b.logoUrl, null)),
@@ -199,7 +210,9 @@ function effectivePwa(pwa, brand) {
     titlebarLight: pick(p.titlebarLight, PWA_DEFAULTS.titlebarLight),
     titlebarDark: pick(p.titlebarDark, PWA_DEFAULTS.titlebarDark),
     titlebarImageUrl: pick(p.titlebarImageUrl, null),
-    titlebarImageOpacity: Number(pick(p.titlebarImageOpacity, PWA_DEFAULTS.titlebarImageOpacity)),
+    titlebarImageOpacity: Number(
+      pick(p.titlebarImageOpacity, PWA_DEFAULTS.titlebarImageOpacity),
+    ),
     titlebarBlur: Number(pick(p.titlebarBlur, PWA_DEFAULTS.titlebarBlur)),
 
     // install / offline / update copy — null means "use the built-in string",

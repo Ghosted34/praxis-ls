@@ -98,9 +98,13 @@ describe("failure handling", () => {
       },
     });
 
-    await expect(store.putStream(failing, "pg/t/broken.dump")).rejects.toThrow(/exploded/);
+    await expect(store.putStream(failing, "pg/t/broken.dump")).rejects.toThrow(
+      /exploded/,
+    );
     expect(fs.existsSync(path.join(TMP, "pg/t/broken.dump"))).toBe(false);
-    expect(fs.existsSync(path.join(TMP, "pg/t/broken.dump.partial"))).toBe(false);
+    expect(fs.existsSync(path.join(TMP, "pg/t/broken.dump.partial"))).toBe(
+      false,
+    );
   });
 
   test("rejects a traversing key rather than writing outside the backup root", async () => {
@@ -112,7 +116,10 @@ describe("failure handling", () => {
 
 describe("listing", () => {
   test("finds written objects and ignores in-progress .partial files", async () => {
-    await store.putStream(Readable.from([Buffer.from("a")]), "pg/list/one.dump");
+    await store.putStream(
+      Readable.from([Buffer.from("a")]),
+      "pg/list/one.dump",
+    );
     fs.writeFileSync(path.join(TMP, "pg/list/two.dump.partial"), "incomplete");
 
     const listed = await store.list("pg/list");

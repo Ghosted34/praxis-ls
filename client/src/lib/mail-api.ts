@@ -82,8 +82,17 @@ export type Connection = {
   smtp_host?: string | null;
   smtp_port?: number | null;
   auth_user?: string | null;
+  owner_user_id?: string | null;
+  is_default?: boolean;
   created_at?: string | null;
 };
+
+export const setDefaultMailbox = (id: string) =>
+  tenant<{ email_connection_id: string; is_default: boolean }[]>(`/mail/connections/${id}/default`, { method: "POST" });
+
+export type Recipient = { type: "client" | "supplier" | "employee" | "lead"; id: string; name: string; email: string };
+export const searchRecipients = (q: string) =>
+  tenant<Recipient[]>(`/mail/recipients?q=${encodeURIComponent(q)}`);
 
 export type ThreadMsg = {
   email_inbound_id: string;

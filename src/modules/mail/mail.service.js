@@ -106,6 +106,8 @@ async function oauthAccessToken(client, conn, idp) {
 }
 
 const listConnections = (client, q = {}) => repo.listConnections(client, q);
+const setDefaultMailbox = (client, id, ownerUserId) => repo.setDefaultConnection(client, id, ownerUserId);
+const searchRecipients = (client, q) => repo.searchRecipients(client, q);
 
 /** Connect a mailbox: persist the connection + secret, then live-test it. */
 async function connect(client, input = {}) {
@@ -118,6 +120,7 @@ async function connect(client, input = {}) {
     smtp_host: input.smtp_host || null, smtp_port: input.smtp_port || null,
     smtp_secure: input.smtp_secure === true,
     auth_user: input.auth_user || null,
+    owner_user_id: actor.user_id || null,
     status: "PENDING",
   });
   const secret_key = secretKeyFor(conn.email_connection_id);
@@ -131,6 +134,7 @@ async function connect(client, input = {}) {
   }
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
   const test = await testConnection(client, conn.email_connection_id);
+  await repo.ensureDefaultConnection(client, actor.user_id);
   return { ...conn, secret_key, status: test.ok ? "CONNECTED" : "ERROR", test };
 }
 
@@ -326,10 +330,12 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
   if (!conn) {
     conn = await repo.insertConnection(client, {
       email_address: who.email, provider, display_name: claims.display_name || null,
+      owner_user_id: claims.user_id || null,
       status: "CONNECTED", token_expires_at: new Date(expires_at),
     });
   } else {
     await repo.updateConnection(client, conn.email_connection_id, { status: "CONNECTED", last_error: null, token_expires_at: new Date(expires_at) });
+    await repo.claimConnectionIfUnowned(client, conn.email_connection_id, claims.user_id);
   }
 
   const secret_key = secretKeyFor(conn.email_connection_id);
@@ -339,6 +345,7 @@ async function completeOAuth(client, provider, { code, state, slug, webhookUrl }
     actor: { user_id: claims.user_id || null },
   });
   await repo.updateConnection(client, conn.email_connection_id, { secret_key });
+  await repo.ensureDefaultConnection(client, claims.user_id);
   await setupPush(client, conn.email_connection_id, provider, { webhookUrl }).catch(() => { /* push optional; polling covers it */ });
   return { email_connection_id: conn.email_connection_id, email_address: who.email, provider, status: "CONNECTED" };
 }
@@ -480,8 +487,8 @@ async function linkEntity(client, { inboundId, entity_ref }) {
 
 module.exports = {
   listIdentities, listSent, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
-  listConnections, connect, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
-  clientTimeline, linkEntity, autodiscover,
+  listConnections, setDefaultMailbox, connect, testConnection, syncConnection, send, reply, listThread, getMessage, markRead, listAttachments,
+  clientTimeline, linkEntity, autodiscover, searchRecipients,
   startMicrosoftOAuth, completeMicrosoftOAuth, handleGraphNotification,
   startGoogleOAuth, completeGoogleOAuth, handleGmailNotification, renewSubscriptions,
   resolveAdapter,

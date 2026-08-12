@@ -10,21 +10,21 @@
 
 Measured by static extraction over all 101 `*.routes.js` files (`src/shared/http/module-loader.js` auto-mounts 100 of them; `platform` is mounted explicitly).
 
-| | count |
-|---|---|
-| Route handlers | **731** |
-| GET | 323 |
-| POST | 259 |
-| PATCH | 78 |
-| PUT | 17 |
-| DELETE | 54 |
-| Collection-level GETs (list endpoints) | 202 |
-| Write routes (POST/PATCH/PUT) | 354 |
-| …of which carry a validator middleware | 294 (**83%**) |
-| Distinct `AppError` codes in use | **188** |
-| Documented in Postman | 137 (**~19%**) |
-| OpenAPI / Swagger spec | **none** |
-| HTTP-level (supertest) tests | 1 file, exercising the error handler only |
+|                                        | count                                     |
+| -------------------------------------- | ----------------------------------------- |
+| Route handlers                         | **731**                                   |
+| GET                                    | 323                                       |
+| POST                                   | 259                                       |
+| PATCH                                  | 78                                        |
+| PUT                                    | 17                                        |
+| DELETE                                 | 54                                        |
+| Collection-level GETs (list endpoints) | 202                                       |
+| Write routes (POST/PATCH/PUT)          | 354                                       |
+| …of which carry a validator middleware | 294 (**83%**)                             |
+| Distinct `AppError` codes in use       | **188**                                   |
+| Documented in Postman                  | 137 (**~19%**)                            |
+| OpenAPI / Swagger spec                 | **none**                                  |
+| HTTP-level (supertest) tests           | 1 file, exercising the error handler only |
 
 **Two top-level surfaces, two different auth models:**
 
@@ -37,9 +37,9 @@ The tenant is resolved from the **`Host` header**, and the live/sandbox environm
 **What is genuinely consistent, and should be preserved as the baseline:**
 
 - The success envelope. 446 handlers return `res.json({ data })`, 82 return `res.status(201).json({ data })`. There is essentially one success shape. `client/src/lib/api-client.ts:148` unwraps it (`"data" in json ? json.data : json`).
-- The error envelope *when it goes through the central handler*: `{ error: { code, message, fields? }, request_id }` (`src/middleware/error-handler.js`).
+- The error envelope _when it goes through the central handler_: `{ error: { code, message, fields? }, request_id }` (`src/middleware/error-handler.js`).
 - CRUD verb mapping in the module template: `GET /`, `GET /:id`, `POST /`, `PATCH /:id`, `DELETE /:id`.
-- Pagination *clamping*, where it is used: `page()` in `src/shared/db/query-helpers.js:46-50` — `limit` default 50, max 200; `offset` ≥ 0.
+- Pagination _clamping_, where it is used: `page()` in `src/shared/db/query-helpers.js:46-50` — `limit` default 50, max 200; `offset` ≥ 0.
 
 Everything below is where reality diverges from that baseline.
 
@@ -61,24 +61,24 @@ Severity is rated by **how much confusion or breakage it causes a consumer**, no
 
 Seven service files throw a plain `Error` with a `.status` property instead of an `AppError`. Every one of them lands in the generic branch:
 
-| Throw site | Author's intent | What the consumer actually gets |
-|---|---|---|
-| `src/modules/dashboard/support/support.service.js:38` | 404 ticket not found | **500** |
-| `src/modules/dashboard/support/support.service.js:54` | 422 CSAT on unresolved ticket | **500** |
-| `src/modules/dashboard/godmode/godmode.service.js:10,12,15` | 401 / 403 / 403 | **500** |
-| `src/modules/dashboard/godmode/godmode.service.js:18,21` | 404 / 422 | **500** |
-| `src/modules/master/financial_dictionary/financial_dictionary.service.js:9,27` | 422 needs ≥1 posting rule | **500** |
-| `src/services/platform/support.service.js:38,43,48` | 404 / 422 / 404 | **500** |
-| `src/services/platform/settings.service.js:73` | 422 bad secret | **500** |
-| `src/services/platform/tenants.service.js:37,123,170` | 404 unknown slug / 400 | **500** |
-| `src/services/platform/provisioning.service.js:360,384` | 400 | **500** |
+| Throw site                                                                     | Author's intent               | What the consumer actually gets |
+| ------------------------------------------------------------------------------ | ----------------------------- | ------------------------------- |
+| `src/modules/dashboard/support/support.service.js:38`                          | 404 ticket not found          | **500**                         |
+| `src/modules/dashboard/support/support.service.js:54`                          | 422 CSAT on unresolved ticket | **500**                         |
+| `src/modules/dashboard/godmode/godmode.service.js:10,12,15`                    | 401 / 403 / 403               | **500**                         |
+| `src/modules/dashboard/godmode/godmode.service.js:18,21`                       | 404 / 422                     | **500**                         |
+| `src/modules/master/financial_dictionary/financial_dictionary.service.js:9,27` | 422 needs ≥1 posting rule     | **500**                         |
+| `src/services/platform/support.service.js:38,43,48`                            | 404 / 422 / 404               | **500**                         |
+| `src/services/platform/settings.service.js:73`                                 | 422 bad secret                | **500**                         |
+| `src/services/platform/tenants.service.js:37,123,170`                          | 404 unknown slug / 400        | **500**                         |
+| `src/services/platform/provisioning.service.js:360,384`                        | 400                           | **500**                         |
 
 Concretely: `GET /api/tenant/support/tickets/<unknown-id>` returns
 `500 { error: { code: "INTERNAL_ERROR", message: "Something went wrong on our side — please try again.", reference: "<request_id>" } }`.
 
 Three consequences: a consumer cannot distinguish "you asked for something that doesn't exist" from "we're broken"; a client that retries 5xx (correct behaviour) will retry forever; and every one of these logs at `logger.error` (`error-handler.js:66`), so they pollute alerting.
 
-**Fix:** teach the handler to honour `err.status` / `err.expose`, or convert the 18 sites to `AppError`. **BC** — for these specific endpoints the status code changes 500 → 4xx. That is a *correction*, but a consumer that special-cases the 500 would notice, so it still needs the deprecation treatment in §2.
+**Fix:** teach the handler to honour `err.status` / `err.expose`, or convert the 18 sites to `AppError`. **BC** — for these specific endpoints the status code changes 500 → 4xx. That is a _correction_, but a consumer that special-cases the 500 would notice, so it still needs the deprecation treatment in §2.
 
 ---
 
@@ -86,12 +86,12 @@ Three consequences: a consumer cannot distinguish "you asked for something that 
 
 Same class of error, three contracts:
 
-| Path | Status | Body | Where |
-|---|---|---|---|
-| 90 module validators (the norm) | **422** | `{ error: { code: "VALIDATION_ERROR", message, fields } }` | e.g. `src/modules/wms/inventory/inventory.validator.js:29` |
-| `workflow`, `scope` validators | **400** | `{ error: { code: "VALIDATION_ERROR", message, fields } }` | `src/modules/workflow/workflow.validator.js:8`, `src/modules/security/scope/scope.validator.js:22` |
-| **All auth endpoints** | **422** | `{ error: { code: "`**`VALIDATION_FAILED`**`", message, `**`details`**` } }` | `src/modules/security/app_user/app_user.validator.js:14-18` |
-| Raw `ZodError` fallback | **400** | `{ error: { code: "VALIDATION_ERROR", message, fields } }` | `src/middleware/error-handler.js:46-58` |
+| Path                            | Status  | Body                                                                         | Where                                                                                              |
+| ------------------------------- | ------- | ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| 90 module validators (the norm) | **422** | `{ error: { code: "VALIDATION_ERROR", message, fields } }`                   | e.g. `src/modules/wms/inventory/inventory.validator.js:29`                                         |
+| `workflow`, `scope` validators  | **400** | `{ error: { code: "VALIDATION_ERROR", message, fields } }`                   | `src/modules/workflow/workflow.validator.js:8`, `src/modules/security/scope/scope.validator.js:22` |
+| **All auth endpoints**          | **422** | `{ error: { code: "`**`VALIDATION_FAILED`**`", message, `**`details`**` } }` | `src/modules/security/app_user/app_user.validator.js:14-18`                                        |
+| Raw `ZodError` fallback         | **400** | `{ error: { code: "VALIDATION_ERROR", message, fields } }`                   | `src/middleware/error-handler.js:46-58`                                                            |
 
 The third row is the worst placement possible: it covers `POST /auth/login`, `/auth/refresh`, `/auth/forgot-password`, `/auth/reset-password`, `/auth/2fa/*`, `/auth/pin/*` — the first endpoints any new integrator touches. They learn `VALIDATION_FAILED` + `details`, then find the other 700 routes use `VALIDATION_ERROR` + `fields`.
 
@@ -111,7 +111,7 @@ The third row is the worst placement possible: it covers `POST /auth/login`, `/a
 - `src/server.js:140,158` — `NOT_FOUND` (404) on `/media`
 - `src/modules/security/app_user/app_user.routes.js:20` — `RATE_LIMITED` (429)
 
-So `request_id` is *usually* present but not guaranteed — which makes it useless as a support-correlation contract. The 500 body even instructs the consumer to quote it (`reference: request_id`).
+So `request_id` is _usually_ present but not guaranteed — which makes it useless as a support-correlation contract. The 500 body even instructs the consumer to quote it (`reference: request_id`).
 
 **Fix:** additive (add the field). **Not BC.**
 
@@ -121,7 +121,7 @@ So `request_id` is *usually* present but not guaranteed — which makes it usele
 
 `/api/tenant/*` runs `hostTenantResolver` then `tenantContext`. On a platform host (`localhost`, `api.*`, `admin.*`, the apex — `host-tenent-resolver.js:12-19`) the resolver sets `req.isPlatform` and calls `next()` **without** setting `req.tenant`. `tenantContext:13-17` then returns `500 NO_TENANT_CONTEXT`.
 
-`GET /api/tenant/whoami` against `localhost` → **500**. This is a client error (wrong `Host`), and it is a documented footgun — `postman/README.md` warns "`localhost` is the *platform* host". A 400 with a clear code would be self-explaining.
+`GET /api/tenant/whoami` against `localhost` → **500**. This is a client error (wrong `Host`), and it is a documented footgun — `postman/README.md` warns "`localhost` is the _platform_ host". A 400 with a clear code would be self-explaining.
 
 **Fix:** **BC** (500 → 4xx).
 
@@ -163,7 +163,7 @@ It is also a live landmine: the day WMS adds `GET /inbound/:id/lines`, or sales 
 #### F-7 🟡 `/portal` and `/portals` are different products
 
 - `/api/tenant/portal/*` — external portal-user authentication and self-service (`portal_auth.routes.js`, `portalAuth()`).
-- `/api/tenant/portals/*` — internal admin of *who may access* the portals (`portal.routes.js`, `requirePermission("MOD-67")`).
+- `/api/tenant/portals/*` — internal admin of _who may access_ the portals (`portal.routes.js`, `requirePermission("MOD-67")`).
 
 One character apart, opposite audiences, opposite auth models. A typo silently hits a real endpoint with a different auth scheme.
 
@@ -187,18 +187,18 @@ Some are genuine mass nouns (`/inventory`, `/mail`, `/branding`) and defensible.
 
 `module-loader.js` defaults `basePath` to `/<module-dir>`, but 100 modules override it, and the mapping is frequently non-obvious:
 
-| Module directory | URL |
-|---|---|
-| `finance/debt` | `/financing` |
-| `costing/regie` | `/regie` |
-| `finance/smart_receivables` | `/receivables` |
-| `finance/financial_statement` | `/statements` |
-| `finance/tax_declaration` | `/tax` |
-| `hr/leave_allowance` | `/leave` |
-| `hr/sop_onboarding` | `/sops` |
-| `vault/document_vault` | `/documents` |
-| `wms/warehouse_location` | `/locations` |
-| `sales/inbound_intake` | `/inbound` |
+| Module directory              | URL            |
+| ----------------------------- | -------------- |
+| `finance/debt`                | `/financing`   |
+| `costing/regie`               | `/regie`       |
+| `finance/smart_receivables`   | `/receivables` |
+| `finance/financial_statement` | `/statements`  |
+| `finance/tax_declaration`     | `/tax`         |
+| `hr/leave_allowance`          | `/leave`       |
+| `hr/sop_onboarding`           | `/sops`        |
+| `vault/document_vault`        | `/documents`   |
+| `wms/warehouse_location`      | `/locations`   |
+| `sales/inbound_intake`        | `/inbound`     |
 
 Three modules declare `basePath: "/"` and mount sub-routers at the tenant root:
 
@@ -234,7 +234,7 @@ Plus one-offs for what is structurally the same act: `POST /leave/:id/decision`,
 
 A client writing a generic "advance this record" helper cannot; it needs a per-resource lookup table.
 
-**Fix:** **BC** on the URL *and* the body key.
+**Fix:** **BC** on the URL _and_ the body key.
 
 ---
 
@@ -275,24 +275,24 @@ Both return **200** with a `data` body — never 204 — and the payload differs
 
 294 of 354 write routes carry a validator. Of the 60 that don't, most are genuinely bodyless (`POST /success-stories/:id/publish`, `POST /hr/sanctions/:id/lift`). These **do read `req.body` without validating it**:
 
-| Route | File | Reads |
-|---|---|---|
-| `PUT /api/tenant/permissions/grant` | `security/permission/permission.routes.js:27` | `req.body` → `role_id`, `module_key`, 5 booleans — **writes the RBAC grant matrix** |
-| `PUT /api/tenant/branding` | `branding/branding.routes.js:17` | whole appearance object |
-| `PUT /api/tenant/branding/login` | `branding/branding.routes.js:23` | whole login-screen object |
-| `POST /api/tenant/branding/logo` | `branding/branding.routes.js:18` | `data_url` |
-| `POST /api/tenant/branding/login/background` | `branding/branding.routes.js:24` | `data_url` |
-| `POST /api/tenant/mail/senders` | `mail/mail.routes.js:55` | sender upsert body |
-| `PATCH /api/tenant/mail/senders/:id` | `mail/mail.routes.js:54` | sender patch |
-| `POST /api/tenant/mail/thread/:id/link` | `mail/mail.routes.js:69` | link target |
-| `PATCH /api/tenant/audit/reviews/:id` | `security/audit_ledger/audit_ledger.routes.js:31` | review completion |
-| `PATCH /api/tenant/smartcomm/quick-replies/:id` | `smartcomm/smartcomm.routes.js:31` | quick-reply body |
-| `POST /api/tenant/reports/run/:key/pdf` | `vault/report/report.routes.js:14` | `params`, `entity_id` |
-| `POST /api/tenant/scopes/:id/members` | `security/scope/scope.routes.js:66` | member add |
-| `POST /api/platform/settings/:section/:key/test` | `platform/platform.routes.js:79` | — plus unvalidated `:section`/`:key` |
-| `POST /api/platform/ai-vendors/:vendor/test` | `platform/platform.routes.js:84` | unvalidated `:vendor` |
+| Route                                            | File                                              | Reads                                                                               |
+| ------------------------------------------------ | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `PUT /api/tenant/permissions/grant`              | `security/permission/permission.routes.js:27`     | `req.body` → `role_id`, `module_key`, 5 booleans — **writes the RBAC grant matrix** |
+| `PUT /api/tenant/branding`                       | `branding/branding.routes.js:17`                  | whole appearance object                                                             |
+| `PUT /api/tenant/branding/login`                 | `branding/branding.routes.js:23`                  | whole login-screen object                                                           |
+| `POST /api/tenant/branding/logo`                 | `branding/branding.routes.js:18`                  | `data_url`                                                                          |
+| `POST /api/tenant/branding/login/background`     | `branding/branding.routes.js:24`                  | `data_url`                                                                          |
+| `POST /api/tenant/mail/senders`                  | `mail/mail.routes.js:55`                          | sender upsert body                                                                  |
+| `PATCH /api/tenant/mail/senders/:id`             | `mail/mail.routes.js:54`                          | sender patch                                                                        |
+| `POST /api/tenant/mail/thread/:id/link`          | `mail/mail.routes.js:69`                          | link target                                                                         |
+| `PATCH /api/tenant/audit/reviews/:id`            | `security/audit_ledger/audit_ledger.routes.js:31` | review completion                                                                   |
+| `PATCH /api/tenant/smartcomm/quick-replies/:id`  | `smartcomm/smartcomm.routes.js:31`                | quick-reply body                                                                    |
+| `POST /api/tenant/reports/run/:key/pdf`          | `vault/report/report.routes.js:14`                | `params`, `entity_id`                                                               |
+| `POST /api/tenant/scopes/:id/members`            | `security/scope/scope.routes.js:66`               | member add                                                                          |
+| `POST /api/platform/settings/:section/:key/test` | `platform/platform.routes.js:79`                  | — plus unvalidated `:section`/`:key`                                                |
+| `POST /api/platform/ai-vendors/:vendor/test`     | `platform/platform.routes.js:84`                  | unvalidated `:vendor`                                                               |
 
-`upsertGrant` is the one that matters most. It is SQL-parameterised and coerces the five permission flags with `!!` (`permission.repo.js`), so it is not injectable — but `role_id` and `module_key` are unchecked. A non-UUID `role_id` produces a Postgres `22P02`, which `error-handler.js:26` maps to `400 INVALID_VALUE` — a *fourth* validation-error shape (see F-2), reached through the database rather than the validator.
+`upsertGrant` is the one that matters most. It is SQL-parameterised and coerces the five permission flags with `!!` (`permission.repo.js`), so it is not injectable — but `role_id` and `module_key` are unchecked. A non-UUID `role_id` produces a Postgres `22P02`, which `error-handler.js:26` maps to `400 INVALID_VALUE` — a _fourth_ validation-error shape (see F-2), reached through the database rather than the validator.
 
 **Fix:** additive for well-formed callers; **BC** for callers currently getting away with malformed input.
 
@@ -376,7 +376,7 @@ They are behind `platformAuth` (line 21), so a token is required — but **any**
 
 What that governs: deploy-wide S3 credentials, Geoapify keys, VAPID push keys, and the AI vendor API keys every tenant's AI runtime uses (`settings.service.js`, `aiVendors`). A platform user provisioned with only `support.read` — the narrowest role in `CAP_CATALOGUE` (`platform-auth.js:69-75`) — can rotate the deployment's object-storage credentials and read back presence/last-4 of every secret.
 
-This is a privilege-escalation hole *through* the platform's own permission matrix, and it is the one finding here that is a security issue rather than a consistency issue.
+This is a privilege-escalation hole _through_ the platform's own permission matrix, and it is the one finding here that is a security issue rather than a consistency issue.
 
 **Fix:** add `requireCap("settings.read"/"settings.write")` (new capabilities) or reuse an existing write cap. **BC** for any non-root platform role currently relying on the gap — which is the point.
 
@@ -386,12 +386,12 @@ This is a privilege-escalation hole *through* the platform's own permission matr
 
 Advancing a record's state — one operation class — is gated four different ways:
 
-| Gate | Endpoints |
-|---|---|
+| Gate                                                                                                                                             | Endpoints                                                                                                                                                    |
+| ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `requireTransitionPermission(MODULE, TRANSITION_ACTION)` — per-target-state, the deliberate design in `src/shared/http/transition-permission.js` | `POST /quotations/:id/transition`, `POST /purchase-orders/:id/transition`, `POST /purchase-requests/:id/transition` (local copy), `POST /payroll/:id/status` |
-| flat `requirePermission(M, "edit")` | all 10 other `POST /:id/status`; `POST /operations/:id/transition`; `POST /leads/:id/transition`; `POST /campaigns/:id/transition` |
-| flat `requirePermission(M, "approve")` | `POST /proposals/:id/transition` |
-| **`PATCH /:id`** with `{ status }`, gated `"edit"` | the F-17 resources — a second, cheaper route to the same state change |
+| flat `requirePermission(M, "edit")`                                                                                                              | all 10 other `POST /:id/status`; `POST /operations/:id/transition`; `POST /leads/:id/transition`; `POST /campaigns/:id/transition`                           |
+| flat `requirePermission(M, "approve")`                                                                                                           | `POST /proposals/:id/transition`                                                                                                                             |
+| **`PATCH /:id`** with `{ status }`, gated `"edit"`                                                                                               | the F-17 resources — a second, cheaper route to the same state change                                                                                        |
 
 So approving a purchase request needs `approve`; setting a contract to `SIGNED` or a work order to `DONE` needs only `edit`; and for `hr_contract` the same transition is reachable via `PATCH /contracts/:id` under `edit` regardless. An administrator configuring the permission matrix cannot predict what a grant permits.
 
@@ -441,13 +441,13 @@ There is no problem with the behaviour. The problem is that "self-scoped, no gra
 
 For completeness, the 10 routes with no auth at all, each deliberate:
 
-| Route | Why |
-|---|---|
-| `GET /branding`, `GET /branding/login` | must render before login |
-| `POST /mail/webhook/{microsoft,google}` | provider callbacks |
-| `POST /platform/auth/{login,refresh}` | token acquisition |
-| `POST /portal/auth/{login,forgot,accept}` | portal token acquisition |
-| `GET /document-verification/scan` | public QR verification; returns only a tamper verdict |
+| Route                                     | Why                                                   |
+| ----------------------------------------- | ----------------------------------------------------- |
+| `GET /branding`, `GET /branding/login`    | must render before login                              |
+| `POST /mail/webhook/{microsoft,google}`   | provider callbacks                                    |
+| `POST /platform/auth/{login,refresh}`     | token acquisition                                     |
+| `POST /portal/auth/{login,forgot,accept}` | portal token acquisition                              |
+| `GET /document-verification/scan`         | public QR verification; returns only a tamper verdict |
 
 `GET /media/*` is allow-listed in `src/server.js:136-141` and 404s (not 403s) anything outside the public prefixes — deliberate, and correct. Rate limiting exists on exactly two routes (`/auth/forgot-password`, `/auth/reset-password`, `app_user.routes.js:20-22`); `POST /auth/login`, `/auth/pin/login` and `/portal/auth/login` are unthrottled at the app layer.
 
@@ -523,19 +523,19 @@ No endpoint accepts a `sort` / `order_by` parameter. Order is fixed at `makeRepo
 
 **Current safe-change envelope — what can be changed today without breaking the app:**
 
-| Change | Safe? |
-|---|---|
-| Add a field inside `data` | ✅ |
-| Add a top-level key beside `data` (e.g. `meta`) | ✅ — client returns `json.data` only |
-| Add a new endpoint | ✅ |
-| Add an optional query parameter | ✅ |
-| Add a new error `code` | ⚠️ — client passes it through, but screens switch on specific codes |
-| Change a status code | ❌ |
-| Rename/remove a field inside `data` | ❌ |
-| Change `data` from array to object | ❌ — breaks all 202 list consumers |
-| Rename `error.fields` / `error.details` | ❌ |
-| Move a URL | ❌ |
-| Tighten a validator or a permission gate | ❌ |
+| Change                                          | Safe?                                                               |
+| ----------------------------------------------- | ------------------------------------------------------------------- |
+| Add a field inside `data`                       | ✅                                                                  |
+| Add a top-level key beside `data` (e.g. `meta`) | ✅ — client returns `json.data` only                                |
+| Add a new endpoint                              | ✅                                                                  |
+| Add an optional query parameter                 | ✅                                                                  |
+| Add a new error `code`                          | ⚠️ — client passes it through, but screens switch on specific codes |
+| Change a status code                            | ❌                                                                  |
+| Rename/remove a field inside `data`             | ❌                                                                  |
+| Change `data` from array to object              | ❌ — breaks all 202 list consumers                                  |
+| Rename `error.fields` / `error.details`         | ❌                                                                  |
+| Move a URL                                      | ❌                                                                  |
+| Tighten a validator or a permission gate        | ❌                                                                  |
 
 Everything marked ❌ is required by findings F-1, F-2, F-6, F-7, F-8, F-10, F-11, F-12, F-13, F-16, F-17, F-20, F-21, F-27.
 
@@ -554,7 +554,7 @@ Global rules for every phase:
 
 ---
 
-### Phase 1 — Make the contract observable *(no behaviour change)*
+### Phase 1 — Make the contract observable _(no behaviour change)_
 
 **Scope.** Discover and publish what the API is today, exactly as it is — including its inconsistencies.
 
@@ -629,7 +629,7 @@ Global rules for every phase:
 2. **F-2 — one validation-error contract.** `v2`: **422** `{ error: { code: "VALIDATION_ERROR", message, fields } }` for every validator, replacing the four current shapes. 422 (not 400) because it is already the 90-validator majority. The shim rewrites `v2` → `v1`'s per-route legacy shape, including `app_user`'s `VALIDATION_FAILED`/`details`. Fix `api-client.ts` to read `fields` (with a `details` fallback) so field errors finally surface — deliverable in its own right.
 3. **F-15 — validators on the 14 unvalidated body-reading routes**, `permission/grant` first. `v2` enforces; `v1` logs a `would_reject` warning for one release, then enforces on the same schedule as everything else in this phase.
 4. **F-16 — query and path validation.** `v2`: typed params, and **unknown query parameters are rejected** with `VALIDATION_ERROR` naming the unknown key. `v1`: log-only. This is the fix for the silent-typo-returns-wrong-data failure.
-5. **F-27 — bound the 17 unbounded lists.** Two steps: (a) `v1` and `v2` both gain `limit`/`offset` support and a `meta.count`, defaulting to *unbounded* in `v1`; (b) `v2` applies the standard 50/200 default. `v1` stays unbounded for the whole window — this is the one place where the compatible path is to leave a performance problem in place until consumers have migrated. `GET /sessions` and `GET /permissions` get an interim hard cap of 5,000 in `v1` with a logged warning, as an availability guard.
+5. **F-27 — bound the 17 unbounded lists.** Two steps: (a) `v1` and `v2` both gain `limit`/`offset` support and a `meta.count`, defaulting to _unbounded_ in `v1`; (b) `v2` applies the standard 50/200 default. `v1` stays unbounded for the whole window — this is the one place where the compatible path is to leave a performance problem in place until consumers have migrated. `GET /sessions` and `GET /permissions` get an interim hard cap of 5,000 in `v1` with a logged warning, as an availability guard.
 6. **F-28 — declared filters.** Per-resource filter allow-lists in OpenAPI, enforced in `v2` by (4).
 7. **F-5 — error-code consolidation.** `v2` collapses the near-synonyms (`BAD_AMOUNT`→`INVALID_AMOUNT`, `EMPLOYEE_NOT_FOUND`→`NOT_FOUND`, `FORBIDDEN`→`PERMISSION_DENIED`). The shim maps back for `v1`. No code is deleted from the registry; retired ones are marked `alias_of`.
 
@@ -665,8 +665,8 @@ Global rules for every phase:
 
 ## 3. If only three things get done
 
-1. **F-20** — platform secret endpoints have no capability check. Security, small fix, no consumer impact. *Phase 2.*
-2. **F-26 / F-27** — no list endpoint reports a total and 17 return unbounded results, so the app silently shows the first 50 rows of everything as if that were all of it. Wrong data in front of users today. The additive half (`meta`) is safe now. *Phase 2.*
-3. **F-1** — 18 deliberate 4xx conditions surface as 500s, including on tenant-facing support endpoints. *Phase 4, or Phase 2 for the tenant-facing subset under sign-off.*
+1. **F-20** — platform secret endpoints have no capability check. Security, small fix, no consumer impact. _Phase 2._
+2. **F-26 / F-27** — no list endpoint reports a total and 17 return unbounded results, so the app silently shows the first 50 rows of everything as if that were all of it. Wrong data in front of users today. The additive half (`meta`) is safe now. _Phase 2._
+3. **F-1** — 18 deliberate 4xx conditions surface as 500s, including on tenant-facing support endpoints. _Phase 4, or Phase 2 for the tenant-facing subset under sign-off._
 
 **F-6** is the cheapest genuine risk reduction available: the boot-time duplicate-`basePath` assertion is a few lines, changes no contract, and can land in Phase 1.

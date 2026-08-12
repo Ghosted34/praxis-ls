@@ -14,6 +14,7 @@ describe as done are not actually wired into the running app.
 ## Work Done Already
 
 **Real and working:**
+
 - Full RBAC schema (`migrations/tenant/0110_rbac.sql`): `role`, `capability`
   (ISSUER/VALIDATOR/APPROVER/LINE_MANAGER), `scope` (entity/branch tree),
   `permission` (role x module_key x CRUD booleans), `field_visibility`,
@@ -27,6 +28,7 @@ describe as done are not actually wired into the running app.
   implemented. Nothing to strip out; just don't add it.
 
 **Built but not actually wired (the real state before this kickoff):**
+
 - `src/middleware/auth.js` and `src/middleware/rbac.js` both
   `require("../shared/cache/identity-cache")` — **that file did not exist
   anywhere in the repo.** Requiring either middleware would throw.
@@ -45,7 +47,7 @@ describe as done are not actually wired into the running app.
 - `requirePermission()` was referenced in only 2 of ~70 route files
   (`ai/insights`, `ai/governance`), using module keys (`ai_insights`,
   `ai_governance`) and an action vocabulary (`view/create/edit/delete/
-  approve/export/publish`) that don't correspond to the real `permission`
+approve/export/publish`) that don't correspond to the real `permission`
   table (`module_key` mirrors `MOD-xx` catalogue codes; columns are
   `can_create/read/update/delete/approve`, no `record_scope`). The
   middleware's own docstring described a `shared.permissions` table that
@@ -62,6 +64,7 @@ describe as done are not actually wired into the running app.
   writes with the tenant RBAC check").
 
 **Orphaned dead code, not in the critical path (flagged, not fixed):**
+
 - `src/middleware/index.js` (`applyGlobalMiddleware`) and
   `src/middleware/customer-auth.js` are leftovers from a prior storefront
   project (comments literally say "Storefront CUSTOMER authentication",
@@ -123,8 +126,8 @@ change takes effect within one cache TTL (30s), not up to it.
    `capability.routes.js`.
 3. **Decide the module_key for `ai_insights`/`ai_governance`** — those two
    call `requirePermission("ai_insights", ...)` / `requirePermission
-   ("ai_governance", ...)`, neither of which matches a `platform.
-   module_catalogue` row, so no role will ever have a matching `permission`
+("ai_governance", ...)`, neither of which matches a `platform.
+module_catalogue` row, so no role will ever have a matching `permission`
    row. Either add those as real MOD-xx entries or point them at an
    existing one.
 4. **Record-level scope** (`own`/`team`/`all`) — `rbac.js` currently grants

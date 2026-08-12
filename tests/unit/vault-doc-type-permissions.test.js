@@ -14,7 +14,10 @@
  * So the mapping is pinned here. If someone drops these registry rows, this
  * fails rather than the permission quietly widening to Settings.
  */
-const { moduleKeyForDocType, isDocType } = require("../../src/modules/vault/document_vault/document_vault.types");
+const {
+  moduleKeyForDocType,
+  isDocType,
+} = require("../../src/modules/vault/document_vault/document_vault.types");
 
 describe("vault doc types — master-data scans", () => {
   it("gates each scan on the register it belongs to", () => {

@@ -105,7 +105,8 @@ describe("treasury 360 timeline reads event_log, not a table that never existed"
  * ═══════════════════════════════════════════════════════════════════════════ */
 describe("fx sync explains a provider failure instead of leaking an AxiosError", () => {
   const AXIOS = require.resolve("axios");
-  const REPO = require.resolve("../../src/modules/master/currency/currency.repo");
+  const REPO =
+    require.resolve("../../src/modules/master/currency/currency.repo");
   const SETTINGS = require.resolve("../../src/shared/config/settings");
 
   /**
@@ -145,14 +146,19 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
     const sync = loadSync({ status: 404, data: "Not Found" });
 
     await expect(sync.syncRates(client, {})).rejects.toThrow(
-      expect.objectContaining({ message: expect.not.stringContaining("a-test-key") }),
+      expect.objectContaining({
+        message: expect.not.stringContaining("a-test-key"),
+      }),
     );
   });
 
   it("still surfaces a 200-with-error-body, which is the OTHER failure shape", async () => {
     // A recognised-but-rejected key returns HTTP 200 with result:"error".
     // Reaching this branch at all is what the change restored.
-    const sync = loadSync({ status: 200, data: { result: "error", "error-type": "invalid-key" } });
+    const sync = loadSync({
+      status: 200,
+      data: { result: "error", "error-type": "invalid-key" },
+    });
     await expect(sync.syncRates(client, {})).rejects.toThrow(/invalid-key/);
   });
 
@@ -165,7 +171,10 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
     // The guard must not have broken the path that works.
     const sync = loadSync({
       status: 200,
-      data: { result: "success", conversion_rates: { USD: 0.0016, EUR: 0.0015 } },
+      data: {
+        result: "success",
+        conversion_rates: { USD: 0.0016, EUR: 0.0015 },
+      },
     });
     const out = await sync.syncRates(client, {});
     expect(out.base).toBe("XAF");
@@ -185,7 +194,10 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
   it("`skipped` is a boolean sentinel on success — never an array", async () => {
     const sync = loadSync({
       status: 200,
-      data: { result: "success", conversion_rates: { USD: 0.0016, EUR: 0.0015 } },
+      data: {
+        result: "success",
+        conversion_rates: { USD: 0.0016, EUR: 0.0015 },
+      },
     });
     const out = await sync.syncRates(client, {});
     expect(typeof out.skipped).toBe("boolean");
@@ -196,7 +208,9 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
     // Same-shape sentinel whether the skip is "no key" or "no quotes"; both
     // must be recognisable with a single `result.skipped === true` check.
     jest.resetModules();
-    jest.doMock(AXIOS, () => ({ get: async () => ({ status: 200, data: {} }) }));
+    jest.doMock(AXIOS, () => ({
+      get: async () => ({ status: 200, data: {} }),
+    }));
     jest.doMock(REPO, () => ({
       getBaseCode: async () => "XAF",
       listActiveCodes: async () => ["XAF"], // base filters itself out → zero quotes
@@ -216,7 +230,10 @@ describe("fx sync explains a provider failure instead of leaking an AxiosError",
     // "the whole sync was skipped". It belongs on its own field.
     jest.resetModules();
     jest.doMock(AXIOS, () => ({
-      get: async () => ({ status: 200, data: { result: "success", conversion_rates: { USD: 0.0016 } } }),
+      get: async () => ({
+        status: 200,
+        data: { result: "success", conversion_rates: { USD: 0.0016 } },
+      }),
     }));
     jest.doMock(REPO, () => ({
       getBaseCode: async () => "XAF",
@@ -288,7 +305,8 @@ describe("service_type repo exposes findById, not get", () => {
       if (!repoFile) continue; // repo is injected, or lives elsewhere
 
       const repo = require(path.join(dir, repoFile));
-      if (typeof repo.get !== "function") broken.push(path.relative(modules, file));
+      if (typeof repo.get !== "function")
+        broken.push(path.relative(modules, file));
     }
 
     expect(broken).toEqual([]);
@@ -311,14 +329,25 @@ describe("system health status describes NOW, not the last 24 hours", () => {
 
   /** The widget's decision, mirrored so the rule is asserted, not just the data. */
   const label = (s) =>
-    (s.fatal_active > 0 ? "Degraded"
-      : s.active > 0 ? "Errors logged"
-        : s.today > 0 ? "Recovered — all resolved"
-          : "All systems operational");
+    s.fatal_active > 0
+      ? "Degraded"
+      : s.active > 0
+        ? "Errors logged"
+        : s.today > 0
+          ? "Recovered — all resolved"
+          : "All systems operational";
 
   const BASE = {
-    total_occurrences: "12", unique_errors: 5, fatal: 2, fatal_active: 0,
-    errors: 3, warnings: 0, resolved: 5, active: 0, today: 5, avg_resolution_seconds: 120,
+    total_occurrences: "12",
+    unique_errors: 5,
+    fatal: 2,
+    fatal_active: 0,
+    errors: 3,
+    warnings: 0,
+    resolved: 5,
+    active: 0,
+    today: 5,
+    avg_resolution_seconds: 120,
   };
 
   it("exposes fatal_active separately from the 24h fatal count", async () => {
@@ -339,25 +368,45 @@ describe("system health status describes NOW, not the last 24 hours", () => {
   });
 
   it("still says Degraded while a fatal is OPEN", async () => {
-    const s = await statsWith({ ...BASE, fatal_active: 1, active: 1, resolved: 4 });
+    const s = await statsWith({
+      ...BASE,
+      fatal_active: 1,
+      active: 1,
+      resolved: 4,
+    });
     expect(label(s)).toBe("Degraded");
   });
 
   it("says Errors logged for open non-fatal errors", async () => {
-    const s = await statsWith({ ...BASE, fatal_active: 0, active: 2, resolved: 3 });
+    const s = await statsWith({
+      ...BASE,
+      fatal_active: 0,
+      active: 2,
+      resolved: 3,
+    });
     expect(label(s)).toBe("Errors logged");
   });
 
   it("says operational only when the window was genuinely quiet", async () => {
     // Distinct from "recovered": "we had five and fixed them all" and "nothing
     // happened" are different facts about the day.
-    const s = await statsWith({ ...BASE, fatal: 0, fatal_active: 0, active: 0, today: 0, resolved: 0, unique_errors: 0 });
+    const s = await statsWith({
+      ...BASE,
+      fatal: 0,
+      fatal_active: 0,
+      active: 0,
+      today: 0,
+      resolved: 0,
+      unique_errors: 0,
+    });
     expect(label(s)).toBe("All systems operational");
   });
 });
 
 /** Guards the require paths above against a file move. */
 it("both services are where this suite thinks they are", () => {
-  expect(path.basename(require.resolve(TREASURY))).toBe("treasury-360.service.js");
+  expect(path.basename(require.resolve(TREASURY))).toBe(
+    "treasury-360.service.js",
+  );
   expect(path.basename(require.resolve(SYNC))).toBe("currency.sync.js");
 });

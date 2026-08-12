@@ -5,7 +5,7 @@
   "nav_kaizen": "Hub Kaizen",
   "nav_about": "À propos",
   "nav_quote": "DEMANDER UN DEVIS",
-   "footer_brand_blurb": "SMART LOGISTICS & SERVICES LTD fournit des solutions logistiques conformes et fiables, avec une visibilité de niveau entreprise sur l’ensemble de la région CEMAC.",
+  "footer_brand_blurb": "SMART LOGISTICS & SERVICES LTD fournit des solutions logistiques conformes et fiables, avec une visibilité de niveau entreprise sur l’ensemble de la région CEMAC.",
   "footer_quick_links_title": "Liens rapides",
   "footer_quick_services": "Services",
   "footer_quick_industries": "Secteurs",
@@ -109,22 +109,6 @@
 
   "airfreight_cta": "Demander un devis pour ce service",
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
   "home_hero_kicker": "Hub logistique digital • Conformité • Visibilité",
   "home_hero_tagline": "Aller au-delà de vos attentes",
   "home_hero_subtext": "Découvrez comment nous optimisons la gestion de la chaîne d’approvisionnement pour les organisations internationales, les multinationales, les entreprises locales et l’exécution de projets dans la sous-région CEMAC.",
@@ -225,7 +209,7 @@
   "home_contact_phone_value_label": "Téléphone",
   "home_contact_whatsapp_label": "WhatsApp",
   "home_contact_email_value_label": "E-mail",
-   "kaizen_not_found_title": "Article introuvable",
+  "kaizen_not_found_title": "Article introuvable",
   "kaizen_not_found_lead": "L’article demandé n’a pas pu être trouvé.",
   "kaizen_not_found_cta": "Retour au Kaizen Hub",
 
@@ -294,7 +278,7 @@
   "portfolio_title": "PORTFOLIO PROJETS",
   "portfolio_sub": "Études de cas détaillées, structurées autour de sections distinctes : « Défi », « Solution » et « Impact »",
   "portfolio_read_full_case": "Lire l’étude complète",
-  
+
   "seafreight_kicker": "🚢 FRET MARITIME",
   "seafreight_title": "Flexible. Scalable. Optimisé coûts.",
 
@@ -452,7 +436,7 @@
   "quote_success_id_label": "Votre ID de devis :",
   "quote_success_body_html": "Nous avons envoyé une confirmation à votre e-mail.<br>Votre demande a été transmise à <strong>customerservice@smartls.cm</strong><br>(CC : info@smartls.cm)",
   "quote_start_new": "Démarrer un nouveau devis",
-  
+
   "track_pill": "Hub logistique en temps réel",
   "track_lead": "Suivez votre cargaison avec précision.",
   "track_placeholder": "Saisir la référence (ex. SL0256721SM)",
@@ -496,14 +480,4 @@
 
   "kaizen_a5_title": "L'avenir est vert : la logistique durable en zone CEMAC",
   "kaizen_a5_author": "Par Timothée Massomba, Directeur Général, Smart Logistics & Services Ltd"
-
-
-
-
-
-
-
-
-
-
 }

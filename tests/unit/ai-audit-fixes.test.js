@@ -13,7 +13,11 @@ describe("validatePayload with type checking (audit 3.1)", () => {
     const errors = [];
     const props = (schema && schema.properties) || {};
     for (const req of (schema && schema.required) || []) {
-      if (payload[req] === undefined || payload[req] === null || payload[req] === "") {
+      if (
+        payload[req] === undefined ||
+        payload[req] === null ||
+        payload[req] === ""
+      ) {
         errors.push(`missing '${req}'`);
       }
     }
@@ -22,7 +26,11 @@ describe("validatePayload with type checking (audit 3.1)", () => {
       const prop = props[key];
       if (!prop || !prop.type) continue;
       const actual = typeof value;
-      if (prop.type === "string" && actual === "object" && !Array.isArray(value)) {
+      if (
+        prop.type === "string" &&
+        actual === "object" &&
+        !Array.isArray(value)
+      ) {
         errors.push(`'${key}' must be a string, got object`);
       } else if (prop.type === "number" && actual === "object") {
         if (isNaN(Number(value))) errors.push(`'${key}' must be a number`);
@@ -31,7 +39,11 @@ describe("validatePayload with type checking (audit 3.1)", () => {
       } else if (prop.type === "array" && !Array.isArray(value)) {
         errors.push(`'${key}' must be an array`);
       }
-      if (Array.isArray(prop.enum) && prop.enum.length && typeof value === "string") {
+      if (
+        Array.isArray(prop.enum) &&
+        prop.enum.length &&
+        typeof value === "string"
+      ) {
         if (!prop.enum.includes(value)) {
           errors.push(`'${key}' must be one of: ${prop.enum.join(", ")}`);
         }
@@ -56,41 +68,63 @@ describe("validatePayload with type checking (audit 3.1)", () => {
   });
 
   test("missing required field", () => {
-    expect(validatePayload(schema, { name: "Test" })).toEqual(["missing 'amount'"]);
+    expect(validatePayload(schema, { name: "Test" })).toEqual([
+      "missing 'amount'",
+    ]);
   });
 
   test("object where string expected → error", () => {
-    const errs = validatePayload(schema, { name: { nested: true }, amount: 100 });
+    const errs = validatePayload(schema, {
+      name: { nested: true },
+      amount: 100,
+    });
     expect(errs).toEqual(["'name' must be a string, got object"]);
   });
 
   test("stringified number accepted for number field", () => {
     // Model often sends "100" instead of 100 — coercible, accepted.
-    expect(validatePayload(schema, { name: "Test", amount: "100" })).toEqual([]);
+    expect(validatePayload(schema, { name: "Test", amount: "100" })).toEqual(
+      [],
+    );
   });
 
   test("non-numeric string rejected for number field", () => {
-    const errs = validatePayload(schema, { name: "Test", amount: "not-a-number" });
+    const errs = validatePayload(schema, {
+      name: "Test",
+      amount: "not-a-number",
+    });
     // "not-a-number" is a string, not an object — passes the typeof check.
     // The module's Zod schema is the final gate for non-numeric strings.
     expect(errs).toEqual([]);
   });
 
   test("enum validation catches invalid values", () => {
-    const errs = validatePayload(schema, { name: "Test", amount: 100, status: "INVALID" });
+    const errs = validatePayload(schema, {
+      name: "Test",
+      amount: 100,
+      status: "INVALID",
+    });
     expect(errs).toEqual(["'status' must be one of: DRAFT, SENT, PAID"]);
   });
 
   test("enum validation accepts valid values", () => {
-    expect(validatePayload(schema, { name: "Test", amount: 100, status: "DRAFT" })).toEqual([]);
+    expect(
+      validatePayload(schema, { name: "Test", amount: 100, status: "DRAFT" }),
+    ).toEqual([]);
   });
 
   test("unknown fields pass through", () => {
-    expect(validatePayload(schema, { name: "Test", amount: 100, extra_field: "ok" })).toEqual([]);
+    expect(
+      validatePayload(schema, { name: "Test", amount: 100, extra_field: "ok" }),
+    ).toEqual([]);
   });
 
   test("array type check", () => {
-    const errs = validatePayload(schema, { name: "Test", amount: 100, tags: "not-array" });
+    const errs = validatePayload(schema, {
+      name: "Test",
+      amount: 100,
+      tags: "not-array",
+    });
     expect(errs).toEqual(["'tags' must be an array"]);
   });
 });
@@ -98,8 +132,10 @@ describe("validatePayload with type checking (audit 3.1)", () => {
 // ── 3.4: isStall detection ──
 describe("isStall anti-stall detection (audit 3.4)", () => {
   // Re-implement isStall for isolated testing.
-  const STALL_ANNOUNCE = /\b(let me(?! know)|i[''\u2019]?ll\b|i will\b|let[''\u2019]?s\b|one moment|hold on|allow me|give me a moment|now i)\b/i;
-  const STALL_ACTION = /\b(create|check|fetch|get|find|look\s*up|pull|list|search|open|draft|raise|prepare|submit|send|record|post|update|calculate|run|read|retrieve|generate|add)\b/i;
+  const STALL_ANNOUNCE =
+    /\b(let me(?! know)|i[''\u2019]?ll\b|i will\b|let[''\u2019]?s\b|one moment|hold on|allow me|give me a moment|now i)\b/i;
+  const STALL_ACTION =
+    /\b(create|check|fetch|get|find|look\s*up|pull|list|search|open|draft|raise|prepare|submit|send|record|post|update|calculate|run|read|retrieve|generate|add)\b/i;
   function isStall(text) {
     return !!text && STALL_ANNOUNCE.test(text) && STALL_ACTION.test(text);
   }
@@ -133,7 +169,9 @@ describe("isStall anti-stall detection (audit 3.4)", () => {
 // ── 3.5: PII redaction ──
 describe("PII redaction patterns (audit 3.5)", () => {
   test("IBAN redacted", () => {
-    expect(redact("Account: CM21 10003 00001 00200456789 41")).toContain("[IBAN]");
+    expect(redact("Account: CM21 10003 00001 00200456789 41")).toContain(
+      "[IBAN]",
+    );
     expect(redact("IBAN FR7630006000011234567890189")).toContain("[IBAN]");
   });
 
@@ -165,7 +203,8 @@ describe("PII redaction patterns (audit 3.5)", () => {
   });
 
   test("non-PII text passes through unchanged", () => {
-    const text = "Invoice SBX-2026-0001 for client SODECOTON, total 500,000 XAF.";
+    const text =
+      "Invoice SBX-2026-0001 for client SODECOTON, total 500,000 XAF.";
     expect(redact(text)).toBe(text);
   });
 

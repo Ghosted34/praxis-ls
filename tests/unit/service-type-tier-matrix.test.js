@@ -24,7 +24,12 @@
 const service = require("../../src/modules/operations/service_type/service_type.service");
 const repo = require("../../src/modules/operations/service_type/service_type.repo");
 
-const ST = { service_type_id: "st-1", key: "SEA_FREIGHT_IMPORT", is_system: true, is_active: true };
+const ST = {
+  service_type_id: "st-1",
+  key: "SEA_FREIGHT_IMPORT",
+  is_system: true,
+  is_active: true,
+};
 const ITEM = {
   dictionary_item_id: "di-1",
   code: "#D041",
@@ -43,7 +48,8 @@ const ITEM = {
 function fakeClient(itemRow) {
   return {
     query: (sql) => {
-      if (/FROM dictionary_item/i.test(sql)) return Promise.resolve({ rows: itemRow ? [itemRow] : [] });
+      if (/FROM dictionary_item/i.test(sql))
+        return Promise.resolve({ rows: itemRow ? [itemRow] : [] });
       return Promise.resolve({ rows: [] });
     },
   };
@@ -81,7 +87,11 @@ describe("service_type.setDictionaryTier", () => {
         tier: "BASIC",
         actor: { user_id: "u1" },
       });
-      expect(calls.set).toEqual({ stId: "st-1", itemId: "di-1", tier: "BASIC" });
+      expect(calls.set).toEqual({
+        stId: "st-1",
+        itemId: "di-1",
+        tier: "BASIC",
+      });
       expect(link.tier).toBe("BASIC");
       // (2) — the denormalised hint must move with the link, or the 360 header
       // count and the table below it disagree.
@@ -94,14 +104,24 @@ describe("service_type.setDictionaryTier", () => {
   test("refuses a NON_OPERATIONAL line — an overhead never belongs to a service", async () => {
     const restore = stubRepo({
       findById: async () => ST,
-      setDictionaryTier: async () => { throw new Error("must not be reached"); },
+      setDictionaryTier: async () => {
+        throw new Error("must not be reached");
+      },
       syncServiceTypeKey: async () => null,
     });
     try {
-      const overhead = { ...ITEM, code: "#E027", label_en: "Rent", applicability_mode: "NON_OPERATIONAL" };
+      const overhead = {
+        ...ITEM,
+        code: "#E027",
+        label_en: "Rent",
+        applicability_mode: "NON_OPERATIONAL",
+      };
       await expect(
         service.setDictionaryTier(fakeClient(overhead), {
-          id: ST.service_type_id, dictionaryItemId: "di-9", tier: "BASIC", actor: {},
+          id: ST.service_type_id,
+          dictionaryItemId: "di-9",
+          tier: "BASIC",
+          actor: {},
         }),
       ).rejects.toMatchObject({ code: "NOT_OPERATIONAL", status: 422 });
     } finally {
@@ -114,7 +134,10 @@ describe("service_type.setDictionaryTier", () => {
     try {
       await expect(
         service.setDictionaryTier(fakeClient(ITEM), {
-          id: "nope", dictionaryItemId: "di-1", tier: "BASIC", actor: {},
+          id: "nope",
+          dictionaryItemId: "di-1",
+          tier: "BASIC",
+          actor: {},
         }),
       ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
     } finally {
@@ -127,7 +150,10 @@ describe("service_type.setDictionaryTier", () => {
     try {
       await expect(
         service.setDictionaryTier(fakeClient(null), {
-          id: ST.service_type_id, dictionaryItemId: "ghost", tier: "FULL", actor: {},
+          id: ST.service_type_id,
+          dictionaryItemId: "ghost",
+          tier: "FULL",
+          actor: {},
         }),
       ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
     } finally {
@@ -141,12 +167,21 @@ describe("service_type.removeDictionaryTier", () => {
     let synced = null;
     const restore = stubRepo({
       findById: async () => ST,
-      removeDictionaryTier: async (_c, stId, itemId) => ({ service_type_id: stId, dictionary_item_id: itemId, tier: "ADVANCED" }),
-      syncServiceTypeKey: async (_c, itemId) => { synced = itemId; return null; },
+      removeDictionaryTier: async (_c, stId, itemId) => ({
+        service_type_id: stId,
+        dictionary_item_id: itemId,
+        tier: "ADVANCED",
+      }),
+      syncServiceTypeKey: async (_c, itemId) => {
+        synced = itemId;
+        return null;
+      },
     });
     try {
       const removed = await service.removeDictionaryTier(fakeClient(ITEM), {
-        id: ST.service_type_id, dictionaryItemId: "di-1", actor: {},
+        id: ST.service_type_id,
+        dictionaryItemId: "di-1",
+        actor: {},
       });
       expect(removed.tier).toBe("ADVANCED");
       expect(synced).toBe("di-1");
@@ -159,12 +194,16 @@ describe("service_type.removeDictionaryTier", () => {
     const restore = stubRepo({
       findById: async () => ST,
       removeDictionaryTier: async () => null,
-      syncServiceTypeKey: async () => { throw new Error("must not resync after a failed unlink"); },
+      syncServiceTypeKey: async () => {
+        throw new Error("must not resync after a failed unlink");
+      },
     });
     try {
       await expect(
         service.removeDictionaryTier(fakeClient(ITEM), {
-          id: ST.service_type_id, dictionaryItemId: "di-unlinked", actor: {},
+          id: ST.service_type_id,
+          dictionaryItemId: "di-unlinked",
+          actor: {},
         }),
       ).rejects.toMatchObject({ code: "NOT_FOUND", status: 404 });
     } finally {

@@ -3,7 +3,7 @@
 **Status:** Proposal for review. Nothing here is built unless tagged **BUILT**; everything else is a plan awaiting sign-off.
 **Owner:** JBS Praxis engineering.
 **Audience:** Platform / admin review.
-**Scope:** The infrastructure surface that is *not* business logic — email provisioning, platform-integrated operations (health, backup/restore, error/uptime/maintenance), integrations, and the optimization/scalability work that decides whether the product onboards at volume. Both tiers: **per-tenant** and **system-wide**.
+**Scope:** The infrastructure surface that is _not_ business logic — email provisioning, platform-integrated operations (health, backup/restore, error/uptime/maintenance), integrations, and the optimization/scalability work that decides whether the product onboards at volume. Both tiers: **per-tenant** and **system-wide**.
 **Read alongside:** `doc/DB_ARCHITECTURE.md` (tenancy of record), `doc/EMAIL_TWO_CONFIGS.md` + `doc/EMAIL_ENGINE_PLAN.md` (mail engine), `doc/PERF_ARCHITECTURE_AUDIT_2026-08-04.md` (superseded on several points — see §1).
 
 This revision expands every planned item to implementation depth: schema/DDL sketches, endpoints, worker jobs, config, provisioning integration, failure modes, and per-workstream verification. Each unit of work is a **WS-xx** so it can be estimated and assigned independently.
@@ -12,12 +12,12 @@ This revision expands every planned item to implementation depth: schema/DDL ske
 
 ## 0. How to read this
 
-| Tag | Meaning |
-|---|---|
-| **BUILT** | In the codebase today, verified against source in this pass; file evidence cited (§10). |
-| **PARTIAL** | Exists but incomplete, or a seam not yet switched on. |
-| **PLANNED** | Not built. This document is the proposal. |
-| **DECISION** | A fork needing an owner's call before work proceeds; consolidated in §8. |
+| Tag          | Meaning                                                                                 |
+| ------------ | --------------------------------------------------------------------------------------- |
+| **BUILT**    | In the codebase today, verified against source in this pass; file evidence cited (§10). |
+| **PARTIAL**  | Exists but incomplete, or a seam not yet switched on.                                   |
+| **PLANNED**  | Not built. This document is the proposal.                                               |
+| **DECISION** | A fork needing an owner's call before work proceeds; consolidated in §8.                |
 
 Each workstream carries a rough **effort** (S ≈ ≤2 days, M ≈ 3–5 days, L ≈ 1–2 weeks, XL ≈ >2 weeks) and a **verification** line — the objective test that closes it. Effort is engineering time for one developer, excluding review.
 
@@ -31,7 +31,7 @@ DDL in this document is **illustrative** — column names and shapes to anchor r
 
 A code-level audit this pass found the **2026-08-04 performance audit substantially remediated**. Review the plan against this, not the older audit.
 
-**BUILT (scaling):** per-request single connection + `search_path` as a startup param (`tenant-context.js`); pool cap + LRU + idle-close + PgBouncer *seam* (`registry.service.js`); `SCAN`-based tenant-namespaced cache + versioned scope closure (`identity-cache.js`); per-worker Redis (`workers.js`); Socket.IO Redis adapter (`realtime/index.js`); compression + global per-tenant rate limit (`server.js`, `rate-limit.js`).
+**BUILT (scaling):** per-request single connection + `search_path` as a startup param (`tenant-context.js`); pool cap + LRU + idle-close + PgBouncer _seam_ (`registry.service.js`); `SCAN`-based tenant-namespaced cache + versioned scope closure (`identity-cache.js`); per-worker Redis (`workers.js`); Socket.IO Redis adapter (`realtime/index.js`); compression + global per-tenant rate limit (`server.js`, `rate-limit.js`).
 
 **BUILT (fleet):** continue-on-failure `migrateAllTenants()` + `fleetSchemaStatus()` drift report; atomic migration+ledger; transactional provisioning & sandbox-wipe (`provisioning.service.js`, `migrator.js`); the `scripts/db/*` check suite.
 
@@ -144,21 +144,23 @@ CREATE TABLE email_domain (
 ### WS-E6 — Deliverability & send-log dashboard · **PLANNED · M**
 
 `email_send_log` already records `status IN (QUEUED,SENT,DELIVERED,BOUNCED,COMPLAINED,FAILED)` with `provider_message_id` (migration `0410`). Cloudflare Email Service delivery events (bounce/complaint) feed back via a webhook that updates the log row. Console surfaces per-tenant: SPF/DKIM/DMARC status, send volume, bounce/complaint rate, last failures. Suppression list for hard bounces/complaints so a bad address isn't retried.
+
 - **Verification:** a forced bounce updates the log to `BOUNCED` and adds the address to suppression; the dashboard reflects it.
 
 ### WS-E7 — Override / import (reuse) · **BUILT + S**
 
 The `email_connection` connect path (`mail.service.connect()` + Microsoft/Google OAuth) already attaches a tenant's own mailbox. Work is only: keep the section bindings pointed at the same slot when a provisioned CF box is swapped for an imported one, and a Comms UI affordance for the swap.
+
 - **Verification:** swapping a provisioned address for an imported M365 mailbox preserves which ERP sections route to/from it.
 
 ### 2.9 Email phasing
 
-| Phase | Workstreams | Outcome |
-|---|---|---|
-| **E-α** | WS-E1, WS-E5, WS-E3 | Domain onboarding + section model; no mail flows yet |
+| Phase   | Workstreams           | Outcome                                                    |
+| ------- | --------------------- | ---------------------------------------------------------- |
+| **E-α** | WS-E1, WS-E5, WS-E3   | Domain onboarding + section model; no mail flows yet       |
 | **E-β** | WS-E2, WS-E7 outbound | 5 addresses provisioned; system + module mail sends via CF |
-| **E-γ** | WS-E4 | Full inbound; Comms Mail shows real inbox |
-| **E-δ** | WS-E6 | Deliverability dashboard + suppression |
+| **E-γ** | WS-E4                 | Full inbound; Comms Mail shows real inbox                  |
+| **E-δ** | WS-E6                 | Deliverability dashboard + suppression                     |
 
 ---
 
@@ -195,12 +197,13 @@ CREATE TABLE platform.tenant_health (
 
 #### WS-H2 — Synthetic per-tenant liveness · **PLANNED · M**
 
-Beyond process metrics, a cheap per-tenant read (e.g. `SELECT 1` through the tenant pool + a feature-state read) proves the *tenant path* works, catching the "process up, one tenant's DB wedged" case that fleet-wide metrics miss. Recorded into `tenant_health.redis_ok`/status.
+Beyond process metrics, a cheap per-tenant read (e.g. `SELECT 1` through the tenant pool + a feature-state read) proves the _tenant path_ works, catching the "process up, one tenant's DB wedged" case that fleet-wide metrics miss. Recorded into `tenant_health.redis_ok`/status.
+
 - **Verification:** a tenant whose DB rejects connections is RED while the rest stay GREEN.
 
 ### 3.2 Backup & restore (deep dive)
 
-Database-per-tenant makes per-tenant backup *simple in principle* and is the strongest argument for the tenancy model — but **it is neither scheduled centrally nor ever rehearsed today**, which means it is not yet a backup. This is the section to get right before sign-off.
+Database-per-tenant makes per-tenant backup _simple in principle_ and is the strongest argument for the tenancy model — but **it is neither scheduled centrally nor ever rehearsed today**, which means it is not yet a backup. This is the section to get right before sign-off.
 
 **Threat model — what we are protecting against, in priority order:**
 
@@ -234,6 +237,7 @@ CREATE TABLE platform.backup_run (
 #### WS-B2 — Object/system backup via rclone · **PLANNED · M**
 
 The storage root (vault documents, branding, media) is backed by the storage driver (local or S3). A scheduled `rclone sync` copies it to an **independent** offsite bucket (different provider/account than the primary, so a single account compromise isn't total), versioned, encrypted. For the local driver this also captures the on-disk root; for S3 it is cross-bucket/cross-account replication. Records `OBJECT_SYNC` to `backup_run`.
+
 - **Verification:** a file written to the vault appears in the offsite copy within one sync interval; deleting it from primary leaves the offsite version intact.
 
 #### WS-B3 — Restore rehearsal (the part that makes it real) · **PLANNED · L**
@@ -258,6 +262,7 @@ CREATE TABLE platform.restore_drill (
 #### WS-B4 — Snapshot integrity scan · **PLANNED · M**
 
 A periodic scan reconciles `document_vault` content hashes against the bytes in storage (and the offsite copy), so a corrupt/missing artifact is caught **before** a restore needs it. Records `SNAPSHOT_SCAN` to `backup_run` with a list of mismatches.
+
 - **Verification:** corrupting a stored object flags exactly that object on the next scan.
 
 ### 3.3 Error reporting
@@ -265,6 +270,7 @@ A periodic scan reconciles `document_vault` content hashes against the bytes in 
 #### WS-ER1 — Wire alerting + per-tenant error surface · **PARTIAL → PLANNED · M**
 
 The **Error Command Center** exists: `error-maintenance` job (30-day purge + escalation), platform namespace feed (`realtime/platform-ns.js`), escalation service (`error-escalation.service.js`), and the boot path already **warns when no alert destination is set** (`server.js`). Work: configure a real destination (`ALERT_WEBHOOK_URL` / `ALERT_EMAIL`), define severity→channel routing, and surface per-tenant error rate + top errors + latest fatals in the console, tied to `tenant_health.last_error_at`.
+
 - **Verification:** an unhandled fatal reaches the configured channel; the console shows the tenant's error spike.
 
 ### 3.4 Uptime reporting
@@ -272,6 +278,7 @@ The **Error Command Center** exists: `error-maintenance` job (30-day purge + esc
 #### WS-U1 — External uptime probe + status page · **PLANNED · M**
 
 Internal metrics can't see "the process is down." An **external** probe hits `/api/health/ready` per host (each tenant subdomain + the platform/admin host) on an interval, from outside the deployment, recording to an uptime series; renders a per-tenant availability figure and a monthly report. Feeds a public/tenant-facing **status page** (shared with §3.5).
+
 - **Verification:** stopping a host drops its availability and shows an incident on the status page; recovery closes it.
 
 ### 3.5 Maintenance & support
@@ -279,11 +286,13 @@ Internal metrics can't see "the process is down." An **external** probe hits `/a
 #### WS-M1 — Maintenance windows + banners · **PLANNED · M**
 
 Scheduled, announced maintenance: a platform-set window writes a tenant-facing banner (and optionally a read-only/parked state), auto-clearing after. Surfaced on the status page. Integrates with deploys so a fleet migration can announce itself.
+
 - **Verification:** a scheduled window shows the banner to tenant users for its duration and clears automatically.
 
 #### WS-M2 — Support ↔ telemetry linking · **PARTIAL → PLANNED · M**
 
 `support_ticket` exists (`DB_ARCHITECTURE.md` §3) with a kanban lifecycle. Work: attach the reporting tenant's live telemetry (health status, recent errors, backup state) to a ticket so triage starts with context, and drive the status page from §3.1/§3.4 rather than by hand.
+
 - **Verification:** opening a ticket shows the tenant's current health/error snapshot inline.
 
 ---
@@ -295,11 +304,13 @@ The `integration_secret` vault (AES-256-GCM, `settingService.readSecret/put`) is
 #### WS-I1 — Per-tenant integrations health view · **PLANNED · M**
 
 One console view per tenant: every integration, its state (configured / verified / last-checked / error), driven by the existing `probes.js` pattern extended to cover Cloudflare (WS-E1). A scheduled re-verify keeps `last-checked` honest, so an expired token is caught before a feature fails.
+
 - **Verification:** revoking a stored credential shows the integration as failing on the next re-verify.
 
 #### WS-I2 — Unified connect / verify / rotate flow · **PLANNED · M**
 
 Each provider today has its own connect path. Standardize a `connect → verify → rotate → revoke` lifecycle over the vault so credential rotation (a security requirement) is one flow, not per-integration bespoke code. Rotation writes a new secret version and re-verifies before retiring the old.
+
 - **Verification:** rotating an S3 key mid-session continues serving media with no downtime.
 
 #### WS-I3 — Cloudflare as a first-class integration · **PLANNED · S**
@@ -326,7 +337,7 @@ The code routes every tenant pool through `TENANT_DB_POOLER_HOST` when set and k
 
 `provisionTenant()` records `secret_ref` (`vault:tenant/<slug>/db-password`) but `registry.service.js` authenticates every tenant pool with the shared `config.DB_PASSWORD` and one app role. Work: at pool creation, resolve the per-tenant secret from the vault (the `secret_ref` already exists on `platform.tenant_database`), so each tenant DB has its own credential.
 
-- **Why it matters:** it's the missing half of "your data, your Postgres" — the isolation is physical (separate DBs) but the credential is shared, so a leaked app password reaches every tenant DB. It is also the prerequisite for ever handing a tenant access to *their own* database (the documented commercial add-on).
+- **Why it matters:** it's the missing half of "your data, your Postgres" — the isolation is physical (separate DBs) but the credential is shared, so a leaked app password reaches every tenant DB. It is also the prerequisite for ever handing a tenant access to _their own_ database (the documented commercial add-on).
 - **Rollout:** provision distinct roles/passwords per tenant DB; backfill existing tenants (rotate in, dual-read during the window); the pooler (WS-S1) authenticates per tenant.
 - **Verification:** a tenant pool authenticates with a credential that does **not** open any other tenant DB (proven by a negative test).
 
@@ -358,7 +369,8 @@ CREATE TABLE platform.tenant_usage (
 
 ### WS-S4 — Content-drift hashing in the migration ledger · **PLANNED · S**
 
-`fleetSchemaStatus()` compares file *counts*; the migrator is filename-keyed, so a file edited after a tenant ran it never re-applies and no checksum catches the divergence. Add a `sha256` column to `public.schema_migration`, recorded at apply time; `fleetSchemaStatus()` (and a CI check) then flags a tenant whose applied hash differs from the current file — the one drift class the count-based check can't see.
+`fleetSchemaStatus()` compares file _counts_; the migrator is filename-keyed, so a file edited after a tenant ran it never re-applies and no checksum catches the divergence. Add a `sha256` column to `public.schema_migration`, recorded at apply time; `fleetSchemaStatus()` (and a CI check) then flags a tenant whose applied hash differs from the current file — the one drift class the count-based check can't see.
+
 - **Verification:** editing an already-applied migration file is flagged as drift on the next fleet status, without re-applying it.
 
 ### WS-S5 — Residual operational rules · **BUILT (documented) · S**
@@ -381,13 +393,13 @@ CREATE TABLE platform.tenant_usage (
 
 Dependency- and risk-ordered; each phase ends with its workstreams' verification.
 
-| Phase | Workstreams | Rationale |
-|---|---|---|
-| **P1** | WS-S1 (PgBouncer), WS-S2 (per-tenant creds), WS-E1/E5/E3 (email foundation) | Bank the scaling headroom and isolation fix; stand up email's non-flow foundation. Independent of each other. |
-| **P2** | WS-E2/E7 (provision + outbound), WS-H1/H2 (health), WS-ER1 (alerting) | First mail flows; make the fleet observable and alerting real. |
-| **P3** | WS-B1/B2/B3/B4 (backup + rehearsed restore), WS-U1 (uptime), WS-M1 (maintenance) | Recoverability and availability — existential before scale. Restore drill gates P3 sign-off. |
-| **P4** | WS-E4 (inbound), WS-E6 (deliverability), WS-S3 (entitlement/metering), WS-I1/I2/I3 (integrations) | Full mailbox; the billing bridge; integration hygiene. |
-| **P5** | WS-S4 (drift hash), WS-M2 (support↔telemetry), WS-I4 (connectors) | Hardening and polish. |
+| Phase  | Workstreams                                                                                       | Rationale                                                                                                     |
+| ------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| **P1** | WS-S1 (PgBouncer), WS-S2 (per-tenant creds), WS-E1/E5/E3 (email foundation)                       | Bank the scaling headroom and isolation fix; stand up email's non-flow foundation. Independent of each other. |
+| **P2** | WS-E2/E7 (provision + outbound), WS-H1/H2 (health), WS-ER1 (alerting)                             | First mail flows; make the fleet observable and alerting real.                                                |
+| **P3** | WS-B1/B2/B3/B4 (backup + rehearsed restore), WS-U1 (uptime), WS-M1 (maintenance)                  | Recoverability and availability — existential before scale. Restore drill gates P3 sign-off.                  |
+| **P4** | WS-E4 (inbound), WS-E6 (deliverability), WS-S3 (entitlement/metering), WS-I1/I2/I3 (integrations) | Full mailbox; the billing bridge; integration hygiene.                                                        |
+| **P5** | WS-S4 (drift hash), WS-M2 (support↔telemetry), WS-I4 (connectors)                                 | Hardening and polish.                                                                                         |
 
 ---
 
@@ -395,14 +407,14 @@ Dependency- and risk-ordered; each phase ends with its workstreams' verification
 
 **All six decisions were signed off as recommended on 2026-08-10** (`doc/INFRASTRUCTURE_DECISIONS.md`). No workstream in this plan is decision-blocked; §7 can proceed end to end.
 
-| # | Decision | Resolution | Unblocked |
-|---|---|---|---|
-| D1 | Email domain onboarding: full Cloudflare delegation vs MX-only (§WS-E5) | **Approved** — support both; default delegation; MX-only fallback | WS-E2, WS-E5 |
-| D2 | Outbound transport: CF authenticated SMTP vs REST `send_email` (§2.0/WS-E1) | **Approved** — SMTP first (near drop-in), REST later | WS-E1 |
-| D3 | Commit PgBouncer/transaction pooling in deployment now (§WS-S1) | **Approved** — deploy now; prerequisites are built | WS-S1 |
-| D4 | Backup: PITR availability on the host, dump cadence, rclone destination, RPO/RTO targets (§3.2) | **Approved** — RPO ≤24h (≤5m w/ PITR), RTO ≤1h; rehearse before sign-off | WS-B1/B3 |
-| D5 | Entitlement scope: seats/storage/spend now vs spend-only first (§WS-S3) | **Approved** — spend + seats first; storage/email next | WS-S3 |
-| D6 | Backup bucket provider/account separation & key custody (§3.2) | **Approved** — independent account for offsite; Praxis-held key | WS-B1/B2 |
+| #   | Decision                                                                                        | Resolution                                                               | Unblocked    |
+| --- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ | ------------ |
+| D1  | Email domain onboarding: full Cloudflare delegation vs MX-only (§WS-E5)                         | **Approved** — support both; default delegation; MX-only fallback        | WS-E2, WS-E5 |
+| D2  | Outbound transport: CF authenticated SMTP vs REST `send_email` (§2.0/WS-E1)                     | **Approved** — SMTP first (near drop-in), REST later                     | WS-E1        |
+| D3  | Commit PgBouncer/transaction pooling in deployment now (§WS-S1)                                 | **Approved** — deploy now; prerequisites are built                       | WS-S1        |
+| D4  | Backup: PITR availability on the host, dump cadence, rclone destination, RPO/RTO targets (§3.2) | **Approved** — RPO ≤24h (≤5m w/ PITR), RTO ≤1h; rehearse before sign-off | WS-B1/B3     |
+| D5  | Entitlement scope: seats/storage/spend now vs spend-only first (§WS-S3)                         | **Approved** — spend + seats first; storage/email next                   | WS-S3        |
+| D6  | Backup bucket provider/account separation & key custody (§3.2)                                  | **Approved** — independent account for offsite; Praxis-held key          | WS-B1/B2     |
 
 Two carry-forward notes from sign-off: the ≤5 min RPO in D4 holds **only where WAL archiving is available**, which still depends on the Postgres host (confirm at WS-B1 build time); and D3's pooler must be configured for the per-tenant roles introduced by **WS-S2**, so S2 should land first or PgBouncer's auth config must anticipate it.
 
@@ -410,12 +422,12 @@ Two carry-forward notes from sign-off: the ≤5 min RPO in D4 holds **only where
 
 ## 9. Effort summary
 
-| Bucket | Workstreams | Rough total |
-|---|---|---|
-| Email | E1 M, E2 L, E3 M, E4 L, E5 M, E6 M, E7 S | ~6–8 weeks |
-| Kaizen ops | H1 L, H2 M, B1 L, B2 M, B3 L, B4 M, ER1 M, U1 M, M1 M, M2 M | ~7–9 weeks |
-| Integrations | I1 M, I2 M, I3 S, I4 S | ~3 weeks |
-| Scalability | S1 M, S2 M, S3 XL, S4 S, S5 S | ~5–7 weeks |
+| Bucket       | Workstreams                                                 | Rough total |
+| ------------ | ----------------------------------------------------------- | ----------- |
+| Email        | E1 M, E2 L, E3 M, E4 L, E5 M, E6 M, E7 S                    | ~6–8 weeks  |
+| Kaizen ops   | H1 L, H2 M, B1 L, B2 M, B3 L, B4 M, ER1 M, U1 M, M1 M, M2 M | ~7–9 weeks  |
+| Integrations | I1 M, I2 M, I3 S, I4 S                                      | ~3 weeks    |
+| Scalability  | S1 M, S2 M, S3 XL, S4 S, S5 S                               | ~5–7 weeks  |
 
 Totals are single-developer engineering estimates excluding review and are parallelizable across the phase structure in §7.
 
@@ -431,4 +443,4 @@ Cloudflare capability claims (§2) verified against Cloudflare Email Service + E
 
 ---
 
-*No code has been changed. This is a plan awaiting review.*
+_No code has been changed. This is a plan awaiting review._

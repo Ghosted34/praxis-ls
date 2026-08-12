@@ -331,6 +331,7 @@ function MailboxesSection() {
   }
   async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
   async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+  async function makeDefault(id: string) { setBusyId(id); setNote(""); try { await api.setDefaultMailbox(id); setNote("✓ Default mailbox updated"); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
 
   return (
     <div className="space-y-5">
@@ -350,10 +351,12 @@ function MailboxesSection() {
                 <span className="num font-medium text-foreground">{c.email_address}</span>
                 <Pill tone="mute">{providerLabel[c.provider]}</Pill>
                 <Pill tone={connTone(c.status)}>{c.status}</Pill>
+                {c.is_default && <Pill tone="ok">Default</Pill>}
               </div>
               <p className="micro mt-0.5">Last sync {dateFmt(c.last_sync_at)}{c.last_error ? ` · ${c.last_error.slice(0, 60)}` : ""}</p>
             </div>
             <div className="flex items-center gap-2">
+              {!c.is_default && <Button size="sm" variant="outline" onClick={() => makeDefault(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Make default</Button>}
               <Button size="sm" variant="outline" onClick={() => test(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Test</Button>
               <Button size="sm" onClick={() => sync(c.email_connection_id)} loading={busyId === c.email_connection_id}>Sync now</Button>
             </div>

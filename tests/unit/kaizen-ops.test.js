@@ -17,7 +17,10 @@
  *   - a tenant-specific maintenance window must beat a fleet-wide one.
  */
 
-jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: jest.fn() }));
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(),
+  close: jest.fn(),
+}));
 jest.mock("../../src/services/platform/backup-storage.service", () => ({
   putStream: jest.fn(),
   exists: jest.fn(),
@@ -59,7 +62,11 @@ const health = require("../../src/services/platform/health-rollup.service");
 const alerts = require("../../src/services/platform/alert-routing.service");
 const maintenance = require("../../src/services/platform/maintenance.service");
 
-const meta = (slug = "acme") => ({ slug, tenant_id: `tid-${slug}`, db_name: `tenant_${slug}` });
+const meta = (slug = "acme") => ({
+  slug,
+  tenant_id: `tid-${slug}`,
+  db_name: `tenant_${slug}`,
+});
 
 /** Make withTenantConnection hand the callback a fake client returning `rows`. */
 const withRows = (rows) =>
@@ -71,12 +78,18 @@ beforeEach(() => {
   jest.clearAllMocks();
   platformDb.query.mockResolvedValue({ rows: [] });
   backupStore.exists.mockResolvedValue(false);
-  backupStore.putStream.mockResolvedValue({ bytes: 4, checksum: "h", location: "local:x" });
+  backupStore.putStream.mockResolvedValue({
+    bytes: 4,
+    checksum: "h",
+    location: "local:x",
+  });
 });
 
 describe("WS-B2 — object sync", () => {
   test("copies objects the offsite store does not already have", async () => {
-    withRows([{ doc_id: "d1", storage_path: "vault/a.pdf", content_hash: "h1" }]);
+    withRows([
+      { doc_id: "d1", storage_path: "vault/a.pdf", content_hash: "h1" },
+    ]);
     storage.get.mockResolvedValue(Buffer.from("abcd"));
 
     const r = await objects.syncTenantObjects(meta());
@@ -125,10 +138,13 @@ describe("WS-B2 — object sync", () => {
 
 describe("WS-B4 — integrity scan", () => {
   const crypto = require("crypto");
-  const hashOf = (s) => crypto.createHash("sha256").update(Buffer.from(s)).digest("hex");
+  const hashOf = (s) =>
+    crypto.createHash("sha256").update(Buffer.from(s)).digest("hex");
 
   test("passes when stored bytes hash to the recorded content_hash", async () => {
-    withRows([{ doc_id: "d1", storage_path: "v/a.pdf", content_hash: hashOf("good") }]);
+    withRows([
+      { doc_id: "d1", storage_path: "v/a.pdf", content_hash: hashOf("good") },
+    ]);
     storage.get.mockResolvedValue(Buffer.from("good"));
 
     const r = await objects.scanTenantIntegrity(meta());
@@ -137,7 +153,13 @@ describe("WS-B4 — integrity scan", () => {
   });
 
   test("flags silent corruption — bytes present but hash changed", async () => {
-    withRows([{ doc_id: "d1", storage_path: "v/a.pdf", content_hash: hashOf("original") }]);
+    withRows([
+      {
+        doc_id: "d1",
+        storage_path: "v/a.pdf",
+        content_hash: hashOf("original"),
+      },
+    ]);
     storage.get.mockResolvedValue(Buffer.from("tampered"));
 
     const r = await objects.scanTenantIntegrity(meta());
@@ -147,11 +169,16 @@ describe("WS-B4 — integrity scan", () => {
   });
 
   test("records the run as FAILED when anything is corrupt, so an alert can watch it", async () => {
-    withRows([{ doc_id: "d1", storage_path: "v/a.pdf", content_hash: hashOf("x") }]);
+    withRows([
+      { doc_id: "d1", storage_path: "v/a.pdf", content_hash: hashOf("x") },
+    ]);
     storage.get.mockResolvedValue(Buffer.from("y"));
 
     await objects.scanTenantIntegrity(meta());
-    expect(backupSvc.finishRun).toHaveBeenCalledWith("run-1", expect.objectContaining({ status: "FAILED" }));
+    expect(backupSvc.finishRun).toHaveBeenCalledWith(
+      "run-1",
+      expect.objectContaining({ status: "FAILED" }),
+    );
   });
 
   test("separates unhashed from corrupt — unverifiable is not the same as damaged", async () => {
@@ -197,11 +224,15 @@ describe("WS-H1/H2 — health status rules", () => {
   });
 
   test("RED outranks AMBER when both apply", () => {
-    expect(health.statusFor({ schema_behind: 2, liveness_ok: false }).status).toBe("RED");
+    expect(
+      health.statusFor({ schema_behind: 2, liveness_ok: false }).status,
+    ).toBe("RED");
   });
 
   test("always explains itself", () => {
-    expect(health.statusFor({ schema_behind: 1, mail_verified: false }).reasons).toHaveLength(2);
+    expect(
+      health.statusFor({ schema_behind: 1, mail_verified: false }).reasons,
+    ).toHaveLength(2);
   });
 });
 
@@ -240,7 +271,10 @@ describe("WS-ER1 — alert routing", () => {
   });
 
   test("log-severity events are recorded but never dispatched", async () => {
-    const r = await alerts.raise({ event: "maintenance.started", subject: "x" });
+    const r = await alerts.raise({
+      event: "maintenance.started",
+      subject: "x",
+    });
     expect(r.delivered).toBe(false);
     expect(r.reason).toMatch(/log-only/);
   });
@@ -280,7 +314,14 @@ describe("WS-M1 — maintenance windows", () => {
   /** The more precise statement wins — someone wrote it about this tenant. */
   test("a tenant-specific window beats a fleet-wide one", async () => {
     platformDb.query.mockResolvedValue({
-      rows: [win(), win({ maintenance_window_id: "w2", tenant_id: "tid-acme", title: "Acme only" })],
+      rows: [
+        win(),
+        win({
+          maintenance_window_id: "w2",
+          tenant_id: "tid-acme",
+          title: "Acme only",
+        }),
+      ],
     });
     const w = await maintenance.activeFor("tid-acme");
     expect(w.title).toBe("Acme only");
@@ -288,7 +329,12 @@ describe("WS-M1 — maintenance windows", () => {
 
   test("a future window is not yet active", async () => {
     platformDb.query.mockResolvedValue({
-      rows: [win({ starts_at: new Date(now + 3600_000), ends_at: new Date(now + 7200_000) })],
+      rows: [
+        win({
+          starts_at: new Date(now + 3600_000),
+          ends_at: new Date(now + 7200_000),
+        }),
+      ],
     });
     expect(await maintenance.activeFor("tid-acme")).toBeNull();
   });
@@ -314,7 +360,10 @@ describe("WS-M1 — maintenance windows", () => {
 
   test("refuses an untitled window — the title is what users read", async () => {
     await expect(
-      maintenance.schedule({ startsAt: new Date(now), endsAt: new Date(now + 1000) }),
+      maintenance.schedule({
+        startsAt: new Date(now),
+        endsAt: new Date(now + 1000),
+      }),
     ).rejects.toThrow(/title/);
   });
 });

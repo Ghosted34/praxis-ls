@@ -45,17 +45,17 @@ The compose file overrides the host-specific vars (`DB_HOST=postgres`,
 `REDIS_URL=redis://redis:6379`, `NODE_ENV=production`) — do NOT set docker
 hostnames in `.env`. What you MUST change:
 
-| Var | Set to |
-|---|---|
-| `APP_BASE_DOMAIN` | your real base domain (drives tenant-by-subdomain) |
-| `DB_PASSWORD`, `TENANT_DB_SUPERUSER_PASSWORD` | one strong password (compose feeds it to Postgres as `POSTGRES_PASSWORD`) |
-| `DB_USER`, `TENANT_DB_SUPERUSER` | must match compose's `POSTGRES_USER` (default `praxis-admin` — or set both to the same custom user) |
-| `DB_NAME` | must match compose's `POSTGRES_DB` (default `praxislsdata`) |
-| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` | `openssl rand -hex 32` each |
-| `ENCRYPTION_KEY` | `openssl rand -hex 32` (exactly 64 hex chars) |
-| `SMTP_HOST/PORT/USER/PASS` | your mail relay (invites, campaigns, dunning) |
-| AI keys (`DEEPSEEK/GEMINI/GROQ/OPENAI_API_KEY`) | real keys, or leave `__rotate_me__` to run with AI off |
-| `STORAGE_DRIVER` | `local` (default; persisted via the `./data` volume) or `s3` + the `S3_*` vars |
+| Var                                             | Set to                                                                                              |
+| ----------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| `APP_BASE_DOMAIN`                               | your real base domain (drives tenant-by-subdomain)                                                  |
+| `DB_PASSWORD`, `TENANT_DB_SUPERUSER_PASSWORD`   | one strong password (compose feeds it to Postgres as `POSTGRES_PASSWORD`)                           |
+| `DB_USER`, `TENANT_DB_SUPERUSER`                | must match compose's `POSTGRES_USER` (default `praxis-admin` — or set both to the same custom user) |
+| `DB_NAME`                                       | must match compose's `POSTGRES_DB` (default `praxislsdata`)                                         |
+| `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET`       | `openssl rand -hex 32` each                                                                         |
+| `ENCRYPTION_KEY`                                | `openssl rand -hex 32` (exactly 64 hex chars)                                                       |
+| `SMTP_HOST/PORT/USER/PASS`                      | your mail relay (invites, campaigns, dunning)                                                       |
+| AI keys (`DEEPSEEK/GEMINI/GROQ/OPENAI_API_KEY`) | real keys, or leave `__rotate_me__` to run with AI off                                              |
+| `STORAGE_DRIVER`                                | `local` (default; persisted via the `./data` volume) or `s3` + the `S3_*` vars                      |
 
 Leave `PORT=8080` and `PUPPETEER_EXECUTABLE_PATH` empty (the image sets it).
 
@@ -156,8 +156,8 @@ resolver).
 
 **Host-gated — this is the key rule.** The console is served **only** when the
 request `Host` equals **`PLATFORM_CONSOLE_HOST`** (set it in `.env`, e.g.
-`PLATFORM_CONSOLE_HOST=admin.praxisls.com`). On that host the tenant SPA is *not*
-served; on every tenant host the console is *not* served. So
+`PLATFORM_CONSOLE_HOST=admin.praxisls.com`). On that host the tenant SPA is _not_
+served; on every tenant host the console is _not_ served. So
 `smartls.praxisls.com/console` (or any tenant path) can **never** reach it — there
 is no `/console` route at all. If `PLATFORM_CONSOLE_HOST` is empty, the console
 isn't served by the api at all (use its Vite dev server locally — see the README).
@@ -172,7 +172,7 @@ the rest. Just set the env var and redeploy:
 PLATFORM_CONSOLE_HOST=admin.praxisls.com
 ```
 
-Optional hardening — a dedicated server block that exposes *only* the platform
+Optional hardening — a dedicated server block that exposes _only_ the platform
 API + console on the admin host (belt-and-braces; the app already refuses tenant
 data there):
 
@@ -198,11 +198,11 @@ main block; factor them into a snippet or paste inline.
 **CORS:** the console uses a Bearer token (no cookies) and calls the API
 **same-origin** on the admin host, so nothing is needed. Admin is a subdomain of
 `APP_BASE_DOMAIN`, which is auto-allowed anyway. If a colleague later hosts the
-console on a *different* domain that doesn't proxy `/api/platform`, add that origin
+console on a _different_ domain that doesn't proxy `/api/platform`, add that origin
 to the `CORS_ORIGINS` env var (comma-separated).
 
 **First login:** create a Root Admin with `node scripts/platform/create-admin.js`
-(the console can't bootstrap the *first* platform user). Leave TOTP unset — the
+(the console can't bootstrap the _first_ platform user). Leave TOTP unset — the
 platform-tier 2FA verify step isn't wired yet (the API returns 501 if a secret
 is present).
 
@@ -283,11 +283,11 @@ key.
 
 ## Troubleshooting
 
-| Symptom | Cause / fix |
-|---|---|
-| Blank page / JSON 404 at `/` | image built without the SPA — rebuild (`docker compose build api`); the `clientbuild` stage must run |
-| "unknown tenant" | proxy not passing `Host`, or DNS/`APP_BASE_DOMAIN` mismatch |
-| Login ok, everything else 401 | server clock skew (JWT) — enable NTP |
+| Symptom                             | Cause / fix                                                                                                                |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Blank page / JSON 404 at `/`        | image built without the SPA — rebuild (`docker compose build api`); the `clientbuild` stage must run                       |
+| "unknown tenant"                    | proxy not passing `Host`, or DNS/`APP_BASE_DOMAIN` mismatch                                                                |
+| Login ok, everything else 401       | server clock skew (JWT) — enable NTP                                                                                       |
 | `sharp`/`argon2` load error at boot | image built with `npm ci` against the Windows lockfile — the Dockerfile uses `npm install` on purpose; don't "fix" it back |
-| Real-time chat not updating | WebSocket upgrade headers missing in the proxy |
-| PDF render fails | Chromium is in the image at `/usr/bin/chromium` — ensure `PUPPETEER_EXECUTABLE_PATH` is empty or that path |
+| Real-time chat not updating         | WebSocket upgrade headers missing in the proxy                                                                             |
+| PDF render fails                    | Chromium is in the image at `/usr/bin/chromium` — ensure `PUPPETEER_EXECUTABLE_PATH` is empty or that path                 |

@@ -27,14 +27,14 @@ credentials:
 **Redacted in place** — the credential was embedded in code worth keeping, so the
 value was replaced with `__REMOVED_ROTATE_ME__` and the surrounding logic left intact:
 
-| File | What was there |
-|---|---|
-| `legacy_codebase/administration/index.php` | inline MySQL host / database / user |
-| `legacy_codebase/administration/view/admin/test_smtp_mail.php` | Office 365 SMTP username + password |
-| `legacy_codebase/administration/api/praxis/command_engine.php` | Google Gemini API key |
-| `legacy_codebase/administration/api/smart_quote_api.php` | Google Gemini API key **+ Groq API key** |
-| `legacy_codebase/administration/api/success_story_api.php` | Google Gemini API key ×2 **+ Groq API key** |
-| `legacy_codebase/public_html/test_gemini.php` | Google Gemini API key |
+| File                                                           | What was there                              |
+| -------------------------------------------------------------- | ------------------------------------------- |
+| `legacy_codebase/administration/index.php`                     | inline MySQL host / database / user         |
+| `legacy_codebase/administration/view/admin/test_smtp_mail.php` | Office 365 SMTP username + password         |
+| `legacy_codebase/administration/api/praxis/command_engine.php` | Google Gemini API key                       |
+| `legacy_codebase/administration/api/smart_quote_api.php`       | Google Gemini API key **+ Groq API key**    |
+| `legacy_codebase/administration/api/success_story_api.php`     | Google Gemini API key ×2 **+ Groq API key** |
+| `legacy_codebase/public_html/test_gemini.php`                  | Google Gemini API key                       |
 
 **The two Groq keys were found by CI, not by the sweep.** The first pass grepped
 for the shapes it expected — `$gemini_api_key` and `AIza…` — and missed
@@ -58,7 +58,7 @@ rotate it first.
 ### Note on how these were found
 
 The audit cited one file. There were five, plus five Gemini API keys the audit did not
-list — and those keys matched the scanner's *existing* `AIza…` pattern the whole time.
+list — and those keys matched the scanner's _existing_ `AIza…` pattern the whole time.
 They were invisible purely because of the path exclusion. The database and SMTP
 credentials matched no pattern at all, so un-excluding the directory alone would still
 have passed them clean; the pattern set was widened in the same commit.

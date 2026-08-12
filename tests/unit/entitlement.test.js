@@ -18,7 +18,10 @@
  *     everything before the last sweep.
  */
 
-jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: jest.fn() }));
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(),
+  close: jest.fn(),
+}));
 jest.mock("../../src/services/tenant/registry.service", () => ({
   withTenantConnection: jest.fn(),
   listActiveTenants: jest.fn(),
@@ -39,7 +42,15 @@ beforeEach(() => jest.clearAllMocks());
 
 describe("statusFor — unlimited is not zero", () => {
   test("a metric with no entitlement reports limit null and no percentage", async () => {
-    givenStatus([{ metric: "seats", used: 12, limit_value: null, hard: null, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 12,
+        limit_value: null,
+        hard: null,
+        measured_at: null,
+      },
+    ]);
     const [row] = await entitlement.statusFor(TENANT);
     expect(row.limit).toBeNull();
     expect(row.pct).toBeNull();
@@ -47,7 +58,15 @@ describe("statusFor — unlimited is not zero", () => {
   });
 
   test("a metric under its limit is not over and not warning", async () => {
-    givenStatus([{ metric: "seats", used: 5, limit_value: 20, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 5,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
     const [row] = await entitlement.statusFor(TENANT);
     expect(row.pct).toBe(25);
     expect(row.over).toBe(false);
@@ -55,14 +74,30 @@ describe("statusFor — unlimited is not zero", () => {
   });
 
   test("80% of a limit is where warning starts — below that it is noise", async () => {
-    givenStatus([{ metric: "seats", used: 16, limit_value: 20, hard: false, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 16,
+        limit_value: 20,
+        hard: false,
+        measured_at: null,
+      },
+    ]);
     const [row] = await entitlement.statusFor(TENANT);
     expect(row.warning).toBe(true);
     expect(row.over).toBe(false);
   });
 
   test("past the limit is over, and no longer merely a warning", async () => {
-    givenStatus([{ metric: "seats", used: 21, limit_value: 20, hard: false, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 21,
+        limit_value: 20,
+        hard: false,
+        measured_at: null,
+      },
+    ]);
     const [row] = await entitlement.statusFor(TENANT);
     expect(row.over).toBe(true);
     expect(row.warning).toBe(false);
@@ -78,8 +113,18 @@ describe("check — the enforcement gate", () => {
   });
 
   test("a HARD limit throws a typed 402 when the action would exceed it", async () => {
-    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
-    await expect(entitlement.check(TENANT, "seats", { additional: 1 })).rejects.toMatchObject({
+    givenStatus([
+      {
+        metric: "seats",
+        used: 20,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
+    await expect(
+      entitlement.check(TENANT, "seats", { additional: 1 }),
+    ).rejects.toMatchObject({
       code: "ENTITLEMENT_EXCEEDED",
       // 402 Payment Required: a commercial limit, not a permission problem (403)
       // and not a malformed request (422).
@@ -88,20 +133,53 @@ describe("check — the enforcement gate", () => {
   });
 
   test("the error carries what was used, the limit, and what was asked for", async () => {
-    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
-    const err = await entitlement.check(TENANT, "seats", { additional: 3 }).catch((e) => e);
-    expect(err.details).toEqual({ metric: "seats", used: 20, limit: 20, requested: 3 });
+    givenStatus([
+      {
+        metric: "seats",
+        used: 20,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
+    const err = await entitlement
+      .check(TENANT, "seats", { additional: 3 })
+      .catch((e) => e);
+    expect(err.details).toEqual({
+      metric: "seats",
+      used: 20,
+      limit: 20,
+      requested: 3,
+    });
   });
 
   test("it asks 'would this exceed', not 'are they already over'", async () => {
     // Exactly at the limit with nothing being added: allowed. Checking after the
     // fact would have permitted one more.
-    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
-    await expect(entitlement.check(TENANT, "seats", { additional: 0 })).resolves.toMatchObject({ allowed: true });
+    givenStatus([
+      {
+        metric: "seats",
+        used: 20,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
+    await expect(
+      entitlement.check(TENANT, "seats", { additional: 0 }),
+    ).resolves.toMatchObject({ allowed: true });
   });
 
   test("a SOFT limit never throws — it reports and allows", async () => {
-    givenStatus([{ metric: "seats", used: 25, limit_value: 20, hard: false, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 25,
+        limit_value: 20,
+        hard: false,
+        measured_at: null,
+      },
+    ]);
     const r = await entitlement.check(TENANT, "seats", { additional: 1 });
     expect(r.allowed).toBe(true);
     expect(r.exceeded_soft).toBe(true);
@@ -110,14 +188,33 @@ describe("check — the enforcement gate", () => {
   test("a live count overrides the cached figure", async () => {
     // The seat path passes a fresh count because its tenant connection is
     // already open. Cached usage says they are full; reality says they are not.
-    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
-    const r = await entitlement.check(TENANT, "seats", { additional: 1, liveUsed: 3 });
+    givenStatus([
+      {
+        metric: "seats",
+        used: 20,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
+    const r = await entitlement.check(TENANT, "seats", {
+      additional: 1,
+      liveUsed: 3,
+    });
     expect(r.allowed).toBe(true);
     expect(r.used).toBe(3);
   });
 
   test("a live count can also BLOCK when the cache is stale in the other direction", async () => {
-    givenStatus([{ metric: "seats", used: 1, limit_value: 20, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 1,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
     await expect(
       entitlement.check(TENANT, "seats", { additional: 1, liveUsed: 20 }),
     ).rejects.toMatchObject({ code: "ENTITLEMENT_EXCEEDED" });
@@ -129,14 +226,25 @@ describe("setEntitlement", () => {
     // A limit against a metric no meter reports would silently never fire —
     // worse than an error, because it looks configured.
     await expect(
-      entitlement.setEntitlement({ planId: "p1", metric: "made_up", limitValue: 5 }),
+      entitlement.setEntitlement({
+        planId: "p1",
+        metric: "made_up",
+        limitValue: 5,
+      }),
     ).rejects.toMatchObject({ code: "UNKNOWN_METRIC", status: 422 });
     expect(platformDb.query).not.toHaveBeenCalled();
   });
 
   test("a known metric is upserted", async () => {
-    platformDb.query.mockResolvedValue({ rows: [{ metric: "seats", limit_value: 10 }] });
-    await entitlement.setEntitlement({ planId: "p1", metric: "seats", limitValue: 10, hard: true });
+    platformDb.query.mockResolvedValue({
+      rows: [{ metric: "seats", limit_value: 10 }],
+    });
+    await entitlement.setEntitlement({
+      planId: "p1",
+      metric: "seats",
+      limitValue: 10,
+      hard: true,
+    });
     expect(platformDb.query).toHaveBeenCalledWith(
       expect.stringContaining("ON CONFLICT (plan_id, metric)"),
       ["p1", "seats", 10, true],
@@ -151,17 +259,23 @@ describe("record — level replaces, flow accumulates", () => {
     // Summing a level metric across a month multiplies the seat count by how
     // many times it was measured.
     expect(platformDb.query.mock.calls[0][0]).toContain("used = EXCLUDED.used");
-    expect(platformDb.query.mock.calls[0][0]).not.toContain("tenant_usage.used +");
+    expect(platformDb.query.mock.calls[0][0]).not.toContain(
+      "tenant_usage.used +",
+    );
   });
 
   test("a FLOW metric adds to the period value", async () => {
     platformDb.query.mockResolvedValue({ rows: [{}] });
     await entitlement.record(TENANT, "emails_month", 5);
-    expect(platformDb.query.mock.calls[0][0]).toContain("platform.tenant_usage.used + EXCLUDED.used");
+    expect(platformDb.query.mock.calls[0][0]).toContain(
+      "platform.tenant_usage.used + EXCLUDED.used",
+    );
   });
 
   test("an unknown metric is rejected", async () => {
-    await expect(entitlement.record(TENANT, "nope", 1)).rejects.toThrow(/unknown metric/i);
+    await expect(entitlement.record(TENANT, "nope", 1)).rejects.toThrow(
+      /unknown metric/i,
+    );
   });
 });
 
@@ -171,8 +285,9 @@ describe("metering", () => {
     // job, an operator pressing the button and a scheduler firing twice after a
     // restart all produce the same number. A metering system that inflates
     // under any of those is one nobody will invoice from.
-    registry.withTenantConnection.mockImplementation(async (_meta, _schema, fn) =>
-      fn({ query: async () => ({ rows: [{ n: 7, c: "1500", b: "0" }] }) }),
+    registry.withTenantConnection.mockImplementation(
+      async (_meta, _schema, fn) =>
+        fn({ query: async () => ({ rows: [{ n: 7, c: "1500", b: "0" }] }) }),
     );
     platformDb.query.mockResolvedValue({ rows: [{}] });
 
@@ -202,13 +317,14 @@ describe("metering", () => {
 
   test("seats counts only ACTIVE users", async () => {
     let seenSql = "";
-    registry.withTenantConnection.mockImplementation(async (_meta, _schema, fn) =>
-      fn({
-        query: async (sql) => {
-          if (sql.includes("app_user")) seenSql = sql;
-          return { rows: [{ n: 4, c: "0" }] };
-        },
-      }),
+    registry.withTenantConnection.mockImplementation(
+      async (_meta, _schema, fn) =>
+        fn({
+          query: async (sql) => {
+            if (sql.includes("app_user")) seenSql = sql;
+            return { rows: [{ n: 4, c: "0" }] };
+          },
+        }),
     );
     platformDb.query.mockResolvedValue({ rows: [{}] });
 
@@ -230,6 +346,8 @@ describe("the metric catalogue", () => {
   });
 
   test("currentPeriod is always the first of a month", () => {
-    expect(entitlement.currentPeriod(new Date("2026-08-17T13:00:00Z"))).toBe("2026-08-01");
+    expect(entitlement.currentPeriod(new Date("2026-08-17T13:00:00Z"))).toBe(
+      "2026-08-01",
+    );
   });
 });

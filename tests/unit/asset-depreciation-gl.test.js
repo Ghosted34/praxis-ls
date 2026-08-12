@@ -35,13 +35,23 @@ const ASSET = {
   acquisition_cost: 12000,
   coa_depr_code: "2845",
 };
-const ROW = { depreciation_id: "dep-1", period_code: "2026-03", amount: 250, posted: false };
+const ROW = {
+  depreciation_id: "dep-1",
+  period_code: "2026-03",
+  amount: 250,
+  posted: false,
+};
 
 /** Load the service with the journal + repo mocked. */
 function load({ postImpl } = {}) {
   jest.resetModules();
   const post = jest.fn(postImpl || (async () => ({ entry_id: "entry-99" })));
-  const markPosted = jest.fn(async (_c, id, entryId) => ({ ...ROW, depreciation_id: id, posted: true, entry_id: entryId }));
+  const markPosted = jest.fn(async (_c, id, entryId) => ({
+    ...ROW,
+    depreciation_id: id,
+    posted: true,
+    entry_id: entryId,
+  }));
 
   jest.doMock(JOURNAL, () => ({ post }));
   jest.doMock(REPO, () => ({
@@ -68,7 +78,10 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
     // The first half of the bug. `account:` silently produced
     // `account_code: undefined` inside buildAndInsert.
     const { service, post } = load();
-    await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
 
     expect(post).toHaveBeenCalledTimes(1);
     const payload = post.mock.calls[0][1];
@@ -83,13 +96,19 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
     // The second half. journal_entry.service.js:42 throws SOURCE_DOC_REQUIRED
     // when `validate` is on (the default) and sourceDocRef is absent.
     const { service, post } = load();
-    await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
     expect(post.mock.calls[0][1].sourceDocRef).toBe("asset:asset-1");
   });
 
   it("posts a balanced entry: debit 6813, credit the accumulated account", async () => {
     const { service, post } = load();
-    await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
     const { lines } = post.mock.calls[0][1];
 
     const debit = lines.find((l) => l.debit > 0);
@@ -101,13 +120,19 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
 
   it("dates the entry on the last day of the period", async () => {
     const { service, post } = load();
-    await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
     expect(post.mock.calls[0][1].entryDate).toBe("2026-03-31");
   });
 
   it("marks the row posted WITH the returned entry id", async () => {
     const { service, markPosted } = load();
-    const out = await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    const out = await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
     expect(markPosted).toHaveBeenCalledWith({}, "dep-1", "entry-99");
     expect(out.posted_to_gl).toBe(true);
   });
@@ -116,25 +141,37 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
     // The behaviour change. Previously swallowed and recorded as posted; a
     // closed period or non-postable account silently diverged the subledger
     // from the GL. Now it fails loudly and posts nothing.
-    const rejecting = { postImpl: async () => { throw new Error("period 2026-03 is locked"); } };
+    const rejecting = {
+      postImpl: async () => {
+        throw new Error("period 2026-03 is locked");
+      },
+    };
 
     it("throws instead of returning success", async () => {
       const { service } = load(rejecting);
       await expect(
-        service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} }),
+        service.depreciate(
+          {},
+          { id: "asset-1", period_code: "2026-03", actor: {} },
+        ),
       ).rejects.toMatchObject({ code: "GL_POST_FAILED" });
     });
 
     it("does NOT mark the period posted — the regression that hid this", async () => {
       const { service, markPosted } = load(rejecting);
-      await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} }).catch(() => {});
+      await service
+        .depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} })
+        .catch(() => {});
       expect(markPosted).not.toHaveBeenCalled();
     });
 
     it("surfaces the underlying reason to the caller", async () => {
       const { service } = load(rejecting);
       await expect(
-        service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} }),
+        service.depreciate(
+          {},
+          { id: "asset-1", period_code: "2026-03", actor: {} },
+        ),
       ).rejects.toThrow(/locked/);
     });
   });
@@ -143,7 +180,10 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
     // Defensive: resolving without an id would recreate posted=true/entry=NULL.
     const { service, markPosted } = load({ postImpl: async () => ({}) });
     await expect(
-      service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} }),
+      service.depreciate(
+        {},
+        { id: "asset-1", period_code: "2026-03", actor: {} },
+      ),
     ).rejects.toMatchObject({ code: "GL_POST_FAILED" });
     expect(markPosted).not.toHaveBeenCalled();
   });
@@ -158,10 +198,17 @@ describe("DATA 5.5 — depreciation posts to the general ledger", () => {
       markPosted: jest.fn(),
       accumulatedPosted: async () => 0,
     }));
-    jest.doMock("../../src/shared/events/emit", () => ({ emitEvent: jest.fn(), audit: jest.fn(), resolveActorId: jest.fn(async (c, id) => id || null) }));
+    jest.doMock("../../src/shared/events/emit", () => ({
+      emitEvent: jest.fn(),
+      audit: jest.fn(),
+      resolveActorId: jest.fn(async (c, id) => id || null),
+    }));
     const service = require(SERVICE);
 
-    const out = await service.depreciate({}, { id: "asset-1", period_code: "2026-03", actor: {} });
+    const out = await service.depreciate(
+      {},
+      { id: "asset-1", period_code: "2026-03", actor: {} },
+    );
     expect(out.already_posted).toBe(true);
     expect(post).not.toHaveBeenCalled();
   });

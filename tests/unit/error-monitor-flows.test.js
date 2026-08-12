@@ -45,7 +45,8 @@ const RECIPIENT = "33333333-3333-3333-3333-333333333333";
 /** One error row, shaped like errors.service SELECT_COLUMNS returns it. */
 const ERROR_ROW = {
   id: ERROR_ID,
-  signature: "TypeError|cannot read <n>|at f (/app/src/modules/logistics/shipments/x.js)",
+  signature:
+    "TypeError|cannot read <n>|at f (/app/src/modules/logistics/shipments/x.js)",
   tenant_id: null,
   tenant_slug: "smartlog",
   tenant_name: "SmartLog",
@@ -65,7 +66,17 @@ const ERROR_ROW = {
   resolved_at: null,
   resolved_by: null,
   resolved_by_name: null,
-  stack_trace: [{ index: 1, function: "createShipment", file: "src/x.js", line: 89, column: 4, module: "shipments", vendor: false }],
+  stack_trace: [
+    {
+      index: 1,
+      function: "createShipment",
+      file: "src/x.js",
+      line: 89,
+      column: 4,
+      module: "shipments",
+      vendor: false,
+    },
+  ],
   raw_stack: "TypeError: x\n    at createShipment (/app/src/x.js:89:4)",
   context: {},
   explanation: null,
@@ -80,7 +91,10 @@ const ERROR_ROW = {
  * article, so a route that lost its gate still fails here rather than sailing
  * through on a permissive stub.
  */
-function buildApp(queryHandler, { caps = ["errors.read", "errors.resolve", "errors.configure"] } = {}) {
+function buildApp(
+  queryHandler,
+  { caps = ["errors.read", "errors.resolve", "errors.configure"] } = {},
+) {
   jest.resetModules();
   jest.doMock(DB, () => ({ query: queryHandler }));
 
@@ -88,7 +102,11 @@ function buildApp(queryHandler, { caps = ["errors.read", "errors.resolve", "erro
   jest.doMock(PLATFORM_AUTH, () => ({
     ...real,
     platformAuth: (req, _res, next) => {
-      req.platformUser = { platform_user_id: ACTOR, role: "PLATFORM_SUPPORT", email: "ops@praxisls.com" };
+      req.platformUser = {
+        platform_user_id: ACTOR,
+        role: "PLATFORM_SUPPORT",
+        email: "ops@praxisls.com",
+      };
       req.platformCaps = new Set(caps);
       next();
     },
@@ -102,7 +120,10 @@ function buildApp(queryHandler, { caps = ["errors.read", "errors.resolve", "erro
     next();
   });
 
-  app.use("/api/platform", require("../../src/modules/platform/errors/errors.routes"));
+  app.use(
+    "/api/platform",
+    require("../../src/modules/platform/errors/errors.routes"),
+  );
 
   const { errorHandler } = require("../../src/middleware/error-handler");
   app.use(errorHandler);
@@ -123,9 +144,15 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     const ns = {
       _use: null,
       _onConnection: null,
-      use(fn) { ns._use = fn; },
-      on(ev, fn) { if (ev === "connection") ns._onConnection = fn; },
-      to(room) { return { emit: (ev, payload) => emitted.push({ room, ev, payload }) }; },
+      use(fn) {
+        ns._use = fn;
+      },
+      on(ev, fn) {
+        if (ev === "connection") ns._onConnection = fn;
+      },
+      to(room) {
+        return { emit: (ev, payload) => emitted.push({ room, ev, payload }) };
+      },
       emit: (ev, payload) => emitted.push({ room: "*", ev, payload }),
     };
     return { io: { of: () => ns }, ns, emitted };
@@ -141,7 +168,9 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
       handshake: { auth: {}, headers: {} },
       join: (r) => rooms.add(r),
       leave: (r) => rooms.delete(r),
-      on: (ev, fn) => { handlers[ev] = fn; },
+      on: (ev, fn) => {
+        handlers[ev] = fn;
+      },
       _fire: (ev, ...args) => handlers[ev] && handlers[ev](...args),
     };
   }
@@ -169,7 +198,10 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
   }
 
   const ACTIVE_ADMIN = {
-    platform_user_id: ACTOR, email: "a@b.cm", role: "PLATFORM_ROOT_ADMIN", is_active: true,
+    platform_user_id: ACTOR,
+    email: "a@b.cm",
+    role: "PLATFORM_ROOT_ADMIN",
+    is_active: true,
   };
 
   /** Drive the `use()` middleware and return the error it passed to next(). */
@@ -186,7 +218,10 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     mod.initPlatformNamespace({ of: () => ns });
 
     // typ:"access" is a tenant token. A platform namespace must never take one.
-    const { err } = await authenticate(ns, tokenFor({ sub: ACTOR, typ: "access" }));
+    const { err } = await authenticate(
+      ns,
+      tokenFor({ sub: ACTOR, typ: "access" }),
+    );
     expect(err && err.message).toBe("WRONG_AUDIENCE");
   });
 
@@ -200,11 +235,16 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
   });
 
   it("rejects a deactivated user even with a valid token", async () => {
-    const mod = withSecret(async () => ({ rows: [{ ...ACTIVE_ADMIN, is_active: false }] }));
+    const mod = withSecret(async () => ({
+      rows: [{ ...ACTIVE_ADMIN, is_active: false }],
+    }));
     const { ns } = fakeIo();
     mod.initPlatformNamespace({ of: () => ns });
 
-    const { err } = await authenticate(ns, tokenFor({ sub: ACTOR, typ: "platform" }));
+    const { err } = await authenticate(
+      ns,
+      tokenFor({ sub: ACTOR, typ: "platform" }),
+    );
     expect(err && err.message).toBe("USER_INACTIVE");
   });
 
@@ -216,7 +256,10 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     const { ns } = fakeIo();
     mod.initPlatformNamespace({ of: () => ns });
 
-    const { err } = await authenticate(ns, tokenFor({ sub: ACTOR, typ: "platform" }));
+    const { err } = await authenticate(
+      ns,
+      tokenFor({ sub: ACTOR, typ: "platform" }),
+    );
     expect(err && err.message).toBe("FORBIDDEN");
   });
 
@@ -228,7 +271,10 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     const { ns } = fakeIo();
     mod.initPlatformNamespace({ of: () => ns });
 
-    const { socket, err } = await authenticate(ns, tokenFor({ sub: ACTOR, typ: "platform" }));
+    const { socket, err } = await authenticate(
+      ns,
+      tokenFor({ sub: ACTOR, typ: "platform" }),
+    );
     expect(err).toBeUndefined();
     expect(socket.data.isRoot).toBe(true);
   });
@@ -281,10 +327,24 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     const { ns, emitted } = fakeIo();
     mod.initPlatformNamespace({ of: () => ns });
 
-    mod.broadcastError({ error_id: "e1", signature: "s1", tenant_id: "t-uuid", level: "fatal", occurrence_count: 1 });
-    mod.broadcastError({ error_id: "e2", signature: "s2", tenant_id: null, level: "error", occurrence_count: 1 });
+    mod.broadcastError({
+      error_id: "e1",
+      signature: "s1",
+      tenant_id: "t-uuid",
+      level: "fatal",
+      occurrence_count: 1,
+    });
+    mod.broadcastError({
+      error_id: "e2",
+      signature: "s2",
+      tenant_id: null,
+      level: "error",
+      occurrence_count: 1,
+    });
 
-    const rooms = emitted.filter((e) => e.ev === "new_error").map((e) => e.room);
+    const rooms = emitted
+      .filter((e) => e.ev === "new_error")
+      .map((e) => e.room);
     expect(rooms.some((r) => String(r).startsWith("errors:t:"))).toBe(true);
     expect(rooms).toContain("errors:platform");
   });
@@ -308,7 +368,12 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
     const { ns, emitted } = fakeIo();
     mod.initPlatformNamespace({ of: () => ns });
 
-    mod.broadcastResolved({ id: ERROR_ID, signature: "s", resolved_by: ACTOR, resolved_at: new Date().toISOString() });
+    mod.broadcastResolved({
+      id: ERROR_ID,
+      signature: "s",
+      resolved_by: ACTOR,
+      resolved_at: new Date().toISOString(),
+    });
     expect(emitted.some((e) => e.ev === "error_resolved")).toBe(true);
   });
 });
@@ -319,11 +384,14 @@ describe("§12.2 WebSocket namespace — authentication and event routing", () =
 describe("§12.3 share flow — router → controller → service → payload", () => {
   it("returns all three channels plus the LLM-friendly block", async () => {
     const app = buildApp(async (sql) => {
-      if (/INSERT INTO platform\.platform_audit/s.test(sql)) return { rows: [] };
+      if (/INSERT INTO platform\.platform_audit/s.test(sql))
+        return { rows: [] };
       return { rows: [ERROR_ROW] };
     });
 
-    const res = await request(app).get(`/api/platform/errors/${ERROR_ID}/share`).expect(200);
+    const res = await request(app)
+      .get(`/api/platform/errors/${ERROR_ID}/share`)
+      .expect(200);
     const d = res.body.data;
 
     expect(d.whatsapp.url).toMatch(/^https:\/\/wa\.me\/\?text=/);
@@ -347,7 +415,9 @@ describe("§12.3 share flow — router → controller → service → payload", 
       return { rows: [ERROR_ROW] };
     });
 
-    await request(app).get(`/api/platform/errors/${ERROR_ID}/share`).expect(200);
+    await request(app)
+      .get(`/api/platform/errors/${ERROR_ID}/share`)
+      .expect(200);
 
     expect(audited).toHaveLength(1);
     expect(audited[0][1]).toBe("error.shared");
@@ -361,27 +431,45 @@ describe("§12.3 share flow — router → controller → service → payload", 
     const app = buildApp(async (sql, params) => {
       if (/INSERT INTO platform\.notification/s.test(sql)) {
         inserted = params;
-        return { rows: [{ notification_id: "n1", to_user_id: params[0], title: params[3], body: params[4] }] };
+        return {
+          rows: [
+            {
+              notification_id: "n1",
+              to_user_id: params[0],
+              title: params[3],
+              body: params[4],
+            },
+          ],
+        };
       }
-      if (/INSERT INTO platform\.platform_audit/s.test(sql)) return { rows: [] };
+      if (/INSERT INTO platform\.platform_audit/s.test(sql))
+        return { rows: [] };
       return { rows: [ERROR_ROW] };
     });
 
     await request(app)
       .post("/api/platform/notifications")
-      .send({ to_user_id: RECIPIENT, error_id: ERROR_ID, note: "please look", title: "PWNED" })
+      .send({
+        to_user_id: RECIPIENT,
+        error_id: ERROR_ID,
+        note: "please look",
+        title: "PWNED",
+      })
       .expect(201);
 
     expect(inserted[0]).toBe(RECIPIENT);
     expect(inserted[1]).toBe(ACTOR);
-    expect(inserted[3]).toContain("FATAL");     // rebuilt from the error
+    expect(inserted[3]).toContain("FATAL"); // rebuilt from the error
     expect(inserted[3]).not.toContain("PWNED"); // client title discarded
     expect(inserted[4]).toContain("please look");
   });
 
   it("rejects a send with no recipient", async () => {
     const app = buildApp(async () => ({ rows: [ERROR_ROW] }));
-    await request(app).post("/api/platform/notifications").send({ error_id: ERROR_ID }).expect(422);
+    await request(app)
+      .post("/api/platform/notifications")
+      .send({ error_id: ERROR_ID })
+      .expect(422);
   });
 
   it("sending is capability-gated even though reading is not", async () => {
@@ -412,41 +500,68 @@ describe("§12.4 AI explanation — validation and cache hygiene", () => {
       query: async (sql, params) => {
         queries.push({ sql, params });
         if (/INSERT INTO/s.test(sql)) return { rows: [] };
-        if (/FROM platform\.error_explanation/s.test(sql)) return { rows: stored ? [stored] : [] };
+        if (/FROM platform\.error_explanation/s.test(sql))
+          return { rows: stored ? [stored] : [] };
         return { rows: [ERROR_ROW] };
       },
     }));
     jest.doMock(LLM, () => ({ chat }));
     // No Redis in unit tests — the service is documented to fall through to the
     // DB tier when it is absent, and that path must not throw.
-    jest.doMock(REDIS, () => ({ getClient: () => { throw new Error("no redis"); } }));
+    jest.doMock(REDIS, () => ({
+      getClient: () => {
+        throw new Error("no redis");
+      },
+    }));
 
-    return { svc: require("../../src/services/platform/error-explain.service"), queries };
+    return {
+      svc: require("../../src/services/platform/error-explain.service"),
+      queries,
+    };
   }
 
   it("refuses to present a stub as an explanation when no vendor is configured", async () => {
     // llm.chat returns { provider: null } when nothing is set up. Storing that
     // would poison the cache with an apology and serve it back as real.
-    const { svc, queries } = loadExplain({ chat: async () => ({ provider: null, text: "" }) });
+    const { svc, queries } = loadExplain({
+      chat: async () => ({ provider: null, text: "" }),
+    });
 
-    await expect(svc.explain({ errorId: ERROR_ID, actorId: ACTOR }))
-      .rejects.toMatchObject({ code: "AI_UNAVAILABLE" });
+    await expect(
+      svc.explain({ errorId: ERROR_ID, actorId: ACTOR }),
+    ).rejects.toMatchObject({ code: "AI_UNAVAILABLE" });
 
-    expect(queries.some((q) => /INSERT INTO platform\.error_explanation/s.test(q.sql))).toBe(false);
+    expect(
+      queries.some((q) =>
+        /INSERT INTO platform\.error_explanation/s.test(q.sql),
+      ),
+    ).toBe(false);
   });
 
   it("does not cache a provider failure", async () => {
     const { svc, queries } = loadExplain({
-      chat: async () => { throw new Error("502 from provider"); },
+      chat: async () => {
+        throw new Error("502 from provider");
+      },
     });
 
-    await expect(svc.explain({ errorId: ERROR_ID, actorId: ACTOR })).rejects.toBeDefined();
-    expect(queries.some((q) => /INSERT INTO platform\.error_explanation/s.test(q.sql))).toBe(false);
+    await expect(
+      svc.explain({ errorId: ERROR_ID, actorId: ACTOR }),
+    ).rejects.toBeDefined();
+    expect(
+      queries.some((q) =>
+        /INSERT INTO platform\.error_explanation/s.test(q.sql),
+      ),
+    ).toBe(false);
   });
 
   it("persists and returns a real explanation with the vendor that produced it", async () => {
     const { svc, queries } = loadExplain({
-      chat: async () => ({ provider: "deepseek", model: "deepseek-chat", text: "1. What happened…" }),
+      chat: async () => ({
+        provider: "deepseek",
+        model: "deepseek-chat",
+        text: "1. What happened…",
+      }),
     });
 
     const out = await svc.explain({ errorId: ERROR_ID, actorId: ACTOR });
@@ -454,13 +569,20 @@ describe("§12.4 AI explanation — validation and cache hygiene", () => {
     expect(out.explanation).toContain("What happened");
     expect(out.generated_by).toBe("deepseek");
     expect(out.cached).toBe(false);
-    expect(queries.some((q) => /INSERT INTO platform\.error_explanation/s.test(q.sql))).toBe(true);
+    expect(
+      queries.some((q) =>
+        /INSERT INTO platform\.error_explanation/s.test(q.sql),
+      ),
+    ).toBe(true);
   });
 
   it("serves a stored explanation without calling the model again", async () => {
     let calls = 0;
     const { svc } = loadExplain({
-      chat: async () => { calls += 1; return { provider: "deepseek", text: "fresh" }; },
+      chat: async () => {
+        calls += 1;
+        return { provider: "deepseek", text: "fresh" };
+      },
       stored: {
         explanation: "cached text",
         generated_by: "gemini",
@@ -471,7 +593,12 @@ describe("§12.4 AI explanation — validation and cache hygiene", () => {
 
     const out = await svc.explain({ errorId: ERROR_ID, actorId: ACTOR });
 
-    expect(out).toMatchObject({ cached: true, source: "db", explanation: "cached text", generated_by: "gemini" });
+    expect(out).toMatchObject({
+      cached: true,
+      source: "db",
+      explanation: "cached text",
+      generated_by: "gemini",
+    });
     // The whole point of the tier: an explained signature costs nothing.
     expect(calls).toBe(0);
   });
@@ -479,11 +606,27 @@ describe("§12.4 AI explanation — validation and cache hygiene", () => {
   it("force=true regenerates, bypassing both cache tiers", async () => {
     let calls = 0;
     const { svc } = loadExplain({
-      chat: async () => { calls += 1; return { provider: "deepseek", model: "deepseek-chat", text: "regenerated" }; },
-      stored: { explanation: "stale", generated_by: "gemini", model: "g", created_at: new Date().toISOString() },
+      chat: async () => {
+        calls += 1;
+        return {
+          provider: "deepseek",
+          model: "deepseek-chat",
+          text: "regenerated",
+        };
+      },
+      stored: {
+        explanation: "stale",
+        generated_by: "gemini",
+        model: "g",
+        created_at: new Date().toISOString(),
+      },
     });
 
-    const out = await svc.explain({ errorId: ERROR_ID, actorId: ACTOR, force: true });
+    const out = await svc.explain({
+      errorId: ERROR_ID,
+      actorId: ACTOR,
+      force: true,
+    });
 
     expect(calls).toBe(1);
     expect(out.explanation).toBe("regenerated");
@@ -494,18 +637,36 @@ describe("§12.4 AI explanation — validation and cache hygiene", () => {
     let calls = 0;
     jest.resetModules();
     jest.doMock(DB, () => ({ query: async () => ({ rows: [] }) }));
-    jest.doMock(LLM, () => ({ chat: async () => { calls += 1; return { provider: "deepseek", text: "x" }; } }));
-    jest.doMock(REDIS, () => ({ getClient: () => { throw new Error("no redis"); } }));
+    jest.doMock(LLM, () => ({
+      chat: async () => {
+        calls += 1;
+        return { provider: "deepseek", text: "x" };
+      },
+    }));
+    jest.doMock(REDIS, () => ({
+      getClient: () => {
+        throw new Error("no redis");
+      },
+    }));
 
     const svc = require("../../src/services/platform/error-explain.service");
 
-    await expect(svc.explain({ errorId: ERROR_ID })).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(svc.explain({ errorId: ERROR_ID })).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
     expect(calls).toBe(0);
   });
 
   it("the system prompt asks for the four sections §7.1 specifies", () => {
-    const { svc } = loadExplain({ chat: async () => ({ provider: "deepseek", text: "x" }) });
-    for (const bit of ["What happened", "Why it happened", "responsible", "Suggested fix"]) {
+    const { svc } = loadExplain({
+      chat: async () => ({ provider: "deepseek", text: "x" }),
+    });
+    for (const bit of [
+      "What happened",
+      "Why it happened",
+      "responsible",
+      "Suggested fix",
+    ]) {
       expect(svc.SYSTEM_PROMPT).toContain(bit);
     }
   });
@@ -523,7 +684,9 @@ describe("§12.5 polling fallback — the degraded path must not be a wider path
     });
 
     const since = "2026-08-08T10:00:00.000Z";
-    const res = await request(app).get(`/api/platform/errors/recent?since=${encodeURIComponent(since)}`).expect(200);
+    const res = await request(app)
+      .get(`/api/platform/errors/recent?since=${encodeURIComponent(since)}`)
+      .expect(200);
 
     expect(captured.params[0]).toBe(since);
     expect(captured.sql).toMatch(/last_seen > COALESCE/);
@@ -552,10 +715,14 @@ describe("§12.5 polling fallback — the degraded path must not be a wider path
       return { rows: [] };
     });
 
-    await request(app).get("/api/platform/errors/recent?scope=platform").expect(200);
+    await request(app)
+      .get("/api/platform/errors/recent?scope=platform")
+      .expect(200);
     expect(captured.sql).toMatch(/e\.tenant_id IS NULL/);
 
-    await request(app).get("/api/platform/errors/recent?tenant=smartlog").expect(200);
+    await request(app)
+      .get("/api/platform/errors/recent?tenant=smartlog")
+      .expect(200);
     expect(captured.sql).toMatch(/t\.slug = \$/);
     expect(captured.params).toContain("smartlog");
   });
@@ -564,6 +731,8 @@ describe("§12.5 polling fallback — the degraded path must not be a wider path
     const app = buildApp(async () => ({ rows: [] }));
     // The validator caps it; an unbounded poll during an incident is a way to
     // turn a degraded transport into a second outage.
-    await request(app).get("/api/platform/errors/recent?limit=100000").expect(422);
+    await request(app)
+      .get("/api/platform/errors/recent?limit=100000")
+      .expect(422);
   });
 });

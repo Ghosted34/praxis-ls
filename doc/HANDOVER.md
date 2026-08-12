@@ -2,7 +2,7 @@
 
 Snapshot for whoever picks up **Phase 1 (Accounting spine)**. Read this first,
 then `doc/WORK_TO_BE_DONE.md` (the live backlog) and `doc/WORK_DONE.md` (the
-append-only history of *why* things are the way they are).
+append-only history of _why_ things are the way they are).
 
 ## What exists now
 
@@ -48,7 +48,7 @@ in `doc/SETUP.md`. API acceptance tests: `postman/` collection + its README.
 
 ## Gotchas that will bite you if you don't know them
 
-- **Tenant resolution is by the `Host` header.** `localhost` is the *platform*
+- **Tenant resolution is by the `Host` header.** `localhost` is the _platform_
   host; tenant requests need `Host: <slug>.praxisls.com`. The Vite proxy sets
   this in dev; Postman sets it per request.
 - **`.env` is single-file for local + Docker.** Keep local values in `.env`
@@ -65,7 +65,7 @@ in `doc/SETUP.md`. API acceptance tests: `postman/` collection + its README.
 ## Known gaps to fold into Phase 1 (all logged in WORK_TO_BE_DONE.md)
 
 - **File storage:** the `local` driver now works and serves at `/media` (proven
-  by logo upload). Still needed: an **auth-gated download route** for *sensitive*
+  by logo upload). Still needed: an **auth-gated download route** for _sensitive_
   documents (the flat `/media` mount is fine for public logos, not confidential
   files), and the **S3 driver** (interface only today).
 - **`scopeColumn` record-level scoping:** mechanism built, no domain table has a

@@ -22,7 +22,10 @@
 const path = require("path");
 
 const MAIL = "../../src/services/platform/platform-mail.service";
-const FALLBACK = path.join(__dirname, "../../src/services/platform/mail-fallback.service");
+const FALLBACK = path.join(
+  __dirname,
+  "../../src/services/platform/mail-fallback.service",
+);
 
 const CONFIGURED = {
   from: "no-reply@praxisls.com",
@@ -39,7 +42,10 @@ const CONFIGURED = {
 
 function withFallback(resolveImpl) {
   jest.resetModules();
-  jest.doMock(FALLBACK, () => ({ resolve: resolveImpl, envDefaults: () => CONFIGURED }));
+  jest.doMock(FALLBACK, () => ({
+    resolve: resolveImpl,
+    envDefaults: () => CONFIGURED,
+  }));
 
   return require(MAIL);
 }
@@ -50,13 +56,17 @@ const stubTransport = (impl) => ({ sendMail: impl });
 describe("platform mail — failure is reported, never thrown", () => {
   it("refuses an empty recipient list", async () => {
     const mail = withFallback(async () => CONFIGURED);
-    expect(await mail.send({ to: [], subject: "s", text: "t" })).toEqual({ ok: false, reason: "no_recipients" });
+    expect(await mail.send({ to: [], subject: "s", text: "t" })).toEqual({
+      ok: false,
+      reason: "no_recipients",
+    });
   });
 
   it("filters falsy recipients rather than mailing undefined", async () => {
     const mail = withFallback(async () => CONFIGURED);
-    expect(await mail.send({ to: [null, undefined, ""], subject: "s", text: "t" }))
-      .toEqual({ ok: false, reason: "no_recipients" });
+    expect(
+      await mail.send({ to: [null, undefined, ""], subject: "s", text: "t" }),
+    ).toEqual({ ok: false, reason: "no_recipients" });
   });
 
   it("says so plainly when no SMTP host is configured", async () => {
@@ -85,7 +95,10 @@ describe("platform mail — failure is reported, never thrown", () => {
       throw new Error("535 auth failed");
     });
 
-    const out = await mail.send({ to: ["a@b.cm"], subject: "s", text: "t" }, tx);
+    const out = await mail.send(
+      { to: ["a@b.cm"], subject: "s", text: "t" },
+      tx,
+    );
 
     expect(out.ok).toBe(false);
     expect(out.reason).toMatch(/535/);
@@ -102,7 +115,11 @@ describe("platform mail — the sender identity", () => {
     });
 
     const out = await mail.send(
-      { to: ["ops@x.cm", "cto@x.cm"], subject: "[PRAXIS-LS] [FATAL] shipments", text: "body" },
+      {
+        to: ["ops@x.cm", "cto@x.cm"],
+        subject: "[PRAXIS-LS] [FATAL] shipments",
+        text: "body",
+      },
       tx,
     );
 
@@ -133,20 +150,29 @@ describe("platform mail — the sender identity", () => {
   });
 
   it("carries reply_to only when the fallback defines one", async () => {
-    const mail = withFallback(async () => ({ ...CONFIGURED, reply_to: "oncall@praxisls.com" }));
-    let payload = null;
-    await mail.send({ to: ["a@b.cm"], subject: "s", text: "t" }, stubTransport(async (p) => {
-      payload = p;
-      return { messageId: "1" };
+    const mail = withFallback(async () => ({
+      ...CONFIGURED,
+      reply_to: "oncall@praxisls.com",
     }));
+    let payload = null;
+    await mail.send(
+      { to: ["a@b.cm"], subject: "s", text: "t" },
+      stubTransport(async (p) => {
+        payload = p;
+        return { messageId: "1" };
+      }),
+    );
     expect(payload.replyTo).toBe("oncall@praxisls.com");
 
     const mail2 = withFallback(async () => CONFIGURED);
     let payload2 = null;
-    await mail2.send({ to: ["a@b.cm"], subject: "s", text: "t" }, stubTransport(async (p) => {
-      payload2 = p;
-      return { messageId: "1" };
-    }));
+    await mail2.send(
+      { to: ["a@b.cm"], subject: "s", text: "t" },
+      stubTransport(async (p) => {
+        payload2 = p;
+        return { messageId: "1" };
+      }),
+    );
     expect(payload2).not.toHaveProperty("replyTo");
   });
 });
@@ -159,18 +185,27 @@ describe("platform mail — no clash with the two documented email configs", () 
     // sends on one path and bounces on the other.
     jest.resetModules();
     let sawConfig = null;
-    jest.doMock(path.join(__dirname, "../../src/services/email.service"), () => ({
-      transportFrom: (cfg) => {
-        sawConfig = cfg;
-        return stubTransport(async () => ({ messageId: "1" }));
-      },
+    jest.doMock(
+      path.join(__dirname, "../../src/services/email.service"),
+      () => ({
+        transportFrom: (cfg) => {
+          sawConfig = cfg;
+          return stubTransport(async () => ({ messageId: "1" }));
+        },
+      }),
+    );
+    jest.doMock(FALLBACK, () => ({
+      resolve: async () => CONFIGURED,
+      envDefaults: () => CONFIGURED,
     }));
-    jest.doMock(FALLBACK, () => ({ resolve: async () => CONFIGURED, envDefaults: () => CONFIGURED }));
 
     const mail = require(MAIL);
     await mail.send({ to: ["a@b.cm"], subject: "s", text: "t" });
 
-    expect(sawConfig).toMatchObject({ smtp_host: "smtp.example.com", smtp_port: 587 });
+    expect(sawConfig).toMatchObject({
+      smtp_host: "smtp.example.com",
+      smtp_port: 587,
+    });
   });
 
   it("writes no tenant email_send_log row", async () => {
@@ -181,7 +216,10 @@ describe("platform mail — no clash with the two documented email configs", () 
     const repo = require("../../src/services/email.repo");
     const spy = jest.spyOn(repo, "recordSend").mockResolvedValue(undefined);
 
-    await mail.send({ to: ["a@b.cm"], subject: "s", text: "t" }, stubTransport(async () => ({ messageId: "1" })));
+    await mail.send(
+      { to: ["a@b.cm"], subject: "s", text: "t" },
+      stubTransport(async () => ({ messageId: "1" })),
+    );
 
     expect(spy).not.toHaveBeenCalled();
     spy.mockRestore();

@@ -9,10 +9,15 @@
  * dev defaults by tests/jest.setup.js (SMTP_* = "").
  */
 
-jest.mock("../../src/services/platform/settings.service", () => ({ resolve: jest.fn() }));
+jest.mock("../../src/services/platform/settings.service", () => ({
+  resolve: jest.fn(),
+}));
 
 const platformSettings = require("../../src/services/platform/settings.service");
-const { resolve, envDefaults } = require("../../src/services/platform/mail-fallback.service");
+const {
+  resolve,
+  envDefaults,
+} = require("../../src/services/platform/mail-fallback.service");
 
 beforeEach(() => jest.clearAllMocks());
 
@@ -49,7 +54,9 @@ test("falls back to env defaults when the platform row is absent", async () => {
 });
 
 test("never throws — a platform DB failure degrades to env defaults", async () => {
-  platformSettings.resolve.mockRejectedValue(new Error("platform db unreachable"));
+  platformSettings.resolve.mockRejectedValue(
+    new Error("platform db unreachable"),
+  );
   const r = await resolve();
   expect(r.source).toBe("env");
   expect(r.from).toContain("@praxisls.com");

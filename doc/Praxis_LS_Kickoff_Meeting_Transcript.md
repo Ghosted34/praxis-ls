@@ -1,4 +1,5 @@
 # Praxis Logistics Solutions (Praxis LS) — Project Kick-off & Product Walkthrough
+
 ## Clean, Structured Meeting Transcript · Source of Truth for Build
 
 ---
@@ -12,14 +13,14 @@
 
 ### Participants
 
-| Speaker | In this transcript | Role on the project |
-|---|---|---|
-| **Blake** (Tom) | Founder of JBS Praxis; meeting lead & presenter | Product vision, architecture direction, work organisation, cleanup / deep-linking / back-end touches, client relationship |
-| **Elisha** | Engineer (full-stack) | AI integration, database structure, built the original SmartLS proforma / advance-payment invoicing; strong on the existing patterns |
-| **Victor** | Engineer (full-stack, leans back-end) | Repo setup, README authoring, back-end focus |
-| **David** | Engineer (full-stack, leans front-end) | Front-end focus; connectivity was choppy and he dropped off for large portions (logistics & sales), to review the recording |
+| Speaker         | In this transcript                              | Role on the project                                                                                                                  |
+| --------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Blake** (Tom) | Founder of JBS Praxis; meeting lead & presenter | Product vision, architecture direction, work organisation, cleanup / deep-linking / back-end touches, client relationship            |
+| **Elisha**      | Engineer (full-stack)                           | AI integration, database structure, built the original SmartLS proforma / advance-payment invoicing; strong on the existing patterns |
+| **Victor**      | Engineer (full-stack, leans back-end)           | Repo setup, README authoring, back-end focus                                                                                         |
+| **David**       | Engineer (full-stack, leans front-end)          | Front-end focus; connectivity was choppy and he dropped off for large portions (logistics & sales), to review the recording          |
 
-> **Note on attribution:** The raw Google transcript tagged only Blake by name; all other lines came through as unlabelled `>>` turns. Speakers have been attributed from context (topic ownership, who was addressed, who returned to the call). Where a line genuinely could not be tied to an individual, it is marked *(team)*. Timestamps from the raw recording are retained as anchors so any line can be traced back to the source audio.
+> **Note on attribution:** The raw Google transcript tagged only Blake by name; all other lines came through as unlabelled `>>` turns. Speakers have been attributed from context (topic ownership, who was addressed, who returned to the call). Where a line genuinely could not be tied to an individual, it is marked _(team)_. Timestamps from the raw recording are retained as anchors so any line can be traced back to the source audio.
 
 ---
 
@@ -35,7 +36,7 @@ Editorial additions are clearly separated from what was said in the room:
 
 > **🔧 Action** — a concrete follow-up someone owns.
 
-> **🤝 Teamwork** — a moment where the founder or a teammate spoke to *how* the team is expected to work. These are preserved deliberately: this is a long-term product, not a one-off gig, and the culture is part of the spec.
+> **🤝 Teamwork** — a moment where the founder or a teammate spoke to _how_ the team is expected to work. These are preserved deliberately: this is a long-term product, not a one-off gig, and the culture is part of the spec.
 
 The full running list of decisions, actions, and open questions is consolidated in the **Appendices** at the end.
 
@@ -47,13 +48,13 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **Blake:** Okay, I guess everyone's here. Can you all confirm you can hear me?
 
-*(The team confirms one by one — Elisha and David both check in and say they can hear clearly.)*
+_(The team confirms one by one — Elisha and David both check in and say they can hear clearly.)_
 
 **Blake:** Good evening, everyone. Some of us are in noisy spaces, others are in co-working spaces, so we may not all get the chance to talk. It'll be mostly me talking, but follow keenly and if you have any questions, bring them up. I gave David a brief on the project already, and I gave Elisha a brief as well, because this is a project that already exists — so we're going to go deeper into it. I want us to talk in detail about the **user journey**.
 
 **Blake:** The way this meeting is structured: we're going to talk in detail about every feature and every aspect. The entire meeting is being transcribed — I'm already transcribing it with Google's transcription service — and at the end we'll add it to the **knowledge base** we'll use to build the system.
 
-> **📌 Context** — This meeting *is* that knowledge-base artefact. It sits alongside the PRD (Master Functional Spec), the OHADA accounting knowledge base, the RBAC / Super-Admin journey doc, the discovery questionnaire, the UI mockups, and the legacy PHP/MySQL codebase. Together these form the "source of truth" the team (and Claude) references while building.
+> **📌 Context** — This meeting _is_ that knowledge-base artefact. It sits alongside the PRD (Master Functional Spec), the OHADA accounting knowledge base, the RBAC / Super-Admin journey doc, the discovery questionnaire, the UI mockups, and the legacy PHP/MySQL codebase. Together these form the "source of truth" the team (and Claude) references while building.
 
 ---
 
@@ -63,7 +64,7 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **Blake:** We're talking about **SmartLS / Praxis LS** — it's a Software-as-a-Service. We're building something we actually intend to sell to other clients. The truth is, on our own we couldn't come up with the funds to sit down and build something like this. Luckily we got a client who's ready to be our **first tenant** and to **finance the entire project**. Any time a new client comes on board, we do the setup.
 
-**Blake:** So this is **not a one-time gig.** I want you to know we're on this project *together*. It's not something you do once and you're done. It's something we do, we maintain, we grow — because every time a new tenant comes in, there's more work to do.
+**Blake:** So this is **not a one-time gig.** I want you to know we're on this project _together_. It's not something you do once and you're done. It's something we do, we maintain, we grow — because every time a new tenant comes in, there's more work to do.
 
 > **🤝 Teamwork** — The founder set the tone in the first minutes: this is a **long-term product**, maintained and extended tenant after tenant, not a build-and-walk-away contract. This framing recurs throughout the meeting and underpins every architecture decision (multi-tenancy, per-tenant databases, dynamic configuration).
 
@@ -83,13 +84,13 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **[11:15 – 13:42]**
 
-**Blake:** I was trying to write a detailed project description, but even with the description, if we don't get the details on the user journey it won't be easy to proceed. We need to know *exactly* what we're building — the logic here is very complicated and difficult, and **each company may have its own workflows**. I have a good mastery of the workflows that work for this particular company because I worked there a while ago. But another company may have a completely different workflow, a completely different org chart, and so on.
+**Blake:** I was trying to write a detailed project description, but even with the description, if we don't get the details on the user journey it won't be easy to proceed. We need to know _exactly_ what we're building — the logic here is very complicated and difficult, and **each company may have its own workflows**. I have a good mastery of the workflows that work for this particular company because I worked there a while ago. But another company may have a completely different workflow, a completely different org chart, and so on.
 
 **Blake:** So we're going to make things **parametric and dynamic** — even down to the level of workflows and the **org chart (organigramme)**. Each company can build their own org chart and create their own workflows.
 
 **Blake:** For example — a **cash request**. Money is needed for a project, so they produce a **costing**. The costing is approved by top management, then they need cash for operations, so they build a cash request based on the costing. The costing first gets **validated**, then **approved** by independent bodies (segregation of duties).
 
-- For *this* company: costings are **validated by the Operations Manager**, then **approved by the CEO**.
+- For _this_ company: costings are **validated by the Operations Manager**, then **approved by the CEO**.
 - Another company might have a **team lead validate**, then the **operations manager approve**, and it never reaches the CEO's desk.
 
 **Blake:** It depends how they want to set it up — so we build it so all of these are **parametric**. Same for the cash request: someone validates, someone approves. We're going with **segregation of duties across every aspect** of company management.
@@ -104,13 +105,13 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **Blake:** Let me share my screen so we get a global idea of what we'll be working with.
 
-**Blake:** This *(shows the new mock)* is a **mock we came up with to sell to the client** — to get him to approve. This is what we'll go with for almost everyone; only the styling / CSS will be **dynamic and parametric**. Each of these — the logos and so on — will be configured per tenant.
+**Blake:** This _(shows the new mock)_ is a **mock we came up with to sell to the client** — to get him to approve. This is what we'll go with for almost everyone; only the styling / CSS will be **dynamic and parametric**. Each of these — the logos and so on — will be configured per tenant.
 
-**Blake:** I've already purchased the domain **praxisls.com** *(said as "practicels.com" in audio)*. Each new tenant gets a **subdomain**. For example, this new tenant — "Smart Logistics and Services" — we'd give them **smartls.praxisls.com**, and they get access to the whole system. On our end we have a **dashboard where we configure which modules** to give them.
+**Blake:** I've already purchased the domain **praxisls.com** _(said as "practicels.com" in audio)_. Each new tenant gets a **subdomain**. For example, this new tenant — "Smart Logistics and Services" — we'd give them **smartls.praxisls.com**, and they get access to the whole system. On our end we have a **dashboard where we configure which modules** to give them.
 
 > **✅ Decision** — One codebase, per-tenant subdomains on `praxisls.com`, white-labelled styling (logos, theme) driven by configuration. A **super-admin dashboard** on our side controls which modules each tenant sees.
 
-**Blake:** Let me open the product description. *(Encounters a Markdown file.)*
+**Blake:** Let me open the product description. _(Encounters a Markdown file.)_
 
 **Blake:** What app can open a Markdown file? I think I need VS Code.
 
@@ -130,11 +131,11 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **[18:26 – 20:46]**
 
-**Blake:** I gave a brief introduction earlier because this part already gives a brief intro. We already have an existing codebase — it's not everything from scratch. But it's **so scattered** and was done in quite a terrible way, I won't lie — because this is what they're actually using *right now*. It's not bad, it's just **terribly organised**. It was done with **PHP and MySQL**.
+**Blake:** I gave a brief introduction earlier because this part already gives a brief intro. We already have an existing codebase — it's not everything from scratch. But it's **so scattered** and was done in quite a terrible way, I won't lie — because this is what they're actually using _right now_. It's not bad, it's just **terribly organised**. It was done with **PHP and MySQL**.
 
 **Blake:** So we're migrating — in fact, we're **building from scratch**, that's the truth. We're building from scratch and adding a lot of things to make it very **dynamic**, so it's open to any new tenant.
 
-**Blake:** The vision, restated: it's a **multi-tenant SaaS platform that runs an entire logistics + operating + holding business** — sales, operations, warehouse, and procurement. *(Shows the live system.)* These are all operations files. For each file you can see transit orders and **operational milestone tracking** — what's been done at each stage: pre-alert, work order, document review, import declaration, and so on. In the new build these **stages must be configurable, not hard-coded** like in this project. Then we have delivery notes, etc. The reason I'm opening this is so we can see all the modules.
+**Blake:** The vision, restated: it's a **multi-tenant SaaS platform that runs an entire logistics + operating + holding business** — sales, operations, warehouse, and procurement. _(Shows the live system.)_ These are all operations files. For each file you can see transit orders and **operational milestone tracking** — what's been done at each stage: pre-alert, work order, document review, import declaration, and so on. In the new build these **stages must be configurable, not hard-coded** like in this project. Then we have delivery notes, etc. The reason I'm opening this is so we can see all the modules.
 
 > **📌 Context** — Carry-forward strengths from the legacy PHP/MySQL app: the operations-file model, milestone tracking, the demurrage/extra-charge calculator, lead & meeting management, proforma/advance-payment invoicing, debt management, document verification, and the WhatsApp-style internal comms. The debt to fix: hard-coded stages/services, poor organisation, MySQL, IFRS-flavoured accounting instead of OHADA. The rebuild keeps the proven flows and makes everything configurable.
 
@@ -147,40 +148,49 @@ The full running list of decisions, actions, and open questions is consolidated 
 **Blake** walked the full stack. Locked choices:
 
 **Front end**
+
 - **React 18 + Vite + TypeScript.**
 - An **installable PWA** for every kind of device (desktop, laptop, etc.). A very responsive front end is required.
 
 **Back end**
+
 - **Node.js + TypeScript.**
 - A couple of **separate workers / microservices** for isolated jobs — **AI jobs**, **PDF generation**, etc.
 
 **Database**
+
 - **PostgreSQL**, and — after discussion — **one database per tenant** (see decision below).
 
-**Blake:** I was initially thinking one database, but I was talking with someone earlier and they advised against it. A company may want to keep and manage their own data — they'll want access to their Postgres — and we can't give them access to the *entire* Postgres since it holds other people's data. So: if we get the next client and build them properly — roughly **2–3 million [XAF] for setup**, then a yearly maintenance fee of maybe **500k** — we give them access to **their own Postgres**. We upgrade the server, add a second Postgres, and so on.
+**Blake:** I was initially thinking one database, but I was talking with someone earlier and they advised against it. A company may want to keep and manage their own data — they'll want access to their Postgres — and we can't give them access to the _entire_ Postgres since it holds other people's data. So: if we get the next client and build them properly — roughly **2–3 million [XAF] for setup**, then a yearly maintenance fee of maybe **500k** — we give them access to **their own Postgres**. We upgrade the server, add a second Postgres, and so on.
 
 **Elisha:** Separate Postgres for each is a good idea — everybody has control and full responsibility for their own data. "This is your database, manage it yourself." That's clean.
 
 > **✅ Decision** — **One PostgreSQL database per tenant** (not a single shared DB). Each tenant owns and can be granted access to their own database; we hold the code, they hold the data. Server is scaled up and a new Postgres instance added per tenant.
 
 **Cache & queue**
+
 - **Redis** — sessions, rate limiting, and job queuing.
-- **BullMQ** for the job queue *(Blake: "that one is okay")*.
+- **BullMQ** for the job queue _(Blake: "that one is okay")_.
 - **Socket.IO** for real-time — chats, notifications, and live milestone updates that need to update in real time.
 
 **Workers**
+
 - Runs as a **separate worker** (as on the team's other projects), including a **Puppeteer** worker for **server-side PDF rendering** — invoices, proper invoices, costings, cash requests, purchase orders, pay slips, financial statements — as many documents as we can. This is a document-heavy field.
 
 **Mailing**
+
 - A **mailing service** is needed. Blake noted PHP has "PHPMailer"; the Node equivalent — **Nodemailer** — will generate the mail. **SMTP is configured from the server** (distinct from the library that generates the message).
 
 **Validation & AI payloads**
+
 - **Zod** for validation, including **AI action payloads**.
 
 **Containerisation**
+
 - **Docker** — set up early, at the foundation, so that if the project gets heavy (5–10 tenants) we can separate tenants onto different servers cleanly.
 
 **Hosting**
+
 - For now, a **self-managed VPS/VDS**. As tenants grow, move object storage to an **AWS S3 bucket** (Blake had written "Hetzner" as an option, but AWS S3 is the cheapest for object storage, with **S3 compatibility**).
 
 **Blake:** That's the stack we're locking in.
@@ -199,7 +209,7 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 **A team member (Victor/Elisha):** The sandbox is better. It should just be **one sandbox, multiple live** — instead of different staging servers per tenant. Tenants can see "this is how the data is supposed to look," then switch to live. Limited moving parts — one place where everybody checks what they want and leaves it.
 
-**Blake:** Makes sense. We initially planned one sandbox *per client*. What you're saying is pertinent — but I'm worried about **data breaches**: the sandbox keeps data for 14 days, so if we run a test with one tenant while trying to reach another prospective tenant, how does that isolate?
+**Blake:** Makes sense. We initially planned one sandbox _per client_. What you're saying is pertinent — but I'm worried about **data breaches**: the sandbox keeps data for 14 days, so if we run a test with one tenant while trying to reach another prospective tenant, how does that isolate?
 
 **Team:** Understood.
 
@@ -214,15 +224,17 @@ The full running list of decisions, actions, and open questions is consolidated 
 **[30:48 – 34:52]**
 
 **Authentication**
+
 - Login via **email or username + password**.
 - **Two-factor authentication encouraged.**
 - For sensitive roles (Finance, CEO), consider stronger login — e.g. **phone-based login** or something more secure.
 
 **Elisha (on approach):** Design with the **role base in mind first** — it's very important, so that you don't have one [role] able to see everything.
 
-**Blake:** Right. **Role-Based Access Control (RBAC)** works with both **server-side and client-side protection.** Anything not available to someone is blocked on the **back end** (every endpoint blocks it) *and* the **front end** (the UI doesn't even render). Even if someone sees a UI element, they can't act on it, because the server blocks it too.
+**Blake:** Right. **Role-Based Access Control (RBAC)** works with both **server-side and client-side protection.** Anything not available to someone is blocked on the **back end** (every endpoint blocks it) _and_ the **front end** (the UI doesn't even render). Even if someone sees a UI element, they can't act on it, because the server blocks it too.
 
 **Sessions**
+
 - **JWT + refresh tokens.**
 - **30-minute inactivity auto-logout.**
 - **Active session monitor** with **remote kill** (for admins / anyone) — server-side session state stored in **Redis**, so a session can be killed instantly.
@@ -230,11 +242,13 @@ The full running list of decisions, actions, and open questions is consolidated 
 > **📌 Context** — RBAC gets its own full module later (§11.14): roles, capabilities, scope, and — critically — a **dynamic validation/approval workflow designer** built on a Universal Event System.
 
 **Transport & data**
+
 - Per-tenant **encryption keys** — "very, very pertinent." We need to secure the keys for each tenant.
-- Blake floated storing keys **hashed in the database** rather than minting a separate key per tenant. *(Left open — see Open Questions.)*
+- Blake floated storing keys **hashed in the database** rather than minting a separate key per tenant. _(Left open — see Open Questions.)_
 
 **Audit**
-- Something that **tracks every action the admin does**, so we keep a record of everything. *(Becomes the immutable ledger / audit trail — §11.14.)*
+
+- Something that **tracks every action the admin does**, so we keep a record of everything. _(Becomes the immutable ledger / audit trail — §11.14.)_
 
 ---
 
@@ -245,14 +259,16 @@ The full running list of decisions, actions, and open questions is consolidated 
 **Blake:** Under integrations we're integrating **Gemini, DeepSeek, Grok, an exchange-rate API, and SMTP.** Those are the main things.
 
 - **Exchange-rate API** — practically free.
-- **Grok** — fairly cheap. *Alternatively*, we can **host our own voice-to-text** using **Whisper** in **Python**, if the server permits; otherwise fall back to Grok (affordable).
+- **Grok** — fairly cheap. _Alternatively_, we can **host our own voice-to-text** using **Whisper** in **Python**, if the server permits; otherwise fall back to Grok (affordable).
 - **AI providers: DeepSeek as the first option, Gemini as the fallback.** That's the routing for AI.
 
 **AI as a per-tenant toggle**
+
 - Any new tenant who wants AI: it's **just a toggle on our end**, and they **control their own spend** through a **spend dashboard**.
 - This particular first client isn't very interested in AI — but since we're building for **sustainability**, we build in the direction of AI anyway.
 
-**The two AI "blockers" (EMV switches)** — *front end and back end*
+**The two AI "blockers" (EMV switches)** — _front end and back end_
+
 - A **front-end flag** (true/false): if **true**, every AI feature shows in the interface; if **false**, no AI feature appears.
 - A **back-end flag**: if **true**, AI actions are permitted from the back end; if **false**, the AI action is blocked server-side.
 
@@ -262,7 +278,7 @@ The full running list of decisions, actions, and open questions is consolidated 
 
 > **✅ Decision** — AI providers: **DeepSeek primary, Gemini fallback.** Voice-to-text: **self-hosted Whisper** if the server allows, else **Grok**. AI gated by a **two-part EMV toggle** (front-end UI switch + back-end action switch), per tenant, with a **tenant-facing spend dashboard**.
 
-> **🤝 Teamwork** — Blake and Elisha noted they'd *just* finished building AI features on another project and "it wasn't as hectic as we thought," so bringing AI here is feasible. Elisha will own the AI engine (see §11.15). Blake asked the team explicitly to **"take note here — front end and back"** regarding the EMV blockers.
+> **🤝 Teamwork** — Blake and Elisha noted they'd _just_ finished building AI features on another project and "it wasn't as hectic as we thought," so bringing AI here is feasible. Elisha will own the AI engine (see §11.15). Blake asked the team explicitly to **"take note here — front end and back"** regarding the EMV blockers.
 
 ---
 
@@ -287,13 +303,16 @@ The full running list of decisions, actions, and open questions is consolidated 
 **[40:18 – 42:46]**
 
 **PDF generation**
+
 - Using **Puppeteer + Chromium** for server-side document generation. Heavy documentation field — bills, invoices, purchase orders, and many more. Set this up properly.
 
 **Environments & CI/CD**
+
 - **Local first** via **Docker Compose.**
 - **CI/CD** with **type checks, integration tests, everything.**
 
 **Hosting & scaling ladder**
+
 - Start with the **self-managed primary VPS**; increase as tenants grow.
 - **1 tenant:** single 12 GB / 6-core box.
 - **2–4 tenants:** step up to **24 GB / 8-core** (and higher).
@@ -303,10 +322,12 @@ The full running list of decisions, actions, and open questions is consolidated 
 **Blake:** Our dream is 10+ tenants. This is a project that could take us over a very, very long time. After this meeting we'll all have **contracts to sign** — it's a long-term thing.
 
 **Backups & disaster recovery**
+
 - A **backup cron job for the entire server**: **automated daily encrypted backup** of every tenant schema + the platform schema + each tenant's entire Postgres database.
 - Back it up **somewhere** — likely a **Google Drive or Microsoft OneDrive** (enough space, avoids costly AWS backup for now). Blake: "we can use one of my Google Drives, I don't mind."
 
 **Isolation by schema**
+
 - Tenants isolated by schema; the scaling ladder above governs when to split servers and when to introduce a pooler.
 
 > **✅ Decision** — **Daily encrypted full backups** (all tenant DBs + platform schema) to Google Drive / OneDrive initially, with a path to S3 later. Docker Compose locally, CI/CD with type checks + integration tests. Documented scaling ladder from 1 → 10+ tenants.
@@ -324,15 +345,17 @@ The full running list of decisions, actions, and open questions is consolidated 
 **[43:06 – 51:23]**
 
 **The login / landing page**
-- A very **interactive login space** — it can double as a **landing page**. Anyone who lands on it should immediately understand: *these people do X, Y, Z — this is a SaaS.*
+
+- A very **interactive login space** — it can double as a **landing page**. Anyone who lands on it should immediately understand: _these people do X, Y, Z — this is a SaaS._
 - Blake is "always very particular about login pages." On the team's other projects, the login page **sells the business already**: if your computer locks you out and someone else sees it, they should be able to read what the system is and does. There's always a **"Powered by [our company]"** at the bottom — it markets us. Users then enter their workspace and log in.
 
-> **🤝 Teamwork** — "If we're going for something, we should go for something *better*" than the old login. The login page is treated as a marketing surface, not an afterthought.
+> **🤝 Teamwork** — "If we're going for something, we should go for something _better_" than the old login. The login page is treated as a marketing surface, not an afterthought.
 
 **After login — role-driven dashboard (the "Control Tower")**
 Once logged in, the dashboard renders **based on the user's role.** On the dashboard:
+
 - A **greeting** and a status line — e.g. "your network is live" — plus the number of **ongoing operations.**
-- A **live map** (with light animation / JavaScript): every active operation plots automatically. For each file there's a **port of departure** and **port of arrival** — e.g. *Shanghai → Douala, then Douala → N'Djamena.* Clicking a file shows its exact route.
+- A **live map** (with light animation / JavaScript): every active operation plots automatically. For each file there's a **port of departure** and **port of arrival** — e.g. _Shanghai → Douala, then Douala → N'Djamena._ Clicking a file shows its exact route.
   - Map sourcing: start with a **free-tier maps API**; move to **Google Maps** once financially stable.
   - Shows all active operations files (or the **top 10 active**).
 - **Main KPIs — dynamic per role.** Someone in Operations won't see **Receivables** (that's for Finance and the CEO). Each KPI is a deep link:
@@ -360,6 +383,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 **Blake:** After the dashboard, we have a **God Mode** module, accessible **only to the CEO**, protected by a **one-time PIN set by the CEO and stored in the database.**
 
 **What it does**
+
 - Lets the CEO **purge records directly** — e.g. delete erroneous data — instead of contacting us every time to run a cleanup query. It shows **every file connected** to the record and asks whether to delete across everything.
 - **Deletes are "soft":** everything goes to an **immutable ledger with the exact payload (full JSON)** — so it's **reversible with a single click.**
 
@@ -377,18 +401,21 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 **[55:13 – 1:19:13]**
 
-**Blake:** Master Data Management has **tabs** — about **10 tabs.** These are essential for every new company coming in. *(UI concern raised: how to organise ~10 tabs so it isn't saturated.)*
+**Blake:** Master Data Management has **tabs** — about **10 tabs.** These are essential for every new company coming in. _(UI concern raised: how to organise ~10 tabs so it isn't saturated.)_
 
 ### (a) Corporate Entity
+
 - Where a tenant defines their own books / legal identity: **tax identifier** (French **"Numéro Unique" / NIU**; ≈ **TIN** in Nigeria), **RCCM** (≈ **CAC** number in Nigeria), **business address**, **business logo.**
 - **All documents reference from here** — e.g. creating an invoice pulls the reference, full address, and logo directly.
 - **Multiple entities supported.** A company based in Nigeria and Cameroon billing a Nigerian client uses their **Nigerian corporate entity** (Nigerian TIN, CAC, address, logo).
 
 ### (b) Human Capital (create/manage employees)
+
 - Create an employee: **full name, department, job title, employment type**; **CNPS number** (Cameroon social security; ≈ pension/retirement fund number in Nigeria), **base salary, bank details, signatory name** (for PDFs they'll sign), **entity, avatar, contract link**, and more.
-- It's effectively a **dashboard managing all employees.** Opening an employee shows *everything* about them, with **deep links** (e.g. to pay slips).
+- It's effectively a **dashboard managing all employees.** Opening an employee shows _everything_ about them, with **deep links** (e.g. to pay slips).
 
 ### (c) Client Master
+
 - Create clients; pick type: **Shipper, Consignee, Business Partner**, etc.
 - **Two sub-tabs:**
   1. A tab to **configure client types dynamically** — so a client that doesn't fit Shipper/Consignee/Business Partner can have a **custom type** created, reusable everywhere a client type is needed.
@@ -396,34 +423,42 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 - Features: **CRUD**, **export**, **KYC upload**, **credit terms**, **live receivable roll-up**, and **deep links to CRM** — quotations/costings linked to a client (an SQL query surfaces everything tied to that client).
 
 ### (d) Suppliers
+
 - All suppliers for procurement. Configure each. Mostly front-end work; the back end provides one to a few tables. (Elisha to lead DB structure; front end queries everything about a supplier/client so the whole record is manageable from one place.)
 
 ### (e) Financial Dictionary
+
 - The **operational/invoiceable line items** used in billings — each carrying rates, currencies, and a shipping line. Examples: **"Certificate of Conformity"** (issued by an international body), **formalities**, **terminal fees**, etc. Items have an **English name and a French name** (users pick either) plus a **brief description** and categories, marked **billable.**
 - Used when creating an invoice / costing: pick e.g. "Certificate of Conformity" from the description field and bill it directly — these are their **invoice lines.**
-- **Critical seam:** each Financial Dictionary item **must be linked to a Chart-of-Accounts account.** If it isn't, accounting can't be tracked properly. The dictionary name is what's *familiar to users*; the chart-of-accounts link is what makes it *accountable.* **Do not merge the two.**
+- **Critical seam:** each Financial Dictionary item **must be linked to a Chart-of-Accounts account.** If it isn't, accounting can't be tracked properly. The dictionary name is what's _familiar to users_; the chart-of-accounts link is what makes it _accountable._ **Do not merge the two.**
 
 > **📌 Context (OHADA, not IFRS)** — Cameroon does **not** use IFRS. It uses **OHADA** — the harmonised accounting system for French-speaking African countries (SYSCOHADA). It differs from the "regular" (IFRS) standards most legacy systems followed. Blake prepared a **full OHADA accounting knowledge base** (legal framework, conventions, document usage, member countries, full chart-of-accounts names) to attach to the working folder so Claude has proper context. **Terminology caveat:** many account names exist only in French; English translations are rough, so the system must be **bilingual** and not rely on gross translations.
 
 ### (f) Chart of Accounts
+
 - **Seeded** (from the OHADA knowledge base) but **editable per client** — each client can tweak it and create **sub-accounts.**
 - Example: Cash is class **5**; under Bank/Cash/Mobile-Money Wallet (class 9 module reference), a company with several petty-cash points or bank accounts creates **sub-accounts**, and creating one **automatically generates the matching sub-account on the chart of accounts.** So opening a new bank account creates a sub-account under the bank account line — making it clear in the accounting records which account payments flow through (bank vs. cash vs. any means).
 
 > **📌 Context** — During this stretch a network drop logged Blake out for ~10 minutes (mid-"chart of accounts"). On return he re-covered the chart-of-accounts seeding/editing point for the team. The clean version above consolidates both passes.
 
 ### (g) Jurisdictions (tax)
+
 - Each country the tenant operates in configures its **tax jurisdictions.** Example — **Cameroon: VAT 19.25%, withholding tax 2.2% and 5.5%, plus a minimum tax rate.** A new country can be configured easily.
 
 ### (h) Currency & Live FX
+
 - **Multi-currency** for invoices, costings, etc. Pick a currency; it works with the **exchange-rate API.** A **daily midnight cron job** captures the rates at that time so they're available through the day.
 
 ### (i) Treasury Accounts
+
 - Already referenced above; includes configurable **mobile-money (MoMo) fees** the providers charge.
 
 ### (j) Expense Rates
+
 - Set a **rate (cost) for each Financial Dictionary item.** Think of it like a product catalogue: each service has a **set cost.** The dictionary gives the service name/type; the expense rate tells us **what that service costs us.**
 
 ### (Within the item catalogue) — Services as data, not code
+
 - The **Item Catalogue** needs **two tabs**: one for the **Financial Dictionary**, and a second for the **Services the company renders.**
 - **Do not hard-code services** (the legacy system hard-coded them, so a new service required us to add it manually). Instead, services live under the Financial Dictionary and are **user-creatable.**
 - Each item ties to its **service** and has an **Applicability** setting — e.g. "PK26 terminal fees" under logistics handling applies to **Sea Import, Sea Export, Air Import**, etc. When a new service is created, set its applicability so it surfaces on the right documents.
@@ -474,9 +509,9 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 **[1:29:14 – 1:33:28]**
 
-**Blake:** Very important — and note the ordering: **Logistics Operations comes *before* pricing**, because operations precede the pricing.
+**Blake:** Very important — and note the ordering: **Logistics Operations comes _before_ pricing**, because operations precede the pricing.
 
-- **Project Costing** — for each project/operations file, build a **budget**: *what will it cost us to execute this file?* Pull all applicable items for that service from the **Financial Dictionary**, check the costs, and arrive at the **actual cost to execute.**
+- **Project Costing** — for each project/operations file, build a **budget**: _what will it cost us to execute this file?_ Pull all applicable items for that service from the **Financial Dictionary**, check the costs, and arrive at the **actual cost to execute.**
 - **Margin Simulator** — take the costing, enter a **margin**, and it applies automatically to all rates. It distinguishes **disbursements vs. services** (a nuance documented in the knowledge base): margin applies to services.
 - **Quotation Generation** — enter the **pricing** we want to quote and **generate a quotation.** A quotation has **no accounting impact** — the client can accept or reject.
 - **Extra-Charge Engine (Demurrage Calculator)** — a simulator. Blake wants this **copied as-is** from the legacy system (the calculator "was already built perfectly"), just porting the back end from **PHP → Node.js** and making it more dynamic. Pick a file, set the period / the date to take it out of the port, and it returns all charges with rates. Because pricing is now **centralised** (the **Expense Rate** module holds 20-ft/40-ft and other rates), we don't re-enter the "admin rates" setup the old system required.
@@ -494,19 +529,23 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 **Blake:** This is the **heart of the entire build.** Under Logistics Operations there are **three main modules.**
 
 ### (a) Main Logistics Operations — the Operations File
+
 - **Operations File Registry** — each project has its **project file** with full details. A very rich core.
-- **The 360° file view** — opening a file shows *everything* about it: **service type, route, Incoterm, Bill of Lading number, vessel number, ETA (estimated/established time of arrival), milestones**, and every internal person assigned to the file. When a file is created it can be **assigned** immediately. It carries the **client's name and full client details**, and the **shipment details (SSD — shipment details / summary).**
+- **The 360° file view** — opening a file shows _everything_ about it: **service type, route, Incoterm, Bill of Lading number, vessel number, ETA (estimated/established time of arrival), milestones**, and every internal person assigned to the file. When a file is created it can be **assigned** immediately. It carries the **client's name and full client details**, and the **shipment details (SSD — shipment details / summary).**
 - **Milestones — flexible, not fixed.** Show the milestones for a project; the client can **edit and create new milestones**, even **insert a milestone between two existing ones** (e.g. a problem arises before the next milestone). Because milestones use **due dates**, inserting one **auto-recalculates** the schedule downstream. Not limited to a fixed number (e.g. not capped at 14). The legacy "milestone tracking" has a basic version of this — the rebuild is far more capable. Each stage, when clicked, shows everything about that stage and can be **completed**; new stages can be added.
 - Blake will **personally help with the design** of the operations-file view.
 
 ### (b) Transit Orders
+
 - Essentially identical to the legacy version — "may never change." Can be **imported as-is** from the old system.
 
 ### (c) Operational Milestones + Client Portal / Smart Tracker
+
 - Upload **documents / proof** against milestones.
 - A **client-facing ticket ("Q ticket")** system: milestones push to the **client portal.** On **smartls.com** there's already a **Smart Tracker** — enter a file reference and see milestone status (pending / done). The rebuild adds, on each milestone, the ability to **raise a Q ticket** (e.g. flag a delay) and **upload proof**; we receive it on the back end and follow up. There's also a **mail-to** option, but the focus is **Q tickets** so everything stays in the system.
 
 ### Delivery Notes
+
 - Straightforward; can **import** what exists. The moment a project completes, **auto-generate the delivery note** (search the client, it fills city/zone/etc.; add the contact person). Build it for the long term, not just one customer.
 
 > **📌 Context** — "The operations file is like the heart of the whole thing — that's the honest truth." Every other module deep-links back to it (costings, documents, comms, audit). This is later surfaced as the **Operations-File 360° modal** signature feature (§11.16).
@@ -526,7 +565,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 - **Equipment Handling** — machinery allocation and status.
 - **Full-Audit Cycle Counting.**
 
-> **🤝 Teamwork** — A teammate re-emphasised (through choppy audio): the **long-term future** of this is very important — we configure once, then reuse for each new tenant. Blake reframed the point sharply (see §13): **"see this as a *product*, not a *project.*"**
+> **🤝 Teamwork** — A teammate re-emphasised (through choppy audio): the **long-term future** of this is very important — we configure once, then reuse for each new tenant. Blake reframed the point sharply (see §13): **"see this as a _product_, not a _project._"**
 
 ---
 
@@ -567,17 +606,19 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 **Blake:** The important module for finance.
 
 ### Invoicing & the project life cycle
+
 - **Proforma & Advance-Payment Invoices** — Elisha is very familiar with these (he built them for the original SmartLS). Includes **signatures** (digital or physical).
 - **Final Invoices** — issued when a project is complete.
 
 **The full life cycle (stated explicitly):**
+
 1. An **operations file** comes in.
 2. Create a **project costing** — an estimate of what it costs us to execute the file.
 3. Run a **margin simulation** — at this cost, what's our exact margin?
 4. **Generate a quotation** from the margin simulator and send to the client.
 5. Client **accepts** the quotation.
 6. **Request cash for payment** (costing already approved). Two paths:
-   - **We pre-finance** disbursements and services → *no* advance-payment invoice, **or**
+   - **We pre-finance** disbursements and services → _no_ advance-payment invoice, **or**
    - **Client pays** → issue a **Proforma / Advance-Payment Invoice** requesting an advance.
 7. When the client pays and the **system approves the payment**, move to the **cash request** — pay for the request to execute the project.
 8. After spending, **come back and confirm** against the budget: "we gave you 500k for this, 1M for that — how much did you actually spend?" Attach **receipts** for each.
@@ -585,18 +626,23 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 10. Complete execution → issue the **Final Invoice**: deduct what came in via the proforma; show the remaining amount owed, with a **payment deadline** so we can **track overdue payments.**
 
 ### Payments (no gateway in Cameroon)
+
 **Blake:** **Cameroon has no payment gateway for now**, so payment is **manual** — you make the payment and **upload the receipts.** Also, these are **very heavy transactions** — a client might pay ~**50 million**; no local gateway accepts that (local options like "camp"/others cap around ~5 million). When we enter the **Nigerian market**, we can look at payment gateways. Long term, as we expand to other markets, we revisit gateways.
 
 ### Invoicing UI
+
 - Group front end: one **Invoicing** area with tabs — **Proforma Invoice**, **Final Invoice**, and the **Smart Receivables Ledger** — because they're all connected (proforma → final → receivables tracking of payments and overdues).
 
 ### Project Financing (Debt Management)
+
 - To finance a project, a company may secure a **loan** — from a bank, a third party, or a director. The legacy system already has **Debt Management** (create debts, etc.); we can be inspired by it. Here it's called **Project Financing.** Track **working capital**, the **principal amount**, and exactly how much financing the costing needs.
 
 ### Asset Management (accounting-linked)
+
 - Create every asset in the business (laptops, desks — any asset). Because it's accounting-linked, track **depreciation**: when creating an asset, pick the **depreciation method** (e.g. **linear/straight-line**, and others per the OHADA knowledge base). Handle **book and tax** depreciation per asset.
 
 ### Accounting core (OHADA, automated + manual)
+
 - **Journal Entries** — **auto-journalled**, with a **manual option**; when auto-journalled, a **human accountant can review, touch, or tweak** it (details in the OHADA knowledge base).
 - Full outputs: **Journal**, **General Ledger** (French **"Grand Livre"**), **Trial Balance**, **Income Statement**, **Profit & Loss**, **Cash-Flow Statement** — all the financial statements required by the accounting system. If the system generates these automatically, "we're 100% good to go."
 
@@ -619,7 +665,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 **[2:09:34 – 2:13:15]**
 
-- **Reporting & Insights Pack** — mostly **dashboards**; **fixed reports** exported to **Excel and PDF**; many interactive dashboards with graphs and tables. **AI is connected to every dashboard** — you can "talk with" a dashboard (chat below it). Selling point vs. **Power BI**: Power BI has Copilot but hasn't integrated AI *into* the dashboards this way. Builds credibility in the market.
+- **Reporting & Insights Pack** — mostly **dashboards**; **fixed reports** exported to **Excel and PDF**; many interactive dashboards with graphs and tables. **AI is connected to every dashboard** — you can "talk with" a dashboard (chat below it). Selling point vs. **Power BI**: Power BI has Copilot but hasn't integrated AI _into_ the dashboards this way. Builds credibility in the market.
 - **File Repository** — all uploaded documents, traceable; shows **storage path** and **version numbers.**
 - **Compliance Checker** — flags **missing evidence / supporting documents.** Example: for a Financial Dictionary line (e.g. "container maintenance 20-ft"), once there's an **approved costing** and a **cash request disbursed** (a payment made), the user **must upload proof** they actually spent it. If not, the system **flags red** and sends **daily notifications** ("you have pending…") until uploaded.
 - **Document Verification** — already built in the legacy system: reviewers open an uploaded evidence in the **Action Center** and **Verify** or **Reject** it (verify = approved). It's a **feature**, not a standalone module.
@@ -650,7 +696,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 **Elisha:** We've implemented AI in one of our projects already, so it'll be easier to implement here — **gated by the EMV (env flag) from front end and back end.** Not much of a problem.
 
-**Blake:** *"Front end and back — please take note here."*
+**Blake:** _"Front end and back — please take note here."_
 
 > **📌 Context** — The Universal Event Engine underpins both the AI action layer (Zod-validated payloads) and the RBAC workflow designer (events → validate/approve chains). It is a **first-class** part of the architecture, owned by Elisha.
 
@@ -675,6 +721,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 **[2:24:16 – 2:26:14]**
 
 **Settings module** — the configuration hub:
+
 - **Appearance & White-Label** — logos, PWA and PWA icons.
 - **Company & Legal Identity** — (as in Corporate Entity, §11.3).
 - **Operations & Workflow Configuration.**
@@ -710,7 +757,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 ### Roles & the full-stack expectation
 
-**Blake:** I want you to understand — **everybody here is full-stack.** There's nobody who is only front end. Everyone can handle front and back end. If you *lean* one way, that's fine, we'll talk about it, but we're on the same page.
+**Blake:** I want you to understand — **everybody here is full-stack.** There's nobody who is only front end. Everyone can handle front and back end. If you _lean_ one way, that's fine, we'll talk about it, but we're on the same page.
 
 - **David** leans **front end** (he can reuse the Lovable components).
 - **Victor** therefore leans more **back end.**
@@ -748,6 +795,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 > This section preserves, close to verbatim, the founder's closing charge and the team's affirmations. It is part of the source of truth: **how** this team works is as much a spec as **what** it builds.
 
 **Blake (closing charge):**
+
 - "This is **version 1 of the product** — let's call it a **product, not a project.** A project ends when you're done; a **product** is built for **sustainability**, over time."
 - "See the **full vision**, not just the project. Look **long-term**. Think **market expansion** — Cameroon first, then Nigeria, then overseas (China and shipping companies). We target clients, configure for them, get paid, and grow."
 - "Please, everybody, **put in your best effort.** Don't take this as 'let them just pay me and let me get out.' There's a **bigger market in front of us.** You saw it with **Pixie Girl** and our hub — I know the **vision of JBS Praxis.** Please know the vision too."
@@ -759,6 +807,7 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 **Blake (final):** "We update each and every one of us — we need to keep updated end-to-end. As you work, **please update.** If you have any difficulty, **update.** If you have any question, **ask** — this is very important for the future of each and every one of us."
 
 > **🤝 Teamwork — the operating principles, distilled**
+>
 > 1. **Product, not project** — build for sustainability and reuse across tenants.
 > 2. **Full-stack ownership** — lean where you're strong, but own your work end-to-end; "the system must work."
 > 3. **We audit for each other** — collective ownership of quality; have each other's back regardless of who wrote what.
@@ -772,54 +821,54 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 ## Appendix A — Decisions log
 
-| # | Decision | Section |
-|---|---|---|
-| D1 | Multi-tenant SaaS, one codebase; per-tenant subdomains on `praxisls.com`; white-labelled theming; super-admin controls modules per tenant. | §4 |
-| D2 | Target segment: heavyweight logistics (freight forwarding, customs clearance, WMS, fleet). Cameroon → Africa. | §2 |
-| D3 | Build **everything** now (first client funds it); enable modules per tenant later. | §2 |
-| D4 | Stack: React 18 + Vite + TS (PWA) · Node.js + TS · separate workers (AI, PDF) · Redis + BullMQ · Socket.IO · Zod · Docker · Puppeteer/Chromium PDFs · Nodemailer. | §5, §10 |
-| D5 | **One PostgreSQL database per tenant** (tenant owns/can access their own data). | §5 |
-| D6 | **Test/Live toggle**; Live + Sandbox **inside each tenant's Postgres**; sandbox purged by cron every **14 days**; no shared staging server. | §6 |
-| D7 | RBAC enforced **server + client**; JWT + refresh; 30-min auto-logout; Redis session state with remote kill; 2FA encouraged. | §7 |
-| D8 | AI: **DeepSeek primary, Gemini fallback**; Whisper (self-host) or Grok for voice; **two-part EMV toggle** (front UI + back action); per-tenant spend dashboard. | §8 |
-| D9 | Per-tenant SMTP + role mailboxes via DNS; fallback sender **nmail.praxisls.com**; all docs emailed from the system. | §9 |
-| D10 | **Daily encrypted backups** (all tenant DBs + platform schema) → Google Drive/OneDrive → S3 later. | §10 |
-| D11 | Scaling ladder: 1 → 12GB/6-core · 2–4 → 24GB/8-core · 5–10 → split servers · 10+ → connection pooler. | §10 |
-| D12 | **Financial Dictionary ↔ Chart of Accounts ↔ Expense Rate**: linked but distinct (don't merge). | §11.3 |
-| D13 | Accounting on **OHADA/SYSCOHADA** (not IFRS); bilingual (FR/EN); use the OHADA knowledge base. | §11.3, §11.11 |
-| D14 | **Services and workflow stages are configurable data, not hard-coded.** | §11.3, §11.7, §11.14 |
-| D15 | Centralised, **seeded-but-editable** rate table keyed by shipping line; onboarding via Excel import. | §11.3 |
-| D16 | **God Mode** (CEO PIN+password); all deletions reversible via immutable-ledger JSON payload. | §11.2 |
-| D17 | Milestones flexible (insert between, auto-recalculate due dates); not fixed count. | §11.7 |
-| D18 | Build **WMS + Fleet** now for the next target (Base Cameroon), even though client #1 doesn't use them. | §11.8 |
-| D19 | Payments **manual** (no Cameroon gateway; heavy amounts ~50M); revisit gateways for Nigeria/overseas. | §11.11 |
-| D20 | Dashboards **AI-connected** (differentiator vs. Power BI). | §11.13 |
-| D21 | **Universal Event System + RBAC workflow designer** for dynamic validate/approve chains. | §11.14 |
-| D22 | Immutable ledger / audit trail = **SSOT**; external-auditor access via Audit Terminal. | §11.14, §11.16 |
-| D23 | **Smart Comms**: corporate WhatsApp-style, websockets, auditable/exportable; **no** WhatsApp/Instagram APIs. | §11.16 |
-| D24 | New GitHub repo, **PR-based** workflow; Victor owns repo + README; `doc/` knowledge folder. | §12 |
-| D25 | Everyone full-stack; David → front-end lean, Victor → back-end lean, Blake → organiser/cleanup/deep-linking. | §12 |
-| D26 | Paid Claude **Pro ($20)** per engineer; funded at project start. | §12 |
-| D27 | **Yearly renewable contracts**; milestone-based; performance reviewed on delivery + willingness. | §12 |
-| D28 | Team WhatsApp group only — **no one-to-one**; update proactively. | §12 |
-| D29 | Data migration **MySQL → PostgreSQL**. | §11.17 |
+| #   | Decision                                                                                                                                                          | Section              |
+| --- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
+| D1  | Multi-tenant SaaS, one codebase; per-tenant subdomains on `praxisls.com`; white-labelled theming; super-admin controls modules per tenant.                        | §4                   |
+| D2  | Target segment: heavyweight logistics (freight forwarding, customs clearance, WMS, fleet). Cameroon → Africa.                                                     | §2                   |
+| D3  | Build **everything** now (first client funds it); enable modules per tenant later.                                                                                | §2                   |
+| D4  | Stack: React 18 + Vite + TS (PWA) · Node.js + TS · separate workers (AI, PDF) · Redis + BullMQ · Socket.IO · Zod · Docker · Puppeteer/Chromium PDFs · Nodemailer. | §5, §10              |
+| D5  | **One PostgreSQL database per tenant** (tenant owns/can access their own data).                                                                                   | §5                   |
+| D6  | **Test/Live toggle**; Live + Sandbox **inside each tenant's Postgres**; sandbox purged by cron every **14 days**; no shared staging server.                       | §6                   |
+| D7  | RBAC enforced **server + client**; JWT + refresh; 30-min auto-logout; Redis session state with remote kill; 2FA encouraged.                                       | §7                   |
+| D8  | AI: **DeepSeek primary, Gemini fallback**; Whisper (self-host) or Grok for voice; **two-part EMV toggle** (front UI + back action); per-tenant spend dashboard.   | §8                   |
+| D9  | Per-tenant SMTP + role mailboxes via DNS; fallback sender **nmail.praxisls.com**; all docs emailed from the system.                                               | §9                   |
+| D10 | **Daily encrypted backups** (all tenant DBs + platform schema) → Google Drive/OneDrive → S3 later.                                                                | §10                  |
+| D11 | Scaling ladder: 1 → 12GB/6-core · 2–4 → 24GB/8-core · 5–10 → split servers · 10+ → connection pooler.                                                             | §10                  |
+| D12 | **Financial Dictionary ↔ Chart of Accounts ↔ Expense Rate**: linked but distinct (don't merge).                                                                   | §11.3                |
+| D13 | Accounting on **OHADA/SYSCOHADA** (not IFRS); bilingual (FR/EN); use the OHADA knowledge base.                                                                    | §11.3, §11.11        |
+| D14 | **Services and workflow stages are configurable data, not hard-coded.**                                                                                           | §11.3, §11.7, §11.14 |
+| D15 | Centralised, **seeded-but-editable** rate table keyed by shipping line; onboarding via Excel import.                                                              | §11.3                |
+| D16 | **God Mode** (CEO PIN+password); all deletions reversible via immutable-ledger JSON payload.                                                                      | §11.2                |
+| D17 | Milestones flexible (insert between, auto-recalculate due dates); not fixed count.                                                                                | §11.7                |
+| D18 | Build **WMS + Fleet** now for the next target (Base Cameroon), even though client #1 doesn't use them.                                                            | §11.8                |
+| D19 | Payments **manual** (no Cameroon gateway; heavy amounts ~50M); revisit gateways for Nigeria/overseas.                                                             | §11.11               |
+| D20 | Dashboards **AI-connected** (differentiator vs. Power BI).                                                                                                        | §11.13               |
+| D21 | **Universal Event System + RBAC workflow designer** for dynamic validate/approve chains.                                                                          | §11.14               |
+| D22 | Immutable ledger / audit trail = **SSOT**; external-auditor access via Audit Terminal.                                                                            | §11.14, §11.16       |
+| D23 | **Smart Comms**: corporate WhatsApp-style, websockets, auditable/exportable; **no** WhatsApp/Instagram APIs.                                                      | §11.16               |
+| D24 | New GitHub repo, **PR-based** workflow; Victor owns repo + README; `doc/` knowledge folder.                                                                       | §12                  |
+| D25 | Everyone full-stack; David → front-end lean, Victor → back-end lean, Blake → organiser/cleanup/deep-linking.                                                      | §12                  |
+| D26 | Paid Claude **Pro ($20)** per engineer; funded at project start.                                                                                                  | §12                  |
+| D27 | **Yearly renewable contracts**; milestone-based; performance reviewed on delivery + willingness.                                                                  | §12                  |
+| D28 | Team WhatsApp group only — **no one-to-one**; update proactively.                                                                                                 | §12                  |
+| D29 | Data migration **MySQL → PostgreSQL**.                                                                                                                            | §11.17               |
 
 ## Appendix B — Action items
 
-| Owner | Action | Due |
-|---|---|---|
-| Victor | Create the GitHub repo (PR-based) and write the README. | This evening |
-| Victor | Confirm/collect a GitHub account for repo setup. | This evening |
-| Blake | Prepare yearly contracts; deposit advances (David now; Victor TBD). | By tomorrow |
-| Blake | Share all documents, Lovable front-end export, MySQL `.sql`, and the meeting recording to the group. | Immediately |
-| Blake | Fund Claude Pro accounts (card); Elisha to renew one. | Project start |
-| Blake | Create the team WhatsApp group. | Immediately |
-| All | Provide documents to Victor for the README. | Before build |
-| All | Get paid Claude Pro accounts set up. | Project start |
-| David | Review the full recording (missed logistics & sales). | Before build |
-| Elisha | Own AI automation + Universal Event Engine; deep-dive and refine. | Ongoing |
-| Blake | Personally help design the dashboard "Control Tower" and the Operations-File 360° view. | Design phase |
-| Team | Follow up with David re: participation and role confirmation. | Post-meeting |
+| Owner  | Action                                                                                               | Due           |
+| ------ | ---------------------------------------------------------------------------------------------------- | ------------- |
+| Victor | Create the GitHub repo (PR-based) and write the README.                                              | This evening  |
+| Victor | Confirm/collect a GitHub account for repo setup.                                                     | This evening  |
+| Blake  | Prepare yearly contracts; deposit advances (David now; Victor TBD).                                  | By tomorrow   |
+| Blake  | Share all documents, Lovable front-end export, MySQL `.sql`, and the meeting recording to the group. | Immediately   |
+| Blake  | Fund Claude Pro accounts (card); Elisha to renew one.                                                | Project start |
+| Blake  | Create the team WhatsApp group.                                                                      | Immediately   |
+| All    | Provide documents to Victor for the README.                                                          | Before build  |
+| All    | Get paid Claude Pro accounts set up.                                                                 | Project start |
+| David  | Review the full recording (missed logistics & sales).                                                | Before build  |
+| Elisha | Own AI automation + Universal Event Engine; deep-dive and refine.                                    | Ongoing       |
+| Blake  | Personally help design the dashboard "Control Tower" and the Operations-File 360° view.              | Design phase  |
+| Team   | Follow up with David re: participation and role confirmation.                                        | Post-meeting  |
 
 ## Appendix C — Open questions / to confirm
 
@@ -832,35 +881,31 @@ Once logged in, the dashboard renders **based on the user's role.** On the dashb
 
 ## Appendix D — Glossary
 
-| Term | Meaning |
-|---|---|
+| Term                    | Meaning                                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------------------------- |
 | **Praxis LS / SmartLS** | The product. "SmartLS" is the legacy/working name in code & docs; "Praxis LS" is the product name. |
-| **JBS Praxis** | The company building and selling the product (heard as "JPS/JDS practice" in audio). |
-| **Tenant** | A client company using an isolated instance (own subdomain, own Postgres, own Live+Sandbox). |
-| **OHADA / SYSCOHADA** | Harmonised accounting system for French-speaking African countries; used instead of IFRS. |
-| **Numéro Unique / NIU** | Cameroon tax identifier (≈ TIN in Nigeria). |
-| **RCCM** | Trade & personal property registry number (≈ CAC number in Nigeria). |
-| **CNPS** | Cameroon social-security number (≈ pension/retirement fund number). |
-| **Visite technique** | Periodic vehicle technical inspection (roadworthiness). |
-| **Grand Livre** | General Ledger (French). |
-| **Régie d'avance** | Cash advance / imprest (the "cash request" concept). |
-| **Incoterm** | International commercial delivery term on an operations file. |
-| **BL** | Bill of Lading. |
-| **ETA / SSD** | Estimated Time of Arrival / Shipment Summary Details. |
-| **GRN** | Goods Receipt Note. |
-| **Q ticket** | Client-raised query/issue ticket against a milestone (kept in-system vs. email). |
-| **EMV** | Environment flag/variable used as the AI front-end/back-end toggle. |
-| **CL** | Claude (AI assistant) — paid Pro accounts per engineer. |
-| **Control Tower** | The role-driven main dashboard. |
-| **God Mode** | CEO-only, PIN-protected data-purge module (reversible via immutable ledger). |
-| **Immutable Ledger** | Append-only audit trail; SSOT for deletions, events, and disputes. |
-| **Base Cameroon** | The next target client (larger ops, WMS + fleet). |
-| **Pixie Girl** | A prior project by the team, referenced as proof of capability and work ethic. |
+| **JBS Praxis**          | The company building and selling the product (heard as "JPS/JDS practice" in audio).               |
+| **Tenant**              | A client company using an isolated instance (own subdomain, own Postgres, own Live+Sandbox).       |
+| **OHADA / SYSCOHADA**   | Harmonised accounting system for French-speaking African countries; used instead of IFRS.          |
+| **Numéro Unique / NIU** | Cameroon tax identifier (≈ TIN in Nigeria).                                                        |
+| **RCCM**                | Trade & personal property registry number (≈ CAC number in Nigeria).                               |
+| **CNPS**                | Cameroon social-security number (≈ pension/retirement fund number).                                |
+| **Visite technique**    | Periodic vehicle technical inspection (roadworthiness).                                            |
+| **Grand Livre**         | General Ledger (French).                                                                           |
+| **Régie d'avance**      | Cash advance / imprest (the "cash request" concept).                                               |
+| **Incoterm**            | International commercial delivery term on an operations file.                                      |
+| **BL**                  | Bill of Lading.                                                                                    |
+| **ETA / SSD**           | Estimated Time of Arrival / Shipment Summary Details.                                              |
+| **GRN**                 | Goods Receipt Note.                                                                                |
+| **Q ticket**            | Client-raised query/issue ticket against a milestone (kept in-system vs. email).                   |
+| **EMV**                 | Environment flag/variable used as the AI front-end/back-end toggle.                                |
+| **CL**                  | Claude (AI assistant) — paid Pro accounts per engineer.                                            |
+| **Control Tower**       | The role-driven main dashboard.                                                                    |
+| **God Mode**            | CEO-only, PIN-protected data-purge module (reversible via immutable ledger).                       |
+| **Immutable Ledger**    | Append-only audit trail; SSOT for deletions, events, and disputes.                                 |
+| **Base Cameroon**       | The next target client (larger ops, WMS + fleet).                                                  |
+| **Pixie Girl**          | A prior project by the team, referenced as proof of capability and work ethic.                     |
 
 ---
 
-*End of transcript. Prepared as the Source of Truth for building Praxis LS (v1). Retain alongside the PRD, the OHADA accounting knowledge base, the RBAC/Super-Admin journey, the UI mockups, and the legacy codebase in the project `doc/` folder.*
-
-
-
-
+_End of transcript. Prepared as the Source of Truth for building Praxis LS (v1). Retain alongside the PRD, the OHADA accounting knowledge base, the RBAC/Super-Admin journey, the UI mockups, and the legacy codebase in the project `doc/` folder._

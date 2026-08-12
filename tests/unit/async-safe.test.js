@@ -15,7 +15,10 @@ require("../../src/shared/http/async-safe");
 const express = require("express");
 const request = require("supertest");
 const { AppError } = require("../../src/utils/errors");
-const { errorHandler, notFoundHandler } = require("../../src/middleware/error-handler");
+const {
+  errorHandler,
+  notFoundHandler,
+} = require("../../src/middleware/error-handler");
 
 function buildApp() {
   const app = express();

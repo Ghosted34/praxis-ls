@@ -27,11 +27,17 @@ d("orchestration — import-freight lane (real Postgres)", () => {
     costing = require("../../src/modules/costing/costing/costing.service");
     dispatcher = require("../../src/orchestration/dispatcher");
   });
-  afterAll(async () => { if (pool) await pool.end(); });
+  afterAll(async () => {
+    if (pool) await pool.end();
+  });
 
   const withClient = async (fn) => {
     const c = await pool.connect();
-    try { return await fn(c); } finally { c.release(); }
+    try {
+      return await fn(c);
+    } finally {
+      c.release();
+    }
   };
 
   let opportunityId;
@@ -39,54 +45,86 @@ d("orchestration — import-freight lane (real Postgres)", () => {
 
   it("won opportunity → the dispatcher opens & links a dossier (async)", async () => {
     const created = await withClient((c) =>
-      opportunity.create(c, { data: { name: "IMPORT FREIGHT lane " + Date.now() }, actor: {} }));
+      opportunity.create(c, {
+        data: { name: "IMPORT FREIGHT lane " + Date.now() },
+        actor: {},
+      }),
+    );
     opportunityId = created.opportunity_id;
 
     // Win WITHOUT the manual createDossier flag — the handoff must be automatic.
-    await withClient((c) => opportunity.win(c, { id: opportunityId, actor: {} }));
+    await withClient((c) =>
+      opportunity.win(c, { id: opportunityId, actor: {} }),
+    );
 
     // Not linked yet: the handler runs off the outbox, not in-request.
     let row = await withClient((c) =>
-      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [opportunityId]));
+      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [
+        opportunityId,
+      ]),
+    );
     expect(row.rows[0].dossier_id).toBeFalsy();
 
     // Drain the outbox (what the scheduled orchestration-dispatch job does).
     await withClient((c) => dispatcher.dispatchPending(c, {}));
 
     row = await withClient((c) =>
-      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [opportunityId]));
+      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [
+        opportunityId,
+      ]),
+    );
     dossierId = row.rows[0].dossier_id;
     expect(dossierId).toBeTruthy();
 
-    const dj = await withClient((c) => c.query("SELECT status FROM dossier WHERE dossier_id = $1", [dossierId]));
+    const dj = await withClient((c) =>
+      c.query("SELECT status FROM dossier WHERE dossier_id = $1", [dossierId]),
+    );
     expect(dj.rows[0].status).toBe("OPEN");
   });
 
   it("is idempotent — re-dispatch does not create a second dossier", async () => {
     await withClient((c) => dispatcher.dispatchPending(c, {}));
     const row = await withClient((c) =>
-      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [opportunityId]));
+      c.query("SELECT dossier_id FROM opportunity WHERE opportunity_id = $1", [
+        opportunityId,
+      ]),
+    );
     expect(row.rows[0].dossier_id).toBe(dossierId);
   });
 
   it("costing approval synchronously drafts one final invoice; the backstop no-ops", async () => {
     const cst = await withClient((c) =>
       costing.createDraft(c, {
-        data: { dossier_id: dossierId, margin_percent: 10, lines: [{ label: "Ocean freight", qty: 1, unit_cost: 1000 }] },
+        data: {
+          dossier_id: dossierId,
+          margin_percent: 10,
+          lines: [{ label: "Ocean freight", qty: 1, unit_cost: 1000 }],
+        },
         actor: {},
-      }));
-    await withClient((c) => costing.setStatus(c, { id: cst.costing_id, to: "APPROVE", actor: {} }));
+      }),
+    );
+    await withClient((c) =>
+      costing.setStatus(c, { id: cst.costing_id, to: "APPROVE", actor: {} }),
+    );
 
     // Synchronous handoff already produced the DRAFT.
     const inv = await withClient((c) =>
-      c.query("SELECT status FROM invoice WHERE dossier_id = $1 AND type = 'FINAL'", [dossierId]));
+      c.query(
+        "SELECT status FROM invoice WHERE dossier_id = $1 AND type = 'FINAL'",
+        [dossierId],
+      ),
+    );
     expect(inv.rows.length).toBe(1);
     expect(inv.rows[0].status).toBe("DRAFT");
 
     // Async backstop (costing.approved handler) must be a no-op — still one invoice.
     await withClient((c) => dispatcher.dispatchPending(c, {}));
     const n = await withClient((c) =>
-      c.query("SELECT count(*)::int AS n FROM invoice WHERE dossier_id = $1 AND type = 'FINAL'", [dossierId]));
+      c.query(
+        "SELECT count(*)::int AS n FROM invoice WHERE dossier_id = $1 AND type = 'FINAL'",
+        [dossierId],
+      ),
+    );
     expect(n.rows[0].n).toBe(1);
   });
 });

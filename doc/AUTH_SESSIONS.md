@@ -157,8 +157,8 @@ session at their next sign-in.
 
 ## Settings and where they bite
 
-| Setting | Default | Bites |
-|---|---|---|
-| `JWT_ACCESS_TTL` | `15m` | Refresh cadence. **Must stay below `SESSION_INACTIVITY_MIN`** — see Trap 1. |
-| `JWT_REFRESH_TTL` | `30d` | Ceiling on a keep-signed-in session, and the Redis index TTL. |
-| `SESSION_INACTIVITY_MIN` | `30` | Idle kill for sessions **without** keep-signed-in. |
+| Setting                  | Default | Bites                                                                       |
+| ------------------------ | ------- | --------------------------------------------------------------------------- |
+| `JWT_ACCESS_TTL`         | `15m`   | Refresh cadence. **Must stay below `SESSION_INACTIVITY_MIN`** — see Trap 1. |
+| `JWT_REFRESH_TTL`        | `30d`   | Ceiling on a keep-signed-in session, and the Redis index TTL.               |
+| `SESSION_INACTIVITY_MIN` | `30`    | Idle kill for sessions **without** keep-signed-in.                          |

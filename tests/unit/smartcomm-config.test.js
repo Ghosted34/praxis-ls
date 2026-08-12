@@ -8,7 +8,10 @@
 
 jest.mock("axios");
 jest.mock("nodemailer", () => ({
-  createTransport: jest.fn(() => ({ verify: jest.fn(async () => true), sendMail: jest.fn(async () => ({})) })),
+  createTransport: jest.fn(() => ({
+    verify: jest.fn(async () => true),
+    sendMail: jest.fn(async () => ({})),
+  })),
 }));
 // email.service.resolveMail reads the platform `mail.fallback` sender when the
 // tenant has no own SMTP host — mock it here so the real email.service used by
@@ -16,9 +19,16 @@ jest.mock("nodemailer", () => ({
 // env defaults (no host) so "no SMTP host" behaviour is preserved.
 jest.mock("../../src/services/platform/mail-fallback.service", () => ({
   resolve: jest.fn(async () => ({
-    from: "no-reply@praxisls.com", support_from: "support@praxisls.com", from_name: "Praxis",
-    reply_to: null, fallback_domain: "praxisls.com", smtp_host: null, smtp_port: 587,
-    smtp_user: null, smtp_pass: null, source: "env",
+    from: "no-reply@praxisls.com",
+    support_from: "support@praxisls.com",
+    from_name: "Praxis",
+    reply_to: null,
+    fallback_domain: "praxisls.com",
+    smtp_host: null,
+    smtp_port: 587,
+    smtp_user: null,
+    smtp_pass: null,
+    source: "env",
   })),
 }));
 
@@ -46,9 +56,20 @@ afterEach(() => jest.clearAllMocks());
 
 describe("whatsapp verifyConfig", () => {
   it("passes and never leaks the token", async () => {
-    axios.get.mockResolvedValue({ data: { verified_name: "Acme Ltd", display_phone_number: "+237 6xx", quality_rating: "GREEN" } });
+    axios.get.mockResolvedValue({
+      data: {
+        verified_name: "Acme Ltd",
+        display_phone_number: "+237 6xx",
+        quality_rating: "GREEN",
+      },
+    });
     const client = fakeClient({
-      "integration_secret:whatsapp_token": { value: { provider: "meta-whatsapp", secret_enc: encryption.encrypt("wa-secret-ABCD") } },
+      "integration_secret:whatsapp_token": {
+        value: {
+          provider: "meta-whatsapp",
+          secret_enc: encryption.encrypt("wa-secret-ABCD"),
+        },
+      },
       "comms:whatsapp": { value: { phone_id: "PHONE1", api_version: "v18.0" } },
     });
     const res = await whatsapp.verifyConfig(client);
@@ -56,7 +77,9 @@ describe("whatsapp verifyConfig", () => {
     expect(res.verified_name).toBe("Acme Ltd");
     expect(axios.get).toHaveBeenCalledWith(
       expect.stringContaining("PHONE1"),
-      expect.objectContaining({ headers: { Authorization: "Bearer wa-secret-ABCD" } }),
+      expect.objectContaining({
+        headers: { Authorization: "Bearer wa-secret-ABCD" },
+      }),
     );
     expect(JSON.stringify(res)).not.toContain("wa-secret");
   });
@@ -68,7 +91,12 @@ describe("whatsapp verifyConfig", () => {
   });
 
   it("fails cleanly on a 401 from Meta", async () => {
-    axios.get.mockRejectedValue({ response: { status: 401, data: { error: { message: "Invalid OAuth access token" } } } });
+    axios.get.mockRejectedValue({
+      response: {
+        status: 401,
+        data: { error: { message: "Invalid OAuth access token" } },
+      },
+    });
     const client = fakeClient({
       "integration_secret:whatsapp_token": enc("badtoken"),
       "comms:whatsapp": { value: { phone_id: "PHONE1" } },
@@ -83,14 +111,23 @@ describe("whatsapp verifyConfig", () => {
 describe("email verifyTransport", () => {
   it("passes when the SMTP transport verifies", async () => {
     const client = fakeClient({
-      "email:default": { value: { smtp_host: "smtp.example.com", smtp_port: 587, smtp_user: "u", from: "a@example.com" } },
+      "email:default": {
+        value: {
+          smtp_host: "smtp.example.com",
+          smtp_port: 587,
+          smtp_user: "u",
+          from: "a@example.com",
+        },
+      },
       "integration_secret:email_smtp_pass": enc("smtp-pass-99"),
     });
     const res = await cfg.testEmail(client);
     expect(res.ok).toBe(true);
     expect(res.smtp_host).toBe("smtp.example.com");
     // the decrypted pass must reach nodemailer's auth, but never the response
-    expect(nodemailer.createTransport).toHaveBeenCalledWith(expect.objectContaining({ auth: { user: "u", pass: "smtp-pass-99" } }));
+    expect(nodemailer.createTransport).toHaveBeenCalledWith(
+      expect.objectContaining({ auth: { user: "u", pass: "smtp-pass-99" } }),
+    );
     expect(JSON.stringify(res)).not.toContain("smtp-pass-99");
   });
 
@@ -107,7 +144,13 @@ describe("getConfig redaction", () => {
       "integration_secret:whatsapp_token": enc("wa-secret-WXYZ"),
       "comms:whatsapp": { value: { phone_id: "PHONE1" } },
       "integration_secret:email_smtp_pass": enc("smtp-pass-99"),
-      "email:default": { value: { smtp_host: "smtp.example.com", smtp_user: "u", from: "a@example.com" } },
+      "email:default": {
+        value: {
+          smtp_host: "smtp.example.com",
+          smtp_user: "u",
+          from: "a@example.com",
+        },
+      },
     });
     const res = await cfg.getConfig(client);
     expect(res.whatsapp.token_set).toBe(true);

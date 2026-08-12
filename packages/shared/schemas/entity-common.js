@@ -42,21 +42,72 @@ const patchOf = (shape) => z.object(shape).partial();
 // Kept in step with 0515 by hand. A value here that the database rejects is a
 // 500 rather than a 422, so these lists are the ones to change first.
 const PERSON_ROLES = [
-  "SHAREHOLDER", "DIRECTOR", "OFFICER", "LEGAL_REPRESENTATIVE",
-  "AUTHORISED_SIGNATORY", "BENEFICIAL_OWNER", "STATUTORY_AUDITOR", "SECRETARY",
+  "SHAREHOLDER",
+  "DIRECTOR",
+  "OFFICER",
+  "LEGAL_REPRESENTATIVE",
+  "AUTHORISED_SIGNATORY",
+  "BENEFICIAL_OWNER",
+  "STATUTORY_AUDITOR",
+  "SECRETARY",
 ];
 const HOLDER_TYPES = ["PERSON", "COMPANY"];
-const ADDRESS_TYPES = ["REGISTERED", "TRADING", "BILLING", "REMITTANCE", "MAILING", "WAREHOUSE", "OTHER"];
-const ESTABLISHMENT_KINDS = ["HEAD_OFFICE", "OFFICE", "WAREHOUSE", "TERMINAL", "WORKSHOP", "SITE", "AGENCY", "OTHER"];
-const RELATIONSHIP_TYPES = [
-  "HEADQUARTERS", "SUBSIDIARY", "BRANCH", "REPRESENTATIVE_OFFICE",
-  "JOINT_VENTURE", "ASSOCIATE", "SPV",
+const ADDRESS_TYPES = [
+  "REGISTERED",
+  "TRADING",
+  "BILLING",
+  "REMITTANCE",
+  "MAILING",
+  "WAREHOUSE",
+  "OTHER",
 ];
-const LIFECYCLE_STATES = ["DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED"];
-const ACCOUNTING_FRAMEWORKS = ["OHADA", "IFRS", "IFRS_SME", "US_GAAP", "FR_PCG", "UK_GAAP", "LOCAL_OTHER"];
+const ESTABLISHMENT_KINDS = [
+  "HEAD_OFFICE",
+  "OFFICE",
+  "WAREHOUSE",
+  "TERMINAL",
+  "WORKSHOP",
+  "SITE",
+  "AGENCY",
+  "OTHER",
+];
+const RELATIONSHIP_TYPES = [
+  "HEADQUARTERS",
+  "SUBSIDIARY",
+  "BRANCH",
+  "REPRESENTATIVE_OFFICE",
+  "JOINT_VENTURE",
+  "ASSOCIATE",
+  "SPV",
+];
+const LIFECYCLE_STATES = [
+  "DRAFT",
+  "PENDING_REVIEW",
+  "ACTIVE",
+  "SUSPENDED",
+  "DEACTIVATED",
+  "ARCHIVED",
+];
+const ACCOUNTING_FRAMEWORKS = [
+  "OHADA",
+  "IFRS",
+  "IFRS_SME",
+  "US_GAAP",
+  "FR_PCG",
+  "UK_GAAP",
+  "LOCAL_OTHER",
+];
 const CONTACT_ROLE_TAGS = [
-  "BILLING", "OPERATIONS", "CUSTOMS", "LEGAL", "HR", "TREASURY",
-  "ACCOUNTS_PAYABLE", "ACCOUNTS_RECEIVABLE", "EMERGENCY", "TAX",
+  "BILLING",
+  "OPERATIONS",
+  "CUSTOMS",
+  "LEGAL",
+  "HR",
+  "TREASURY",
+  "ACCOUNTS_PAYABLE",
+  "ACCOUNTS_RECEIVABLE",
+  "EMERGENCY",
+  "TAX",
 ];
 
 // ── Person: shareholder / director / officer / signatory / UBO ──────────────
@@ -80,7 +131,9 @@ const personShape = {
   // Corporate-holder identity.
   company_registration_number: optionalText,
   company_country: countryCode,
-  holder_entity_id: blankToUndefined(z.string().uuid("Must be a valid entity id.")),
+  holder_entity_id: blankToUndefined(
+    z.string().uuid("Must be a valid entity id."),
+  ),
 
   email,
   phone,
@@ -102,9 +155,13 @@ const personShape = {
   effective_from: optionalDate,
   effective_to: optionalDate,
 
-  employee_id: blankToUndefined(z.string().uuid("Must be a valid employee id.")),
+  employee_id: blankToUndefined(
+    z.string().uuid("Must be a valid employee id."),
+  ),
   client_id: blankToUndefined(z.string().uuid("Must be a valid client id.")),
-  supplier_id: blankToUndefined(z.string().uuid("Must be a valid supplier id.")),
+  supplier_id: blankToUndefined(
+    z.string().uuid("Must be a valid supplier id."),
+  ),
 
   notes: optionalText,
   is_active: z.boolean().optional(),
@@ -120,16 +177,28 @@ const personShape = {
 const withPersonRules = (schema) =>
   schema
     .refine(
-      (v) => !(v.effective_from && v.effective_to) || v.effective_to >= v.effective_from,
-      { message: "The end date cannot be before the start date.", path: ["effective_to"] },
+      (v) =>
+        !(v.effective_from && v.effective_to) ||
+        v.effective_to >= v.effective_from,
+      {
+        message: "The end date cannot be before the start date.",
+        path: ["effective_to"],
+      },
     )
     .refine(
       (v) => v.holder_type !== "COMPANY" || (!v.date_of_birth && !v.id_number),
-      { message: "A company holder has no date of birth or personal ID — use the registration number.", path: ["holder_type"] },
+      {
+        message:
+          "A company holder has no date of birth or personal ID — use the registration number.",
+        path: ["holder_type"],
+      },
     )
     .refine(
       (v) => v.holder_type !== "PERSON" || !v.company_registration_number,
-      { message: "A natural person has no company registration number.", path: ["company_registration_number"] },
+      {
+        message: "A natural person has no company registration number.",
+        path: ["company_registration_number"],
+      },
     );
 
 exports.personCreate = withPersonRules(z.object(personShape));
@@ -143,7 +212,9 @@ const contactShape = {
   phone,
   role_tags: z.array(z.enum(CONTACT_ROLE_TAGS)).optional(),
   is_primary: z.boolean().optional(),
-  language: blankToUndefined(z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase()),
+  language: blankToUndefined(
+    z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
+  ),
   timezone: optionalText,
   is_active: z.boolean().optional(),
 };
@@ -183,7 +254,10 @@ const registrationShape = {
 const withRegistrationRules = (schema) =>
   schema.refine(
     (v) => !(v.issued_on && v.expires_on) || v.expires_on >= v.issued_on,
-    { message: "Expiry cannot be before the issue date.", path: ["expires_on"] },
+    {
+      message: "Expiry cannot be before the issue date.",
+      path: ["expires_on"],
+    },
   );
 exports.registrationCreate = withRegistrationRules(z.object(registrationShape));
 exports.registrationUpdate = withRegistrationRules(patchOf(registrationShape));
@@ -199,7 +273,9 @@ const establishmentShape = {
   tax_office_ref: optionalText,
   registration_ref: optionalText,
   customs_office: optionalText,
-  manager_employee_id: blankToUndefined(z.string().uuid("Must be a valid employee id.")),
+  manager_employee_id: blankToUndefined(
+    z.string().uuid("Must be a valid employee id."),
+  ),
   opened_on: optionalDate,
   closed_on: optionalDate,
   is_active: z.boolean().optional(),
@@ -207,10 +283,17 @@ const establishmentShape = {
 const withEstablishmentRules = (schema) =>
   schema.refine(
     (v) => !(v.opened_on && v.closed_on) || v.closed_on >= v.opened_on,
-    { message: "The closing date cannot be before the opening date.", path: ["closed_on"] },
+    {
+      message: "The closing date cannot be before the opening date.",
+      path: ["closed_on"],
+    },
   );
-exports.establishmentCreate = withEstablishmentRules(z.object(establishmentShape));
-exports.establishmentUpdate = withEstablishmentRules(patchOf(establishmentShape));
+exports.establishmentCreate = withEstablishmentRules(
+  z.object(establishmentShape),
+);
+exports.establishmentUpdate = withEstablishmentRules(
+  patchOf(establishmentShape),
+);
 
 // ── The corporate entity master itself ─────────────────────────────────────
 // Lives here rather than in corporate_entity.validator.js because a schema that
@@ -224,7 +307,9 @@ const nullableCountry = countryCode.nullable();
 const nullableCurrency = optionalCurrency.nullable();
 const nullableAmount = optionalAmount.nullable();
 const nullableDate = optionalDate.nullable();
-const nullableUuid = blankToUndefined(z.string().uuid("Must be a valid id.")).nullable();
+const nullableUuid = blankToUndefined(
+  z.string().uuid("Must be a valid id."),
+).nullable();
 const logoRef = z.string().optional().nullable();
 
 const masterShape = {
@@ -255,7 +340,10 @@ const masterShape = {
   doc_prefix: optionalText,
   default_language: z.enum(["fr", "en"]).optional(),
   fiscal_year_start_month: blankToUndefined(
-    amount.refine((n) => Number.isInteger(n) && n >= 1 && n <= 12, "Pick a month, 1-12."),
+    amount.refine(
+      (n) => Number.isInteger(n) && n >= 1 && n <= 12,
+      "Pick a month, 1-12.",
+    ),
   ),
   accounting_framework: z.enum(ACCOUNTING_FRAMEWORKS).optional().nullable(),
 
@@ -278,8 +366,13 @@ const masterShape = {
 /** Dissolution cannot precede incorporation — the one cross-field rule here. */
 const withMasterRules = (schema) =>
   schema.refine(
-    (v) => !(v.incorporation_date && v.dissolution_date) || v.dissolution_date >= v.incorporation_date,
-    { message: "Dissolution cannot be before incorporation.", path: ["dissolution_date"] },
+    (v) =>
+      !(v.incorporation_date && v.dissolution_date) ||
+      v.dissolution_date >= v.incorporation_date,
+    {
+      message: "Dissolution cannot be before incorporation.",
+      path: ["dissolution_date"],
+    },
   );
 
 exports.masterCreate = withMasterRules(
@@ -288,7 +381,9 @@ exports.masterCreate = withMasterRules(
     code: requiredText("Code"),
     // A new entity may start as a DRAFT and be completed over several sittings —
     // gathering statutes, certificates and a cap table is not a one-form job.
-    registration_status: z.enum(["DRAFT", "PENDING_REVIEW", "ACTIVE"]).optional(),
+    registration_status: z
+      .enum(["DRAFT", "PENDING_REVIEW", "ACTIVE"])
+      .optional(),
   }),
 );
 exports.masterUpdate = withMasterRules(patchOf(masterShape));
@@ -311,12 +406,17 @@ const documentShape = {
   issued_on: optionalDate,
   expires_on: optionalDate,
   country_code: countryCode,
-  establishment_id: blankToUndefined(z.string().uuid("Must be a valid establishment id.")),
+  establishment_id: blankToUndefined(
+    z.string().uuid("Must be a valid establishment id."),
+  ),
   vault_id: blankToUndefined(z.string().uuid("Must be a valid document id.")),
   physical_ref: optionalText,
   scan_due_on: optionalDate,
   renewal_lead_days: blankToUndefined(
-    amount.refine((n) => Number.isInteger(n) && n >= 0 && n <= 365, "Enter 0-365 days."),
+    amount.refine(
+      (n) => Number.isInteger(n) && n >= 0 && n <= 365,
+      "Enter 0-365 days.",
+    ),
   ),
   notes: optionalText,
   is_active: z.boolean().optional(),
@@ -324,24 +424,50 @@ const documentShape = {
 const withDocumentRules = (schema) =>
   schema.refine(
     (v) => !(v.issued_on && v.expires_on) || v.expires_on >= v.issued_on,
-    { message: "Expiry cannot be before the issue date.", path: ["expires_on"] },
+    {
+      message: "Expiry cannot be before the issue date.",
+      path: ["expires_on"],
+    },
   );
 exports.documentCreate = withDocumentRules(z.object(documentShape));
 exports.documentUpdate = withDocumentRules(patchOf(documentShape));
 
 // ── Tax registration (per entity, per jurisdiction) ────────────────────────
-const TAX_KINDS = ["VAT", "INCOME", "WHT", "PAYROLL", "CUSTOMS", "LOCAL", "OTHER"];
-const FILING_FREQUENCIES = ["MONTHLY", "QUARTERLY", "ANNUAL", "BIMONTHLY", "ON_EVENT"];
+const TAX_KINDS = [
+  "VAT",
+  "INCOME",
+  "WHT",
+  "PAYROLL",
+  "CUSTOMS",
+  "LOCAL",
+  "OTHER",
+];
+const FILING_FREQUENCIES = [
+  "MONTHLY",
+  "QUARTERLY",
+  "ANNUAL",
+  "BIMONTHLY",
+  "ON_EVENT",
+];
 
 const taxRegistrationShape = {
-  jurisdiction_id: blankToUndefined(z.string().uuid("Must be a valid jurisdiction id.")),
-  country_code: z.string().trim().length(2, "Use a 2-letter country code.").toUpperCase(),
+  jurisdiction_id: blankToUndefined(
+    z.string().uuid("Must be a valid jurisdiction id."),
+  ),
+  country_code: z
+    .string()
+    .trim()
+    .length(2, "Use a 2-letter country code.")
+    .toUpperCase(),
   tax_kind: z.enum(TAX_KINDS).optional(),
   tax_number: optionalText,
   regime: optionalText,
   filing_frequency: blankToUndefined(z.enum(FILING_FREQUENCIES)),
   filing_due_day: blankToUndefined(
-    amount.refine((n) => Number.isInteger(n) && n >= 1 && n <= 31, "Enter a day of the month, 1-31."),
+    amount.refine(
+      (n) => Number.isInteger(n) && n >= 1 && n <= 31,
+      "Enter a day of the month, 1-31.",
+    ),
   ),
   currency: optionalCurrency,
   is_withholding_agent: z.boolean().optional(),
@@ -351,27 +477,43 @@ const taxRegistrationShape = {
   is_primary: z.boolean().optional(),
   is_active: z.boolean().optional(),
   filing_portal_url: optionalText,
-  responsible_user_id: blankToUndefined(z.string().uuid("Must be a valid user id.")),
+  responsible_user_id: blankToUndefined(
+    z.string().uuid("Must be a valid user id."),
+  ),
   notes: optionalText,
 };
 const withTaxRules = (schema) =>
   schema
     .refine(
-      (v) => !(v.registered_on && v.deregistered_on) || v.deregistered_on >= v.registered_on,
-      { message: "Deregistration cannot be before registration.", path: ["deregistered_on"] },
+      (v) =>
+        !(v.registered_on && v.deregistered_on) ||
+        v.deregistered_on >= v.registered_on,
+      {
+        message: "Deregistration cannot be before registration.",
+        path: ["deregistered_on"],
+      },
     )
     .refine(
       // A filing day without a frequency has nothing to attach to, and the
       // obligation generator would silently skip it.
       (v) => v.filing_due_day === undefined || v.filing_frequency !== undefined,
-      { message: "Choose a filing frequency before setting a due day.", path: ["filing_due_day"] },
+      {
+        message: "Choose a filing frequency before setting a due day.",
+        path: ["filing_due_day"],
+      },
     );
 exports.taxRegistrationCreate = withTaxRules(z.object(taxRegistrationShape));
 exports.taxRegistrationUpdate = withTaxRules(patchOf(taxRegistrationShape));
 
 // ── Letterhead configuration ───────────────────────────────────────────────
 const hexColor = blankToUndefined(
-  z.string().trim().regex(/^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/, "Use a hex colour like #C2703D."),
+  z
+    .string()
+    .trim()
+    .regex(
+      /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/,
+      "Use a hex colour like #C2703D.",
+    ),
 );
 exports.letterheadUpdate = z.object({
   show_legal_form: z.boolean().optional(),
@@ -391,9 +533,15 @@ exports.letterheadUpdate = z.object({
   accent_color: hexColor.nullable(),
   logo_position: z.enum(["LEFT", "CENTER", "RIGHT"]).optional(),
   paper_size: z.enum(["A4", "LETTER"]).optional(),
-  header_height_mm: blankToUndefined(amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm.")).nullable(),
-  footer_height_mm: blankToUndefined(amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm.")).nullable(),
-  remittance_account_id: blankToUndefined(z.string().uuid("Must be a valid treasury account id.")).nullable(),
+  header_height_mm: blankToUndefined(
+    amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm."),
+  ).nullable(),
+  footer_height_mm: blankToUndefined(
+    amount.refine((n) => n >= 10 && n <= 120, "Enter 10-120 mm."),
+  ).nullable(),
+  remittance_account_id: blankToUndefined(
+    z.string().uuid("Must be a valid treasury account id."),
+  ).nullable(),
 });
 
 // ── Working calendar (0650) ────────────────────────────────────────────────
@@ -429,7 +577,10 @@ exports.workingCalendarHoliday = z.object({
 exports.workingCalendarSave = z.object({
   timezone: z.string().min(1).optional(),
   name: optionalText.nullable(),
-  days: z.array(exports.workingCalendarDay).min(1, "A calendar needs at least one open day.").max(7),
+  days: z
+    .array(exports.workingCalendarDay)
+    .min(1, "A calendar needs at least one open day.")
+    .max(7),
   holidays: z.array(exports.workingCalendarHoliday).max(200).optional(),
 });
 
@@ -440,8 +591,14 @@ exports.setStatus = z.object({
 });
 
 exports.setStructure = z.object({
-  parent_entity_id: blankToUndefined(z.string().uuid("Must be a valid entity id.")).nullable().optional(),
-  relationship_type: blankToUndefined(z.enum(RELATIONSHIP_TYPES)).nullable().optional(),
+  parent_entity_id: blankToUndefined(
+    z.string().uuid("Must be a valid entity id."),
+  )
+    .nullable()
+    .optional(),
+  relationship_type: blankToUndefined(z.enum(RELATIONSHIP_TYPES))
+    .nullable()
+    .optional(),
   ownership_percent: optionalPercent.nullable().optional(),
   consolidates: z.boolean().optional(),
   is_group_parent: z.boolean().optional(),
@@ -454,7 +611,9 @@ exports.setStructure = z.object({
 // An intersection rather than `.extend()`: masterUpdate and setStatus carry
 // `.refine()` cross-field rules, which makes them ZodEffects — those have no
 // `.shape` to extend, and reaching for the inner object would drop the refine.
-const entityIdField = { entity_id: z.string().uuid("Must be a valid entity id.") };
+const entityIdField = {
+  entity_id: z.string().uuid("Must be a valid entity id."),
+};
 const withEntityId = (schema) => z.object(entityIdField).and(schema);
 
 exports.aiUpdate = withEntityId(exports.masterUpdate);

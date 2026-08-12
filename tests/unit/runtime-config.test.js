@@ -23,14 +23,17 @@
  *      what gets deleted.
  */
 
-jest.mock("../../src/services/platform/settings.service", () => ({ resolve: jest.fn() }));
+jest.mock("../../src/services/platform/settings.service", () => ({
+  resolve: jest.fn(),
+}));
 
 const settings = require("../../src/services/platform/settings.service");
 const runtimeConfig = require("../../src/services/platform/runtime-config.service");
 const { config } = require("../../src/config/env");
 
 /** Vault answers with this row for any section/key. */
-const vault = (value, secret = null) => settings.resolve.mockResolvedValue({ value, secret });
+const vault = (value, secret = null) =>
+  settings.resolve.mockResolvedValue({ value, secret });
 const emptyVault = () => settings.resolve.mockResolvedValue(null);
 
 beforeEach(() => {
@@ -47,7 +50,10 @@ describe("backupStorage", () => {
   });
 
   test("the vault wins over env", async () => {
-    vault({ driver: "s3", bucket: "praxis-offsite", region: "eu-central-1" }, "vault-secret-key");
+    vault(
+      { driver: "s3", bucket: "praxis-offsite", region: "eu-central-1" },
+      "vault-secret-key",
+    );
     const c = await runtimeConfig.backupStorage();
     expect(c.driver).toBe("s3");
     expect(c.s3.bucket).toBe("praxis-offsite");
@@ -75,8 +81,13 @@ describe("backupStorage", () => {
   test("the secret never leaks into the non-secret half", async () => {
     vault({ driver: "s3", bucket: "b" }, "super-secret");
     const c = await runtimeConfig.backupStorage();
-    expect(JSON.stringify({ driver: c.driver, bucket: c.s3.bucket, source: c.source }))
-      .not.toContain("super-secret");
+    expect(
+      JSON.stringify({
+        driver: c.driver,
+        bucket: c.s3.bucket,
+        source: c.source,
+      }),
+    ).not.toContain("super-secret");
   });
 });
 
@@ -84,7 +95,9 @@ describe("opsTuning", () => {
   test("falls back to env defaults", async () => {
     emptyVault();
     const t = await runtimeConfig.opsTuning();
-    expect(t.backupRetainDailyDays).toBe(Number(config.BACKUP_RETAIN_DAILY_DAYS));
+    expect(t.backupRetainDailyDays).toBe(
+      Number(config.BACKUP_RETAIN_DAILY_DAYS),
+    );
     expect(t.source).toBe("env");
   });
 

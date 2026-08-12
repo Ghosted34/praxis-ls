@@ -24,7 +24,10 @@ const hasDb = !!process.env.DATABASE_URL && !!process.env.TEST_ENTITY_ID;
 const d = hasDb ? describe : describe.skip;
 
 d("ledger posting (real Postgres)", () => {
-  let pool; let service; let entityId; let date;
+  let pool;
+  let service;
+  let entityId;
+  let date;
   beforeAll(async () => {
     const { Pool } = require("pg");
     pool = new Pool({ connectionString: process.env.DATABASE_URL });
@@ -32,34 +35,58 @@ d("ledger posting (real Postgres)", () => {
     entityId = process.env.TEST_ENTITY_ID;
     date = process.env.TEST_ENTRY_DATE || new Date().toISOString().slice(0, 10);
   });
-  afterAll(async () => { if (pool) await pool.end(); });
+  afterAll(async () => {
+    if (pool) await pool.end();
+  });
 
   const withClient = async (fn) => {
     const c = await pool.connect();
-    try { return await fn(c); } finally { c.release(); }
+    try {
+      return await fn(c);
+    } finally {
+      c.release();
+    }
   };
 
   it("posts a balanced validated entry and reads it back with lines", async () => {
-    const { entry } = await withClient((c) => service.post(c, {
-      journalCode: "BQ", entityId, entryDate: date, sourceDocRef: "test:doc",
-      lines: [ { account_code: "5211", debit: 1000, credit: 0 }, { account_code: "4191", debit: 0, credit: 1000 } ],
-      actor: { user_id: null },
-    }));
+    const { entry } = await withClient((c) =>
+      service.post(c, {
+        journalCode: "BQ",
+        entityId,
+        entryDate: date,
+        sourceDocRef: "test:doc",
+        lines: [
+          { account_code: "5211", debit: 1000, credit: 0 },
+          { account_code: "4191", debit: 0, credit: 1000 },
+        ],
+        actor: { user_id: null },
+      }),
+    );
     expect(entry.status).toBe("validated");
     const full = await withClient((c) => service.get(c, entry.entry_id));
     expect(full.lines).toHaveLength(2);
   });
 
   it("rejects an unbalanced entry at the database", async () => {
-    await expect(withClient((c) => service.post(c, {
-      journalCode: "BQ", entityId, entryDate: date, sourceDocRef: "test:doc",
-      lines: [ { account_code: "5211", debit: 1000, credit: 0 }, { account_code: "4191", debit: 0, credit: 1 } ],
-      actor: { user_id: null },
-      // `/Out of balance/`, not a bare `.toThrow()`. A bare one asserts only
-      // that SOMETHING failed, which is how this test spent its whole life
-      // passing on "account 521 is not postable" without ever reaching the
-      // balance check. Naming the message is what makes the pass mean the thing
-      // the test is called after (§23.1, ENTRY_UNBALANCED).
-    }))).rejects.toThrow(/Out of balance/i);
+    await expect(
+      withClient((c) =>
+        service.post(c, {
+          journalCode: "BQ",
+          entityId,
+          entryDate: date,
+          sourceDocRef: "test:doc",
+          lines: [
+            { account_code: "5211", debit: 1000, credit: 0 },
+            { account_code: "4191", debit: 0, credit: 1 },
+          ],
+          actor: { user_id: null },
+          // `/Out of balance/`, not a bare `.toThrow()`. A bare one asserts only
+          // that SOMETHING failed, which is how this test spent its whole life
+          // passing on "account 521 is not postable" without ever reaching the
+          // balance check. Naming the message is what makes the pass mean the thing
+          // the test is called after (§23.1, ENTRY_UNBALANCED).
+        }),
+      ),
+    ).rejects.toThrow(/Out of balance/i);
   });
 });

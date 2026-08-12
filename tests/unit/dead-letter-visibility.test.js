@@ -36,7 +36,13 @@ describe("OBS-A6 — DEAD is distinguishable from FAILED", () => {
         if (/FROM event_log el LEFT JOIN event_dispatch/.test(sql)) {
           return {
             rows: [
-              { event_id: "e1", event_type_key: "test.evt", entity_ref: "x:1", payload: {}, attempts },
+              {
+                event_id: "e1",
+                event_type_key: "test.evt",
+                entity_ref: "x:1",
+                payload: {},
+                attempts,
+              },
             ],
           };
         }
@@ -52,7 +58,9 @@ describe("OBS-A6 — DEAD is distinguishable from FAILED", () => {
       eventKey: "test.evt",
       handlerKey: "test-handler",
       feature: null,
-      run: async () => { throw new Error("handler blew up"); },
+      run: async () => {
+        throw new Error("handler blew up");
+      },
     });
     const reporter = require("../../src/shared/observability/error-reporter");
     reporter.__reset();
@@ -69,9 +77,14 @@ describe("OBS-A6 — DEAD is distinguishable from FAILED", () => {
   it("writes FAILED while retries remain", async () => {
     const { dispatcher } = load();
     const client = fakeClient(0);
-    const res = await dispatcher.dispatchPending(client, { limit: 10, maxAttempts: 5 });
+    const res = await dispatcher.dispatchPending(client, {
+      limit: 10,
+      maxAttempts: 5,
+    });
 
-    const write = client.queries.find(([s]) => /INSERT INTO event_dispatch/.test(s));
+    const write = client.queries.find(([s]) =>
+      /INSERT INTO event_dispatch/.test(s),
+    );
     expect(write[1][1]).toBe("FAILED");
     expect(res.dead).toBe(0);
   });
@@ -80,21 +93,32 @@ describe("OBS-A6 — DEAD is distinguishable from FAILED", () => {
     // If a retry that will be retried pages someone, the channel is noise
     // within a day and gets muted — which is the state OBS-A1 describes.
     const { dispatcher, sent } = load();
-    await dispatcher.dispatchPending(fakeClient(0), { limit: 10, maxAttempts: 5 });
+    await dispatcher.dispatchPending(fakeClient(0), {
+      limit: 10,
+      maxAttempts: 5,
+    });
     expect(sent).toHaveLength(0);
   });
 
   it("writes DEAD on the final attempt and reports it as fatal", async () => {
     const { dispatcher, sent } = load();
     const client = fakeClient(4);
-    const res = await dispatcher.dispatchPending(client, { limit: 10, maxAttempts: 5 });
+    const res = await dispatcher.dispatchPending(client, {
+      limit: 10,
+      maxAttempts: 5,
+    });
 
-    const write = client.queries.find(([s]) => /INSERT INTO event_dispatch/.test(s));
+    const write = client.queries.find(([s]) =>
+      /INSERT INTO event_dispatch/.test(s),
+    );
     expect(write[1][1]).toBe("DEAD");
     expect(res.dead).toBe(1);
     expect(sent).toHaveLength(1);
     expect(sent[0].meta.severity).toBe("fatal");
-    expect(sent[0].meta.extra).toMatchObject({ event_type_key: "test.evt", dropped: true });
+    expect(sent[0].meta.extra).toMatchObject({
+      event_type_key: "test.evt",
+      dropped: true,
+    });
   });
 });
 
@@ -108,8 +132,18 @@ describe("OBS-A6 — the query that never existed", () => {
         sqlSeen = sql;
         return {
           rows: [
-            { event_type_key: "costing.approved", count: 3, oldest: "2026-08-01", last_error: "boom" },
-            { event_type_key: "receipt.posted", count: 1, oldest: "2026-08-02", last_error: "x" },
+            {
+              event_type_key: "costing.approved",
+              count: 3,
+              oldest: "2026-08-01",
+              last_error: "boom",
+            },
+            {
+              event_type_key: "receipt.posted",
+              count: 1,
+              oldest: "2026-08-02",
+              last_error: "x",
+            },
           ],
         };
       },
@@ -130,10 +164,18 @@ describe("OBS-A6 — the sweep surfaces a standing backlog", () => {
       listActiveTenants: async () => [{ slug: "smartls" }],
     }));
     jest.doMock(DISPATCHER, () => ({
-      dispatchPending: async () => ({ scanned: 1, processed: 0, failed: 0, dead: dispatchDead, skipped: 0 }),
+      dispatchPending: async () => ({
+        scanned: 1,
+        processed: 0,
+        failed: 0,
+        dead: dispatchDead,
+        skipped: 0,
+      }),
       countDeadLetters: async () => ({
         total: deadTotal,
-        byType: deadTotal ? [{ event_type_key: "costing.approved", count: deadTotal }] : [],
+        byType: deadTotal
+          ? [{ event_type_key: "costing.approved", count: deadTotal }]
+          : [],
       }),
     }));
     const reporter = require("../../src/shared/observability/error-reporter");
@@ -152,14 +194,18 @@ describe("OBS-A6 — the sweep surfaces a standing backlog", () => {
 
   it("says nothing when the backlog is clean", async () => {
     const { job, sent } = loadJob({ deadTotal: 0, dispatchDead: 0 });
-    const res = await job({ data: { tenantMeta: { slug: "smartls" }, env: "live" } });
+    const res = await job({
+      data: { tenantMeta: { slug: "smartls" }, env: "live" },
+    });
     expect(res.dead_letters).toBe(0);
     expect(sent).toHaveLength(0);
   });
 
   it("notifies when something newly dies, with the breakdown", async () => {
     const { job, sent } = loadJob({ deadTotal: 3, dispatchDead: 1 });
-    const res = await job({ data: { tenantMeta: { slug: "smartls" }, env: "live" } });
+    const res = await job({
+      data: { tenantMeta: { slug: "smartls" }, env: "live" },
+    });
     expect(res.dead_letters).toBe(3);
     expect(sent).toHaveLength(1);
     expect(sent[0].meta.extra).toMatchObject({ total: 3 });
@@ -184,8 +230,16 @@ describe("OBS-A6 — the sweep surfaces a standing backlog", () => {
       withTenantConnection: async (_m, _e, fn) => fn({}),
     }));
     jest.doMock(DISPATCHER, () => ({
-      dispatchPending: async () => ({ scanned: 0, processed: 0, failed: 0, dead: 0, skipped: 0 }),
-      countDeadLetters: async () => { throw new Error("census exploded"); },
+      dispatchPending: async () => ({
+        scanned: 0,
+        processed: 0,
+        failed: 0,
+        dead: 0,
+        skipped: 0,
+      }),
+      countDeadLetters: async () => {
+        throw new Error("census exploded");
+      },
     }));
     const job = require(JOB);
     await expect(
@@ -202,8 +256,12 @@ describe("OBS-A6 — readiness exposes it on demand", () => {
     const express = require("express");
     const request = require("supertest");
 
-    jest.doMock("../../src/services/platform/db", () => ({ query: async () => ({ rows: [{}] }) }));
-    jest.doMock("../../src/config/redis", () => ({ getClient: () => ({ ping: async () => "PONG" }) }));
+    jest.doMock("../../src/services/platform/db", () => ({
+      query: async () => ({ rows: [{}] }),
+    }));
+    jest.doMock("../../src/config/redis", () => ({
+      getClient: () => ({ ping: async () => "PONG" }),
+    }));
     jest.doMock("../../src/shared/http/module-loader", () => ({
       mountReport: () => ({ mounted: ["a/b"], skipped: [] }),
     }));

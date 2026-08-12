@@ -27,7 +27,10 @@ const mockRepo = {
   fieldSetInUse: jest.fn(),
 };
 
-jest.mock("../../src/modules/operations/shipment_details/shipment_details.repo", () => mockRepo);
+jest.mock(
+  "../../src/modules/operations/shipment_details/shipment_details.repo",
+  () => mockRepo,
+);
 // `resolveActorId` is mocked to pass the id straight through: what it resolves
 // (DATA 2.4 — identity lives in the LIVE schema, this write may land in
 // SANDBOX) is not what these tests are about, and a stub returning undefined
@@ -45,7 +48,16 @@ const SET = "22222222-2222-2222-2222-222222222222";
 
 /** A client that answers the two direct queries the service makes: the service
  *  type lookup and the column-collision check. */
-function fakeClient({ serviceType = { service_type_id: ST, key: "SEA_FREIGHT_IMPORT", name_fr: "Fret Maritime Import", captures_containers: false, container_detail_mode: "GROUPED" }, columnTaken = null } = {}) {
+function fakeClient({
+  serviceType = {
+    service_type_id: ST,
+    key: "SEA_FREIGHT_IMPORT",
+    name_fr: "Fret Maritime Import",
+    captures_containers: false,
+    container_detail_mode: "GROUPED",
+  },
+  columnTaken = null,
+} = {}) {
   return {
     queries: [],
     async query(sql, params) {
@@ -57,15 +69,34 @@ function fakeClient({ serviceType = { service_type_id: ST, key: "SEA_FREIGHT_IMP
         return { rows: columnTaken ? [{ key: columnTaken }] : [] };
       }
       if (/UPDATE service_type/.test(sql)) {
-        return { rows: [{ service_type_id: ST, key: "SEA_FREIGHT_IMPORT", captures_containers: true, container_detail_mode: "PER_BOX" }] };
+        return {
+          rows: [
+            {
+              service_type_id: ST,
+              key: "SEA_FREIGHT_IMPORT",
+              captures_containers: true,
+              container_detail_mode: "PER_BOX",
+            },
+          ],
+        };
       }
       return { rows: [] };
     },
   };
 }
 
-const draft = { service_type_field_set_id: SET, service_type_id: ST, version: 2, is_active: false };
-const live = { service_type_field_set_id: SET, service_type_id: ST, version: 1, is_active: true };
+const draft = {
+  service_type_field_set_id: SET,
+  service_type_id: ST,
+  version: 2,
+  is_active: false,
+};
+const live = {
+  service_type_field_set_id: SET,
+  service_type_id: ST,
+  version: 1,
+  is_active: true,
+};
 
 beforeEach(() => {
   for (const fn of Object.values(mockRepo)) fn.mockReset();
@@ -80,17 +111,32 @@ describe("a published form is immutable", () => {
    */
   it("refuses to add a field to the live version", async () => {
     mockRepo.fieldSetById.mockResolvedValue(live);
-    await expect(service.addField(fakeClient(), {
-      serviceTypeId: ST, fieldSetId: SET, data: { key: "x", label_fr: "X" },
-    })).rejects.toThrow(/live and cannot be edited/);
+    await expect(
+      service.addField(fakeClient(), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        data: { key: "x", label_fr: "X" },
+      }),
+    ).rejects.toThrow(/live and cannot be edited/);
   });
 
   it("refuses to edit or remove a field on the live version", async () => {
     mockRepo.fieldSetById.mockResolvedValue(live);
-    await expect(service.updateField(fakeClient(), { serviceTypeId: ST, fieldSetId: SET, fieldId: "f", patch: {} }))
-      .rejects.toThrow(/live and cannot be edited/);
-    await expect(service.removeField(fakeClient(), { serviceTypeId: ST, fieldSetId: SET, fieldId: "f" }))
-      .rejects.toThrow(/live and cannot be edited/);
+    await expect(
+      service.updateField(fakeClient(), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        fieldId: "f",
+        patch: {},
+      }),
+    ).rejects.toThrow(/live and cannot be edited/);
+    await expect(
+      service.removeField(fakeClient(), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        fieldId: "f",
+      }),
+    ).rejects.toThrow(/live and cannot be edited/);
   });
 
   it("clones the live version into the next draft", async () => {
@@ -103,10 +149,19 @@ describe("a published form is immutable", () => {
 
     await service.createVersion(fakeClient(), { serviceTypeId: ST });
 
-    expect(mockRepo.insertFieldSet).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      version: 2, is_active: false, source_version: 1,
-    }));
-    expect(mockRepo.copyFields).toHaveBeenCalledWith(expect.anything(), SET, SET);
+    expect(mockRepo.insertFieldSet).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        version: 2,
+        is_active: false,
+        source_version: 1,
+      }),
+    );
+    expect(mockRepo.copyFields).toHaveBeenCalledWith(
+      expect.anything(),
+      SET,
+      SET,
+    );
   });
 });
 
@@ -114,22 +169,33 @@ describe("publishing", () => {
   it("refuses to publish a version with no active fields", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
     mockRepo.fieldsOf.mockResolvedValue([]);
-    await expect(service.publish(fakeClient(), { serviceTypeId: ST, fieldSetId: SET }))
-      .rejects.toThrow(/would ask for nothing/);
+    await expect(
+      service.publish(fakeClient(), { serviceTypeId: ST, fieldSetId: SET }),
+    ).rejects.toThrow(/would ask for nothing/);
   });
 
   it("activates a draft that has fields", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
     mockRepo.fieldsOf.mockResolvedValue([{ key: "bl_number" }]);
     mockRepo.activateFieldSet.mockResolvedValue({ ...draft, is_active: true });
-    const row = await service.publish(fakeClient(), { serviceTypeId: ST, fieldSetId: SET });
+    const row = await service.publish(fakeClient(), {
+      serviceTypeId: ST,
+      fieldSetId: SET,
+    });
     expect(row.is_active).toBe(true);
-    expect(mockRepo.activateFieldSet).toHaveBeenCalledWith(expect.anything(), ST, SET);
+    expect(mockRepo.activateFieldSet).toHaveBeenCalledWith(
+      expect.anything(),
+      ST,
+      SET,
+    );
   });
 
   it("is a no-op on a version that is already live", async () => {
     mockRepo.fieldSetById.mockResolvedValue(live);
-    const row = await service.publish(fakeClient(), { serviceTypeId: ST, fieldSetId: SET });
+    const row = await service.publish(fakeClient(), {
+      serviceTypeId: ST,
+      fieldSetId: SET,
+    });
     expect(row).toBe(live);
     expect(mockRepo.activateFieldSet).not.toHaveBeenCalled();
   });
@@ -138,19 +204,43 @@ describe("publishing", () => {
 describe("a field's key is its storage address", () => {
   it("refuses to rename a key", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
-    mockRepo.getField.mockResolvedValue({ service_type_field_set_id: SET, key: "bl_number", is_system: true });
-    await expect(service.updateField(fakeClient(), {
-      serviceTypeId: ST, fieldSetId: SET, fieldId: "f", patch: { key: "bill_of_lading" },
-    })).rejects.toThrow(/key cannot be changed/);
+    mockRepo.getField.mockResolvedValue({
+      service_type_field_set_id: SET,
+      key: "bl_number",
+      is_system: true,
+    });
+    await expect(
+      service.updateField(fakeClient(), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        fieldId: "f",
+        patch: { key: "bill_of_lading" },
+      }),
+    ).rejects.toThrow(/key cannot be changed/);
   });
 
   it("allows everything else on a system field — label, order, required, visibility", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
-    mockRepo.getField.mockResolvedValue({ service_type_field_set_id: SET, key: "bl_number", is_system: true, column_name: "bl_mawb" });
-    mockRepo.updateField.mockResolvedValue({ key: "bl_number", label_en: "B/L" });
+    mockRepo.getField.mockResolvedValue({
+      service_type_field_set_id: SET,
+      key: "bl_number",
+      is_system: true,
+      column_name: "bl_mawb",
+    });
+    mockRepo.updateField.mockResolvedValue({
+      key: "bl_number",
+      label_en: "B/L",
+    });
     await service.updateField(fakeClient(), {
-      serviceTypeId: ST, fieldSetId: SET, fieldId: "f",
-      patch: { label_en: "B/L", is_required: true, is_client_visible: false, seq: 5 },
+      serviceTypeId: ST,
+      fieldSetId: SET,
+      fieldId: "f",
+      patch: {
+        label_en: "B/L",
+        is_required: true,
+        is_client_visible: false,
+        seq: 5,
+      },
     });
     expect(mockRepo.updateField).toHaveBeenCalled();
   });
@@ -159,19 +249,42 @@ describe("a field's key is its storage address", () => {
 describe("system fields are deactivated, tenant fields are deleted", () => {
   it("deactivates a field we shipped rather than destroying it", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
-    mockRepo.getField.mockResolvedValue({ service_type_field_set_id: SET, key: "bl_number", is_system: true });
-    mockRepo.updateField.mockResolvedValue({ key: "bl_number", is_active: false });
-    const out = await service.removeField(fakeClient(), { serviceTypeId: ST, fieldSetId: SET, fieldId: "f" });
-    expect(out).toEqual(expect.objectContaining({ deactivated: true, removed: false }));
+    mockRepo.getField.mockResolvedValue({
+      service_type_field_set_id: SET,
+      key: "bl_number",
+      is_system: true,
+    });
+    mockRepo.updateField.mockResolvedValue({
+      key: "bl_number",
+      is_active: false,
+    });
+    const out = await service.removeField(fakeClient(), {
+      serviceTypeId: ST,
+      fieldSetId: SET,
+      fieldId: "f",
+    });
+    expect(out).toEqual(
+      expect.objectContaining({ deactivated: true, removed: false }),
+    );
     expect(mockRepo.deleteField).not.toHaveBeenCalled();
   });
 
   it("deletes a field the tenant added themselves", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
-    mockRepo.getField.mockResolvedValue({ service_type_field_set_id: SET, key: "x_custom", is_system: false });
+    mockRepo.getField.mockResolvedValue({
+      service_type_field_set_id: SET,
+      key: "x_custom",
+      is_system: false,
+    });
     mockRepo.deleteField.mockResolvedValue({ key: "x_custom" });
-    const out = await service.removeField(fakeClient(), { serviceTypeId: ST, fieldSetId: SET, fieldId: "f" });
-    expect(out).toEqual(expect.objectContaining({ removed: true, deactivated: false }));
+    const out = await service.removeField(fakeClient(), {
+      serviceTypeId: ST,
+      fieldSetId: SET,
+      fieldId: "f",
+    });
+    expect(out).toEqual(
+      expect.objectContaining({ removed: true, deactivated: false }),
+    );
   });
 });
 
@@ -181,18 +294,25 @@ describe("two fields cannot share one dossier column", () => {
   it("refuses a second field bound to a column already taken", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
     mockRepo.fieldsOf.mockResolvedValue([]);
-    await expect(service.addField(fakeClient({ columnTaken: "bl_number" }), {
-      serviceTypeId: ST, fieldSetId: SET,
-      data: { key: "waybill_no", label_fr: "LV", column_name: "bl_mawb" },
-    })).rejects.toThrow(/already stores into bl_mawb/);
+    await expect(
+      service.addField(fakeClient({ columnTaken: "bl_number" }), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        data: { key: "waybill_no", label_fr: "LV", column_name: "bl_mawb" },
+      }),
+    ).rejects.toThrow(/already stores into bl_mawb/);
   });
 
   it("refuses a duplicate key on the same version", async () => {
     mockRepo.fieldSetById.mockResolvedValue(draft);
     mockRepo.fieldsOf.mockResolvedValue([{ key: "bl_number" }]);
-    await expect(service.addField(fakeClient(), {
-      serviceTypeId: ST, fieldSetId: SET, data: { key: "bl_number", label_fr: "BL" },
-    })).rejects.toThrow(/already exists on this version/);
+    await expect(
+      service.addField(fakeClient(), {
+        serviceTypeId: ST,
+        fieldSetId: SET,
+        data: { key: "bl_number", label_fr: "BL" },
+      }),
+    ).rejects.toThrow(/already exists on this version/);
   });
 
   it("lands a new field at the end of its group when no position is given", async () => {
@@ -204,20 +324,33 @@ describe("two fields cannot share one dossier column", () => {
     ]);
     mockRepo.insertField.mockResolvedValue({});
     await service.addField(fakeClient(), {
-      serviceTypeId: ST, fieldSetId: SET, data: { key: "d", label_fr: "D", group_code: "CARGO" },
+      serviceTypeId: ST,
+      fieldSetId: SET,
+      data: { key: "d", label_fr: "D", group_code: "CARGO" },
     });
-    expect(mockRepo.insertField).toHaveBeenCalledWith(expect.anything(), SET, expect.objectContaining({ seq: 50 }));
+    expect(mockRepo.insertField).toHaveBeenCalledWith(
+      expect.anything(),
+      SET,
+      expect.objectContaining({ seq: 50 }),
+    );
   });
 });
 
 describe("a set belongs to exactly one service type", () => {
   it("404s when the set id belongs to a different service type", async () => {
-    mockRepo.fieldSetById.mockResolvedValue({ ...draft, service_type_id: "99999999-9999-9999-9999-999999999999" });
-    await expect(service.get(fakeClient(), ST, SET)).rejects.toThrow(/not found on this service type/);
+    mockRepo.fieldSetById.mockResolvedValue({
+      ...draft,
+      service_type_id: "99999999-9999-9999-9999-999999999999",
+    });
+    await expect(service.get(fakeClient(), ST, SET)).rejects.toThrow(
+      /not found on this service type/,
+    );
   });
 
   it("404s for an unknown service type", async () => {
-    await expect(service.list(fakeClient({ serviceType: null }), ST)).rejects.toThrow(/Service type not found/);
+    await expect(
+      service.list(fakeClient({ serviceType: null }), ST),
+    ).rejects.toThrow(/Service type not found/);
   });
 });
 
@@ -225,10 +358,19 @@ describe("equipment capture is configured on the service type", () => {
   it("sets both switches and leaves the other alone when only one is sent", async () => {
     const c = fakeClient();
     const out = await service.configureContainers(c, {
-      serviceTypeId: ST, capturesContainers: true, detailMode: "PER_BOX",
+      serviceTypeId: ST,
+      capturesContainers: true,
+      detailMode: "PER_BOX",
     });
-    expect(out).toEqual(expect.objectContaining({ captures_containers: true, container_detail_mode: "PER_BOX" }));
-    const [sql, params] = c.queries.find(([s]) => /UPDATE service_type/.test(s));
+    expect(out).toEqual(
+      expect.objectContaining({
+        captures_containers: true,
+        container_detail_mode: "PER_BOX",
+      }),
+    );
+    const [sql, params] = c.queries.find(([s]) =>
+      /UPDATE service_type/.test(s),
+    );
     // COALESCE, so an absent switch keeps its stored value rather than nulling it.
     expect(sql).toMatch(/COALESCE\(\$2, captures_containers\)/);
     expect(params).toEqual([ST, true, "PER_BOX"]);
@@ -236,7 +378,10 @@ describe("equipment capture is configured on the service type", () => {
 
   it("passes null for a switch the caller did not send", async () => {
     const c = fakeClient();
-    await service.configureContainers(c, { serviceTypeId: ST, capturesContainers: false });
+    await service.configureContainers(c, {
+      serviceTypeId: ST,
+      capturesContainers: false,
+    });
     const [, params] = c.queries.find(([s]) => /UPDATE service_type/.test(s));
     expect(params).toEqual([ST, false, null]);
   });

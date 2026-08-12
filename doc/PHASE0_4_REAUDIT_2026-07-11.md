@@ -1,8 +1,8 @@
 # Praxis LS — Phase 0–4 Re-Audit (every src file vs the whole doc corpus)
 
 **Date:** 2026-07-11 · **Auditor pass:** fresh, adversarial re-verification
-**Bar (the client's own):** *if the code cannot "talk" (implement) every
-requirement in `doc/`, we have done nothing.* This report scores the codebase
+**Bar (the client's own):** _if the code cannot "talk" (implement) every
+requirement in `doc/`, we have done nothing._ This report scores the codebase
 against that bar — not against the previous audits, which are treated as claims
 to be re-checked, not facts.
 
@@ -21,45 +21,46 @@ KB/PRD invariants they claim to enforce.
 ## 0. Headline verdict
 
 The **accounting spine (P1) and commercial cycle (P2) genuinely talk the doc.**
-OHADA invariants are enforced in DB triggers *and* mirrored in pure, tested rules;
+OHADA invariants are enforced in DB triggers _and_ mirrored in pure, tested rules;
 the sale/purchase determination engine is cent-accurate; invoicing posts revenue,
 clears advances (4191) and débours (4731) correctly; receivables do FIFO + ageing
-+ dunning; payroll computes the full Cameroon statutory stack and posts a balanced
-journal; statements and VAT/IS returns derive from the validated GL. The prior
-audit's **critical auth hole is closed** — the `auth-coverage` test passes and
-every mounted tenant router carries `authMiddleware` (verified independently).
+
+- dunning; payroll computes the full Cameroon statutory stack and posts a balanced
+  journal; statements and VAT/IS returns derive from the validated GL. The prior
+  audit's **critical auth hole is closed** — the `auth-coverage` test passes and
+  every mounted tenant router carries `authMiddleware` (verified independently).
 
 But three requirements that the docs state as **first-class rules** are **not yet
 implemented in code**, and they are load-bearing. In priority order:
 
 1. **The configurable approval workflow drives exactly ONE document type.**
-   PRD §7.2 says *"Generalise Issuer→Validator→Approver to invoices, receipts,
-   journals, disbursals"*; BUILD_CONVENTIONS §2 says *design every approvable
-   module to plug into the executor now*. In code, only `final_invoice` calls
+   PRD §7.2 says _"Generalise Issuer→Validator→Approver to invoices, receipts,
+   journals, disbursals"_; BUILD_CONVENTIONS §2 says _design every approvable
+   module to plug into the executor now_. In code, only `final_invoice` calls
    `executor.start` and registers an `onApproved` handler. Proforma, PO, supplier
    invoice, payroll, régie, cash request, costing and quotation each run their own
    **hard-coded status ladder** and never touch the tenant's configurable
    `workflow`/`workflow_step` chain. So "the tenant designs its own approval
    hierarchy and it governs approvable documents" is true for 1 of ~9 documents.
 
-2. **The AI can *read* everything and *write* almost nothing.** AI_ARCHITECTURE
-   §0's headline promise is *"the app is the AI's toolbox — AI capability == app
-   capability, zero drift."* The registrar builds 338 catalogue actions
+2. **The AI can _read_ everything and _write_ almost nothing.** AI_ARCHITECTURE
+   §0's headline promise is _"the app is the AI's toolbox — AI capability == app
+   capability, zero drift."_ The registrar builds 338 catalogue actions
    (169 reads / 169 writes) with **169/169 reads AI-enabled** — but the write
    safety-registry (`action-registry.js`) whitelists only `create_client`,
    `create_operations_file`, `ping`, so **1 of 169 write tools is executable**
    (`create_operations_file`'s key isn't even the one the manifest emits). Raising
    an invoice, posting a journal, running payroll, cutting a PO — none are
-   AI-executable. The safety *design* is correct; the registry was just never
+   AI-executable. The safety _design_ is correct; the registry was just never
    populated. Writes are ~1% of the promised surface.
 
 3. **Field-level confidentiality is stored and editable but never applied to
-   responses.** PRD §5.6/§7.3 [RULE]: *field-level confidentiality is first-class,
-   implemented via column-level policies and response serializers* (mask margins,
+   responses.** PRD §5.6/§7.3 [RULE]: _field-level confidentiality is first-class,
+   implemented via column-level policies and response serializers_ (mask margins,
    salaries, supplier cost rates, GL from unauthorised roles). `field_visibility`
    exists as config, is cache-resolved, and emits Watch-the-Watcher events on
    change — but **no serializer masks any field on the way out.** The only real
-   enforcement is `pricing_variance.salesView` (strips cost) and an *unused*
+   enforcement is `pricing_variance.salesView` (strips cost) and an _unused_
    `SENSITIVE_FIELDS` helper in `employees.rules.js` (never called by the service).
    Salaries, margins and cost rates are currently returned to any role the module
    route lets through.
@@ -95,7 +96,7 @@ docs (portals' external auth, Smart Comms WS, provider runtimes) or minor.
   settings, tested.
 - **Payroll** (MOD-17): CNPS pension/family/injury with ceiling, CFC, 30% frais
   pro, progressive IRPP barème, CAC surtax; `OPEN→COMPUTED→SUBMITTED→APPROVED→
-  VALIDATED→DISBURSED` SoD ladder; posts a balanced 661/664 → 431/447/422 journal.
+VALIDATED→DISBURSED` SoD ladder; posts a balanced 661/664 → 431/447/422 journal.
 - **Statements & tax:** trial balance, compte de résultat, bilan, grand livre,
   TAFIRE/cash-flow; VAT return + corporate/minimum tax over the validated GL.
 - **Numbering:** tenant-configurable scheme in `setting`, allocated in-txn,
@@ -125,18 +126,19 @@ docs (portals' external auth, Smart Comms WS, provider runtimes) or minor.
 ## 2. What the code does NOT yet talk (the real gaps)
 
 ### 2.1 🔴 Approval workflow generalised to only one document (core gap)
+
 `grep` of every approvable service for `executor.start` / `onApproved.register`:
 
-| Document | own status ladder | plugs into tenant workflow |
-|---|---|---|
-| final_invoice | yes | **yes** (start + onApproved) |
-| proforma | yes | no |
-| purchase_order | yes | no |
-| supplier_invoice | yes | no |
-| payroll | yes | no |
-| regie / cash_request | yes | no |
-| costing | yes | no |
-| quotation | yes | no |
+| Document             | own status ladder | plugs into tenant workflow   |
+| -------------------- | ----------------- | ---------------------------- |
+| final_invoice        | yes               | **yes** (start + onApproved) |
+| proforma             | yes               | no                           |
+| purchase_order       | yes               | no                           |
+| supplier_invoice     | yes               | no                           |
+| payroll              | yes               | no                           |
+| regie / cash_request | yes               | no                           |
+| costing              | yes               | no                           |
+| quotation            | yes               | no                           |
 
 Each non-invoice document approves via a bespoke `setStatus`/`transition` with
 hard-coded steps, so a tenant that redesigns its approval hierarchy in the
@@ -148,6 +150,7 @@ terminal action; the seeded sample workflow drives at least invoice + PO + payro
 end-to-end.
 
 ### 2.2 🔴 AI write surface is ~1% wired (headline-promise gap)
+
 `buildCatalogue()` → 169 write actions, but `isExecutable(write)` is true only when
 the key exists in `action-registry.registry`, which contains `ping`, `create_client`,
 `create_operations_file`. So `ai_enabled` writes = **1** (`create_client`). The
@@ -161,6 +164,7 @@ asserts a target set is executable; a smoke test drives one AI write end-to-end
 (propose→confirm→ledger).
 
 ### 2.3 🟠 Field-level confidentiality not enforced on the wire
+
 `field_visibility` is config-only. No response serializer applies it; `employees`
 even ships an unused `stripSensitive`. Result: `base_salary`, `bank_block`, job
 margin and supplier cost rates are returned to any role whose route permits the
@@ -170,6 +174,7 @@ caller's `field_visibility`; employees/costing/dossier-360/supplier responses ru
 through it; a test asserts a Sales token never receives `net_profit`/cost columns.
 
 ### 2.4 🟠 Statutory tax outputs incomplete (P1 completeness)
+
 `tax_declaration` implements `vat-return` and `corporate-tax` only. PRD §12.4 and
 the KB require the **DSF dataset, CNPS declaration, and withholding (2.2%/5.5%)
 return** as first-class ledger-derived outputs; "Notes annexes" and a **guided
@@ -179,16 +184,18 @@ deliverables of the accounting core, not Phase-5 polish.
 the GL with tests against KB figures; a period-close path locks `accounting_period`.
 
 ### 2.5 🟠 AI grounding freshness + vectorization toggle not wired
+
 No `entity.action` → re-embed handler on the event bus (AI_KNOWLEDGE §4), and
 ingest does not skip a tenant whose `ai.vectorization` flag is off (AI_READINESS
-flags this as a real leak). Recall confidentiality filtering *is* present.
+flags this as a real leak). Recall confidentiality filtering _is_ present.
 **DoD:** an ingest handler re-embeds the changed card on its event; reindex/ingest
 check the tenant flag and skip when off.
 
 ### 2.6 🟡 Two failing tests (test-vs-code drift, not product defects)
+
 - `action-registrar.test.js` — asserts every write permission matches
   `MOD-\d+:(create|edit|approve|view|delete)`, but ~40 Phase-3 manifests use
-  `action:"update"`. `rbac.js` *does* accept `update` (→`can_update`), so this is
+  `action:"update"`. `rbac.js` _does_ accept `update` (→`can_update`), so this is
   **not** a runtime 403 — but it's inconsistent with the rest of the codebase
   (which uses `edit`) and it fails CI. Normalise `update`→`edit` in those manifests.
 - `pdf-email.test.js` — calls `email.send({to…}, tx)` while the implementation is
@@ -196,10 +203,12 @@ check the tenant flag and skip when off.
   The implementation is correct; the test is stale. Update the test.
 
 ### 2.7 🟡 One eslint error
+
 `src/modules/hr/payroll/payroll.rules.js:57` uses `!=` (should be `!==`,
 `eqeqeq`). `eslint src --quiet` → 1 error, 0 warnings. Trivial fix.
 
 ### 2.8 ⬜ Documented-as-deferred (not counted against the bar, listed for closure)
+
 Portals' external magic-link auth; Smart Comms real-time WebSocket (persistence +
 certified export already built); sandbox-wipe **scheduler** wiring (service +
 script exist, no cron); provider runtimes (PDF/Chromium, SMTP, Groq voice, Gemini
@@ -213,21 +222,21 @@ against a provisioned tenant).
 
 ## 3. Principle-adherence scorecard
 
-| Principle (doc) | Status |
-|---|---|
-| Auth on every tenant router (RBAC journey) | ✅ verified (auth-coverage green) |
-| SQL only in repos; parameterised (CONVENTIONS) | ✅ |
-| Ledger invariants enforced (KB §23) | ✅ DB triggers + tested rules |
-| Reversal-not-edit, immutable posted data (PRD §8.5) | ✅ |
-| Numbering: allocate-in-txn, capture-once, per-schema | ✅ |
-| Business rules from settings, not literals | ✅ (dunning, régie window, tolerances, thresholds) |
-| DB-first vendor/SMTP/FX keys, env fallback (BUILD §7) | ✅ |
-| Every module ships `.ai.js` (AI readiness) | ✅ 74 manifests; reads fully wired |
-| **Issuer→Validator→Approver generalised (PRD §7.2)** | 🔴 only final_invoice |
-| **AI capability == app capability (AI_ARCH §0)** | 🔴 reads yes, writes ~1% |
-| **Field-level confidentiality applied (PRD §7.3)** | 🟠 config only, no serializer |
-| Full statutory tax outputs (PRD §12.4) | 🟠 VAT+IS only; DSF/CNPS/WHT missing |
-| AI grounding freshness / vectorization toggle | 🟠 not wired |
+| Principle (doc)                                       | Status                                             |
+| ----------------------------------------------------- | -------------------------------------------------- |
+| Auth on every tenant router (RBAC journey)            | ✅ verified (auth-coverage green)                  |
+| SQL only in repos; parameterised (CONVENTIONS)        | ✅                                                 |
+| Ledger invariants enforced (KB §23)                   | ✅ DB triggers + tested rules                      |
+| Reversal-not-edit, immutable posted data (PRD §8.5)   | ✅                                                 |
+| Numbering: allocate-in-txn, capture-once, per-schema  | ✅                                                 |
+| Business rules from settings, not literals            | ✅ (dunning, régie window, tolerances, thresholds) |
+| DB-first vendor/SMTP/FX keys, env fallback (BUILD §7) | ✅                                                 |
+| Every module ships `.ai.js` (AI readiness)            | ✅ 74 manifests; reads fully wired                 |
+| **Issuer→Validator→Approver generalised (PRD §7.2)**  | 🔴 only final_invoice                              |
+| **AI capability == app capability (AI_ARCH §0)**      | 🔴 reads yes, writes ~1%                           |
+| **Field-level confidentiality applied (PRD §7.3)**    | 🟠 config only, no serializer                      |
+| Full statutory tax outputs (PRD §12.4)                | 🟠 VAT+IS only; DSF/CNPS/WHT missing               |
+| AI grounding freshness / vectorization toggle         | 🟠 not wired                                       |
 
 ---
 
@@ -266,9 +275,9 @@ is missing three named statutory outputs (§2.4).
    invariants), then portals' external auth, Smart Comms WS, sandbox scheduler,
    provider runtimes.
 
-**Bottom line against the client's bar:** the accounting/commercial core *does*
+**Bottom line against the client's bar:** the accounting/commercial core _does_
 talk the doc and is the hard-won, correct part. But two of the platform's
-signature promises — a tenant-designed approval hierarchy that governs *all*
+signature promises — a tenant-designed approval hierarchy that governs _all_
 approvable documents, and an AI whose reach equals the app's — are, in code,
 realised for one document and one write respectively. Those two, plus response-time
 field masking, are the difference between "P0–P4 shaped" and "P0–P4 done."

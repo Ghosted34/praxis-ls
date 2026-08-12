@@ -9,7 +9,12 @@
  */
 "use strict";
 
-const { fontFaceCss, PDF_FONT_BODY, PDF_FONT_MONO, __reset } = require("../../src/services/pdf.fonts");
+const {
+  fontFaceCss,
+  PDF_FONT_BODY,
+  PDF_FONT_MONO,
+  __reset,
+} = require("../../src/services/pdf.fonts");
 const { buildInvoiceHtml } = require("../../src/services/pdf.templates");
 
 beforeEach(() => __reset());
@@ -22,13 +27,18 @@ describe("embedded PDF fonts", () => {
 
     // A data URI with real payload. A @font-face pointing at a path the renderer
     // cannot reach is the same silent substitution, dressed up.
-    const uris = css.match(/url\(data:font\/woff2;base64,([A-Za-z0-9+/=]+)\)/g) || [];
+    const uris =
+      css.match(/url\(data:font\/woff2;base64,([A-Za-z0-9+/=]+)\)/g) || [];
     expect(uris.length).toBe(faces.length);
     for (const uri of uris) expect(uri.length).toBeGreaterThan(1000);
   });
 
   it("declares only families from the shipped library", () => {
-    const families = [...new Set([...fontFaceCss().matchAll(/font-family:'([^']+)'/g)].map((m) => m[1]))];
+    const families = [
+      ...new Set(
+        [...fontFaceCss().matchAll(/font-family:'([^']+)'/g)].map((m) => m[1]),
+      ),
+    ];
     expect(families.sort()).toEqual(["JetBrains Mono", "Noto Sans"]);
   });
 
@@ -42,7 +52,12 @@ describe("embedded PDF fonts", () => {
     for (const stack of [PDF_FONT_BODY, PDF_FONT_MONO]) {
       for (const part of stack.split(",")) {
         const family = part.trim().replace(/^'|'$/g, "");
-        expect(["Noto Sans", "JetBrains Mono", "sans-serif", "monospace"]).toContain(family);
+        expect([
+          "Noto Sans",
+          "JetBrains Mono",
+          "sans-serif",
+          "monospace",
+        ]).toContain(family);
       }
     }
   });

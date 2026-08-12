@@ -43,9 +43,11 @@ pattern, so the areas stay consistent as we go.
 
 We wire **and** beautify each screen in the same pass — polish is not a later phase.
 Design inspiration comes from `C:\pixie-girl-hub` (`apps/admin/src/components/ui/`
-+ `docs/FRONTEND_INSTRUCTION_MUST_READ.md`), which is a mature, client-approved kit.
+
+- `docs/FRONTEND_INSTRUCTION_MUST_READ.md`), which is a mature, client-approved kit.
 
 **Adopt from Pixie (patterns & quality):**
+
 - Richer primitives: `DataTable` (sortable, paginated, four states baked in),
   `Drawer` for detail/create/edit, `Pill`/status badges, `KpiTile`, `MoneyText`
   (tabular JetBrains Mono for money), `Skeleton` loaders, `Card`, `Pagination`.
@@ -54,6 +56,7 @@ Design inspiration comes from `C:\pixie-girl-hub` (`apps/admin/src/components/ui
   spacing, luxe-but-legible. Four states + permission-aware rendering everywhere.
 
 **Keep Praxis's own identity (do NOT copy):**
+
 - Praxis's palette and shell — the orange/blue "Control Tower" tokens in
   `client/src/index.css`, `.lux-topbar`/`.lux-navlink`, `.glass`. We are **not**
   importing Pixie's Maroon Noir colors. Inspiration is structure, components,
@@ -128,18 +131,19 @@ formatting, spacing)**, no console errors.
 ## In-screen Praxis (per-screen AI actions)
 
 Praxis surfaces **on the screens that declare `ai` actions** in `screen-specs.ts`
-(kind `read`/`write`/`assist`) — it drafts, suggests, or carries out *that screen's*
+(kind `read`/`write`/`assist`) — it drafts, suggests, or carries out _that screen's_
 actions. This is distinct from any general chat. Master-data screens declare **no**
 `ai` actions, so they correctly show no Praxis; it lights up on Commercial, Sales,
 Costing, Procurement, Vault (and one each in Operations/Finance).
 
 Wiring is a drop-in: `components/praxis-actions.tsx` (`<PraxisActions>`) + `lib/ai-api.ts`.
+
 - The page passes the screen's spec `ai` entries as `suggestions` (label + prompt + kind)
   and a `context` hint; the panel sends them to `POST /ai/ask`.
 - Proposed **write** actions return `AWAITING_CONFIRM` and run only when the user hits
   **Confirm** (`/ai/actions/:id/confirm`, or batch) — permission-inheriting, so Praxis
   can never exceed the user. `onApplied` refetches the list.
-- Praxis's *knowledge* of each screen comes from `screen-registry.json` (keep it current);
+- Praxis's _knowledge_ of each screen comes from `screen-registry.json` (keep it current);
   this component is just the UI to invoke it in place.
 
 ## Sequence — follow the flow, spine first
@@ -199,6 +203,7 @@ These are proven in Master Data and are now the standard. Every list/CRUD screen
 from Wave 2 on composes them — don't hand-roll or re-style.
 
 **Shared kit (import, don't rebuild):**
+
 - Data: `lib/use-resource.ts` (`useList` / `useResource`, 403 → permission message);
   `lib/<area>-api.ts` typed helpers (one per area).
 - Layout: `components/data-list.tsx` — `PageHeader` (accent bar + optional eyebrow)
@@ -209,6 +214,7 @@ from Wave 2 on composes them — don't hand-roll or re-style.
   (`Modal`/`Field`/`Select`) for create/edit.
 
 **Compact top block (locked sizing — keep the table high on the page):**
+
 - `KpiTile`: `px-3.5 py-2.5`, value `.num font-display text-xl`, thin top accent bar
   (`h-0.5 from-primary to-transparent`). `KpiRow`: `mb-4`, `gap-2.5`, 2/3/4 cols.
 - `PageHeader`: title `font-display text-[22px]`, `mb-4 border-b pb-3`, left accent
@@ -221,6 +227,7 @@ Never inline a hex/font/radius. Light + dark must both work.
 
 **Group related screens into a tabbed hub** (the Master Data pattern) when a nav
 group is a set of registries/sub-screens:
+
 - One `<Area>Page` shell + deep-linkable routes `area` and `area/:section`; each tab
   renders its existing page component unchanged.
 - Collapse the nav group to a single entry; keep the per-section routes so

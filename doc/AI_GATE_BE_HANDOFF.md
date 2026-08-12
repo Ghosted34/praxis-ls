@@ -37,7 +37,7 @@ endpoint — `whoami` returns tenant/env only), so putting it on `user` is enoug
 new endpoint required.
 
 Resolution: `ai_enabled = canUseFeature(tenant, "ai.assistant.backend")` at the feature
-(tenant) level — the per-user AI *grant* is separate and enforced server-side inside the
+(tenant) level — the per-user AI _grant_ is separate and enforced server-side inside the
 orchestrator; this flag only decides whether the UI shows AI at all.
 
 ## Consequence / acceptable limitation
@@ -56,7 +56,7 @@ re-login, also return `ai_enabled` from the refresh path and we'll thread it in.
 ## Implementation (BE, 2026-07-16)
 
 - `src/modules/ai/governance/governance.service.js` — new **`isFeatureEnabled(client,
-  featureKey)`**: tenant-level flag read (ignores per-user grant + budget), exported.
+featureKey)`**: tenant-level flag read (ignores per-user grant + budget), exported.
 - `src/modules/security/app_user/app_user.service.js` — `issueSessionTokens()` (the single
   chokepoint for login, `verifyTotp` and `pinLogin`) now resolves
   `ai_enabled = isFeatureEnabled(client, "ai.assistant.backend")` and adds it to the returned

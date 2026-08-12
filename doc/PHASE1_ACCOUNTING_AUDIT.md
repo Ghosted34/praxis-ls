@@ -32,6 +32,7 @@ data model is shaky. Here the data model is superb and the logic is absent.
 ## What is genuinely solid (build on this, don't touch it)
 
 **Schema (`0200`–`0230`, `0342`)** models KB §22 almost exactly:
+
 - `chart_of_accounts` (code, parent_code hierarchy, class, normal_balance,
   `is_postable`, `requires_analytic`), `dictionary_item` (with the `is_disbursement`
   flag), `posting_rule` (dict item → debit/credit account + `tax_code_id` +
@@ -44,6 +45,7 @@ data model is shaky. Here the data model is superb and the logic is absent.
   `invoice`, `fx_rate_daily`, depreciation/close scaffolding.
 
 **Ledger invariants enforced by DB triggers** (this is the crown jewel):
+
 - #1 balanced (deferred constraint trigger, fires on `validated` at commit),
   #2 one-side-per-line (CHECK), #3 postable-leaf-only, #4 débours never class
   6/7, #5 no VAT on a débours line, #8/#16 validated entry immutable + cannot be
@@ -56,7 +58,7 @@ and correctly omitted) includes every account the KB cookbook uses (4731, 4191,
 4211, 4432, 521, 581, 6053, 661, 7061, 7062). `9010_seed_tax.sql` carries VAT
 19.25, IS 33, minimum 2.2/5.5, CNPS 4.2/7/1.75, CFC/FNE/CAC, IRPP — and
 `tax_code` has proper versioning (`effective_from`/`effective_to`, `brackets`
-jsonb for IRPP/CNPS scales). Invariant #13's *capability* is modeled.
+jsonb for IRPP/CNPS scales). Invariant #13's _capability_ is modeled.
 
 **`financial_dictionary` module is real** — it enforces invariant #14 (rejects a
 dictionary item saved without ≥1 posting rule), in a transaction, with events +
@@ -70,41 +72,49 @@ Every one of these is a generic CRUD stub (`makeService`/`makeRepo`, ~5 lines)
 with **none** of the required domain logic:
 
 ### 1. Posting / journal engine — MISSING (this is the spine's spine)
+
 No service creates a balanced multi-line entry, assigns a gap-free `entry_no`
 per journal/period (#9), or transitions draft→validated. `journal_entry` is
 generic CRUD; it can't insert (entry_no NOT NULL, no lines built). **Everything
 else in accounting posts through this — it must be built first.**
 
 ### 2. Account-determination engine — MISSING
+
 The KB §22 flow (invoice_line → dictionary_item → posting_rule → lines; débours
 → credit 4731 no tax; service → credit 706/707 + VAT 4432; debit 4111; assert
-Σ Dr = Σ Cr; tag dossier_id) exists nowhere. `posting_rule` is only *read* by the
-dictionary module for validation, never used to *post*.
+Σ Dr = Σ Cr; tag dossier_id) exists nowhere. `posting_rule` is only _read_ by the
+dictionary module for validation, never used to _post_.
 
 ### 3. Invoicing → GL — MISSING
+
 `proforma`, `final_invoice` are CRUD stubs. No advance-received posting (4191,
 #7), no final-invoice posting (revenue recognition + débours recovery + VAT,
 débours carrying no VAT), no advance application.
 
 ### 4. Régie d'avance aging — MISSING
+
 `regie_advance` state machine + `4211` reclass path exist in schema; **no worker
 or service ages 581→4211** past the policy window (#17). Nothing implements it.
 
 ### 5. Statements — MISSING
+
 No SQL views or computation for trial balance, grand livre, Bilan, Compte de
 résultat, TAFIRE, or notes. `financial_statement` is a 5-line stub.
 
 ### 6. Tax Center outputs — MISSING
+
 `tax_declaration` is a stub. No TVA return, IS/minimum-tax, WHT, DSF, or CNPS
 computation over the ledger.
 
 ### 7. PDF + Email workers — EMPTY STUBS
+
 `src/services/pdf.service.js`, `pdf.templates.js`, `email.service.js` are all
 **0 bytes**. `storage.service.js` (48 lines) is real (fixed in Phase 0). The
 worker runtime exists (Phase 0) but its `PROCESSORS` registry is empty, so no
 PDF/email job runs.
 
 ### Invariants not yet enforced (need the service layer above)
+
 - #6 no compensation (netting 411 vs 401 in one line) — no rule.
 - #7 advance ≠ revenue — relies on correct posting (absent).
 - #9 gap-free monotonic entry_no — only a UNIQUE constraint; no assignment logic.
@@ -141,6 +151,7 @@ Items 1–3 are the true Phase 1 spine; nothing downstream (Phase 2 commercial
 cycle) can post money until they exist.
 
 ## Note carried from Phase 0 (still open, blocks trusting any of this)
+
 Neither the seeds nor the triggers have been run against a real Postgres in this
 environment. Before building on the schema, do one `db:migrate:platform` +
 `db:provision` on a real PG16 (pgvector) and confirm the migrations + COA/tax

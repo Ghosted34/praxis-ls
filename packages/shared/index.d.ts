@@ -143,10 +143,19 @@ export declare namespace pwaDesign {
   const PWA_TEXT_DEFAULT_MAX: number;
   const PWA_DEFAULTS: Record<string, string | number | boolean>;
   const SPLASH_FALLBACK_BG: string;
-  function effectivePwa(pwa: Partial<PwaConfig> | null, brand: PwaBrandSource | null): EffectivePwa;
+  function effectivePwa(
+    pwa: Partial<PwaConfig> | null,
+    brand: PwaBrandSource | null,
+  ): EffectivePwa;
   /** Artwork box inside the icon canvas, as fractions of the canvas (0..1). */
-  function iconLayout(cfg: EffectivePwa, maskable: boolean): { size: number; left: number; top: number };
-  function resolveTitlebar(cfg: EffectivePwa, theme: "dark" | "light"): ResolvedTitlebar;
+  function iconLayout(
+    cfg: EffectivePwa,
+    maskable: boolean,
+  ): { size: number; left: number; top: number };
+  function resolveTitlebar(
+    cfg: EffectivePwa,
+    theme: "dark" | "light",
+  ): ResolvedTitlebar;
   const TITLEBAR_MODES: readonly NonNullable<PwaConfig["titlebarMode"]>[];
   const SURFACE_LIGHT: string;
   const SURFACE_DARK: string;
@@ -249,7 +258,11 @@ export declare namespace journalEntry {
       entry_date: IsoDate;
       description: z.ZodOptional<z.ZodString>;
       source_doc_ref: z.ZodOptional<z.ZodString>;
-      source: z.ZodOptional<z.ZodEnum<["SYSTEM_AUTO", "SYSTEM_RULE", "HUMAN_MANUAL", "HUMAN_CORRECTION"]>>;
+      source: z.ZodOptional<
+        z.ZodEnum<
+          ["SYSTEM_AUTO", "SYSTEM_RULE", "HUMAN_MANUAL", "HUMAN_CORRECTION"]
+        >
+      >;
       validate: z.ZodOptional<z.ZodBoolean>;
       lines: z.ZodArray<typeof line>;
     }>
@@ -299,7 +312,10 @@ export declare namespace ledger {
   function checkNoCompensation(lines: ProposedLine[]): Result;
   /** Every invariant, in the order the API applies them. Call this from a form. */
   function checkPostable(lines: ProposedLine[]): Result;
-  function totals(lines: ProposedLine[]): { debitMinor: number; creditMinor: number };
+  function totals(lines: ProposedLine[]): {
+    debitMinor: number;
+    creditMinor: number;
+  };
 }
 
 /**
@@ -322,7 +338,9 @@ type Blankable<T> = z.ZodEffects<
  * which is the only way a form can seed one.
  */
 type BlankableNumeric = z.ZodEffects<
-  z.ZodOptional<z.ZodUnion<[z.ZodUnion<[z.ZodNumber, z.ZodString]>, z.ZodLiteral<"">]>>,
+  z.ZodOptional<
+    z.ZodUnion<[z.ZodUnion<[z.ZodNumber, z.ZodString]>, z.ZodLiteral<"">]>
+  >,
   number | undefined,
   number | string | undefined
 >;
@@ -367,7 +385,16 @@ type ClientBaseShape = {
 };
 
 type RegistrationStatus = z.ZodOptional<
-  z.ZodEnum<["DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED"]>
+  z.ZodEnum<
+    [
+      "DRAFT",
+      "PENDING_REVIEW",
+      "ACTIVE",
+      "SUSPENDED",
+      "DEACTIVATED",
+      "ARCHIVED",
+    ]
+  >
 >;
 
 export declare namespace clientMaster {
@@ -520,7 +547,10 @@ export declare namespace partyConfig {
   const DEFAULT_ROWS: ReadonlyArray<[string, string, string, boolean]>;
   const GROUP_ORDER: readonly string[];
   function defaultsFor(appliesTo: string): FieldConfig[];
-  function effectiveConfig(appliesTo: string, dbRows: FieldConfig[] | null | undefined): FieldConfig[];
+  function effectiveConfig(
+    appliesTo: string,
+    dbRows: FieldConfig[] | null | undefined,
+  ): FieldConfig[];
   function checkRequired(
     data: Record<string, unknown>,
     config: FieldConfig[],
@@ -528,7 +558,12 @@ export declare namespace partyConfig {
 }
 
 /** A country as the reference module and the picker render it. */
-export type Country = { code: string; name: string; phone: string; currency: string };
+export type Country = {
+  code: string;
+  name: string;
+  phone: string;
+  currency: string;
+};
 export type CountryRow = Country & { sort_order: number };
 export type RegistrationRequirement = {
   kind: string;
@@ -554,8 +589,17 @@ export declare namespace countries {
 }
 
 /** A currency as the ISO-4217 catalogue and the Smart Currency Picker render it. */
-export type Currency = { code: string; name: string; symbol: string; decimals: number; numeric: string };
-export type CurrencyRow = Currency & { country_code: string | null; sort_order: number };
+export type Currency = {
+  code: string;
+  name: string;
+  symbol: string;
+  decimals: number;
+  numeric: string;
+};
+export type CurrencyRow = Currency & {
+  country_code: string | null;
+  sort_order: number;
+};
 
 export declare namespace currencies {
   const CURRENCIES: readonly Currency[];

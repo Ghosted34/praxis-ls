@@ -45,7 +45,16 @@ describe("notifications — the row is the delivery", () => {
     const written = [];
     const svc = withDb(async (sql, params) => {
       written.push({ sql, params });
-      return { rows: [{ id: "n-1", to_user_id: params[0], title: params[3], body: params[4] }] };
+      return {
+        rows: [
+          {
+            id: "n-1",
+            to_user_id: params[0],
+            title: params[3],
+            body: params[4],
+          },
+        ],
+      };
     }, NOTIF);
 
     // The realtime layer throwing is the normal case at 3am, not an edge case.
@@ -77,7 +86,11 @@ describe("notifications — the row is the delivery", () => {
       return { rows: [{ id: "n-1" }] };
     }, NOTIF);
 
-    await svc.create({ toUserId: "u-1", title: "t".repeat(5000), body: "b".repeat(99_999) });
+    await svc.create({
+      toUserId: "u-1",
+      title: "t".repeat(5000),
+      body: "b".repeat(99_999),
+    });
 
     expect(params[3].length).toBeLessThanOrEqual(300);
     expect(params[4].length).toBeLessThanOrEqual(4000);
@@ -92,7 +105,9 @@ describe("notifications — the audience comes from RBAC, not a list", () => {
     let sql = null;
     const svc = withDb(async (q) => {
       sql = q;
-      return { rows: [{ platform_user_id: "root-1" }, { platform_user_id: "ops-1" }] };
+      return {
+        rows: [{ platform_user_id: "root-1" }, { platform_user_id: "ops-1" }],
+      };
     }, NOTIF);
 
     const ids = await svc.capableUserIds("errors.read");
@@ -133,18 +148,25 @@ describe("notifications — the audience comes from RBAC, not a list", () => {
 
     // The caller is the escalation evaluator. If this rejects, a notification
     // failure also cancels the email and the webhook for the same incident.
-    await expect(svc.notifyCapable({ title: "t", body: "b" })).resolves.toMatchObject({ sent: 0 });
+    await expect(
+      svc.notifyCapable({ title: "t", body: "b" }),
+    ).resolves.toMatchObject({ sent: 0 });
   });
 
   it("survives one bad recipient without dropping the rest", async () => {
     const svc = withDb(async (sql, params) => {
-      if (/SELECT DISTINCT/s.test(sql)) return { rows: [{ platform_user_id: "a" }, { platform_user_id: "b" }] };
-      if (/SELECT 1 FROM platform\.notification/s.test(sql)) return { rows: [] };
+      if (/SELECT DISTINCT/s.test(sql))
+        return { rows: [{ platform_user_id: "a" }, { platform_user_id: "b" }] };
+      if (/SELECT 1 FROM platform\.notification/s.test(sql))
+        return { rows: [] };
       if (params[0] === "a") throw new Error("fk violation");
       return { rows: [{ id: "n-b" }] };
     }, NOTIF);
 
-    expect(await svc.notifyCapable({ title: "t", body: "b" })).toMatchObject({ sent: 1, recipients: 2 });
+    expect(await svc.notifyCapable({ title: "t", body: "b" })).toMatchObject({
+      sent: 1,
+      recipients: 2,
+    });
   });
 });
 
@@ -217,7 +239,11 @@ describe("notifications — authorisation is per row, not per role", () => {
       return { rows: [] };
     }, NOTIF);
 
-    await svc.list("u-1", { status: "unread", limit: 999, before: "2026-08-01T00:00:00Z" });
+    await svc.list("u-1", {
+      status: "unread",
+      limit: 999,
+      before: "2026-08-01T00:00:00Z",
+    });
 
     expect(sql).toMatch(/n\.to_user_id = \$1/);
     // Clamped, not honoured — LIMIT is the last parameter.
@@ -233,7 +259,9 @@ describe("notifications — read state is per person", () => {
       return { rows: [] }; // not yours
     }, NOTIF);
 
-    await expect(svc.markRead("n-1", "someone-else")).rejects.toMatchObject({ code: "NOT_FOUND" });
+    await expect(svc.markRead("n-1", "someone-else")).rejects.toMatchObject({
+      code: "NOT_FOUND",
+    });
     // The predicate is the authorisation check, not a filter.
     expect(params).toEqual(["n-1", "someone-else"]);
   });
@@ -283,7 +311,10 @@ describe("uptime — the denominator is expected samples, not recorded ones", ()
     // nothing at all for the other hour, because the platform was down and the
     // worker was down with it. avg(healthy) would say 100%.
     process.env.HEALTH_SAMPLE_INTERVAL_MS = "60000";
-    const svc = withDb(async () => ({ rows: rows({ samples: 300, healthy: 300 }) }), HEALTH);
+    const svc = withDb(
+      async () => ({ rows: rows({ samples: 300, healthy: 300 }) }),
+      HEALTH,
+    );
 
     const out = await svc.uptime({ days: 30 });
 
@@ -296,14 +327,19 @@ describe("uptime — the denominator is expected samples, not recorded ones", ()
     // Without this clamp, six hours of perfect samples over a 30-day window
     // reports 0.83% uptime — a number nobody would believe or act on.
     process.env.HEALTH_SAMPLE_INTERVAL_MS = "60000";
-    const svc = withDb(async () => ({ rows: rows({ samples: 360, healthy: 360 }) }), HEALTH);
+    const svc = withDb(
+      async () => ({ rows: rows({ samples: 360, healthy: 360 }) }),
+      HEALTH,
+    );
 
     const out = await svc.uptime({ days: 30 });
 
     expect(out.uptime_percent).toBeGreaterThan(95);
     expect(out.measured_from).not.toBeNull();
     // The caller needs this to say "over the last 6 hours" rather than "(30d)".
-    expect(new Date(out.measured_from).getTime()).toBeGreaterThan(Date.now() - 7 * HOUR);
+    expect(new Date(out.measured_from).getTime()).toBeGreaterThan(
+      Date.now() - 7 * HOUR,
+    );
   });
 
   it("never reports above 100%", async () => {
@@ -311,9 +347,14 @@ describe("uptime — the denominator is expected samples, not recorded ones", ()
     // 100.3% uptime destroys confidence in the figure far more than the
     // fraction of a percent it is off by.
     process.env.HEALTH_SAMPLE_INTERVAL_MS = "60000";
-    const svc = withDb(async () => ({ rows: rows({ samples: 900, healthy: 900, hoursAgo: 6 }) }), HEALTH);
+    const svc = withDb(
+      async () => ({ rows: rows({ samples: 900, healthy: 900, hoursAgo: 6 }) }),
+      HEALTH,
+    );
 
-    expect((await svc.uptime({ days: 30 })).uptime_percent).toBeLessThanOrEqual(100);
+    expect((await svc.uptime({ days: 30 })).uptime_percent).toBeLessThanOrEqual(
+      100,
+    );
   });
 
   it("returns null rather than a fabricated figure when nothing was sampled", async () => {
@@ -352,9 +393,15 @@ describe("health sampling — a failed probe is a data point, not an error", () 
     // still served. Recording it as downtime would make the uptime figure
     // disagree with the load balancer, and then neither would be trusted.
     jest.resetModules();
-    jest.doMock(DB, () => ({ query: async () => ({ rows: [{ "?column?": 1 }] }) }));
+    jest.doMock(DB, () => ({
+      query: async () => ({ rows: [{ "?column?": 1 }] }),
+    }));
     jest.doMock("../../src/config/redis", () => ({
-      getClient: () => ({ ping: async () => { throw new Error("redis down"); } }),
+      getClient: () => ({
+        ping: async () => {
+          throw new Error("redis down");
+        },
+      }),
     }));
 
     const svc = require(HEALTH);

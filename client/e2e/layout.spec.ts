@@ -20,8 +20,14 @@
  */
 import { test, expect } from "@playwright/test";
 import {
-  openScreen, contentWidth, hasHorizontalScroll, railWidth, ribbonHeight,
-  DESKTOP_WIDTHS, RAIL_PX, type Density,
+  openScreen,
+  contentWidth,
+  hasHorizontalScroll,
+  railWidth,
+  ribbonHeight,
+  DESKTOP_WIDTHS,
+  RAIL_PX,
+  type Density,
 } from "./fixtures";
 
 /** Density → row height. Mirrors DENSITY_ROW_PX in src/lib/density.ts. */
@@ -31,7 +37,11 @@ test.describe("desktop layout", () => {
   for (const width of DESKTOP_WIDTHS) {
     test(`chart of accounts at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 900 });
-      const { errors } = await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+      const { errors } = await openScreen(
+        page,
+        "/finance/chart-of-accounts",
+        /Chart of accounts/i,
+      );
 
       // Arrived on the right screen — not the landing page (Addendum 7).
       await expect(page.getByRole("table")).toBeVisible();
@@ -56,7 +66,10 @@ test.describe("desktop layout", () => {
        */
       expect(column).toBeGreaterThan(0);
       expect(column).toBeLessThanOrEqual(cap);
-      expect(column).toBeCloseTo(Math.min(cap, width - RAIL_PX - shellPadding), -1);
+      expect(column).toBeCloseTo(
+        Math.min(cap, width - RAIL_PX - shellPadding),
+        -1,
+      );
 
       // A content column wider than its viewport is the failure this hides.
       expect(await hasHorizontalScroll(page)).toBe(false);
@@ -68,7 +81,9 @@ test.describe("desktop layout", () => {
     });
   }
 
-  test("the content column actually grows between 1920 and 2560", async ({ page }) => {
+  test("the content column actually grows between 1920 and 2560", async ({
+    page,
+  }) => {
     /*
      * The single assertion the audit's opening paragraph asks for, and the one
      * three phases deferred. Written as a comparison rather than a constant so
@@ -105,17 +120,32 @@ test.describe("the ribbon's chrome budget", () => {
   const BUDGET = { compact: 82, default: 94, comfortable: 110 } as const;
 
   for (const [density, height] of Object.entries(BUDGET)) {
-    test(`${density} chrome is ${height}px, following the density preference`, async ({ page }) => {
+    test(`${density} chrome is ${height}px, following the density preference`, async ({
+      page,
+    }) => {
       await page.setViewportSize({ width: 1440, height: 900 });
-      await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i, density as Density);
+      await openScreen(
+        page,
+        "/finance/chart-of-accounts",
+        /Chart of accounts/i,
+        density as Density,
+      );
 
       const measured = await ribbonHeight(page);
-      expect(measured, "the ribbon did not render — is /permissions/mine mocked?").toBeGreaterThan(0);
-      expect(Math.abs(measured - height), `${density} chrome was ${measured}px`).toBeLessThanOrEqual(2);
+      expect(
+        measured,
+        "the ribbon did not render — is /permissions/mine mocked?",
+      ).toBeGreaterThan(0);
+      expect(
+        Math.abs(measured - height),
+        `${density} chrome was ${measured}px`,
+      ).toBeLessThanOrEqual(2);
     });
   }
 
-  test("the rail is exactly the width the column assertions subtract", async ({ page }) => {
+  test("the rail is exactly the width the column assertions subtract", async ({
+    page,
+  }) => {
     // Without this, widening the rail would quietly narrow every table while
     // the column assertions kept passing — they subtract a constant, and this
     // is what holds the constant to what actually renders.
@@ -142,14 +172,23 @@ test.describe("the ribbon's chrome budget", () => {
    * that would have called that alignment good. Both boxes are fixed sizes with
    * no text in them, so the honest expectation is equality.
    */
-  test("the title bar's app mark is centred on the rail below it", async ({ page }) => {
+  test("the title bar's app mark is centred on the rail below it", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
-    const markBox = await page.locator(".wco .wco-mark > :first-child").boundingBox();
-    const homeBox = await page.locator('.rail .rail-btn[aria-label="Control Tower"]').boundingBox();
+    const markBox = await page
+      .locator(".wco .wco-mark > :first-child")
+      .boundingBox();
+    const homeBox = await page
+      .locator('.rail .rail-btn[aria-label="Control Tower"]')
+      .boundingBox();
     expect(markBox, "the app mark should be in the title bar").not.toBeNull();
-    expect(homeBox, "the rail should carry a Control Tower button").not.toBeNull();
+    expect(
+      homeBox,
+      "the rail should carry a Control Tower button",
+    ).not.toBeNull();
 
     const centre = (b: { x: number; width: number }) => b.x + b.width / 2;
     expect(centre(markBox!)).toBeCloseTo(centre(homeBox!), 1);
@@ -167,10 +206,16 @@ test.describe("the ribbon's chrome budget", () => {
    * at 1280px. The failure was a crowded row, not an error, and the only thing
    * that would ever have caught it is a browser.
    */
-  test("row B sheds its tail at narrow widths and shows it at wide ones", async ({ page }) => {
+  test("row B sheds its tail at narrow widths and shows it at wide ones", async ({
+    page,
+  }) => {
     const shown = async (width: number) => {
       await page.setViewportSize({ width, height: 900 });
-      await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+      await openScreen(
+        page,
+        "/finance/chart-of-accounts",
+        /Chart of accounts/i,
+      );
       return page.evaluate(() => {
         const nav = document.querySelector("nav[aria-label$='sections']");
         return Array.from(nav?.querySelectorAll("a") ?? []).filter(
@@ -185,14 +230,24 @@ test.describe("the ribbon's chrome budget", () => {
     const wide = await shown(1920);
 
     expect(narrow).toBeGreaterThan(0);
-    expect(narrow, "nothing was hidden at 1280 — is .ribbon-item beating `hidden`?").toBeLessThan(10);
-    expect(wide, "a wider window showed no more than a narrow one").toBeGreaterThan(narrow);
+    expect(
+      narrow,
+      "nothing was hidden at 1280 — is .ribbon-item beating `hidden`?",
+    ).toBeLessThan(10);
+    expect(
+      wide,
+      "a wider window showed no more than a narrow one",
+    ).toBeGreaterThan(narrow);
 
     // Whatever is hidden is still one click away, at every width.
-    await expect(page.getByRole("button", { name: /All Finance destinations/i })).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: /All Finance destinations/i }),
+    ).toBeVisible();
   });
 
-  test("the hub draws no tab strip of its own on a desktop", async ({ page }) => {
+  test("the hub draws no tab strip of its own on a desktop", async ({
+    page,
+  }) => {
     /*
      * The whole point of the ribbon: its second row IS the hub's tab strip, so
      * the page must not draw a second one. Three bands of navigation before the
@@ -209,7 +264,9 @@ test.describe("the ribbon's chrome budget", () => {
     expect(stripsInPage).toBe(0);
 
     // …and the destinations it used to carry are in the chrome instead.
-    await expect(page.getByRole("navigation", { name: /Finance sections/i })).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: /Finance sections/i }),
+    ).toBeVisible();
   });
 });
 
@@ -230,13 +287,20 @@ test.describe("row density", () => {
   for (const [density, height] of Object.entries(ROW_PX)) {
     test(`${density} rows measure ${height}px`, async ({ page }) => {
       await page.setViewportSize({ width: 1920, height: 900 });
-      await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i, density as Density);
+      await openScreen(
+        page,
+        "/finance/chart-of-accounts",
+        /Chart of accounts/i,
+        density as Density,
+      );
 
       const measured = await page.evaluate(() => {
         const row = document.querySelector("tbody tr") as HTMLElement;
         const td = row.querySelector("td") as HTMLElement;
         return {
-          rowPy: getComputedStyle(document.documentElement).getPropertyValue("--row-py").trim(),
+          rowPy: getComputedStyle(document.documentElement)
+            .getPropertyValue("--row-py")
+            .trim(),
           padTop: getComputedStyle(td).paddingTop,
           rowH: row.getBoundingClientRect().height,
           /*
@@ -250,7 +314,11 @@ test.describe("row density", () => {
           tallest: Math.max(
             ...Array.from(row.querySelectorAll("td > *")).map((el) => {
               const cs = getComputedStyle(el);
-              return el.getBoundingClientRect().height + parseFloat(cs.marginTop) + parseFloat(cs.marginBottom);
+              return (
+                el.getBoundingClientRect().height +
+                parseFloat(cs.marginTop) +
+                parseFloat(cs.marginBottom)
+              );
             }),
           ),
         };
@@ -266,7 +334,10 @@ test.describe("row density", () => {
        * after font metrics. Stated rather than absorbed into ROW_PX, so those
        * stay the numbers the design is written in.
        */
-      expect(Math.abs(measured.rowH - height), `${density} row was ${measured.rowH}px`).toBeLessThanOrEqual(2);
+      expect(
+        Math.abs(measured.rowH - height),
+        `${density} row was ${measured.rowH}px`,
+      ).toBeLessThanOrEqual(2);
 
       /*
        * NOTHING IN THE ROW EXCEEDS THE CONTROL HEIGHT. This is the assertion
@@ -274,13 +345,18 @@ test.describe("row density", () => {
        * and 67 screens put one in the actions column, so the row was 48px
        * whatever the padding said — the padding was never what set the height.
        */
-      expect(measured.tallest, "a cell child is taller than --row-control-h").toBeLessThanOrEqual(21);
+      expect(
+        measured.tallest,
+        "a cell child is taller than --row-control-h",
+      ).toBeLessThanOrEqual(21);
     });
   }
 });
 
 test.describe("wide-table affordances", () => {
-  test("the column heading stays put while the body scrolls", async ({ page }) => {
+  test("the column heading stays put while the body scrolls", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
@@ -295,7 +371,9 @@ test.describe("wide-table affordances", () => {
     expect(Math.abs((after?.y ?? 0) - (before?.y ?? 0))).toBeLessThanOrEqual(1);
   });
 
-  test("the identity column stays put while the table scrolls sideways", async ({ page }) => {
+  test("the identity column stays put while the table scrolls sideways", async ({
+    page,
+  }) => {
     await page.setViewportSize({ width: 900, height: 900 }); // narrow enough to force overflow
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
@@ -327,7 +405,11 @@ test.describe("phone", () => {
 
   test("renders the card fallback, not a squeezed table", async ({ page }) => {
     await page.setViewportSize(PHONE);
-    const { errors } = await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
+    const { errors } = await openScreen(
+      page,
+      "/finance/chart-of-accounts",
+      /Chart of accounts/i,
+    );
 
     // The table branch is `hidden sm:block`; below 640px the cards are the UI.
     await expect(page.getByRole("table")).toBeHidden();
@@ -349,35 +431,52 @@ test.describe("phone", () => {
         const own = el.getBoundingClientRect();
         const before = getComputedStyle(el, "::before");
         if (before.content !== "none" && before.position === "absolute") {
-          const inset = Math.abs(parseFloat(before.insetBlockStart || "0")) || 0;
+          const inset =
+            Math.abs(parseFloat(before.insetBlockStart || "0")) || 0;
           return { w: own.width + inset * 2, h: own.height + inset * 2 };
         }
         return { w: own.width, h: own.height };
       };
       const cards = document.querySelector(".animate-fade-up.sm\\:hidden");
       if (!cards) return [{ name: "NO CARD LIST", w: 0, h: 0 }];
-      return Array.from(cards.querySelectorAll("button, [role='checkbox'], a[href]"))
-        .map((el) => {
-          const { w, h } = hit(el);
-          return { name: (el.getAttribute("aria-label") || el.textContent || el.tagName).trim().slice(0, 40), w, h };
-        })
-        // The row activator is a text link inside a sentence of content — WCAG
-        // 2.5.8 exempts inline targets, and padding it to 24px would push every
-        // card's first line apart. Everything else is a discrete control.
-        .filter((c) => !/^\d/.test(c.name))
-        .filter((c) => c.h < 24 || c.w < 24);
+      return (
+        Array.from(cards.querySelectorAll("button, [role='checkbox'], a[href]"))
+          .map((el) => {
+            const { w, h } = hit(el);
+            return {
+              name: (
+                el.getAttribute("aria-label") ||
+                el.textContent ||
+                el.tagName
+              )
+                .trim()
+                .slice(0, 40),
+              w,
+              h,
+            };
+          })
+          // The row activator is a text link inside a sentence of content — WCAG
+          // 2.5.8 exempts inline targets, and padding it to 24px would push every
+          // card's first line apart. Everything else is a discrete control.
+          .filter((c) => !/^\d/.test(c.name))
+          .filter((c) => c.h < 24 || c.w < 24)
+      );
     });
 
     expect(small, `controls under 24×24: ${JSON.stringify(small)}`).toEqual([]);
   });
 
-  test("row actions are touch-sized, not the 20px table figure", async ({ page }) => {
+  test("row actions are touch-sized, not the 20px table figure", async ({
+    page,
+  }) => {
     await page.setViewportSize(PHONE);
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
     const h = await page.evaluate(() => {
       const cards = document.querySelector(".animate-fade-up.sm\\:hidden");
-      const btn = cards?.querySelector<HTMLElement>("[class*='justify-end'] button");
+      const btn = cards?.querySelector<HTMLElement>(
+        "[class*='justify-end'] button",
+      );
       return btn ? btn.getBoundingClientRect().height : -1;
     });
 
@@ -399,7 +498,9 @@ test.describe("phone", () => {
     // getByRole("status") matches whichever ones exist and fails Playwright's
     // strict-mode check the moment a second appears, which reads as "multi-
     // select is broken" when nothing about multi-select changed.
-    const selectionBar = page.getByRole("status").filter({ hasText: /selected/ });
+    const selectionBar = page
+      .getByRole("status")
+      .filter({ hasText: /selected/ });
 
     const first = page.getByRole("checkbox", { name: /^Select 6/ }).first();
     await expect(first).toBeVisible();

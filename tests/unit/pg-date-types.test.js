@@ -41,7 +41,9 @@ describe("pg date type parsers", () => {
     // 2021-09-21T00:00+01:00, whose toISOString() is the 20th.
     process.env.TZ = "Africa/Douala";
     const parsed = types.getTypeParser(DATE_OID)("2021-09-21");
-    expect(JSON.parse(JSON.stringify({ issued_on: parsed }))).toEqual({ issued_on: "2021-09-21" });
+    expect(JSON.parse(JSON.stringify({ issued_on: parsed }))).toEqual({
+      issued_on: "2021-09-21",
+    });
   });
 
   it("keeps the calendar day in a timezone behind UTC", () => {
@@ -50,19 +52,28 @@ describe("pg date type parsers", () => {
   });
 
   it("survives JSON round-tripping in the shape a date input needs", () => {
-    const row = { issued_on: types.getTypeParser(DATE_OID)("2021-09-21"), expires_on: types.getTypeParser(DATE_OID)("2026-08-14") };
+    const row = {
+      issued_on: types.getTypeParser(DATE_OID)("2021-09-21"),
+      expires_on: types.getTypeParser(DATE_OID)("2026-08-14"),
+    };
     const wire = JSON.parse(JSON.stringify(row));
     expect(wire.issued_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
     expect(wire.expires_on).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
   it("leaves timestamp and timestamptz alone — an instant is not a calendar date", () => {
-    expect(types.getTypeParser(TIMESTAMP_OID)("2021-09-21 08:30:00")).toBeInstanceOf(Date);
-    expect(types.getTypeParser(TIMESTAMPTZ_OID)("2021-09-21 08:30:00+01")).toBeInstanceOf(Date);
+    expect(
+      types.getTypeParser(TIMESTAMP_OID)("2021-09-21 08:30:00"),
+    ).toBeInstanceOf(Date);
+    expect(
+      types.getTypeParser(TIMESTAMPTZ_OID)("2021-09-21 08:30:00+01"),
+    ).toBeInstanceOf(Date);
   });
 
   it("is idempotent — every pool module requires it", () => {
-    const { applyDateTypeParsers } = require("../../src/shared/db/pg-date-types");
+    const {
+      applyDateTypeParsers,
+    } = require("../../src/shared/db/pg-date-types");
     applyDateTypeParsers();
     applyDateTypeParsers();
     expect(types.getTypeParser(DATE_OID)("2021-09-21")).toBe("2021-09-21");

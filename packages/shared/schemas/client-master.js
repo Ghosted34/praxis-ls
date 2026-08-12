@@ -46,14 +46,31 @@ const wholeDays = blankToUndefined(
   z
     .union([z.number(), z.string()])
     .transform((v) => (typeof v === "number" ? v : Number(v)))
-    .refine((n) => Number.isInteger(n) && n >= 0, "Enter a whole number of days."),
+    .refine(
+      (n) => Number.isInteger(n) && n >= 0,
+      "Enter a whole number of days.",
+    ),
 );
 
-const nonNegativeAmount = blankToUndefined(amount.refine((n) => n >= 0, "Cannot be negative."));
-const percent = blankToUndefined(amount.refine((n) => n >= 0 && n <= 100, "Enter a percentage between 0 and 100."));
-const language = blankToUndefined(z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase());
+const nonNegativeAmount = blankToUndefined(
+  amount.refine((n) => n >= 0, "Cannot be negative."),
+);
+const percent = blankToUndefined(
+  amount.refine(
+    (n) => n >= 0 && n <= 100,
+    "Enter a percentage between 0 and 100.",
+  ),
+);
+const language = blankToUndefined(
+  z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
+);
 const registrationStatus = z.enum([
-  "DRAFT", "PENDING_REVIEW", "ACTIVE", "SUSPENDED", "DEACTIVATED", "ARCHIVED",
+  "DRAFT",
+  "PENDING_REVIEW",
+  "ACTIVE",
+  "SUSPENDED",
+  "DEACTIVATED",
+  "ARCHIVED",
 ]);
 
 const base = {
@@ -74,7 +91,9 @@ const base = {
   notes: optionalText,
   risk_tier: optionalText,
   tax_residency_country: countryCode,
-  default_currency: blankToUndefined(z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase()),
+  default_currency: blankToUndefined(
+    z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase(),
+  ),
   default_language: language,
   preferred_channel: optionalText,
   relationship_manager_user_id: blankToUndefined(uuid),

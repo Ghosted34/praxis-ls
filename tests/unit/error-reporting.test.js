@@ -31,7 +31,11 @@ beforeAll(async () => {
     let body = "";
     req.on("data", (d) => (body += d));
     req.on("end", () => {
-      try { received.push(JSON.parse(body).praxis); } catch { /* ignore */ }
+      try {
+        received.push(JSON.parse(body).praxis);
+      } catch {
+        /* ignore */
+      }
       res.writeHead(200);
       res.end("ok");
     });
@@ -54,7 +58,6 @@ afterAll(() => new Promise((r) => hook.close(r)));
  * the one where nothing ever flushes at all.
  */
 afterEach(() => {
-
   require("../../src/shared/observability/error-store").__reset();
 });
 
@@ -116,8 +119,14 @@ describe("OBS-E1 — the channel stays usable", () => {
     // "user <uuid> not found" is ONE problem, not one per user. Without id
     // normalisation dedupe never matches and the ceiling does all the work.
     const rep = freshReporter();
-    await rep.report(new Error("user 41f2c0de-1111-2222-3333-444455556666 not found"), {});
-    await rep.report(new Error("user 99a1b2c3-9999-8888-7777-666655554444 not found"), {});
+    await rep.report(
+      new Error("user 41f2c0de-1111-2222-3333-444455556666 not found"),
+      {},
+    );
+    await rep.report(
+      new Error("user 99a1b2c3-9999-8888-7777-666655554444 not found"),
+      {},
+    );
     await settle();
     expect(received).toHaveLength(1);
   });
@@ -132,7 +141,8 @@ describe("OBS-E1 — the channel stays usable", () => {
 
   it("caps outbound notifications per minute", async () => {
     const rep = freshReporter();
-    for (let i = 0; i < 40; i++) await rep.report(new Error(`distinct ${i}x`), {});
+    for (let i = 0; i < 40; i++)
+      await rep.report(new Error(`distinct ${i}x`), {});
     await settle();
     expect(received.length).toBeLessThanOrEqual(rep.MAX_PER_MINUTE);
   });
@@ -162,11 +172,16 @@ describe("OBS-E1 — only real failures page anyone", () => {
     // The same identity trap explains the ZodError case below: `instanceof`
     // against a class from a different module instance is always false, so a
     // validation error fell through to the 500 branch.
-     
+
     const { errorHandler } = require("../../src/middleware/error-handler");
     const app = express();
-    app.use((req, _res, next) => { req.request_id = "rid-500"; next(); });
-    app.get("/boom", () => { throw err; });
+    app.use((req, _res, next) => {
+      req.request_id = "rid-500";
+      next();
+    });
+    app.get("/boom", () => {
+      throw err;
+    });
     app.use(errorHandler);
     return app;
   }
@@ -174,7 +189,9 @@ describe("OBS-E1 — only real failures page anyone", () => {
   it("reports a 500", async () => {
     freshReporter();
     jest.resetModules();
-    const res = await request(appThrowing(new Error("db exploded"))).get("/boom");
+    const res = await request(appThrowing(new Error("db exploded"))).get(
+      "/boom",
+    );
     await settle();
     expect(res.status).toBe(500);
     expect(received.some((r) => r && r.message === "db exploded")).toBe(true);
@@ -197,10 +214,12 @@ describe("OBS-E1 — only real failures page anyone", () => {
     // AFTER freshReporter(), so this is the same zod instance the freshly
     // required errorHandler will `instanceof` against.
     freshReporter();
-     
+
     const { ZodError } = require("zod");
     const res = await request(
-      appThrowing(new ZodError([{ code: "custom", path: ["x"], message: "bad" }])),
+      appThrowing(
+        new ZodError([{ code: "custom", path: ["x"], message: "bad" }]),
+      ),
     ).get("/boom");
     await settle();
     // 422, not 400: API F-2 standardised validation failures on 422 to match the
@@ -245,7 +264,10 @@ describe("§2.3 pt 4 — validation failures are recorded, never paged", () => {
     const { errorHandler } = require("../../src/middleware/error-handler");
     const { ZodError } = require("zod");
     const app = express();
-    app.use((req, _res, next) => { req.request_id = "rid-422"; next(); });
+    app.use((req, _res, next) => {
+      req.request_id = "rid-422";
+      next();
+    });
     app.post("/signup", () => {
       throw new ZodError([
         { code: "custom", path: ["email"], message: "Required" },
@@ -289,7 +311,6 @@ describe("§2.3 pt 4 — validation failures are recorded, never paged", () => {
 
     const app = appThrowingValidation();
     for (let i = 0; i < 30; i += 1) {
-
       await request(app).post("/signup").send({}).expect(422);
     }
     await settle();
@@ -299,7 +320,9 @@ describe("§2.3 pt 4 — validation failures are recorded, never paged", () => {
     await settle();
     await store.flush();
 
-    expect(received.some((r) => r && r.message === "the actual outage")).toBe(true);
+    expect(received.some((r) => r && r.message === "the actual outage")).toBe(
+      true,
+    );
   });
 
   it("groups repeated bad input into ONE row rather than one per attempt", async () => {
@@ -312,7 +335,6 @@ describe("§2.3 pt 4 — validation failures are recorded, never paged", () => {
 
     const app = appThrowingValidation();
     for (let i = 0; i < 5; i += 1) {
-
       await request(app).post("/signup").send({}).expect(422);
     }
     await settle();
@@ -336,7 +358,10 @@ describe("OBS-E2 — the browser can report", () => {
     freshReporter();
     const { router } = require("../../src/routes/client-errors");
     const app = express();
-    app.use((req, _res, next) => { req.request_id = "rid-7"; next(); });
+    app.use((req, _res, next) => {
+      req.request_id = "rid-7";
+      next();
+    });
     app.use("/api", router);
 
     const res = await request(app).post("/api/client-errors").send({
@@ -374,7 +399,8 @@ describe("OBS-E2 — the browser can report", () => {
     const res = await request(app).post("/api/client-errors").send({
       message: "Uncaught TypeError: Cannot redefine property: ethereum",
       name: "TypeError",
-      stack: "TypeError: Cannot redefine property: ethereum\n    at r.inject (chrome-extension://bfnaelmomeimhlpmgjnjophhpkkoljpa/evmAsk.js:15:1)",
+      stack:
+        "TypeError: Cannot redefine property: ethereum\n    at r.inject (chrome-extension://bfnaelmomeimhlpmgjnjophhpkkoljpa/evmAsk.js:15:1)",
     });
     await settle();
 
@@ -392,9 +418,11 @@ describe("OBS-E2 — the browser can report", () => {
     app.use("/api", router);
 
     await request(app).post("/api/client-errors").send({
-      message: "Failed to load resource for chrome-extension compatibility shim",
+      message:
+        "Failed to load resource for chrome-extension compatibility shim",
       name: "TypeError",
-      stack: "TypeError: x\n    at loadShim (https://smartls.praxisls.com/assets/main.js:1:2)",
+      stack:
+        "TypeError: x\n    at loadShim (https://smartls.praxisls.com/assets/main.js:1:2)",
     });
     await settle();
 
@@ -408,11 +436,13 @@ describe("OBS-E2 — the browser can report", () => {
     const app = express();
     app.use("/api", router);
 
-    const res = await request(app).post("/api/client-errors").send({
-      message: "x".repeat(5000),
-      stack: "y".repeat(20000),
-      unexpectedKey: "should be dropped",
-    });
+    const res = await request(app)
+      .post("/api/client-errors")
+      .send({
+        message: "x".repeat(5000),
+        stack: "y".repeat(20000),
+        unexpectedKey: "should be dropped",
+      });
     await settle();
 
     expect(res.status).toBe(204);

@@ -28,7 +28,7 @@
   "legal_privacy_body_html": "<p>Smart Logistics &amp; Services Ltd is committed to protecting personal and business information entrusted to us.</p><p>Personal data is collected and processed lawfully, fairly, and transparently for legitimate business purposes, including service delivery, regulatory compliance, and operational communication.</p><ul><li>Data is collected only where necessary and used for defined purposes.</li><li>Appropriate technical and organizational safeguards are in place.</li><li>Access to data is restricted to authorized personnel.</li><li>Data is retained only as long as required by business or legal obligations.</li><li>Data subjects may request access, correction, or deletion of personal data.</li></ul><p>Inquiries related to data protection may be directed to <a href=\"mailto:info@smartls.cm\">info@smartls.cm</a>.</p>",
   "legal_terms_title": "Terms of Use",
   "legal_terms_body_html": "<p>This website is provided for informational and business purposes only. By accessing it, users agree to comply with these terms.</p><ul><li>Smart Logistics &amp; Services Ltd retains all intellectual property rights to website content.</li><li>Information is provided without guarantee of completeness or uninterrupted availability.</li><li>The company is not liable for damages arising from website use or external links.</li></ul><p>Use of this website constitutes acceptance of these terms under applicable laws and regulations.</p>",
-  
+
   "about_hero_kicker": "ABOUT US",
   "about_hero_title": "YOUR TRUSTED PARTNER IN CEMAC REGION",
   "about_hero_lead": "Built for compliance, visibility, and dependable execution—operating from Douala as a gateway to the CEMAC region.",
@@ -47,8 +47,8 @@
   "about_mission_body": "Our mission is to revolutionize the logistics landscape by delivering solutions that not only meet but exceed our customers’ expectations. We strive to create an environment that ignites passion, fuels creativity, and inspires our team to provide unparalleled customer experiences. With unwavering commitment, we navigate towards a future where excellence is the standard, and innovation is the driving force. Our legacy will be built on the foundations of reliability, flexibility, and customer satisfaction, setting a new benchmark for the industry.",
   "about_vision_label": "Vision:",
   "about_vision_body": "Our vision is to reign supreme as the logistics leaders of choice, setting the gold standard for excellence in Cameroon and the CEMAC subregion. We aspire to be the benchmark against which all others are measured, renowned for delivering unparalleled experiences to our cherished customers.",
-"about_operational_guide": "Our Guiding Principles",
-"about_operational_guide_body": "Customer Delight, Team Empowerment and  Excellence",
+  "about_operational_guide": "Our Guiding Principles",
+  "about_operational_guide_body": "Customer Delight, Team Empowerment and  Excellence",
   "about_operational_title": "OPERATIONAL EMPHASIS",
   "about_operational_li_1": "Disciplined processes and regulatory compliance",
   "about_operational_li_2": "Visibility and control across complex operating environments",
@@ -91,7 +91,7 @@
 
   "about_cta_title": "Need a new and unique experience from a logistics partner? Try US",
   "about_cta_email": "Email Us",
-  
+
   "airfreight_kicker": "AIR FREIGHT FORWARDING",
   "airfreight_title": "Fast. Controlled. Time-Critical.",
 
@@ -115,7 +115,7 @@
   "airfreight_advantage_body": "Reduced transit time, predictable clearance, and full shipment visibility from airport of origin to final destination.",
 
   "airfreight_cta": "Request a Quote for this Service",
-  
+
   "home_hero_kicker": "Digital Logistics Hub • Compliance • Visibility",
   "home_hero_tagline": "Going beyond your expectations",
   "home_hero_subtext": "Discover how we optimize supply chain management for International Organizations, Multinationals, Local Corporations, and Project Execution in the CEMAC Sub-Region.",
@@ -248,7 +248,7 @@
 
   "kaizen_a1_title": "Unlocking the Power of Logistics, the Backbone of Business Growth",
   "kaizen_a2_title": "The role Local Logistics Solutions Providers play in ensuring Operational efficiency in Humanitarian and Development Projects",
-  
+
   "landfreight_kicker": "🚚 LAND FREIGHT / INLAND TRANSPORT",
   "landfreight_title": "Reliable. Secure. Region-Focused.",
 
@@ -286,7 +286,7 @@
   "portfolio_title": "PROJECT PORTFOLIO",
   "portfolio_sub": "Detailed Case Studies with distinct \"Challenge,\" \"Solution,\" and \"Impact\" sections",
   "portfolio_read_full_case": "Read full case",
-  
+
   "seafreight_kicker": "🚢 SEA FREIGHT FORWARDING",
   "seafreight_title": "Flexible. Scalable. Cost-Efficient.",
 
@@ -310,9 +310,6 @@
   "seafreight_advantage_body": "Minimized demurrage, controlled port dwell time, and smooth transition from vessel to final destination.",
 
   "seafreight_cta": "Request a Quote for this Service",
-
-
-
 
   "services_kicker": "WITH OPERATIONAL EXCELLENCE",
   "services_title": "SERVICES",
@@ -448,7 +445,7 @@
   "quote_success_id_label": "Your Quote ID:",
   "quote_success_body_html": "We have sent a confirmation to your email.<br>Your request has been routed to <strong>customerservice@smartls.cm</strong><br>(CC: info@smartls.cm)",
   "quote_start_new": "Start New Quote",
-  
+
   "track_pill": "Live Logistics Hub",
   "track_lead": "Track your cargo with precision.",
   "track_placeholder": "Enter Reference (e.g. SL0256721SM)",
@@ -484,7 +481,7 @@
   "track_badge_completed": "Completed",
   "track_badge_in_progress": "In Progress",
   "track_badge_pending": "Pending",
-   "kaizen_a3_title": "Demurrage, Detention, and Storage: Understanding and Avoiding Extra Logistics Charges",
+  "kaizen_a3_title": "Demurrage, Detention, and Storage: Understanding and Avoiding Extra Logistics Charges",
   "kaizen_a3_author": "By Aurelie KUIKEU",
 
   "kaizen_a4_title": "Boosting Supply Chain Performance Through Smart Integration: A Case Study",
@@ -492,7 +489,4 @@
 
   "kaizen_a5_title": "The Future is Green: Sustainable Logistics in the CEMAC Region",
   "kaizen_a5_author": "By Victor ETADUOVIE"
-
-
-
 }

@@ -15,17 +15,29 @@ const mockMarkAsRead = jest.fn();
 const mockEmitEvent = jest.fn(async () => {});
 
 jest.mock("../../src/modules/mail/providers/imapSmtp.provider", () => ({
-  ImapSmtpProvider: jest.fn().mockImplementation(() => ({ fetchSince: mockFetchSince, verify: mockVerify, markAsRead: mockMarkAsRead })),
+  ImapSmtpProvider: jest
+    .fn()
+    .mockImplementation(() => ({
+      fetchSince: mockFetchSince,
+      verify: mockVerify,
+      markAsRead: mockMarkAsRead,
+    })),
 }));
 jest.mock("../../src/modules/security/setting/setting.service", () => ({
   SECRET_SECTION: "integration_secret",
   put: jest.fn(async () => ({})),
   readSecret: jest.fn(async () => "decrypted-password"),
 }));
-jest.mock("../../src/shared/events/emit", () => ({ resolveActorId: async (c, id) => id || null, emitEvent: (...a) => mockEmitEvent(...a) }));
-jest.mock("../../src/modules/vault/document_vault/document_vault.service", () => ({
-  createDocument: jest.fn(async () => ({ doc_id: "vault-1" })),
+jest.mock("../../src/shared/events/emit", () => ({
+  resolveActorId: async (c, id) => id || null,
+  emitEvent: (...a) => mockEmitEvent(...a),
 }));
+jest.mock(
+  "../../src/modules/vault/document_vault/document_vault.service",
+  () => ({
+    createDocument: jest.fn(async () => ({ doc_id: "vault-1" })),
+  }),
+);
 // sanitize-html mocked to a marker so the ingest-sanitization path is provable
 // without the real dependency installed.
 jest.mock("sanitize-html", () => {
@@ -50,7 +62,13 @@ const repo = require("../../src/modules/mail/mail.repo");
 const vault = require("../../src/modules/vault/document_vault/document_vault.service");
 const service = require("../../src/modules/mail/mail.service");
 
-const CONN = { email_connection_id: "conn-1", provider: "imap_smtp", email_address: "me@co.cm", secret_key: "mail_conn:conn-1", sync_cursor: null };
+const CONN = {
+  email_connection_id: "conn-1",
+  provider: "imap_smtp",
+  email_address: "me@co.cm",
+  secret_key: "mail_conn:conn-1",
+  sync_cursor: null,
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -62,8 +80,24 @@ beforeEach(() => {
 test("inserts new messages, dedups, emits one event each, advances cursor", async () => {
   mockFetchSince.mockResolvedValue({
     messages: [
-      { externalMessageId: "<a>", threadKey: "<a>", from: "x@y", to: ["me@co.cm"], subject: "A", bodyText: "a", attachments: [] },
-      { externalMessageId: "<b>", threadKey: "<b>", from: "x@y", to: ["me@co.cm"], subject: "B", bodyText: "b", attachments: [] },
+      {
+        externalMessageId: "<a>",
+        threadKey: "<a>",
+        from: "x@y",
+        to: ["me@co.cm"],
+        subject: "A",
+        bodyText: "a",
+        attachments: [],
+      },
+      {
+        externalMessageId: "<b>",
+        threadKey: "<b>",
+        from: "x@y",
+        to: ["me@co.cm"],
+        subject: "B",
+        bodyText: "b",
+        attachments: [],
+      },
     ],
     nextCursor: { uidvalidity: 10, last_uid: 7 },
   });
@@ -75,34 +109,85 @@ test("inserts new messages, dedups, emits one event each, advances cursor", asyn
 
   expect(res).toMatchObject({ connection: "conn-1", fetched: 2, inserted: 1 });
   expect(mockEmitEvent).toHaveBeenCalledTimes(1);
-  expect(mockEmitEvent).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ eventTypeKey: "email.received" }));
-  expect(repo.setCursor).toHaveBeenCalledWith({}, "conn-1", { uidvalidity: 10, last_uid: 7 });
+  expect(mockEmitEvent).toHaveBeenCalledWith(
+    expect.anything(),
+    expect.objectContaining({ eventTypeKey: "email.received" }),
+  );
+  expect(repo.setCursor).toHaveBeenCalledWith({}, "conn-1", {
+    uidvalidity: 10,
+    last_uid: 7,
+  });
 });
 
 test("persists attachments to the vault and links them", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [{
-      externalMessageId: "<c>", threadKey: "<c>", from: "x@y", to: ["me@co.cm"], subject: "C", bodyText: "c",
-      attachments: [{ filename: "f.pdf", content_type: "application/pdf", content: Buffer.from("PDFDATA") }],
-    }],
+    messages: [
+      {
+        externalMessageId: "<c>",
+        threadKey: "<c>",
+        from: "x@y",
+        to: ["me@co.cm"],
+        subject: "C",
+        bodyText: "c",
+        attachments: [
+          {
+            filename: "f.pdf",
+            content_type: "application/pdf",
+            content: Buffer.from("PDFDATA"),
+          },
+        ],
+      },
+    ],
     nextCursor: { uidvalidity: 10, last_uid: 8 },
   });
-  repo.insertInbound.mockResolvedValueOnce({ email_inbound_id: "in-c", thread_key: "<c>" });
+  repo.insertInbound.mockResolvedValueOnce({
+    email_inbound_id: "in-c",
+    thread_key: "<c>",
+  });
 
   const res = await service.syncConnection({}, "conn-1", { slug: "smartls" });
 
   expect(res.attachments).toBe(1);
-  expect(vault.createDocument).toHaveBeenCalledWith({}, expect.objectContaining({ slug: "smartls", entityRef: "email_inbound:in-c" }));
-  expect(repo.addAttachment).toHaveBeenCalledWith({}, expect.objectContaining({ email_inbound_id: "in-c", vault_id: "vault-1", filename: "f.pdf" }));
+  expect(vault.createDocument).toHaveBeenCalledWith(
+    {},
+    expect.objectContaining({
+      slug: "smartls",
+      entityRef: "email_inbound:in-c",
+    }),
+  );
+  expect(repo.addAttachment).toHaveBeenCalledWith(
+    {},
+    expect.objectContaining({
+      email_inbound_id: "in-c",
+      vault_id: "vault-1",
+      filename: "f.pdf",
+    }),
+  );
 });
 
 test("links an inbound message to a client when the sender matches (CRM)", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [{ externalMessageId: "<d>", threadKey: "<d>", from: "client@acme.cm", to: ["me@co.cm"], subject: "D", bodyText: "d", attachments: [] }],
+    messages: [
+      {
+        externalMessageId: "<d>",
+        threadKey: "<d>",
+        from: "client@acme.cm",
+        to: ["me@co.cm"],
+        subject: "D",
+        bodyText: "d",
+        attachments: [],
+      },
+    ],
     nextCursor: { uidvalidity: 10, last_uid: 9 },
   });
-  repo.insertInbound.mockResolvedValueOnce({ email_inbound_id: "in-d", thread_key: "<d>" });
-  repo.findClientByEmail.mockResolvedValueOnce({ client_id: "cli-1", name: "Acme" });
+  repo.insertInbound.mockResolvedValueOnce({
+    email_inbound_id: "in-d",
+    thread_key: "<d>",
+  });
+  repo.findClientByEmail.mockResolvedValueOnce({
+    client_id: "cli-1",
+    name: "Acme",
+  });
 
   await service.syncConnection({}, "conn-1", {});
 
@@ -112,25 +197,58 @@ test("links an inbound message to a client when the sender matches (CRM)", async
 
 test("auto-links to a dossier when its ref appears in the subject (wins over client)", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [{ externalMessageId: "<f>", threadKey: "<f>", from: "client@acme.cm", to: ["me@co.cm"], subject: "Re: SLAS-2026-0001 shipment", bodyText: "f", attachments: [] }],
+    messages: [
+      {
+        externalMessageId: "<f>",
+        threadKey: "<f>",
+        from: "client@acme.cm",
+        to: ["me@co.cm"],
+        subject: "Re: SLAS-2026-0001 shipment",
+        bodyText: "f",
+        attachments: [],
+      },
+    ],
     nextCursor: { uidvalidity: 10, last_uid: 12 },
   });
-  repo.insertInbound.mockResolvedValueOnce({ email_inbound_id: "in-f", thread_key: "<f>" });
-  repo.findDossierByRefs.mockResolvedValueOnce({ dossier_id: "dos-1", ref: "SLAS-2026-0001" });
+  repo.insertInbound.mockResolvedValueOnce({
+    email_inbound_id: "in-f",
+    thread_key: "<f>",
+  });
+  repo.findDossierByRefs.mockResolvedValueOnce({
+    dossier_id: "dos-1",
+    ref: "SLAS-2026-0001",
+  });
 
   await service.syncConnection({}, "conn-1", {});
 
-  expect(repo.findDossierByRefs).toHaveBeenCalledWith({}, expect.arrayContaining(["SLAS-2026-0001"]));
+  expect(repo.findDossierByRefs).toHaveBeenCalledWith(
+    {},
+    expect.arrayContaining(["SLAS-2026-0001"]),
+  );
   expect(repo.setEntityRef).toHaveBeenCalledWith({}, "in-f", "dossier:dos-1");
   expect(repo.findClientByEmail).not.toHaveBeenCalled(); // dossier match short-circuits
 });
 
 test("sanitizes the inbound HTML body before storing (stored-XSS guard)", async () => {
   mockFetchSince.mockResolvedValue({
-    messages: [{ externalMessageId: "<e>", threadKey: "<e>", from: "x@y", to: ["me@co.cm"], subject: "E", bodyHtml: "<script>evil()</script><p>hi</p>", bodyText: "hi", attachments: [] }],
+    messages: [
+      {
+        externalMessageId: "<e>",
+        threadKey: "<e>",
+        from: "x@y",
+        to: ["me@co.cm"],
+        subject: "E",
+        bodyHtml: "<script>evil()</script><p>hi</p>",
+        bodyText: "hi",
+        attachments: [],
+      },
+    ],
     nextCursor: { uidvalidity: 10, last_uid: 11 },
   });
-  repo.insertInbound.mockResolvedValueOnce({ email_inbound_id: "in-e", thread_key: "<e>" });
+  repo.insertInbound.mockResolvedValueOnce({
+    email_inbound_id: "in-e",
+    thread_key: "<e>",
+  });
 
   await service.syncConnection({}, "conn-1", {});
 
@@ -146,7 +264,11 @@ test("records the error on the connection and does not throw", async () => {
 });
 
 test("markRead propagates to the server adapter and flips the local row (G-3)", async () => {
-  repo.getInbound.mockResolvedValue({ email_inbound_id: "in-1", email_connection_id: "conn-1", external_message_id: "<mid>" });
+  repo.getInbound.mockResolvedValue({
+    email_inbound_id: "in-1",
+    email_connection_id: "conn-1",
+    external_message_id: "<mid>",
+  });
   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
   repo.markInboundRead.mockResolvedValue({ email_inbound_id: "in-1" });
   const res = await service.markRead({}, "in-1");
@@ -156,7 +278,11 @@ test("markRead propagates to the server adapter and flips the local row (G-3)", 
 });
 
 test("markRead still flips the local row when server propagation fails", async () => {
-  repo.getInbound.mockResolvedValue({ email_inbound_id: "in-2", email_connection_id: "conn-1", external_message_id: "<mid>" });
+  repo.getInbound.mockResolvedValue({
+    email_inbound_id: "in-2",
+    email_connection_id: "conn-1",
+    external_message_id: "<mid>",
+  });
   repo.getConnection.mockResolvedValue({ ...CONN, status: "CONNECTED" });
   repo.markInboundRead.mockResolvedValue({ email_inbound_id: "in-2" });
   mockMarkAsRead.mockRejectedValueOnce(new Error("provider down"));

@@ -29,14 +29,15 @@ _Drafted 2026-07-27 (session 15). **Phases 0–4 built — all 34 templates (ses
 > **26 templates render clean.** ✅ **Bespoke statutory forms:** the **TVA return**
 > and **CNPS/DIPE** now have faithful hand-built layouts (official section names,
 > statutory rates 19.25% / 4.2%+4.2% / 7% / injury, 750k ceiling, employee schedule
-> + récapitulatif) reading both the live producer output and the sample via field
-> fallbacks — refine to pixel-exact against the DGI/CNPS master PDFs when available.
-> **DSF** stays on the generic renderer (large annual multi-schedule form — awaits a
-> reference). _Later:_ a params form in the Studio for live report preview (today
-> reports preview from sample). Two bugs fixed in testing: Studio config now stores
-> under section **`document_template_config`** (the legacy `document_template`
-> section has a name-required validator), and the receipt loader uses
-> **`payment_receipt`** with a defensive `records()`.
+>
+> - récapitulatif) reading both the live producer output and the sample via field
+>   fallbacks — refine to pixel-exact against the DGI/CNPS master PDFs when available.
+>   **DSF** stays on the generic renderer (large annual multi-schedule form — awaits a
+>   reference). _Later:_ a params form in the Studio for live report preview (today
+>   reports preview from sample). Two bugs fixed in testing: Studio config now stores
+>   under section **`document_template_config`** (the legacy `document_template`
+>   section has a name-required validator), and the receipt loader uses
+>   **`payment_receipt`** with a defensive `records()`.
 
 > **Phase 2 + follow-ups (session 15, same day).** ✅ **Phase 2** — the 7
 > operations/procurement templates designed in the registry (purchase order,
@@ -53,7 +54,7 @@ _Drafted 2026-07-27 (session 15). **Phases 0–4 built — all 34 templates (ses
 > only remaining bit, and it's mechanical.
 
 > **Build status.** ✅ **Phase 0** — template **kit** (`src/services/documents/
-> templates/kit.js`: shell + letterhead + parties + lineTable + totals + bank +
+templates/kit.js`: shell + letterhead + parties + lineTable + totals + bank +
 > terms + signature + watermark + footer, theme-token + FR/EN driven), the
 > **registry** (`.../registry.js`), the **config store** ((docType, entity_id) over
 > the settings store `document_template`, entity→tenant→branding resolution), the
@@ -70,7 +71,7 @@ _Drafted 2026-07-27 (session 15). **Phases 0–4 built — all 34 templates (ses
 >
 > **Remaining wiring (small, per-doc):** (a) real-record `load()` for quotation /
 > receipt / proposal (invoice family done — the pattern is in `template.service.
-> loadRecord`); (b) auto-generate-on-issue — modules still only `documents.capture`
+loadRecord`); (b) auto-generate-on-issue — modules still only `documents.capture`
 > metadata; hook each issue action to the `/generate` path (or call
 > `renderAndStore`) so PDFs mint automatically. The Studio + on-demand generate
 > already produce real PDFs today.
@@ -105,7 +106,7 @@ customization layer, and the preview UI are all to be built.
 Five layers, each reusable across every document:
 
 1. **Template registry** — one entry per `docType`: `{ build(data, cfg, brand),
-   sampleData, i18n, fields[] }`. Grows out of `pdf.templates.js` into
+sampleData, i18n, fields[] }`. Grows out of `pdf.templates.js` into
    `src/services/documents/templates/*`.
 2. **Shared template kit** — the shell + reusable blocks (letterhead, party
    blocks, line-item table, totals, OHADA legal footer, signature, QR-verify
@@ -158,15 +159,15 @@ data, never a code edit — the same discipline as the app kit.
 Stored per docType in the settings store; every knob has a branding-derived
 default. Grouped for the UI's control tabs:
 
-| Group | Controls |
-|---|---|
-| **Brand** | accent colour, logo (light/dark, position, size), font family, paper size (A4 default), margins |
-| **Header** | show/hide logo, document title text (per-lang), which meta fields, entity identity lines |
-| **Body** | visible line-table columns, show tax breakdown, show notes, show discount, currency display |
-| **Footer** | custom footer text, legal mentions (RCCM/NIU/capital), bank details block, page numbers |
-| **Terms & signature** | terms-&-conditions rich text (per doc), signature block (name/title/image), stamp |
-| **Marks** | watermark (DRAFT/PAID/COPY/VOID or custom), background tint |
-| **Language** | FR / EN / bilingual default |
+| Group                 | Controls                                                                                        |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| **Brand**             | accent colour, logo (light/dark, position, size), font family, paper size (A4 default), margins |
+| **Header**            | show/hide logo, document title text (per-lang), which meta fields, entity identity lines        |
+| **Body**              | visible line-table columns, show tax breakdown, show notes, show discount, currency display     |
+| **Footer**            | custom footer text, legal mentions (RCCM/NIU/capital), bank details block, page numbers         |
+| **Terms & signature** | terms-&-conditions rich text (per doc), signature block (name/title/image), stamp               |
+| **Marks**             | watermark (DRAFT/PAID/COPY/VOID or custom), background tint                                     |
+| **Language**          | FR / EN / bilingual default                                                                     |
 
 **Multi-entity (decided):** config is keyed **`(docType, entity_id)`**. Each
 `corporate_entity` can have its own letterhead/config; the tenant-level row
@@ -182,56 +183,61 @@ Grouped by phase. **Status:** ✅ built · ▫ metadata-captured, template TODO 
 beyond the standard set.
 
 ### Phase 1 — Core finance & commercial (highest value)
-| # | Document | docType | Module | Status | Key fields | Doc-specific beautify |
-|---|---|---|---|---|---|---|
-| 1 | Final invoice | `FINAL_INVOICE` | finance/final_invoice | ✅ (basic) | lines, HT/VAT/TTC, WHT, due, bank | payment terms, "PAID" watermark |
-| 2 | Proforma / advance | `PROFORMA_ADVANCE` | finance/proforma | ▫ | advance %, validity | validity note |
-| 3 | Quotation | `QUOTATION` | commercial/quotation | ▫ | lines, margin-safe totals, validity | accept/e-sign CTA |
-| 4 | Payment receipt | `PAYMENT_RECEIPT` | finance/smart_receivables | ▫ | amount, method, invoice ref | "PAID" stamp |
-| 5 | Credit note | `CREDIT_NOTE` | finance/credit_note | ▫ | reversed invoice ref, reason | red accent option |
-| 6 | Sales proposal | `PROPOSAL` | sales/proposal | ▫ | scope, pricing, cover page | cover image, sections |
+
+| #   | Document           | docType            | Module                    | Status     | Key fields                          | Doc-specific beautify           |
+| --- | ------------------ | ------------------ | ------------------------- | ---------- | ----------------------------------- | ------------------------------- |
+| 1   | Final invoice      | `FINAL_INVOICE`    | finance/final_invoice     | ✅ (basic) | lines, HT/VAT/TTC, WHT, due, bank   | payment terms, "PAID" watermark |
+| 2   | Proforma / advance | `PROFORMA_ADVANCE` | finance/proforma          | ▫          | advance %, validity                 | validity note                   |
+| 3   | Quotation          | `QUOTATION`        | commercial/quotation      | ▫          | lines, margin-safe totals, validity | accept/e-sign CTA               |
+| 4   | Payment receipt    | `PAYMENT_RECEIPT`  | finance/smart_receivables | ▫          | amount, method, invoice ref         | "PAID" stamp                    |
+| 5   | Credit note        | `CREDIT_NOTE`      | finance/credit_note       | ▫          | reversed invoice ref, reason        | red accent option               |
+| 6   | Sales proposal     | `PROPOSAL`         | sales/proposal            | ▫          | scope, pricing, cover page          | cover image, sections           |
 
 ### Phase 2 — Operations & procurement
-| # | Document | docType | Module | Status | Doc-specific beautify |
-|---|---|---|---|---|---|
-| 7 | Delivery note (bon de livraison) | `DELIVERY_NOTE` | operations/delivery_note | ▫ | consignee block, no prices toggle |
-| 8 | Transit order | `TRANSIT_ORDER` | operations/transit_order | ▫ | carrier block, route |
-| 9 | Purchase request | `PURCHASE_REQUEST` | procurement/purchase_request | ▫ | approver signatures |
-| 10 | Purchase order | `PURCHASE_ORDER` | procurement/purchase_order | ▫ | supplier terms, delivery addr |
-| 11 | Supplier invoice (recorded) | `SUPPLIER_INVOICE` | procurement/supplier_invoice | ▫ | "COPY" watermark |
-| 12 | Cash request | `CASH_REQUEST` | costing/cash_request | ▫ | approval chain |
-| 13 | Régie advance | `REGIE_ADVANCE` | costing/regie | ▫ | float ledger |
+
+| #   | Document                         | docType            | Module                       | Status | Doc-specific beautify             |
+| --- | -------------------------------- | ------------------ | ---------------------------- | ------ | --------------------------------- |
+| 7   | Delivery note (bon de livraison) | `DELIVERY_NOTE`    | operations/delivery_note     | ▫      | consignee block, no prices toggle |
+| 8   | Transit order                    | `TRANSIT_ORDER`    | operations/transit_order     | ▫      | carrier block, route              |
+| 9   | Purchase request                 | `PURCHASE_REQUEST` | procurement/purchase_request | ▫      | approver signatures               |
+| 10  | Purchase order                   | `PURCHASE_ORDER`   | procurement/purchase_order   | ▫      | supplier terms, delivery addr     |
+| 11  | Supplier invoice (recorded)      | `SUPPLIER_INVOICE` | procurement/supplier_invoice | ▫      | "COPY" watermark                  |
+| 12  | Cash request                     | `CASH_REQUEST`     | costing/cash_request         | ▫      | approval chain                    |
+| 13  | Régie advance                    | `REGIE_ADVANCE`    | costing/regie                | ▫      | float ledger                      |
 
 ### Phase 3 — Statements, reports & tax filings
+
 Reports already produce data via `/reports` (exportable **pdf/csv/xlsx**) — Phase 3
 gives them branded PDF layouts.
-| # | Document | source | beautify |
-|---|---|---|---|
-| 14 | Income statement (Compte de résultat) | reports `income_statement` | period header, comparatives |
-| 15 | Balance sheet (Bilan) | reports `balance_sheet` | as-of date |
-| 16 | Trial balance | reports `trial_balance` | grouping |
-| 17 | Cash-flow (TAFIRE) | reports `cash_flow` | — |
-| 18 | Receivables ageing | reports `receivables_ageing` | bucket chart |
-| 19 | Receivables reminders | reports `receivables_reminders` | — |
-| 20 | Dossier 360 | reports `dossier_360` | sections toggle |
-| 21 | Cash position | reports `cash_position` | — |
-| 22 | Procurement spend | reports `procurement_spend` | — |
-| 23 | Dossier margin portfolio | reports `dossier_margin_portfolio` | mask cost (RBAC) |
-| 24 | TVA / VAT return | tax_declaration | official layout |
-| 25 | DSF (annual statistique & fiscale) | tax_declaration | official layout |
-| 26 | CNPS declaration (DIPE) | tax_declaration | official layout |
+
+| #   | Document                              | source                             | beautify                    |
+| --- | ------------------------------------- | ---------------------------------- | --------------------------- |
+| 14  | Income statement (Compte de résultat) | reports `income_statement`         | period header, comparatives |
+| 15  | Balance sheet (Bilan)                 | reports `balance_sheet`            | as-of date                  |
+| 16  | Trial balance                         | reports `trial_balance`            | grouping                    |
+| 17  | Cash-flow (TAFIRE)                    | reports `cash_flow`                | —                           |
+| 18  | Receivables ageing                    | reports `receivables_ageing`       | bucket chart                |
+| 19  | Receivables reminders                 | reports `receivables_reminders`    | —                           |
+| 20  | Dossier 360                           | reports `dossier_360`              | sections toggle             |
+| 21  | Cash position                         | reports `cash_position`            | —                           |
+| 22  | Procurement spend                     | reports `procurement_spend`        | —                           |
+| 23  | Dossier margin portfolio              | reports `dossier_margin_portfolio` | mask cost (RBAC)            |
+| 24  | TVA / VAT return                      | tax_declaration                    | official layout             |
+| 25  | DSF (annual statistique & fiscale)    | tax_declaration                    | official layout             |
+| 26  | CNPS declaration (DIPE)               | tax_declaration                    | official layout             |
 
 ### Phase 4 — HR + remaining operational docs
-| # | Document | source | Status | notes |
-|---|---|---|---|---|
-| 27 | Payslip (bulletin de paie) | hr/payroll | ➕ | needs `docType` + capture; statutory breakdown (CNPS/IRPP/CAC/CFC) |
-| 28 | Employment contract (offer/employment/confirmation/termination) | hr/hr_contract | ➕ | **both**: generate draft (`EMPLOYMENT_CONTRACT`) + allow replace-with-signed upload (§9.4) |
-| 29 | GRN (goods-received note) | wms/inbound | ➕ | QA sign-off |
-| 30 | Dispatch / trip sheet | fleet/dispatch | ➕ | odometer out/in, driver |
-| 31 | Work order | fleet/work-orders | ➕ | parts, labour, cost |
-| 32 | Cycle-count sheet | wms/cycle-count | ➕ | expected vs counted |
-| 33 | Dunning letter | finance/smart_receivables | ➕ | tone per ageing level |
-| 34 | Certified comms export | `COMMS_CERTIFIED_EXPORT` | smartcomm | ▫ | chain-of-custody header |
+
+| #   | Document                                                        | source                    | Status    | notes                                                                                      |
+| --- | --------------------------------------------------------------- | ------------------------- | --------- | ------------------------------------------------------------------------------------------ |
+| 27  | Payslip (bulletin de paie)                                      | hr/payroll                | ➕        | needs `docType` + capture; statutory breakdown (CNPS/IRPP/CAC/CFC)                         |
+| 28  | Employment contract (offer/employment/confirmation/termination) | hr/hr_contract            | ➕        | **both**: generate draft (`EMPLOYMENT_CONTRACT`) + allow replace-with-signed upload (§9.4) |
+| 29  | GRN (goods-received note)                                       | wms/inbound               | ➕        | QA sign-off                                                                                |
+| 30  | Dispatch / trip sheet                                           | fleet/dispatch            | ➕        | odometer out/in, driver                                                                    |
+| 31  | Work order                                                      | fleet/work-orders         | ➕        | parts, labour, cost                                                                        |
+| 32  | Cycle-count sheet                                               | wms/cycle-count           | ➕        | expected vs counted                                                                        |
+| 33  | Dunning letter                                                  | finance/smart_receivables | ➕        | tone per ageing level                                                                      |
+| 34  | Certified comms export                                          | `COMMS_CERTIFIED_EXPORT`  | smartcomm | ▫                                                                                          | chain-of-custody header |
 
 **Totals:** 34 templates (1 exists, 12 metadata-captured, 21 new/uncaptured).
 
@@ -281,7 +287,7 @@ gives them branded PDF layouts.
 
 - **Phase 0 — foundation (do first).** Template **kit** (shell + blocks + theme
   tokens + i18n), the **config store** schema + `GET/PUT /settings/document_template/
-  :docType`, the **preview** + **render** service endpoints, and the **Template
+:docType`, the **preview** + **render** service endpoints, and the **Template
   Studio UI shell** (list + iframe editor + control panel) — proven end-to-end on
   the one existing doc (**invoice**). Nothing else ships until a client can open the
   invoice, beautify it, preview live, and download a real PDF.
@@ -299,12 +305,12 @@ generate/issue action to `renderAndStore` + snapshot tests + a Studio entry.
 
 1. **Customization surface = structured controls, broad.** No WYSIWYG/HTML editor.
    But the structured surface is **deliberately wide** — clients can override every
-   *core* aspect (accent + full colour set, fonts, logo & placement, paper/margins,
+   _core_ aspect (accent + full colour set, fonts, logo & placement, paper/margins,
    per-section show/hide, column selection, header/title text per language, footer
    text + legal mentions, terms, signature/stamp, watermark, language). The kit's
    job is to keep any combination on-brand and unbreakable (bounded inputs, live
    validation). An advanced "custom CSS / raw footer HTML" escape hatch is a
-   possible *later* addition, explicitly out of scope for v1.
+   possible _later_ addition, explicitly out of scope for v1.
 2. **Per-entity templates.** Config is keyed **`(docType, entity_id)`**. Each
    `corporate_entity` can carry its own letterhead/config; a tenant-level default
    (`entity_id = null`) is the fallback and the seed for a new entity's config.

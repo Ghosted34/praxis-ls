@@ -31,52 +31,63 @@ _Session 15. Identifies every screen touched by the doc-UI overhaul, before buil
 Legend — **Send?**: ✉️ goes to an external receiver (needs Send) · 🏢 internal (Download only).
 
 ### Finance — `features/finance/{hub,pages,receivables}.tsx`
-| Doc | docType | Table / list to make clickable | Send? |
-|---|---|---|---|
-| Invoice | `FINAL_INVOICE` | finance **hub** Invoices chip → `DataList` (also `InvoicesPage`) | ✉️ client |
-| Proforma | `PROFORMA_ADVANCE` | hub Proforma chip → `DataList` (`ProformasPage`) | ✉️ client |
-| Credit note | `CREDIT_NOTE` | `CreditNotesPage` (pages.tsx) | ✉️ client |
-| Payment receipt | `PAYMENT_RECEIPT` | hub Receipts chip / `receivables.tsx` | ✉️ payer |
-| Dunning letter | `DUNNING_LETTER` | receivables reminders list (`receivables.tsx`) | ✉️ client |
-| VAT / DSF / CNPS | `VAT_RETURN` `DSF` `CNPS_DECLARATION` | `TaxCenterPage` (pages.tsx) | 🏢 file/print |
-| Statements (income/balance/…) | report docTypes | `StatementsPage` / vault Reports | 🏢 (scheduled = ✉️) |
+
+| Doc                           | docType                               | Table / list to make clickable                                   | Send?               |
+| ----------------------------- | ------------------------------------- | ---------------------------------------------------------------- | ------------------- |
+| Invoice                       | `FINAL_INVOICE`                       | finance **hub** Invoices chip → `DataList` (also `InvoicesPage`) | ✉️ client           |
+| Proforma                      | `PROFORMA_ADVANCE`                    | hub Proforma chip → `DataList` (`ProformasPage`)                 | ✉️ client           |
+| Credit note                   | `CREDIT_NOTE`                         | `CreditNotesPage` (pages.tsx)                                    | ✉️ client           |
+| Payment receipt               | `PAYMENT_RECEIPT`                     | hub Receipts chip / `receivables.tsx`                            | ✉️ payer            |
+| Dunning letter                | `DUNNING_LETTER`                      | receivables reminders list (`receivables.tsx`)                   | ✉️ client           |
+| VAT / DSF / CNPS              | `VAT_RETURN` `DSF` `CNPS_DECLARATION` | `TaxCenterPage` (pages.tsx)                                      | 🏢 file/print       |
+| Statements (income/balance/…) | report docTypes                       | `StatementsPage` / vault Reports                                 | 🏢 (scheduled = ✉️) |
 
 ### Commercial — `features/commercial/pages.tsx`
+
 | Quotation | `QUOTATION` | Quotations `DataList` | ✉️ client |
 
 ### Sales — `features/sales/pages.tsx`
+
 | Proposal | `PROPOSAL` | Proposals `DataList` | ✉️ client |
 
 ### Procurement — `features/procurement/pages.tsx`
+
 | Purchase order | `PURCHASE_ORDER` | PO `DataList` | ✉️ supplier |
 | Purchase request | `PURCHASE_REQUEST` | PR `DataList` | 🏢 internal |
 | Supplier invoice | `SUPPLIER_INVOICE` | supplier-invoice `DataList` | 🏢 received (Download only) |
 
 ### Operations — `features/operations/pages.tsx`
+
 | Delivery note | `DELIVERY_NOTE` | Delivery-notes tab `DataList` | ✉️ consignee |
 | Transit order | `TRANSIT_ORDER` | Transit-orders tab `DataList` | ✉️ carrier |
 | _(dossier 360)_ | — | Dossier 360 modal: surface **related invoices/quotes** with Download (the "download invoices from operations" ask) | ✉️/🏢 |
 
 ### Costing — `features/costing/pages.tsx`
+
 | Cash request | `CASH_REQUEST` | Cash-requests `DataList` | 🏢 internal |
 | Régie advance | `REGIE_ADVANCE` | Régie `DataList` | 🏢 internal |
 
 ### HR — `features/hr/{payroll,contracts}.tsx`
+
 | Payslip | `PAYSLIP` | Payroll **run detail** → payslip rows (`payroll.tsx`) | ✉️ employee |
 | Employment contract | `EMPLOYMENT_CONTRACT` | Contracts `DataList` (`contracts.tsx`) | ✉️ employee (+ replace-with-signed) |
 
-### Fleet — `features/fleet/{dispatch,work-orders}.tsx`  (already have detail modals — add Download)
+### Fleet — `features/fleet/{dispatch,work-orders}.tsx` (already have detail modals — add Download)
+
 | Trip sheet | `TRIP_SHEET` | Dispatch `DataList` / OdometerModal | 🏢 driver |
 | Work order | `WORK_ORDER` | Work-orders `DataList` / WorkOrderDetail | 🏢 internal |
 
 ### WMS — `features/wms/{inbound,cycle-count}.tsx`
+
 | GRN | `GRN` | Inbound `DataList` | 🏢 internal |
 | Cycle-count sheet | `CYCLE_COUNT_SHEET` | Cycle-count `DataList` / CountSheet | 🏢 internal |
 
 ### Vault / Reports — `features/vault/pages.tsx`
+
 | 10 reports + statements | report docTypes | Reports list / dashboard tiles → **Download PDF/CSV/XLSX**; scheduled = ✉️ email | 🏢/✉️ |
 
 ### Comms — `features/comms/{team-chat,mail}.tsx`
+
 | Certified export | `COMMS_CERTIFIED_EXPORT` | Conversation → **Export** action | 🏢 archive/download |
 
 ## Summary of work implied (for step 2)
@@ -122,6 +133,7 @@ PAYMENT_RECEIPT, PROPOSAL, SUPPLIER_INVOICE, PURCHASE_ORDER, CASH_REQUEST, REGIE
 WORK_ORDER, EMPLOYMENT_CONTRACT, PAYSLIP.
 
 **Now also wired (session 15, full rollout):**
+
 - **Credit note** — `CreditNotesPage` (finance/pages.tsx) View button. No `credit_note`
   table exists; credit notes are `invoice` rows with `type='CREDIT_NOTE'`, and the list
   returns `invoice_id`, so the button passes `String(r.invoice_id ?? r.credit_note_id)` into
@@ -137,9 +149,10 @@ their heads + whatever the table holds; the template line tables show empty wher
 source data.
 
 **Also wired since:**
+
 - **Proforma / advance** — View on `ProformasPage`; loader reads the `advance` table (not
   `invoice`), renders client + amount + applied.
-- **Receipts** — now show *what is paid for* (payment_allocation → invoices) natively and in
+- **Receipts** — now show _what is paid for_ (payment_allocation → invoices) natively and in
   the PDF template.
 - **"From" fix** — every view page now renders the issuing entity (was blank vs the template
   because preview returns `legal_name`, PartyCol read `name`).
@@ -151,6 +164,7 @@ source data.
   proposals (narratives + line items), cycle-count (item names), trip sheet (odometer/route).
 
 **Now closed:**
+
 - **Régie advance** — reconciled the client field (`regie_advance_id` + `state` + `issued_on`;
   the old `regie_id`/`status` were undefined and crashed the ref cell) and wired the View.
 - **Purchase request** — real loader (purchase_request + requester name via app_user;
@@ -160,6 +174,7 @@ source data.
   the transit-order and delivery-note rows there.
 
 **Send follow-ups (done):**
+
 - **PDF attachment** — `email.service.send` now takes `attachments`; the document `send`
   renders the PDF (Puppeteer) and attaches it, falling back to inline HTML if the render
   fails. Vault copy + audit unchanged.
@@ -172,6 +187,7 @@ source data.
   liasse (needs the master PDF for pixel parity — noted in-doc footer).
 
 **Recipient coverage (done):**
+
 - Migration `0475_master_email.sql` adds `email` (citext) to `client_master`, `supplier_master`
   and `employee`. Validators + the client/supplier/employee forms now capture it.
 - `resolveRecipient` covers all the party-linked sendables: invoices, credit notes, quotations,
@@ -180,5 +196,6 @@ source data.
 - **Run `db:migrate:tenants`** to apply 0475 before the resolved-recipient send works.
 
 **Remaining:**
+
 - **Verification** — full `tsc` / `vite build` / `jest` on a real machine (native bundlers
   segfault in-sandbox; only per-file syntax checks + backend eslint ran here).

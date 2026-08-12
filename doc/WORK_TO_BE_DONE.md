@@ -36,7 +36,7 @@ would stop logging people out. Business data still writes through `req.tenantDb`
 `rated_by`, `owner_user_id`, `holder_user_id`, `attested_by`, `completed_by`, `actor_user_id`, `deleted_by`…
 
 So a perfectly valid live user id, stored beside sandbox business data, raises **23503** — surfacing as
-*"Referenced record not found"*, usually AFTER the business row had already committed (most services have no
+_"Referenced record not found"_, usually AFTER the business row had already committed (most services have no
 surrounding transaction). The user sees a record that exists and an error saying it doesn't, then a
 duplicate-key error if they retry.
 
@@ -59,11 +59,11 @@ for per-module actor columns. An audit write should never fail over attribution.
 
 The session-17 fix mirrored at **wipe time only**, which left:
 
-1. **Newly provisioned tenants.** Provisioning creates the schemas *before* `create-admin.js` makes any user,
+1. **Newly provisioned tenants.** Provisioning creates the schemas _before_ `create-admin.js` makes any user,
    so there is nothing to copy at that point and a brand-new tenant's sandbox starts empty. Their first
    TEST-mode write failed exactly as described above — and the remedy (wipe the sandbox) is deeply
    unintuitive for something that reads like a permissions error.
-2. **Drift on an established tenant** — *not previously identified*. The wipe mirror is a point-in-time
+2. **Drift on an established tenant** — _not previously identified_. The wipe mirror is a point-in-time
    snapshot, so **every user created after the last wipe was equally missing**. A hire onboarded months later
    would hit the identical 23503 on a system that had worked fine for everyone else. Confirmed real: the
    backfill found **2 such users on smartls**.
@@ -94,14 +94,14 @@ Surfaced while planning a fresh end-to-end walkthrough (create prerequisites →
 clean environment. **It could not be completed**, and not because of anything recent — three pieces have no
 create path in the application at all:
 
-| Thing | Backend | UI |
-|---|---|---|
-| Corporate entity | ✅ | ✅ |
-| Client | ✅ | ✅ |
-| **Service type** | ❌ **no module exists** | ❌ |
-| **Milestone template** | ✅ `POST /milestones/templates` | ❌ read-only list only |
-| **Service type on the dossier form** | ✅ validator + `DossierInput` accept it | ❌ never sent |
-| Dossier | ✅ | ✅ |
+| Thing                                | Backend                                 | UI                     |
+| ------------------------------------ | --------------------------------------- | ---------------------- |
+| Corporate entity                     | ✅                                      | ✅                     |
+| Client                               | ✅                                      | ✅                     |
+| **Service type**                     | ❌ **no module exists**                 | ❌                     |
+| **Milestone template**               | ✅ `POST /milestones/templates`         | ❌ read-only list only |
+| **Service type on the dossier form** | ✅ validator + `DossierInput` accept it | ❌ never sent          |
+| Dossier                              | ✅                                      | ✅                     |
 
 `service_type` is referenced by ten modules but **has no module of its own** — no repo/service/controller/
 routes, so there is no `/service-types` endpoint. The only thing that has ever created one is
@@ -128,7 +128,7 @@ also comes out with no milestone chain — the two gaps compound.
 **CLOSED — built 2026-08-01** after the operations lane agreed to do it properly rather than work around it:
 
 - `src/modules/operations/service_type/` — full module on the shared CRUD kit, `GET/POST/PATCH/DELETE
-  /service-types`, feature-gated `operations`, riding **MOD-29** (a module_key absent from the catalogue has
+/service-types`, feature-gated `operations`, riding **MOD-29** (a module_key absent from the catalogue has
   grants for nobody and would 403 every non-CEO user). `key` is immutable after creation —
   `dictionary_item.service_type_key` references it, so a rename would orphan silently. DELETE **archives**;
   `dossier.service_type_id` is a plain FK with no ON DELETE, so a real delete would either fail the
@@ -197,7 +197,7 @@ CLOSED section above); `mirrorUsersIntoSandbox` (see the TEST-MODE section above
 - **`0480_party_address.sql`** — `client_master` and `supplier_master` had **no address column at all**, so
   the "bill to" side of every document could show only a name and a NIU. Under OHADA a compliant invoice
   identifies the counterparty including address. Added `address`/`city`/`country_code` to both, + validators
-  + both forms.
+  - both forms.
 - **Country was free text** on three forms against a `char(2)` column — "Cameroun" silently truncates to
   "Ca". New shared `components/country-select.tsx`, OHADA states first then trading partners; an existing
   out-of-list value stays selectable so editing an old record can't rewrite its country.
@@ -282,7 +282,7 @@ The 2026-08-01 audit below is sound apart from four entries. Same method — rea
    emitted UTF-8-with-BOM so Excel renders accents, imports auto-detected by magic bytes) and
    **`src/services/excel/workbook.js`** (the house-styled workbook — deep-red `#690909` header, cream text,
    frozen panes) both exist and are substantial. **Neither has a single consumer** — nothing in `src/`
-   requires either file. So the real gap is *wiring*, not authorship: `report.validator.js:5` accepts
+   requires either file. So the real gap is _wiring_, not authorship: `report.validator.js:5` accepts
    `pdf|csv|xlsx`, `scheduled_report.formats` defaults to `["pdf"]` (`report.service.js:93`), and
    `jobs/workers.js:25` registers a **`pdf` handler only**. Two orphaned service files also deserve a
    decision on their own terms — finish them or delete them; leaving a house-styled exporter nobody calls is
@@ -384,7 +384,6 @@ and `client/vite.config.js` (shadows `vite.config.ts`).
 **CI gaps:** `.github/workflows/ci.yaml` runs `node --check` → lint → jest → docker build. It has **no**
 dependency/secret scanning and **no client or platform-console build job**, so a FE break never fails CI.
 
-
 ## Frontend build status — 2026-07-17 (session 6)
 
 This stream's FE lane (master data / sales-CRM / vault / portal / dashboard) is **substantially
@@ -392,12 +391,12 @@ complete**. Screens wired to live BE this session (all typecheck clean; lint + `
 --prefix client` pass on Windows). See `doc/WORK_DONE.md` (2026-07-17) + `doc/FE_IA_BUILD_MAP.md`.
 
 - [x] **Sales & CRM funnel** (`client/src/features/sales/pages.tsx`): Leads & intake (MOD-20 + folded
-  MOD-25), Meetings (MOD-21), Opportunities Kanban (MOD-24), Proposals (MOD-23), Marketing campaigns
-  (MOD-22), Success stories (MOD-26).
+      MOD-25), Meetings (MOD-21), Opportunities Kanban (MOD-24), Proposals (MOD-23), Marketing campaigns
+      (MOD-22), Success stories (MOD-26).
 - [x] **Commercial group** (`client/src/features/commercial/pages.tsx`): Quotations (MOD-27, gated
-  `commercial.quotation`), Margin sim (MOD-27), Extra-charge sim (MOD-28), Pricing variance (MOD-27).
+      `commercial.quotation`), Margin sim (MOD-27), Extra-charge sim (MOD-28), Pricing variance (MOD-27).
 - [x] **Vault hubs** (`client/src/features/vault/pages.tsx`): Reports (MOD-63, gated `reporting`),
-  Compliance flags (MOD-65).
+      Compliance flags (MOD-65).
 - [x] **Portal access** (`client/src/features/portal/pages.tsx`, MOD-67).
 - [x] **Control Tower** live (`client/src/features/dashboard.tsx`, MOD-00A) — replaced the static mock.
 - [x] Shared FE primitives extracted to `client/src/features/sales/ui.tsx`.
@@ -474,7 +473,8 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 > `statements`, `tax-center`, `numbering`, `determination` all pass.
 >
 > **Phase 1 frontend status (2026-07-12).** The BE modules are `[x]`; the boxes
-> below track the *backend*. FE write coverage on top of them:
+> below track the _backend_. FE write coverage on top of them:
+>
 > - [x] Post journal entry (multi-line, live-balance, draft-vs-validate) → `POST /journal-entries`
 > - [x] Record customer advance (→ 4191) → `POST /proformas/pay`
 > - [x] Final invoice draft → submit lifecycle → `POST /final-invoices` (+ `/:id/submit`)
@@ -482,10 +482,10 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 > - [x] Close / lock an accounting period — **wired 2026-07-12**: "Periods / close" tab in Statements lists periods with Freeze/Close (confirm modal) → `POST /statements/periods/close`
 > - [x] Journal-entry **reverse** from the UI — **wired 2026-07-12**: per-row Reverse on validated entries → `POST /journal-entries/:id/reverse` (reason + date)
 > - [x] Invoice draft **edit** — **wired 2026-07-12**: Edit action on DRAFT rows loads `GET /final-invoices/:id` and saves via `PATCH /final-invoices/:id`
-> - [ ] Run / file a tax declaration — Tax Center is **report-only in BE too** (`tax_declaration.routes.js` is all GET); needs a BE submit/file action *and* FE (no BE endpoint to wire yet)
+> - [ ] Run / file a tax declaration — Tax Center is **report-only in BE too** (`tax_declaration.routes.js` is all GET); needs a BE submit/file action _and_ FE (no BE endpoint to wire yet)
 > - [ ] Credit notes (invoice `type='CREDIT_NOTE'` exists in schema; **no BE or FE create flow** — nothing in `src/` references it)
 > - [x] Statements period filter now binds — **fixed 2026-07-12**: `ReportTabs` gained a `periodMode` prop; Statements uses a **`period_id` dropdown** fed from `/statements/periods` (filtered by the chosen entity), Tax keeps the `period_code` text input. `toQuery` sends whichever is set.
-> See `client/src/features/finance/pages.tsx` + `doc/WORK_DONE.md` (2026-07-12).
+>       See `client/src/features/finance/pages.tsx` + `doc/WORK_DONE.md` (2026-07-12).
 
 - [x] Chart of Accounts (OHADA/SYSCOHADA) — `master/chart_of_accounts/` + `migrations/tenant/0200_coa_dictionary.sql` + `seeds/9000_seed_coa.sql`, hierarchical, `is_postable`/`requires_analytic`
 - [x] Financial Dictionary as a distinct layer from the COA — `master/financial_dictionary/` (`dictionary_item`), separate from the account tree
@@ -527,7 +527,7 @@ standalone `platform-console/` app (session 13)**, the Test/Live toggle, per-ten
 
 - [x] HR (ledger-independent): vacancies+applicants (MOD-11), contracts (MOD-12), KPI appraisals (MOD-13), attendance (MOD-14), leave/allowances (MOD-15), SOPs (MOD-16), trainings+roster (MOD-18), talent pool (MOD-19) — **the "remaining" three are now built too** (2026-08-01 audit): onboarding checklists = `src/modules/hr/onboarding/` (MOD-16), succession = `src/modules/hr/succession/` (MOD-19), both added session 15; employee self-service = `client/src/features/hr/my-hr.tsx`. Also since: `hr/hr_query` + `hr/hr_sanction` (discipline, `0475_hr_discipline_and_avatar`).
 - [x] Payroll: CNPS + IRPP/CAC/CFC/RAV auto-compute, payslip generation, auto-posted payroll journal, SoD via run states — **BUILT (verified 2026-08-01, this line said "deferred" for weeks).** `src/modules/hr/payroll/payroll.service.js` computes via `payroll.rules.computePayslip` and posts a balanced journal on validation (661/664 debit; 431/447/422 credit) through `journal_entry.service`. If the ledger isn't configured (no journal/period/accounts) the run records without posting rather than failing. FE at `client/src/features/hr/payroll.tsx`.
-- [x] Fleet: vehicle registry (MOD-39), compliance & renewal alerts (MOD-40), maintenance/work orders (MOD-41), dispatch (MOD-42), fuel tracking (MOD-43), driver management (MOD-44), incident/claim tracking (MOD-45) — *fuel/work-order GL posting deferred to Phase 1*
+- [x] Fleet: vehicle registry (MOD-39), compliance & renewal alerts (MOD-40), maintenance/work orders (MOD-41), dispatch (MOD-42), fuel tracking (MOD-43), driver management (MOD-44), incident/claim tracking (MOD-45) — _fuel/work-order GL posting deferred to Phase 1_
 - [x] Warehouse (WMS): inbound/GRN + QA hold + putaway (MOD-33), location management (MOD-34), inventory control + stock-movement journal (MOD-35), outbound pick/pack/dispatch (MOD-36), equipment handling (MOD-37), cycle counting (MOD-38)
 - [x] Asset management: acquisition → depreciation (auto-posting) → disposal — **BUILT (verified 2026-08-01).** Full 7-file module at `src/modules/finance/asset/` (repo/service/controller/routes/validator/events/ai + `asset.rules.js` for the depreciation schedule). Same correction as payroll: this said "deferred" long after it landed.
 

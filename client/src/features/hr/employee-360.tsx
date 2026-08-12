@@ -7,6 +7,7 @@
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
+import { ComposeIconButton } from "@/features/comms/mail";
 import { DocButton } from "@/components/doc-button";
 import { UploadSigned } from "@/features/hr/contracts";
 import { Input } from "@/components/ui/input";
@@ -210,6 +211,7 @@ function EmployeeDetail({ employee: initial, onChanged }: { employee: api.Employ
             <p className="mt-0.5 micro">{[employee.employment_type && enumLabel(employee.employment_type), employee.cnps_number && `CNPS ${employee.cnps_number}`, employee.base_salary != null && `Base ${money(employee.base_salary)}`].filter(Boolean).join(" · ")}</p>
           </div>
           <div className="flex flex-wrap gap-2">
+            <ComposeIconButton to={employee.email || undefined} className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" />
             <Button size="sm" variant="outline" onClick={() => setEditing(true)}>Edit</Button>
             <Button size="sm" variant={active ? "outline" : "default"} loading={busy} onClick={toggleActive}>{active ? "Suspend" : "Activate"}</Button>
           </div>

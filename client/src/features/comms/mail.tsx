@@ -105,13 +105,38 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
   );
 }
 
-function ComposeModal({ connections, onClose, onSent }: { connections: api.Connection[]; onClose: () => void; onSent: () => void }) {
-  const [connId, setConnId] = React.useState(connections[0]?.email_connection_id || "");
-  const [f, setF] = React.useState({ to: "", cc: "", subject: "", body: "" });
+/* Compose an email — from the user's OWN default mailbox, to any eligible party
+ * (client / supplier / staff / lead, via recipient search) or a typed address.
+ * Reusable: pass `connections` (Threads view) or let it self-fetch (New(+) / a
+ * 360 mail icon), and optionally prefill `initialTo`. WS-E8. */
+export function ComposeModal({ connections, initialTo, onClose, onSent }: { connections?: api.Connection[]; initialTo?: string; onClose: () => void; onSent?: () => void }) {
+  // Self-fetch when the caller didn't hand us connections (New(+) / 360).
+  const owned = useResource(() => api.listConnections(), []);
+  const conns = (connections ?? owned.data ?? []).filter((c) => c.status === "CONNECTED");
+  const defaultId = conns.find((c) => c.is_default)?.email_connection_id || conns[0]?.email_connection_id || "";
+  const [connId, setConnId] = React.useState("");
+  React.useEffect(() => { if (!connId && defaultId) setConnId(defaultId); }, [defaultId, connId]);
+
+  const [f, setF] = React.useState({ to: initialTo || "", cc: "", subject: "", body: "" });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [sent, setSent] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  // Recipient search over clients / suppliers / employees / leads.
+  const [rq, setRq] = React.useState("");
+  const [results, setResults] = React.useState<api.Recipient[]>([]);
+  React.useEffect(() => {
+    const term = rq.trim();
+    if (term.length < 2) { setResults([]); return; }
+    let live = true;
+    const t = setTimeout(() => { api.searchRecipients(term).then((r) => { if (live) setResults(r); }).catch(() => {}); }, 200);
+    return () => { live = false; clearTimeout(t); };
+  }, [rq]);
+  function addRecipient(r: api.Recipient) {
+    setF((s) => ({ ...s, to: s.to ? `${s.to}, ${r.email}` : r.email }));
+    setRq(""); setResults([]);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
@@ -119,6 +144,7 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
       const to = f.to.split(",").map((s) => s.trim()).filter(Boolean);
       const cc = f.cc.split(",").map((s) => s.trim()).filter(Boolean);
       if (!to.length) throw new Error("At least one recipient is required");
+      if (!connId) throw new Error("Connect a mailbox first (Comms → Mailbox)");
       await api.sendMail({
         connectionId: connId,
         to,
@@ -126,17 +152,32 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
         subject: f.subject || undefined,
         text: f.body || undefined,
       });
-      setSent(true); onSent();
+      setSent(true); onSent?.();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="New message" description="Send from one of your connected mailboxes.">
+    <Modal open onClose={onClose} size="lg" title="New message" description="Sent from your default mailbox — switch below if you have more than one.">
       <form className="space-y-3" onSubmit={submit}>
         <Field label="From mailbox" required>
-          <Select value={connId} onChange={(e) => setConnId(e.target.value)} disabled={!connections.length}>
-            {connections.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}</option>)}
+          <Select value={connId} onChange={(e) => setConnId(e.target.value)} disabled={!conns.length}>
+            {conns.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}{c.is_default ? " (default)" : ""}</option>)}
           </Select>
+        </Field>
+        <Field label="Find recipient" hint="Search clients, suppliers, staff and leads — or just type an address in To.">
+          <div className="relative">
+            <Input value={rq} onChange={(e) => setRq(e.target.value)} placeholder="Search by name or email…" />
+            {results.length > 0 && (
+              <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg">
+                {results.map((r) => (
+                  <button type="button" key={`${r.type}:${r.id}`} onClick={() => addRecipient(r)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent">
+                    <span className="truncate"><span className="text-foreground">{r.name}</span> <span className="num text-muted-foreground">{r.email}</span></span>
+                    <Pill tone="mute">{r.type}</Pill>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
         </Field>
         <Field label="To" required><Input value={f.to} onChange={set("to")} placeholder="recipient@company.cm, another@company.cm" /></Field>
         <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
@@ -146,10 +187,25 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
         <div className="flex items-center justify-end gap-3 pt-1">
           {sent && <span className="micro text-[rgb(var(--ok))]">✓ Sent</span>}
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy || !connections.length}>Send</Button>
+          <Button type="submit" loading={busy} disabled={busy || !conns.length}>Send</Button>
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* Drop-in mail icon for any 360 / list row: opens the composer prefilled to an
+ * address, sending from the user's default mailbox. e.g. <ComposeIconButton to={client.email} /> */
+export function ComposeIconButton({ to, className }: { to?: string; className?: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} aria-label="Compose email" title="Compose email"
+        className={className || "grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"}>
+        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
+      </button>
+      {open && <ComposeModal initialTo={to} onClose={() => setOpen(false)} onSent={() => setOpen(false)} />}
+    </>
   );
 }
 

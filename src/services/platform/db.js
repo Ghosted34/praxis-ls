@@ -24,6 +24,9 @@
 "use strict";
 
 const { Pool } = require("pg");
+// Must load before the first query on any pool: it makes `date` columns arrive
+// as `YYYY-MM-DD` strings rather than timezone-shifted Dates. See the module.
+require("../../shared/db/pg-date-types");
 const { config } = require("../../config/env");
 
 function build(name, max) {

@@ -39,7 +39,7 @@ import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
-import { money, num, dateFmt, enumLabel } from "@/lib/format";
+import { money, num, dateFmt, enumLabel, toDateInput } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
 import { pageShell } from "@/lib/layout";
 import { entityCommon } from "@shared";
@@ -178,8 +178,18 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
     for (const f of fields) {
       // Only carry the editable keys across — sending back server-owned fields
       // (verified, created_at, the pk) would be rejected by the write allow-list.
-      if (initial && initial[f.key] !== null && initial[f.key] !== undefined) seed[f.key] = initial[f.key];
-      else if (!initial && f.defaultValue !== undefined) seed[f.key] = f.defaultValue;
+      if (initial && initial[f.key] !== null && initial[f.key] !== undefined) {
+        /*
+         * A date control renders ONLY `YYYY-MM-DD`. Seeded with anything else it
+         * shows an empty box while this state still holds the original value, so
+         * "Edit registration" opened with blank Issued on / Expires on for dates
+         * that were saved, and Save posted the unrenderable value straight back —
+         * `issued_on: Use the format YYYY-MM-DD., That date doesn't exist.` on a
+         * row nobody had touched. Normalising at the seed keeps what the control
+         * shows and what Save sends the same thing.
+         */
+        seed[f.key] = f.type === "date" ? toDateInput(initial[f.key]) : initial[f.key];
+      } else if (!initial && f.defaultValue !== undefined) seed[f.key] = f.defaultValue;
     }
     return seed;
   });

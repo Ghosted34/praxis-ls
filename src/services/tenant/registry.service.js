@@ -9,6 +9,9 @@
 
 const { Pool } = require("pg");
 const { registerType } = require("pgvector/pg");
+// Must load before the first query on any pool: it makes `date` columns arrive
+// as `YYYY-MM-DD` strings rather than timezone-shifted Dates. See the module.
+require("../../shared/db/pg-date-types");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const dbCredentials = require("./db-credential.service");

@@ -105,4 +105,21 @@ log_connections = 0
 log_disconnections = 0
 log_pooler_errors = 1
 
-ignore_startup_parameters = extra_float_digits,search_path
+;; `search_path` is NOT listed here, and `options` MUST NOT BE.
+;;
+;; Listing a parameter here makes PgBouncer accept it and then DISCARD it. The
+;; app never sends `search_path` as a startup parameter — it sends
+;; `options=-c search_path=...`, or, when pooled, nothing at all — so the entry
+;; that used to be here did nothing except suggest the shape of a fix.
+;;
+;; The tempting fix, when PgBouncer rejects `options` with "unsupported startup
+;; parameter", is to add `options` to this line. That is worse than the error it
+;; silences: the connection then succeeds and the schema is silently dropped, so
+;; every query runs against `public` where none of the tenant tables live. A
+;; wrong answer instead of a loud failure.
+;;
+;; The actual fix is already in place — registry.service.js stops sending
+;; `options` when a pooler is configured, and the schema arrives as a role
+;; default set by ensureTenantRole(). tenant-smoke.js asserts current_schema()
+;; precisely so this cannot regress quietly.
+ignore_startup_parameters = extra_float_digits

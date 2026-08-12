@@ -75,7 +75,18 @@ async function main() {
   // error — an unbounded await would have made this script hang alongside the
   // outage instead of reporting it.
   const work = registry.withTenantConnection(meta, "live", async (client) => {
-    const { rows } = await client.query("SELECT current_database() AS db, current_user AS role");
+    // current_schema() is asserted, not merely reported.
+    //
+    // It is the one thing a pooled connection can get wrong SILENTLY. The app
+    // ships its schema as a startup parameter when talking to Postgres directly
+    // and as a role default when talking through PgBouncer; if either is missing
+    // the connection still opens, still authenticates, and then resolves every
+    // unqualified table name against `public` — where none of them are. That is
+    // not a connection error, it is a wrong answer, and nothing else in this
+    // script would notice.
+    const { rows } = await client.query(
+      "SELECT current_database() AS db, current_user AS role, current_schema() AS schema",
+    );
     return rows[0];
   });
 
@@ -104,9 +115,22 @@ async function main() {
     clearTimeout(timer);
   }
 
+  // A connection on the wrong schema is a FAILURE, not a note. See above.
+  if (row.schema !== "live") {
+    fail(
+      1,
+      `tenant "${SLUG}" connected but landed on schema "${row.schema}", expected "live"`,
+      "Every tenant table is in `live`; on `public` the connection works and every query fails. " +
+        "Direct to Postgres this comes from the pool's startup parameter; through PgBouncer it comes " +
+        "from `ALTER ROLE ... IN DATABASE ... SET search_path`, applied by ensureTenantRole() — a " +
+        "tenant provisioned before that ran needs `npm run db:creds:backfill`.",
+    );
+  }
+
   const totalMs = Date.now() - started;
   console.warn(
-    `tenant-smoke OK: ${SLUG} → db=${row.db} role=${row.role} ` +
+    `tenant-smoke OK: ${SLUG} → db=${row.db} role=${row.role} schema=${row.schema}` +
+      `${config.TENANT_DB_POOLER_HOST ? ` via pooler ${config.TENANT_DB_POOLER_HOST}` : " direct"} ` +
       `(resolve ${resolvedMs}ms, total ${totalMs}ms, budget ${TIMEOUT_MS}ms)`,
   );
 

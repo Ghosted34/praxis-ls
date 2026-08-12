@@ -84,11 +84,20 @@ function columnsOfDossier() {
       }
     }
 
-    // ALTER TABLE dossier ADD COLUMN [IF NOT EXISTS] <name> ...
-    for (const m of sql.matchAll(
-      /ALTER\s+TABLE\s+dossier\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi,
-    )) {
-      cols.add(m[1]);
+    // ALTER TABLE dossier ADD COLUMN [IF NOT EXISTS] <name> …[, ADD COLUMN …];
+    //
+    // Read the WHOLE statement, not just its first clause. Postgres takes a
+    // comma-separated list of actions in one ALTER TABLE, and 0660 adds nine
+    // columns that way — only the first of which follows the literal text
+    // "ALTER TABLE dossier ADD COLUMN". Matching per-clause instead of
+    // per-statement reported the other eight as phantom columns, which is the
+    // "teach the reader the new shape" failure this function's header predicts.
+    for (const stmt of sql.matchAll(/ALTER\s+TABLE\s+dossier\b([\s\S]*?);/gi)) {
+      for (const m of stmt[1].matchAll(
+        /\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi,
+      )) {
+        cols.add(m[1]);
+      }
     }
 
     // The same, inside a DO block: EXECUTE 'ALTER TABLE dossier ADD COLUMN x t'
@@ -98,8 +107,11 @@ function columnsOfDossier() {
       cols.add(m[1]);
     }
 
-    for (const m of sql.matchAll(/ALTER\s+TABLE\s+dossier\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
-      cols.delete(m[1]);
+    // Same shape for drops — a multi-clause ALTER can drop several at once.
+    for (const stmt of sql.matchAll(/ALTER\s+TABLE\s+dossier\b([\s\S]*?);/gi)) {
+      for (const m of stmt[1].matchAll(/\bDROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
+        cols.delete(m[1]);
+      }
     }
   }
   return cols;

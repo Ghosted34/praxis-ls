@@ -37,6 +37,16 @@ const WRITABLE = new Set([
   // The carrier this job moves on (MOD-10 rate_provider) — feeds every
   // costing line's expense-rate lookup for the dossier.
   "rate_provider_id",
+  // Cargo, promoted onto the dossier by 0660 because every service type has it
+  // and every printed document reads it. Written through the shipment-details
+  // service (a field definition binds to the column), never typed in by hand.
+  "commodity", "commodity_desc", "gross_weight", "weight_unit",
+  "package_count", "volume_cbm", "marks_numbers", "place_receipt", "place_delivery",
+  // Which VERSION of its service type's detail form this file was created
+  // against. Set once, on create; it is what keeps an open file rendering and
+  // validating against the form it was opened with after the form is
+  // republished (0660).
+  "service_type_field_set_id",
 ]);
 
 const insert = (client, data) => insertOne(client, "dossier", data, "*", WRITABLE);

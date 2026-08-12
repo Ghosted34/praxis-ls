@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (258)
+## All codes (272)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -78,6 +78,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_SECRET` | 422 | 2× | — |
 | `BAD_SENDER` | 422 | 1× | — |
 | `BAD_SIGNATURE` | 422 | 1× | — |
+| `BAD_SNAPSHOT_TARGET` | 500 | 1× | — |
 | `BAD_STAGE` | 422 | 1× | — |
 | `BAD_STATE` | 400, 409, 422 | 15× | `BAD_STATUS` |
 | `BAD_STATUS` | 422 | 4× | — |
@@ -99,13 +100,16 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `COA_IS_MANAGED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
+| `COLUMN_TAKEN` | 422 | 1× | — |
 | `COMPLIANCE_BLOCKED` | 409 | 3× | — |
+| `CONTAINERS_DISABLED` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
 | `DATE_REQUIRED` | 422 | 1× | — |
 | `DOSSIER_REQUIRED` | 422 | 1× | — |
 | `DUPLICATE_CODE` | 409 | 2× | — |
-| `DUPLICATE_KEY` | 422 | 1× | — |
+| `DUPLICATE_CONTAINER` | 422 | 2× | — |
+| `DUPLICATE_KEY` | 422 | 2× | — |
 | `EMAIL_REQUIRED` | 422 | 1× | — |
 | `EMAIL_TAKEN` | 409 | 2× | — |
 | `EMPLOYEE_INACTIVE` | 422 | 1× | — |
@@ -113,6 +117,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `EMPTY_FILE` | 422 | 1× | — |
 | `EMPTY_IMAGE` | 422 | 1× | — |
 | `EMPTY_MESSAGE` | 422 | 1× | — |
+| `EMPTY_SET` | 422 | 1× | — |
 | `ENTITLEMENT_EXCEEDED` | — | 1× | — |
 | `ENTITY_NOT_IN_IDENTITY_SCHEMA` | — | 1× | — |
 | `ENTITY_REQUIRED` | 422 | 6× | — |
@@ -144,6 +149,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 13× | — |
 | `IN_USE` | 409 | 2× | — |
+| `KEY_IMMUTABLE` | 422 | 1× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LOCKED` | 422 | 14× | — |
@@ -153,6 +159,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
 | `MILESTONE_MISMATCH` | 422 | 1× | — |
 | `MISSING_FIELDS` | 422 | 1× | — |
+| `MISSING_REQUIRED_FIELDS` | — | 1× | — |
 | `NEGATIVE_STOCK` | 422 | 1× | — |
 | `NOT_ACTIVE` | 422 | 2× | — |
 | `NOT_APPROVABLE` | 400 | 1× | — |
@@ -163,7 +170,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_DONE` | 422 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 292× | — |
+| `NOT_FOUND` | 404 | 298× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -187,6 +194,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_ENTITY` | 422 | 1× | — |
 | `NO_ENTITY_REF` | 422 | 4× | — |
 | `NO_EXPENSE_ACCOUNT` | 422 | 3× | — |
+| `NO_FIELD_SET` | 422 | 1× | — |
 | `NO_FX_RATE` | 422 | 1× | — |
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 1× | — |
@@ -228,6 +236,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
+| `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 2× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_REQUIRED` | 422 | 1× | — |
@@ -235,6 +244,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
 | `RESULT_SET_TOO_LARGE` | 500 | 1× | — |
+| `RETIRED_FIELD` | 422 | 1× | — |
 | `REWARD_LOCKED` | 409 | 1× | — |
 | `ROLE_ESCALATION` | — | 1× | — |
 | `ROLE_IN_USE` | 409 | 1× | — |
@@ -265,19 +275,23 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TOKEN_EXPIRED` | 401 | 1× | — |
 | `TOO_FEW_STAGES` | 422 | 1× | — |
 | `TOO_MANY_STAGES` | 422 | 2× | — |
+| `TOO_MANY_UNITS` | 422 | 1× | — |
+| `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |
 | `UNKNOWN_DOC_TYPE` | 422 | 1× | — |
 | `UNKNOWN_EVENT_TYPE` | 400 | 1× | — |
+| `UNKNOWN_FIELD` | — | 1× | — |
 | `UNKNOWN_FILTER` | — | 1× | — |
 | `UNKNOWN_JOURNAL` | 422 | 1× | — |
+| `UNKNOWN_LOAD_MODE` | 422 | 1× | — |
 | `UNKNOWN_METRIC` | 422 | 1× | — |
 | `UNKNOWN_REPORT` | 404, 422 | 4× | — |
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 114× | — |
+| `VALIDATION_ERROR` | 422 | 117× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

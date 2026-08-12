@@ -1,5 +1,7 @@
 "use strict";
 const service = require("./operations_file.service");
+const details = require("../shipment_details/shipment_details.service");
+const containers = require("../dossier_container/dossier_container.service");
 const { maskForUserVia } = require("../../../shared/rbac/field-mask");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { sendPaged } = require("../../../shared/http/paged");
@@ -16,4 +18,17 @@ module.exports = {
   // 360° modal is role-gated on money (PRD §7.3/§11.3): Sales/Ops never see margin.
   // Data on the env client; masked field_keys resolved from the identity schema.
   overview: asyncHandler(async (req, res) => res.json({ data: await maskForUserVia(req.identityDb, req.user, await req.tenantDb((c) => service.overview(c, req.params.id))) })),
+  /**
+   * The SSDC projection. `?lang=fr` picks the label language — the field
+   * definitions carry both, so a French document and an English one read the
+   * same values under different headings without either side reformatting.
+   * No money is involved, so no field mask: this is what is being shipped, not
+   * what it costs.
+   */
+  shipmentDetails: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => details.forDossier(c, req.params.id, { lang: req.query.lang })) })),
+  containers: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => containers.list(c, req.params.id)) })),
+  replaceContainers: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => containers.replace(c, { dossierId: req.params.id, lines: req.body.lines, actor: actor(req) })) })),
 };

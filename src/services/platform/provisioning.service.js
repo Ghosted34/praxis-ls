@@ -86,6 +86,26 @@ async function ensureTenantRole(slug, dbName, opts = {}) {
       );
     }
 
+    // WS-S1 PREREQUISITE — bind the live schema to the ROLE, server-side.
+    //
+    // The application currently ships its schema as a startup parameter
+    // (`options=-c search_path=...` in registry.service.js). PgBouncer REJECTS
+    // the `options` startup parameter outright, so the moment
+    // TENANT_DB_POOLER_HOST is set, every tenant connection fails. Listing
+    // `options` in `ignore_startup_parameters` is worse than the error: PgBouncer
+    // then accepts the connection and silently DISCARDS the setting, so queries
+    // run against the wrong search_path — a data fault instead of a loud one.
+    //
+    // Setting it on the role removes the question. Postgres applies it at
+    // connection time, the pooler never sees it, and it survives transaction
+    // pooling because it is not session state the pooler has to carry.
+    //
+    // Scoped IN DATABASE so one role's default cannot affect another database,
+    // and `public` is kept on the path for extensions (pgvector, pg_trgm).
+    await cli.query(
+      `ALTER ROLE "${role}" IN DATABASE "${dbName}" SET search_path = live, public`,
+    );
+
     // Vault write LAST: a stored credential must never describe a role that
     // does not exist or cannot connect. If anything above threw, nothing was
     // stored and the tenant keeps using the shared credential.

@@ -34,7 +34,16 @@
 "use strict";
 
 const { spawn } = require("child_process");
-const platformDb = require("./db");
+// INCIDENT 2026-08-12 — this service is BACKGROUND work, so it draws from the
+// ops pool, not the pool that serves requests. Sharing one pool let the fleet
+// sweeps exhaust the connections tenant logins needed for credential
+// resolution, and every tenant login timed out. A sweep may be slow; it may
+// not make a user request slow. See services/platform/db.js.
+const _db = require("./db");
+// Resolved per call, and tolerant of a double that stubs only `query`: the
+// unit tests replace this whole module, and which POOL a query used is not
+// what they are asserting — the SQL is. Production always exports both.
+const platformDb = { query: (t, p) => (_db.opsQuery || _db.query)(t, p) };
 const store = require("./backup-storage.service");
 const runtimeConfig = require("./runtime-config.service");
 const registry = require("../tenant/registry.service");

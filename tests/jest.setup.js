@@ -1,5 +1,27 @@
 "use strict";
 
+/**
+ * Do not read the developer's `.env` at all.
+ *
+ * This file has always tried to isolate the suite from a local `.env` — see the
+ * two lists below — but could not actually do it. Both techniques operate on
+ * `process.env` BEFORE `src/config/env.js` is required, and that module's first
+ * statement is `dotenv.config()`, which puts every deleted key straight back
+ * from the file. So the isolation held for whatever ran first and leaked for
+ * everything after.
+ *
+ * The symptom was a suite that passed in CI and failed on a configured machine:
+ * `MAIL_FALLBACK_DOMAIN=nmail.praxisls.com` broke mail-fallback.test.js, and a
+ * real `PG_DUMP_BIN` broke the backup preflight tests — both pointing at code
+ * nobody had touched. CI has no `.env` file, which is precisely why it never saw
+ * either.
+ *
+ * `env.js` honours this flag and skips the load. A local run now behaves exactly
+ * like CI. The two lists below are kept because they also cover variables passed
+ * through the real environment rather than a file.
+ */
+process.env.PRAXIS_SKIP_DOTENV = "1";
+
 // Deterministic env for unit tests: development mode with dev-safe secrets so
 // modules that read config at require-time don't trip the production guard.
 process.env.NODE_ENV = process.env.NODE_ENV || "test";

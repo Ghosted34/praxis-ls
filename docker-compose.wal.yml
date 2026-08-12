@@ -71,8 +71,22 @@ services:
     #
     # `|| exit 1` matters: without it a missing node binary exits 127 and some
     # shells still report success, silently discarding WAL.
+    # max_connections IS REPEATED FROM THE BASE FILE, and has to be.
+    #
+    # Compose REPLACES `command` when overlaying rather than merging it, so
+    # everything the base file passes is dropped the moment this overlay is used.
+    # The base sets `max_connections` (INCIDENT 2026-08-12: it was never set at
+    # all, Postgres ran on the default 100, and the app was configured to open
+    # several times that) — so enabling WAL archiving would silently put the
+    # server back on 100 with nothing in the diff to say so.
+    #
+    # The boot check in src/config/connection-budget.js would catch it, which is
+    # the point of having it. Better still is not to break it: any setting added
+    # to the base file's command must be added here too.
     command:
       - "postgres"
+      - "-c"
+      - "max_connections=${POSTGRES_MAX_CONNECTIONS:-300}"
       - "-c"
       - "wal_level=replica"
       - "-c"

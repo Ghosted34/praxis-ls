@@ -44,6 +44,15 @@ const PROCESSORS = [
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
   { name: "health-collect", concurrency: 1, handler: require("./handlers/health-collect") },
+  // Backup + restore rehearsal (§3.2, WS-B1/B3). concurrency 1 is not a
+  // throughput choice: parallel pg_dumps multiply I/O on a shared Postgres host,
+  // and the entire reason this runs at 01:00 is to be cheap. A fleet backup that
+  // saturates the disk is an outage with good intentions.
+  { name: "backup-run", concurrency: 1, handler: require("./handlers/backup-run") },
+  // Kaizen ops sweeps (§3.1/§3.4/§3.5): per-tenant health, uptime probing,
+  // alert evaluation, retention. concurrency 1 — two concurrent health sweeps
+  // would write two samples per interval per tenant and double-count.
+  { name: "ops-sweep", concurrency: 1, handler: require("./handlers/ops-sweep") },
   // Register queues here as each phase lands its jobs. Example:
   // { name: "pdf", concurrency: 2, handler: async (job) => require("../services/pdf").render(job.data) },
 ];
@@ -257,6 +266,168 @@ async function scheduleRecurring() {
     });
     logger.info({ pattern: fxCron, tz: config.FX_SYNC_TZ || "UTC" }, "fx sync scheduler registered");
   }
+
+  // Nightly fleet backup (§3.2, WS-B1). Wall-clock cron for the same reason as
+  // the error purge: D4's RPO is a promise about hours of data loss, and an
+  // interval-based repeat drifts off the quiet window after every restart.
+  const backupCron = config.BACKUP_CRON;
+  if (!backupCron) {
+    logger.warn(
+      "NIGHTLY BACKUP DISABLED (BACKUP_CRON empty) — tenants have no scheduled backup",
+    );
+  } else {
+    await enqueue("backup-run", "fleet", {}, {
+      repeat: { pattern: backupCron, tz: "UTC" },
+      removeOnComplete: true,
+      // Backup failures are kept far longer than other jobs': the history of
+      // which nights failed is the record that answers "how far back can we
+      // actually restore this tenant".
+      removeOnFail: 200,
+    });
+    // Retention runs two hours after the backup, not alongside it: pruning
+    // before the night's dump has landed would delete the old copy that the
+    // failed new one was meant to replace.
+    const [min, hour, ...rest] = backupCron.split(" ");
+    const pruneCron = [min, String((Number(hour) + 2) % 24), ...rest].join(" ");
+    await enqueue("backup-run", "prune", {}, {
+      repeat: { pattern: pruneCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 20,
+    });
+    logger.info({ pattern: backupCron, prune: pruneCron }, "nightly fleet backup registered");
+
+    // Object storage offsite sync (WS-B2). A Postgres dump does not cover vault
+    // documents — the rows survive while the bytes they point at are gone —
+    // so this runs on the same nightly cadence, one hour after the DB backup.
+    const [oMin, oHour, ...oRest] = backupCron.split(" ");
+    const objectCron = [oMin, String((Number(oHour) + 1) % 24), ...oRest].join(" ");
+    await enqueue("backup-run", "objects", {}, {
+      repeat: { pattern: objectCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 200,
+    });
+
+    // Integrity scan (WS-B4). Weekly, not nightly: it reads every object's
+    // bytes to re-hash them, which is far heavier than the sync and only needs
+    // to run often enough to catch corruption BEFORE a restore needs the file.
+    await enqueue("backup-run", "scan", {}, {
+      repeat: { pattern: `${oMin} ${(Number(oHour) + 3) % 24} * * 0`, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 200,
+    });
+    logger.info({ objects: objectCron }, "object sync + weekly integrity scan registered");
+
+    // WAL archive health (WS-B1 layer 2). Every 15 minutes, NOT nightly: this
+    // is the check that protects a 5-minute recovery objective, and a check
+    // that runs once a day can only ever tell you the archive died sometime in
+    // the last 24 hours — which is the very window the archive exists to
+    // shorten. archive_command itself writes no bookkeeping (it sits on the
+    // Postgres host's critical path), so a dead archiver is invisible until
+    // this runs.
+    if (config.WAL_ARCHIVE_ENABLED) {
+      await enqueue("backup-run", "wal", {}, {
+        repeat: { every: 15 * 60_000 },
+        removeOnComplete: true,
+        removeOnFail: 200,
+      });
+      // The lag limit itself is vault-first and read per check, so it is not
+      // logged here — a value printed at registration would go stale the moment
+      // someone changed it in the console.
+      logger.info("WAL archive health check registered (every 15m)");
+    } else {
+      logger.info(
+        "WAL archiving is OFF (WAL_ARCHIVE_ENABLED=false) — recovery is limited to the nightly dump, so the real RPO is 24h",
+      );
+    }
+  }
+
+  // Monthly restore rehearsal (§3.2, WS-B3). On by default: an unrehearsed
+  // backup is the exact thing §3.2 identifies as not being a backup at all.
+  const drillCron = config.RESTORE_DRILL_CRON;
+  if (!drillCron) {
+    logger.warn(
+      "RESTORE DRILL DISABLED (RESTORE_DRILL_CRON empty) — backups will never be verified by restore",
+    );
+  } else {
+    await enqueue("backup-run", "drill", {}, {
+      repeat: { pattern: drillCron, tz: "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 200,
+    });
+    logger.info({ pattern: drillCron }, "monthly restore drill registered");
+  }
+
+  // Per-tenant health sweep (§3.1, WS-H1/H2). This is the one that catches the
+  // failure fleet-wide metrics are structurally blind to: the process is up,
+  // thirty-nine tenants are fine, and one tenant's database is wedged.
+  const tenantHealthEvery = config.TENANT_HEALTH_INTERVAL_MS;
+  if (!tenantHealthEvery || tenantHealthEvery <= 0) {
+    logger.info("per-tenant health sweep disabled (TENANT_HEALTH_INTERVAL_MS=0)");
+  } else {
+    await enqueue("ops-sweep", "health", {}, {
+      repeat: { every: tenantHealthEvery },
+      removeOnComplete: true,
+      removeOnFail: 20,
+    });
+    logger.info({ every: tenantHealthEvery }, "per-tenant health sweep registered");
+  }
+
+  // Uptime probing (§3.4, WS-U1). The interval is also the denominator of the
+  // availability figure, so changing it changes what past percentages mean.
+  //
+  // UPTIME_PROBE_IN_PROCESS is the switch, NOT the interval. Once
+  // scripts/ops/uptime-probe.js runs as its own process — which is what WS-U1
+  // actually asks for, since a prober inside the API cannot observe the API
+  // being down — set it false. Leaving both on double-samples every host and
+  // inflates availability; zeroing the interval instead would stop this sweep
+  // but also redefine what every past percentage meant.
+  const uptimeEvery = config.UPTIME_PROBE_INTERVAL_MS;
+  if (!config.UPTIME_PROBE_IN_PROCESS) {
+    logger.info("in-process uptime probing off (UPTIME_PROBE_IN_PROCESS=false) — expecting the external prober");
+  } else if (!uptimeEvery || uptimeEvery <= 0) {
+    logger.info("uptime probing disabled (UPTIME_PROBE_INTERVAL_MS=0)");
+  } else {
+    await enqueue("ops-sweep", "uptime", {}, {
+      repeat: { every: uptimeEvery },
+      removeOnComplete: true,
+      removeOnFail: 20,
+    });
+    logger.info({ every: uptimeEvery }, "uptime probe registered (in-process)");
+  }
+
+  // Alert evaluation (§3.3, WS-ER1). Deliberately far less frequent than the
+  // sweeps that feed it: measure often, notify rarely. A channel that repeats
+  // the same RED tenant every five minutes is a channel people mute, and a
+  // muted channel is the same as no alerting at all.
+  await enqueue("ops-sweep", "alert", {}, {
+    repeat: { every: Number(config.OPS_ALERT_INTERVAL_MS || 1_800_000) },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+
+  // Usage metering (§5, WS-S3). Hourly, not per-request: enforcement reads
+  // these figures, and re-counting seats or re-summing an AI ledger on every
+  // action would put a cross-database query on the critical path of the exact
+  // operations a busy tenant does most.
+  //
+  // The trade is stated where it is enforced: a tenant can sit slightly over a
+  // hard limit between sweeps. Hourly keeps that overshoot to a unit or two,
+  // and the seat path — the one that matters commercially — takes a live count
+  // anyway, because there the accuracy is free.
+  await enqueue("ops-sweep", "usage", {}, {
+    repeat: { every: Number(config.USAGE_METER_INTERVAL_MS || 3_600_000) },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+  logger.info("usage metering registered");
+
+  // Ops retention shares the 02:00 UTC slot with the other purges.
+  await enqueue("ops-sweep", "purge", {}, {
+    repeat: { pattern: "0 2 * * *", tz: "UTC" },
+    removeOnComplete: true,
+    removeOnFail: 20,
+  });
+  logger.info("ops alert evaluation + retention registered");
 }
 
 async function shutdown(sig) {

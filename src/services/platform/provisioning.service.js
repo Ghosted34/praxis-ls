@@ -4,12 +4,131 @@
  */
 "use strict";
 
+const crypto = require("crypto");
 const argon2 = require("argon2");
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const m = require("./migrator");
 const { mirrorUsersIntoSandbox } = require("../../shared/db/sandbox-user-mirror");
 const passwordPolicy = require("../../shared/security/password-policy");
+const dbCredentials = require("../tenant/db-credential.service");
+
+/** The cluster-wide Postgres role name for a tenant. Roles are not per-database. */
+const tenantRoleName = (slug) => `praxis_${slug}`;
+
+/**
+ * WS-S2 — give this tenant its own Postgres role and password.
+ *
+ * Creates (or rotates) a least-privilege role scoped to exactly one tenant
+ * database, stores the password in the platform vault, and returns the role name
+ * so the caller can record it on `platform.tenant_database.app_role`.
+ *
+ * THE PART THAT ACTUALLY CREATES ISOLATION is the `REVOKE CONNECT ... FROM
+ * PUBLIC`. Postgres grants CONNECT on every database to PUBLIC by default, so
+ * creating one role per tenant achieves nothing on its own — every tenant role
+ * could still open every tenant database. Revoking PUBLIC and granting CONNECT
+ * back to only this tenant's role (plus the superuser, which bypasses grants) is
+ * what makes the negative test pass.
+ *
+ * Idempotent: safe to re-run, which is what makes it usable both at provision
+ * time and as the backfill/rotation path for existing tenants.
+ */
+async function ensureTenantRole(slug, dbName, opts = {}) {
+  const rotate = opts.rotate === true;
+  const role = tenantRoleName(slug);
+
+  // Existing tenants already have a credential; provisioning must not silently
+  // rotate one out from under a running pool unless explicitly asked.
+  if (!rotate && (await dbCredentials.hasOwnCredential(slug))) {
+    logger.info({ slug, role }, "tenant DB role already provisioned — leaving credential in place");
+    return { role, rotated: false };
+  }
+
+  // URL-safe, no quoting hazards in a DDL string literal.
+  const password = crypto.randomBytes(24).toString("base64url");
+
+  const cli = m.client(dbName, { superuser: true });
+  await cli.connect();
+  try {
+    // CREATE ROLE is cluster-wide; running it from the tenant DB is fine.
+    const { rows } = await cli.query("SELECT 1 FROM pg_roles WHERE rolname=$1", [role]);
+    if (rows.length === 0) {
+      await cli.query(`CREATE ROLE "${role}" LOGIN PASSWORD '${password}'`);
+      logger.info({ slug, role }, "created tenant DB role");
+    } else {
+      await cli.query(`ALTER ROLE "${role}" LOGIN PASSWORD '${password}'`);
+      logger.info({ slug, role }, "rotated tenant DB role password");
+    }
+
+    // Close the default-open door, then let exactly this role back in.
+    await cli.query(`REVOKE CONNECT ON DATABASE "${dbName}" FROM PUBLIC`);
+    await cli.query(`GRANT CONNECT ON DATABASE "${dbName}" TO "${role}"`);
+
+    // The API's working set: both schemas, existing objects and future ones.
+    // Default privileges are attributed to the role that CREATES the object —
+    // migrations run as the superuser, so they must be declared FOR that role.
+    const superuser = config.TENANT_DB_SUPERUSER;
+    for (const schema of ["live", "sandbox", "public"]) {
+      await cli.query(`GRANT USAGE ON SCHEMA "${schema}" TO "${role}"`);
+      await cli.query(
+        `GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA "${schema}" TO "${role}"`,
+      );
+      await cli.query(
+        `GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA "${schema}" TO "${role}"`,
+      );
+      await cli.query(
+        `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
+          `GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO "${role}"`,
+      );
+      await cli.query(
+        `ALTER DEFAULT PRIVILEGES FOR ROLE "${superuser}" IN SCHEMA "${schema}" ` +
+          `GRANT USAGE, SELECT ON SEQUENCES TO "${role}"`,
+      );
+    }
+
+    // Vault write LAST: a stored credential must never describe a role that
+    // does not exist or cannot connect. If anything above threw, nothing was
+    // stored and the tenant keeps using the shared credential.
+    await dbCredentials.putCredential(slug, password, opts.actorId || null);
+
+    // AND the registry must be told which role that password belongs to.
+    //
+    // Missing this is not a cosmetic gap, it is a tenant outage. The pool takes
+    // its USERNAME from `tenant_database.app_role` and its PASSWORD from the
+    // vault. Store one without the other and the pool authenticates as the old
+    // deploy-wide role using the new role's password — "password authentication
+    // failed", every request, immediately. A backfill that only did half of
+    // this would break each tenant as it "secured" it.
+    //
+    // Affects 0 rows during initial provisioning, because provisionTenant()
+    // calls this BEFORE inserting the tenant_database row and passes the
+    // returned role name into that insert. It is the backfill/rotation path
+    // this exists for.
+    // `cli` is connected to the TENANT database; this write is on the PLATFORM
+    // one, so it needs its own connection.
+    const pf = m.client(config.DB_NAME, { superuser: true });
+    await pf.connect();
+    let upd;
+    try {
+      upd = await pf.query(
+        `UPDATE platform.tenant_database td
+            SET app_role = $2
+           FROM platform.tenant t
+          WHERE t.tenant_id = td.tenant_id AND t.slug = $1::text`,
+        [slug, role],
+      );
+    } finally {
+      await pf.end();
+    }
+    if (upd.rowCount > 0) {
+      logger.info({ slug, role }, "tenant_database.app_role repointed at the new role");
+    }
+
+    return { role, rotated: true };
+  } finally {
+    await cli.end();
+  }
+}
 
 async function migratePlatform() {
   logger.info("[praxis-db] migrating platform database...");
@@ -74,6 +193,23 @@ async function provisionTenant(input) {
   await m.ensureDatabase(dbName);
   await migrateTenantDb(dbName);
 
+  // WS-S2: give this tenant its own DB role + password before the platform row
+  // is written, so `app_role` records the role that actually exists. Outside the
+  // transaction below for the same reason CREATE DATABASE is — role DDL and the
+  // vault write are not rollback-able by a transaction on another connection.
+  // A failure here is non-fatal: the tenant provisions and falls back to the
+  // shared credential, and `ensureTenantRole` is idempotent so a re-run fixes it.
+  let appRole = config.TENANT_DB_APP_ROLE;
+  try {
+    const provisioned = await ensureTenantRole(slug, dbName, { actorId });
+    appRole = provisioned.role;
+  } catch (err) {
+    logger.error(
+      { err, slug, dbName },
+      "tenant DB role provisioning failed — tenant will use the shared credential until reprovisioned",
+    );
+  }
+
   const pf = m.client(config.DB_NAME, { superuser: true });
   await pf.connect();
   let tenantId;
@@ -114,13 +250,16 @@ async function provisionTenant(input) {
 
     await pf.query(
       "INSERT INTO platform.tenant_database (tenant_id, db_host, db_port, db_name, app_role, secret_ref) " +
-        "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (db_host, db_port, db_name) DO NOTHING",
+        "VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (db_host, db_port, db_name) " +
+        // WS-S2: a reprovision that (re)created the role must update app_role,
+        // or the registry keeps connecting as the old deploy-wide role.
+        "DO UPDATE SET app_role = EXCLUDED.app_role, secret_ref = EXCLUDED.secret_ref",
       [
         tenantId,
         config.TENANT_DB_HOST_DEFAULT,
         config.TENANT_DB_PORT_DEFAULT,
         dbName,
-        config.TENANT_DB_APP_ROLE,
+        appRole,
         `vault:tenant/${slug}/db-password`,
       ],
     );
@@ -417,6 +556,26 @@ async function fleetSchemaStatus() {
            FROM public.schema_migration GROUP BY scope ORDER BY scope`,
       );
       const live = rows.find((r) => r.scope === "live") || { applied: 0, latest: null };
+
+      // WS-S4. The count above answers "has this tenant run every file"; it
+      // cannot answer "is the file it ran still the file on disk". A migration
+      // edited after it was applied never re-runs — the ledger keys on filename
+      // — so the count is identical while the schemas have diverged. This is
+      // the only check that sees it.
+      //
+      // Isolated in its own try/catch DELIBERATELY. The count check is the
+      // primary signal and gates deploys; this one is newer and secondary, and
+      // it must not be able to take the primary down. Without this, a single
+      // unexpected ledger row throws, the tenant is reported UNREACHABLE, and a
+      // perfectly healthy fleet reads as drifted — failing a deploy for the
+      // wrong reason, which is worse than not having the check.
+      let content = { drifted: [], unhashed: [] };
+      try {
+        content = await m.contentDrift(cli, "live");
+      } catch (err) {
+        logger.warn({ err, slug }, "content-drift check failed — schema counts are still authoritative");
+      }
+
       out.push({
         slug,
         applied: live.applied,
@@ -424,6 +583,10 @@ async function fleetSchemaStatus() {
         latest: live.latest,
         last_applied_at: live.last_applied_at || null,
         behind: expected - live.applied,
+        content_drifted: content.drifted,
+        // Rows applied before the hash column existed. Reported apart from
+        // drift because "cannot tell" is not "changed".
+        unhashed: content.unhashed.length,
         scopes: rows,
       });
     } catch (err) {
@@ -436,13 +599,22 @@ async function fleetSchemaStatus() {
 
   const behind = out.filter((t) => t.behind > 0);
   const unreachable = out.filter((t) => t.error);
+  const contentDrifted = out.filter((t) => (t.content_drifted || []).length > 0);
+
   return {
     expected,
     tenants: out,
-    // `drifted` is the single fact a deploy or a health probe wants.
-    drifted: behind.length > 0 || unreachable.length > 0,
+    // `drifted` is the single fact a deploy or a health probe wants. Content
+    // drift counts: a tenant running an edited version of a migration everyone
+    // else ran the original of is drifted in the way that actually bites, even
+    // though its file count is perfect.
+    drifted: behind.length > 0 || unreachable.length > 0 || contentDrifted.length > 0,
     behind: behind.map((t) => t.slug),
     unreachable: unreachable.map((t) => t.slug),
+    content_drifted: contentDrifted.map((t) => ({
+      slug: t.slug,
+      files: t.content_drifted.map((d) => d.filename),
+    })),
   };
 }
 
@@ -616,6 +788,8 @@ async function audit(pf, actorId, tenantId, action, entityRef, payload) {
 module.exports = {
   migratePlatform,
   provisionTenant,
+  ensureTenantRole,
+  tenantRoleName,
   migrateTenant,
   migrateAllTenants,
   fleetSchemaStatus,

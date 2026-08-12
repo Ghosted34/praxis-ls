@@ -380,19 +380,39 @@ function installProcessGuards() {
  * unconfigured alert channel and a working one are indistinguishable right up
  * until the night they aren't.
  */
-function warnIfUnmonitored() {
-  if (!config.ALERT_WEBHOOK_URL && !config.ALERT_EMAIL) {
+async function warnIfUnmonitored() {
+  // Env alone is no longer the answer: WS-ER1 moved the destination into the
+  // platform settings vault, written from Platform Console → Integrations →
+  // Alerts, with env as the fallback. Warning on the env vars alone would cry
+  // wolf at every boot of a correctly-configured deployment — and a boot warning
+  // people learn to ignore is worse than none, because it is the warning that
+  // has to still work on the night it matters.
+  let vaultConfigured = false;
+  try {
+    const alerts = require("./services/platform/alert-routing.service");
+    vaultConfigured = Boolean(await alerts.destinationFor("page"));
+  } catch (err) {
+    // The platform DB may not be reachable this early. Fall through to the env
+    // check rather than failing boot over a warning.
+    logger.debug({ err }, "could not read alert destination from the vault at boot");
+  }
+
+  if (!vaultConfigured && !config.ALERT_WEBHOOK_URL && !config.ALERT_EMAIL) {
     logger.warn(
       {},
-      "NO ALERT DESTINATION CONFIGURED — set ALERT_WEBHOOK_URL or ALERT_EMAIL. " +
-        "Nothing will notify anyone when this process fails. See doc/MONITORING_SETUP.md",
+      "NO ALERT DESTINATION CONFIGURED — set one in Platform Console → Integrations → Alerts " +
+        "(or ALERT_WEBHOOK_URL / ALERT_EMAIL as a fallback). Nothing will notify anyone when " +
+        "this process fails, a backup fails, or a restore drill fails. See doc/MONITORING_SETUP.md",
     );
   }
 }
 
 function start() {
   installProcessGuards();
-  warnIfUnmonitored();
+  // Not awaited: it reads the platform DB, and boot must not block on a warning.
+  // A rejection here would be an unhandled rejection over a log line, so it is
+  // caught and dropped — the check is best-effort by design.
+  warnIfUnmonitored().catch(() => {});
   const app = buildApp();
   initRedis()
     // SEC-C3/H5: the auth limiters are Redis-backed so a limit of N means N

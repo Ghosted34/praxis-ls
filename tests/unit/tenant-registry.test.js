@@ -116,18 +116,36 @@ describe("tenant registry — isolation (TC-C1)", () => {
   });
 
   describe("pools are per tenant database", () => {
-    it("gives two tenants two different pools", () => {
-      const a = registry.poolFor(meta("alpha"));
-      const b = registry.poolFor(meta("beta"));
+    it("gives two tenants two different pools", async () => {
+      const a = await registry.poolFor(meta("alpha"));
+      const b = await registry.poolFor(meta("beta"));
       expect(a).not.toBe(b);
       expect(a.opts.database).toBe("tenant_alpha");
       expect(b.opts.database).toBe("tenant_beta");
     });
 
-    it("reuses one pool for repeated access to the same tenant", () => {
-      const first = registry.poolFor(meta("alpha"));
-      const second = registry.poolFor(meta("alpha"));
+    it("reuses one pool for repeated access to the same tenant", async () => {
+      const first = await registry.poolFor(meta("alpha"));
+      const second = await registry.poolFor(meta("alpha"));
       expect(first).toBe(second);
+      expect(POOLS).toHaveLength(1);
+    });
+
+    /**
+     * WS-S2 made pool creation async (it resolves the tenant's credential from
+     * the platform vault). Without an in-flight guard, two concurrent first
+     * requests for the same tenant would each construct a Pool and only the
+     * last would be stored — the other's sockets leak, unreachable and never
+     * drained. This is the race the synchronous version could not have.
+     */
+    it("collapses concurrent first-requests onto a single pool", async () => {
+      const [a, b, c] = await Promise.all([
+        registry.poolFor(meta("alpha")),
+        registry.poolFor(meta("alpha")),
+        registry.poolFor(meta("alpha")),
+      ]);
+      expect(a).toBe(b);
+      expect(b).toBe(c);
       expect(POOLS).toHaveLength(1);
     });
 
@@ -189,8 +207,8 @@ describe("tenant registry — isolation (TC-C1)", () => {
   });
 
   describe("pool cache is bounded and LRU (PERF S1)", () => {
-    it("evicts the least recently used pool past the cap", () => {
-      for (const n of ["a", "b", "c", "d", "e"]) registry.poolFor(meta(n));
+    it("evicts the least recently used pool past the cap", async () => {
+      for (const n of ["a", "b", "c", "d", "e"]) await registry.poolFor(meta(n));
       const stats = registry.poolStats();
       expect(stats.pools).toBe(3);
       expect(stats.cap).toBe(3);
@@ -200,17 +218,17 @@ describe("tenant registry — isolation (TC-C1)", () => {
       ]);
     });
 
-    it("does not evict a pool that was just used", () => {
-      for (const n of ["a", "b", "c"]) registry.poolFor(meta(n));
-      registry.poolFor(meta("a")); // touch — 'a' is now most recent, 'b' oldest
-      registry.poolFor(meta("d"));
+    it("does not evict a pool that was just used", async () => {
+      for (const n of ["a", "b", "c"]) await registry.poolFor(meta(n));
+      await registry.poolFor(meta("a")); // touch — 'a' is now most recent, 'b' oldest
+      await registry.poolFor(meta("d"));
       const ended = POOLS.filter((p) => p.ended).map((p) => p.opts.database);
       expect(ended).toContain("tenant_b");
       expect(ended).not.toContain("tenant_a");
     });
 
-    it("drains an evicted pool rather than leaking its sockets", () => {
-      for (const n of ["a", "b", "c", "d"]) registry.poolFor(meta(n));
+    it("drains an evicted pool rather than leaking its sockets", async () => {
+      for (const n of ["a", "b", "c", "d"]) await registry.poolFor(meta(n));
       const evicted = POOLS.find((p) => p.opts.database === "tenant_a");
       expect(evicted.ended).toBe(true);
     });
@@ -240,8 +258,8 @@ describe("tenant registry — isolation (TC-C1)", () => {
   });
 
   describe("pool statistics", () => {
-    it("reports occupancy per database without leaking credentials", () => {
-      registry.poolFor(meta("alpha"));
+    it("reports occupancy per database without leaking credentials", async () => {
+      await registry.poolFor(meta("alpha"));
       const stats = registry.poolStats();
       expect(stats.detail).toHaveLength(1);
       expect(stats.detail[0].db).toBe("tenant_alpha");

@@ -1,0 +1,39 @@
+#!/bin/sh
+# Postgres `archive_command` shim (WS-B1 layer 2).
+#
+# WHY A SHIM RATHER THAN CALLING NODE DIRECTLY FROM archive_command
+#
+#   archive_command is a shell string interpolated with %p and %f, executed by
+#   the Postgres process. Putting the whole invocation there means the config
+#   line carries paths, quoting and an env file reference — and a mistake in it
+#   surfaces only as a failing archiver on a running database, which is the
+#   worst place to debug quoting.
+#
+#   A shim keeps the Postgres config to one stable path, and puts the working
+#   directory, the env and the error handling somewhere they can be read.
+#
+# EXIT CODE IS LOAD-BEARING. Non-zero means Postgres keeps the segment and
+# retries. Reporting success on a failed upload silently discards WAL and puts
+# a hole in the archive that recovery will stop at — which is only discovered
+# at the moment you most need it not to be true.
+set -eu
+
+if [ -z "${1:-}" ] || [ -z "${2:-}" ]; then
+  echo "praxis-wal-archive: expected %p and %f" >&2
+  exit 1
+fi
+
+# The official postgres image has no node. Where node is absent the archiver
+# cannot run, and it must say so loudly rather than pretending the segment was
+# archived — see the exit-code note above.
+if ! command -v node >/dev/null 2>&1; then
+  echo "praxis-wal-archive: node not found in the postgres container — WAL is NOT being archived" >&2
+  exit 1
+fi
+
+cd /app || {
+  echo "praxis-wal-archive: /app not mounted in the postgres container" >&2
+  exit 1
+}
+
+exec node /app/scripts/db/wal-archive.js "$1" "$2"

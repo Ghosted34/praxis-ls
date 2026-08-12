@@ -17,6 +17,7 @@ const PRIMARY: Tab[] = [
   { to: "/integrations", label: "Integrations" },
 ];
 const MORE: Tab[] = [
+  { to: "/ops", label: "Ops", cap: "ops.read" },
   { to: "/error-center", label: "Errors", cap: "errors.read" },
   { to: "/roles", label: "Roles", cap: "roles.read" },
   { to: "/catalogue", label: "Catalogue" },

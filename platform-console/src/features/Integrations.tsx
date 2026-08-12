@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ChangeEvent } from "react";
 import { platform, type PlatformSetting, type SettingTestResult } from "@/lib/api";
 import { useAsync } from "@/lib/useAsync";
 import { useToast } from "@/components/Toast";
@@ -27,6 +27,8 @@ export function Integrations() {
           <GeoapifyCard row={byKey["geocoding.geoapify"]} onSaved={reload} />
           <VapidCard row={byKey["push.vapid"]} onSaved={reload} />
           <MailFallbackCard row={byKey["mail.fallback"]} onSaved={reload} />
+          <BackupStorageCard row={byKey["storage.backup"]} onSaved={reload} />
+          <AlertsCard rows={byKey} onSaved={reload} />
         </div>
       )}
       {/* AI providers are deploy-wide integrations too — one shared key set. */}
@@ -106,6 +108,208 @@ function S3Card({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }
       </div>
       <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+    </Card>
+  );
+}
+
+/* Backup storage (WS-B1) ---------------------------------------------------
+ * Where per-tenant dumps, object copies and WAL segments are written.
+ *
+ * D6: this should be a DIFFERENT provider and account from primary storage.
+ * Offsite backups only protect against an account compromise if they live
+ * outside the account that could be compromised — pointing this at the same
+ * bucket as the document vault gives you a copy, not a backup.
+ *
+ * Test is a real round trip: it writes an object, reads it back, compares the
+ * bytes and deletes it. A key that can write but not read restores nothing, and
+ * a key that cannot delete silently defeats retention — both pass a credential
+ * check and fail when it matters.
+ * ------------------------------------------------------------------------- */
+function BackupStorageCard({ row, onSaved }: { row?: PlatformSetting; onSaved: () => void }) {
+  const v = (row?.value || {}) as Record<string, string | boolean>;
+  const { toast } = useToast();
+  const [driver, setDriver] = useState(String(v.driver || "local"));
+  const [f, setF] = useState({
+    local_path: String(v.local_path || "./data/backups"),
+    endpoint: String(v.endpoint || ""),
+    bucket: String(v.bucket || ""),
+    region: String(v.region || "us-east-1"),
+    access_key: String(v.access_key || ""),
+    force_path_style: v.force_path_style !== false,
+  });
+  const [secret, setSecret] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const set = (k: keyof typeof f) => (e: ChangeEvent<HTMLInputElement>) =>
+    setF({ ...f, [k]: e.target.value });
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await platform.putSetting("storage", "backup", {
+        value: { driver, ...f },
+        secret: secret || undefined,
+      });
+      toast("Backup destination saved");
+      setSecret("");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card title="Backup storage" actions={<TestButton section="storage" keyName="backup" />}>
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+        Where tenant database dumps, vault copies and archived logs are written. Keep this in a
+        <strong> different account</strong> from primary storage — a backup inside the account it is
+        protecting against is a copy, not a backup.
+      </p>
+
+      <Field label="Destination">
+        <select value={driver} onChange={(e) => setDriver(e.target.value)}>
+          <option value="local">Local disk (single host — not offsite)</option>
+          <option value="s3">S3-compatible bucket</option>
+        </select>
+      </Field>
+
+      {driver === "local" ? (
+        <div style={{ marginTop: 12 }}>
+          <Field
+            label="Path on the host"
+            hint="Local disk is not offsite: it does not survive losing the machine. Fine for development, not for the only copy of production."
+          >
+            <input className="in" value={f.local_path} onChange={set("local_path")} />
+          </Field>
+        </div>
+      ) : (
+        <div className="stack" style={{ gap: 12, marginTop: 12 }}>
+          <div className="grid2">
+            <Field label="Bucket"><input className="in" value={f.bucket} onChange={set("bucket")} /></Field>
+            <Field label="Region"><input className="in" value={f.region} onChange={set("region")} /></Field>
+          </div>
+          <Field label="Endpoint" hint="Leave empty for AWS. Set it for Hetzner, Backblaze, Wasabi, MinIO.">
+            <input className="in" value={f.endpoint} onChange={set("endpoint")} placeholder="https://s3.example.com" />
+          </Field>
+          <div className="grid2">
+            <Field label="Access key"><input className="in" value={f.access_key} onChange={set("access_key")} /></Field>
+            <Field label="Secret key" hint={<SecretHint row={row} label="secret key" />}>
+              <input className="in" type="password" value={secret} onChange={(e) => setSecret(e.target.value)} placeholder="••••••••" />
+            </Field>
+          </div>
+          <label className="row" style={{ gap: 8, fontSize: 12.5 }}>
+            <input
+              type="checkbox"
+              checked={Boolean(f.force_path_style)}
+              onChange={(e) => setF({ ...f, force_path_style: e.target.checked })}
+            />
+            Path-style URLs (needed by MinIO and most non-AWS providers)
+          </label>
+        </div>
+      )}
+
+      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+        <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+      </div>
+    </Card>
+  );
+}
+
+/* Ops alerts (WS-ER1) ------------------------------------------------------
+ * Where a failed backup, a failed restore drill or a RED tenant goes.
+ *
+ * The webhook URL is stored as a SECRET, not as config: a Slack/Teams/Discord
+ * incoming webhook is a bearer credential — anyone holding it can post as the
+ * integration — so it is encrypted at rest and read back as last4 only, exactly
+ * like an API key.
+ *
+ * Two channels rather than one, because the alternative is a single channel
+ * that is either noisy enough to be muted or quiet enough to miss things.
+ * `page` is optional and falls back to the default when unset: a
+ * misconfiguration must degrade to "too noisy", never to "silent".
+ * ------------------------------------------------------------------------- */
+function AlertsCard({ rows, onSaved }: { rows: Record<string, PlatformSetting>; onSaved: () => void }) {
+  const { toast } = useToast();
+  const [def, setDef] = useState("");
+  const [page, setPage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  const defaultRow = rows["alerts.default"];
+  const pageRow = rows["alerts.page"];
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      if (def) await platform.putSetting("alerts", "default", { value: {}, secret: def });
+      if (page) await platform.putSetting("alerts", "page", { value: {}, secret: page });
+      toast("Alert destinations saved");
+      setDef("");
+      setPage("");
+      onSaved();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Card
+      title="Ops alerts"
+      actions={<TestButton section="alerts" keyName="default" />}
+    >
+      <p className="muted" style={{ fontSize: 12.5, marginTop: 0 }}>
+        Where failed backups, failed restore drills, corrupt documents and RED tenants are sent.
+        Until one of these is set, those events are written to a log and nobody is told.
+        <strong> Test sends a real message</strong> — check it arrives, because a webhook pasted
+        wrong looks identical to one that works right up until the night it matters.
+      </p>
+
+      <Field
+        label="Default channel"
+        hint={<SecretHint row={defaultRow} label="webhook" />}
+      >
+        <input
+          className="in"
+          type="password"
+          value={def}
+          onChange={(e) => setDef(e.target.value)}
+          placeholder="https://hooks.slack.com/services/…"
+        />
+      </Field>
+
+      <div style={{ marginTop: 12 }}>
+        <Field
+          label="Page channel (optional)"
+          hint={
+            <>
+              For <code className="tag">page</code> severity only — failed backups, failed drills,
+              corruption, a tenant that cannot serve. Leave empty and pages go to the default
+              channel. <SecretHint row={pageRow} label="webhook" />
+            </>
+          }
+        >
+          <input
+            className="in"
+            type="password"
+            value={page}
+            onChange={(e) => setPage(e.target.value)}
+            placeholder="https://hooks.slack.com/services/… (louder channel)"
+          />
+        </Field>
+      </div>
+
+      <div className="row" style={{ justifyContent: "space-between", marginTop: 12, alignItems: "center" }}>
+        <span className="muted" style={{ fontSize: 11.5 }}>
+          {pageRow?.secret_set ? "Page channel configured." : "No page channel — pages use the default."}
+        </span>
+        <div className="row" style={{ gap: 6 }}>
+          {pageRow?.secret_set && <TestButton section="alerts" keyName="page" />}
+          <Button variant="primary" onClick={save} loading={busy} disabled={!def && !page}>Save</Button>
+        </div>
       </div>
     </Card>
   );

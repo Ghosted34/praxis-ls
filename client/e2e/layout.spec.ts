@@ -391,12 +391,22 @@ test.describe("phone", () => {
     await page.setViewportSize(PHONE);
     await openScreen(page, "/finance/chart-of-accounts", /Chart of accounts/i);
 
+    // SCOPED to the selection bar rather than `getByRole("status")` alone.
+    //
+    // `role="status"` is a polite live region, and the app legitimately has
+    // more than one — the maintenance banner is also a status, sits above every
+    // route, and would be present during a scheduled window. An unscoped
+    // getByRole("status") matches whichever ones exist and fails Playwright's
+    // strict-mode check the moment a second appears, which reads as "multi-
+    // select is broken" when nothing about multi-select changed.
+    const selectionBar = page.getByRole("status").filter({ hasText: /selected/ });
+
     const first = page.getByRole("checkbox", { name: /^Select 6/ }).first();
     await expect(first).toBeVisible();
     await first.click();
-    await expect(page.getByRole("status")).toContainText("1 account selected");
+    await expect(selectionBar).toContainText("1 account selected");
 
     await page.getByRole("checkbox", { name: "Select all" }).click();
-    await expect(page.getByRole("status")).toContainText("60 accounts selected");
+    await expect(selectionBar).toContainText("60 accounts selected");
   });
 });

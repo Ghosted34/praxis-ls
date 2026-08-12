@@ -9,6 +9,8 @@
 const jwt = require("jsonwebtoken");
 const { config } = require("../config/env");
 const registry = require("../services/tenant/registry.service");
+const maintenance = require("../services/platform/maintenance.service");
+const { logger } = require("../config/logger");
 const { AppError } = require("../utils/errors");
 
 const PLATFORM_HOSTS = new Set([
@@ -90,7 +92,7 @@ async function hostTenantResolver(req, res, next) {
 async function resolveTenant(req, res, next, host) {
   try {
     const meta = await registry.resolveByHost(host);
-    return applyTenant(req, res, next, meta, `host '${host}'`);
+    return await applyTenant(req, res, next, meta, `host '${host}'`);
   } catch (err) {
     return next(err);
   }
@@ -100,14 +102,40 @@ async function resolveTenant(req, res, next, host) {
 async function resolveTenantBySlug(req, res, next, slug) {
   try {
     const meta = await registry.resolveBySlug(slug);
-    return applyTenant(req, res, next, meta, `slug '${slug}'`);
+    return await applyTenant(req, res, next, meta, `slug '${slug}'`);
   } catch (err) {
     return next(err);
   }
 }
 
-/** Apply the resolved tenant meta with the same status gates for either path. */
-function applyTenant(req, res, next, meta, label) {
+/**
+ * Requests that do not change anything.
+ *
+ * HEAD and OPTIONS are here alongside GET because a read-only window must not
+ * break CORS preflight — a blocked OPTIONS turns "you cannot save right now"
+ * into "the application is broken", which is a much worse message and a much
+ * longer support call.
+ */
+const READ_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
+/**
+ * Apply the resolved tenant meta with the same status gates for either path.
+ *
+ * WS-M1 — the read-only maintenance gate lives here, next to SUSPENDED and
+ * NOT_READY, because it is the same KIND of thing: a tenant-wide condition that
+ * every module must obey identically. Putting it here means a new module cannot
+ * forget to honour it, which is exactly what would happen if each route were
+ * responsible for checking.
+ *
+ * Reads always pass. The point of a read-only window is that the workspace
+ * stays useful — people can still look things up and run reports while the
+ * write path is parked. Blocking reads too would just be an outage with extra
+ * steps.
+ *
+ * Platform staff are unaffected: the console authenticates on its own host
+ * through `platformAuth` and never reaches this resolver.
+ */
+async function applyTenant(req, res, next, meta, label) {
   if (!meta) {
     return next(new AppError("TENANT_NOT_FOUND", `No tenant for ${label}`, 404));
   }
@@ -117,7 +145,38 @@ function applyTenant(req, res, next, meta, label) {
   if (meta.status !== "LIVE") {
     return next(new AppError("TENANT_NOT_READY", "This workspace is being provisioned.", 423));
   }
+
   req.tenant = meta;
+
+  if (!READ_METHODS.has(req.method)) {
+    try {
+      if (await maintenance.isReadOnly(meta.tenant_id)) {
+        const w = await maintenance.activeFor(meta.tenant_id);
+        // 423 Locked, matching TENANT_NOT_READY: a temporary, expected state the
+        // caller should retry after, not a client mistake (4xx) to be corrected
+        // and not a server fault (5xx) to be paged about.
+        return next(
+          new AppError(
+            "MAINTENANCE_READ_ONLY",
+            w && w.title
+              ? `${w.title} — changes are paused until maintenance finishes.`
+              : "Changes are paused while maintenance is in progress.",
+            423,
+            // Details let a client show a real countdown rather than the
+            // uselessly vague "try again later".
+            w ? { ends_at: w.ends_at, title: w.title, message: w.message } : null,
+          ),
+        );
+      }
+    } catch (err) {
+      // A maintenance lookup that fails must not take the tenant down. The
+      // whole feature is a courtesy; failing OPEN keeps the workspace working,
+      // and the alternative — a platform-DB hiccup blocking every write across
+      // the fleet — is far worse than a window that briefly fails to apply.
+      logger.error({ err, slug: meta.slug }, "maintenance read-only check failed — allowing the write");
+    }
+  }
+
   return next();
 }
 

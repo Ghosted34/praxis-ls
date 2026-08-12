@@ -30,17 +30,22 @@ const JSON_OUT = process.argv.includes("--json");
 
   console.warn(`Expected live migrations: ${status.expected}\n`);
   const w = Math.max(6, ...status.tenants.map((t) => t.slug.length));
-  console.warn(`${"tenant".padEnd(w)}  applied  behind  latest`);
-  console.warn("-".repeat(w + 40));
+  console.warn(`${"tenant".padEnd(w)}  applied  behind  edited  latest`);
+  console.warn("-".repeat(w + 48));
 
   for (const t of status.tenants) {
     if (t.error) {
       console.warn(`${t.slug.padEnd(w)}  UNREACHABLE — ${t.error}`);
       continue;
     }
-    const flag = t.behind > 0 ? " <-- BEHIND" : "";
+    // WS-S4. `edited` is the count of applied files whose CONTENT no longer
+    // matches the repo. A tenant can be perfectly up to date by count and still
+    // be running different SQL, because the ledger keys on filename and an
+    // edited file never re-applies.
+    const edited = (t.content_drifted || []).length;
+    const flag = t.behind > 0 ? " <-- BEHIND" : edited > 0 ? " <-- EDITED" : "";
     console.warn(
-      `${t.slug.padEnd(w)}  ${String(t.applied).padStart(7)}  ${String(t.behind).padStart(6)}  ${t.latest || "-"}${flag}`,
+      `${t.slug.padEnd(w)}  ${String(t.applied).padStart(7)}  ${String(t.behind).padStart(6)}  ${String(edited).padStart(6)}  ${t.latest || "-"}${flag}`,
     );
   }
 
@@ -57,6 +62,21 @@ const JSON_OUT = process.argv.includes("--json");
   if (status.unreachable.length) {
     console.warn(`${status.unreachable.length} tenant(s) unreachable: ${status.unreachable.join(", ")}`);
     console.warn("  Unreachable is not the same as behind — check the database is up before migrating.");
+  }
+  if ((status.content_drifted || []).length) {
+    console.warn("");
+    console.warn(`${status.content_drifted.length} tenant(s) ran a migration whose file has since CHANGED:`);
+    for (const t of status.content_drifted) {
+      console.warn(`  ${t.slug}: ${t.files.join(", ")}`);
+    }
+    console.warn("");
+    console.warn("  This is the drift a file COUNT cannot see. The ledger keys on filename, so an");
+    console.warn("  edited migration never re-applies — the tenant is 'up to date' while running");
+    console.warn("  different SQL from everyone else.");
+    console.warn("");
+    console.warn("  Never fix this by editing the file back and hoping. Write a NEW forward-only");
+    console.warn("  migration that reconciles the difference; migrations are never renumbered and");
+    console.warn("  never rewritten once applied anywhere.");
   }
   console.warn("");
   console.warn("A mixed fleet is not automatically an emergency, but it is never intentional.");

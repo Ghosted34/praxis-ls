@@ -391,16 +391,20 @@ Dependency- and risk-ordered; each phase ends with its workstreams' verification
 
 ---
 
-## 8. Open decisions (for review)
+## 8. Decisions — all resolved
 
-| # | Decision | Recommendation | Blocks |
+**All six decisions were signed off as recommended on 2026-08-10** (`doc/INFRASTRUCTURE_DECISIONS.md`). No workstream in this plan is decision-blocked; §7 can proceed end to end.
+
+| # | Decision | Resolution | Unblocked |
 |---|---|---|---|
-| D1 | Email domain onboarding: full Cloudflare delegation vs MX-only (§WS-E5) | Support both; default delegation; MX-only fallback | WS-E2, WS-E5 |
-| D2 | Outbound transport: CF authenticated SMTP vs REST `send_email` (§2.0/WS-E1) | SMTP first (near drop-in), REST later | WS-E1 |
-| D3 | Commit PgBouncer/transaction pooling in deployment now (§WS-S1) | Yes; prerequisites are built | WS-S1 |
-| D4 | Backup: PITR availability on the host, dump cadence, rclone destination, RPO/RTO targets (§3.2) | RPO ≤24h (≤5m w/ PITR), RTO ≤1h; rehearse before sign-off | WS-B1/B3 |
-| D5 | Entitlement scope: seats/storage/spend now vs spend-only first (§WS-S3) | Spend + seats first; storage/email next | WS-S3 |
-| D6 | Backup bucket provider/account separation & key custody (§3.2) | Independent account for offsite; Praxis-held key | WS-B1/B2 |
+| D1 | Email domain onboarding: full Cloudflare delegation vs MX-only (§WS-E5) | **Approved** — support both; default delegation; MX-only fallback | WS-E2, WS-E5 |
+| D2 | Outbound transport: CF authenticated SMTP vs REST `send_email` (§2.0/WS-E1) | **Approved** — SMTP first (near drop-in), REST later | WS-E1 |
+| D3 | Commit PgBouncer/transaction pooling in deployment now (§WS-S1) | **Approved** — deploy now; prerequisites are built | WS-S1 |
+| D4 | Backup: PITR availability on the host, dump cadence, rclone destination, RPO/RTO targets (§3.2) | **Approved** — RPO ≤24h (≤5m w/ PITR), RTO ≤1h; rehearse before sign-off | WS-B1/B3 |
+| D5 | Entitlement scope: seats/storage/spend now vs spend-only first (§WS-S3) | **Approved** — spend + seats first; storage/email next | WS-S3 |
+| D6 | Backup bucket provider/account separation & key custody (§3.2) | **Approved** — independent account for offsite; Praxis-held key | WS-B1/B2 |
+
+Two carry-forward notes from sign-off: the ≤5 min RPO in D4 holds **only where WAL archiving is available**, which still depends on the Postgres host (confirm at WS-B1 build time); and D3's pooler must be configured for the per-tenant roles introduced by **WS-S2**, so S2 should land first or PgBouncer's auth config must anticipate it.
 
 ---
 

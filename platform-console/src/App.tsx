@@ -15,6 +15,11 @@ import { Support } from "@/features/Support";
 import { Integrations } from "@/features/Integrations";
 import { ErrorCenter } from "@/features/ErrorCenter";
 import { ErrorCenterSettings } from "@/features/ErrorCenterSettings";
+import { OpsHealth } from "@/features/ops/OpsHealth";
+import { OpsBackups } from "@/features/ops/OpsBackups";
+import { OpsUptime } from "@/features/ops/OpsUptime";
+import { OpsMaintenance } from "@/features/ops/OpsMaintenance";
+import { OpsUsage } from "@/features/ops/OpsUsage";
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const loc = useLocation();
@@ -45,6 +50,14 @@ export default function App() {
       <Route path="/error-center/settings" element={<RequireAuth><ErrorCenterSettings /></RequireAuth>} />
       <Route path="/admin/error-center" element={<Navigate to="/error-center" replace />} />
       <Route path="/admin/error-center/settings" element={<Navigate to="/error-center/settings" replace />} />
+      {/* Kaizen ops (INFRASTRUCTURE_PLAN §3). Four routes rather than one page
+          with tabs: they answer different questions at different moments, and a
+          single route would run all four sets of queries on every visit. */}
+      <Route path="/ops" element={<RequireAuth><OpsHealth /></RequireAuth>} />
+      <Route path="/ops/backups" element={<RequireAuth><OpsBackups /></RequireAuth>} />
+      <Route path="/ops/uptime" element={<RequireAuth><OpsUptime /></RequireAuth>} />
+      <Route path="/ops/maintenance" element={<RequireAuth><OpsMaintenance /></RequireAuth>} />
+      <Route path="/ops/usage" element={<RequireAuth><OpsUsage /></RequireAuth>} />
       <Route path="/audit" element={<RequireAuth><Audit /></RequireAuth>} />
       <Route path="/support" element={<RequireAuth><Support /></RequireAuth>} />
       <Route path="*" element={<Navigate to={session.token ? "/overview" : "/login"} replace />} />

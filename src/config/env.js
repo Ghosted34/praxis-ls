@@ -139,6 +139,30 @@ const Schema = z.object({
   TENANT_DB_POOLER_HOST: z.string().default(""),
   TENANT_DB_POOLER_PORT: int(0),
 
+  // WS-S2. How long a decrypted per-tenant DB credential is cached in-process.
+  // Pool creation is rare, but eviction under TENANT_POOL_CACHE_MAX means a busy
+  // fleet re-creates pools steadily, and each one would otherwise cost a
+  // platform-DB round trip plus a decrypt. Short, so a rotation takes effect
+  // without a restart; `dbCredentials.invalidate()` makes it immediate.
+  //
+  // Declared here because db-credential.service.js reads it off `config` — an
+  // undeclared key is stripped by the schema, so without this line the variable
+  // could be set in .env and silently do nothing.
+  TENANT_DB_CRED_TTL_MS: int(60_000),
+
+  // WS-S1 — the PgBouncer auth_query lookup role. Read by
+  // scripts/db/setup-pgbouncer-auth.js, which creates the role and the
+  // SECURITY DEFINER function the pooler authenticates through. The password
+  // must match what the pgbouncer container is given, or every pooled
+  // connection fails auth in a way that looks like a Postgres outage.
+  //
+  // The pool SIZING knobs (max_client_conn, default_pool_size, and so on) are
+  // deliberately NOT here: they are consumed by docker-compose and the
+  // pgbouncer entrypoint, never by this application, and declaring config the
+  // app cannot act on is how a template becomes folklore.
+  PGBOUNCER_AUTH_USER: z.string().default("pgbouncer"),
+  PGBOUNCER_AUTH_PASSWORD: z.string().default(""),
+
   // PERF S10. The host->tenant cache is keyed by the Host header, which any
   // client controls, and had no bound at all. 5,000 entries is far above a
   // real deployment's subdomain count and far below a memory problem.
@@ -226,6 +250,113 @@ const Schema = z.object({
   // Path-style (bucket in the path, not the host) — required for MinIO and most
   // S3-compatible providers; virtual-hosted style is the AWS default.
   S3_FORCE_PATH_STYLE: bool(true),
+
+  // ── Backups (INFRASTRUCTURE_PLAN §3.2, WS-B1/B3; decision D6) ────────────
+  //
+  // DELIBERATELY SEPARATE FROM THE STORAGE_* / S3_* SETTINGS ABOVE, and that
+  // separation is the entire security property, not a naming preference. D6
+  // ratified that offsite backups live in an INDEPENDENT provider/account from
+  // primary storage: backups that share a credential with the thing they are
+  // backing up do not survive the compromise of that credential, which is one
+  // of the scenarios they exist for. Pointing BACKUP_S3_* at the same bucket as
+  // S3_* is a supported configuration only for local development.
+  BACKUP_DRIVER: z.enum(["local", "s3"]).default("local"),
+  BACKUP_LOCAL_PATH: z.string().default("./data/backups"),
+  BACKUP_S3_ENDPOINT: z.string().default(""),
+  BACKUP_S3_BUCKET: z.string().default(""),
+  BACKUP_S3_ACCESS_KEY: z.string().default(""),
+  BACKUP_S3_SECRET_KEY: z.string().default(""),
+  BACKUP_S3_REGION: z.string().default("us-east-1"),
+  BACKUP_S3_FORCE_PATH_STYLE: bool(true),
+  // Retention, per D4: nightly kept 30 days, weekly (Sunday) kept 12 weeks.
+  BACKUP_RETAIN_DAILY_DAYS: int(30),
+  BACKUP_RETAIN_WEEKLY_WEEKS: int(12),
+  // 0 disables the nightly fleet backup (dev, or a deployment backing up by
+  // other means). Named as a cron because D4's RPO is a wall-clock promise.
+  BACKUP_CRON: z.string().default("0 1 * * *"),
+  // Monthly restore drill. An unrehearsed backup is the thing §3.2 warns about,
+  // so this is on by default; 0/"" disables it.
+  // WS-B1 layer 2 — WAL archiving (D4's "RPO <= 5 min WHERE PITR is available").
+  // Postgres is self-run here, so it IS available; this is the switch. Off by
+  // default because turning it on without configuring Postgres's
+  // archive_command would report a healthy archive that is empty.
+  WAL_ARCHIVE_ENABLED: bool(false),
+  // Postgres's own `archive_mode`, set on the postgres service in
+  // docker-compose. Declared here — even though the APP never archives — so
+  // `walStatus()` can catch the misconfiguration that is otherwise invisible:
+  // the app watching an archive that Postgres was never told to write. Those
+  // two switches disagreeing produces a permanently empty archive reported as
+  // broken, with no indication of which half is wrong.
+  WAL_ARCHIVE_MODE: z.enum(["on", "off"]).default("off"),
+  WAL_ARCHIVE_PREFIX: z.string().default("wal"),
+  // How stale the archive may get before it is called broken. A segment is
+  // shipped on fill or on archive_timeout, so this must exceed archive_timeout
+  // with room, or a quiet database looks like a dead archiver.
+  WAL_MAX_LAG_MINUTES: int(15),
+
+  RESTORE_DRILL_CRON: z.string().default("0 4 1 * *"),
+  // A drill restores into a throwaway database on the same cluster; this is its
+  // name prefix. Anything matching it is treated as disposable.
+  RESTORE_DRILL_DB_PREFIX: z.string().default("praxis_drill_"),
+  // D4's ratified RTO target, in seconds. A drill that exceeds it is recorded
+  // and flagged rather than failed — a slow restore is still a restore.
+  RESTORE_RTO_TARGET_SECONDS: int(3600),
+  // pg_dump/pg_restore binaries, overridable where they are not on PATH or the
+  // cluster version needs a matching client.
+  PG_DUMP_BIN: z.string().default("pg_dump"),
+  PG_RESTORE_BIN: z.string().default("pg_restore"),
+
+  // ── Kaizen ops (§3.1, §3.4, §3.5) ────────────────────────────────────────
+  //
+  // Per-tenant health sweep. Distinct from HEALTH_SAMPLE_INTERVAL_MS (0093),
+  // which samples the PLATFORM: this one probes each tenant's own path, which
+  // is heavier, so it runs less often. 0 disables it.
+  TENANT_HEALTH_INTERVAL_MS: int(300000),
+  // AMBER thresholds. Named rather than inline so the rule is tunable per
+  // deployment without editing the status function every fleet has to share.
+  HEALTH_JOB_FAILURE_AMBER: int(5),
+  HEALTH_ERROR_AMBER: int(50),
+  HEALTH_LIVENESS_SLOW_MS: int(2000),
+
+  // Uptime probing (WS-U1). The interval is also the DENOMINATOR of the
+  // availability figure — a missing sample counts as downtime — so changing it
+  // changes what past percentages mean. 0 disables probing.
+  UPTIME_PROBE_INTERVAL_MS: int(300000),
+  UPTIME_PROBE_TIMEOUT_MS: int(10000),
+  UPTIME_PROBE_PATH: z.string().default("/api/health/ready"),
+  UPTIME_PROBE_SCHEME: z.enum(["http", "https"]).default("https"),
+  // Whether the API process probes as well.
+  //
+  // Set FALSE once `scripts/ops/uptime-probe.js` runs as its own process, which
+  // is the arrangement WS-U1 actually asks for — a prober inside the API cannot
+  // observe the API being down. This is a separate switch from
+  // UPTIME_PROBE_INTERVAL_MS deliberately: that value is the DENOMINATOR of the
+  // availability figure, so zeroing it to stop the in-process sweep would also
+  // silently redefine every past percentage. Two writers on the same interval
+  // would double-sample and inflate the numbers, so exactly one should be on.
+  UPTIME_PROBE_IN_PROCESS: bool(true),
+  // Retention for uptime_sample. Longer than health (30d) because this series
+  // feeds monthly and annual availability reporting.
+  UPTIME_RETAIN_DAYS: int(90),
+  // The platform/admin host, probed alongside the tenant subdomains.
+  PLATFORM_HOST: z.string().default(""),
+
+  // Alert routing (WS-ER1). ALERT_WEBHOOK_URL (above) is the general channel;
+  // this optional second destination is for `page`-severity events only, so a
+  // fatal can reach somewhere noisier than the daily notice channel. When
+  // unset, pages fall back to the general webhook — a misconfiguration must
+  // degrade to "too noisy", never to "silent".
+  ALERT_WEBHOOK_PAGE_URL: z.string().default(""),
+  // How often the ops state is evaluated for alerting. Much less frequent than
+  // collection on purpose: a channel that repeats the same RED tenant every
+  // five minutes gets muted, and a muted channel is no alerting at all.
+  OPS_ALERT_INTERVAL_MS: int(1800000),
+
+  // WS-S3 — how often usage is re-measured. Enforcement reads these figures, so
+  // this is also how far a tenant can drift past a hard limit between sweeps.
+  // Hourly keeps that to a unit or two; the seat path takes a live count
+  // anyway, because there the tenant connection is already open.
+  USAGE_METER_INTERVAL_MS: int(3600000),
 
   PUPPETEER_EXECUTABLE_PATH: z.string().default(""),
   SANDBOX_WIPE_DAYS: int(14),

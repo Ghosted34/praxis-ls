@@ -68,4 +68,105 @@ function vapid(cfg) {
   return { public_key_len: pub.length, subject: cfg.subject || null };
 }
 
-module.exports = { s3, geoapify, smtp, vapid };
+/**
+ * WS-ER1 — the alert destination probe.
+ *
+ * "Test" here means SEND A REAL MESSAGE to the configured channel, not merely
+ * check that the URL parses. The failure this guards against is a webhook that
+ * was pasted wrong months ago and has been silently swallowing every page since
+ * — and the only way to find that out is for a human to look at the channel and
+ * see the test arrive. A probe that just validated the URL would pass on
+ * exactly the broken configuration it exists to catch.
+ *
+ * A non-2xx is a failure. Slack, Teams and Discord all answer 2xx on accept and
+ * 4xx on a dead or malformed hook, so the status is meaningful.
+ */
+async function alertWebhook(cfg) {
+  const url = String(cfg.url || "").trim();
+  if (!url) throw new Error("no webhook URL configured");
+  if (!/^https:\/\//i.test(url)) {
+    // http:// would put an alert payload — which names tenants and quotes error
+    // text — on the wire in clear.
+    throw new Error("alert webhook must be https");
+  }
+
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      text:
+        "Praxis test alert — if you can read this, the ops alert channel is wired correctly. " +
+        "Backup failures, failed restore drills and RED tenants will arrive here.",
+      praxis: { event: "alert.test", severity: "notify" },
+    }),
+    signal: AbortSignal.timeout(8000),
+  });
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const err = new Error(`webhook returned ${res.status}${body ? `: ${body.slice(0, 200)}` : ""}`);
+    err.statusCode = res.status;
+    throw err;
+  }
+  return { status: res.status, note: "test message sent — check the channel received it" };
+}
+
+/**
+ * WS-B1 — the backup destination probe.
+ *
+ * A ROUND TRIP, not a credential check. It writes a small object, reads it back,
+ * compares the bytes, and deletes it.
+ *
+ * Anything less would pass on the configuration that matters most: a bucket the
+ * key can write to but not read from restores nothing, and a key with no delete
+ * permission silently defeats retention until the bucket bill arrives. Those are
+ * discovered at restore time otherwise — which is the one moment the answer is
+ * useless.
+ *
+ * The probe object carries a timestamp so a stale one left by an interrupted
+ * test is obvious rather than mysterious.
+ */
+async function backupStorage() {
+  // Required lazily: this module is loaded by the settings service on every
+  // console request, and the storage service pulls in the AWS SDK.
+  const store = require("./backup-storage.service");
+
+  const key = `probe/settings-test-${Date.now()}.txt`;
+  const body = `praxis backup probe ${new Date().toISOString()}`;
+  const { Readable } = require("stream");
+
+  const dest = await store.describe();
+
+  let wrote;
+  try {
+    wrote = await store.putStream(Readable.from([Buffer.from(body)]), key);
+  } catch (err) {
+    throw new Error(`write failed (${dest.driver} → ${dest.destination}): ${err.message}`);
+  }
+
+  try {
+    const chunks = [];
+    const stream = await store.openStream(key);
+    for await (const c of stream) chunks.push(c);
+    const readBack = Buffer.concat(chunks).toString();
+    if (readBack !== body) {
+      throw new Error("the object read back does not match what was written");
+    }
+  } catch (err) {
+    throw new Error(`read-back failed (${dest.driver} → ${dest.destination}): ${err.message}`);
+  } finally {
+    // Best effort. A probe that cannot clean up is worth reporting, but not at
+    // the cost of failing a test that otherwise proved the round trip works.
+    await store.remove(key).catch(() => {});
+  }
+
+  return {
+    driver: dest.driver,
+    destination: dest.destination,
+    settings_from: dest.source,
+    bytes: wrote && wrote.bytes,
+    note: "wrote, read back and deleted a probe object",
+  };
+}
+
+module.exports = { s3, geoapify, smtp, vapid, alertWebhook, backupStorage };

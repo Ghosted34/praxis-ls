@@ -47,6 +47,7 @@ const notificationRepo = require("../../notification/notification.repo");
 const repo = require("./app_user.repo");
 const events = require("./app_user.events");
 const governance = require("../../ai/governance/governance.service");
+const entitlement = require("../../../services/platform/entitlement.service");
 
 const TWOFA_PENDING_TTL = "5m";
 /** Reset links live for 30 minutes and are single-use (doc plan §1.1). */
@@ -704,8 +705,42 @@ async function getUser(client, id) {
 }
 /** Employees linkable to a user — always the live/identity schema (see repo). */
 const listLinkableEmployees = (client) => repo.listEmployeesLite(client);
-async function createUser(client, { data, actor = {} }) {
+async function createUser(client, { data, actor = {}, tenantId = null }) {
   await passwordPolicy.assertStrongPassword(data.password, { email: data.email });
+
+  // WS-S3 — seat entitlement.
+  //
+  // Checked BEFORE the transaction, and with a LIVE count rather than the last
+  // metering sweep's. Both matter:
+  //
+  //   - Before, because the alternative is creating the user and then deciding
+  //     they were not allowed, which means either an awkward rollback or a
+  //     tenant one seat over their plan every time.
+  //   - Live, because this is the one place the accurate number is free — the
+  //     tenant connection is already open. Everywhere else `check()` reads
+  //     cached usage to stay off the critical path; here it would be silly to.
+  //
+  // `additional: 1` asks "would ADDING this user exceed the limit", not "are
+  // they already over" — checking after the fact permits exactly one breach,
+  // every time.
+  //
+  // A tenant with no seat entitlement configured is unlimited, so this is inert
+  // until someone sets a limit on the plan.
+  if (tenantId) {
+    try {
+      const seats = await client.query("SELECT count(*)::int AS n FROM app_user WHERE status = 'ACTIVE'");
+      await entitlement.check(tenantId, "seats", { additional: 1, liveUsed: seats.rows[0].n });
+    } catch (err) {
+      // A real entitlement breach must propagate — that is the whole point.
+      if (err && err.code === "ENTITLEMENT_EXCEEDED") throw err;
+      // Anything else (the platform DB being unreachable, say) must NOT stop a
+      // tenant adding a user. Failing closed here would turn a platform-side
+      // hiccup into "nobody in the fleet can onboard staff", which is a far
+      // worse outage than a tenant briefly exceeding a seat count.
+      logger.warn({ err, tenantId }, "seat entitlement check failed — allowing the user to be created");
+    }
+  }
+
   await client.query("BEGIN");
   try {
     const password_hash = await argon2.hash(String(data.password), ARGON);

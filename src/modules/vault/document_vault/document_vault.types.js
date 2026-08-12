@@ -46,6 +46,23 @@ const DOC_TYPES = {
   CASH_REQUEST:          { label: "Cash request",             module: "costing/cash_request",          moduleKey: "MOD-49" },
   REGIE_ADVANCE:         { label: "Régie advance",            module: "costing/regie",                 moduleKey: "MOD-49" },
   COMMS_CERTIFIED_EXPORT:{ label: "Certified comms export",   module: "smartcomm",                     moduleKey: "MOD-64" },
+  /*
+   * Master-data scans — the file behind a register entry, not a document this
+   * system issues. There is no template for these three and there never will
+   * be: nobody prints a client's tax clearance from here, they photograph the
+   * one the authority gave them.
+   *
+   * They are registered anyway because `moduleKeyForDocType` is what decides
+   * who may OPEN an uploaded file, and its fallback for an unregistered type is
+   * MOD-70 — the Settings grant. Without these rows, the operator who has just
+   * attached a scan to a client they administer could not read it back unless
+   * they also administered the application, while anyone holding Settings could
+   * read every ID document in the tenant. Reading follows the register the
+   * document belongs to: entities MOD-01, clients MOD-03, suppliers MOD-04.
+   */
+  ENTITY_DOCUMENT:       { label: "Entity document scan",     module: "master/corporate_entity",       moduleKey: "MOD-01" },
+  CLIENT_DOCUMENT:       { label: "Client KYC scan",          module: "master/client_master",          moduleKey: "MOD-03" },
+  SUPPLIER_DOCUMENT:     { label: "Supplier KYC scan",        module: "master/supplier_master",        moduleKey: "MOD-04" },
 };
 
 /**

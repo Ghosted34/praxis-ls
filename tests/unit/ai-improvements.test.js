@@ -56,6 +56,75 @@ describe("entity card builders", () => {
     expect(keys).toContain("warehouse_location");
   });
 
+  /**
+   * OUR OWN entities, not counterparties.
+   *
+   * Every counterparty had a card — clients, suppliers, drivers, employees —
+   * while the companies the tenant invoices AS had none, so the assistant had
+   * tools for them and nothing to recall. Asked about share capital it answered
+   * from the shape of the question: "derived, and checked against the legal
+   * minimum". It is neither — it is a stored statutory fact, and no
+   * minimum-capital rule exists in this codebase.
+   */
+  describe("our own corporate entities", () => {
+    const builder = (k) => entityCards.BUILDERS.find((b) => b.key === k);
+
+    test("the tenant's own entities and registrations are carded", () => {
+      const keys = entityCards.BUILDERS.map((b) => b.key);
+      expect(keys).toContain("corporate_entity");
+      expect(keys).toContain("entity_registration");
+    });
+
+    test("the card states the share capital as the stored figure it is", () => {
+      const card = builder("corporate_entity").card({
+        code: "SLAS", legal_name: "Smart Logistics and Services Ltd", legal_form: "SARL",
+        country_code: "CM", registration_status: "ACTIVE", accounting_framework: "OHADA",
+        share_capital: "100000000", share_capital_currency: "XAF", share_capital_paid_up: "100000000",
+        incorporation_date: "2019-04-02", incorporation_place: "Douala",
+        default_currency: "XAF", doc_prefix: "SLAS",
+      });
+      expect(card.text).toContain("share capital 100,000,000 XAF");
+      expect(card.text).toContain("incorporated 2019-04-02 in Douala");
+      // The distinction the assistant kept getting wrong: these are OURS.
+      expect(card.text).toContain("OUR OWN legal entities");
+      expect(card.ref).toBe("entity:SLAS");
+    });
+
+    test("partly-called capital is reported as such, not silently as the full figure", () => {
+      const card = builder("corporate_entity").card({
+        code: "SBX", legal_name: "SmartBox SARL", share_capital: "10000000",
+        share_capital_paid_up: "2500000", share_capital_currency: "XAF",
+      });
+      expect(card.text).toContain("share capital 10,000,000 XAF (2,500,000 paid up)");
+    });
+
+    test("group position is stated either way, so silence never implies standalone", () => {
+      const child = builder("corporate_entity").card({
+        code: "SBXFR", legal_name: "SmartBox France SAS",
+        relationship_type: "SUBSIDIARY", parent_code: "SBX", parent_name: "SmartBox SARL",
+      });
+      expect(child.text).toContain("subsidiary of SBX — SmartBox SARL");
+      expect(builder("corporate_entity").card({ code: "SBX" }).text)
+        .toContain("top-level or standalone company");
+    });
+
+    test("an entity with no capital recorded says nothing about capital", () => {
+      const card = builder("corporate_entity").card({ code: "NEW", legal_name: "Newco" });
+      expect(card.text).not.toMatch(/share capital/i);
+    });
+
+    test("registrations are carded so the assistant can name our own identifiers", () => {
+      const card = builder("entity_registration").card({
+        kind: "NIU", number: "P0123456789A", country_code: "CM",
+        issuing_authority: "DGI", is_primary: true,
+        entity_code: "SLAS", legal_name: "Smart Logistics and Services Ltd",
+      });
+      expect(card.text).toContain("NIU P0123456789A");
+      expect(card.text).toContain("in CM");
+      expect(card.text).toContain("primary for that country");
+    });
+  });
+
   test("every builder has a card function that returns the expected shape", () => {
     for (const b of entityCards.BUILDERS) {
       const card = b.card({});

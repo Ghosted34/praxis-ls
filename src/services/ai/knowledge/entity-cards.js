@@ -428,6 +428,91 @@ const BUILDERS = [
       text: `Treasury account "${r.name}" at ${r.bank_name || "?"} — type ${r.account_type || "?"}, currency ${r.currency || "XAF"}, status ${r.status || "?"}.`,
     }),
   },
+
+  /* ── The tenant's OWN legal entities ─────────────────────────────────────
+   *
+   * Added last and it should have been first. Every counterparty had a card —
+   * client_master, supplier_master, driver, employee — while the companies we
+   * invoice AS had none, so the assistant had function-calling tools for
+   * entities and no retrieval grounding whatsoever about them. Asked "what is
+   * our share capital" it had nothing to recall and answered from the shape of
+   * the question instead, describing the figure as derived and checked against
+   * a legal minimum. Neither is true: it is a stored statutory fact, printed on
+   * our own letterhead, and no minimum-capital rule exists anywhere in this
+   * codebase.
+   *
+   * Normal confidentiality, deliberately: legal form, share capital, the
+   * registered identifiers and the incorporation details are exactly what the
+   * letterhead prints on every invoice we send. The governance data that IS
+   * restricted — shareholdings, dates of birth, identity numbers — lives in
+   * entity_person and is not carded here at all.
+   */
+  {
+    key: "corporate_entity",
+    sql: `SELECT e.code, e.legal_name, e.trading_name, e.legal_form, e.country_code,
+                 e.registration_status, e.is_active, e.accounting_framework,
+                 e.share_capital, e.share_capital_currency, e.share_capital_paid_up,
+                 e.incorporation_date, e.incorporation_place, e.default_currency,
+                 e.doc_prefix, e.industry, e.relationship_type,
+                 p.code AS parent_code, p.legal_name AS parent_name
+            FROM corporate_entity e
+            LEFT JOIN corporate_entity p ON p.entity_id = e.parent_entity_id
+           ORDER BY e.created_at DESC LIMIT $1`,
+    card: (r) => {
+      const name = [r.legal_name, r.legal_form].filter(Boolean).join(" ") || r.code || "?";
+      const capital = r.share_capital === null || r.share_capital === undefined
+        ? null
+        : `share capital ${Number(r.share_capital).toLocaleString("en-US")} ${r.share_capital_currency || r.default_currency || "XAF"}`
+          + (r.share_capital_paid_up !== null && r.share_capital_paid_up !== undefined
+            && Number(r.share_capital_paid_up) !== Number(r.share_capital)
+            ? ` (${Number(r.share_capital_paid_up).toLocaleString("en-US")} paid up)` : "");
+      const born = r.incorporation_date
+        ? `incorporated ${String(r.incorporation_date).slice(0, 10)}${r.incorporation_place ? ` in ${r.incorporation_place}` : ""}`
+        : null;
+      const group = r.parent_code
+        ? `${(r.relationship_type || "subsidiary").toLowerCase().replace(/_/g, " ")} of ${r.parent_code} — ${r.parent_name}`
+        : "top-level or standalone company";
+      return {
+        ref: `entity:${r.code || r.legal_name || "?"}`,
+        title: `Our entity ${r.code || ""}: ${r.legal_name || "?"}`.replace("  ", " "),
+        confidentiality: "normal",
+        text: [
+          `${name} (${r.code || "?"}) is one of OUR OWN legal entities — a company we invoice and report from, not a counterparty.`,
+          r.trading_name ? `Trades as ${r.trading_name}.` : null,
+          [born, capital].filter(Boolean).join(", ") ? `${[born, capital].filter(Boolean).join(", ")}.` : null,
+          `Registered in ${r.country_code || "?"}, status ${r.registration_status || (r.is_active === false ? "DEACTIVATED" : "ACTIVE")}.`,
+          r.accounting_framework ? `Reports under ${r.accounting_framework}.` : null,
+          `Invoices in ${r.default_currency || "XAF"}${r.doc_prefix ? ` with document prefix ${r.doc_prefix}` : ""}.`,
+          r.industry ? `Industry: ${r.industry}.` : null,
+          `Group position: ${group}.`,
+        ].filter(Boolean).join(" "),
+      };
+    },
+  },
+
+  /* Our own tax and trade identifiers, one card per registration — "what is our
+   * NIU", "which VAT number do we invoice under in France". Its own builder
+   * rather than a join on the card above, so `tableExists` skips it cleanly on a
+   * tenant that predates 0515 instead of failing the whole reindex. */
+  {
+    key: "entity_registration",
+    sql: `SELECT r.kind, r.number, r.country_code, r.issuing_authority, r.expires_on, r.is_primary,
+                 e.code AS entity_code, e.legal_name
+            FROM entity_registration r
+            JOIN corporate_entity e ON e.entity_id = r.entity_id
+           WHERE r.number IS NOT NULL
+           ORDER BY r.created_at DESC LIMIT $1`,
+    card: (r) => ({
+      ref: `entity-registration:${r.entity_code || "?"}-${r.kind || "?"}`,
+      title: `Our ${r.kind || "registration"} (${r.entity_code || "?"})`,
+      confidentiality: "normal",
+      text: `${r.legal_name || r.entity_code || "?"} holds ${r.kind || "a registration"} ${r.number || "?"}`
+        + `${r.country_code ? ` in ${r.country_code}` : ""}`
+        + `${r.issuing_authority ? `, issued by ${r.issuing_authority}` : ""}`
+        + `${r.is_primary ? " (primary for that country)" : ""}`
+        + `${r.expires_on ? `, expiring ${String(r.expires_on).slice(0, 10)}` : ""}.`,
+    }),
+  },
 ];
 
 async function tableExists(client, name) {

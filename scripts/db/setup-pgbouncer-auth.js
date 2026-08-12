@@ -121,12 +121,32 @@ async function main() {
        END
        $do$;`,
     );
-    // Parameterised via format() so the password never lands in a log line the
-    // way a plain interpolated DDL string would.
-    await client.query(
-      `DO $do$ BEGIN EXECUTE format('ALTER ROLE ${AUTH_USER} WITH LOGIN PASSWORD %L', $1); END $do$;`,
-      [AUTH_PASSWORD],
+    // Build the DDL with format(), then execute it — two statements, on purpose.
+    //
+    // This was one statement: a `DO $do$ ... EXECUTE format(..., $1) ... $do$`
+    // with the password bound as a parameter. It could never have worked. A DO
+    // block's body is a dollar-quoted STRING LITERAL, so `$1` inside it is text,
+    // not a placeholder — Postgres parses the statement as taking no parameters
+    // and rejects the bind:
+    //
+    //     bind message supplies 1 parameters, but prepared statement "" requires 0
+    //
+    // PL/pgSQL DO blocks cannot be parameterised at all. The failure was silent
+    // in the worst way: the CREATE ROLE block above has no parameters, so it
+    // succeeded, leaving a `pgbouncer` role with NO PASSWORD and no schema or
+    // function behind it — a half-configured pooler that `--check` reports
+    // accurately and a casual read of the log does not.
+    //
+    // The intent was right and is preserved: `format('%L')` does the literal
+    // quoting in Postgres rather than interpolating a JS string into DDL, and
+    // `%I` now does the same for the role name. The SELECT is parameterised, so
+    // the password crosses the wire as a bound value; only the finished,
+    // correctly-quoted DDL is executed.
+    const { rows: ddlRows } = await client.query(
+      "SELECT format('ALTER ROLE %I WITH LOGIN PASSWORD %L', $1::text, $2::text) AS ddl",
+      [AUTH_USER, AUTH_PASSWORD],
     );
+    await client.query(ddlRows[0].ddl);
 
     await client.query("CREATE SCHEMA IF NOT EXISTS pgbouncer");
 

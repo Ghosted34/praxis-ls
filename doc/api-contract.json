@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 108,
-  "route_count": 963,
+  "route_count": 967,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 880
+    "gated": 884
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1918,6 +1918,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/meetings/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/milestones/assumptions/:serviceTypeId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4798,6 +4804,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/milestones/:id/advance": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/milestones/:id/reopen": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/milestones/dossier/:dossierId/recalculate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/milestones/dossier/:dossierId/stages": {
       "auth": true,
       "rbac": true,
       "validated": false,

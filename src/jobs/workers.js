@@ -40,6 +40,12 @@ const PROCESSORS = [
   { name: "mail-webhook-renew-scheduler", concurrency: 1, handler: require("./handlers/mail-webhook-renew-scheduler") },
   // Error Command Center: 30-day retention purge + escalation rule evaluation.
   { name: "error-maintenance", concurrency: 1, handler: require("./handlers/error-maintenance") },
+  // Milestone SLA scan (MOD-31): re-baselines open chains and emits at-risk /
+  // overdue / breach-forecast on health TRANSITIONS. concurrency 1 per queue —
+  // the scan writes dates on every open chain in a tenant, and two concurrent
+  // passes over the same dossier would race each other's re-baseline.
+  { name: "milestone-sla", concurrency: 1, handler: require("./handlers/milestone-sla") },
+  { name: "milestone-sla-scheduler", concurrency: 1, handler: require("./handlers/milestone-sla-scheduler") },
   // Uptime sampling for the Overview widget (§8.2). concurrency 1 is not a
   // performance choice — the uptime denominator assumes ONE sample per
   // interval, and a second concurrent worker would double the numerator.
@@ -428,6 +434,22 @@ async function scheduleRecurring() {
     removeOnFail: 20,
   });
   logger.info("ops alert evaluation + retention registered");
+  // Milestone SLA scan (MOD-31). Wall-clock cron for the same reason as FX: the
+  // whole point is landing at the start and the end of a working day, and an
+  // interval-based repeat drifts off that after every restart. Empty
+  // MILESTONE_SLA_CRON disables it; POST /milestones/dossier/:id/recalculate
+  // still works by hand.
+  const slaCron = config.MILESTONE_SLA_CRON;
+  if (!slaCron) {
+    logger.info("milestone SLA scheduler disabled (MILESTONE_SLA_CRON empty)");
+  } else {
+    await enqueue("milestone-sla-scheduler", "tick", {}, {
+      repeat: { pattern: slaCron, tz: config.MILESTONE_SLA_TZ || "UTC" },
+      removeOnComplete: true,
+      removeOnFail: 50,
+    });
+    logger.info({ pattern: slaCron, tz: config.MILESTONE_SLA_TZ || "UTC" }, "milestone SLA scheduler registered");
+  }
 }
 
 async function shutdown(sig) {

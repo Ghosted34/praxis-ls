@@ -217,6 +217,14 @@ const Schema = z.object({
   // disables the daily sync (manual "Sync now" still works).
   FX_SYNC_TZ: z.string().default("Africa/Douala"),
 
+  // Milestone SLA scan (MOD-31): 06:00 and 18:00 — the start and the end of a
+  // working day, which is when somebody can still act on "this file will
+  // breach". Tenants who want it hourly set `0 * * * *`; the scan is idempotent
+  // and emits only on health transitions, so more often costs noise, not
+  // correctness. Empty disables the schedule.
+  MILESTONE_SLA_CRON: z.string().default("0 6,18 * * *"),
+  MILESTONE_SLA_TZ: z.string().default("Africa/Douala"),
+
   // ---- System-email FALLBACK sender (deploy-wide, see src/services/platform/mail-fallback.service.js) ----
   // Praxis-owned SMTP used when a TENANT has not configured their own mail
   // (no email_identity / email setting) so system emails (OTP, invoices,

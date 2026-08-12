@@ -29,6 +29,10 @@ const WRITABLE = new Set([
   "incoterm", "bl_mawb", "vessel_flight",
   "pol", "pod", "pol_place_id", "pod_place_id",
   "customs_regime", "eta", "ata", "details_json",
+  // The CLIENT's promise, distinct from `eta` (the carrier's estimate). The
+  // milestone engine schedules against this first — see 0650 and
+  // milestone.service resolveTarget — so it has to be settable on the file.
+  "promised_delivery_date",
   "owner_ops_id", "owner_sales_id",
   // The carrier this job moves on (MOD-10 rate_provider) — feeds every
   // costing line's expense-rate lookup for the dossier.

@@ -1029,6 +1029,7 @@
       "actions": [
         "list_milestone_templates",
         "dossier_milestones",
+        "service_type_assumptions",
         "publish_milestone_template",
         "instantiate_milestones",
         "advance_milestone"

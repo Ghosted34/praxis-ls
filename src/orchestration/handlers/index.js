@@ -24,6 +24,9 @@ register(require("./fuel-log-created-dossier-cost"));            // fuel_log.cre
 // ── Operations lifecycle ──
 register({ eventKey: "transit_order.created", handlerKey: "transit_order.created:advance-milestone", feature: null, run: advanceMilestone.run });
 register({ eventKey: "delivery_note.created", handlerKey: "delivery_note.created:advance-milestone", feature: null, run: advanceMilestone.run });
+// The seeded chains close their final-invoice stage on invoice.issued, so the
+// tail of every file completes itself instead of waiting for a manual tick.
+register({ eventKey: "invoice.issued", handlerKey: "invoice.issued:advance-milestone", feature: null, run: advanceMilestone.run });
 register(require("./milestone-completed-signal"));              // milestone.advanced → dossier.milestones_completed (all done)
 
 // ── Own direct costs → dossier margin (analytical; no GL double-post) ──

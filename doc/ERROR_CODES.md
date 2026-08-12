@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (254)
+## All codes (256)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -159,9 +159,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_CONFIGURED` | 400, 422 | 2× | — |
 | `NOT_CONNECTED` | 409 | 1× | — |
+| `NOT_DONE` | 422 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 284× | — |
+| `NOT_FOUND` | 404 | 285× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -202,7 +203,6 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_RECIPIENT` | 422 | 1× | — |
 | `NO_REVENUE_ACCOUNT` | 422 | 1× | — |
 | `NO_SCHEDULE` | 422 | 1× | — |
-| `NO_STAGES` | 422 | 1× | — |
 | `NO_TARGET` | 422 | 1× | — |
 | `NO_TARIFF` | 422 | 1× | — |
 | `NO_TEMPLATE` | 422 | 1× | — |
@@ -226,7 +226,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
-| `REASON_REQUIRED` | 422 | 1× | — |
+| `REASON_REQUIRED` | 422 | 2× | — |
 | `REFERENCED` | 409 | 2× | — |
 | `REF_REQUIRED` | 422 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
@@ -261,6 +261,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `TENANT_NOT_READY` | 423 | 1× | — |
 | `TENANT_SUSPENDED` | 403 | 1× | — |
 | `TOKEN_EXPIRED` | 401 | 1× | — |
+| `TOO_FEW_STAGES` | 422 | 1× | — |
+| `TOO_MANY_STAGES` | 422 | 2× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |
 | `UNKNOWN_DOC_TYPE` | 422 | 1× | — |

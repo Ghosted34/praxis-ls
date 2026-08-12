@@ -160,6 +160,48 @@ export type AuditorView = {
 
 export const portalMe = () => portalApi<PortalMe>("/me");
 export const portalClientView = () => portalApi<ClientView>("/client");
+
+/**
+ * One of the client's own files: the stages we chose to show them, the dates
+ * they were committed to, and the published assumptions those dates rest on.
+ * The forecast field is present only when the tenant has opted to share it.
+ */
+export type PortalChainStage = {
+  code: string;
+  label: string;
+  label_en?: string | null;
+  planned_due?: string | null;
+  forecast_due?: string | null;
+  status: string;
+  completed_at?: string | null;
+  stage_seq?: number;
+};
+export type PortalAssumption = { code: string; text_fr: string; text_en?: string | null };
+export type PortalChain = {
+  dossier: { dossier_id: string; ref: string; status: string; service_fr?: string | null; service_en?: string | null };
+  milestones: PortalChainStage[];
+  assumptions: PortalAssumption[];
+};
+export const portalClientChain = (dossierId: string) =>
+  portalApi<PortalChain>(`/client/dossier/${dossierId}`);
+
+/** Q tickets — a client's queries, raised against a milestone and kept in-system. */
+export type PortalTicket = {
+  q_ticket_id: string;
+  subject: string;
+  body?: string | null;
+  status: string;
+  created_at: string;
+  dossier_ref?: string | null;
+  milestone_label?: string | null;
+};
+export const portalTickets = () => portalApi<PortalTicket[]>("/client/tickets");
+export const portalRaiseTicket = (body: {
+  dossier_id: string;
+  milestone_instance_id?: string;
+  subject: string;
+  body?: string;
+}) => portalApi<PortalTicket>("/client/tickets", { method: "POST", body });
 const periodQs = (q?: { from?: string; to?: string }) =>
   new URLSearchParams(Object.entries(q || {}).filter(([, v]) => !!v) as [string, string][]).toString();
 export const portalInvestorView = (q?: { from?: string; to?: string }) => {

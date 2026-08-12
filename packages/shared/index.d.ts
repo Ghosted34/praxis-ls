@@ -464,6 +464,10 @@ export declare namespace entityCommon {
   const masterCreate: z.ZodTypeAny;
   const masterUpdate: z.ZodTypeAny;
   const logoUpload: z.ZodObject<Record<string, z.ZodTypeAny>>;
+  /** Working calendar — the hours the milestone engine schedules in. */
+  const workingCalendarSave: z.ZodTypeAny;
+  const workingCalendarDay: z.ZodTypeAny;
+  const workingCalendarHoliday: z.ZodTypeAny;
   const setActive: z.ZodObject<Record<string, z.ZodTypeAny>>;
   const masterShapeKeys: readonly string[];
   /** AI-tool envelopes — the same schemas with `entity_id` in the body. */

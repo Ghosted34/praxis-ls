@@ -396,6 +396,43 @@ exports.letterheadUpdate = z.object({
   remittance_account_id: blankToUndefined(z.string().uuid("Must be a valid treasury account id.")).nullable(),
 });
 
+// ── Working calendar (0650) ────────────────────────────────────────────────
+// The hours the milestone engine schedules in. Shared so the entity's calendar
+// form and the API validate the same object — a day whose close is not after
+// its open, or a calendar with no open day at all, would make every due date
+// this entity computes either wrong or unreachable.
+const hhmm = z
+  .string()
+  .regex(/^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/, "Use HH:MM, e.g. 07:30.");
+
+exports.workingCalendarDay = z
+  .object({
+    weekday: z.number().int().min(0).max(6),
+    opens_at: hhmm,
+    closes_at: hhmm,
+  })
+  .refine((d) => d.closes_at > d.opens_at, {
+    message: "Closing time must be after opening time.",
+    path: ["closes_at"],
+  });
+
+exports.workingCalendarHoliday = z.object({
+  holiday_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Use YYYY-MM-DD."),
+  // Fixed feasts recur on month/day; movable ones (Easter, Eid) carry a real
+  // year and must be confirmed each year.
+  is_recurring: z.boolean().optional(),
+  name_fr: z.string().min(1, "Name the day."),
+  name_en: optionalText.nullable(),
+  is_system: z.boolean().optional(),
+});
+
+exports.workingCalendarSave = z.object({
+  timezone: z.string().min(1).optional(),
+  name: optionalText.nullable(),
+  days: z.array(exports.workingCalendarDay).min(1, "A calendar needs at least one open day.").max(7),
+  holidays: z.array(exports.workingCalendarHoliday).max(200).optional(),
+});
+
 // ── Entity-level actions ───────────────────────────────────────────────────
 exports.setStatus = z.object({
   status: z.enum(LIFECYCLE_STATES),

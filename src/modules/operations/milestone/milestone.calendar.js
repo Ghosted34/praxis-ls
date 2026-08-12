@@ -55,6 +55,31 @@ function toMinutes(v) {
 const pad = (n) => String(n).padStart(2, "0");
 
 /**
+ * Anything date-ish → "YYYY-MM-DD".
+ *
+ * THE BUG THIS FIXES, which shipped and was invisible. `node-postgres` parses a
+ * `date` column into a JS `Date`, so the holiday rows arriving here are Date
+ * objects, not strings. The previous `String(value).slice(0, 10)` turned one
+ * into "Thu Jan 01", which failed the ISO test below and was DROPPED — every
+ * public holiday the tenant had configured was silently ignored, and the engine
+ * happily scheduled customs clearance for 20 May. Nothing errored, and the unit
+ * tests could not see it because they passed strings.
+ *
+ * Local getters, not toISOString(): pg builds the Date at LOCAL midnight, and
+ * converting to UTC shifts the day backwards for any negative offset — which
+ * would move a holiday to the day before in half the world.
+ */
+function toIsoDate(value) {
+  if (value instanceof Date) {
+    return Number.isNaN(value.getTime())
+      ? null
+      : `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  const s = String(value || "").slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
+
+/**
  * Build a CalendarSpec from the rows of working_calendar / _day / _holiday.
  *
  * A calendar with no open weekday is refused rather than defaulted: silently
@@ -71,8 +96,8 @@ function buildCalendar({ timezone = "Africa/Douala", days = [], holidays = [] } 
     spec.days[Number(d.weekday)] = { open, close };
   }
   for (const h of holidays) {
-    const iso = String(h.holiday_date).slice(0, 10);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(iso)) continue;
+    const iso = toIsoDate(h.holiday_date);
+    if (!iso) continue;
     if (h.is_recurring) spec.fixed.add(iso.slice(5));
     else spec.dated.add(iso);
   }

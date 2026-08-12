@@ -62,7 +62,17 @@ async function templatesWithStages(client, serviceTypeId) {
       "COALESCE((SELECT jsonb_agg(jsonb_build_object(" +
       "  'stage_id', s.stage_id, 'stage_seq', s.stage_seq, 'code', s.code, " +
       "  'label_fr', s.label_fr, 'label_en', s.label_en, " +
-      "  'default_offset_days', s.default_offset_days" +
+      "  'default_offset_days', s.default_offset_days, " +
+      // The scheduling half (0650). Without these the template editor could
+      // only show a stage's name and offset — i.e. it could not edit the
+      // weights, floors or ownership the engine actually schedules on.
+      "  'weight', s.weight, 'min_duration_hours', s.min_duration_hours, " +
+      "  'owner_tier', s.owner_tier, 'is_anchor', s.is_anchor, " +
+      "  'is_target_lock', s.is_target_lock, 'is_client_visible', s.is_client_visible, " +
+      "  'is_optional', s.is_optional, 'chain_segment', s.chain_segment, " +
+      "  'cadence', s.cadence, 'required_evidence_doc_type', s.required_evidence_doc_type, " +
+      "  'auto_advance_on_event', s.auto_advance_on_event, " +
+      "  'is_system', s.is_system, 'system_code', s.system_code" +
       ") ORDER BY s.stage_seq) FROM milestone_template_stage s " +
       "  WHERE s.milestone_template_id = mt.milestone_template_id), '[]'::jsonb) AS stages " +
       "FROM milestone_template mt " +

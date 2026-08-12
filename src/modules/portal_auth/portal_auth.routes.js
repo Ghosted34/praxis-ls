@@ -43,6 +43,13 @@ router.post("/auth/accept", resetLimiter, v.accept, c.accept);
 // Portal user (external, token-scoped)
 router.get("/me", portalAuth(), c.me);
 router.get("/client", portalAuth("CLIENT"), c.client);
+router.get("/client/dossier/:dossierId", portalAuth("CLIENT"), c.clientChain);
+// Q tickets — the client raises a query against a milestone and it stays in
+// the system, which is the whole reason this exists rather than an email.
+router.get("/client/tickets", portalAuth("CLIENT"), c.tickets);
+router.get("/client/tickets/:id", portalAuth("CLIENT"), c.ticket);
+router.post("/client/tickets", portalAuth("CLIENT"), v.raiseTicket, c.raiseTicket);
+router.post("/client/tickets/:id/replies", portalAuth("CLIENT"), v.replyTicket, c.replyTicket);
 router.get("/investor", portalAuth("INVESTOR"), c.investor);
 router.get("/auditor", portalAuth("AUDITOR"), c.auditor);
 

@@ -1,12 +1,12 @@
 {
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
-  "modules_mounted": 108,
-  "route_count": 967,
+  "modules_mounted": 109,
+  "route_count": 984,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 884
+    "gated": 901
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1485,6 +1485,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/entities/:id/working-calendar": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/equipment/": {
       "auth": true,
       "rbac": true,
@@ -1929,7 +1935,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/milestones/attribution": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/milestones/dossier/:dossierId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/milestones/system-default/:serviceTypeId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2127,6 +2145,24 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/portal/client/dossier/:dossierId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/tickets": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portal/client/tickets/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/portal/investor": {
       "auth": true,
       "rbac": true,
@@ -2164,6 +2200,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/portals/client": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/portals/client/dossier/:dossierId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2236,6 +2278,18 @@
       "tier": "gated"
     },
     "GET /api/tenant/purchase-requests/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/q-tickets/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/q-tickets/:id": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4449,6 +4503,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/entities/:id/working-calendar/reset": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/equipment/": {
       "auth": true,
       "rbac": true,
@@ -4983,6 +5043,18 @@
       "validated": false,
       "tier": "public"
     },
+    "POST /api/tenant/portal/client/tickets": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/portal/client/tickets/:id/replies": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/portal/users": {
       "auth": true,
       "rbac": true,
@@ -5068,6 +5140,24 @@
       "tier": "gated"
     },
     "POST /api/tenant/purchase-requests/:id/transition": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/q-tickets/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/q-tickets/:id/replies": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/q-tickets/:id/resolve": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5733,6 +5823,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PUT /api/tenant/entities/:id/working-calendar": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PUT /api/tenant/master-config/:appliesTo": {
       "auth": true,
       "rbac": false,
@@ -5750,6 +5846,12 @@
       "rbac": false,
       "validated": true,
       "tier": "self-scoped"
+    },
+    "PUT /api/tenant/milestones/assumptions/:serviceTypeId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/notifications/preferences": {
       "auth": true,

@@ -14,6 +14,7 @@ import { SkeletonTable } from "@/components/ui/skeleton";
 import { portalClientView, portalInvestorView, portalAuditorView, type PortalMe, type ClientView, type InvestorView, type AuditorView } from "@/lib/portal-api";
 import { msg } from "./portal-chrome";
 import { label } from "./portal-auth";
+import { PortalShipment } from "./portal-shipment";
 
 function Kpi({ label: k, value, hint }: { label: string; value: number; hint?: string }) {
   return (
@@ -232,6 +233,9 @@ export function AuditorTerminal({ me }: { me: PortalMe }) {
 /* ── client view ────────────────────────────────────────────────────────── */
 
 export function ClientTerminal({ me }: { me: PortalMe }) {
+  // Which shipment the client has opened, if any. Kept here rather than in the
+  // router because the portal shell is deliberately a single authenticated view.
+  const [openDossier, setOpenDossier] = React.useState<string | null>(null);
   const [view, setView] = React.useState<ClientView | null>(null);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -246,6 +250,7 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
   }, []);
 
   if (error) return <ErrorState message={error} />;
+  if (openDossier) return <PortalShipment dossierId={openDossier} onBack={() => setOpenDossier(null)} />;
 
   const dossiers = view?.dossiers ?? [];
   const invoices = view?.invoices ?? [];
@@ -268,12 +273,21 @@ export function ClientTerminal({ me }: { me: PortalMe }) {
           ) : (
             <ul className="divide-y divide-border">
               {dossiers.map((d) => (
-                <li key={d.dossier_id} className="flex items-center justify-between py-3">
-                  <div>
-                    <p className="text-sm font-medium text-foreground">{d.ref}</p>
-                    <p className="text-xs text-muted-foreground">Opened {dateFmt(d.created_at)}</p>
-                  </div>
-                  <span className="status">{label(d.status)}</span>
+                <li key={d.dossier_id}>
+                  {/* The row opens the file's progress and the conditions its
+                      dates rest on — previously a client could see that a
+                      shipment existed and nothing about where it had got to. */}
+                  <button
+                    type="button"
+                    onClick={() => setOpenDossier(d.dossier_id)}
+                    className="flex w-full items-center justify-between py-3 text-left hover:opacity-80"
+                  >
+                    <div>
+                      <p className="text-sm font-medium text-foreground">{d.ref}</p>
+                      <p className="text-xs text-muted-foreground">Opened {dateFmt(d.created_at)}</p>
+                    </div>
+                    <span className="status">{label(d.status)}</span>
+                  </button>
                 </li>
               ))}
             </ul>

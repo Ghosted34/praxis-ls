@@ -1,6 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../utils/errors");
+const { schemas: qTicket } = require("../operations/q_ticket/q_ticket.validator");
 
 const schemas = {
   login: z.object({ email: z.string().email(), password: z.string().min(1) }),
@@ -13,6 +14,12 @@ const schemas = {
   invite: z.object({ email: z.string().email(), full_name: z.string().optional() }),
   forgot: z.object({ email: z.string().email() }),
   accept: z.object({ token: z.string().min(1), password: z.string().min(8) }),
+  // Q tickets raised from the portal. Reuses the module's own shapes so the
+  // internal and external surfaces validate identically — with one exception
+  // enforced in the service, not here: a client can never post an internal note,
+  // whatever the body says.
+  raiseTicket: qTicket.raise,
+  replyTicket: qTicket.reply,
 };
 
 const mw = (k) => (req, _res, next) => {
@@ -25,4 +32,5 @@ const mw = (k) => (req, _res, next) => {
 module.exports = {
   login: mw("login"), create: mw("create"), password: mw("password"), status: mw("status"),
   invite: mw("invite"), forgot: mw("forgot"), accept: mw("accept"),
+  raiseTicket: mw("raiseTicket"), replyTicket: mw("replyTicket"),
 };

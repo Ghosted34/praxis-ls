@@ -14,6 +14,8 @@ const events = require("./portal.events");
 const { isGrantUsable } = require("./portal.rules");
 const report = require("../vault/report/report.service");
 const receivables = require("../finance/smart_receivables/smart_receivables.service");
+const milestone = require("../operations/milestone/milestone.service");
+const qTicket = require("../operations/q_ticket/q_ticket.service");
 const { emitEvent, audit } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
 
@@ -66,6 +68,36 @@ async function clientView(client, { clientId }) {
     receivables.ageing(client, { clientId }),
   ]);
   return { portal: "CLIENT", client_id: clientId, dossiers, invoices, receivables_ageing: ageing };
+}
+
+/**
+ * One dossier's chain as the CLIENT sees it.
+ *
+ * Scoped twice: the file must belong to this client, and only stages flagged
+ * `is_client_visible` are returned — our invoicing and internal handling stages
+ * are not a client's business, and that flag is set per stage in the template
+ * editor rather than guessed at here.
+ *
+ * The three-date model collapses to ONE date for a client: the COMMITMENT they
+ * were given. Our internal forecast is shown only if the tenant has explicitly
+ * turned that on (`showForecastToClient`), because a forecast that moves twice
+ * a week reads as a schedule nobody is in control of — a tenant should choose
+ * that deliberately.
+ *
+ * The published assumptions come back alongside, so the dates and the
+ * conditions they rest on are read together. That is the whole point of
+ * publishing the register.
+ */
+async function clientChain(client, { clientId, dossierId }) {
+  if (!clientId) throw new AppError("CLIENT_REQUIRED", "client_id required", 422);
+  const policy = await milestone.resolvePolicy(client);
+  const out = await repo.clientDossierChain(client, {
+    clientId,
+    dossierId,
+    showForecast: policy.showForecastToClient === true,
+  });
+  if (!out) throw new AppError("NOT_FOUND", "No such file for this client", 404);
+  return out;
 }
 /**
  * Default reporting window for the investor terminal.
@@ -179,4 +211,21 @@ async function auditorView(client, { params = {} }) {
   };
 }
 
-module.exports = { grantAccess, revokeAccess, listAccess, checkAccess, clientView, investorView, auditorView };
+/**
+ * Q tickets from the client's side. Every call carries the clientId from the
+ * PORTAL SESSION and the service re-checks the dossier belongs to them, so a
+ * client cannot raise a query against — or read — someone else's file.
+ */
+const clientTickets = (client, { clientId }) => qTicket.listForClient(client, clientId);
+const clientRaiseTicket = (client, { clientId, dossierId, milestoneInstanceId, subject, body, raisedBy }) =>
+  qTicket.raise(client, { clientId, dossierId, milestoneInstanceId, subject, body, raisedBy, raisedByEmail: raisedBy });
+const clientTicketDetail = (client, { clientId, ticketId }) =>
+  qTicket.detail(client, { ticketId, clientId, forClient: true });
+const clientReplyTicket = (client, { clientId, ticketId, body }) =>
+  qTicket.reply(client, { ticketId, body, fromClient: true, clientId });
+
+module.exports = {
+  grantAccess, revokeAccess, listAccess, checkAccess,
+  clientView, clientChain, investorView, auditorView,
+  clientTickets, clientRaiseTicket, clientTicketDetail, clientReplyTicket,
+};

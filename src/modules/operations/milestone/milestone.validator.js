@@ -67,9 +67,22 @@ const addStage = z.object({
   is_client_visible: z.boolean().optional(),
 });
 
+/**
+ * The published assumptions register. `text_fr` is required and `text_en`
+ * optional because the client-facing rendering is French-first in this market;
+ * both are shown when present.
+ */
+const assumption = z.object({
+  code: z.string().min(1).max(64),
+  text_fr: z.string().min(1).max(1000),
+  text_en: z.string().max(1000).optional(),
+  is_client_visible: z.boolean().optional(),
+});
+const saveAssumptions = z.object({ assumptions: z.array(assumption).max(40) });
+
 const recalculate = z.object({ trigger: z.enum(["MANUAL", "TARGET_CHANGED"]).optional() });
 
-const schemas = { publishTemplate, instantiate, advance, reopen, addStage, recalculate };
+const schemas = { publishTemplate, instantiate, advance, reopen, addStage, recalculate, saveAssumptions };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
 module.exports = {
   publishTemplate: mw("publishTemplate"),
@@ -78,5 +91,6 @@ module.exports = {
   reopen: mw("reopen"),
   addStage: mw("addStage"),
   recalculate: mw("recalculate"),
+  saveAssumptions: mw("saveAssumptions"),
   schemas,
 };

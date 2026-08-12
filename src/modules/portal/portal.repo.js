@@ -23,6 +23,47 @@ async function revoke(client, id) {
 async function clientDossiers(client, clientId) {
   return (await client.query("SELECT dossier_id, ref, status, created_at FROM dossier WHERE client_id = $1 ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
 }
+/**
+ * The client-facing milestone chain for one of their dossiers, plus the
+ * published assumptions the dates rest on.
+ *
+ * SCOPED TWICE, deliberately. The dossier must belong to THIS client, and only
+ * `is_client_visible` stages and assumptions are returned — our invoicing and
+ * internal handling stages are not a client's business, and the flag is set per
+ * stage in the template editor. The three-date model collapses to ONE date
+ * here: a client is shown the commitment, never our internal forecast, unless
+ * the tenant has turned that on.
+ */
+async function clientDossierChain(client, { clientId, dossierId, showForecast = false }) {
+  const owns = await client.query(
+    "SELECT d.dossier_id, d.ref, d.status, d.service_type_id, st.name_fr AS service_fr, st.name_en AS service_en " +
+      "  FROM dossier d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      " WHERE d.dossier_id = $1 AND d.client_id = $2",
+    [dossierId, clientId],
+  );
+  const dossier = owns.rows[0];
+  if (!dossier) return null;
+
+  const stages = await client.query(
+    "SELECT code, label, label_en, planned_due" +
+      (showForecast ? ", forecast_due" : "") +
+      ", status, completed_at, stage_seq " +
+      "  FROM milestone_instance " +
+      " WHERE dossier_id = $1 AND is_client_visible ORDER BY stage_seq",
+    [dossierId],
+  );
+
+  const assumptions = dossier.service_type_id
+    ? (await client.query(
+        "SELECT code, text_fr, text_en FROM service_type_assumption " +
+          " WHERE service_type_id = $1 AND is_client_visible ORDER BY seq, code",
+        [dossier.service_type_id],
+      )).rows
+    : [];
+
+  return { dossier, milestones: stages.rows, assumptions };
+}
+
 async function clientInvoices(client, clientId) {
   return (await client.query("SELECT invoice_id, doc_number, total_ttc, status, payment_due_on FROM invoice WHERE client_id = $1 AND type = 'FINAL' ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
 }
@@ -51,4 +92,4 @@ async function auditLedger(client, { from, to, prefixes, limit = 500 }) {
   );
   return rows;
 }
-module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientInvoices, auditLedger, page };
+module.exports = { insertAccess, listAccess, activeFor, revoke, clientDossiers, clientDossierChain, clientInvoices, auditLedger, page };

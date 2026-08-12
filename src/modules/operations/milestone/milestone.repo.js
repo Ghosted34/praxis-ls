@@ -104,6 +104,106 @@ async function assumptions(client, serviceTypeId, { clientVisibleOnly = false } 
   return rows;
 }
 
+/**
+ * The stages of the SHIPPED system default for a service type (9091's v1).
+ *
+ * Two jobs, both in the editor: show a tenant what they have changed away from,
+ * and give "restore the default" something to restore FROM. The seeded v1
+ * template is never deleted when a tenant publishes their own version — it is
+ * just deactivated — so the shipped chain remains available indefinitely
+ * without storing a second copy of it anywhere.
+ */
+async function systemDefaultStages(client, serviceTypeId) {
+  const { rows } = await client.query(
+    "SELECT s.* FROM milestone_template_stage s " +
+      "  JOIN milestone_template t ON t.milestone_template_id = s.milestone_template_id " +
+      " WHERE t.service_type_id = $1 AND t.is_system AND s.is_system " +
+      " ORDER BY t.version ASC, s.stage_seq ASC",
+    [serviceTypeId],
+  );
+  return rows;
+}
+
+/**
+ * Replace a service type's assumptions register.
+ *
+ * Wholesale, like the working calendar and for the same reason: it is a short
+ * ordered list edited as one thing, and diffing rows would buy nothing. The
+ * caller wraps this in its own transaction so a half-written register can never
+ * be what a client reads.
+ */
+async function replaceAssumptions(client, serviceTypeId, rows) {
+  await client.query("DELETE FROM service_type_assumption WHERE service_type_id = $1", [serviceTypeId]);
+  for (let i = 0; i < rows.length; i += 1) {
+    const a = rows[i];
+    await client.query(
+      "INSERT INTO service_type_assumption (service_type_id, seq, code, text_fr, text_en, is_client_visible, is_system) " +
+        " VALUES ($1,$2,$3,$4,$5,$6,$7) ON CONFLICT (service_type_id, code) DO NOTHING",
+      [serviceTypeId, i + 1, a.code, a.text_fr, a.text_en || null, a.is_client_visible !== false, !!a.is_system],
+    );
+  }
+  return assumptions(client, serviceTypeId);
+}
+
+/**
+ * Delay attribution, aggregated — "who is costing us time".
+ *
+ * Reads COMPLETED milestones rather than the rebaseline log: the log records
+ * every date movement, but a stage that slipped and was then re-forecast three
+ * times would count three times. The completed instance carries the single
+ * settled number (`variance_hours`) and the tier it was charged to, which is the
+ * honest denominator.
+ *
+ * Force-majeure is separated, never netted away. "The carrier cost us four days"
+ * and "four days were lost to a port strike we published as a risk" are
+ * different sentences, and collapsing them into one average is how a scorecard
+ * stops being trusted by the people it scores.
+ */
+async function attributionSummary(client, { from = null, to = null, serviceTypeId = null } = {}) {
+  const params = [];
+  const where = ["mi.status = 'DONE'", "mi.attributed_to IS NOT NULL", "mi.variance_hours > 0"];
+  if (from) { params.push(from); where.push("mi.completed_at >= $" + params.length); }
+  if (to) { params.push(to); where.push("mi.completed_at < ($" + params.length + "::date + 1)"); }
+  if (serviceTypeId) { params.push(serviceTypeId); where.push("d.service_type_id = $" + params.length); }
+
+  const { rows } = await client.query(
+    "SELECT mi.attributed_to AS owner_tier, " +
+      "       COUNT(*)::int AS slips, " +
+      "       ROUND(SUM(mi.variance_hours)::numeric, 0)::int AS total_hours, " +
+      "       ROUND(AVG(mi.variance_hours)::numeric, 1)::float AS avg_hours, " +
+      "       COUNT(*) FILTER (WHERE mi.cause_reason_code IS NOT NULL)::int AS excused, " +
+      "       COALESCE(ROUND(SUM(mi.variance_hours) FILTER (WHERE mi.cause_reason_code IS NOT NULL)::numeric, 0), 0)::int AS excused_hours " +
+      "  FROM milestone_instance mi JOIN dossier d USING (dossier_id) " +
+      " WHERE " + where.join(" AND ") +
+      " GROUP BY mi.attributed_to ORDER BY total_hours DESC",
+    params,
+  );
+  return rows;
+}
+
+/** The same slips broken down by stage, so a tier's number is explainable. */
+async function attributionByStage(client, { from = null, to = null, serviceTypeId = null, limit = 20 } = {}) {
+  const params = [];
+  const where = ["mi.status = 'DONE'", "mi.attributed_to IS NOT NULL", "mi.variance_hours > 0"];
+  if (from) { params.push(from); where.push("mi.completed_at >= $" + params.length); }
+  if (to) { params.push(to); where.push("mi.completed_at < ($" + params.length + "::date + 1)"); }
+  if (serviceTypeId) { params.push(serviceTypeId); where.push("d.service_type_id = $" + params.length); }
+  params.push(limit);
+
+  const { rows } = await client.query(
+    "SELECT mi.code, mi.label, mi.attributed_to AS owner_tier, st.name_fr AS service_fr, st.name_en AS service_en, " +
+      "       COUNT(*)::int AS slips, ROUND(AVG(mi.variance_hours)::numeric, 1)::float AS avg_hours, " +
+      "       ROUND(SUM(mi.variance_hours)::numeric, 0)::int AS total_hours " +
+      "  FROM milestone_instance mi JOIN dossier d USING (dossier_id) " +
+      "  LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      " WHERE " + where.join(" AND ") +
+      " GROUP BY mi.code, mi.label, mi.attributed_to, st.name_fr, st.name_en " +
+      " ORDER BY total_hours DESC LIMIT $" + params.length,
+    params,
+  );
+  return rows;
+}
+
 function logRebaseline(client, data) { return insertOne(client, "milestone_rebaseline_log", data); }
 
 /**
@@ -137,5 +237,7 @@ async function seqBetween(client, dossierId, afterSeq) {
 module.exports = {
   insertTemplate, insertStage, nextVersion, activeTemplate, stages, deactivateOthers, getTemplate,
   insertInstance, getInstance, updateInstance, listByDossier, existingInstances, listTemplates,
-  scheduleContext, workingCalendar, assumptions, logRebaseline, openInstances, seqBetween,
+  scheduleContext, workingCalendar, assumptions, replaceAssumptions, logRebaseline, openInstances, seqBetween,
+  attributionSummary, attributionByStage,
+  systemDefaultStages,
 };

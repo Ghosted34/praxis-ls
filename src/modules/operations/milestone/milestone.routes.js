@@ -17,7 +17,15 @@ router.get("/dossier/:dossierId", requirePermission(MODULE, "view"), controller.
 router.post("/dossier/:dossierId/stages", requirePermission(MODULE, "edit"), validator.addStage, controller.addStage);
 // Force a re-baseline: used after a promised date changes, and by the SLA scan.
 router.post("/dossier/:dossierId/recalculate", requirePermission(MODULE, "edit"), validator.recalculate, controller.recalculate);
+// The shipped default chain, for the editor's drift indicator and its
+// "restore the default" action.
+// "Who is costing us time" — attribution rolled up by owner tier.
+router.get("/attribution", requirePermission(MODULE, "view"), controller.attribution);
+router.get("/system-default/:serviceTypeId", requirePermission(MODULE, "view"), controller.systemDefault);
 router.get("/assumptions/:serviceTypeId", requirePermission(MODULE, "view"), controller.assumptions);
+// The published register is part of what a client was promised, so writing it
+// needs the same permission as changing the chain itself.
+router.put("/assumptions/:serviceTypeId", requirePermission(MODULE, "edit"), validator.saveAssumptions, controller.saveAssumptions);
 router.post("/:id/advance", requirePermission(MODULE, "edit"), validator.advance, controller.advance);
 // Un-completing is not an ordinary transition (frozen DONE is what makes
 // variance measurable), so it has its own route, permission and reason.

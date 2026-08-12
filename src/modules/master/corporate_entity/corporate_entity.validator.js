@@ -25,6 +25,7 @@ const schemas = {
   setStructure: entityCommon.setStructure,
   logoUpload: entityCommon.logoUpload,
   letterhead: entityCommon.letterheadUpdate,
+  workingCalendar: entityCommon.workingCalendarSave,
   // AI-facing: entity_id in the payload → list_entities picker.
   aiUpdate: entityCommon.aiUpdate,
   aiSetActive: entityCommon.aiSetActive,
@@ -46,5 +47,6 @@ module.exports = {
   setStructure: mw("setStructure"),
   logoUpload: mw("logoUpload"),
   letterhead: mw("letterhead"),
+  workingCalendar: mw("workingCalendar"),
   schemas,
 };

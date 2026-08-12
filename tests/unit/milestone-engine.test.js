@@ -38,6 +38,36 @@ describe("working calendar", () => {
     expect(cal.localDate(withHoliday, out)).toBe("2026-02-10");
   });
 
+  it("accepts a holiday_date as a Date, which is what the database returns", () => {
+    // THE REGRESSION. `node-postgres` parses a `date` column into a JS Date, so
+    // every holiday row arriving from the tenant DB is a Date — and the first
+    // version of the parser stringified it to "Thu Jan 01", failed its own ISO
+    // test, and DROPPED it. Every configured public holiday was silently
+    // ignored and the engine scheduled straight through 20 May. Nothing threw;
+    // only an end-to-end run against real Postgres could see it.
+    const spec = cal.buildCalendar({
+      days: [1, 2, 3, 4, 5].map((weekday) => ({ weekday, opens_at: "08:00", closes_at: "17:00" })),
+      holidays: [
+        { holiday_date: new Date(2026, 4, 20), is_recurring: true },   // 20 May
+        { holiday_date: new Date(2026, 3, 3), is_recurring: false },   // 3 April
+      ],
+    });
+    expect(cal.isHoliday(spec, { y: 2027, m: 5, d: 20 })).toBe(true);
+    expect(cal.isHoliday(spec, { y: 2026, m: 4, d: 3 })).toBe(true);
+    expect(cal.isHoliday(spec, { y: 2027, m: 4, d: 3 })).toBe(false);
+  });
+
+  it("skips a holiday that falls mid-calculation rather than scheduling through it", () => {
+    const spec = cal.buildCalendar({
+      days: [1, 2, 3].map((weekday) => ({ weekday, opens_at: "08:00", closes_at: "16:00" })),
+      holidays: [{ holiday_date: new Date(2026, 4, 20), is_recurring: true, name_fr: "Fête Nationale" }],
+    });
+    // Tue 19 May 15:00 + 4h: 1h to close, Wed 20 May is the holiday, Thu–Sun
+    // closed, so it lands on Monday 25 May.
+    const out = cal.addWorkingHours(spec, at("2026-05-19T15:00:00+01:00"), 4);
+    expect(cal.localDate(spec, out)).toBe("2026-05-25");
+  });
+
   it("honours a recurring holiday in any year", () => {
     const spec = cal.buildCalendar({
       days: [{ weekday: 1, opens_at: "08:00", closes_at: "17:00" }],

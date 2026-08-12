@@ -8,6 +8,7 @@ module.exports = {
   revoke: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.revokeAccess(c, { id: req.params.id, actor: actor(req) })) })),
   check: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.checkAccess(c, { email: req.query.email, portal: req.query.portal })) })),
   client: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientView(c, { clientId: req.query.client_id })) })),
+  clientChain: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.clientChain(c, { clientId: req.query.client_id, dossierId: req.params.dossierId })) })),
   investor: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.investorView(c, { params: req.query })) })),
   auditor: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.auditorView(c, { params: req.query })) })),
 };

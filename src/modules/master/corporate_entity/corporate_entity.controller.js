@@ -1,5 +1,6 @@
 "use strict";
 const service = require("./corporate_entity.service");
+const calendar = require("./corporate_entity.calendar");
 const dossierService = require("../entity-360.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const actor = (req) => req.user || { user_id: null };
@@ -30,6 +31,12 @@ module.exports = {
     res.json({ data });
   }),
 
+  workingCalendar: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => calendar.get(c, req.params.id)) })),
+  saveWorkingCalendar: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => calendar.save(c, req.params.id, { ...req.body, actor: req.user || {} })) })),
+  resetWorkingCalendar: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => calendar.reset(c, req.params.id, { actor: req.user || {} })) })),
   letterhead: asyncHandler(async (req, res) => {
     // Gate 14 again: this route is MOD-01 `view`, and the payment block it
     // renders carries the account number.

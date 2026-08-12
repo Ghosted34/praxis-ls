@@ -21,12 +21,15 @@ import { Pill } from "@/components/ui/pill";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
+import { MilestoneChain } from "./milestone-chain";
+import { QTickets } from "./q-tickets";
 import { humanizeKey, serviceLabel, tone } from "./shared";
 import { DocGroup, DocRow, MoneyRow, PersonRow } from "./components";
 
-type Tab360 = "milestones" | "money" | "people" | "documents";
+type Tab360 = "milestones" | "queries" | "money" | "people" | "documents";
 const TABS_360: { value: Tab360; label: string }[] = [
   { value: "milestones", label: "Milestones" },
+  { value: "queries", label: "Queries" },
   { value: "money", label: "Money" },
   { value: "people", label: "People" },
   { value: "documents", label: "Documents" },
@@ -89,24 +92,10 @@ function ReadinessBanner({
 }
 
 function MilestonesTab({ dossierId }: { dossierId: string }) {
-  const chain = useResource(() => api.milestonesByDossier(dossierId), [dossierId]);
-  if (chain.loading) return <SkeletonTable rows={4} cols={3} />;
-  if (chain.error) return <ErrorState message={chain.error} />;
-  const rows = chain.data || [];
-  if (!rows.length) return <span className="micro">No milestone chain seeded for this file yet.</span>;
-  return (
-    <ol className="space-y-1.5">
-      {rows.map((ms) => (
-        <li key={ms.milestone_instance_id} className="flex items-center justify-between rounded-md border border-border px-3 py-1.5">
-          <span className="text-sm text-foreground">{ms.label_fr || ms.code}</span>
-          <div className="flex items-center gap-3">
-            <span className="micro">{dateFmt(ms.due_date)}</span>
-            <Pill tone={tone(ms.status)}>{ms.status}</Pill>
-          </div>
-        </li>
-      ))}
-    </ol>
-  );
+  // The chain, its dates and its actions now live in one component shared with
+  // the Milestones screen — two renderings of the same thing had already
+  // drifted once (the standalone screen advanced, this one only listed).
+  return <MilestoneChain dossierId={dossierId} />;
 }
 
 function MoneyTab({ m }: { m: api.DossierOverview["money"] | undefined }) {
@@ -340,6 +329,7 @@ export function Dossier360Modal({
           <Segmented label="Dossier 360 section" value={tab} options={TABS_360} onChange={setTab} />
 
           {tab === "milestones" && <MilestonesTab dossierId={dossier.dossier_id} />}
+          {tab === "queries" && <QTickets dossierId={dossier.dossier_id} />}
           {tab === "money" && <MoneyTab m={d.money} />}
           {tab === "people" && <PeopleTab people={d.people} />}
           {tab === "documents" && <DocumentsTab d={d} />}

@@ -320,9 +320,16 @@ export const removeServiceTypeDictionaryTier = (serviceTypeId: string, itemId: s
  * seed. Publishing supersedes the previous version (`deactivateOthers`) — it
  * does not edit in place, so dossiers already instantiated keep their stages.
  */
+/**
+ * Publish a new ACTIVE template version.
+ *
+ * The body carries the whole scheduling shape, not just labels — the backend
+ * validator (milestone.validator.js) bounds it at 3..15 stages, weight 0..100
+ * and a known owner tier, and the DB caps the count at 15 as well.
+ */
 export const publishMilestoneTemplate = (body: {
   service_type_id: string;
-  stages: { code: string; label_fr: string; label_en?: string; default_offset_days?: number; stage_seq?: number }[];
+  stages: MilestoneStage[];
 }) => tenant<MilestoneTemplate[]>("/milestones/templates", { method: "POST", body });
 
 /* ── Places (/geo-places) — POL/POD reference data for the route pickers ── */
@@ -346,6 +353,52 @@ export const createGeoPlace = (body: {
 }) => tenant<GeoPlace>("/geo-places", { method: "POST", body });
 
 /* ── Milestones(/milestones) — templates + per-dossier instances ── */
+
+/** Who a stage's delay is charged to when it slips (0650). */
+export type OwnerTier = "INTERNAL" | "CARRIER" | "TERMINAL" | "AUTHORITY" | "CLIENT";
+export const OWNER_TIERS: OwnerTier[] = ["INTERNAL", "CARRIER", "TERMINAL", "AUTHORITY", "CLIENT"];
+
+/** Human labels — never render the SCREAMING_ENUM (FRONTEND_GUIDE §5). */
+export const OWNER_TIER_LABEL: Record<OwnerTier, string> = {
+  INTERNAL: "Internal ops",
+  CARRIER: "Carrier",
+  TERMINAL: "Terminal / port",
+  AUTHORITY: "Customs / authority",
+  CLIENT: "Client",
+};
+
+export const CADENCES = ["DAILY", "WEEKLY", "MONTHLY", "QUARTERLY", "ANNUAL"] as const;
+export type Cadence = (typeof CADENCES)[number];
+
+/**
+ * One stage of a milestone template.
+ *
+ * `weight` and `min_duration_hours` are the scheduling half: weight is the
+ * stage's share of the chain's horizon (summing to 100 per segment), and the
+ * floor is what stops a locked SLA compressing it into an impossible schedule.
+ */
+export type MilestoneStage = {
+  stage_id?: string;
+  stage_seq?: number;
+  code: string;
+  label_fr: string;
+  label_en?: string | null;
+  default_offset_days?: number | null;
+  weight?: number | null;
+  min_duration_hours?: number | null;
+  owner_tier?: OwnerTier | null;
+  is_anchor?: boolean;
+  is_target_lock?: boolean;
+  is_client_visible?: boolean;
+  is_optional?: boolean;
+  chain_segment?: string | null;
+  cadence?: Cadence | null;
+  required_evidence_doc_type?: string | null;
+  auto_advance_on_event?: string | null;
+  is_system?: boolean;
+  system_code?: string | null;
+};
+
 export type MilestoneTemplate = {
   milestone_template_id?: string;
   code?: string;
@@ -355,15 +408,95 @@ export type MilestoneTemplate = {
   default_offset_days?: number | null;
   service_type_id?: string | null;
 };
+
+/** The shipped default chain — drift comparison and "restore the default". */
+export const milestoneSystemDefault = (serviceTypeId: string) =>
+  tenant<MilestoneStage[]>(`/milestones/system-default/${serviceTypeId}`);
+/**
+ * One milestone on a dossier.
+ *
+ * THE THREE DATES are the shape everything else here follows: `baseline_due` is
+ * frozen at instantiation and is the yardstick variance is measured against;
+ * `planned_due` is the commitment the client was given; `forecast_due` is what
+ * we actually believe. They diverge on purpose — a delay moves the commitment,
+ * an early finish moves only the forecast.
+ */
 export type MilestoneInstance = {
   milestone_instance_id: string;
   dossier_id: string;
   code?: string;
+  label?: string;
   label_fr?: string;
+  label_en?: string | null;
   status: string;
+  stage_seq?: number;
   due_date?: string | null;
+  baseline_due?: string | null;
+  planned_due?: string | null;
+  forecast_due?: string | null;
   completed_at?: string | null;
+  health?: string | null;
+  owner_tier?: OwnerTier | null;
+  weight?: number | null;
+  is_anchor?: boolean;
+  is_target_lock?: boolean;
+  is_client_visible?: boolean;
+  is_ad_hoc?: boolean;
+  variance_hours?: number | null;
+  attributed_to?: OwnerTier | null;
+  cause_reason_code?: string | null;
+  required_evidence_doc_type?: string | null;
+  reopen_reason?: string | null;
 };
+
+/** Health of an open milestone against its commitment (milestone.schedule). */
+export const MILESTONE_HEALTH_LABEL: Record<string, string> = {
+  OK: "On plan",
+  DUE: "Due soon",
+  AT_RISK: "At risk",
+  DELAYED: "Late",
+  BREACH_FORECAST: "Will miss the SLA",
+  DONE: "Done",
+  BLOCKED: "Blocked",
+};
+
+export const milestoneHealthTone = (health?: string | null): "ok" | "warn" | "bad" | "orange" | "mute" => {
+  switch (String(health || "").toUpperCase()) {
+    case "DONE": return "ok";
+    case "DUE": return "warn";
+    case "AT_RISK": return "orange";
+    case "DELAYED":
+    case "BREACH_FORECAST": return "bad";
+    case "BLOCKED": return "mute";
+    default: return "ok";
+  }
+};
+
+/** Un-complete a milestone marked DONE in error. The reason is the point. */
+export const reopenMilestone = (id: string, reason: string) =>
+  tenant<MilestoneInstance>(`/milestones/${id}/reopen`, { method: "POST", body: { reason } });
+
+/** Insert a stage into a LIVE chain, between two existing ones. */
+export const addDossierMilestone = (
+  dossierId: string,
+  body: {
+    after_seq: number;
+    code: string;
+    label: string;
+    label_en?: string;
+    weight?: number;
+    min_duration_hours?: number;
+    owner_tier?: OwnerTier;
+    is_client_visible?: boolean;
+  },
+) => tenant<MilestoneInstance>(`/milestones/dossier/${dossierId}/stages`, { method: "POST", body });
+
+/** Force a re-baseline — used after a promised date changes. */
+export const recalculateMilestones = (dossierId: string) =>
+  tenant<{ changed: number; meta: unknown }>(`/milestones/dossier/${dossierId}/recalculate`, {
+    method: "POST",
+    body: { trigger: "MANUAL" },
+  });
 export const listMilestoneTemplates = () => tenant<MilestoneTemplate[]>("/milestones/templates");
 export const milestonesByDossier = (dossierId: string) => tenant<MilestoneInstance[]>(`/milestones/dossier/${dossierId}`);
 export type MilestoneStatus = "PENDING" | "IN_PROGRESS" | "DONE" | "BLOCKED";

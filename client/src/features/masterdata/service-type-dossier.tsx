@@ -39,6 +39,7 @@ import { DictionaryFinder } from "@/components/dictionary-finder";
 import { cn } from "@/lib/cn";
 import { money, num, dateFmt } from "@/lib/format";
 import * as api from "@/lib/operations-api";
+import { ServiceTypeAssumptions } from "./service-type-assumptions";
 import { reportActionError } from "@/lib/action-error";
 
 /* ── Local building blocks (mirroring party-360's MiniTable / Th / Td) ───── */
@@ -86,7 +87,7 @@ function DeepLink({ href, children }: { href: string; children: React.ReactNode 
 
 /* ── Tabs ────────────────────────────────────────────────────────────────── */
 
-const TABS = ["Overview", "Milestones", "Dictionary", "Dossiers", "Commercial", "Automation"] as const;
+const TABS = ["Overview", "Milestones", "Assumptions", "Dictionary", "Dossiers", "Commercial", "Automation"] as const;
 type Tab = (typeof TABS)[number];
 
 const DOSSIER_TONE: Record<string, "ok" | "warn" | "mute" | "blue"> = {
@@ -212,9 +213,11 @@ function Header({
 function MilestonesTab({
   templates,
   onPublish,
+  onEditPolicy,
 }: {
   templates: api.ServiceTypeDossier["templates"];
   onPublish: () => void;
+  onEditPolicy: () => void;
 }) {
   const navigate = useNavigate();
   return (
@@ -227,6 +230,9 @@ function MilestonesTab({
         </p>
         <div className="flex gap-2">
           <Button size="sm" variant="outline" onClick={() => navigate("/operations/milestones")}>Open in Milestones</Button>
+          {/* The stages say WHAT happens; the policy says how the schedule
+              behaves when reality does not cooperate. They belong together. */}
+          <Button size="sm" variant="outline" onClick={onEditPolicy}>Scheduling policy</Button>
           <Button size="sm" onClick={onPublish}>
             {templates.some((t) => t.is_active) ? "Publish new version" : "Publish first template"}
           </Button>
@@ -819,11 +825,14 @@ export function ServiceTypeDossier({
   serviceTypeId,
   onEdit,
   onPublishTemplate,
+  onEditPolicy,
   onChanged,
 }: {
   serviceTypeId: string;
   onEdit: () => void;
   onPublishTemplate: () => void;
+  /** Opens the scheduling / SLA policy for THIS service type (⚙ on the tab). */
+  onEditPolicy: () => void;
   onChanged?: () => void;
 }) {
   const dossier = useResource(() => api.getServiceTypeDossier(serviceTypeId), [serviceTypeId]);
@@ -921,7 +930,10 @@ export function ServiceTypeDossier({
       </div>
 
       {tab === "Overview" && <OverviewTab d={d} onEditName={saveName} />}
-      {tab === "Milestones" && <MilestonesTab templates={d.templates} onPublish={onPublishTemplate} />}
+      {tab === "Milestones" && <MilestonesTab templates={d.templates} onPublish={onPublishTemplate} onEditPolicy={onEditPolicy} />}
+      {/* The chain says WHEN; the register says what those dates depend on.
+          Adjacent tabs because a client reads them together. */}
+      {tab === "Assumptions" && <ServiceTypeAssumptions serviceTypeId={serviceTypeId} />}
       {tab === "Dictionary" && (
         <DictionaryTab
           scoped={d.dictionary_items}

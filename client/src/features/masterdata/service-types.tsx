@@ -30,6 +30,7 @@ import { useResource } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
 import { ServiceTypeForm } from "./service-type-form";
 import { TemplateForm } from "./service-type-template-form";
+import { MilestonePolicyForm } from "./milestone-policy-form";
 import { ServiceTypeDossier } from "./service-type-dossier";
 
 const shell = pageShell.wide;
@@ -44,6 +45,9 @@ export function ServiceTypesPage() {
   // three-state convention the entity-360 form uses.
   const [editing, setEditing] = React.useState<api.ServiceType | null | undefined>(undefined);
   const [templating, setTemplating] = React.useState<api.ServiceType | null>(null);
+  // The ⚙ policy modal: how THIS service schedules, and what it does when its
+  // SLA can no longer be met. Falls back to the tenant default when unset.
+  const [policyFor, setPolicyFor] = React.useState<api.ServiceType | null>(null);
 
   const rows = React.useMemo(() => list.data || [], [list.data]);
   const filtered = React.useMemo(() => {
@@ -116,6 +120,7 @@ export function ServiceTypesPage() {
               serviceTypeId={selected.service_type_id}
               onEdit={() => setEditing(selected)}
               onPublishTemplate={() => setTemplating(selected)}
+              onEditPolicy={() => setPolicyFor(selected)}
               onChanged={list.reload}
             />
           ) : (
@@ -134,6 +139,13 @@ export function ServiceTypesPage() {
       )}
       {templating && (
         <TemplateForm svc={templating} onClose={() => setTemplating(null)} onSaved={list.reload} />
+      )}
+      {policyFor && (
+        <MilestonePolicyForm
+          serviceTypeId={policyFor.service_type_id}
+          serviceTypeName={policyFor.name_en || policyFor.name_fr}
+          onClose={() => setPolicyFor(null)}
+        />
       )}
     </section>
   );

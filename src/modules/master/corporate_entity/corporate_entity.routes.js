@@ -25,6 +25,12 @@ router.get("/:id/letterhead", requirePermission(MODULE, "view"), controller.lett
 router.put("/:id/letterhead", requirePermission(MODULE, "edit"), validator.letterhead, controller.saveLetterhead);
 // Everything on this entity that needs renewing. Advisory: severities stop at
 // SOFT_BLOCK_RECOMMENDATION and no rule ever hard-blocks.
+// Working calendar — the hours the milestone engine schedules in (0650).
+// Nested under the entity because the hours belong to the office that does the
+// work, not to the tenant.
+router.get("/:id/working-calendar", requirePermission(MODULE, "view"), controller.workingCalendar);
+router.put("/:id/working-calendar", requirePermission(MODULE, "edit"), validator.workingCalendar, controller.saveWorkingCalendar);
+router.post("/:id/working-calendar/reset", requirePermission(MODULE, "edit"), controller.resetWorkingCalendar);
 router.get("/:id/renewals", requirePermission(MODULE, "view"), controller.renewals);
 
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);

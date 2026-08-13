@@ -71,8 +71,8 @@ export function FileDrop({
 
   function previewBody(full = false) {
     if (!previewUrl || !file) return null;
-    if (isImage) return <img src={previewUrl} alt={`Preview of ${file.name}`} className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
-    if (isPdf) return <iframe src={previewUrl} title={`Preview of ${file.name}`} className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
+    if (isImage) return <img src={previewUrl} alt="Selected image preview" className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
+    if (isPdf) return <iframe src={previewUrl} title="Selected PDF preview" className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
     return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
   }
 
@@ -144,7 +144,7 @@ export function FileDrop({
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
       {previewOpen && previewUrl && file && (
-        <Modal open onClose={() => setPreviewOpen(false)} title={`Preview — ${file.name}`} size="xl">
+        <Modal open onClose={() => setPreviewOpen(false)} title="Document preview" size="xl">
           {previewBody(true)}
         </Modal>
       )}

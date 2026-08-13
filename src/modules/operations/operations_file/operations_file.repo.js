@@ -48,6 +48,10 @@ const WRITABLE = new Set([
   // discarding what they wrote. Set by the shipment-details service, never
   // typed in.
   "marks_numbers_is_manual",
+  // When the creation wizard opened this as a DRAFT (0669), so the sweeper can
+  // find one nobody came back to finish. Written by `createDraft`, never by a
+  // caller's payload — but it goes through the same insert, so it must be here.
+  "draft_started_at",
   // Which VERSION of its service type's detail form this file was created
   // against. Set once, on create; it is what keeps an open file rendering and
   // validating against the form it was opened with after the form is
@@ -104,7 +108,7 @@ async function listPaged(client, q = {}) {
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
     "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-    "FROM dossier d " +
+    "FROM dossier_visible d " +
     "LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
     "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
     "LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id " +

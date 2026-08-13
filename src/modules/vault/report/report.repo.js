@@ -44,7 +44,7 @@ async function dossierMarginPortfolio(client, { limit = 50 } = {}) {
     "SELECT d.dossier_id, d.ref, d.status, " +
       "  COALESCE(inv.billed, 0) AS billed_ttc, COALESCE(ce.actual, 0) AS actual_cost, " +
       "  (COALESCE(inv.billed,0) - COALESCE(ce.actual,0)) AS gross_margin " +
-      "FROM dossier d " +
+      "FROM dossier_visible d " +
       "LEFT JOIN (SELECT dossier_id, SUM(total_ttc) AS billed FROM invoice WHERE type='FINAL' AND status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED') GROUP BY dossier_id) inv ON inv.dossier_id = d.dossier_id " +
       "LEFT JOIN (SELECT dossier_id, SUM(amount) AS actual FROM cost_entry GROUP BY dossier_id) ce ON ce.dossier_id = d.dossier_id " +
       "ORDER BY d.created_at DESC LIMIT $1",

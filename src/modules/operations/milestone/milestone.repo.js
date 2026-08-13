@@ -67,7 +67,7 @@ async function scheduleContext(client, dossierId) {
   const { rows } = await client.query(
     "SELECT d.dossier_id, d.entity_id, d.created_at, d.promised_delivery_date, d.eta, " +
       "       st.service_type_id, st.default_duration_days, st.duration_basis, st.is_open_ended " +
-      "  FROM dossier d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "  FROM dossier_visible d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       " WHERE d.dossier_id = $1",
     [dossierId],
   );
@@ -173,7 +173,7 @@ async function attributionSummary(client, { from = null, to = null, serviceTypeI
       "       ROUND(AVG(mi.variance_hours)::numeric, 1)::float AS avg_hours, " +
       "       COUNT(*) FILTER (WHERE mi.cause_reason_code IS NOT NULL)::int AS excused, " +
       "       COALESCE(ROUND(SUM(mi.variance_hours) FILTER (WHERE mi.cause_reason_code IS NOT NULL)::numeric, 0), 0)::int AS excused_hours " +
-      "  FROM milestone_instance mi JOIN dossier d USING (dossier_id) " +
+      "  FROM milestone_instance mi JOIN dossier_visible d USING (dossier_id) " +
       " WHERE " + where.join(" AND ") +
       " GROUP BY mi.attributed_to ORDER BY total_hours DESC",
     params,
@@ -194,7 +194,7 @@ async function attributionByStage(client, { from = null, to = null, serviceTypeI
     "SELECT mi.code, mi.label, mi.attributed_to AS owner_tier, st.name_fr AS service_fr, st.name_en AS service_en, " +
       "       COUNT(*)::int AS slips, ROUND(AVG(mi.variance_hours)::numeric, 1)::float AS avg_hours, " +
       "       ROUND(SUM(mi.variance_hours)::numeric, 0)::int AS total_hours " +
-      "  FROM milestone_instance mi JOIN dossier d USING (dossier_id) " +
+      "  FROM milestone_instance mi JOIN dossier_visible d USING (dossier_id) " +
       "  LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       " WHERE " + where.join(" AND ") +
       " GROUP BY mi.code, mi.label, mi.attributed_to, st.name_fr, st.name_en " +
@@ -214,7 +214,7 @@ function logRebaseline(client, data) { return insertOne(client, "milestone_rebas
 async function openInstances(client, { limit = 5000 } = {}) {
   const { rows } = await client.query(
     "SELECT mi.*, d.entity_id, d.promised_delivery_date, d.eta, d.created_at AS dossier_created_at " +
-      "  FROM milestone_instance mi JOIN dossier d USING (dossier_id) " +
+      "  FROM milestone_instance mi JOIN dossier_visible d USING (dossier_id) " +
       " WHERE mi.status NOT IN ('DONE') AND d.status NOT IN ('COMPLETED','CANCELLED') " +
       " ORDER BY mi.dossier_id, mi.stage_seq LIMIT $1",
     [limit],

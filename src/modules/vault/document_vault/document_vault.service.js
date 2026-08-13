@@ -19,6 +19,33 @@ const EXT = {
 };
 const MAX_BYTES = 25 * 1024 * 1024;
 
+/**
+ * What the FILE says it is, read from its first bytes.
+ *
+ * WHY, when the data URL already declares a type. Because the declaration is
+ * the uploader's, and the uploader is a browser relaying whatever the operating
+ * system guessed from the extension. Legacy sniffed content for exactly this
+ * reason (`upload.php:98-105`), and renaming `payload.exe` to `invoice.pdf` is
+ * the oldest trick there is. The declared type decides the STORED extension; the
+ * sniff decides whether it is stored at all.
+ *
+ * Deliberately small: the four magic numbers that matter for the formats an
+ * operations file accepts. Anything else returns null and is refused by the
+ * caller that asked for sniffing, rather than being guessed at.
+ */
+function sniffContentType(buffer) {
+  if (!buffer || buffer.length < 12) return null;
+  // %PDF
+  if (buffer[0] === 0x25 && buffer[1] === 0x50 && buffer[2] === 0x44 && buffer[3] === 0x46) return "application/pdf";
+  // \x89PNG\r\n\x1a\n
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+  // JPEG SOI + marker
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  // RIFF....WEBP
+  if (buffer.slice(0, 4).toString("ascii") === "RIFF" && buffer.slice(8, 12).toString("ascii") === "WEBP") return "image/webp";
+  return null;
+}
+
 // Mirrors the document_vault.status CHECK constraint (migration 0340). Guarding
 // here turns a wrong status into a clean 422 instead of a raw 23514 from Postgres
 // (which is how issuers passing "DRAFT" used to surface).
@@ -91,22 +118,57 @@ const list = (client, q) => repo.list(client, q);
  * ad-hoc uploads can coexist. Status VERIFIED since real bytes + hash exist.
  */
 async function createDocument(client, opts) {
-  const { entityRef = null, docType = null, dataUrl, fileContext = null, folderRef = null, dossierId = null, slug, actor = {} } = opts;
+  const {
+    entityRef = null, docType = null, dataUrl, fileContext = null, folderRef = null,
+    dossierId = null, docTypeRefId = null, clientId = null, originalName = null,
+    // Stricter rules for one caller, rather than tightened for all. An
+    // operations file accepts what legacy accepted — 5 MB, PDF/PNG/JPG, content
+    // sniffed — while the HR and finance paths keep the 25 MB and the wider
+    // type list they already had. Narrowing those here would be a silent
+    // regression in modules this change has no business touching.
+    maxBytes = MAX_BYTES, allowedTypes = null, sniff = false,
+    slug, actor = {},
+  } = opts;
   // Ad-hoc uploads are free-form (scanned contracts, IDs, …) — no registry guard
   // here; the doc_type registry constrains system-generated captures, not uploads.
   const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
   if (!m) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
   const contentType = m[1].toLowerCase();
-  const ext = EXT[contentType] || "bin";
   const buffer = Buffer.from(m[2], "base64");
   if (!buffer.length) throw new AppError("EMPTY_FILE", "File is empty", 422);
-  if (buffer.length > MAX_BYTES) throw new AppError("FILE_TOO_LARGE", "File exceeds 25 MB", 413);
+  if (buffer.length > maxBytes) {
+    throw new AppError("FILE_TOO_LARGE", `File exceeds ${Math.round(maxBytes / (1024 * 1024))} MB`, 413);
+  }
+  if (allowedTypes && !allowedTypes.includes(contentType)) {
+    throw new AppError("BAD_FILE_TYPE", `Only ${allowedTypes.join(", ")} are accepted here`, 422);
+  }
+  // The declared type chooses the extension; the sniffed one decides whether the
+  // bytes are stored at all. A .exe renamed .pdf declares application/pdf and
+  // sniffs as nothing.
+  if (sniff) {
+    const actual = sniffContentType(buffer);
+    if (!actual) throw new AppError("BAD_FILE_TYPE", "This file is not a PDF or an image", 422);
+    if (allowedTypes && !allowedTypes.includes(actual)) {
+      throw new AppError("BAD_FILE_TYPE", `Only ${allowedTypes.join(", ")} are accepted here`, 422);
+    }
+    // Declared JPEG, actually PNG is harmless mislabelling; declared PDF,
+    // actually anything else is not. Refuse the mismatch either way and let the
+    // person re-export rather than storing bytes under the wrong name.
+    if (actual !== contentType && !(actual === "image/jpeg" && contentType === "image/jpg")) {
+      throw new AppError("BAD_FILE_TYPE", `This file says it is ${contentType} but its contents are ${actual}`, 422);
+    }
+  }
+  const ext = EXT[contentType] || "bin";
   const contentHash = crypto.createHash("sha256").update(buffer).digest("hex");
   const key = `tenant_${slug}/vault/doc_${crypto.randomBytes(8).toString("hex")}.${ext}`;
   await storage.put(buffer, { key, contentType });
   const row = await repo.insert(client, {
     entity_ref: entityRef, doc_type: docType, storage_path: key, content_hash: contentHash,
     file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status: "VERIFIED",
+    // 0667: the typed filing. `doc_type` (text) stays populated from the
+    // registry code so every existing reader keeps working.
+    doc_type_ref_id: docTypeRefId, client_id: clientId,
+    original_name: originalName, uploaded_by: actor.user_id || null,
   });
   await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "document_vault:" + row.doc_id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "document_vault:" + row.doc_id, after: { doc_id: row.doc_id, doc_type: row.doc_type, content_hash: contentHash } });

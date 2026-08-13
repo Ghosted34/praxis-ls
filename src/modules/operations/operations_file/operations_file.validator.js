@@ -38,7 +38,14 @@ const create = z.object({
   details: z.record(z.string(), z.any()).optional(),
 });
 const update = create.partial();
+// DRAFT is not here: a draft leaves by being PROMOTED (its own route, which
+// allocates the ref and enforces the service type's required fields) or
+// cancelled. Letting it reach OPEN through the generic transition would skip
+// both and leave a file holding a DRAFT- placeholder ref.
 const transition = z.object({ to: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED"]) });
+// Promotion takes the same body as create — the wizard sends what it gathered
+// across all three steps, and `entity_id` may have been set at draft time.
+const promote = create.partial();
 // AI-facing variants: the record id travels in the payload (there is no URL param
 // on the assistant path), so the executor knows WHICH dossier to act on. The REST
 // routes keep using `update`/`transition` (id comes from req.params).
@@ -46,10 +53,10 @@ const transition = z.object({ to: z.enum(["IN_PROGRESS", "COMPLETED", "CANCELLED
 // list_dossiers picker, and the payload is self-documenting.
 const aiUpdate = update.extend({ dossier_id: z.string().uuid() });
 const aiTransition = transition.extend({ dossier_id: z.string().uuid() });
-const schemas = { create, update, transition, aiUpdate, aiTransition };
+const schemas = { create, update, transition, promote, aiUpdate, aiTransition };
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data; return next();
 };
-module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), schemas };
+module.exports = { create: mw("create"), update: mw("update"), transition: mw("transition"), promote: mw("promote"), schemas };

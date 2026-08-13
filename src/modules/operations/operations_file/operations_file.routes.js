@@ -45,6 +45,12 @@ router.put("/:id/containers", requirePermission(MODULE, "edit"), validateContain
  *  (0668). No body — the only thing it can do is clear the override. */
 router.post("/:id/marks/revert", requirePermission(MODULE, "edit"), controller.revertMarks);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
+/** The creation wizard. `POST /drafts` opens a DRAFT so documents can be
+ *  attached before the file is finished; `POST /:id/promote` allocates the ref,
+ *  enforces the service type's required fields and fires `dossier.created`.
+ *  Both gated on create, because between them they are one creation. */
+router.post("/drafts", requirePermission(MODULE, "create"), validator.create, controller.createDraft);
+router.post("/:id/promote", requirePermission(MODULE, "create"), validator.promote, controller.promote);
 // API F-17: `update: create.partial()` makes the lifecycle field patchable, so
 // PATCH was a second, cheaper route to the same state change. It now meets the
 // SAME gate as the endpoint above when — and only when — the body carries it.

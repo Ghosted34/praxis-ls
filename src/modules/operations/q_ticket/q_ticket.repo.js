@@ -22,7 +22,7 @@ async function list(client, q = {}) {
   const { rows } = await client.query(
     "SELECT t.*, d.ref AS dossier_ref, mi.label AS milestone_label, mi.code AS milestone_code " +
       "  FROM q_ticket t " +
-      "  LEFT JOIN dossier d ON d.dossier_id = t.dossier_id " +
+      "  LEFT JOIN dossier_visible d ON d.dossier_id = t.dossier_id " +
       "  LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id " +
       (wh.length ? " WHERE " + wh.join(" AND ") : "") +
       " ORDER BY t.created_at DESC LIMIT $1 OFFSET $2",
@@ -54,7 +54,7 @@ async function setStatus(client, id, status) {
 async function listForClient(client, clientId) {
   const { rows } = await client.query(
     "SELECT t.q_ticket_id, t.subject, t.body, t.status, t.created_at, d.ref AS dossier_ref, mi.label AS milestone_label " +
-      "  FROM q_ticket t JOIN dossier d ON d.dossier_id = t.dossier_id " +
+      "  FROM q_ticket t JOIN dossier_visible d ON d.dossier_id = t.dossier_id " +
       "  LEFT JOIN milestone_instance mi ON mi.milestone_instance_id = t.milestone_instance_id " +
       " WHERE d.client_id = $1 ORDER BY t.created_at DESC LIMIT 100",
     [clientId],
@@ -65,7 +65,7 @@ async function listForClient(client, clientId) {
 /** Does this dossier belong to this client? The portal's only authorisation. */
 async function dossierBelongsTo(client, { dossierId, clientId }) {
   const { rows } = await client.query(
-    "SELECT 1 FROM dossier WHERE dossier_id = $1 AND client_id = $2",
+    "SELECT 1 FROM dossier_visible WHERE dossier_id = $1 AND client_id = $2",
     [dossierId, clientId],
   );
   return rows.length > 0;

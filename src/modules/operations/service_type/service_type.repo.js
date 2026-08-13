@@ -135,7 +135,7 @@ async function dossiersFor(client, serviceTypeId, { limit = 25 } = {}) {
       "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
       "   AND mi.status IN ('IN_PROGRESS','PENDING') " +
       "   ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-      "FROM dossier d LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
+      "FROM dossier_visible d LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
       "WHERE d.service_type_id = $1 ORDER BY d.created_at DESC LIMIT $2",
     [serviceTypeId, limit],
   );
@@ -152,7 +152,7 @@ async function marginSimulationsFor(client, serviceTypeId, { limit = 25 } = {}) 
     "SELECT ms.margin_simulation_id, ms.dossier_id, d.ref AS dossier_ref, " +
       "  ms.currency, ms.margin_percent, ms.total_cost, ms.total_price, ms.created_at " +
       "FROM margin_simulation ms " +
-      "LEFT JOIN dossier d ON d.dossier_id = ms.dossier_id " +
+      "LEFT JOIN dossier_visible d ON d.dossier_id = ms.dossier_id " +
       "WHERE ms.service_type_id = $1 ORDER BY ms.created_at DESC LIMIT $2",
     [serviceTypeId, limit],
   );
@@ -170,7 +170,7 @@ async function invoicesFor(client, serviceTypeId, { limit = 25 } = {}) {
       "  i.payment_due_on, i.created_at, i.dossier_id, d.ref AS dossier_ref, " +
       "  cm.name AS client_name " +
       "FROM invoice i " +
-      "JOIN dossier d ON d.dossier_id = i.dossier_id " +
+      "JOIN dossier_visible d ON d.dossier_id = i.dossier_id " +
       "LEFT JOIN client_master cm ON cm.client_id = i.client_id " +
       "WHERE d.service_type_id = $1 AND i.type = 'FINAL' " +
       "ORDER BY i.created_at DESC LIMIT $2",
@@ -196,7 +196,7 @@ async function moneyRollup(client, serviceTypeId) {
       "  COALESCE(SUM(cl.qty * cl.unit_cost), 0)::numeric AS planned_total, " +
       "  COALESCE(SUM(CASE WHEN cl.is_disbursement THEN cl.qty * cl.unit_cost ELSE 0 END), 0)::numeric AS planned_disbursement " +
       "FROM costing c " +
-      "JOIN dossier d ON d.dossier_id = c.dossier_id " +
+      "JOIN dossier_visible d ON d.dossier_id = c.dossier_id " +
       "LEFT JOIN costing_line cl ON cl.costing_id = c.costing_id " +
       "WHERE d.service_type_id = $1 " +
       "GROUP BY c.currency ORDER BY c.currency",
@@ -205,7 +205,7 @@ async function moneyRollup(client, serviceTypeId) {
 
   const actuals = (await client.query(
     "SELECT COALESCE(SUM(ce.amount), 0)::numeric AS actual_total " +
-      "FROM cost_entry ce JOIN dossier d ON d.dossier_id = ce.dossier_id " +
+      "FROM cost_entry ce JOIN dossier_visible d ON d.dossier_id = ce.dossier_id " +
       "WHERE d.service_type_id = $1",
     [serviceTypeId],
   )).rows[0] || { actual_total: 0 };
@@ -215,7 +215,7 @@ async function moneyRollup(client, serviceTypeId) {
       "  COALESCE(SUM(i.total_ttc), 0)::numeric AS billed_ttc, " +
       "  COALESCE(SUM(i.service_ht), 0)::numeric AS revenue_ht, " +
       "  COUNT(*)::int AS invoice_count " +
-      "FROM invoice i JOIN dossier d ON d.dossier_id = i.dossier_id " +
+      "FROM invoice i JOIN dossier_visible d ON d.dossier_id = i.dossier_id " +
       "WHERE d.service_type_id = $1 AND i.type = 'FINAL' " +
       "  AND i.status IN ('POSTED_LOCKED','APPROVED_LOCKED','ISSUED_LOCKED') " +
       "GROUP BY i.currency ORDER BY i.currency",
@@ -233,11 +233,11 @@ async function moneyRollup(client, serviceTypeId) {
 async function stats(client, serviceTypeId, key) {
   const { rows } = await client.query(
     "SELECT " +
-      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1) AS dossiers_total, " +
-      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'OPEN') AS dossiers_open, " +
-      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'IN_PROGRESS') AS dossiers_in_progress, " +
-      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'COMPLETED') AS dossiers_completed, " +
-      "  (SELECT COUNT(*)::int FROM dossier WHERE service_type_id = $1 AND status = 'CANCELLED') AS dossiers_cancelled, " +
+      "  (SELECT COUNT(*)::int FROM dossier_visible WHERE service_type_id = $1) AS dossiers_total, " +
+      "  (SELECT COUNT(*)::int FROM dossier_visible WHERE service_type_id = $1 AND status = 'OPEN') AS dossiers_open, " +
+      "  (SELECT COUNT(*)::int FROM dossier_visible WHERE service_type_id = $1 AND status = 'IN_PROGRESS') AS dossiers_in_progress, " +
+      "  (SELECT COUNT(*)::int FROM dossier_visible WHERE service_type_id = $1 AND status = 'COMPLETED') AS dossiers_completed, " +
+      "  (SELECT COUNT(*)::int FROM dossier_visible WHERE service_type_id = $1 AND status = 'CANCELLED') AS dossiers_cancelled, " +
       "  (SELECT COUNT(*)::int FROM milestone_template WHERE service_type_id = $1) AS template_versions, " +
       "  (SELECT version FROM milestone_template WHERE service_type_id = $1 AND is_active LIMIT 1) AS active_template_version, " +
       "  (SELECT COUNT(*)::int FROM dictionary_item WHERE service_type_key = $2) AS dictionary_items, " +

@@ -503,11 +503,21 @@ export type VaultDocument = {
   status?: string | null;
 };
 
-/** Store a file in the document vault. `entity_ref` traces it back to its owner. */
+/** Store a file in the document vault. `entity_ref` traces it back to its owner.
+ *
+ *  An upload carrying `dossier_id` is an OPERATIONS document and is held to
+ *  legacy's rules server-side: 5 MB, PDF/PNG/JPG, and the contents checked
+ *  rather than the declared type trusted. Everywhere else keeps the vault's
+ *  wider defaults. `doc_type_ref_id` is the registry reference (0669) — the
+ *  server derives the legacy `doc_type` text from it, so the two cannot drift. */
 export const uploadVaultDocument = (body: {
   data_url: string;
   doc_type?: string;
   entity_ref?: string;
+  dossier_id?: string;
+  doc_type_ref_id?: string;
+  client_id?: string;
+  original_name?: string;
 }) => tenant<VaultDocument>("/documents", { method: "POST", body });
 
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
@@ -562,24 +572,33 @@ export const deleteGateway = (provider: string) =>
   tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, { method: "DELETE" });
 
 /* ── Rate providers(/rate-providers) — carriers & rate authorities ─────────
- * Shipping lines, airlines, and rate-setting authorities (port/customs) an
- * expense rate can be scoped to. Seeded-but-editable: a manager extends the
- * list from the admin panel or inline from the Expense Rates grid. */
-export type RateProviderKind = "SHIPPING_LINE" | "AIRLINE" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+ * Shipping lines, airlines, hauliers, rail, and rate-setting authorities
+ * (port/customs) an expense rate can be scoped to. Seeded-but-editable: a
+ * manager extends the list from the admin panel, inline from the Expense Rates
+ * grid, or inline from a file's own carrier picker. */
+// TRUCKING/RAIL/BARGE/COURIER joined at 0666. Before that a subcontracted haul
+// had nowhere to exist, so the haulier field on inland files was free text.
+export type RateProviderKind =
+  | "SHIPPING_LINE" | "AIRLINE" | "TRUCKING" | "RAIL"
+  | "BARGE" | "COURIER" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+/** The kinds that move cargo, as opposed to the authorities that price it. */
+export const CARRIER_KINDS: RateProviderKind[] = ["SHIPPING_LINE", "AIRLINE", "TRUCKING", "RAIL", "BARGE", "COURIER"];
 export type RateProvider = {
   rate_provider_id: string;
   kind: RateProviderKind;
   code: string;
   name: string;
   carrier_code?: string | null;
+  country_code?: string | null;
   sort_order?: number;
   is_system?: boolean;
   is_active?: boolean;
 };
-export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; sort_order?: number; is_active?: boolean };
-export const listRateProviders = (opts: { kind?: RateProviderKind; active?: boolean; q?: string } = {}) => {
+export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; country_code?: string | null; sort_order?: number; is_active?: boolean };
+/** `kind` takes one kind or several — an inland picker wants TRUCKING and RAIL. */
+export const listRateProviders = (opts: { kind?: RateProviderKind | RateProviderKind[]; active?: boolean; q?: string } = {}) => {
   const p = new URLSearchParams();
-  if (opts.kind) p.set("kind", opts.kind);
+  if (opts.kind) p.set("kind", Array.isArray(opts.kind) ? opts.kind.join(",") : opts.kind);
   if (opts.active !== undefined) p.set("active", String(opts.active));
   if (opts.q) p.set("q", opts.q);
   const qs = p.toString();
@@ -938,14 +957,24 @@ export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
  * Expense Rates and the dossier container editor both read the same list. */
 // LOAD_MODE (FCL/LCL) joined the list with the SSDC equipment block (0660):
 // a container line records how it was stowed as well as what it is.
-export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE";
+// DOCUMENT_TYPE (0669) is the list a person picks from when attaching a file to
+// an operations file — distinct from `document_vault.types.js`, which governs
+// system-generated documents and doubles as the template key.
+export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE" | "DOCUMENT_TYPE";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
  *  lookup key) and `family`, so the sized variants of one kind group together.
  *  `teu` and `size` are REQUIRED by the API for that kind: a container type
  *  without them counts as zero TEU and has no rate-card key, and neither
  *  failure raises anything. */
-export type DictRefExtra = { teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[] };
+export type DictRefExtra = {
+  teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[];
+  /** CONTAINER_TYPE only — how the type prints on a marks & numbers line
+   *  (`20'RF`). Legacy's vocabulary, because five documents read that string. */
+  marks_token?: string;
+  /** DOCUMENT_TYPE only. */
+  client_visible?: boolean; client_scoped?: boolean; reusable?: boolean;
+};
 export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; extra?: DictRefExtra; sort_order?: number; is_system?: boolean; is_active?: boolean };
 export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
   tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);

@@ -145,3 +145,29 @@ export function useCanOpenRoute(): (pathname: string) => boolean {
     [access, resolved],
   );
 }
+
+/**
+ * "Can this user see module MOD-xx at all?"
+ *
+ * For an affordance that belongs to a DIFFERENT module than the screen it sits
+ * on — the "+ Add carrier" action inside an operations form, which posts to
+ * MOD-10 (rate providers). Offering it to someone with no rate-provider grant
+ * is a button that always 403s, and a control that only ever fails teaches
+ * people not to trust the ones that work.
+ *
+ * READ VISIBILITY, NOT THE CREATE VERB. `NavAccess` carries the modules a user
+ * can READ; the catalogue's create/edit/delete verbs are enforced server-side
+ * and are not in this payload. So this is a coarser gate than the route it
+ * guards — someone with view-but-not-create still sees the action and still
+ * gets a clean 422/403 from the API. That is the right direction to be wrong
+ * in: hiding an action from someone who could have used it is the failure
+ * nobody reports, and the API remains the authority either way.
+ *
+ * Unresolved shell answers TRUE, for the same reason `useCanOpenRoute` does —
+ * over-offering for one frame beats an interface that flickers into existence.
+ */
+export function useCanUseModule(moduleKey: string): boolean {
+  const { access, resolved } = useShell();
+  if (!resolved || access.isCeo) return true;
+  return access.modules.some((k) => String(k).toUpperCase() === moduleKey.toUpperCase());
+}

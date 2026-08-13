@@ -242,7 +242,7 @@ async function setEntityRef(client, inboundId, entityRef) {
 /** Match any of the candidate tokens against a dossier's unique ref (e.g. SLAS-2026-0001). */
 async function findDossierByRefs(client, refs) {
   if (!refs || !refs.length) return null;
-  return (await client.query("SELECT dossier_id, ref FROM dossier WHERE ref = ANY($1::text[]) LIMIT 1", [refs])).rows[0] || null;
+  return (await client.query("SELECT dossier_id, ref FROM dossier_visible WHERE ref = ANY($1::text[]) LIMIT 1", [refs])).rows[0] || null;
 }
 /** All mail (in + out) tied to an entity_ref, e.g. 'client:<uuid>' — a timeline. */
 async function timelineByEntity(client, entityRef, { limit = 100 } = {}) {

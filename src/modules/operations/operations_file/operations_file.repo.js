@@ -42,6 +42,16 @@ const WRITABLE = new Set([
   // service (a field definition binds to the column), never typed in by hand.
   "commodity", "commodity_desc", "gross_weight", "weight_unit",
   "package_count", "volume_cbm", "marks_numbers", "place_receipt", "place_delivery",
+  // Marks & numbers is GENERATED from the file's containers on every equipment
+  // write (0670), the way legacy did it. This flag is the override: set when
+  // somebody types over the field, and it stops the regeneration from
+  // discarding what they wrote. Set by the shipment-details service, never
+  // typed in.
+  "marks_numbers_is_manual",
+  // When the creation wizard opened this as a DRAFT (0671), so the sweeper can
+  // find one nobody came back to finish. Written by `createDraft`, never by a
+  // caller's payload — but it goes through the same insert, so it must be here.
+  "draft_started_at",
   // Which VERSION of its service type's detail form this file was created
   // against. Set once, on create; it is what keeps an open file rendering and
   // validating against the form it was opened with after the form is
@@ -98,7 +108,7 @@ async function listPaged(client, q = {}) {
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
     "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
     "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-    "FROM dossier d " +
+    "FROM dossier_visible d " +
     "LEFT JOIN client_master cm ON cm.client_id = d.client_id " +
     "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
     "LEFT JOIN rate_provider rp ON rp.rate_provider_id = d.rate_provider_id " +

@@ -12,6 +12,7 @@ import { Pill } from "@/components/ui/pill";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
+import { marks } from "@praxis/shared";
 import * as api from "@/lib/masterdata-api";
 
 const KINDS: { kind: api.DictRefKind; label: string }[] = [
@@ -24,6 +25,9 @@ const KINDS: { kind: api.DictRefKind; label: string }[] = [
   // registry value, plus the equipment facts below.
   { kind: "CONTAINER_TYPE", label: "Container types" },
   { kind: "LOAD_MODE", label: "Load modes" },
+  // The types a person picks when attaching a file (0669). Also addable inline
+  // from the upload picker itself — this tab is for retiring and renaming.
+  { kind: "DOCUMENT_TYPE", label: "Document types" },
 ];
 
 /** Seeded families, so a first container type on a fresh tenant still has a
@@ -31,7 +35,8 @@ const KINDS: { kind: api.DictRefKind; label: string }[] = [
  *  set is open, and a tenant who invents one keeps it. */
 const SEED_FAMILIES = ["DRY", "REEFER", "FLATRACK", "OPENTOP", "ISOTANK", "VENTILATED", "BULK"];
 
-const BLANK_FORM = { code: "", name_fr: "", name_en: "", teu: "", size: "", family: "DRY", aliases: "" };
+const BLANK_FORM = { code: "", name_fr: "", name_en: "", teu: "", size: "", family: "DRY", aliases: "", marks_token: "" };
+
 
 function RefManager({ kind }: { kind: api.DictRefKind }) {
   const toast = useToast();
@@ -56,6 +61,14 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
     return [...seen];
   }, [list.data]);
 
+  // What this type would print on a marks & numbers line. Derived live from
+  // size and family so the field can be left blank and still be right — a blank
+  // token would silently shorten a bill of lading.
+  const previewToken = marks.marksTokenFor({
+    code: form.code,
+    extra: { size: form.size.trim(), family: form.family },
+  });
+
   const reset = () => { setForm(BLANK_FORM); setTouched(false); };
 
   async function submit() {
@@ -68,7 +81,14 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
       await api.createDictRef({
         kind, code: form.code, name_fr: form.name_fr, name_en: form.name_en || undefined,
         extra: isContainer
-          ? { teu: Number(form.teu), size: form.size.trim(), family: form.family, ...(aliases.length ? { aliases } : {}) }
+          ? {
+              teu: Number(form.teu), size: form.size.trim(), family: form.family,
+              ...(aliases.length ? { aliases } : {}),
+              // Stored explicitly even when it equals the derived value: the
+              // derivation is a fallback for types created before this field
+              // existed, not a rule the print format should depend on.
+              marks_token: form.marks_token.trim() || previewToken,
+            }
           : undefined,
       });
       toast.success("Value added"); reset(); setAdding(false); list.reload();
@@ -114,6 +134,14 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
                 <Input placeholder="50hq, 50dc" value={form.aliases}
                   onChange={(e) => setForm((s) => ({ ...s, aliases: e.target.value }))} />
               </Field>
+              <Field
+                label="Marks token"
+                className="sm:col-span-2"
+                hint={`How it prints on marks & numbers — e.g. 02*${form.marks_token.trim() || previewToken}. Leave blank to use the derived value.`}
+              >
+                <Input placeholder={previewToken} value={form.marks_token}
+                  onChange={(e) => setForm((s) => ({ ...s, marks_token: e.target.value }))} />
+              </Field>
             </div>
           )}
           <div className="mt-2 flex justify-end gap-2">
@@ -138,6 +166,7 @@ function RefManager({ kind }: { kind: api.DictRefKind }) {
                       {r.extra?.teu ? `${r.extra.teu} TEU` : <span className="text-destructive">no TEU</span>}
                       {r.extra?.size ? ` · ${r.extra.size}` : ""}
                       {r.extra?.family ? ` · ${r.extra.family}` : ""}
+                      {` · prints ${marks.marksTokenFor(r)}`}
                     </td>
                   )}
                   <td className="px-3 py-1.5">{r.is_system && <Pill tone="mute">System</Pill>}</td>

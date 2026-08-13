@@ -21,7 +21,7 @@ async function revoke(client, id) {
 }
 // Client-portal scoped reads (a client only ever sees their own).
 async function clientDossiers(client, clientId) {
-  return (await client.query("SELECT dossier_id, ref, status, created_at FROM dossier WHERE client_id = $1 ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
+  return (await client.query("SELECT dossier_id, ref, status, created_at FROM dossier_visible WHERE client_id = $1 ORDER BY created_at DESC LIMIT 100", [clientId])).rows;
 }
 /**
  * The client-facing milestone chain for one of their dossiers, plus the
@@ -37,7 +37,7 @@ async function clientDossiers(client, clientId) {
 async function clientDossierChain(client, { clientId, dossierId, showForecast = false }) {
   const owns = await client.query(
     "SELECT d.dossier_id, d.ref, d.status, d.service_type_id, st.name_fr AS service_fr, st.name_en AS service_en " +
-      "  FROM dossier d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "  FROM dossier_visible d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       " WHERE d.dossier_id = $1 AND d.client_id = $2",
     [dossierId, clientId],
   );

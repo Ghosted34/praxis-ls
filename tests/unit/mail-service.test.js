@@ -265,7 +265,21 @@ test("records the error on the connection and does not throw", async () => {
   expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "IMAP auth failed");
 });
 
-test("send maps a '550 Sender verify failed' SMTP rejection to a clean 502 AppError", async () => {
+/*
+ * WHY THIS ASSERTS 422 AND NOT THE 502 IT USED TO.
+ *
+ * Two implementations of this mapping landed within days of each other and both
+ * survived the merge: `mapSmtpError` (#160), which called a rejected sender a
+ * 502, and `explainSendError`, which calls it a 422. Only the second was ever
+ * wired to `send`; the first was dead from the moment it merged, and this test
+ * was asserting its contract — so main went red and stayed red.
+ *
+ * The live behaviour is also the better-argued one. A mail server refusing your
+ * FROM address is a verdict on the mailbox's own SMTP setup, not a fault in
+ * Praxis, and 4xx is what keeps it out of the server-error monitor where nobody
+ * can act on it. The dead function is deleted rather than re-wired.
+ */
+test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422 AppError", async () => {
   const smtpErr = Object.assign(new Error("Can't send mail - all recipients were rejected: 550 Sender verify failed"), {
     responseCode: 550,
     response: "550 Sender verify failed",
@@ -274,7 +288,7 @@ test("send maps a '550 Sender verify failed' SMTP rejection to a clean 502 AppEr
   mockSendEmail.mockRejectedValueOnce(smtpErr);
 
   await expect(service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }))
-    .rejects.toMatchObject({ name: "AppError", code: "SMTP_SENDER_REJECTED", status: 502 });
+    .rejects.toMatchObject({ name: "AppError", code: "SENDER_NOT_AUTHORIZED", status: 422 });
   // The failed send must not be recorded as an outbound thread copy.
   expect(repo.insertInbound).not.toHaveBeenCalled();
 });

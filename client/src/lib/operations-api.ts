@@ -63,6 +63,24 @@ export const listDossiers = () => tenant<Dossier[]>("/operations");
 export const getDossier = (id: string) => tenant<Dossier & { lines?: unknown[] }>(`/operations/${id}`);
 export const dossier360 = (id: string) => tenant<Record<string, unknown>>(`/operations/${id}/360`);
 export const createDossier = (body: DossierInput) => tenant<Dossier>("/operations", { method: "POST", body });
+/**
+ * The creation wizard's two halves.
+ *
+ * `createDossierDraft` opens a DRAFT so documents can be attached before the
+ * file is finished — the vault needs a real `dossier_id`, and the alternative is
+ * that nothing is ever attached at creation. It burns no ref and fires no
+ * `dossier.created`, so an abandoned draft leaves no gap in the numbering and
+ * schedules no milestones.
+ *
+ * `promoteDossier` is where it becomes a file: the ref is allocated, the service
+ * type's required fields are enforced, and the milestone chain is instantiated.
+ * Deliberately NOT reachable through `transitionDossier` — going that way would
+ * skip all three.
+ */
+export const createDossierDraft = (body: DossierInput) =>
+  tenant<Dossier>("/operations/drafts", { method: "POST", body });
+export const promoteDossier = (id: string, body: Partial<DossierInput> & { details?: Record<string, unknown> }) =>
+  tenant<Dossier>(`/operations/${id}/promote`, { method: "POST", body });
 export const updateDossier = (id: string, body: Partial<DossierInput>) => tenant<Dossier>(`/operations/${id}`, { method: "PATCH", body });
 export const transitionDossier = (id: string, to: "IN_PROGRESS" | "COMPLETED" | "CANCELLED") =>
   tenant<Dossier>(`/operations/${id}/transition`, { method: "POST", body: { to } });
@@ -663,6 +681,10 @@ export type DetailFieldDef = {
   default_value?: unknown;
   is_required: boolean;
   is_client_visible: boolean;
+  /** The system fills this one in (0670) — marks & numbers is the one that does
+   *  today. Rendered locked with an unlock action; writing it is recorded as a
+   *  deliberate override rather than refused. */
+  is_readonly?: boolean;
   facet_role: FacetRole | null;
   column_name: string | null;
   width: "THIRD" | "HALF" | "FULL";

@@ -13,6 +13,9 @@ module.exports = {
     sendPaged(res, await req.tenantDb((c) => service.listPaged(c, req.query)))),
   get: asyncHandler(async (req, res) => { const r = await req.tenantDb((c) => service.get(c, req.params.id)); if (!r) throw new AppError("NOT_FOUND", "Dossier not found", 404); res.json({ data: r }); }),
   create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data: req.body, actor: actor(req) })) })),
+  // The creation wizard: open a draft, then promote it. See the service.
+  createDraft: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb((c) => service.createDraft(c, { data: req.body, actor: actor(req) })) })),
+  promote: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.promote(c, { id: req.params.id, data: req.body, actor: actor(req) })) })),
   update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
   transition: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.transition(c, { id: req.params.id, to: req.body.to, actor: actor(req) })) })),
   // 360° modal is role-gated on money (PRD §7.3/§11.3): Sales/Ops never see margin.
@@ -31,4 +34,7 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => containers.list(c, req.params.id)) })),
   replaceContainers: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => containers.replace(c, { dossierId: req.params.id, lines: req.body.lines, actor: actor(req) })) })),
+  // Undo a manual marks override — see dossier_container.service.revertMarks.
+  revertMarks: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => containers.revertMarks(c, { dossierId: req.params.id, actor: actor(req) })) })),
 };

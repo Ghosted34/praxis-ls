@@ -12,7 +12,7 @@ async function num(client, sql) {
 }
 async function kpis(client) {
   return {
-    open_dossiers: await count(client, "SELECT count(*) n FROM dossier WHERE status IN ('OPEN','IN_PROGRESS')"),
+    open_dossiers: await count(client, "SELECT count(*) n FROM dossier_visible WHERE status IN ('OPEN','IN_PROGRESS')"),
     proformas: await count(client, "SELECT count(*) n FROM invoice WHERE type='PROFORMA'"),
     final_invoices: await count(client, "SELECT count(*) n FROM invoice WHERE type='FINAL'"),
     receipts: await count(client, "SELECT count(*) n FROM payment_receipt"),
@@ -31,7 +31,7 @@ async function kpis(client) {
     revenue_currency: "XAF",
     fleet_total: await count(client, "SELECT count(*) n FROM vehicle"),
     fleet_active: await count(client, "SELECT count(*) n FROM vehicle WHERE status='ACTIVE'"),
-    sla_on_time_pct: await num(client, "SELECT round(100.0 * count(*) FILTER (WHERE ata <= eta) / NULLIF(count(*) FILTER (WHERE ata IS NOT NULL AND eta IS NOT NULL), 0)) n FROM dossier"),
+    sla_on_time_pct: await num(client, "SELECT round(100.0 * count(*) FILTER (WHERE ata <= eta) / NULLIF(count(*) FILTER (WHERE ata IS NOT NULL AND eta IS NOT NULL), 0)) n FROM dossier_visible"),
   };
 }
 /** Control Tower aggregate — the data the home screen shows: operation-file
@@ -48,7 +48,7 @@ async function controlTower(client) {
     "SELECT COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS'))::int AS active, " +
       "COUNT(*) FILTER (WHERE status='OPEN')::int AS open, " +
       "COUNT(*) FILTER (WHERE status='IN_PROGRESS')::int AS in_progress " +
-      "FROM dossier",
+      "FROM dossier_visible",
   );
   // Progress comes from the milestone engine (milestone_instance, 0310) — done
   // stages over total stages for the dossier. Dossiers with no milestone template
@@ -75,7 +75,7 @@ async function controlTower(client) {
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
       "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
       "AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-      "FROM dossier d " +
+      "FROM dossier_visible d " +
       "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       "LEFT JOIN geo_place gp_o ON gp_o.geo_place_id = d.pol_place_id " +
       "LEFT JOIN geo_place gp_d ON gp_d.geo_place_id = d.pod_place_id " +

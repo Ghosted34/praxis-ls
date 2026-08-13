@@ -58,9 +58,16 @@ const seriesKey = (providerId: string | null, containerTypeId: string | null) =>
 
 /* ══════════════════ Carrier / authority quick-add + settings ══════════════ */
 
+// Land and barge joined at 0666 — a subcontracted haul is priced off a rate
+// card like any other leg, and until the kinds existed the haulier on an
+// inland file was a name typed into details_json.
 const PROVIDER_KIND_TABS: { kind: api.RateProviderKind; label: string }[] = [
   { kind: "SHIPPING_LINE", label: "Sea carriers" },
   { kind: "AIRLINE", label: "Air carriers" },
+  { kind: "TRUCKING", label: "Hauliers" },
+  { kind: "RAIL", label: "Rail" },
+  { kind: "BARGE", label: "Barge" },
+  { kind: "COURIER", label: "Couriers" },
   { kind: "PORT_AUTHORITY", label: "Port authorities" },
   { kind: "CUSTOMS_AUTHORITY", label: "Customs authorities" },
   { kind: "OTHER", label: "Other" },
@@ -316,11 +323,15 @@ function CarrierRateGrid({
 
 /* ══════════════════════════════ The dossier ════════════════════════════ */
 
-const RATE_TABS = ["Default rate", "Sea carriers", "Air carriers", "Authorities"] as const;
+// "Land" is one tab over four kinds deliberately: a rate card for a corridor
+// haul is the same document whether the leg runs on a truck, a wagon or a
+// barge, and four near-empty tabs would read as four separate rate stories.
+const RATE_TABS = ["Default rate", "Sea carriers", "Air carriers", "Land", "Authorities"] as const;
 type RateTab = (typeof RATE_TABS)[number];
 const TAB_KINDS: Record<Exclude<RateTab, "Default rate">, api.RateProviderKind[]> = {
   "Sea carriers": ["SHIPPING_LINE"],
   "Air carriers": ["AIRLINE"],
+  Land: ["TRUCKING", "RAIL", "BARGE", "COURIER"],
   Authorities: ["PORT_AUTHORITY", "CUSTOMS_AUTHORITY"],
 };
 

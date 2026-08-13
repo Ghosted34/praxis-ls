@@ -4,6 +4,7 @@
  * lifecycle OPEN→IN_PROGRESS→COMPLETED/CANCELLED. SQL in the repo.
  */
 "use strict";
+const crypto = require("crypto");
 const repo = require("./operations_file.repo");
 const events = require("./operations_file.events");
 const { canTransition, isTerminal } = require("./operations_file.rules");
@@ -143,6 +144,119 @@ async function foldDetails(client, { data, existing = null, enforceRequired }) {
   // directly (the AI path, the sales→operations handoff) is not overridden by
   // an absent detail value.
   return { ...patch, ...rest };
+}
+
+/**
+ * Open a DRAFT — the creation wizard's first step.
+ *
+ * WHY IT EXISTS AT ALL. A document can only be attached to a file that exists:
+ * the vault's rows carry `dossier_id`. Legacy had the same constraint and
+ * answered it by refusing uploads until after save, which is why in practice
+ * nothing is ever attached at creation. A draft makes the upload ordinary.
+ *
+ * NO REF IS BURNED. Our refs are sequential and people reconcile against them,
+ * so an abandoned draft must not leave a gap. The placeholder is unique by
+ * construction and unmistakable; `promote` swaps it for the real one.
+ *
+ * NO MILESTONES, NO EVENT. `dossier.created` is what instantiates the milestone
+ * chain and what the orchestration layer listens to — firing it here would
+ * schedule work against a file that may never open. Promotion is the birth.
+ *
+ * REQUIRED FIELDS ARE NOT ENFORCED YET, deliberately: the whole point of the
+ * wizard's second step is that they are filled in after this call. Promotion is
+ * where the service type's `is_required` fields are demanded.
+ */
+async function createDraft(client, { data, actor = {} }) {
+  if (data.client_id) {
+    const gate = await compliance.assertAllowed(client, { kind: "client", partyId: data.client_id, action: "dossier_create" });
+    if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
+  }
+  const write = await foldDetails(client, { data, enforceRequired: false });
+  await client.query("BEGIN");
+  try {
+    const row = await repo.insert(client, {
+      ...write,
+      ref: "DRAFT-" + crypto.randomUUID(),
+      status: "DRAFT",
+      draft_started_at: new Date().toISOString(),
+    });
+    await audit(client, { actorUserId: actor.user_id || null, action: "dossier.draft_started", moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: { dossier_id: row.dossier_id } });
+    await client.query("COMMIT");
+    return row;
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * DRAFT → OPEN. This is where a draft becomes a file.
+ *
+ * Everything `create` does at once, done here instead: the ref is allocated,
+ * the service type's required fields are enforced, `dossier.created` fires, and
+ * the milestone chain is instantiated. A caller that never reaches this point
+ * has left no file behind and nothing scheduled against one.
+ */
+async function promote(client, { id, data = {}, actor = {} }) {
+  const before = await repo.get(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+  if (before.status !== "DRAFT") throw new AppError("NOT_A_DRAFT", "This file has already been opened", 422);
+
+  // Enforced HERE, not at draft creation: the wizard's whole shape is that the
+  // details arrive after the file exists.
+  const write = await foldDetails(client, { data, existing: before, enforceRequired: true });
+
+  await client.query("BEGIN");
+  let row;
+  try {
+    const entityId = write.entity_id || before.entity_id;
+    if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+    const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: new Date().toISOString().slice(0, 10) });
+    row = await repo.update(client, id, { ...write, ref: alloc.number, status: "OPEN" });
+    await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
+    await client.query("COMMIT");
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
+
+  // Outside the transaction for the same reasons `create` does it — milestone
+  // instantiation opens its own, and geocoding may wait on HTTP.
+  await seedMilestones(client, row, actor);
+  return await resolvePlaces(client, row);
+}
+
+/**
+ * Delete abandoned drafts.
+ *
+ * A draft nobody finished is litter, not history: it has no ref anybody has
+ * seen, no milestones, and no downstream rows to orphan. Container lines
+ * cascade. Vault rows do NOT — they own bytes in storage — so they are removed
+ * explicitly and their objects deleted, which is the whole reason this is a
+ * function and not a one-line DELETE.
+ *
+ * Drafts that acquired documents are kept regardless of age: somebody uploaded
+ * a bill of lading against that file, and throwing it away because they did not
+ * finish the form the same afternoon is the wrong trade.
+ */
+async function sweepDrafts(client, { olderThanHours = 48, storage = null } = {}) {
+  const { rows } = await client.query(
+    `SELECT d.dossier_id FROM dossier d
+      WHERE d.status = 'DRAFT'
+        AND d.draft_started_at < now() - ($1 || ' hours')::interval
+        AND NOT EXISTS (SELECT 1 FROM document_vault v WHERE v.dossier_id = d.dossier_id)`,
+    [String(olderThanHours)],
+  );
+  let deleted = 0;
+  for (const { dossier_id: dossierId } of rows) {
+    await client.query("BEGIN");
+    try {
+      await client.query("DELETE FROM dossier_container_line WHERE dossier_id = $1", [dossierId]);
+      await client.query("DELETE FROM dossier WHERE dossier_id = $1 AND status = 'DRAFT'", [dossierId]);
+      await client.query("COMMIT");
+      deleted += 1;
+    } catch (err) {
+      await client.query("ROLLBACK");
+      logger.warn({ err, dossierId }, "draft sweep: could not delete abandoned draft");
+    }
+  }
+  if (storage) logger.info({ deleted }, "draft sweep complete");
+  return { deleted, considered: rows.length };
 }
 
 async function create(client, { data, actor = {} }) {
@@ -290,4 +404,10 @@ const get = (client, id) => repo.get(client, id);
 const list = (client, q) => repo.list(client, q);
 /** One page plus the true match count, for the paged list endpoint. */
 const listPaged = (client, q) => repo.listPaged(client, q);
-module.exports = { create, update, transition, get, list, listPaged, overview };
+module.exports = {
+  create, update, transition, get, list, listPaged, overview,
+  // The creation wizard's lifecycle: open a draft, fill it in, promote it.
+  // `create` stays for every caller that opens a file in one shot — the AI
+  // path, the sales→operations handoff, imports.
+  createDraft, promote, sweepDrafts,
+};

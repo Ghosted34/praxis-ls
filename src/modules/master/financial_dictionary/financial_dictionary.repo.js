@@ -279,14 +279,14 @@ async function spendDocuments(c, id, from, to, limit = 100) {
               (cl.qty * cl.unit_cost) AS amount, co.currency, co.created_at::date AS doc_date, cl.label
          FROM costing_line cl
          JOIN costing co ON co.costing_id = cl.costing_id
-         LEFT JOIN dossier d ON d.dossier_id = co.dossier_id
+         LEFT JOIN dossier_visible d ON d.dossier_id = co.dossier_id
         WHERE cl.dictionary_item_id = $1 AND co.created_at >= $2::date AND co.created_at < ($3::date + 1)
        UNION ALL
        SELECT 'committed', 'purchase_order', po.po_id, po.doc_number, po.status, po.dossier_id, d.ref,
               (poi.qty * poi.unit_price), NULL, po.created_at::date, poi.label
          FROM purchase_order_item poi
          JOIN purchase_order po ON po.po_id = poi.po_id
-         LEFT JOIN dossier d ON d.dossier_id = po.dossier_id
+         LEFT JOIN dossier_visible d ON d.dossier_id = po.dossier_id
         WHERE poi.dictionary_item_id = $1 AND po.status <> 'CANCELLED'
           AND po.created_at >= $2::date AND po.created_at < ($3::date + 1)
        UNION ALL
@@ -294,7 +294,7 @@ async function spendDocuments(c, id, from, to, limit = 100) {
               crl.budget_amount, NULL, cr.created_at::date, crl.label
          FROM cash_request_line crl
          JOIN cash_request cr ON cr.cash_request_id = crl.cash_request_id
-         LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+         LEFT JOIN dossier_visible d ON d.dossier_id = cr.dossier_id
         WHERE crl.dictionary_item_id = $1 AND cr.status IN ('SUBMITTED','APPROVED','DISBURSED','JUSTIFIED')
           AND cr.created_at >= $2::date AND cr.created_at < ($3::date + 1)
        UNION ALL
@@ -302,7 +302,7 @@ async function spendDocuments(c, id, from, to, limit = 100) {
               ce.amount, NULL, COALESCE(je.entry_date, ce.created_at::date), ce.category
          FROM cost_entry ce
          LEFT JOIN journal_entry je ON je.entry_id = ce.entry_id
-         LEFT JOIN dossier d ON d.dossier_id = ce.dossier_id
+         LEFT JOIN dossier_visible d ON d.dossier_id = ce.dossier_id
         WHERE ce.dictionary_item_id = $1
           AND COALESCE(je.entry_date, ce.created_at::date) >= $2::date
           AND COALESCE(je.entry_date, ce.created_at::date) <= $3::date

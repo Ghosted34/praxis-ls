@@ -11,7 +11,7 @@ const BUILDERS = [
   {
     key: "dossier",
     sql: `SELECT d.ref, d.status, d.incoterm, d.pol, d.pod, c.name AS client
-            FROM dossier d LEFT JOIN client_master c ON c.client_id = d.client_id
+            FROM dossier_visible d LEFT JOIN client_master c ON c.client_id = d.client_id
            ORDER BY d.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `dossier:${r.ref}`,
@@ -161,7 +161,7 @@ const BUILDERS = [
   {
     key: "costing",
     sql: `SELECT c.costing_id, c.status, c.total_revenue, c.total_cost, c.margin_pct, d.ref AS dossier_ref
-            FROM costing c LEFT JOIN dossier d ON d.dossier_id = c.dossier_id
+            FROM costing c LEFT JOIN dossier_visible d ON d.dossier_id = c.dossier_id
            ORDER BY c.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `costing:${r.costing_id}`,
@@ -196,7 +196,7 @@ const BUILDERS = [
   {
     key: "milestone",
     sql: `SELECT m.milestone_id, m.title, m.status, m.due_date, d.ref AS dossier_ref
-            FROM milestone m LEFT JOIN dossier d ON d.dossier_id = m.dossier_id
+            FROM milestone m LEFT JOIN dossier_visible d ON d.dossier_id = m.dossier_id
            ORDER BY m.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `milestone:${r.title}`,
@@ -233,7 +233,7 @@ const BUILDERS = [
   {
     key: "cash_request",
     sql: `SELECT cr.cash_request_id, cr.status, cr.total_amount, cr.requested_by, d.ref AS dossier_ref
-            FROM cash_request cr LEFT JOIN dossier d ON d.dossier_id = cr.dossier_id
+            FROM cash_request cr LEFT JOIN dossier_visible d ON d.dossier_id = cr.dossier_id
            ORDER BY cr.created_at DESC LIMIT $1`,
     card: (r) => ({
       ref: `cash_request:${r.cash_request_id}`,

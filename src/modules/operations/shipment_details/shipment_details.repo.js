@@ -19,7 +19,7 @@ const FIELD_COLS = `
   f.group_code, f.group_label_fr, f.group_label_en, f.group_seq,
   f.seq, f.key, f.label_fr, f.label_en, f.help_text_fr, f.help_text_en,
   f.placeholder, f.data_type, f.options_json, f.ref_kind, f.validation_json,
-  f.default_value, f.is_required, f.is_client_visible, f.is_active, f.is_system,
+  f.default_value, f.is_required, f.is_client_visible, f.is_readonly, f.is_active, f.is_system,
   f.facet_role, f.column_name, f.width`;
 
 /** The ACTIVE field set for a service type, or null when its owner has not
@@ -51,7 +51,7 @@ async function fieldSetsFor(client, serviceTypeId) {
             (SELECT COUNT(*)::int FROM service_type_field f
               WHERE f.service_type_field_set_id = fs.service_type_field_set_id
                 AND f.is_active) AS field_count,
-            (SELECT COUNT(*)::int FROM dossier d
+            (SELECT COUNT(*)::int FROM dossier_visible d
               WHERE d.service_type_field_set_id = fs.service_type_field_set_id) AS dossier_count
        FROM service_type_field_set fs
       WHERE fs.service_type_id = $1
@@ -222,7 +222,10 @@ const FIELD_WRITABLE = new Set([
   "group_code", "group_label_fr", "group_label_en", "group_seq", "seq", "key",
   "label_fr", "label_en", "help_text_fr", "help_text_en", "placeholder",
   "data_type", "options_json", "ref_kind", "validation_json", "default_value",
-  "is_required", "is_client_visible", "is_active", "facet_role", "column_name", "width",
+  // `is_readonly` (0670): the system fills this field in — marks & numbers is
+  // the one that does today. Editable by the tenant like every other property
+  // of a definition, rather than a magic facet_role check in the renderer.
+  "is_required", "is_client_visible", "is_readonly", "is_active", "facet_role", "column_name", "width",
 ]);
 
 async function insertField(client, fieldSetId, data) {
@@ -278,7 +281,7 @@ async function deleteField(client, fieldId) {
  *  place or has to become a new version. */
 async function fieldSetInUse(client, fieldSetId) {
   const { rows } = await client.query(
-    "SELECT COUNT(*)::int AS n FROM dossier WHERE service_type_field_set_id = $1",
+    "SELECT COUNT(*)::int AS n FROM dossier_visible WHERE service_type_field_set_id = $1",
     [fieldSetId],
   );
   return Number(rows[0].n) > 0;

@@ -28,9 +28,45 @@ const repo = require("./dossier_container.repo");
 const detailRepo = require("../shipment_details/shipment_details.repo");
 const { audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { marks } = require("@praxis/shared");
 
 const MODULE = "MOD-29";
 const REPLACED = "dossier.containers_replaced";
+
+/**
+ * Regenerate `dossier.marks_numbers` from the file's equipment.
+ *
+ * THE SERVER IS THE AUTHORITY, and this is where it exercises that: marks are
+ * recomputed on every container write, so the string cannot drift from the boxes
+ * however the write arrived — the modal, the creation wizard, an import, or a
+ * future API caller none of us has written yet. The browser previews the same
+ * answer using the same module (`@praxis/shared` rules/marks), which is why
+ * there is one implementation of a format five printed documents depend on.
+ *
+ * A file whose marks were deliberately overridden is left alone. That is the
+ * whole point of the flag: the alternative is a system that quietly discards a
+ * human's correction the next time somebody fixes a quantity.
+ */
+async function regenerateMarks(client, dossierId) {
+  const { rows } = await client.query(
+    "SELECT marks_numbers, marks_numbers_is_manual FROM dossier WHERE dossier_id = $1",
+    [dossierId],
+  );
+  if (!rows[0] || rows[0].marks_numbers_is_manual === true) return null;
+
+  const lines = await detailRepo.containersFor(client, dossierId);
+  // `containersFor` already joins the registry and rides `extra` along, so the
+  // token comes from the same row the picker showed and needs no second query.
+  const typesById = new Map(
+    lines
+      .filter((l) => l.container_type_ref_id)
+      .map((l) => [l.container_type_ref_id, { code: l.container_type_code, extra: l.container_type_extra || {} }]),
+  );
+  const next = marks.marksFromContainers(lines, typesById);
+  if (next === rows[0].marks_numbers) return next;
+  await client.query("UPDATE dossier SET marks_numbers = $2 WHERE dossier_id = $1", [dossierId, next || null]);
+  return next;
+}
 
 /** The file must exist, and its service type must actually capture equipment —
  *  otherwise a caller could quietly attach containers to a representation
@@ -181,13 +217,18 @@ async function replace(client, { dossierId, lines, actor = {} }) {
       out.push(line);
     }
 
+    // Inside the transaction, deliberately: marks and equipment are one fact,
+    // and a commit that saved the boxes but not the string they print as would
+    // leave the file describing itself two ways.
+    const marksNow = await regenerateMarks(client, dossierId);
+
     await audit(client, {
       actorUserId: actor.user_id || null,
       action: REPLACED,
       moduleKey: MODULE,
       entityRef: "dossier:" + dossierId,
       before: { lines: before.length },
-      after: { lines: out.length, ref: file.ref },
+      after: { lines: out.length, ref: file.ref, marks_numbers: marksNow },
     });
     await client.query("COMMIT");
   } catch (err) {
@@ -198,4 +239,39 @@ async function replace(client, { dossierId, lines, actor = {} }) {
   return list(client, dossierId);
 }
 
-module.exports = { list, replace, assertCaptures, MODULE, REPLACED };
+/**
+ * Hand marks & numbers back to the generator.
+ *
+ * The counterpart to typing over the field. Without it an override is a one-way
+ * door: the moment somebody corrects the string once, that file stops tracking
+ * its own equipment forever and nobody remembers why. Clearing the flag and
+ * recomputing in one transaction means the answer on screen is the answer
+ * stored.
+ */
+async function revertMarks(client, { dossierId, actor = {} }) {
+  await assertCaptures(client, dossierId);
+  await client.query("BEGIN");
+  try {
+    const { rows } = await client.query(
+      "UPDATE dossier SET marks_numbers_is_manual = false WHERE dossier_id = $1 RETURNING marks_numbers",
+      [dossierId],
+    );
+    if (!rows[0]) throw new AppError("NOT_FOUND", "Dossier not found", 404);
+    const marksNow = await regenerateMarks(client, dossierId);
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: "dossier.marks_reverted",
+      moduleKey: MODULE,
+      entityRef: "dossier:" + dossierId,
+      before: { marks_numbers: rows[0].marks_numbers, is_manual: true },
+      after: { marks_numbers: marksNow, is_manual: false },
+    });
+    await client.query("COMMIT");
+    return { marks_numbers: marksNow, marks_numbers_is_manual: false };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+}
+
+module.exports = { list, replace, regenerateMarks, revertMarks, assertCaptures, MODULE, REPLACED };

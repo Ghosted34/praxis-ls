@@ -2,7 +2,7 @@
 "use strict";
 const { insertOne, updateOne, getById, page } = require("../../../shared/db/query-helpers");
 
-const WRITABLE = ["kind", "code", "name", "carrier_code", "sort_order", "is_active"];
+const WRITABLE = ["kind", "code", "name", "carrier_code", "country_code", "sort_order", "is_active"];
 const insert = (client, data) => insertOne(client, "rate_provider", data, "*", WRITABLE);
 const get = (client, id) => getById(client, "rate_provider", "rate_provider_id", id);
 const update = (client, id, patch) => updateOne(client, "rate_provider", "rate_provider_id", id, patch, "*", WRITABLE);
@@ -11,7 +11,13 @@ async function list(client, q = {}) {
   const { limit, offset } = page({ ...q, limit: q.limit || 200 });
   const params = [limit, offset];
   const wh = [];
-  if (q.kind) { params.push(String(q.kind).toUpperCase()); wh.push("kind = $" + params.length); }
+  // `kind` takes a comma-separated list: an inland carrier picker offers
+  // TRUCKING and RAIL, which one value could not express and which the browser
+  // should not have to fetch everything to filter down to.
+  if (q.kind) {
+    const kinds = String(q.kind).split(",").map((k) => k.trim().toUpperCase()).filter(Boolean);
+    if (kinds.length) { params.push(kinds); wh.push("kind = ANY($" + params.length + ")"); }
+  }
   if (q.active !== undefined) { params.push(q.active === "true" || q.active === true); wh.push("is_active = $" + params.length); }
   if (q.q) { params.push(`%${q.q}%`); wh.push(`(code::text ILIKE $${params.length} OR name ILIKE $${params.length})`); }
   const where = wh.length ? "WHERE " + wh.join(" AND ") : "";

@@ -11,6 +11,14 @@ const schemas = {
     file_context: z.enum(["OPS", "OVH"]).optional().nullable(),
     folder_ref: z.string().max(200).optional().nullable(),
     dossier_id: z.string().uuid().optional().nullable(),
+    // 0669 — the typed filing an operations upload carries. The reference is
+    // what reports group by; `doc_type` (text) is derived from it server-side so
+    // the two cannot disagree.
+    doc_type_ref_id: z.string().uuid().optional().nullable(),
+    client_id: z.string().uuid().optional().nullable(),
+    // What the person called the file. `storage_path` is a random key, so
+    // without this the vault cannot answer "where is the one I uploaded".
+    original_name: z.string().max(255).optional().nullable(),
   }),
 };
 const mw = (k) => (req, _res, next) => {

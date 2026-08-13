@@ -208,7 +208,7 @@ async function clientKpis(c, partyId, party) {
         AND date_part('year', created_at) = date_part('year', CURRENT_DATE)`,
     [partyId, INVOICE_LOCKED],
   );
-  const wip = await one(c, "SELECT COUNT(*) AS n FROM dossier WHERE client_id = $1 AND status NOT IN ('CLOSED', 'CANCELLED', 'ARCHIVED')", [partyId]);
+  const wip = await one(c, "SELECT COUNT(*) AS n FROM dossier_visible WHERE client_id = $1 AND status NOT IN ('CLOSED', 'CANCELLED', 'ARCHIVED')", [partyId]);
   const limit = party.credit_limit === null || party.credit_limit === undefined ? null : Number(party.credit_limit);
   return {
     outstanding, overdue,
@@ -280,7 +280,7 @@ async function clientDossier(c, { partyId, canSeeFinancials = false }) {
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
       "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-      "FROM dossier d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
+      "FROM dossier_visible d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       "WHERE d.client_id = $1 ORDER BY d.created_at DESC LIMIT 25",
     [partyId],
   )).rows;

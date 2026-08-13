@@ -33,7 +33,7 @@ async function scanTenant(client) {
   const open = await client.query(
     "SELECT DISTINCT dossier_id FROM milestone_instance mi " +
       " WHERE mi.status <> 'DONE' " +
-      "   AND EXISTS (SELECT 1 FROM dossier d WHERE d.dossier_id = mi.dossier_id " +
+      "   AND EXISTS (SELECT 1 FROM dossier_visible d WHERE d.dossier_id = mi.dossier_id " +
       "                 AND d.status NOT IN ('COMPLETED','CANCELLED'))",
   );
 

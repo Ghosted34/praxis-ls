@@ -60,6 +60,9 @@ const FORMATS = {
   URL: { re: /^https?:\/\/[^\s]{3,300}$/, hint: "a URL starting http:// or https://" },
 };
 
+/** Reference-typed fields carry a uuid, not a name — see the RATE_PROVIDER case. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /* ── Write side ────────────────────────────────────────────────────────────── */
 
 const isBlank = rules.isBlank;
@@ -113,10 +116,24 @@ function coerce(field, value) {
       }
       return arr.map(String);
     }
-    case "GEO_PLACE":
+    // A carrier field binds to `dossier.rate_provider_id`, a uuid FK, so the
+    // value has to BE a uuid. Until the browser had a picker for this type the
+    // control was a plain text box, and "Maersk" reached Postgres as a uuid
+    // literal — an opaque 500 with no field named, on the one field the whole
+    // rate cascade depends on. Refusing it here says which field and why.
     case "RATE_PROVIDER":
+      if (!UUID_RE.test(String(value).trim())) {
+        fail("must be a carrier chosen from the list, not a typed name");
+      }
+      return String(value).trim();
+    // ISO 4217, normalised: "usd", "USD " and "USD" are one currency.
+    case "CURRENCY": {
+      const s = String(value).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(s)) fail("must be a 3-letter currency code (XAF, EUR, USD)");
+      return s;
+    }
+    case "GEO_PLACE":
     case "REF":
-    case "CURRENCY":
       return String(value);
     default: {
       const s = String(value);
@@ -154,6 +171,8 @@ function partition(fields, values, { existingDetails = {}, enforceRequired = fal
   const incoming = values || {};
   const columns = {};
   const details = { ...existingDetails };
+  /** Keys of generated fields this payload wrote to — see the loop below. */
+  const touchedReadonly = [];
 
   /*
    * THE LOOP IS DRIVEN BY THE DEFINITIONS, NOT BY THE REQUEST — and that is a
@@ -189,6 +208,20 @@ function partition(fields, values, { existingDetails = {}, enforceRequired = fal
     if (field.column_name) columns[field.column_name] = clean;
     else if (clean === null) delete details[field.key];
     else details[field.key] = clean;
+
+    /*
+     * A readonly field the system fills in — marks & numbers being the one that
+     * exists — is still WRITABLE, on purpose. Legacy locked it outright and left
+     * no way to describe a break-bulk consignment whose marks are the shipper's
+     * own; a lock with no key just moves the problem into a notes box.
+     *
+     * Writing one is an OVERRIDE, and is recorded as one: `touchedReadonly`
+     * carries the fact up to applyValues, which sets the file's manual flag so
+     * the next container edit stops overwriting what a person deliberately
+     * typed. The greyed control in the browser is the courtesy; this is the
+     * mechanism.
+     */
+    if (field.is_readonly === true) touchedReadonly.push(field.key);
   }
 
   // Anything sent that this service type does not define. Refused rather than
@@ -225,7 +258,7 @@ function partition(fields, values, { existingDetails = {}, enforceRequired = fal
     }
   }
 
-  return { columns, details };
+  return { columns, details, touchedReadonly };
 }
 
 /**
@@ -257,11 +290,15 @@ async function applyValues(client, { serviceTypeId, fieldSetId = null, values, e
   }
 
   const fields = await repo.fieldsOf(client, fieldSet.service_type_field_set_id);
-  const { columns, details } = partition(fields, values, { existingDetails, enforceRequired });
+  const { columns, details, touchedReadonly } = partition(fields, values, { existingDetails, enforceRequired });
 
   const patch = { ...columns };
   patch.details_json = details;
   patch.service_type_field_set_id = fieldSet.service_type_field_set_id;
+  // Someone typed over a generated field. Record the override on the file so the
+  // next container write leaves it alone — otherwise the correction survives
+  // until the first quantity fix and then vanishes with no trace of why.
+  if (touchedReadonly.includes("marks_numbers")) patch.marks_numbers_is_manual = true;
   return { patch, fieldSet };
 }
 
@@ -332,6 +369,7 @@ async function forDossier(client, dossierId, { lang = "en", clientVisibleOnly = 
       facet_role: f.facet_role,
       is_required: f.is_required,
       is_client_visible: f.is_client_visible,
+      is_readonly: f.is_readonly === true,
       value: rules.rawValue(f, dossier, details),
       display: rules.displayValue(f, rules.rawValue(f, dossier, details), { lang, resolved }),
     })),
@@ -416,6 +454,9 @@ async function formFor(client, serviceTypeId, { lang = "en" } = {}) {
         default_value: f.default_value,
         is_required: f.is_required,
         is_client_visible: f.is_client_visible,
+        // The system fills this one in (0670) — the renderer greys it and the
+        // write path records an override rather than refusing one.
+        is_readonly: f.is_readonly === true,
         facet_role: f.facet_role,
         column_name: f.column_name,
         width: f.width,

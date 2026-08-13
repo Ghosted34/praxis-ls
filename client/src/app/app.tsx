@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import type { ComponentType } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { RequireAuth } from "@/app/auth/require-auth";
+import { useAuth } from "@/app/auth/auth-context";
 import { AppShell } from "@/app/layout/app-shell";
 import { ShellProvider } from "@/app/layout/shell-providers";
 import { LandingPage } from "@/features/landing/landing-page";
@@ -10,6 +11,9 @@ import { PwaLayer } from "@/components/pwa/pwa-layer";
 import { MaintenanceBanner } from "@/components/maintenance-banner";
 import { UserAppearanceSync } from "@/app/branding/user-appearance-sync";
 import { Spinner } from "@/components/ui/states";
+import { ConnectionLost } from "@/components/connection/connection-lost";
+import { useConnection } from "@/lib/connection";
+import { tokenStore } from "@/lib/token-store";
 import { withChunkReload } from "@/lib/chunk-reload";
 
 /**
@@ -133,6 +137,59 @@ function RouteFallback() {
   );
 }
 
+/**
+ * The always-on offline page. Whenever the app is offline AND has no
+ * authenticated session to render, this shows the crafted `ConnectionLost` panel
+ * — with the opt-in "Beat the downtime" puzzle — in place of the routes.
+ *
+ * WHY IT GUARDS THE ROUTES RATHER THAN LIVING IN THE LOGIN. A cold reload while
+ * offline can't verify the session, so the user is momentarily "anonymous" and
+ * the router would send them to a login they cannot complete offline (the exact
+ * behaviour reported: connection drops, reload, and the branded workspace is
+ * replaced by a login). Catching it here means the offline page shows for every
+ * unauthenticated-offline state — boot, a genuine sign-in, a portal — not just
+ * one screen.
+ *
+ * WHY AN AUTHENTICATED USER IS NEVER COVERED. Their running screens stay
+ * mounted, and each one already handles its own offline in place (ScreenError →
+ * ConnectionLost) alongside the top pill. Taking the whole app over would hide a
+ * half-filled form to explain why it can't be saved — the one move the offline
+ * design forbids. So the takeover is strictly for the "nothing to protect yet"
+ * states.
+ *
+ * The brand it wears is the tenant's: appearance-cache repaints the cached
+ * colours/name and the service worker serves the cached logo, so this is the
+ * tenant's offline page, not the vendor's.
+ */
+function OfflineBootGate({ children }: { children: React.ReactNode }) {
+  const { status } = useAuth();
+  const { status: conn } = useConnection();
+
+  if (conn === "unreachable" && status !== "authed") {
+    return (
+      <div className="grid min-h-screen place-items-center p-4">
+        <ConnectionLost what="Your workspace" className="w-full max-w-lg" />
+      </div>
+    );
+  }
+
+  // Reconnected, but the session is still being re-verified (auth-context re-runs
+  // the token exchange on the same reconnect signal). Hold a spinner for that
+  // beat rather than flashing the login on the way back to the screen the user
+  // was on. Only while a refresh token is actually present — a signed-out user
+  // has nothing to wait for and falls straight through to the login.
+  if (conn === "online" && status !== "authed" && tokenStore.getRefresh()) {
+    return (
+      <div className="grid min-h-screen place-items-center" role="status" aria-label="Reconnecting">
+        <Spinner />
+        <span className="sr-only">Reconnecting…</span>
+      </div>
+    );
+  }
+
+  return <>{children}</>;
+}
+
 export function App() {
   return (
     <BootGate>
@@ -146,6 +203,11 @@ export function App() {
           and branding (to paint) — BrandingProvider is above AuthProvider in
           main.tsx, so this is the highest point where both are readable. */}
       <UserAppearanceSync />
+      {/* The crafted offline page stands in for the routes whenever we're offline
+          without a session to show — see OfflineBootGate. PwaLayer above stays
+          mounted OUTSIDE it, so the connection monitor keeps probing and the pill
+          keeps working while the gate is up. */}
+      <OfflineBootGate>
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route path="/login" element={<LandingPage />} />
@@ -286,6 +348,7 @@ export function App() {
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
       </Suspense>
+      </OfflineBootGate>
     </BootGate>
   );
 }

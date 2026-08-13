@@ -111,6 +111,27 @@ export default defineConfig({
               cacheableResponse: { statuses: [0, 200] },
             },
           },
+          // Brand media — the logo, the login hero, the favicon (and any other
+          // image the app served, e.g. avatars). Cached on first view so the
+          // OFFLINE screen shows the tenant's identity rather than broken image
+          // frames: appearance-cache restores the brand's colours and NAME from
+          // localStorage, but the logo and hero are /media files, and a cached
+          // <Branding> pointing at an uncached image is still a stranger's page.
+          //
+          // StaleWhileRevalidate, not CacheFirst: /media URLs are NOT
+          // content-hashed (a tenant re-uploads a logo to the same path), so the
+          // cache must refresh in the background on the next online load while
+          // still serving instantly — and offline — from what it has.
+          {
+            urlPattern: ({ request }: { request: Request }) =>
+              request.destination === "image",
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "praxis-media",
+              expiration: { maxEntries: 60, maxAgeSeconds: 60 * 60 * 24 * 30 },
+              cacheableResponse: { statuses: [0, 200] },
+            },
+          },
         ],
         // Add web-push display handlers (push + notificationclick) to the
         // generated SW without switching to a fully custom injectManifest SW.

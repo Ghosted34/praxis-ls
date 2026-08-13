@@ -130,6 +130,59 @@ function CurrencyControl({ field, value, onChange }: { field: DetailFieldDef; va
 }
 
 /**
+ * A field the system fills in — marks & numbers being the one that does.
+ *
+ * LOCKED, WITH A KEY. Legacy made it read-only outright, which left nowhere to
+ * describe a break-bulk consignment carrying the shipper's own marks; a lock
+ * with no key just moves the problem into a notes box. So the value is shown
+ * as text, and "Edit" turns it into a normal input.
+ *
+ * Unlocking is not a UI state — it is a decision the file records. Writing the
+ * field sets `marks_numbers_is_manual` server-side, and from then on the
+ * generator leaves it alone. Saying so here, before the click rather than
+ * after, is the difference between an override and a surprise.
+ */
+function GeneratedControl({
+  field,
+  value,
+  onChange,
+}: {
+  field: DetailFieldDef;
+  value: unknown;
+  onChange: (v: unknown) => void;
+}) {
+  const [unlocked, setUnlocked] = React.useState(false);
+  if (unlocked) {
+    return (
+      <div className="space-y-1">
+        <Input
+          value={asString(value)}
+          placeholder={field.placeholder || undefined}
+          onChange={(e) => onChange(e.target.value)}
+        />
+        <p className="micro text-muted-foreground">
+          Editing this stops it updating from the containers on this file.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="flex min-h-9 items-center justify-between gap-2 rounded-md border bg-muted/40 px-3 py-1.5">
+      <span className="min-w-0 truncate text-sm text-foreground">
+        {asString(value) || <span className="text-muted-foreground">Generated from the containers on this file</span>}
+      </span>
+      <button
+        type="button"
+        onClick={() => setUnlocked(true)}
+        className="shrink-0 text-xs font-medium text-primary-ink underline"
+      >
+        Edit
+      </button>
+    </div>
+  );
+}
+
+/**
  * One control, chosen by the field's declared type.
  *
  * GEO_PLACE gets the port picker rather than a text box, which is what keeps
@@ -149,8 +202,11 @@ function Control({
   value: unknown;
   display?: string;
   onChange: (v: unknown) => void;
-  onCreateCarrier?: (term: string, kinds: string[]) => void;
+  onCreateCarrier?: (fieldKey: string, term: string, kinds: string[]) => void;
 }) {
+  // Checked before the type switch: "the system fills this in" is a fact about
+  // the field, not about what kind of value it holds.
+  if (field.is_readonly) return <GeneratedControl field={field} value={value} onChange={onChange} />;
   switch (field.data_type) {
     case "TEXTAREA":
       return (
@@ -224,11 +280,23 @@ function Control({
           value={value}
           display={display}
           onChange={onChange}
-          onCreate={onCreateCarrier}
+          onCreate={onCreateCarrier && ((term, kinds) => onCreateCarrier(field.key, term, kinds))}
         />
       );
     case "CURRENCY":
       return <CurrencyControl field={field} value={value} onChange={onChange} />;
+    case "REF":
+      // Nothing seeds a REF field yet, so there is no storage convention to
+      // honour and guessing one would be the wrong kind of certainty. It falls
+      // through to text deliberately, and `ref_kind` is already carried on the
+      // definition for whoever seeds the first one.
+      return (
+        <Input
+          value={asString(value)}
+          placeholder={field.placeholder || undefined}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      );
     default:
       return (
         <Input
@@ -270,7 +338,7 @@ export function DetailFieldGroups({
   /** Offered on carrier fields as "+ Add carrier" when the search finds none.
    *  Omit for users without MOD-10 create — an affordance that always 403s is
    *  worse than no affordance. */
-  onCreateCarrier?: (term: string, kinds: string[]) => void;
+  onCreateCarrier?: (fieldKey: string, term: string, kinds: string[]) => void;
   errors?: Record<string, string[]> | null;
   disabled?: boolean;
   omitKeys?: readonly string[];

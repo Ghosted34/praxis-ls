@@ -11,11 +11,23 @@
  * actually about. Air files were asked for a BL and had nowhere to put a flight
  * number.
  *
- * Now the top half asks the four questions that are true of every file —
- * entity, client, service type, carrier — and everything below is rendered from
- * the SERVICE TYPE'S OWN FORM, fetched the moment a service type is picked.
- * There is no per-service-type code in this file, and adding a service type
- * (or changing what an existing one asks for) needs no change here at all.
+ * Now the top half asks the three questions that are true of every file —
+ * entity, client, service type — and everything below is rendered from the
+ * SERVICE TYPE'S OWN FORM, fetched the moment a service type is picked. There
+ * is no per-service-type code in this file, and adding a service type (or
+ * changing what an existing one asks for) needs no change here at all.
+ *
+ * THE CARRIER USED TO BE HERE TWICE. A hard-coded `<Select>` in this file AND a
+ * seeded `RATE_PROVIDER` field on SEA, AIR, HINTERLAND and PROJECT — both
+ * writing `dossier.rate_provider_id`, so whichever saved last won. The select
+ * also offered every shipping line and airline on every file, including a
+ * warehousing job that has no carrier at all, and it could not offer a haulier
+ * because the kind did not exist.
+ *
+ * The service-type field is now the single definition: correctly labelled per
+ * mode ("Compagnie maritime" vs "Compagnie aérienne"), scoped to the kinds that
+ * make sense (`ref_kind`), absent on warehousing, and already seeded. Deleting
+ * the local copy is the point — two controls for one column is how they drift.
  *
  * The dossier columns have not moved: a field definition binds "Port of
  * loading" to `dossier.pol`, so the Control Tower map, the dossier search and
@@ -30,9 +42,10 @@ import { Callout } from "@/components/ui/callout";
 import { ErrorState } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
+import { useCanUseModule } from "@/lib/route-access";
 import type { Entity, Client } from "@/lib/masterdata-api";
-import { listRateProviders } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
+import { CarrierQuickAdd } from "./carrier-quick-add";
 import { DetailFieldGroups, missingRequired, valuesFromDetails, displaysFromDetails, type DetailValues, type DetailDisplays } from "./detail-fields";
 
 export function DossierForm({
@@ -51,16 +64,17 @@ export function DossierForm({
   // mode, AND — since 0660 — which fields this form renders at all. Active only:
   // archived types stay valid on old dossiers but must not be selectable.
   const { rows: serviceTypes } = useList<api.ServiceType>("/service-types");
-  // Sea + air carriers only — an authority (PAD/PAK) is a rate scope on a
-  // specific charge, not a property of the whole job.
-  const providers = useResource(() => listRateProviders({ active: true }), []);
-  const carriers = (providers.data || []).filter((p) => p.kind === "SHIPPING_LINE" || p.kind === "AIRLINE");
+  // Rate providers are MOD-10. Offering "+ Add carrier" to someone with no
+  // grant there is a button that always fails — see useCanUseModule.
+  const canAddCarrier = useCanUseModule("MOD-10");
 
   const [entityId, setEntityId] = React.useState(row?.entity_id ?? "");
   const [clientId, setClientId] = React.useState(row?.client_id ?? "");
   const [serviceTypeId, setServiceTypeId] = React.useState(row?.service_type_id ?? "");
-  const [rateProviderId, setRateProviderId] = React.useState(row?.rate_provider_id ?? "");
   const [values, setValues] = React.useState<DetailValues>({});
+  /** The pending "+ Add carrier": which field asked, what they had typed, and
+   *  which kinds that field accepts. */
+  const [addCarrier, setAddCarrier] = React.useState<{ key: string; term: string; kinds: string[] } | null>(null);
   const [displays, setDisplays] = React.useState<DetailDisplays>({});
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -119,13 +133,14 @@ export function DossierForm({
     setBusy(true);
     setError(null);
     setFieldErrors(null);
+    // NO `rate_provider_id` here. The service type's own CARRIER field binds to
+    // that column, and `foldDetails` lets an explicit body key win over the
+    // folded patch — so sending it from this form would overwrite whatever the
+    // picker chose with whatever this form last thought.
     const body: api.DossierInput & { details?: DetailValues } = {
       entity_id: entityId,
       client_id: clientId || undefined,
       service_type_id: serviceTypeId || undefined,
-      // null (not undefined) when cleared: undefined is dropped from the body
-      // and would leave a stale reference pointing at the previous carrier.
-      rate_provider_id: rateProviderId || null,
       details: values,
     };
     try {
@@ -197,21 +212,6 @@ export function DossierForm({
               </p>
             )}
           </Field>
-          <Field
-            label="Carrier"
-            className="sm:col-span-2"
-            hint="Shipping line or airline — scopes the expense rate every costing line on this file resolves against."
-          >
-            <Select value={rateProviderId} onChange={(e) => setRateProviderId(e.target.value)}>
-              <option value="">— not confirmed yet —</option>
-              {carriers.map((c) => (
-                <option key={c.rate_provider_id} value={c.rate_provider_id}>
-                  {c.name}
-                  {c.kind === "AIRLINE" ? " (Air)" : " (Sea)"}
-                </option>
-              ))}
-            </Select>
-          </Field>
         </div>
 
         {switched && (
@@ -237,6 +237,7 @@ export function DossierForm({
             values={values}
             displays={displays}
             onChange={setValue}
+            onCreateCarrier={canAddCarrier ? (key, term, kinds) => setAddCarrier({ key, term, kinds }) : undefined}
             errors={fieldErrors}
             disabled={busy}
           />
@@ -258,6 +259,21 @@ export function DossierForm({
           saveLabel={isNew ? "Create file" : "Save changes"}
         />
       </form>
+
+      {/* Created and selected without leaving the file — the alternative is a
+          trip to Master data and a half-filled form abandoned behind it. */}
+      {addCarrier && (
+        <CarrierQuickAdd
+          open
+          initialName={addCarrier.term}
+          kinds={addCarrier.kinds}
+          onClose={() => setAddCarrier(null)}
+          onCreated={(row) => {
+            setValue(addCarrier.key, row.rate_provider_id);
+            setDisplays((d) => ({ ...d, [addCarrier.key]: row.name }));
+          }}
+        />
+      )}
     </Dialog>
   );
 }

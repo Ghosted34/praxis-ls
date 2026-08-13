@@ -155,6 +155,9 @@ export const linkThread = (id: string, entity_ref: string) =>
   tenant<{ entity_ref: string }>(`/mail/thread/${id}/link`, { method: "POST", body: { entity_ref } });
 export const clientTimeline = (clientId: string) => tenant<ThreadMsg[]>(`/mail/client/${clientId}/timeline`);
 
+export const updateImapConnection = (id: string, body: { email_address?: string; display_name?: string; imap_host?: string; imap_port?: number; imap_secure?: boolean; smtp_host?: string; smtp_port?: number; smtp_secure?: boolean; auth_user?: string; password?: string }) =>
+  tenant<Connection & { test?: TestResult }>(`/mail/connections/${id}`, { method: "PATCH", body });
+
 // Send / reply
 export const sendMail = (body: { connectionId: string; to: string | string[]; subject?: string; html?: string; text?: string; cc?: string[] }) =>
   tenant<{ externalMessageId?: string }>("/mail/send", { method: "POST", body });

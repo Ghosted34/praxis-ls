@@ -67,6 +67,20 @@ const schemas = {
     auth_user: z.string().optional(),
     password: z.string().min(1).max(4000).optional(),
   }),
+  // Edit an existing IMAP/SMTP connection — everything optional (blank password
+  // keeps the current one). email_address stays optional so a rename is allowed.
+  connectPatch: z.object({
+    email_address: z.string().email().optional(),
+    display_name: z.string().optional(),
+    imap_host: z.string().min(1).optional(),
+    imap_port: z.coerce.number().int().positive().optional(),
+    imap_secure: z.boolean().optional(),
+    smtp_host: z.string().min(1).optional(),
+    smtp_port: z.coerce.number().int().positive().optional(),
+    smtp_secure: z.boolean().optional(),
+    auth_user: z.string().optional(),
+    password: z.string().min(1).max(4000).optional(),
+  }),
   send: z.object({
     connectionId: z.string().uuid(),
     to: z.union([z.string().email(), z.array(z.string().email()).min(1)]),
@@ -97,7 +111,7 @@ const mw = (k) => (req, _res, next) => {
 };
 
 module.exports = {
-  connect: mw("connect"), send: mw("send"), reply: mw("reply"),
+  connect: mw("connect"), connectPatch: mw("connectPatch"), send: mw("send"), reply: mw("reply"),
   sender: mw("sender"), senderPatch: mw("senderPatch"), threadLink: mw("threadLink"),
   msWebhook: mw("msWebhook"), ggWebhook: mw("ggWebhook"),
   schemas,

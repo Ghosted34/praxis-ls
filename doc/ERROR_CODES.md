@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (276)
+## All codes (282)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -44,7 +44,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
-| `AUTH_REQUIRED` | 401 | 13× | — |
+| `AUTH_REQUIRED` | 401 | 14× | — |
 | `BAD_ACTION` | 422 | 2× | — |
 | `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
@@ -66,7 +66,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_MONTH` | 422 | 1× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
 | `BAD_PARENT` | 422, 500 | 3× | — |
-| `BAD_PARTY_KIND` | 422 | 8× | — |
+| `BAD_PARTY_KIND` | 422 | 9× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |
@@ -139,6 +139,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
+| `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
 | `INVALID_FIELD` | — | 1× | — |
@@ -203,7 +204,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 1× | — |
 | `NO_LINES` | 422 | 6× | — |
-| `NO_MODULE` | 422 | 1× | — |
+| `NO_MODULE` | 422 | 2× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
 | `NO_ORIGIN` | 422 | 1× | — |
@@ -255,6 +256,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROOT_LOCKED` | 409 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
+| `SAME_PASSWORD` | 422 | 1× | — |
 | `SCAN_REQUIRED` | 422 | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |
@@ -264,6 +266,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
+| `SMTP_AUTH_FAILED` | 502 | 1× | — |
+| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 1× | — |
+| `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |

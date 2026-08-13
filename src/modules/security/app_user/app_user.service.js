@@ -689,6 +689,84 @@ async function resetPassword(client, { token, newPassword, ip }) {
   return { reset: true };
 }
 
+/**
+ * Self-service change: a SIGNED-IN user replaces their own password by proving
+ * the current one. The third leg of the password story — recovery by email
+ * covers "locked out", the admin route covers "someone else's account", and
+ * neither covers the ordinary "I know my password and want a different one".
+ * Without it, a user with no IAM grant (which is most of them: /users/:id/password
+ * needs MOD-67 edit) could only change their password by mailing themselves a
+ * reset link, and only if outbound mail is working.
+ *
+ * Rules, all deliberate:
+ *   - The current password is verified with the same Argon2id compare login
+ *     uses. A live access token is NOT sufficient proof: tokens outlive the
+ *     laptop they were minted on, and this endpoint is what someone who
+ *     shoulder-surfed a session would use to take the account permanently.
+ *   - Full password policy on the new one (length/complexity + HIBP), same
+ *     assertStrongPassword as every other write, so this cannot become the soft
+ *     way in that dilutes the policy.
+ *   - Outstanding reset links are voided. You have just proved control; a link
+ *     mailed before that (possibly by an attacker probing the account) must not
+ *     survive the change.
+ *   - Every OTHER session is force-logged-out, the current one is kept.
+ */
+async function changeOwnPassword(client, { userId, currentPassword, newPassword, sessionId = null, ip = null }) {
+  const user = await repo.getUserWithHash(client, userId);
+  // A live token whose user is gone or no longer active: treat as not signed in
+  // rather than 404, which would confirm the account's fate to a stolen token.
+  if (!user || user.status !== "ACTIVE") throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+
+  const ok = await argon2.verify(user.password_hash, String(currentPassword || "")).catch(() => false);
+  if (!ok) {
+    // 403, NOT 401: the client treats 401 as "token expired" and would silently
+    // refresh-then-sign-out on a simple typo. Nothing about the session is wrong
+    // here — the submitted password is.
+    throw new AppError("INVALID_CURRENT_PASSWORD", "That's not your current password.", 403);
+  }
+  if (String(currentPassword) === String(newPassword)) {
+    throw new AppError("SAME_PASSWORD", "Your new password must be different from your current one.", 422);
+  }
+
+  // Policy before the transaction — the HIBP call can be slow (same shape as
+  // resetPassword, and for the same reason).
+  await passwordPolicy.assertStrongPassword(newPassword, { email: user.email });
+
+  await client.query("BEGIN");
+  let killed = [];
+  try {
+    const hash = await argon2.hash(String(newPassword), ARGON);
+    await repo.setPasswordHash(client, user.user_id, hash);
+    await repo.invalidateUserResets(client, user.user_id);
+    killed = await repo.killOtherSessionsForUser(client, user.user_id, sessionId, user.user_id);
+    // Unconditional security alert (preferences don't silence these) — the
+    // "if this wasn't you, act now" trail, exactly as the reset flow leaves.
+    await notificationRepo.insertForUser(client, {
+      userId: user.user_id,
+      eventTypeKey: events.PASSWORD_CHANGED,
+      title: "Your password was changed",
+      body: killed.length
+        ? `Your password was changed and your other ${killed.length === 1 ? "session was" : `${killed.length} sessions were`} signed out. If this wasn't you, contact your administrator immediately.`
+        : "Your password was changed. If this wasn't you, contact your administrator immediately.",
+      entityRef: `app_user:${user.user_id}`,
+      priority: "HIGH",
+      category: "security",
+    });
+    await emitEvent(client, { eventTypeKey: events.PASSWORD_CHANGED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, actorUserId: user.user_id });
+    await audit(client, { actorUserId: user.user_id, action: events.PASSWORD_CHANGED, moduleKey: events.MODULE, entityRef: `app_user:${user.user_id}`, ip });
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  }
+
+  // Best-effort cache cleanup, outside the txn — a Redis hiccup must not undo a
+  // committed password change.
+  await identityCache.invalidateUser(user.user_id);
+  await Promise.allSettled(killed.map((sid) => sessionStore.removeSession(sid, user.user_id)));
+  return { changed: true, sessions_signed_out: killed.length };
+}
+
 
 // ── User administration (Argon2id password, roles, lifecycle) ──
 const ARGON = { type: argon2.argon2id };
@@ -1027,4 +1105,5 @@ module.exports = {
   setAvatar,
   requestPasswordReset,
   resetPassword,
+  changeOwnPassword,
 };

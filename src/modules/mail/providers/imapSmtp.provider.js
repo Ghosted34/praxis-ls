@@ -24,6 +24,19 @@ const { baseCapabilities } = require("./provider.interface");
 
 const SENT_MAILBOX_CANDIDATES = ["Sent", "Sent Items", "Sent Mail", "INBOX.Sent"];
 
+/**
+ * The SMTP envelope MAIL FROM must be a BARE address (no display name). Many
+ * relays run sender-verification / callback checks against MAIL FROM and reject
+ * ("550 Sender verify failed") anything that isn't a plain, resolvable address —
+ * a `"Name" <addr>` form or an empty value trips that check. The header `From`
+ * still carries the friendly display name; this only governs the envelope.
+ */
+function bareAddress(value) {
+  if (!value) return null;
+  const m = String(value).match(/<([^>]+)>/);
+  return (m ? m[1] : String(value)).trim() || null;
+}
+
 class ImapSmtpProvider {
   constructor(conn) {
     this.conn = conn || {};
@@ -124,7 +137,11 @@ class ImapSmtpProvider {
 
     const raw = await this._composeRaw(mail);
     const smtp = this._smtpTransport();
-    const envelope = { from: c.email_address || msg.from, to: [].concat(msg.to || [], msg.cc || []) };
+    // MAIL FROM: the account we authenticated as is the address the relay can
+    // actually vouch for during sender verification. Prefer it, fall back to the
+    // mailbox/header address, and always strip to a bare address (see bareAddress).
+    const envelopeFrom = bareAddress(c.auth_user || c.email_address || mail.from);
+    const envelope = { from: envelopeFrom, to: [].concat(msg.to || [], msg.cc || []) };
     await smtp.sendMail({ envelope, raw });
 
     // File a copy into Sent (SMTP won't) — best effort, non-fatal.

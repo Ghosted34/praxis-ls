@@ -130,6 +130,8 @@ type FieldSpec = {
   key: string; label: string;
   type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea" | "multiselect" | "file";
   options?: { value: string; label: string }[]; placeholder?: string; hint?: string;
+  /** Server-owned values such as system-generated document references. */
+  systemGenerated?: boolean;
   /**
    * Heading this field sits under. The person modal carries close to thirty
    * controls spanning identity, shareholding, signing authority and the links to
@@ -192,6 +194,8 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
          * shows and what Save sends the same thing.
          */
         seed[f.key] = f.type === "date" ? toDateInput(initial[f.key]) : initial[f.key];
+      } else if (!initial && f.systemGenerated) {
+        seed[f.key] = "Assigned on save";
       } else if (!initial && f.defaultValue !== undefined) seed[f.key] = f.defaultValue;
     }
     return seed;
@@ -313,6 +317,8 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
                   <Input
                     type={f.type === "number" ? "number" : f.type === "email" ? "email" : "text"}
                     value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
+                    readOnly={f.systemGenerated}
+                    className={f.systemGenerated ? "bg-muted text-muted-foreground" : undefined}
                     onChange={(e) => set(f.key, e.target.value)}
                   />
                 )}
@@ -1331,7 +1337,7 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   const fields = React.useMemo<FieldSpec[]>(() => [
     { key: "document_type_id", label: "Document type", type: "select", options: typeList.map((t) => ({ value: t.document_type_id, label: t.name })) },
     { key: "title", label: "Title", placeholder: "Customs bond 2026" },
-    { key: "document_number", label: "Reference number" },
+    { key: "document_number", label: "Reference number", systemGenerated: true, hint: "Generated automatically when the document is added." },
     { key: "issuing_authority", label: "Issuing authority", placeholder: "Direction Générale des Douanes" },
     { key: "country_code", label: "Country", type: "country" },
     {
@@ -1351,8 +1357,10 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   async function save(values: Record<string, unknown>, id?: string) {
     // `scan_file` is a picked File, not a column — pull it out before writing the
     // record, then (if present) upload it to the vault and link the returned id.
-    const { scan_file: scanFile, ...rest } = values;
-    const body = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== "" && v !== undefined));
+    const scanFile = values.scan_file;
+    const body = Object.fromEntries(
+      Object.entries(values).filter(([key, value]) => key !== "scan_file" && key !== "document_number" && value !== "" && value !== undefined),
+    );
     let documentId = id;
     if (id) await api.updateEntityChild(entityId, "documents", id, body);
     else {

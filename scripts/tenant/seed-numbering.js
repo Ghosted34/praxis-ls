@@ -57,6 +57,9 @@ const SCHEMES = {
   "MOD-49":    { prefix: "CASH", label: "Cash request + régie advance (shared MOD-49 sequence)" },
   "MOD-04":    { prefix: "SUP",  reset: "never", label: "Supplier code" },
   "MOD-03":    { prefix: "CLI",  reset: "never", label: "Client code" },
+  "MOD-01-DOC": { code: "DOC", label: "Corporate entity document" },
+  "MOD-03-DOC": { prefix: "CLI", code: "DOC", label: "Client KYC document" },
+  "MOD-04-DOC": { prefix: "SUP", code: "DOC", label: "Supplier KYC document" },
 };
 
 (async () => {

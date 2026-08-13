@@ -166,7 +166,8 @@ function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdd
     try {
       const created = await api.documents.create(kind, partyId, {
         document_type_id: values.document_type_id || undefined,
-        document_number: values.document_number || undefined,
+        // document_number is assigned by the client/supplier document service;
+        // never accept a browser-provided value for this system reference.
         issued_on: values.issued_on || undefined,
         expires_on: values.expires_on || undefined,
         physical_ref: values.physical_ref || undefined,
@@ -198,8 +199,8 @@ function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdd
               {typeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
             </Select>
           </Field>
-          <Field label="Number">
-            <Input value={values.document_number || ""} onChange={(e) => set("document_number", e.target.value)} />
+          <Field label="Number" hint="Generated automatically when the document is added.">
+            <Input value="Assigned on save" readOnly className="bg-muted text-muted-foreground" />
           </Field>
           <Field label="Issued">
             <DateField value={values.issued_on || ""} onChange={(iso) => set("issued_on", iso)} />

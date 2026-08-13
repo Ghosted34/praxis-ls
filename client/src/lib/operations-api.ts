@@ -681,7 +681,7 @@ export type DetailFieldDef = {
   default_value?: unknown;
   is_required: boolean;
   is_client_visible: boolean;
-  /** The system fills this one in (0668) — marks & numbers is the one that does
+  /** The system fills this one in (0670) — marks & numbers is the one that does
    *  today. Rendered locked with an unlock action; writing it is recorded as a
    *  deliberate override rather than refused. */
   is_readonly?: boolean;

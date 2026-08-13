@@ -2,7 +2,7 @@
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
 
-// TRUCKING/RAIL/BARGE/COURIER joined at 0664: a subcontracted haul is the case
+// TRUCKING/RAIL/BARGE/COURIER joined at 0666: a subcontracted haul is the case
 // where the rate card matters most, and the old list had nowhere to put one.
 // Must stay in step with `chk_rate_provider_kind` — a kind accepted here and
 // refused by the CHECK is a 500 on save.

@@ -42,7 +42,7 @@ router.get("/:id/shipment-details", requirePermission(MODULE, "view"), controlle
 router.get("/:id/containers", requirePermission(MODULE, "view"), controller.containers);
 router.put("/:id/containers", requirePermission(MODULE, "edit"), validateContainerLines, controller.replaceContainers);
 /** Give marks & numbers back to the generator after somebody typed over it
- *  (0668). No body — the only thing it can do is clear the override. */
+ *  (0670). No body — the only thing it can do is clear the override. */
 router.post("/:id/marks/revert", requirePermission(MODULE, "edit"), controller.revertMarks);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 /** The creation wizard. `POST /drafts` opens a DRAFT so documents can be

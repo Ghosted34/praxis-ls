@@ -43,12 +43,12 @@ const WRITABLE = new Set([
   "commodity", "commodity_desc", "gross_weight", "weight_unit",
   "package_count", "volume_cbm", "marks_numbers", "place_receipt", "place_delivery",
   // Marks & numbers is GENERATED from the file's containers on every equipment
-  // write (0668), the way legacy did it. This flag is the override: set when
+  // write (0670), the way legacy did it. This flag is the override: set when
   // somebody types over the field, and it stops the regeneration from
   // discarding what they wrote. Set by the shipment-details service, never
   // typed in.
   "marks_numbers_is_manual",
-  // When the creation wizard opened this as a DRAFT (0669), so the sweeper can
+  // When the creation wizard opened this as a DRAFT (0671), so the sweeper can
   // find one nobody came back to finish. Written by `createDraft`, never by a
   // caller's payload — but it goes through the same insert, so it must be here.
   "draft_started_at",

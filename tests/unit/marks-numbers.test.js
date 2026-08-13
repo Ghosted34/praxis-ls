@@ -95,7 +95,7 @@ describe("marks & numbers — the token for one type", () => {
 
   /*
    * Legacy's five type codes cannot say "high cube" AND "reefer" at once, so a
-   * 40' HC reefer prints as a 40' reefer. Deliberate — see 0666's header. The
+   * 40' HC reefer prints as a 40' reefer. Deliberate — see 0668's header. The
    * escape hatch is the per-type token, which is why this is a registry value.
    */
   it("collapses a high-cube reefer onto the reefer token", () => {

@@ -20,7 +20,7 @@ function fakeClient({ owns = true, ticket = null } = {}) {
     inserted,
     async query(sql, params) {
       const text = String(sql);
-      // `dossier_visible` (0669), not `dossier`: the ownership check reads the
+      // `dossier_visible` (0671), not `dossier`: the ownership check reads the
       // view so a client cannot reach a DRAFT file even by id.
       if (/FROM dossier_visible WHERE dossier_id/.test(text))
         return { rows: owns ? [{ "?column?": 1 }] : [] };

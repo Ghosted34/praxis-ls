@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0668 Marks & Numbers goes back to being generated.
+-- TENANT DB — 0670 Marks & Numbers goes back to being generated.
 --
 -- WHY
 --

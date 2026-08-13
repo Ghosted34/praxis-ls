@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0666 Marks tokens: how a container type prints on a B/L line.
+-- TENANT DB — 0668 Marks tokens: how a container type prints on a B/L line.
 --
 -- WHY THIS EXISTS
 --
@@ -96,7 +96,7 @@ BEGIN
     FROM dictionary_ref
    WHERE kind = 'CONTAINER_TYPE' AND is_system AND NOT (extra ? 'marks_token');
   IF bad IS NOT NULL THEN
-    RAISE EXCEPTION '0666: seeded container type(s) with no marks_token — %', bad;
+    RAISE EXCEPTION '0668: seeded container type(s) with no marks_token — %', bad;
   END IF;
 END $$;
 

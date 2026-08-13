@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0669 DRAFT files, and one place that decides what "a file" means.
+-- TENANT DB — 0671 DRAFT files, and one place that decides what "a file" means.
 --
 -- WHY A DRAFT STATE AT ALL
 --

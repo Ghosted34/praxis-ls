@@ -508,7 +508,7 @@ export type VaultDocument = {
  *  An upload carrying `dossier_id` is an OPERATIONS document and is held to
  *  legacy's rules server-side: 5 MB, PDF/PNG/JPG, and the contents checked
  *  rather than the declared type trusted. Everywhere else keeps the vault's
- *  wider defaults. `doc_type_ref_id` is the registry reference (0667) — the
+ *  wider defaults. `doc_type_ref_id` is the registry reference (0669) — the
  *  server derives the legacy `doc_type` text from it, so the two cannot drift. */
 export const uploadVaultDocument = (body: {
   data_url: string;
@@ -576,7 +576,7 @@ export const deleteGateway = (provider: string) =>
  * (port/customs) an expense rate can be scoped to. Seeded-but-editable: a
  * manager extends the list from the admin panel, inline from the Expense Rates
  * grid, or inline from a file's own carrier picker. */
-// TRUCKING/RAIL/BARGE/COURIER joined at 0664. Before that a subcontracted haul
+// TRUCKING/RAIL/BARGE/COURIER joined at 0666. Before that a subcontracted haul
 // had nowhere to exist, so the haulier field on inland files was free text.
 export type RateProviderKind =
   | "SHIPPING_LINE" | "AIRLINE" | "TRUCKING" | "RAIL"
@@ -957,7 +957,7 @@ export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
  * Expense Rates and the dossier container editor both read the same list. */
 // LOAD_MODE (FCL/LCL) joined the list with the SSDC equipment block (0660):
 // a container line records how it was stowed as well as what it is.
-// DOCUMENT_TYPE (0667) is the list a person picks from when attaching a file to
+// DOCUMENT_TYPE (0669) is the list a person picks from when attaching a file to
 // an operations file — distinct from `document_vault.types.js`, which governs
 // system-generated documents and doubles as the template key.
 export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE" | "DOCUMENT_TYPE";

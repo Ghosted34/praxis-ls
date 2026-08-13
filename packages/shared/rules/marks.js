@@ -49,7 +49,7 @@ const FAMILY_TOKEN = {
 /**
  * The token one container type prints as.
  *
- * A seeded type carries an explicit `extra.marks_token` (0666) and that always
+ * A seeded type carries an explicit `extra.marks_token` (0668) and that always
  * wins — it is the only way to be certain a 45' HC prints `45'HC` rather than
  * something derived. The derivation below exists for TENANT-created types,
  * where the alternative is a blank that silently shortens a B/L line.

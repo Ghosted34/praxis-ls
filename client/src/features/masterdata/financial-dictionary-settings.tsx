@@ -25,7 +25,7 @@ const KINDS: { kind: api.DictRefKind; label: string }[] = [
   // registry value, plus the equipment facts below.
   { kind: "CONTAINER_TYPE", label: "Container types" },
   { kind: "LOAD_MODE", label: "Load modes" },
-  // The types a person picks when attaching a file (0667). Also addable inline
+  // The types a person picks when attaching a file (0669). Also addable inline
   // from the upload picker itself — this tab is for retiring and renaming.
   { kind: "DOCUMENT_TYPE", label: "Document types" },
 ];

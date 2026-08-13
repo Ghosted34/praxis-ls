@@ -49,7 +49,7 @@ const create = z.object({
 // every consumer read them generically, and only this enum stood between a
 // manager and a new box size. A carrier introducing a 50' unit does not wait
 // for a release, so they are creatable here like every other kind.
-// DOCUMENT_TYPE joined at 0667: the vault's own registry governs the documents
+// DOCUMENT_TYPE joined at 0669: the vault's own registry governs the documents
 // the SYSTEM generates (where the code is also the template key), and said so
 // explicitly — ad-hoc uploads were free text. These are the types a person picks
 // when attaching a file, and a tenant adds one from the picker itself.

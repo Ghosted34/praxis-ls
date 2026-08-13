@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0664 Land carriers: a haulier is a carrier too.
+-- TENANT DB — 0666 Land carriers: a haulier is a carrier too.
 --
 -- WHY THE CHECK IS WIDENED
 --

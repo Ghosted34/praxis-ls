@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0667 Document types a person chooses, and who a document is for.
+-- TENANT DB — 0669 Document types a person chooses, and who a document is for.
 --
 -- WHY A REGISTRY FOR UPLOADS
 --

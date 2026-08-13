@@ -15,7 +15,7 @@
  *
  * WHY STEP 1 CREATES SOMETHING. Documents can only attach to a file that exists,
  * so step 1 opens a DRAFT and returns its id. A draft burns no ref, fires no
- * `dossier.created` and appears in no list — see migration 0669. Promotion at
+ * `dossier.created` and appears in no list — see migration 0671. Promotion at
  * the end is what makes it a file.
  *
  * THE CARRIER IS HOISTED, BY ROLE AND NOT BY NAME. It is required at creation,

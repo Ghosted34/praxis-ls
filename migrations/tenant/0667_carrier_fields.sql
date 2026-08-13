@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0665 The haulier becomes a carrier, and carrier pickers get scoped.
+-- TENANT DB — 0667 The haulier becomes a carrier, and carrier pickers get scoped.
 --
 -- WHY
 --
@@ -8,7 +8,7 @@
 -- 1. THE HAULIER WAS TEXT. On INLAND and HINTERLAND, "Transporteur" is a plain
 --    text field with no facet_role and no column_name: a name in details_json,
 --    invisible to the rate cascade, spelled "Sotramaf", "SOTRAMAF" and "Sotramaf
---    Sarl" by three clerks on three files. 0664 gave TRUCKING and RAIL somewhere
+--    Sarl" by three clerks on three files. 0666 gave TRUCKING and RAIL somewhere
 --    to exist; this points the field at them.
 --
 -- 2. THE CARRIER PICKERS WERE UNSCOPED. A RATE_PROVIDER field had no way to say
@@ -126,7 +126,7 @@ BEGIN
    GROUP BY st.key, fs.service_type_field_set_id, f.column_name
   HAVING COUNT(*) > 1;
   IF bad IS NOT NULL THEN
-    RAISE EXCEPTION '0665: a dossier column now backs two fields — %', bad;
+    RAISE EXCEPTION '0667: a dossier column now backs two fields — %', bad;
   END IF;
 END $$;
 

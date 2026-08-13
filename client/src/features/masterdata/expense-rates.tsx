@@ -58,7 +58,7 @@ const seriesKey = (providerId: string | null, containerTypeId: string | null) =>
 
 /* ══════════════════ Carrier / authority quick-add + settings ══════════════ */
 
-// Land and barge joined at 0664 — a subcontracted haul is priced off a rate
+// Land and barge joined at 0666 — a subcontracted haul is priced off a rate
 // card like any other leg, and until the kinds existed the haulier on an
 // inland file was a name typed into details_json.
 const PROVIDER_KIND_TABS: { kind: api.RateProviderKind; label: string }[] = [

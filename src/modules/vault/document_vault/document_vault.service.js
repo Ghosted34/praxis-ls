@@ -165,7 +165,7 @@ async function createDocument(client, opts) {
   const row = await repo.insert(client, {
     entity_ref: entityRef, doc_type: docType, storage_path: key, content_hash: contentHash,
     file_context: fileContext, folder_ref: folderRef, dossier_id: dossierId, status: "VERIFIED",
-    // 0667: the typed filing. `doc_type` (text) stays populated from the
+    // 0669: the typed filing. `doc_type` (text) stays populated from the
     // registry code so every existing reader keeps working.
     doc_type_ref_id: docTypeRefId, client_id: clientId,
     original_name: originalName, uploaded_by: actor.user_id || null,

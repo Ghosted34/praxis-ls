@@ -16,7 +16,7 @@
  * notices a board report counting four phantom files; they notice it a quarter
  * later and cannot explain it.
  *
- * So the exclusion is a VIEW (`dossier_visible`, migration 0669) and this test
+ * So the exclusion is a VIEW (`dossier_visible`, migration 0671) and this test
  * inverts the burden: reading the BASE table is the thing that has to be
  * justified, one entry at a time, with a reason. A new enumerating query that
  * forgets fails here, at the moment it is written, with the fix in the message.
@@ -117,7 +117,7 @@ describe("DRAFT files are invisible to everything that enumerates", () => {
 
   it("the view exists and excludes exactly the draft state", () => {
     const sql = fs.readFileSync(
-      path.join(ROOT, "migrations", "tenant", "0669_dossier_draft.sql"),
+      path.join(ROOT, "migrations", "tenant", "0671_dossier_draft.sql"),
       "utf8",
     );
     expect(sql).toMatch(/CREATE OR REPLACE VIEW dossier_visible AS/);
@@ -129,7 +129,7 @@ describe("DRAFT files are invisible to everything that enumerates", () => {
 
   it("a draft cannot hold a real ref, and a real file cannot hold a placeholder", () => {
     const sql = fs.readFileSync(
-      path.join(ROOT, "migrations", "tenant", "0669_dossier_draft.sql"),
+      path.join(ROOT, "migrations", "tenant", "0671_dossier_draft.sql"),
       "utf8",
     );
     // Sequential refs are reconciled by humans; burning one per abandoned draft

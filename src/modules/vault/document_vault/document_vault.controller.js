@@ -19,7 +19,7 @@ module.exports = {
     const data = await req.tenantDb(async (c) => {
       // A registry reference decides the stored `doc_type` text, so the two can
       // never drift. A caller that sends only the free-text type still works —
-      // that is every pre-0667 caller.
+      // that is every pre-0669 caller.
       let docType = b.doc_type || null;
       if (b.doc_type_ref_id) {
         const { rows } = await c.query(

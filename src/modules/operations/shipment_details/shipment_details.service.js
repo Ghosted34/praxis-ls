@@ -454,7 +454,7 @@ async function formFor(client, serviceTypeId, { lang = "en" } = {}) {
         default_value: f.default_value,
         is_required: f.is_required,
         is_client_visible: f.is_client_visible,
-        // The system fills this one in (0668) — the renderer greys it and the
+        // The system fills this one in (0670) — the renderer greys it and the
         // write path records an override rather than refusing one.
         is_readonly: f.is_readonly === true,
         facet_role: f.facet_role,

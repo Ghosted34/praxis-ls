@@ -74,6 +74,7 @@ const storage = (): Storage | null => {
     // `lib/density.ts` needs, and for the same reason.
     return window.localStorage;
   } catch {
+    /* @silent:storage — private-mode Safari throws on access; no storage available */
     return null;
   }
 };
@@ -149,8 +150,8 @@ export function saveDraft<T>(
   try {
     json = JSON.stringify(payload);
   } catch {
-    // A cyclic or otherwise unserialisable value. Nothing to rescue, and
-    // throwing here would take down the form the user is still typing into.
+    /* @silent:parse — a cyclic or otherwise unserialisable value; throwing
+       here would take down the form the user is still typing into */
     return;
   }
   if (json.length > MAX_BYTES) return;
@@ -163,7 +164,7 @@ export function saveDraft<T>(
     try {
       s.setItem(storageKey(key), json);
     } catch {
-      /* still full; the draft is lost but the form is not */
+      /* @silent:storage — still full after pruning; the draft is lost but the form is not */
     }
   }
 }
@@ -187,8 +188,9 @@ export function readDraft<T>(key: string): Draft<T> | null {
     }
     return parsed;
   } catch {
-    // A key written by an older build, or hand-edited. Drop it rather than
-    // letting a parse throw blank the screen that was trying to help.
+    /* @silent:parse — a key written by an older build or hand-edited; drop
+       it rather than letting a parse throw blank the screen that was trying
+       to help */
     clearDraft(key);
     return null;
   }
@@ -198,7 +200,7 @@ export function clearDraft(key: string): void {
   try {
     storage()?.removeItem(storageKey(key));
   } catch {
-    /* nothing to do */
+    /* @silent:storage — removeItem can throw in private mode; nothing to recover */
   }
 }
 
@@ -220,7 +222,7 @@ export function listDrafts(): Array<Draft<unknown> & { key: string }> {
         out.push({ ...parsed, key: k.slice(PREFIX.length) });
       }
     } catch {
-      /* skip unreadable entries */
+      /* @silent:parse — skip unreadable entries; they'll be pruned next pass */
     }
   }
   return out.sort((a, b) => b.savedAt - a.savedAt);

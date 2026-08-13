@@ -51,16 +51,43 @@ export function useClockPunch() {
     }
     setBusy(true); setMsg(null);
     let fix: api.Fix | null = null;
-    try { fix = await api.getFix(); } catch { /* proceed without location */ }
+    let fixFailed = false;
+    try {
+      fix = await api.getFix();
+    } catch {
+      // B3 (class G — config-adjacent). The previous /* proceed without
+      // location */ was silent, which meant a user under the tenant's `warn`
+      // geofence policy punched without location and never knew — the row
+      // was recorded with `within_geofence: null` and the manager saw an
+      // untraceable punch. Under `block`, the server will refuse with a
+      // 422 whose message names the missing worksite; under `warn`, the row
+      // is accepted and the warning below is the only signal the user ever
+      // gets that the fix failed. Distinct from the "off-site" case, which
+      // means we HAD a location and it was outside the worksite — that
+      // stays "Clocked in · off-site".
+      fixFailed = true;
+    }
     try {
       if (clockedIn) {
         await api.clockOut(fix ? { latitude: fix.latitude, longitude: fix.longitude } : {});
         setPunch(null);
-        setMsg({ text: "Clocked out" });
+        setMsg({
+          text: fixFailed ? "Clocked out · no location" : "Clocked out",
+          bad: fixFailed,
+        });
       } else {
         const row = await api.clockIn(fix || {});
         setPunch(row);
-        setMsg({ text: row.within_geofence === false ? "Clocked in · off-site" : "Clocked in", bad: row.within_geofence === false });
+        const noLoc = fixFailed || row.within_geofence === null;
+        const offSite = row.within_geofence === false;
+        setMsg({
+          text: offSite
+            ? "Clocked in · off-site"
+            : noLoc
+              ? "Clocked in · no location"
+              : "Clocked in",
+          bad: offSite || noLoc,
+        });
       }
       setTimeout(() => setMsg(null), 4000);
     } catch (e) {

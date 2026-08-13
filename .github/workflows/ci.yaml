@@ -396,6 +396,33 @@ jobs:
         # being read.
         run: node scripts/check-api-contract.js
 
+      - name: Response-contract drift
+        # B4/B5 (see doc/ERROR_HANDLING.md and the no-silent-failures PR guide):
+        # a client TypeScript type declared `revoked_at?` while the API sent
+        # `killed_at`, so the row on screen was PHYSICALLY UNABLE to say
+        # "Revoked" — tsc missed it because the field was optional. `killAllForUser`
+        # queried a table named `session` that does not exist (it is
+        # `user_session`), so every "Revoke all mine" threw 42P01. Neither is
+        # caught by tsc, check-api-contract.js (routes only, not payloads), or
+        # check-schema-drift.js (migrations against each other, never against
+        # the client). This check catches both classes:
+        #   · every UPDATE/FROM/INSERT/JOIN in a repo/service must name a table
+        #     that a CREATE TABLE actually creates
+        #   · every snake_case field on a client TS type must be either a real
+        #     column, a server-emitted alias, or listed in the baseline
+        # `--update` re-blesses the committed baseline of view-models /
+        # computed shapes / SQL aliases (doc/response-contract-baseline.json).
+        run: node scripts/check-response-contract.js
+
+      - name: No new silent catches (backend)
+        # The backend R1 from doc/ERROR_HANDLING.md — every silent `catch` block
+        # must carry `/* @silent:storage|parse|teardown */` naming the taxonomy
+        # class that sanctions the swallow. Existing sites are grandfathered
+        # via doc/silent-catch-baseline.json; a NEW silent catch fails the build
+        # unless it is classified in the same commit. Client-side equivalent
+        # (R1/R2/R3) is enforced by the ESLint rules.
+        run: node scripts/check-silent-catch.js
+
   # ---------------------------------------------------------------------------
   # TC-CI6 — migrations are never executed in CI; the first run is production.
   #

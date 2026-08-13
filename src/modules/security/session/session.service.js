@@ -44,7 +44,13 @@ async function kill(client, { id, actor }) {
   }
 
   const killed = await repo.kill(client, id, actor.user_id);
-  if (!killed) return { killed: false, session_id: id }; // already killed — idempotent, not an error
+  if (!killed) {
+    // Already killed — idempotent, not an error. Return the envelope shape
+    // shared/crud/with-result.js understands so the controller can send a
+    // 200 with { changed:false } that the client renders as "already revoked"
+    // instead of a silent no-op.
+    return { changed: false, message: "Session was already revoked", data: { session_id: id } };
+  }
 
   await sessionStore.removeSession(id, killed.user_id);
   await identityCache.invalidateUser(killed.user_id);
@@ -61,7 +67,7 @@ async function kill(client, { id, actor }) {
     entityRef: `session:${id}`,
     before: target,
   });
-  return { killed: true, session_id: id };
+  return { changed: true, data: { session_id: id } };
 }
 
 
@@ -69,12 +75,18 @@ async function kill(client, { id, actor }) {
 async function killAllMine(client, actor) {
   const ids = await repo.killAllForUser(client, actor.user_id, actor.user_id);
   for (const id of ids) {
-     
     await sessionStore.removeSession(id, actor.user_id);
   }
   await identityCache.invalidateUser(actor.user_id);
   await audit(client, { actorUserId: actor.user_id, action: events.KILLED, moduleKey: events.MODULE, entityRef: "app_user:" + actor.user_id, after: { revoked: ids.length } });
-  return { killed: ids.length };
+  // If there were no live sessions to kill (only the current one, and that
+  // one is not in the list because the caller is still using it), the row on
+  // screen doesn't need to change and the user is told "nothing to revoke"
+  // instead of a fresh-looking success.
+  if (ids.length === 0) {
+    return { changed: false, message: "No other sessions to revoke.", data: { killed: 0 } };
+  }
+  return { changed: true, data: { killed: ids.length } };
 }
 
 /**

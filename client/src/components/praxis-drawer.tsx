@@ -167,10 +167,29 @@ export function PraxisDrawer() {
           it for tidiness would put a function component back between `Portal`
           and `Content` and reintroduce the same bug one level up.
         */}
+        {/*
+          IT STOPS AT THE TITLE BAR, and that is not a cosmetic choice.
+
+          This was `inset-y-0`, i.e. the full window height. In an installed
+          window the top strip is not ours alone: `window-controls-overlay`
+          hands the page the title bar but the OS still paints the caption
+          buttons over its right end — the same right end this drawer is pinned
+          to. So the drawer's header ran underneath them, and the three
+          controls that header carries (New chat, Expand, Close) sat behind
+          minimise, maximise and close. Clicking the drawer's close button
+          closed the application.
+
+          `--titlebar-h` (index.css) is the strip's height composed with the
+          caption buttons' own, so starting there clears it on Windows and
+          macOS alike, and in a browser tab — where the env() falls back to
+          zero — it simply parks the drawer under the app's utility bar, which
+          is where it reads better anyway: the bar stays whole across the
+          window instead of being sliced by a panel.
+        */}
         <RadixDialog.Content
           aria-describedby={undefined}
           style={{ width: `min(${width}px, 100vw)` }}
-          className="fixed inset-y-0 right-0 z-50 flex flex-col border-l border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
+          className="fixed bottom-0 right-0 top-[var(--titlebar-h)] z-50 flex flex-col border-l border-t border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
         >
           <RadixDialog.Title className="sr-only">Praxis AI</RadixDialog.Title>
 

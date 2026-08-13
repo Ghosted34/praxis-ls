@@ -57,6 +57,37 @@ const archiveIdentity = (client, id) => repo.archiveIdentity(client, id);
 
 // ── Engine helpers ──
 const secretKeyFor = (id) => `mail_conn:${id}`;
+
+/**
+ * Turn a raw nodemailer/SMTP rejection into a clean, actionable AppError so an
+ * outbound-mail failure surfaces as a 502 the UI can show — not an unhandled 500
+ * that floods the error monitor. `550 Sender verify failed` in particular is a
+ * remote-server verdict on the FROM address (its domain needs a real mailbox +
+ * MX/SPF/DKIM, and the From must match the authenticated account); we say so
+ * rather than leaking a nodemailer stack.
+ */
+function mapSmtpError(err) {
+  if (err instanceof AppError) return err;
+  const code = err && err.responseCode; // SMTP reply code, e.g. 550, 535
+  const raw = String((err && err.response) || (err && err.message) || err || "");
+  if (/sender verify failed/i.test(raw) || (code === 550 && /verif/i.test(raw))) {
+    return new AppError(
+      "SMTP_SENDER_REJECTED",
+      "The mail server rejected the sender address (550 Sender verify failed). "
+        + "Check that the From address is a real mailbox on a domain with valid "
+        + "MX/SPF/DKIM records and that it matches the authenticated SMTP account.",
+      502,
+      { smtp_code: code || null, smtp_response: raw.slice(0, 300) },
+    );
+  }
+  if (err && err.code === "EAUTH") {
+    return new AppError("SMTP_AUTH_FAILED", "The mail server rejected the SMTP credentials for this mailbox.", 502, { smtp_code: code || null });
+  }
+  if (code >= 500 || (err && err.code === "EENVELOPE")) {
+    return new AppError("SMTP_SEND_REJECTED", `The mail server rejected the message${code ? ` (${code})` : ""}.`, 502, { smtp_code: code || null, smtp_response: raw.slice(0, 300) });
+  }
+  return new AppError("SMTP_SEND_FAILED", "Could not send the message through the mail server.", 502, { reason: raw.slice(0, 300) });
+}
 const fmtFrom = (conn) => (conn.display_name ? `"${conn.display_name}" <${conn.email_address}>` : conn.email_address);
 
 /** Build the right provider adapter for a connection, with its decrypted secret. */
@@ -238,7 +269,12 @@ async function send(client, input = {}) {
   const conn = await repo.getConnection(client, connectionId);
   if (!conn) throw new AppError("NOT_FOUND", "connection not found", 404);
   const adapter = await resolveAdapter(client, conn);
-  const res = await adapter.sendEmail({ to, cc, subject, bodyHtml: html, bodyText: text });
+  let res;
+  try {
+    res = await adapter.sendEmail({ to, cc, subject, bodyHtml: html, bodyText: text });
+  } catch (err) {
+    throw mapSmtpError(err);
+  }
   await recordOutbound(client, conn, { ...res, to, subject, html, text });
   await emitEvent(client, {
     eventTypeKey: events.SENT, moduleKey: events.MODULE,
@@ -257,10 +293,15 @@ async function reply(client, input = {}) {
   if (!original) throw new AppError("NOT_FOUND", "message not found", 404);
   const adapter = await resolveAdapter(client, conn);
   const subject = /^re:/i.test(original.subject || "") ? original.subject : `Re: ${original.subject || ""}`.trim();
-  const res = await adapter.createReply(original.external_message_id, {
-    to: original.from_address, subject, bodyHtml: html, bodyText: text,
-    references: original.thread_key ? [original.thread_key] : [],
-  });
+  let res;
+  try {
+    res = await adapter.createReply(original.external_message_id, {
+      to: original.from_address, subject, bodyHtml: html, bodyText: text,
+      references: original.thread_key ? [original.thread_key] : [],
+    });
+  } catch (err) {
+    throw mapSmtpError(err);
+  }
   await recordOutbound(client, conn, { ...res, to: original.from_address, subject, html, text });
   await emitEvent(client, {
     eventTypeKey: events.SENT, moduleKey: events.MODULE,

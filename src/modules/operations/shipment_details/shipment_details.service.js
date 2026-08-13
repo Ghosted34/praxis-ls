@@ -60,6 +60,9 @@ const FORMATS = {
   URL: { re: /^https?:\/\/[^\s]{3,300}$/, hint: "a URL starting http:// or https://" },
 };
 
+/** Reference-typed fields carry a uuid, not a name — see the RATE_PROVIDER case. */
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 /* ── Write side ────────────────────────────────────────────────────────────── */
 
 const isBlank = rules.isBlank;
@@ -113,10 +116,24 @@ function coerce(field, value) {
       }
       return arr.map(String);
     }
-    case "GEO_PLACE":
+    // A carrier field binds to `dossier.rate_provider_id`, a uuid FK, so the
+    // value has to BE a uuid. Until the browser had a picker for this type the
+    // control was a plain text box, and "Maersk" reached Postgres as a uuid
+    // literal — an opaque 500 with no field named, on the one field the whole
+    // rate cascade depends on. Refusing it here says which field and why.
     case "RATE_PROVIDER":
+      if (!UUID_RE.test(String(value).trim())) {
+        fail("must be a carrier chosen from the list, not a typed name");
+      }
+      return String(value).trim();
+    // ISO 4217, normalised: "usd", "USD " and "USD" are one currency.
+    case "CURRENCY": {
+      const s = String(value).trim().toUpperCase();
+      if (!/^[A-Z]{3}$/.test(s)) fail("must be a 3-letter currency code (XAF, EUR, USD)");
+      return s;
+    }
+    case "GEO_PLACE":
     case "REF":
-    case "CURRENCY":
       return String(value);
     default: {
       const s = String(value);

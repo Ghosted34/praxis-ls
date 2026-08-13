@@ -562,24 +562,33 @@ export const deleteGateway = (provider: string) =>
   tenant<{ deleted: boolean }>(`/payment-gateways/${provider}`, { method: "DELETE" });
 
 /* ── Rate providers(/rate-providers) — carriers & rate authorities ─────────
- * Shipping lines, airlines, and rate-setting authorities (port/customs) an
- * expense rate can be scoped to. Seeded-but-editable: a manager extends the
- * list from the admin panel or inline from the Expense Rates grid. */
-export type RateProviderKind = "SHIPPING_LINE" | "AIRLINE" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+ * Shipping lines, airlines, hauliers, rail, and rate-setting authorities
+ * (port/customs) an expense rate can be scoped to. Seeded-but-editable: a
+ * manager extends the list from the admin panel, inline from the Expense Rates
+ * grid, or inline from a file's own carrier picker. */
+// TRUCKING/RAIL/BARGE/COURIER joined at 0664. Before that a subcontracted haul
+// had nowhere to exist, so the haulier field on inland files was free text.
+export type RateProviderKind =
+  | "SHIPPING_LINE" | "AIRLINE" | "TRUCKING" | "RAIL"
+  | "BARGE" | "COURIER" | "PORT_AUTHORITY" | "CUSTOMS_AUTHORITY" | "OTHER";
+/** The kinds that move cargo, as opposed to the authorities that price it. */
+export const CARRIER_KINDS: RateProviderKind[] = ["SHIPPING_LINE", "AIRLINE", "TRUCKING", "RAIL", "BARGE", "COURIER"];
 export type RateProvider = {
   rate_provider_id: string;
   kind: RateProviderKind;
   code: string;
   name: string;
   carrier_code?: string | null;
+  country_code?: string | null;
   sort_order?: number;
   is_system?: boolean;
   is_active?: boolean;
 };
-export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; sort_order?: number; is_active?: boolean };
-export const listRateProviders = (opts: { kind?: RateProviderKind; active?: boolean; q?: string } = {}) => {
+export type RateProviderInput = { kind: RateProviderKind; code: string; name: string; carrier_code?: string | null; country_code?: string | null; sort_order?: number; is_active?: boolean };
+/** `kind` takes one kind or several — an inland picker wants TRUCKING and RAIL. */
+export const listRateProviders = (opts: { kind?: RateProviderKind | RateProviderKind[]; active?: boolean; q?: string } = {}) => {
   const p = new URLSearchParams();
-  if (opts.kind) p.set("kind", opts.kind);
+  if (opts.kind) p.set("kind", Array.isArray(opts.kind) ? opts.kind.join(",") : opts.kind);
   if (opts.active !== undefined) p.set("active", String(opts.active));
   if (opts.q) p.set("q", opts.q);
   const qs = p.toString();

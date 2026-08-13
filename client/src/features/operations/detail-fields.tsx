@@ -13,15 +13,22 @@
  * definitions and refuses a value the browser let through. Two places would
  * disagree eventually; the server is the one that decides.
  */
+import * as React from "react";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
-import { SearchSelect } from "@/components/ui/search-select";
+import { SearchSelect, type Row } from "@/components/ui/search-select";
+import { useResource } from "@/lib/use-resource";
+import { listCurrencies } from "@/lib/masterdata-api";
 import type { DetailFieldDef, DetailGroupDef, DetailForm } from "@/lib/operations-api";
 
 /** Values keyed by field key, exactly as the API takes them under `details`. */
 export type DetailValues = Record<string, unknown>;
+/** Field key → the printable form of its stored value, as the projection
+ *  computed it. Only reference types need one: a `RATE_PROVIDER` field stores a
+ *  uuid, and a picker showing that uuid is no better than a text box. */
+export type DetailDisplays = Record<string, string>;
 
 const COL: Record<DetailFieldDef["width"], string> = {
   THIRD: "sm:col-span-2",
@@ -30,6 +37,97 @@ const COL: Record<DetailFieldDef["width"], string> = {
 };
 
 const asString = (v: unknown) => (v === null || v === undefined ? "" : String(v));
+
+/**
+ * The carrier picker for a `RATE_PROVIDER` field.
+ *
+ * WHY IT IS ITS OWN COMPONENT. It is the only control here that stores one
+ * thing and shows another: `column_name` is `rate_provider_id`, a uuid FK, so
+ * the VALUE is a uuid — but a uuid in a form control is unreadable, and the
+ * projection already resolves the carrier's name for exactly this reason. So it
+ * holds the label it last selected, falling back to the resolved display of
+ * whatever was stored before the form opened.
+ *
+ * DO NOT COPY `GEO_PLACE` HERE. That case calls `onChange(r.name)` and stores
+ * the display text, which is right for `pol`/`pod` (text columns with a
+ * `*_place_id` alongside) and wrong for this one — a name written to a uuid
+ * column is a 500 from Postgres, which is the bug this control exists to fix.
+ *
+ * `ref_kind` scopes which carrier kinds are offered. A sea file's field carries
+ * `SHIPPING_LINE`, an inland file's carries `TRUCKING,RAIL`; a field with none
+ * offers everything, so the control works before those definitions are seeded
+ * and stays tenant-editable afterwards.
+ */
+function RateProviderControl({
+  field,
+  value,
+  display,
+  onChange,
+  onCreate,
+}: {
+  field: DetailFieldDef;
+  value: unknown;
+  display?: string;
+  onChange: (v: unknown) => void;
+  onCreate?: (term: string, kinds: string[]) => void;
+}) {
+  const [picked, setPicked] = React.useState<string | null>(null);
+  // A newly-picked label wins; otherwise the projection's resolved name; and if
+  // the field is empty, nothing (so the placeholder shows).
+  const shown = picked ?? (value ? display || asString(value) : null);
+
+  const kinds = React.useMemo(
+    () => (field.ref_kind || "").split(",").map((k) => k.trim().toUpperCase()).filter(Boolean),
+    [field.ref_kind],
+  );
+  const filter = React.useMemo(
+    () => (kinds.length ? (r: Row) => kinds.includes(String(r.kind).toUpperCase()) : undefined),
+    [kinds],
+  );
+
+  return (
+    <SearchSelect
+      path="/rate-providers?active=true"
+      label={field.label}
+      value={shown}
+      placeholder={field.placeholder || "Search a carrier…"}
+      getKey={(r) => String(r.rate_provider_id)}
+      getLabel={(r) => [r.name, r.carrier_code].filter(Boolean).join(" · ")}
+      onSelect={(r) => {
+        setPicked(String(r.name));
+        onChange(String(r.rate_provider_id));
+      }}
+      filter={filter}
+      onCreate={onCreate ? (term) => onCreate(term, kinds) : undefined}
+      createLabel={(term) => `Add carrier “${term}”`}
+    />
+  );
+}
+
+/**
+ * The currency picker for a `CURRENCY` field.
+ *
+ * Seeded on the CUSTOMS declaration form (`9092:313`) and, like RATE_PROVIDER,
+ * rendered as a plain text box until now — so "Declared currency" accepted
+ * "dollars", "USD " and "usd" as three different values. The list is short and
+ * fixed, so a native select beats a typeahead.
+ */
+function CurrencyControl({ field, value, onChange }: { field: DetailFieldDef; value: unknown; onChange: (v: unknown) => void }) {
+  const currencies = useResource(() => listCurrencies(), []);
+  return (
+    <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label}>
+      <option value="">—</option>
+      {(currencies.data || [])
+        .filter((c) => c.is_active !== false)
+        .map((c) => (
+          <option key={c.code} value={c.code}>
+            {c.code}
+            {c.name ? ` — ${c.name}` : ""}
+          </option>
+        ))}
+    </Select>
+  );
+}
 
 /**
  * One control, chosen by the field's declared type.
@@ -43,11 +141,15 @@ const asString = (v: unknown) => (v === null || v === undefined ? "" : String(v)
 function Control({
   field,
   value,
+  display,
   onChange,
+  onCreateCarrier,
 }: {
   field: DetailFieldDef;
   value: unknown;
+  display?: string;
   onChange: (v: unknown) => void;
+  onCreateCarrier?: (term: string, kinds: string[]) => void;
 }) {
   switch (field.data_type) {
     case "TEXTAREA":
@@ -115,6 +217,18 @@ function Control({
           onFreeText={(t) => onChange(t)}
         />
       );
+    case "RATE_PROVIDER":
+      return (
+        <RateProviderControl
+          field={field}
+          value={value}
+          display={display}
+          onChange={onChange}
+          onCreate={onCreateCarrier}
+        />
+      );
+    case "CURRENCY":
+      return <CurrencyControl field={field} value={value} onChange={onChange} />;
     default:
       return (
         <Input
@@ -132,24 +246,44 @@ function Control({
  * `errors` takes the server's field-keyed validation map straight from a 422,
  * so a rejected save points at the control that caused it rather than showing
  * one message at the top of a twenty-field form.
+ *
+ * `omitKeys` drops fields the CALLER is rendering somewhere else. The creation
+ * wizard hoists the carrier into step 1 and needs step 2 not to show it twice;
+ * doing it by key here means one rule rather than a per-service-type list, and
+ * a group left empty by the omission renders nothing rather than an empty
+ * legend.
  */
 export function DetailFieldGroups({
   groups,
   values,
+  displays,
   onChange,
+  onCreateCarrier,
   errors,
   disabled,
+  omitKeys,
 }: {
   groups: DetailGroupDef[];
   values: DetailValues;
+  displays?: DetailDisplays;
   onChange: (key: string, value: unknown) => void;
+  /** Offered on carrier fields as "+ Add carrier" when the search finds none.
+   *  Omit for users without MOD-10 create — an affordance that always 403s is
+   *  worse than no affordance. */
+  onCreateCarrier?: (term: string, kinds: string[]) => void;
   errors?: Record<string, string[]> | null;
   disabled?: boolean;
+  omitKeys?: readonly string[];
 }) {
   if (!groups.length) return null;
+  const skip = new Set(omitKeys || []);
+  const shown = groups
+    .map((g) => ({ ...g, fields: g.fields.filter((f) => !skip.has(f.key)) }))
+    .filter((g) => g.fields.length > 0);
+  if (!shown.length) return null;
   return (
     <div className="space-y-5">
-      {groups.map((g) => (
+      {shown.map((g) => (
         <fieldset key={g.code} disabled={disabled} className="space-y-3">
           <legend className="text-sm font-medium text-foreground">{g.label}</legend>
           <div className="grid gap-4 sm:grid-cols-6">
@@ -162,7 +296,13 @@ export function DetailFieldGroups({
                 error={errors?.[f.key]?.[0]}
                 className={COL[f.width] || COL.HALF}
               >
-                <Control field={f} value={values[f.key]} onChange={(v) => onChange(f.key, v)} />
+                <Control
+                  field={f}
+                  value={values[f.key]}
+                  display={displays?.[f.key]}
+                  onChange={(v) => onChange(f.key, v)}
+                  onCreateCarrier={onCreateCarrier}
+                />
               </Field>
             ))}
           </div>
@@ -199,5 +339,23 @@ export function missingRequired(form: DetailForm | null, values: DetailValues): 
 export function valuesFromDetails(groups: { fields: { key: string; value: unknown }[] }[]): DetailValues {
   const out: DetailValues = {};
   for (const g of groups) for (const f of g.fields) if (f.value !== null && f.value !== undefined) out[f.key] = f.value;
+  return out;
+}
+
+/**
+ * The printable form of each stored value, from the same projection.
+ *
+ * Only reference types need it, and only one has it today: a `RATE_PROVIDER`
+ * field stores `rate_provider_id`, and the server already resolves the carrier
+ * name to print it on documents (`shipment_details.rules.displayValue`). Reusing
+ * that here is what stops the edit form opening with a uuid in the carrier box —
+ * and means the name is resolved in one place rather than by a second lookup
+ * from the browser.
+ */
+export function displaysFromDetails(
+  groups: { fields: { key: string; display?: string | null }[] }[],
+): DetailDisplays {
+  const out: DetailDisplays = {};
+  for (const g of groups) for (const f of g.fields) if (f.display) out[f.key] = f.display;
   return out;
 }

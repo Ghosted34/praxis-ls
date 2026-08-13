@@ -33,7 +33,7 @@ import { useList, useResource, errMsg } from "@/lib/use-resource";
 import type { Entity, Client } from "@/lib/masterdata-api";
 import { listRateProviders } from "@/lib/masterdata-api";
 import * as api from "@/lib/operations-api";
-import { DetailFieldGroups, missingRequired, valuesFromDetails, type DetailValues } from "./detail-fields";
+import { DetailFieldGroups, missingRequired, valuesFromDetails, displaysFromDetails, type DetailValues, type DetailDisplays } from "./detail-fields";
 
 export function DossierForm({
   row,
@@ -61,6 +61,7 @@ export function DossierForm({
   const [serviceTypeId, setServiceTypeId] = React.useState(row?.service_type_id ?? "");
   const [rateProviderId, setRateProviderId] = React.useState(row?.rate_provider_id ?? "");
   const [values, setValues] = React.useState<DetailValues>({});
+  const [displays, setDisplays] = React.useState<DetailDisplays>({});
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = React.useState<Record<string, string[]> | null>(null);
@@ -86,7 +87,11 @@ export function DossierForm({
     [row?.dossier_id],
   );
   React.useEffect(() => {
-    if (existing.data) setValues(valuesFromDetails(existing.data.groups));
+    if (!existing.data) return;
+    setValues(valuesFromDetails(existing.data.groups));
+    // The carrier field stores a uuid; this is the name the projection resolved
+    // for it, so the picker opens reading "Maersk" and not the id.
+    setDisplays(displaysFromDetails(existing.data.groups));
   }, [existing.data]);
 
   /**
@@ -230,6 +235,7 @@ export function DossierForm({
           <DetailFieldGroups
             groups={form.data.groups}
             values={values}
+            displays={displays}
             onChange={setValue}
             errors={fieldErrors}
             disabled={busy}

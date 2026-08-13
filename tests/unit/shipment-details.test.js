@@ -370,6 +370,38 @@ describe("SSDC — values are coerced and checked against their definition", () 
     expect(service.coerce(num, "")).toBeNull();
     expect(service.coerce(num, null)).toBeNull();
   });
+
+  /*
+   * A RATE_PROVIDER field binds to `dossier.rate_provider_id`, a uuid FK. It had
+   * no renderer in the browser, so the control fell through to a plain text box
+   * and a typed carrier name reached Postgres as a uuid literal: an opaque 500,
+   * no field named, on the one value the whole expense-rate cascade scopes by.
+   * Coercion used to be `String(value)` and waved it through.
+   */
+  const carrier = f({
+    key: "shipping_line",
+    label_en: "Shipping line",
+    data_type: "RATE_PROVIDER",
+    facet_role: "CARRIER",
+    column_name: "rate_provider_id",
+  });
+
+  it("takes a carrier as a uuid and refuses a typed name", () => {
+    const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
+    expect(service.coerce(carrier, id)).toBe(id);
+    expect(service.coerce(carrier, ` ${id} `)).toBe(id);
+    expect(() => service.coerce(carrier, "Maersk")).toThrow(/chosen from the list/);
+    expect(() => service.coerce(carrier, "MAERSK")).toThrow(/chosen from the list/);
+    // Blank still clears the field — "not confirmed yet" is a legitimate state.
+    expect(service.coerce(carrier, "")).toBeNull();
+  });
+
+  it("normalises a currency rather than storing three spellings of one", () => {
+    const cur = f({ key: "declared_currency", label_en: "Currency", data_type: "CURRENCY" });
+    expect(service.coerce(cur, "usd")).toBe("USD");
+    expect(service.coerce(cur, " XAF ")).toBe("XAF");
+    expect(() => service.coerce(cur, "dollars")).toThrow(/3-letter currency code/);
+  });
 });
 
 describe("SSDC — equipment summary", () => {

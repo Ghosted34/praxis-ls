@@ -56,14 +56,30 @@ const REVEAL = [
   "inline-flex",
   "inline-flex",
   "inline-flex",
+  "inline-flex",
+  "inline-flex",
   "hidden lg:inline-flex",
   "hidden lg:inline-flex",
-  "hidden xl:inline-flex",
-  "hidden xl:inline-flex",
   "hidden 2xl:inline-flex",
   "hidden 2xl:inline-flex",
 ];
 const revealClass = (i: number) => REVEAL[i] ?? "hidden";
+
+/**
+ * At what breakpoint every item in a row of length `count` is already visible,
+ * so the overflow trigger can hide itself instead of sitting there as a
+ * redundant "…" beside a complete row. Below that width the menu remains — no
+ * destination is ever only reachable through it, and no destination is ever
+ * unreachable without it. Must track REVEAL; the e2e test at
+ * layout.spec.ts:209 asserts the narrow-vs-wide shed on Finance's 10-section
+ * row (1280 < 1920), so items 8–9 stay at 2xl and 9–10-length rows keep the
+ * menu until 2xl.
+ */
+function overflowHiddenAt(count: number): string {
+  if (count <= 6) return "hidden"; // never needed — every item shows at md
+  if (count <= 8) return "lg:hidden";
+  return "2xl:hidden"; // 9–10 items — all visible only at 2xl
+}
 
 /** A drawing pin, filled when the ribbon is held open. */
 function PinIcon({ pinned }: { pinned: boolean }) {
@@ -119,7 +135,11 @@ function NavCluster({ family, active }: { family: RibbonFamily; active?: RibbonA
           align="start"
           className="grid w-[min(30rem,calc(100vw-8rem))] grid-cols-2 gap-0.5"
           trigger={
-            <button type="button" className="ribbon-item" aria-label={`All ${asAreas ? family.label : area.area.label} destinations`}>
+            <button
+              type="button"
+              className={cn("ribbon-item", overflowHiddenAt(items.length))}
+              aria-label={`All ${asAreas ? family.label : area.area.label} destinations`}
+            >
               <MoreIcon />
             </button>
           }

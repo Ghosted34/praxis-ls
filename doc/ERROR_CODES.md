@@ -21,11 +21,11 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_AMOUNT` | `INVALID_AMOUNT` | 8× |
 | `BAD_STATE` | `BAD_STATUS` | 15× |
 | `EMPLOYEE_NOT_FOUND` | `NOT_FOUND` | 2× |
-| `FORBIDDEN` | `PERMISSION_DENIED` | 5× |
+| `FORBIDDEN` | `PERMISSION_DENIED` | 6× |
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (282)
+## All codes (284)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -55,6 +55,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_DECISION` | 422 | 1× | — |
 | `BAD_FEE_ACCOUNT` | 422 | 1× | — |
 | `BAD_FILE` | 400, 422 | 5× | — |
+| `BAD_FILE_TYPE` | 422 | 4× | — |
 | `BAD_FONT` | 422 | 3× | — |
 | `BAD_HEADERS` | 422 | 1× | — |
 | `BAD_IMAGE` | 400 | 5× | — |
@@ -101,7 +102,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `COA_IS_MANAGED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
 | `COLUMN_TAKEN` | 422 | 1× | — |
-| `COMPLIANCE_BLOCKED` | 409 | 3× | — |
+| `COMPLIANCE_BLOCKED` | 409 | 4× | — |
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
@@ -126,7 +127,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `FEATURE_DISABLED` | 403 | 1× | — |
 | `FIELD_NOT_WRITABLE` | — | 1× | — |
 | `FILE_TOO_LARGE` | 413 | 1× | — |
-| `FORBIDDEN` | 403 | 5× | `PERMISSION_DENIED` |
+| `FORBIDDEN` | 403 | 6× | `PERMISSION_DENIED` |
 | `GL_POST_FAILED` | 422, 500 | 2× | — |
 | `HARD_BLOCKED` | 409 | 1× | — |
 | `HAS_ACTIVITY` | 409 | 1× | — |
@@ -159,6 +160,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
 | `LOCKED` | 422 | 14× | — |
 | `LOGIN_THROTTLED` | 429 | 1× | — |
+| `MAILBOX_AUTH_FAILED` | — | 1× | — |
+| `MAIL_SEND_FAILED` | — | 1× | — |
 | `MAINTENANCE_READ_ONLY` | 423 | 1× | — |
 | `MERGE_SAME_RECORD` | 422 | 1× | — |
 | `METHOD_NOT_ALLOWED` | — | 1× | — |
@@ -168,14 +171,16 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NEGATIVE_STOCK` | 422 | 1× | — |
 | `NOT_ACTIVE` | 422 | 2× | — |
 | `NOT_APPROVABLE` | 400 | 1× | — |
+| `NOT_A_DRAFT` | 422 | 1× | — |
 | `NOT_A_MEMBER` | 403 | 2× | `PERMISSION_DENIED` |
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
 | `NOT_CONFIGURED` | 400, 422 | 2× | — |
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_DONE` | 422 | 1× | — |
+| `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 298× | — |
+| `NOT_FOUND` | 404 | 301× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -244,7 +249,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 2× | — |
 | `REFERENCED` | 409 | 2× | — |
-| `REF_REQUIRED` | 422 | 1× | — |
+| `REF_REQUIRED` | 422 | 2× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |
@@ -263,13 +268,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SELF_DELETE` | 409 | 1× | — |
 | `SELF_GRANT_FORBIDDEN` | 403 | 1× | — |
 | `SELF_ROLE_CHANGE` | 403 | 1× | — |
+| `SENDER_NOT_AUTHORIZED` | — | 1× | — |
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
-| `SMTP_AUTH_FAILED` | 502 | 1× | — |
-| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
-| `SMTP_SEND_FAILED` | 502 | 1× | — |
-| `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |
@@ -289,7 +291,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_CONTAINER_TYPE` | 422 | 1× | — |
 | `UNKNOWN_DEPARTMENT` | 422 | 1× | — |
 | `UNKNOWN_DOC` | 404 | 6× | — |
-| `UNKNOWN_DOC_TYPE` | 422 | 1× | — |
+| `UNKNOWN_DOC_TYPE` | 422 | 2× | — |
 | `UNKNOWN_EVENT_TYPE` | 400 | 1× | — |
 | `UNKNOWN_FIELD` | — | 1× | — |
 | `UNKNOWN_FILTER` | — | 1× | — |

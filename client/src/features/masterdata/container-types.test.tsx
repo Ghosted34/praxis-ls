@@ -105,8 +105,27 @@ describe("Dictionary settings · Container types", () => {
       code: "FT50HC",
       name_fr: "50' HC",
       name_en: "50' High Cube",
-      extra: { teu: 2.5, size: "50HC", family: "DRY", aliases: ["50hq", "50dc"] },
+      // `marks_token` was left blank, so the derived value is stored rather than
+      // nothing — a type with no token prints `01*` on a bill of lading.
+      // "High cube" is a TYPE in legacy's vocabulary, hence 50'HC not 50HC'DC.
+      extra: { teu: 2.5, size: "50HC", family: "DRY", aliases: ["50hq", "50dc"], marks_token: "50'HC" },
     });
+  });
+
+  it("stores a typed marks token over the derived one", async () => {
+    const user = userEvent.setup();
+    view();
+    await openAddForm(user);
+
+    await user.type(screen.getByLabelText("Code"), "FT50HC");
+    await user.type(screen.getByLabelText("Nom (FR)"), "50' HC");
+    await user.type(screen.getByLabelText(/^TEU/), "2.5");
+    await user.type(screen.getByLabelText(/Size key/), "50HC");
+    await user.type(screen.getByLabelText(/Marks token/), "50'HQ");
+    await user.click(screen.getByRole("button", { name: "Add" }));
+
+    await waitFor(() => expect(createDictRef).toHaveBeenCalledTimes(1));
+    expect(createDictRef.mock.calls[0][0].extra.marks_token).toBe("50'HQ");
   });
 
   it("sends no `extra` for a kind that has none", async () => {

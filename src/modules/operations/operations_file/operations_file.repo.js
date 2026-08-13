@@ -42,6 +42,12 @@ const WRITABLE = new Set([
   // service (a field definition binds to the column), never typed in by hand.
   "commodity", "commodity_desc", "gross_weight", "weight_unit",
   "package_count", "volume_cbm", "marks_numbers", "place_receipt", "place_delivery",
+  // Marks & numbers is GENERATED from the file's containers on every equipment
+  // write (0668), the way legacy did it. This flag is the override: set when
+  // somebody types over the field, and it stops the regeneration from
+  // discarding what they wrote. Set by the shipment-details service, never
+  // typed in.
+  "marks_numbers_is_manual",
   // Which VERSION of its service type's detail form this file was created
   // against. Set once, on create; it is what keeps an open file rendering and
   // validating against the form it was opened with after the form is

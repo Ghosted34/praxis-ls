@@ -41,6 +41,9 @@ router.get("/:id/shipment-details", requirePermission(MODULE, "view"), controlle
  *  patched row by row. */
 router.get("/:id/containers", requirePermission(MODULE, "view"), controller.containers);
 router.put("/:id/containers", requirePermission(MODULE, "edit"), validateContainerLines, controller.replaceContainers);
+/** Give marks & numbers back to the generator after somebody typed over it
+ *  (0668). No body — the only thing it can do is clear the override. */
+router.post("/:id/marks/revert", requirePermission(MODULE, "edit"), controller.revertMarks);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 // API F-17: `update: create.partial()` makes the lifecycle field patchable, so
 // PATCH was a second, cheaper route to the same state change. It now meets the

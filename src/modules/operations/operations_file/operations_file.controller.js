@@ -31,4 +31,7 @@ module.exports = {
     res.json({ data: await req.tenantDb((c) => containers.list(c, req.params.id)) })),
   replaceContainers: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => containers.replace(c, { dossierId: req.params.id, lines: req.body.lines, actor: actor(req) })) })),
+  // Undo a manual marks override — see dossier_container.service.revertMarks.
+  revertMarks: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => containers.revertMarks(c, { dossierId: req.params.id, actor: actor(req) })) })),
 };

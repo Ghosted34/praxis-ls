@@ -49,7 +49,14 @@ const create = z.object({
 // every consumer read them generically, and only this enum stood between a
 // manager and a new box size. A carrier introducing a 50' unit does not wait
 // for a release, so they are creatable here like every other kind.
-const REF_KINDS = ["SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND", "CONTAINER_TYPE", "LOAD_MODE"];
+// DOCUMENT_TYPE joined at 0667: the vault's own registry governs the documents
+// the SYSTEM generates (where the code is also the template key), and said so
+// explicitly — ad-hoc uploads were free text. These are the types a person picks
+// when attaching a file, and a tenant adds one from the picker itself.
+const REF_KINDS = [
+  "SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND",
+  "CONTAINER_TYPE", "LOAD_MODE", "DOCUMENT_TYPE",
+];
 
 // A container type whose `extra` is empty is worse than no container type at
 // all, because nothing rejects it: `Number(undefined) || 0` makes it count as

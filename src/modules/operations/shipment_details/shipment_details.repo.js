@@ -222,7 +222,10 @@ const FIELD_WRITABLE = new Set([
   "group_code", "group_label_fr", "group_label_en", "group_seq", "seq", "key",
   "label_fr", "label_en", "help_text_fr", "help_text_en", "placeholder",
   "data_type", "options_json", "ref_kind", "validation_json", "default_value",
-  "is_required", "is_client_visible", "is_active", "facet_role", "column_name", "width",
+  // `is_readonly` (0668): the system fills this field in — marks & numbers is
+  // the one that does today. Editable by the tenant like every other property
+  // of a definition, rather than a magic facet_role check in the renderer.
+  "is_required", "is_client_visible", "is_readonly", "is_active", "facet_role", "column_name", "width",
 ]);
 
 async function insertField(client, fieldSetId, data) {

@@ -13,6 +13,7 @@ const partyCommon = require("./schemas/party-common");
 const partyConfig = require("./schemas/party-config");
 const entityCommon = require("./schemas/entity-common");
 const ledger = require("./rules/ledger");
+const marks = require("./rules/marks");
 const pwaDesign = require("./pwa-design");
 const countries = require("./data/countries");
 const currencies = require("./data/currencies");
@@ -58,6 +59,11 @@ exports.currencies = currencies;
 // Domain INVARIANTS, not shape. See rules/ledger.js for why they are not a
 // Zod refinement.
 exports.ledger = ledger;
+// Not a Zod schema either — the marks & numbers FORMAT, which must stay
+// byte-identical to the legacy generator because five printed documents read
+// the string it produces. The API recomputes on every container write; the
+// client previews it live under the container editor. See rules/marks.js.
+exports.marks = marks;
 // Not a Zod schema — the shared *resolution* of the installed-app design (see
 // pwa-design.js). It crosses the same boundary for the same reason: the API
 // renders the home-screen PNG from it and the client renders the preview.

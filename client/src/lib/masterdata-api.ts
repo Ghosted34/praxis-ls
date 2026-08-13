@@ -947,14 +947,24 @@ export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
  * Expense Rates and the dossier container editor both read the same list. */
 // LOAD_MODE (FCL/LCL) joined the list with the SSDC equipment block (0660):
 // a container line records how it was stowed as well as what it is.
-export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE";
+// DOCUMENT_TYPE (0667) is the list a person picks from when attaching a file to
+// an operations file — distinct from `document_vault.types.js`, which governs
+// system-generated documents and doubles as the template key.
+export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE" | "DOCUMENT_TYPE";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
  *  lookup key) and `family`, so the sized variants of one kind group together.
  *  `teu` and `size` are REQUIRED by the API for that kind: a container type
  *  without them counts as zero TEU and has no rate-card key, and neither
  *  failure raises anything. */
-export type DictRefExtra = { teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[] };
+export type DictRefExtra = {
+  teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[];
+  /** CONTAINER_TYPE only — how the type prints on a marks & numbers line
+   *  (`20'RF`). Legacy's vocabulary, because five documents read that string. */
+  marks_token?: string;
+  /** DOCUMENT_TYPE only. */
+  client_visible?: boolean; client_scoped?: boolean; reusable?: boolean;
+};
 export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; extra?: DictRefExtra; sort_order?: number; is_system?: boolean; is_active?: boolean };
 export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
   tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);

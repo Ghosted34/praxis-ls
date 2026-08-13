@@ -613,3 +613,29 @@ export declare namespace currencies {
   /** The most representative country for a currency (for its flag), or null. */
   function representativeCountry(code: string): string | null;
 }
+
+/**
+ * Marks & Numbers — the FORMAT, not a shape.
+ *
+ * Byte-identical to the legacy generator (`01*20'RF, 02*40'HC`) because the
+ * final invoice, transit order, delivery note and both costing packages read
+ * the string. The API recomputes it on every container write; the client
+ * previews it live under the container editor. See rules/marks.js.
+ */
+export type MarksContainerType = {
+  code?: string;
+  extra?: { marks_token?: string; size?: string; family?: string };
+};
+export type MarksLine = { qty: number | string; container_type_ref_id: string };
+
+export declare namespace marks {
+  /** Family → legacy's type code (DRY→DC, REEFER→RF, …). */
+  const FAMILY_TOKEN: Readonly<Record<string, string>>;
+  /** How one container type prints. Never returns an empty string. */
+  function marksTokenFor(type: MarksContainerType): string;
+  /** The whole string for a file's equipment; empty when nothing qualifies. */
+  function marksFromContainers(
+    lines: MarksLine[],
+    typesById: Map<string, MarksContainerType> | Record<string, MarksContainerType>,
+  ): string;
+}

@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 109,
-  "route_count": 1001,
+  "route_count": 1007,
   "tiers": {
     "public": 19,
     "self-scoped": 65,
-    "gated": 917
+    "gated": 923
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -3411,6 +3411,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "PATCH /api/tenant/mail/connections/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "PATCH /api/tenant/mail/senders/:id": {
       "auth": true,
       "rbac": true,
@@ -5013,7 +5019,25 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/operations/:id/marks/revert": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/operations/:id/promote": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/operations/:id/transition": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/operations/drafts": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5427,7 +5451,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/smartcomm/config/email/dns-check": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/smartcomm/config/email/test": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/smartcomm/config/email/test-send": {
       "auth": true,
       "rbac": true,
       "validated": false,

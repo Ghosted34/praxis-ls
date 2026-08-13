@@ -15,6 +15,10 @@ const settings = require("../security/setting/setting.service");
 const jwt = require("jsonwebtoken");
 const { emitEvent } = require("../../shared/events/emit");
 const { AppError } = require("../../utils/errors");
+// Shared SMTP-error classifier — the connection-test path and the system-email
+// paths (email.service, platform probes) share one map so the UI's fix guides
+// key off the same codes everywhere. See smtp-error.map.js.
+const { mapSmtpError, isSmtpError } = require("./smtp-error.map");
 const { config } = require("../../config/env");
 const { ImapSmtpProvider } = require("./providers/imapSmtp.provider");
 const { MicrosoftGraphProvider } = require("./providers/microsoftGraph.provider");
@@ -176,7 +180,10 @@ async function testConnection(client, id) {
     const adapter = await resolveAdapter(client, conn);
     result = await adapter.verify();
   } catch (err) {
-    result = { ok: false, error: err.message };
+    // Classify SMTP verdicts so the UI can render the matching fix guide.
+    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
+    result = { ok: false, error: mapped ? mapped.message : err.message };
+    if (mapped) result.code = mapped.code;
   }
   if (result.ok) await repo.updateConnection(client, id, { status: "CONNECTED", last_error: null });
   else await repo.setError(client, id, result.error || result.stage || "verify failed");

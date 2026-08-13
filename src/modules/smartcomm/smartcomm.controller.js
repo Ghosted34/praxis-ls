@@ -12,6 +12,9 @@ module.exports = {
   setEmail: A((c, req) => cfg.setEmail(c, { ...req.body, actor: actor(req) })),
   testWhatsapp: A((c) => cfg.testWhatsapp(c)),
   testEmail: A((c, req) => cfg.testEmail(c, { purpose: req.body && req.body.purpose })),
+  // Mail-setup wizard probes.
+  dnsCheck: A((c, req) => cfg.dnsCheck(c, { domain: req.body.domain })),
+  testSend: A((c, req) => cfg.testSend(c, { to: req.body.to, purpose: req.body.purpose })),
   listChannels: A((c, req) => service.listChannels(c, actor(req), req.query)),
   createChannel: C((c, req) => service.createChannel(c, { data: req.body, actor: actor(req) })),
   getChannel: A((c, req) => service.getChannel(c, { id: req.params.id, actor: actor(req) })),

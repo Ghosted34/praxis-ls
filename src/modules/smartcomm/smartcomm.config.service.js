@@ -83,4 +83,52 @@ async function setEmail(client, { smtp_host, smtp_port, smtp_user, from, reply_t
 const testWhatsapp = (client) => whatsapp.verifyConfig(client);
 const testEmail = (client, opts = {}) => email.verifyTransport(client, opts);
 
-module.exports = { getConfig, setWhatsapp, setEmail, testWhatsapp, testEmail };
+/**
+ * Mail-setup wizard: verify the sending domain's MX / SPF / DKIM records.
+ * `smtpHost` from the tenant's resolved transport sharpens the SPF suggestion
+ * (relay presets, include: for the SMTP domain). Public-DNS read only.
+ */
+async function dnsCheck(client, { domain }) {
+  const { checkDomain } = require("../mail/dns-check");
+  let smtpHost = null;
+  try {
+    smtpHost = (await email.resolveMail(client, { purpose: "NOTIFICATIONS" })).smtp_host || null;
+  } catch { /* the suggestion is best-effort; the checks themselves don't need it */ }
+  return checkDomain(domain, { smtpHost });
+}
+
+/**
+ * Mail-setup wizard: send a REAL test message through the tenant's transport
+ * (verify() only proves the connection — this proves a message actually leaves,
+ * the same reasoning as the platform alert-email probe). Failures are
+ * classified with smtp-error.map so the wizard can render the matching fix
+ * guide; never throws.
+ */
+async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
+  const { mapSmtpError, isSmtpError } = require("../mail/smtp-error.map");
+  try {
+    const info = await email.send(client, {
+      to,
+      purpose,
+      subject: "Praxis test email — your outbound email is working",
+      text:
+        "This is a test message from your Praxis tenant.\n\n"
+        + "If you received this, your sender address, DNS records and SMTP credentials are configured "
+        + "correctly, and outbound email is working.\n\n"
+        + "If you expected this but found it in spam, mark it as 'not spam' — that also tells you your "
+        + "SPF/DKIM setup is not being honoured by the inbox provider yet.",
+      moduleKey: "mail-setup-wizard",
+    });
+    return { ok: true, to, message_id: (info && (info.messageId || info.message_id)) || null };
+  } catch (err) {
+    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
+    return {
+      ok: false,
+      to,
+      error: mapped ? mapped.message : err.message,
+      code: mapped ? mapped.code : undefined,
+    };
+  }
+}
+
+module.exports = { getConfig, setWhatsapp, setEmail, testWhatsapp, testEmail, dnsCheck, testSend };

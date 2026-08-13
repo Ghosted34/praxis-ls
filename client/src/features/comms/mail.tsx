@@ -20,6 +20,7 @@ import { getCommsSocket } from "@/lib/comms-socket";
 import { dateFmt } from "@/lib/format";
 import * as api from "@/lib/mail-api";
 import { reportActionError } from "@/lib/action-error";
+import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { XIcon } from "@/components/ui/icons";
 
@@ -43,7 +44,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
   const [reply, setReply] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [sent, setSent] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
   const m = msg.data;
 
   React.useEffect(() => { if (m && !m.is_read) api.markThreadRead(id).then(onChanged).catch(() => {}); }, [m, id, onChanged]);
@@ -54,7 +55,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
     try {
       await api.replyMail(id, { connectionId: m.email_connection_id, text: reply });
       setSent(true); setReply(""); onChanged();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    } catch (err) { setError(err); } finally { setBusy(false); }
   }
 
   return (
@@ -89,7 +90,12 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
               <>
                 <Textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} placeholder="Write a reply…"
                   />
-                {error && <div className="mt-2"><ErrorState message={error} /></div>}
+                {error != null && (
+                  <div className="mt-2">
+                    <ErrorState message={errMsg(error)} />
+                    <SmtpErrorGuide err={error} />
+                  </div>
+                )}
                 <div className="mt-2 flex items-center justify-end gap-3">
                   {sent && <span className="micro text-[rgb(var(--ok))]">✓ Reply sent</span>}
                   <Button size="sm" onClick={sendReply} loading={busy} disabled={busy || !reply.trim()}>Send reply</Button>
@@ -119,7 +125,7 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
 
   const [f, setF] = React.useState({ to: initialTo || "", cc: "", subject: "", body: "" });
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
   const [sent, setSent] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
 
@@ -157,7 +163,7 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
         text: f.body || undefined,
       });
       setSent(true); onSent?.();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    } catch (err) { setError(err); } finally { setBusy(false); }
   }
 
   return (
@@ -186,7 +192,12 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
         <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
         <Field label="Subject"><Input value={f.subject} onChange={set("subject")} placeholder="Subject" /></Field>
         <Field label="Body"><Textarea value={f.body} onChange={set("body")} rows={7} placeholder="Write your message…" /></Field>
-        {error && <ErrorState message={error} />}
+        {error != null && (
+          <>
+            <ErrorState message={errMsg(error)} />
+            <SmtpErrorGuide err={error} />
+          </>
+        )}
         <div className="flex items-center justify-end gap-3 pt-1">
           {sent && <span className="micro text-[rgb(var(--ok))]">✓ Sent</span>}
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
@@ -278,7 +289,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
   const [discovering, setDiscovering] = React.useState(false);
   const [hint, setHint] = React.useState<string>("");
   const [result, setResult] = React.useState<api.TestResult | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   async function discover() {
     if (!f.email_address) return;
@@ -291,7 +302,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
         smtp_host: cfg.smtp_host || s.smtp_host, smtp_port: cfg.smtp_port ? String(cfg.smtp_port) : s.smtp_port,
       }));
       setHint(cfg.oauth_hint ? `Tip: ${cfg.oauth_hint === "google_gmail" ? "Google" : "Microsoft"} — consider OAuth above instead of a password.` : `Settings from ${cfg.source}. Verify, then connect.`);
-    } catch (err) { setError(errMsg(err)); } finally { setDiscovering(false); }
+    } catch (err) { setError(err); } finally { setDiscovering(false); }
   }
 
   async function submit(e: React.FormEvent) {
@@ -308,7 +319,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
         : await api.connectImap({ ...body, password: f.password });
       setResult(r.test || { ok: r.status === "CONNECTED" });
       onDone();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    } catch (err) { setError(err); } finally { setBusy(false); }
   }
 
   return (
@@ -325,8 +336,14 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
         <Field label="Password" required={!editing} hint={editing ? "Leave blank to keep the current password." : undefined}><Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••" /></Field>
       </div>
       {hint && <p className="mt-2 micro">{hint}</p>}
-      {error && <div className="mt-2"><ErrorState message={error} /></div>}
+      {error != null && (
+        <div className="mt-2">
+          <ErrorState message={errMsg(error)} />
+          <SmtpErrorGuide err={error} />
+        </div>
+      )}
       {result && <div className="mt-2 micro">{result.ok ? <span className="text-[rgb(var(--ok))]">✓ Connected</span> : <span className="text-[rgb(var(--bad))]">✗ {String(result.error || "Failed").slice(0, 90)}</span>}</div>}
+      {result && !result.ok && <SmtpErrorGuide code={result.code} message={result.error} />}
       <div className="mt-3 flex items-center justify-between gap-3">
         <Button type="button" size="sm" variant="outline" onClick={discover} loading={discovering} disabled={discovering || !f.email_address}>Autodiscover</Button>
         <Button type="submit" size="sm" loading={busy} disabled={busy || !f.email_address || !f.imap_host || !f.smtp_host || (!editing && !f.password)}>{editing ? "Save & test" : "Connect & test"}</Button>
@@ -378,6 +395,8 @@ function MailboxesSection() {
   const [note, setNote] = React.useState<string>("");
   const [imapOpen, setImapOpen] = React.useState(false);
   const [editConn, setEditConn] = React.useState<api.Connection | null>(null);
+  // A failed connection test with a classified SMTP code — renders the fix guide.
+  const [testFail, setTestFail] = React.useState<{ code?: string; message?: string } | null>(null);
 
   // Surface the OAuth callback result. The provider redirect lands back on
   // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
@@ -394,6 +413,7 @@ function MailboxesSection() {
       conns.reload();
     } else {
       setNote(`✗ Connection failed (${bad})`);
+      setTestFail({ code: bad ?? undefined, message: undefined });
     }
     window.history.replaceState({}, "", window.location.pathname);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -403,7 +423,15 @@ function MailboxesSection() {
     try { const r = kind === "ms" ? await api.startMicrosoft() : await api.startGoogle(); window.location.href = r.url; }
     catch (err) { setNote(errMsg(err)); }
   }
-  async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+  async function test(id: string) {
+    setBusyId(id); setNote(""); setTestFail(null);
+    try {
+      const r = await api.testConnection(id);
+      setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`);
+      if (!r.ok) setTestFail({ code: r.code, message: r.error });
+      conns.reload();
+    } catch (e) { reportActionError(e); } finally { setBusyId(""); }
+  }
   async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
   async function makeDefault(id: string) { setBusyId(id); setNote(""); try { await api.setDefaultMailbox(id); setNote("✓ Default mailbox updated"); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
 
@@ -416,6 +444,7 @@ function MailboxesSection() {
         {note && <span className="micro">{note}</span>}
       </div>
 
+      {testFail && <SmtpErrorGuide code={testFail.code} message={testFail.message} />}
       {conns.error && <ErrorState message={conns.error} />}
       <div className="grid gap-3">
         {(conns.data || []).map((c) => (

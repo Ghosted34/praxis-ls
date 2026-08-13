@@ -155,6 +155,9 @@ async function test(section, key) {
       key,
       status: (r && r.status) || err.statusCode || err.$metadata?.httpStatusCode,
       error: (r && r.data && (r.data.error?.message || r.data.message)) || err.message,
+      // SMTP probes throw a classified error (smtp-error.map) so the console
+      // can render the matching fix guide; other probes simply omit the key.
+      code: err.code || undefined,
     };
   }
 }

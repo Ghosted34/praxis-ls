@@ -12,6 +12,10 @@ const schemas = {
     .strict()
     .refine((o) => Object.keys(o).length === 1, "send exactly one of archived, pinned, muted"),
   emailTest: z.object({ purpose: z.string().trim().min(1).max(64) }).strict(),
+  // Mail-setup wizard. The domain is the From address's domain; the send target
+  // is any address the admin wants the test message delivered to.
+  emailDnsCheck: z.object({ domain: z.string().trim().min(4).max(253).regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i, "not a domain name") }).strict(),
+  emailTestSend: z.object({ to: z.string().trim().email().max(254), purpose: z.string().trim().min(1).max(64).optional() }).strict(),
   channel: z.object({ name: z.string().min(1), kind: z.enum(["DEPARTMENT", "PROJECT", "DOSSIER", "DIRECT", "CLIENT"]).optional(), dossier_id: z.string().uuid().optional().nullable(), client_id: z.string().uuid().optional().nullable(), topic: z.string().optional(), member_ids: z.array(z.string().uuid()).optional() }),
   member: z.object({ user_id: z.string().uuid(), member_role: z.enum(["OWNER", "ADMIN", "MEMBER"]).optional() }),
   message: z.object({ body: z.string().optional(), media_vault_id: z.string().uuid().optional().nullable(), reply_to: z.string().uuid().optional().nullable(), attachments: z.array(attachment).optional() }),
@@ -28,4 +32,4 @@ const schemas = {
   emailConfig: z.object({ smtp_host: z.string().min(1).optional(), smtp_port: z.coerce.number().int().positive().optional(), smtp_user: z.string().optional(), smtp_pass: z.string().min(1).max(4000).optional(), from: z.string().optional(), reply_to: z.string().optional() }),
 };
 const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
-module.exports = { channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
+module.exports = { channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };

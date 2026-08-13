@@ -30,6 +30,7 @@ const { config } = require("../config/env");
 const { getSetting } = require("../shared/config/settings");
 const settingService = require("../modules/security/setting/setting.service");
 const emailRepo = require("./email.repo");
+const { mapSmtpError, isSmtpError } = require("../modules/mail/smtp-error.map");
 const mailFallback = require("./platform/mail-fallback.service");
 const registry = require("./tenant/registry.service");
 const entitlement = require("./platform/entitlement.service");
@@ -193,6 +194,13 @@ async function verifyTransport(client, { purpose = "NOTIFICATIONS" } = {}) {
     await transportFrom(cfg).verify();
     return { ok: true, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, from: cfg.from };
   } catch (err) {
+    // Classify SMTP verdicts (550 sender verify, 535 auth, 5xx rejections) so
+    // the UI can pick the matching fix guide; plain network failures keep their
+    // raw message — "could not send" would hide the actual getaddrinfo reason.
+    if (isSmtpError(err)) {
+      const mapped = mapSmtpError(err);
+      return { ok: false, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, error: mapped.message, code: mapped.code };
+    }
     return { ok: false, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, error: err.message };
   }
 }

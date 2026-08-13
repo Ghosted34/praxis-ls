@@ -1,0 +1,89 @@
+From 8dd6b15fef122a48f0a36ebb35a2cce6f25ba690 Mon Sep 17 00:00:00 2001
+From: Arena Agent <agent@arena.ai>
+Date: Thu, 13 Aug 2026 16:21:47 +0000
+Subject: [PATCH] fix(mail): align SMTP send-error mapping with main's 422
+ SENDER_NOT_AUTHORIZED
+
+The mail-service test expected a 550 Sender verify failed rejection to map
+to 502 SMTP_SENDER_REJECTED, but main's explainSendError maps it to 422
+SENDER_NOT_AUTHORIZED (deliberate: a mailbox-config fault on the sender's
+own server, not a Praxis 5xx). CI runs the PR merge ref, so it failed.
+
+Align the branch's mapSmtpError and the test with that 422 contract so the
+branch and the merge ref both pass.
+---
+ src/modules/mail/mail.service.js | 29 ++++++++++++++++++-----------
+ tests/unit/mail-service.test.js  |  4 ++--
+ 2 files changed, 20 insertions(+), 13 deletions(-)
+
+diff --git a/src/modules/mail/mail.service.js b/src/modules/mail/mail.service.js
+index 2693b90..98b9fcf 100644
+--- a/src/modules/mail/mail.service.js
++++ b/src/modules/mail/mail.service.js
+@@ -60,23 +60,30 @@ const secretKeyFor = (id) => `mail_conn:${id}`;
+ 
+ /**
+  * Turn a raw nodemailer/SMTP rejection into a clean, actionable AppError so an
+- * outbound-mail failure surfaces as a 502 the UI can show — not an unhandled 500
+- * that floods the error monitor. `550 Sender verify failed` in particular is a
+- * remote-server verdict on the FROM address (its domain needs a real mailbox +
+- * MX/SPF/DKIM, and the From must match the authenticated account); we say so
+- * rather than leaking a nodemailer stack.
++ * outbound-mail failure surfaces as a classified 4xx/5xx the UI can show — not
++ * an unhandled 500 that floods the error monitor. `550 Sender verify failed` in
++ * particular is a remote-server verdict on the FROM address (its domain needs a
++ * real mailbox + MX/SPF/DKIM, and the From must match the authenticated
++ * account); it is a mailbox-config fault on the sender's own server — not a
++ * Praxis server/code fault — so it maps to a 4xx (422 SENDER_NOT_AUTHORIZED)
++ * that the error monitor classifies as a config issue rather than a 5xx.
+  */
+ function mapSmtpError(err) {
+   if (err instanceof AppError) return err;
+   const code = err && err.responseCode; // SMTP reply code, e.g. 550, 535
+   const raw = String((err && err.response) || (err && err.message) || err || "");
+-  if (/sender verify failed/i.test(raw) || (code === 550 && /verif/i.test(raw))) {
++  const lc = raw.toLowerCase();
++  if (
++    code === 550 || code === 553 || code === 554 ||
++    /sender verif|valid sender|not allowed to send|not authori[sz]ed|relay(ing)? denied|relay access denied|from address|must be authenticated|authentication required/.test(lc)
++  ) {
+     return new AppError(
+-      "SMTP_SENDER_REJECTED",
+-      "The mail server rejected the sender address (550 Sender verify failed). "
+-        + "Check that the From address is a real mailbox on a domain with valid "
+-        + "MX/SPF/DKIM records and that it matches the authenticated SMTP account.",
+-      502,
++      "SENDER_NOT_AUTHORIZED",
++      "The mail server rejected the sender address. "
++        + "The \"From\" address must be a real mailbox on a domain with valid "
++        + "MX/SPF/DKIM records and usually has to match the login you connected with. "
++        + "This is the mailbox's SMTP setup — not Praxis.",
++      422,
+       { smtp_code: code || null, smtp_response: raw.slice(0, 300) },
+     );
+   }
+diff --git a/tests/unit/mail-service.test.js b/tests/unit/mail-service.test.js
+index 1f2bd1d..8156701 100644
+--- a/tests/unit/mail-service.test.js
++++ b/tests/unit/mail-service.test.js
+@@ -265,7 +265,7 @@ test("records the error on the connection and does not throw", async () => {
+   expect(repo.setError).toHaveBeenCalledWith({}, "conn-1", "IMAP auth failed");
+ });
+ 
+-test("send maps a '550 Sender verify failed' SMTP rejection to a clean 502 AppError", async () => {
++test("send maps a '550 Sender verify failed' SMTP rejection to a clean 422 AppError", async () => {
+   const smtpErr = Object.assign(new Error("Can't send mail - all recipients were rejected: 550 Sender verify failed"), {
+     responseCode: 550,
+     response: "550 Sender verify failed",
+@@ -274,7 +274,7 @@ test("send maps a '550 Sender verify failed' SMTP rejection to a clean 502 AppEr
+   mockSendEmail.mockRejectedValueOnce(smtpErr);
+ 
+   await expect(service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }))
+-    .rejects.toMatchObject({ name: "AppError", code: "SMTP_SENDER_REJECTED", status: 502 });
++    .rejects.toMatchObject({ name: "AppError", code: "SENDER_NOT_AUTHORIZED", status: 422 });
+   // The failed send must not be recorded as an outbound thread copy.
+   expect(repo.insertInbound).not.toHaveBeenCalled();
+ });
+-- 
+2.47.3
+

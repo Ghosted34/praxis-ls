@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1001 |
+| Routes | 1007 |
 | Modules mounted | 109 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1001 mounted routes, grouped by path prefix.
+All 1007 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -921,6 +921,7 @@ All 1001 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/client/:id/timeline` | — |
 | GET | `/api/tenant/mail/connections` | — |
 | POST | `/api/tenant/mail/connections` | — |
+| PATCH | `/api/tenant/mail/connections/:id` | — |
 | POST | `/api/tenant/mail/connections/:id/default` | — |
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
@@ -1041,8 +1042,11 @@ All 1001 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/operations/:id/360` | — |
 | GET | `/api/tenant/operations/:id/containers` | — |
 | PUT | `/api/tenant/operations/:id/containers` | — |
+| POST | `/api/tenant/operations/:id/marks/revert` | — |
+| POST | `/api/tenant/operations/:id/promote` | — |
 | GET | `/api/tenant/operations/:id/shipment-details` | — |
 | POST | `/api/tenant/operations/:id/transition` | — |
+| POST | `/api/tenant/operations/drafts` | — |
 
 ### `tenant/opportunities`
 
@@ -1373,7 +1377,9 @@ All 1001 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/smartcomm/colleagues` | — |
 | GET | `/api/tenant/smartcomm/config` | — |
 | PUT | `/api/tenant/smartcomm/config/email` | — |
+| POST | `/api/tenant/smartcomm/config/email/dns-check` | — |
 | POST | `/api/tenant/smartcomm/config/email/test` | — |
+| POST | `/api/tenant/smartcomm/config/email/test-send` | — |
 | PUT | `/api/tenant/smartcomm/config/whatsapp` | — |
 | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
 | DELETE | `/api/tenant/smartcomm/messages/:messageId` | — |

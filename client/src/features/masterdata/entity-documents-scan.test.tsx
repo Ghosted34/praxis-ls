@@ -88,10 +88,37 @@ describe("Corporate entities · Documents — attaching a file", () => {
   it("tells an operator with no documents yet where the file goes", async () => {
     await openDocuments([]);
 
-    // No row, so no attachment control — which is why the empty state has to
-    // carry the sequence instead of leaving the tab looking like a dead end.
+    // No row yet, so no row-level attachment control — the empty state has to
+    // point at where the file goes (the Add document form, or the row later)
+    // instead of leaving the tab looking like a dead end.
     expect(screen.queryByLabelText("Attach scan")).toBeNull();
-    expect(await screen.findByText(/attached on the row afterwards/i)).toBeInTheDocument();
+    expect(await screen.findByText(/attach the file later from the row/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /add document/i })).toBeInTheDocument();
+  });
+});
+
+describe("Corporate entities · Documents — the Add document form", () => {
+  const openForm = async () => {
+    const user = await openDocuments([]);
+    await user.click(await screen.findByRole("button", { name: /add document/i }));
+    expect(await screen.findByRole("heading", { name: "Add document" })).toBeInTheDocument();
+    return user;
+  };
+
+  it("drops the API jargon and the Scan-due field", async () => {
+    await openForm();
+    expect(screen.queryByText(/left unset/i)).toBeNull();
+    expect(screen.queryByText(/scan due/i)).toBeNull();
+  });
+
+  it("shows the dates day-first and takes the file inline", async () => {
+    await openForm();
+
+    // "Issued on" carries no hint, so its label text is exactly the field name.
+    expect(screen.getByLabelText("Issued on")).toHaveAttribute("placeholder", "dd/mm/yyyy");
+
+    const file = screen.getByLabelText("Document file");
+    expect(file).toHaveAttribute("type", "file");
+    expect(file.getAttribute("accept")).toBe("application/pdf,image/png,image/jpeg,image/webp");
   });
 });

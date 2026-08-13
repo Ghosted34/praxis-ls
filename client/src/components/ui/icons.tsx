@@ -138,6 +138,17 @@ export const SendIcon = (p: P) => (
     <path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7Z" />
   </svg>
 );
+export const CalendarIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3" y="5" width="18" height="16" rx="2" />
+    <path d="M3 9h18M8 3v4M16 3v4" />
+  </svg>
+);
+export const UploadIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M12 15V3m0 0 4 4m-4-4-4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
+  </svg>
+);
 /** The tenant brand glyph — a soft "X" mark echoing the hub logo. Uses currentColor. */
 export const BrandGlyph = (p: P) => (
   <svg viewBox="0 0 24 24" fill="none" aria-hidden width={22} height={22} {...p}>

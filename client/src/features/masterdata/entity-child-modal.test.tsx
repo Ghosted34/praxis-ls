@@ -131,12 +131,17 @@ describe("Master data · entity nested modals", () => {
    * The reported defect, end to end.
    *
    * "Once I enter to edit again the GET function does not bring the saved date.
-   * I need to type all over again." A date input renders ONLY `YYYY-MM-DD`;
-   * given anything else it shows an empty box while the form state keeps the
-   * original value — so Issued on looked unset for a date that was saved, and
-   * Save posted the unrenderable value straight back, which the API rejected
-   * with `issued_on: Use the format YYYY-MM-DD., That date doesn't exist.` on a
-   * field nobody had touched.
+   * I need to type all over again." The date control seeds from a normalised
+   * `YYYY-MM-DD`; given anything else it showed an empty box while the form state
+   * kept the original value — so Issued on looked unset for a date that was
+   * saved, and Save posted the unrenderable value straight back, which the API
+   * rejected with `issued_on: Use the format YYYY-MM-DD., That date doesn't
+   * exist.` on a field nobody had touched.
+   *
+   * The control is now `DateField`, which reads day-first (dd/mm/yyyy) whatever
+   * the browser locale while still storing and sending ISO — so the seeded value
+   * shows as the day-first string here, and the save test below proves what goes
+   * back on the wire is still ISO.
    */
   it("edit seeds the date controls with what was saved, so nothing has to be retyped", async () => {
     const user = userEvent.setup();
@@ -145,9 +150,9 @@ describe("Master data · entity nested modals", () => {
     await user.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
 
     // Was blank. A timestamp from the API and a plain date both have to arrive
-    // in the one shape the control can display.
-    expect((await screen.findByLabelText("Issued on")).getAttribute("value")).toBe("2021-09-21");
-    expect((await screen.findByLabelText("Expires on")).getAttribute("value")).toBe("2026-08-14");
+    // in the one shape the control displays — day-first, dd/mm/yyyy.
+    expect((await screen.findByLabelText("Issued on")).getAttribute("value")).toBe("21/09/2021");
+    expect((await screen.findByLabelText("Expires on")).getAttribute("value")).toBe("14/08/2026");
     // The rest of the row is seeded too — the date was the only broken field,
     // and it is worth knowing if that stops being true.
     expect((await screen.findByLabelText("Number")).getAttribute("value")).toBe("RC/DLA/2021/B/206");

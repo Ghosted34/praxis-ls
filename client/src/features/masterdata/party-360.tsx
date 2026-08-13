@@ -14,7 +14,10 @@ import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal, Select } from "@/components/ui/modal";
+import { Modal, Select, Field } from "@/components/ui/modal";
+import { DateField } from "@/components/ui/date-field";
+import { FileDrop } from "@/components/ui/file-drop";
+import { FormButtons } from "@/components/ui/form-buttons";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Checkbox } from "@/components/ui/checkbox";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
@@ -24,6 +27,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
+import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
 import * as api from "@/lib/masterdata-api";
 import { ComposeIconButton } from "@/features/comms/mail";
 
@@ -84,7 +88,7 @@ function AddModal({ title, fields, onClose, onSubmit }: { title: string; fields:
   }
 
   return (
-    <Modal open onClose={onClose} title={title} description="Fields marked on the master form as required are enforced by the API.">
+    <Modal open onClose={onClose} title={title}>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((f) => (
           <label key={f.key} className={`space-y-1 text-sm ${f.type === "checkbox" ? "flex items-center gap-2" : ""}`}>
@@ -98,8 +102,10 @@ function AddModal({ title, fields, onClose, onSubmit }: { title: string; fields:
                 <option value="">—</option>
                 {(f.options || []).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </Select>
+            ) : f.type === "date" ? (
+              <DateField value={(values[f.key] as string) || ""} placeholder={f.placeholder} onChange={(iso) => set(f.key, iso)} />
             ) : (
-              <Input type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
+              <Input type={f.type === "number" ? "number" : f.type === "email" ? "email" : "text"}
                 value={(values[f.key] as string) ?? ""} placeholder={f.placeholder} onChange={(e) => set(f.key, e.target.value)} />
             )}
           </label>
@@ -110,6 +116,115 @@ function AddModal({ title, fields, onClose, onSubmit }: { title: string; fields:
         <Button variant="ghost" onClick={onClose}>Cancel</Button>
         <Button loading={busy} onClick={save}>Add</Button>
       </div>
+    </Modal>
+  );
+}
+
+/**
+ * Add a KYC / compliance document, and attach its file in the SAME step.
+ *
+ * Documents are the one collection where the file matters as much as the record,
+ * and the old flow made them two separate errands: save the row, find it again,
+ * then attach the PDF from a second control. Here the file rides along with the
+ * form. It is still two API calls underneath — the vault owns the bytes and the
+ * record only points at them (see ScanAttachment) — so: create the record, hand
+ * the file to the vault under that record's ref, then patch the returned vault id
+ * back onto it, which is what advances scan_status PENDING → SCANNED.
+ *
+ * The file stays OPTIONAL. A certificate you are holding but have not scanned yet
+ * is a valid paper-only record; Hard Rule 9 gates VERIFYING the party on a scan,
+ * not registering the document — so the row can still be added file-less and the
+ * scan attached from its row later.
+ */
+function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdded }: {
+  kind: api.PartyKind;
+  partyId: string;
+  isClient: boolean;
+  typeOptions: { value: string; label: string }[];
+  onClose: () => void;
+  onAdded: (fileAttached: boolean) => void;
+}) {
+  const [values, setValues] = React.useState<Record<string, string>>({});
+  const [file, setFile] = React.useState<File | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }));
+
+  function pick(f: File | null) {
+    setFileError(null);
+    if (!f) { setFile(null); return; }
+    const problem = scanFileProblem(f);
+    if (problem) { setFileError(problem); return; }
+    setFile(f);
+  }
+
+  async function save(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await api.documents.create(kind, partyId, {
+        document_type_id: values.document_type_id || undefined,
+        document_number: values.document_number || undefined,
+        issued_on: values.issued_on || undefined,
+        expires_on: values.expires_on || undefined,
+        physical_ref: values.physical_ref || undefined,
+      });
+      if (file) {
+        const vaulted = await api.uploadVaultDocument({
+          data_url: await readFileAsDataUrl(file),
+          doc_type: isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT",
+          entity_ref: `${kind}_document:${created.document_id}`,
+        });
+        await api.documents.update(kind, partyId, created.document_id, { vault_id: vaulted.doc_id });
+      }
+      onAdded(!!file);
+      onClose();
+    } catch (err) {
+      setError(errMsg(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal open onClose={onClose} title="Add document">
+      <form onSubmit={save} className="space-y-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Field label="Type">
+            <Select value={values.document_type_id || ""} onChange={(e) => set("document_type_id", e.target.value)}>
+              <option value="">—</option>
+              {typeOptions.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </Select>
+          </Field>
+          <Field label="Number">
+            <Input value={values.document_number || ""} onChange={(e) => set("document_number", e.target.value)} />
+          </Field>
+          <Field label="Issued">
+            <DateField value={values.issued_on || ""} onChange={(iso) => set("issued_on", iso)} />
+          </Field>
+          <Field label="Expires">
+            <DateField value={values.expires_on || ""} onChange={(iso) => set("expires_on", iso)} />
+          </Field>
+          <Field label="Physical archive ref" hint="Only for paper originals — where the hard copy is filed." className="sm:col-span-2">
+            <Input value={values.physical_ref || ""} placeholder="Box A-12" onChange={(e) => set("physical_ref", e.target.value)} />
+          </Field>
+        </div>
+
+        <FileDrop
+          label="Document file"
+          file={file}
+          onPick={pick}
+          accept={SCAN_ACCEPT}
+          disabled={busy}
+          error={fileError}
+          hint="PDF or image (PNG, JPEG, WebP), up to 25 MB. Optional — you can attach it from the row later."
+        />
+
+        {error && <ErrorState message={error} />}
+        <FormButtons busy={busy} onCancel={onClose} saveLabel="Add document" />
+      </form>
     </Modal>
   );
 }
@@ -971,8 +1086,8 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       {tab === "Documents" && (
         <Section title="KYC / compliance documents" onAdd={() => setAdding("document")}>
           <p className="mb-2 micro text-muted-foreground">
-            Add the document to record its details, then attach the file on its row — a PDF or a photo of the
-            original, up to 25 MB. Verification (Hard Rule 9) needs the scan, not just the reference.
+            Add each compliance document and upload its file — a PDF or a clear photo. No file yet? Add the
+            details now and attach it later from the row.
           </p>
           <MiniTable empty={d.documents.length === 0} head={<><Th>Type</Th><Th>Number</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th><Th r>File</Th></>}>
             {d.documents.map((doc: api.PartyDocument) => (
@@ -1155,9 +1270,9 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
       {adding === "bank" && <AddModal title="Add bank account" onClose={() => setAdding(null)}
         fields={[{ key: "beneficiary_name", label: "Beneficiary" }, { key: "bank_name", label: "Bank" }, { key: "account_number", label: "Account number" }, { key: "iban", label: "IBAN" }, { key: "swift_bic", label: "SWIFT/BIC" }, { key: "currency", label: "Currency", placeholder: "XAF" }]}
         onSubmit={async (v) => { await api.banks.create(kind, partyId, v as Partial<api.BankAccount>); toast.success("Bank account added"); reload(); }} />}
-      {adding === "document" && <AddModal title="Add document" onClose={() => setAdding(null)}
-        fields={[{ key: "document_type_id", label: "Type", type: "select", options: docTypeOptions }, { key: "document_number", label: "Number" }, { key: "issued_on", label: "Issued", type: "date" }, { key: "expires_on", label: "Expires", type: "date" }, { key: "physical_ref", label: "Physical archive ref", placeholder: "Box A-12 (if paper only)" }, { key: "scan_due_on", label: "Scan due", type: "date" }]}
-        onSubmit={async (v) => { await api.documents.create(kind, partyId, v as Partial<api.PartyDocument>); toast.success("Document added"); reload(); }} />}
+      {adding === "document" && <AddDocumentModal kind={kind} partyId={partyId} isClient={isClient} typeOptions={docTypeOptions}
+        onClose={() => setAdding(null)}
+        onAdded={(fileAttached) => { toast.success(fileAttached ? "Document added — scan attached." : "Document added."); reload(); }} />}
       {adding === "registration" && <AddModal title="Add registration" onClose={() => setAdding(null)}
         fields={[{ key: "kind", label: "Kind", placeholder: "NIU, RCCM, VAT, EORI…" }, { key: "number", label: "Number" }, { key: "country_code", label: "Country", type: "country" }, { key: "issuing_authority", label: "Issuing authority" }, { key: "expires_on", label: "Expires", type: "date" }]}
         onSubmit={async (v) => { await api.registrations.create(kind, partyId, v as Partial<api.Registration>); toast.success("Registration added"); reload(); }} />}

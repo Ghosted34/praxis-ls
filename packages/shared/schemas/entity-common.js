@@ -411,7 +411,10 @@ const documentShape = {
   ),
   vault_id: blankToUndefined(z.string().uuid("Must be a valid document id.")),
   physical_ref: optionalText,
-  scan_due_on: optionalDate,
+  // `scan_due_on` is intentionally not part of the writable document shape: the
+  // Documents form no longer asks for it (a scan is uploaded inline now, so a
+  // "scan due" date is clutter). The column still exists and compliance.rules.js
+  // still escalates on any historical value; it is simply no longer settable.
   renewal_lead_days: blankToUndefined(
     amount.refine(
       (n) => Number.isInteger(n) && n >= 0 && n <= 365,

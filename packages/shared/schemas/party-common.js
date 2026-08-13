@@ -120,7 +120,9 @@ const documentShape = {
   expires_on: optionalDate,
   vault_id: blankToUndefined(uuid),
   physical_ref: optionalText,
-  scan_due_on: optionalDate,
+  // `scan_due_on` is intentionally not writable: the Documents form uploads the
+  // scan inline now, so a "scan due" date is clutter. The column and the
+  // compliance escalation that reads it stay; it is simply no longer settable.
 };
 exports.documentCreate = z.object(documentShape);
 exports.documentUpdate = patchOf(documentShape);

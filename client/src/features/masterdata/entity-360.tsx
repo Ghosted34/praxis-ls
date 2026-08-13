@@ -29,6 +29,8 @@ import { useNavigate, useParams, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
+import { DateField } from "@/components/ui/date-field";
+import { FileDrop } from "@/components/ui/file-drop";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { Callout } from "@/components/ui/callout";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -37,6 +39,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { useToast } from "@/components/ui/toast";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
+import { SCAN_ACCEPT, scanFileProblem, readFileAsDataUrl } from "@/lib/vault-file";
 import { WorkingCalendarTab } from "./working-calendar-tab";
 import { useResource, useList, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel, toDateInput } from "@/lib/format";
@@ -125,7 +128,7 @@ function Section({ title, description, action, children }: { title: string; desc
 
 type FieldSpec = {
   key: string; label: string;
-  type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea" | "multiselect";
+  type?: "text" | "number" | "date" | "email" | "country" | "checkbox" | "select" | "textarea" | "multiselect" | "file";
   options?: { value: string; label: string }[]; placeholder?: string; hint?: string;
   /**
    * Heading this field sits under. The person modal carries close to thirty
@@ -195,7 +198,18 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
   });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [fileError, setFileError] = React.useState<string | null>(null);
   const set = (k: string, v: unknown) => setValues((s) => ({ ...s, [k]: v }));
+
+  // A picked scan is validated here and parked in `values` as a File; the
+  // collection's own onSubmit is what uploads it and links it to the record.
+  function pickFile(key: string, f: File | null) {
+    setFileError(null);
+    if (!f) { set(key, null); return; }
+    const problem = scanFileProblem(f);
+    if (problem) { setFileError(problem); return; }
+    set(key, f);
+  }
 
   async function save() {
     setBusy(true); setError(null);
@@ -208,13 +222,34 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
   const seenGroups = new Set<string>();
 
   return (
-    <Modal open onClose={onClose} title={title} description="Blank fields are left unset.">
+    <Modal open onClose={onClose} title={title}>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((f) => {
           const heading = f.group && !seenGroups.has(f.group) ? f.group : null;
           if (heading) seenGroups.add(f.group as string);
-          const wide = f.type === "textarea" || f.type === "multiselect";
+          const wide = f.type === "textarea" || f.type === "multiselect" || f.type === "file";
           const cls = `space-y-1 text-sm ${wide ? "sm:col-span-2" : ""} ${f.type === "checkbox" ? "flex items-center gap-2 space-y-0" : ""}`;
+
+          // File pickers bring their own label and span the width; render one
+          // before the generic <label> branch, like checkbox / multiselect.
+          if (f.type === "file") {
+            return (
+              <React.Fragment key={f.key}>
+                {heading && <h4 className="mt-1 border-b pb-1 text-sm font-semibold text-foreground sm:col-span-2">{heading}</h4>}
+                <div className="sm:col-span-2">
+                  <FileDrop
+                    label={f.label}
+                    file={(values[f.key] as File | null) ?? null}
+                    onPick={(file) => pickFile(f.key, file)}
+                    accept={SCAN_ACCEPT}
+                    disabled={busy}
+                    error={fileError}
+                    hint={f.hint}
+                  />
+                </div>
+              </React.Fragment>
+            );
+          }
 
           /*
            * Checkboxes and multiselects bring their OWN labels, so neither may
@@ -272,9 +307,11 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
                     value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
                     onChange={(e) => set(f.key, e.target.value)}
                   />
+                ) : f.type === "date" ? (
+                  <DateField value={(values[f.key] as string) || ""} placeholder={f.placeholder} onChange={(iso) => set(f.key, iso)} />
                 ) : (
                   <Input
-                    type={f.type === "number" ? "number" : f.type === "date" ? "date" : f.type === "email" ? "email" : "text"}
+                    type={f.type === "number" ? "number" : f.type === "email" ? "email" : "text"}
                     value={(values[f.key] as string) ?? ""} placeholder={f.placeholder}
                     onChange={(e) => set(f.key, e.target.value)}
                   />
@@ -1305,16 +1342,31 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
     { key: "issued_on", label: "Issued on", type: "date" },
     { key: "expires_on", label: "Expires on", type: "date", hint: "Drives the renewals list." },
     { key: "renewal_lead_days", label: "Warn this many days ahead", type: "number", hint: "Blank uses the document type's own lead time." },
-    { key: "physical_ref", label: "Paper original filed at", placeholder: "Box A-12", hint: "A document can be recorded before it is scanned." },
-    { key: "scan_due_on", label: "Scan due by", type: "date" },
+    { key: "physical_ref", label: "Paper original filed at", placeholder: "Box A-12", hint: "Only for paper originals — where the hard copy is filed." },
+    { key: "scan_file", label: "Document file", type: "file", hint: "PDF or image (PNG, JPEG, WebP), up to 25 MB. Optional — you can attach it from the row later." },
     { key: "is_active", label: "Active", type: "checkbox", defaultValue: true, hint: "A superseded certificate stays on file rather than being deleted." },
     { key: "notes", label: "Notes", type: "textarea" },
   ], [typeList, establishments]);
 
   async function save(values: Record<string, unknown>, id?: string) {
-    const body = Object.fromEntries(Object.entries(values).filter(([, v]) => v !== "" && v !== undefined));
+    // `scan_file` is a picked File, not a column — pull it out before writing the
+    // record, then (if present) upload it to the vault and link the returned id.
+    const { scan_file: scanFile, ...rest } = values;
+    const body = Object.fromEntries(Object.entries(rest).filter(([, v]) => v !== "" && v !== undefined));
+    let documentId = id;
     if (id) await api.updateEntityChild(entityId, "documents", id, body);
-    else await api.addEntityChild(entityId, "documents", body);
+    else {
+      const created = await api.addEntityChild<api.EntityDocument>(entityId, "documents", body);
+      documentId = created.document_id;
+    }
+    if (scanFile instanceof File && documentId) {
+      const vaulted = await api.uploadVaultDocument({
+        data_url: await readFileAsDataUrl(scanFile),
+        doc_type: "ENTITY_DOCUMENT",
+        entity_ref: `entity_document:${documentId}`,
+      });
+      await api.updateEntityChild(entityId, "documents", documentId, { vault_id: vaulted.doc_id });
+    }
     onSaved();
   }
 
@@ -1336,7 +1388,7 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   return (
     <Section
       title="Administrative documents"
-      description="Statutes, tax clearances, licences and insurance. Add the record first, then attach its PDF or photo on the row — anything with an expiry date feeds the Renewals tab."
+      description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab."
       action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
@@ -1377,7 +1429,7 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
       {documents.length === 0 && (
         <EmptyState
           title="No documents recorded"
-          hint="Start with the certificate of incorporation and the statutes — the rest can follow as you gather them. Add document records the details; the scan (PDF or image, up to 25 MB) is attached on the row afterwards."
+          hint="Start with the certificate of incorporation and the statutes — the rest can follow as you gather them. Add document takes the details and the file (PDF or image, up to 25 MB) together; you can also attach the file later from the row."
         />
       )}
 

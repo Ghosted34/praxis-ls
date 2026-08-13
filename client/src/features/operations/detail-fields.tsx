@@ -64,13 +64,14 @@ function RateProviderControl({
   display,
   onChange,
   onCreate,
+  id,
 }: {
   field: DetailFieldDef;
   value: unknown;
   display?: string;
   onChange: (v: unknown) => void;
   onCreate?: (term: string, kinds: string[]) => void;
-}) {
+} & { id?: string }) {
   const [picked, setPicked] = React.useState<string | null>(null);
   // A newly-picked label wins; otherwise the projection's resolved name; and if
   // the field is empty, nothing (so the placeholder shows).
@@ -100,6 +101,7 @@ function RateProviderControl({
       filter={filter}
       onCreate={onCreate ? (term) => onCreate(term, kinds) : undefined}
       createLabel={(term) => `Add carrier “${term}”`}
+      id={id}
     />
   );
 }
@@ -112,10 +114,12 @@ function RateProviderControl({
  * "dollars", "USD " and "usd" as three different values. The list is short and
  * fixed, so a native select beats a typeahead.
  */
-function CurrencyControl({ field, value, onChange }: { field: DetailFieldDef; value: unknown; onChange: (v: unknown) => void }) {
+function CurrencyControl({ field, value, onChange, ...aria }: {
+  field: DetailFieldDef; value: unknown; onChange: (v: unknown) => void;
+} & React.AriaAttributes & { id?: string }) {
   const currencies = useResource(() => listCurrencies(), []);
   return (
-    <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label}>
+    <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label} {...aria}>
       <option value="">—</option>
       {(currencies.data || [])
         .filter((c) => c.is_active !== false)
@@ -146,11 +150,12 @@ function GeneratedControl({
   field,
   value,
   onChange,
+  ...aria
 }: {
   field: DetailFieldDef;
   value: unknown;
   onChange: (v: unknown) => void;
-}) {
+} & React.AriaAttributes & { id?: string }) {
   const [unlocked, setUnlocked] = React.useState(false);
   if (unlocked) {
     return (
@@ -159,6 +164,7 @@ function GeneratedControl({
           value={asString(value)}
           placeholder={field.placeholder || undefined}
           onChange={(e) => onChange(e.target.value)}
+          {...aria}
         />
         <p className="micro text-muted-foreground">
           Editing this stops it updating from the containers on this file.
@@ -197,16 +203,32 @@ function Control({
   display,
   onChange,
   onCreateCarrier,
+  ...aria
 }: {
   field: DetailFieldDef;
   value: unknown;
   display?: string;
   onChange: (v: unknown) => void;
   onCreateCarrier?: (fieldKey: string, term: string, kinds: string[]) => void;
-}) {
+} & React.AriaAttributes & { id?: string }) {
+  /*
+   * `aria` is what `<Field>` cloned onto this element — id, aria-labelledby,
+   * aria-describedby, aria-invalid, aria-required.
+   *
+   * IT HAS TO BE FORWARDED, and was not. `Field` associates its label by
+   * cloning ITS SINGLE CHILD with those props; the child here is this component
+   * rather than a DOM element, so React set them on a function that ignored
+   * them. The rendered `<label for="…-control">` therefore pointed at an id
+   * nothing carried, and every field on every service type's form had no
+   * accessible name — twenty-five controls per sea file that a screen reader
+   * announces as "edit text, blank".
+   *
+   * Spreading it onto each control below is the fix, and the reason every case
+   * ends with `{...aria}` rather than naming the props one at a time.
+   */
   // Checked before the type switch: "the system fills this in" is a fact about
   // the field, not about what kind of value it holds.
-  if (field.is_readonly) return <GeneratedControl field={field} value={value} onChange={onChange} />;
+  if (field.is_readonly) return <GeneratedControl field={field} value={value} onChange={onChange} {...aria} />;
   switch (field.data_type) {
     case "TEXTAREA":
       return (
@@ -215,6 +237,7 @@ function Control({
           value={asString(value)}
           placeholder={field.placeholder || undefined}
           onChange={(e) => onChange(e.target.value)}
+          {...aria}
         />
       );
     case "BOOLEAN":
@@ -227,11 +250,12 @@ function Control({
           checked={value === true}
           onCheckedChange={(c: boolean) => onChange(c === true)}
           label={field.label}
+          {...aria}
         />
       );
     case "SELECT":
       return (
-        <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label}>
+        <Select value={asString(value)} onChange={(e) => onChange(e.target.value || null)} aria-label={field.label} {...aria}>
           <option value="">—</option>
           {(field.options || []).map((o) => (
             <option key={o.value} value={o.value}>
@@ -241,9 +265,9 @@ function Control({
         </Select>
       );
     case "DATE":
-      return <Input type="date" value={asString(value).slice(0, 10)} onChange={(e) => onChange(e.target.value || null)} />;
+      return <Input type="date" value={asString(value).slice(0, 10)} onChange={(e) => onChange(e.target.value || null)} {...aria} />;
     case "DATETIME":
-      return <Input type="datetime-local" value={asString(value)} onChange={(e) => onChange(e.target.value || null)} />;
+      return <Input type="datetime-local" value={asString(value)} onChange={(e) => onChange(e.target.value || null)} {...aria} />;
     case "NUMBER":
     case "INTEGER":
       return (
@@ -258,6 +282,7 @@ function Control({
             // mid-keystroke by an eager Number().
             onChange(t === "" ? null : t);
           }}
+          {...aria}
         />
       );
     case "GEO_PLACE":
@@ -271,6 +296,7 @@ function Control({
           onSelect={(r) => onChange(String(r.name))}
           allowFreeText
           onFreeText={(t) => onChange(t)}
+          {...aria}
         />
       );
     case "RATE_PROVIDER":
@@ -281,10 +307,11 @@ function Control({
           display={display}
           onChange={onChange}
           onCreate={onCreateCarrier && ((term, kinds) => onCreateCarrier(field.key, term, kinds))}
+          {...aria}
         />
       );
     case "CURRENCY":
-      return <CurrencyControl field={field} value={value} onChange={onChange} />;
+      return <CurrencyControl field={field} value={value} onChange={onChange} {...aria} />;
     case "REF":
       // Nothing seeds a REF field yet, so there is no storage convention to
       // honour and guessing one would be the wrong kind of certainty. It falls
@@ -295,6 +322,7 @@ function Control({
           value={asString(value)}
           placeholder={field.placeholder || undefined}
           onChange={(e) => onChange(e.target.value)}
+          {...aria}
         />
       );
     default:
@@ -303,6 +331,7 @@ function Control({
           value={asString(value)}
           placeholder={field.placeholder || undefined}
           onChange={(e) => onChange(e.target.value)}
+          {...aria}
         />
       );
   }

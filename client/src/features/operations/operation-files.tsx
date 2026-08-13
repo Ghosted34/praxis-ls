@@ -37,6 +37,7 @@ import { errMsg } from "@/lib/use-resource";
 import * as api from "@/lib/operations-api";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { DossierForm } from "./dossier-form";
+import { DossierWizard } from "./dossier-wizard";
 import { Dossier360Modal } from "./dossier-360";
 import { routeLabel, serviceLabel, tone } from "./shared";
 import { MilestoneCell } from "./components";
@@ -254,8 +255,12 @@ export function OperationsFilesPage() {
       pagination={{ page: list.page, pageSize: list.pageSize, total: list.total, onPageChange: setPage }}
     >
       {actionError && <ErrorState message={actionError} />}
-      {editing !== null && (
-        <DossierForm row={editing === "new" ? null : editing} onClose={() => setEditing(null)} onSaved={list.reload} />
+      {/* Creating walks the three-step wizard, which opens a DRAFT so documents
+          can be attached before the file is finished. EDITING does not: somebody
+          correcting an ETA should not be walked through three steps. */}
+      {editing === "new" && <DossierWizard onClose={() => setEditing(null)} onCreated={list.reload} />}
+      {editing !== null && editing !== "new" && (
+        <DossierForm row={editing} onClose={() => setEditing(null)} onSaved={list.reload} />
       )}
       {view && <Dossier360Modal dossier={view} clientLabel={clientOf(view)} onClose={() => setView(null)} />}
       <AiActions actions={OPS_FILES_AI} />

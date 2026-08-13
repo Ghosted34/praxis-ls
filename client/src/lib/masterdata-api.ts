@@ -503,11 +503,21 @@ export type VaultDocument = {
   status?: string | null;
 };
 
-/** Store a file in the document vault. `entity_ref` traces it back to its owner. */
+/** Store a file in the document vault. `entity_ref` traces it back to its owner.
+ *
+ *  An upload carrying `dossier_id` is an OPERATIONS document and is held to
+ *  legacy's rules server-side: 5 MB, PDF/PNG/JPG, and the contents checked
+ *  rather than the declared type trusted. Everywhere else keeps the vault's
+ *  wider defaults. `doc_type_ref_id` is the registry reference (0667) — the
+ *  server derives the legacy `doc_type` text from it, so the two cannot drift. */
 export const uploadVaultDocument = (body: {
   data_url: string;
   doc_type?: string;
   entity_ref?: string;
+  dossier_id?: string;
+  doc_type_ref_id?: string;
+  client_id?: string;
+  original_name?: string;
 }) => tenant<VaultDocument>("/documents", { method: "POST", body });
 
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the

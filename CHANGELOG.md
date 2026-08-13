@@ -24,6 +24,20 @@ Dates are ISO-8601, UTC.
 
 ### Added
 
+- **Change your own password (`POST /api/tenant/auth/change-password`).** The
+  third leg of the password story, and the one that was missing: recovery by
+  email covered "locked out" and `POST /users/:id/password` covered "someone
+  else's account", but an ordinary user who simply wanted a different password
+  had no route — the admin one is behind the MOD-67 edit grant, so most users
+  could only rotate their credential by mailing themselves a reset link, and
+  only while outbound mail was healthy. The new endpoint verifies the current
+  password with the same Argon2id compare login uses (a live access token is
+  deliberately not sufficient proof), applies the full password policy to the new
+  one, voids any outstanding reset links, and force-signs-out every OTHER session
+  while keeping the caller's. Rate limited per user, not per IP — the caller has
+  already proved who they are, so the only budget a key can exhaust is their own.
+  Surfaced as a **Password** card on Security → My security.
+
 - **Tax rates & jurisdictions is now a working 360 (MOD-07).** The screen that
   feeds every invoice's VAT/WHT postings — account determination reads the
   effective-dated `tax_code` at the entry date — becomes a jurisdiction → dossier

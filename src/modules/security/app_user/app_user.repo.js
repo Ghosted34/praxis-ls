@@ -154,6 +154,19 @@ async function getUserSafe(client, id) {
   const { rows } = await client.query("SELECT " + SAFE_COLS + " FROM app_user WHERE user_id = $1", [id]);
   return rows[0] || null;
 }
+/**
+ * The one deliberate exception to getUserSafe: the self-service password change
+ * has to VERIFY the current password, so it needs the hash by user_id (login
+ * gets it by email, via findByEmail). Kept as its own narrow function — and
+ * named for what makes it different — so nothing reaches for it by accident.
+ */
+async function getUserWithHash(client, id) {
+  const { rows } = await client.query(
+    "SELECT user_id, email, full_name, status, password_hash FROM app_user WHERE user_id = $1",
+    [id],
+  );
+  return rows[0] || null;
+}
 async function listUsersSafe(client, { limit = 50, offset = 0, status = null, q = null }) {
   const params = [limit, offset]; const wh = [];
   if (status) { params.push(status); wh.push("status = $" + params.length); }
@@ -328,12 +341,28 @@ async function killAllSessionsForUser(client, userId, killedBy) {
   );
   return rows.map((r) => r.session_id);
 }
+/**
+ * Same, but spares one session. The self-service password change keeps the tab
+ * the user is standing in signed in — signing them out of the very session they
+ * just proved control of teaches nothing and costs them a re-login, while every
+ * OTHER session (the phone they lost, the shared machine) is exactly what they
+ * are changing the password to evict.
+ */
+async function killOtherSessionsForUser(client, userId, keepSessionId, killedBy) {
+  const { rows } = await client.query(
+    `UPDATE user_session SET killed_at = now(), killed_by = $3
+      WHERE user_id = $1 AND killed_at IS NULL AND ($2::uuid IS NULL OR session_id <> $2::uuid)
+      RETURNING session_id`,
+    [userId, keepSessionId || null, killedBy || null],
+  );
+  return rows.map((r) => r.session_id);
+}
 
 module.exports = {
   ...crud,
-  insertUser, getUserSafe, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
+  insertUser, getUserSafe, getUserWithHash, listUsersSafe, updateUserFields, setPasswordHash, setAvatar, employeeExists, listEmployeesLite, setStatus, setRoles, roleCodes, roleIds, countActiveCeos,
   getSignature, upsertSignature, ceoRoleId, roleNames, roleNamesByIds,
-  createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser,
+  createResetToken, findResetByHash, markResetUsed, invalidateUserResets, killAllSessionsForUser, killOtherSessionsForUser,
   insertDevice, getActiveDeviceForUser, listDevices, recordDevicePinFailure, resetDevicePin, revokeDevice,
   findByEmail,
   recordLoginSuccess,

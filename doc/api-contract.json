@@ -2,10 +2,10 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 109,
-  "route_count": 1000,
+  "route_count": 1001,
   "tiers": {
     "public": 19,
-    "self-scoped": 64,
+    "self-scoped": 65,
     "gated": 917
   },
   "routes": {
@@ -4072,6 +4072,12 @@
       "tier": "public"
     },
     "POST /api/tenant/auth/avatar": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
+    },
+    "POST /api/tenant/auth/change-password": {
       "auth": true,
       "rbac": false,
       "validated": false,

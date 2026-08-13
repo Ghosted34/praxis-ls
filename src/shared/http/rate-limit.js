@@ -202,6 +202,26 @@ const refreshLimiter = makeLimiter({ name: "refresh", max: 60 });
 const forgotLimiter = makeLimiter({ name: "forgot", max: 5 });
 const resetLimiter = makeLimiter({ name: "reset", max: 10 });
 
+/**
+ * Self-service change-password. Behind authMiddleware, so this is not an
+ * anonymous guessing surface — but it DOES compare a submitted current password,
+ * which makes it the one place a stolen access token can be turned into a
+ * permanent takeover by guessing. Sized like login: a human who mistypes their
+ * old password a few times is fine, a script working through candidates is not.
+ *
+ * KEYED BY USER, not by IP — the opposite call to loginLimiter, and for the
+ * reason that made loginLimiter per-IP: keying a PUBLIC route per account lets
+ * anyone lock a colleague out, but here the caller has already proved who they
+ * are, so the only account a key can exhaust is the caller's own. Per-IP would
+ * meanwhile let one office behind one NAT exhaust the budget for everyone in it.
+ * IP remains the fallback for a request that somehow arrives unauthenticated.
+ */
+const changePasswordLimiter = makeLimiter({
+  name: "change-password",
+  max: 10,
+  keyGenerator: (req) => (req.user && req.user.user_id ? `user:${req.user.user_id}` : `ip:${req.ip}`),
+});
+
 module.exports = {
   initRateLimitStore,
   rateLimitStoreKind,
@@ -214,5 +234,6 @@ module.exports = {
   refreshLimiter,
   forgotLimiter,
   resetLimiter,
+  changePasswordLimiter,
   TOO_MANY,
 };

@@ -22,6 +22,7 @@ const {
   pinLimiter,
   forgotLimiter,
   resetLimiter,
+  changePasswordLimiter,
 } = require("../../../shared/http/rate-limit");
 
 // Generic user CRUD (list/get/create/update/soft-delete) — NOW GATED (was the
@@ -62,6 +63,14 @@ authRouter.post("/refresh", refreshLimiter, validator.refresh, controller.refres
 // back in). forgot-password always returns { ok: true } (no user enumeration).
 authRouter.post("/forgot-password", forgotLimiter, validator.forgotPassword, controller.forgotPassword);
 authRouter.post("/reset-password", resetLimiter, validator.resetPassword, controller.resetPassword);
+// Signed-in self-service change (current password → new one). Needs NO grant:
+// every user must be able to rotate their own credential, and /users/:id/password
+// above is behind MOD-67 edit, so before this route the only way for an ordinary
+// user to change a password they already knew was to mail themselves a recovery
+// link. authMiddleware runs BEFORE the limiter here (the reverse of the public
+// routes): it is itself the cheap rejection for an unauthenticated flood, and the
+// limiter keys on the identity it establishes — see changePasswordLimiter.
+authRouter.post("/change-password", authMiddleware, changePasswordLimiter, validator.changePassword, controller.changePassword);
 authRouter.get("/me", authMiddleware, controller.me);
 authRouter.post("/logout", authMiddleware, controller.logout);
 // Self-service profile picture upload (base64 data URL → /media, sets avatar_ref).

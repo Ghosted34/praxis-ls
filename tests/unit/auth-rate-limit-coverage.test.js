@@ -80,6 +80,9 @@ const REQUIRED = [
   ["tenant", tenantAuth, "POST /auth/pin/login", "pin"],
   ["tenant", tenantAuth, "POST /auth/forgot-password", "forgot"],
   ["tenant", tenantAuth, "POST /auth/reset-password", "reset"],
+  // Authenticated, but it compares a submitted current password — a stolen
+  // access token must not be a licence to guess it. Keyed per user, not per IP.
+  ["tenant", tenantAuth, "POST /auth/change-password", "change-password"],
   // External portal — clients, investors, auditors. Internet-facing.
   ["portal", portal, "POST /auth/login", "login"],
   ["portal", portal, "POST /auth/forgot", "forgot"],

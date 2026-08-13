@@ -174,9 +174,10 @@ function MultiSelect({ label, value, options, onChange }: {
 }
 
 /** Generic "add / edit a nested item" modal — one implementation for every collection. */
-function ChildModal({ title, fields, initial, onClose, onSubmit }: {
+function ChildModal({ title, fields, initial, onClose, onSubmit, uploadProgress = null, uploadSuccess = false, allowAddAnother = false }: {
   title: string; fields: FieldSpec[]; initial?: Record<string, unknown> | null;
   onClose: () => void; onSubmit: (values: Record<string, unknown>) => Promise<void>;
+  uploadProgress?: number | null; uploadSuccess?: boolean; allowAddAnother?: boolean;
 }) {
   const [values, setValues] = React.useState<Record<string, unknown>>(() => {
     const seed: Record<string, unknown> = {};
@@ -215,9 +216,25 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
     set(key, f);
   }
 
-  async function save() {
+  async function save(e: React.FormEvent<HTMLFormElement>) {
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const keepOpen = allowAddAnother && submitter?.value === "add-another";
     setBusy(true); setError(null);
-    try { await onSubmit(values); onClose(); }
+    try {
+      await onSubmit(values);
+      if (keepOpen) {
+        const next: Record<string, unknown> = {};
+        for (const f of fields) {
+          if (f.systemGenerated) next[f.key] = "Assigned on save";
+          else if (f.defaultValue !== undefined) next[f.key] = f.defaultValue;
+        }
+        setValues(next);
+        setFileError(null);
+        setError(null);
+        return;
+      }
+      onClose();
+    }
     catch (e) { setError(errMsg(e)); } finally { setBusy(false); }
   }
 
@@ -227,6 +244,7 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
 
   return (
     <Modal open onClose={onClose} title={title}>
+      <form onSubmit={save}>
       <div className="grid gap-3 sm:grid-cols-2">
         {fields.map((f) => {
           const heading = f.group && !seenGroups.has(f.group) ? f.group : null;
@@ -248,6 +266,8 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
                     accept={SCAN_ACCEPT}
                     disabled={busy}
                     error={fileError}
+                    uploadProgress={values[f.key] instanceof File ? uploadProgress : null}
+                    uploadSuccess={uploadSuccess && values[f.key] instanceof File}
                     hint={f.hint}
                   />
                 </div>
@@ -329,10 +349,18 @@ function ChildModal({ title, fields, initial, onClose, onSubmit }: {
         })}
       </div>
       {error && <div className="mt-3"><ErrorState message={error} /></div>}
-      <div className="mt-4 flex justify-end gap-2">
-        <Button variant="ghost" onClick={onClose}>Cancel</Button>
-        <Button loading={busy} onClick={save}>Save</Button>
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+        {allowAddAnother && (
+          <Button type="submit" variant="ghost" name="submitIntent" value="add-another" disabled={busy}>
+            Save & add another
+          </Button>
+        )}
+        <div className="ml-auto flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button type="submit" loading={busy}>Save</Button>
+        </div>
       </div>
+      </form>
     </Modal>
   );
 }
@@ -1330,6 +1358,9 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
   const types = useResource(() => api.listDocumentTypes("ENTITY"), []);
   const [adding, setAdding] = React.useState<api.EntityDocument | "new" | null>(null);
   const [attachError, setAttachError] = React.useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null);
+  const [uploadSuccess, setUploadSuccess] = React.useState(false);
+  const [verifyBusy, setVerifyBusy] = React.useState<string | null>(null);
   // `types.data || []` is a fresh array each render, so it cannot be a useMemo
   // dependency — the memo would rebuild the field list on every keystroke.
   const typeList = React.useMemo(() => types.data || [], [types.data]);
@@ -1358,24 +1389,37 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
     // `scan_file` is a picked File, not a column — pull it out before writing the
     // record, then (if present) upload it to the vault and link the returned id.
     const scanFile = values.scan_file;
-    const body = Object.fromEntries(
-      Object.entries(values).filter(([key, value]) => key !== "scan_file" && key !== "document_number" && value !== "" && value !== undefined),
-    );
-    let documentId = id;
-    if (id) await api.updateEntityChild(entityId, "documents", id, body);
-    else {
-      const created = await api.addEntityChild<api.EntityDocument>(entityId, "documents", body);
-      documentId = created.document_id;
+    const hasScan = scanFile instanceof File;
+    setUploadProgress(hasScan ? 0 : null);
+    setUploadSuccess(false);
+    setAttachError(null);
+    try {
+      const body = Object.fromEntries(
+        Object.entries(values).filter(([key, value]) => key !== "scan_file" && key !== "document_number" && value !== "" && value !== undefined),
+      );
+      let documentId = id;
+      if (id) await api.updateEntityChild(entityId, "documents", id, body);
+      else {
+        const created = await api.addEntityChild<api.EntityDocument>(entityId, "documents", body);
+        documentId = created.document_id;
+      }
+      if (scanFile instanceof File && documentId) {
+        const vaulted = await api.uploadVaultDocument({
+          data_url: await readFileAsDataUrl(scanFile),
+          doc_type: "ENTITY_DOCUMENT",
+          entity_ref: `entity_document:${documentId}`,
+        }, setUploadProgress);
+        await api.updateEntityChild(entityId, "documents", documentId, { vault_id: vaulted.doc_id });
+        setUploadProgress(100);
+        setUploadSuccess(true);
+        await new Promise((resolve) => setTimeout(resolve, 450));
+      }
+      onSaved();
+    } catch (e) {
+      setUploadProgress(null);
+      setUploadSuccess(false);
+      throw e;
     }
-    if (scanFile instanceof File && documentId) {
-      const vaulted = await api.uploadVaultDocument({
-        data_url: await readFileAsDataUrl(scanFile),
-        doc_type: "ENTITY_DOCUMENT",
-        entity_ref: `entity_document:${documentId}`,
-      });
-      await api.updateEntityChild(entityId, "documents", documentId, { vault_id: vaulted.doc_id });
-    }
-    onSaved();
   }
 
   /**
@@ -1393,17 +1437,31 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
     onSaved();
   }
 
+  async function verifyDocument(doc: api.EntityDocument) {
+    setVerifyBusy(doc.document_id);
+    setAttachError(null);
+    try {
+      await api.verifyEntityDocument(entityId, doc.document_id);
+      toast.success("Document verified.");
+      onSaved();
+    } catch (e) {
+      setAttachError(errMsg(e));
+    } finally {
+      setVerifyBusy(null);
+    }
+  }
+
   return (
     <Section
       title="Administrative documents"
-      description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab."
+      description="Statutes, tax clearances, licences and insurance — add each one and upload its file. Anything with an expiry date feeds the Renewals tab. Uploading marks the scan as scanned; use Verify after checking the file against the original."
       action={<Button size="sm" onClick={() => setAdding("new")}>Add document</Button>}
     >
       {types.error && <ErrorState message={errMsg(types.error)} />}
       {attachError && <ErrorState message={attachError} />}
       <MiniTable
         empty={documents.length === 0}
-        head={<><Th>Document</Th><Th>Type</Th><Th>Number</Th><Th>Country</Th><Th>Expires</Th><Th>Scan</Th><Th /></>}
+        head={<><Th>Document</Th><Th>Type</Th><Th>Number</Th><Th>Country</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th><Th /></>}
       >
         {documents.map((doc) => (
           <tr key={doc.document_id} className={doc.is_active === false ? "opacity-60" : undefined}>
@@ -1419,16 +1477,28 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
               <Pill tone={SCAN_TONE[doc.scan_status] || "mute"}>{enumLabel(doc.scan_status)}</Pill>
               {!doc.vault_id && doc.physical_ref ? <> <Pill tone="mute">Paper</Pill></> : null}
             </Td>
+            <Td>
+              <Pill tone={doc.verification_status === "VERIFIED" ? "ok" : doc.verification_status === "REJECTED" ? "bad" : "warn"}>
+                {enumLabel(doc.verification_status)}
+              </Pill>
+            </Td>
             <Td r>
-              <ScanAttachment
-                vaultId={doc.vault_id}
-                docType="ENTITY_DOCUMENT"
-                entityRef={`entity_document:${doc.document_id}`}
-                onAttached={(vaultId) => linkScan(doc, vaultId)}
-                onError={setAttachError}
-              />
-              <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
-              <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
+              <div className="flex flex-wrap justify-end gap-2">
+                <ScanAttachment
+                  vaultId={doc.vault_id}
+                  docType="ENTITY_DOCUMENT"
+                  entityRef={`entity_document:${doc.document_id}`}
+                  onAttached={(vaultId) => linkScan(doc, vaultId)}
+                  onError={setAttachError}
+                />
+                {doc.vault_id && doc.verification_status !== "VERIFIED" && (
+                  <Button size="sm" variant="ghost" loading={verifyBusy === doc.document_id} onClick={() => void verifyDocument(doc)}>
+                    Verify
+                  </Button>
+                )}
+                <Button size="sm" variant="ghost" onClick={() => setAdding(doc)}>Edit</Button>
+                <Button size="sm" variant="ghost" onClick={() => onRemove(doc.document_id)}>Remove</Button>
+              </div>
             </Td>
           </tr>
         ))}
@@ -1448,6 +1518,9 @@ function DocumentsTab({ entityId, documents, establishments, onRemove, onSaved }
           initial={adding === "new" ? null : (adding as unknown as Record<string, unknown>)}
           onClose={() => setAdding(null)}
           onSubmit={(values) => save(values, adding === "new" ? undefined : adding.document_id)}
+          uploadProgress={uploadProgress}
+          uploadSuccess={uploadSuccess}
+          allowAddAnother={adding === "new"}
         />
       )}
     </Section>

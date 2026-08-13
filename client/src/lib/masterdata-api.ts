@@ -3,7 +3,7 @@
  * treasury accounts + payment gateways, expense rates, financial dictionary.
  * Routes/fields mirror src/modules/master/*. All calls go through `tenant()`.
  */
-import { tenant, tenantDownload, downloadPost } from "./api-client";
+import { tenant, tenantDownload, tenantWithProgress, downloadPost } from "./api-client";
 
 /* ── Clients(/clients) ──────────────────────────────────────────── */
 export type Client = {
@@ -483,6 +483,9 @@ export const addEntityChild = <T,>(id: string, seg: EntityCollection, body: Reco
   tenant<T>(`/entities/${id}/${seg}`, { method: "POST", body });
 export const updateEntityChild = <T,>(id: string, seg: EntityCollection, childId: string, body: Record<string, unknown>) =>
   tenant<T>(`/entities/${id}/${seg}/${childId}`, { method: "PATCH", body });
+/** Explicit human approval after a scan has been attached. */
+export const verifyEntityDocument = (entityId: string, documentId: string) =>
+  tenant<EntityDocument>(`/entities/${entityId}/documents/${documentId}/verify`, { method: "POST" });
 export const deleteEntityChild = (id: string, seg: EntityCollection, childId: string) =>
   tenant<{ deleted: boolean }>(`/entities/${id}/${seg}/${childId}`, { method: "DELETE" });
 /**
@@ -503,6 +506,7 @@ export type VaultDocument = {
   status?: string | null;
 };
 
+<<<<<<< ours
 /** Store a file in the document vault. `entity_ref` traces it back to its owner.
  *
  *  An upload carrying `dossier_id` is an OPERATIONS document and is held to
@@ -519,6 +523,15 @@ export const uploadVaultDocument = (body: {
   client_id?: string;
   original_name?: string;
 }) => tenant<VaultDocument>("/documents", { method: "POST", body });
+=======
+/** Store a file in the document vault. `entity_ref` traces it back to its owner. */
+export const uploadVaultDocument = (
+  body: { data_url: string; doc_type?: string; entity_ref?: string },
+  onProgress?: (percent: number) => void,
+) => onProgress
+  ? tenantWithProgress<VaultDocument>("/documents", body, onProgress)
+  : tenant<VaultDocument>("/documents", { method: "POST", body });
+>>>>>>> theirs
 
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
  *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */
@@ -1102,6 +1115,11 @@ export const contacts = nested<Contact>("contacts");
 export const addresses = nested<Address>("addresses");
 export const banks = nested<BankAccount>("banks");
 export const documents = nested<PartyDocument>("documents");
+/** Human verification of a scanned client/supplier document. Uploading the file
+ * only advances scan_status to SCANNED; this explicit approval stamps the
+ * record VERIFIED. */
+export const verifyDocument = (kind: PartyKind, partyId: string, documentId: string) =>
+  tenant<PartyDocument>(`${base(kind)}/${partyId}/documents/${documentId}/verify`, { method: "POST" });
 export const registrations = nested<Registration>("registrations");
 export const beneficialOwners = nested<BeneficialOwner>("beneficial-owners");
 

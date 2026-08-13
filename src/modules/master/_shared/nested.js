@@ -66,6 +66,53 @@ function buildResource(cfg) {
     }
   }
 
+  /**
+   * Human verification of a scanned record. Uploading a file only proves that
+   * bytes exist (`scan_status = SCANNED`); it must not silently certify that the
+   * document itself was checked against the original. This action is the
+   * deliberate SCANNED → VERIFIED step used by the party and entity dossiers.
+   */
+  async function verify(c, { parentId, id, actor = {} }) {
+    const before = await getById(c, table, pk, id);
+    if (!belongs(before, parentId)) throw new AppError("NOT_FOUND", `${label} not found`, 404);
+    if (!isDocument) throw new AppError("NOT_DOCUMENT", "Only documents can be verified", 422);
+    if (!before.vault_id) throw new AppError("SCAN_REQUIRED", "Attach a scan before verifying this document.", 422);
+
+    const { rows: vaultRows } = await c.query(
+      "SELECT storage_path FROM document_vault WHERE doc_id = $1",
+      [before.vault_id],
+    );
+    if (!vaultRows[0] || !vaultRows[0].storage_path || String(vaultRows[0].storage_path).startsWith("pending://")) {
+      throw new AppError("SCAN_REQUIRED", "The attached scan is not ready yet.", 422);
+    }
+
+    await c.query("BEGIN");
+    try {
+      const { rows: [row] } = await c.query(
+        `UPDATE ${table}
+            SET verification_status = 'VERIFIED', scan_status = 'VERIFIED',
+                verified_by = $2, verified_at = now(), rejection_reason = NULL,
+                updated_at = now()
+          WHERE ${pk} = $1
+          RETURNING *`,
+        [id, actor.user_id || null],
+      );
+      await audit(c, {
+        actorUserId: actor.user_id || null,
+        action: `${label}.verified`,
+        moduleKey,
+        entityRef: `${label}:${id}`,
+        before,
+        after: row,
+      });
+      await c.query("COMMIT");
+      return row;
+    } catch (e) {
+      await c.query("ROLLBACK");
+      throw e;
+    }
+  }
+
   const service = {
     list: async (c, parentId, q = {}) => {
       const { limit, offset } = page(q);
@@ -75,6 +122,7 @@ function buildResource(cfg) {
       );
       return rows;
     },
+    verify,
     async create(c, { parentId, data, actor = {}, env }) {
       await assertParent(c, parentId);
       // Sensitive-field maker-checker (§8): in LIVE a bank / tax-registration
@@ -172,6 +220,8 @@ function buildResource(cfg) {
       // A governed change awaits a second authorizer — 202, not 201 (created).
       res.status(row && row.pending ? 202 : 201).json({ data: row });
     }),
+    verify: asyncHandler(async (req, res) =>
+      res.json({ data: await req.tenantDb((c) => service.verify(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
     update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.update(c, { parentId: req.params.id, id: req.params.childId, patch: req.body, actor: actorOf(req), env: req.env })) })),
     remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { parentId: req.params.id, id: req.params.childId, actor: actorOf(req) })) })),
   };
@@ -229,6 +279,7 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
       : controller.list;
     router.get(`/:id/${r.seg}`, requirePermission(moduleKey, "view"), listHandler);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
+    if (r.isDocument) router.post(`/:id/${r.seg}/:childId/verify`, requirePermission(moduleKey, "approve"), controller.verify);
     router.patch(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "edit"), validate(r.update), controller.update);
     router.delete(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "delete"), controller.remove);
   }
@@ -343,6 +394,7 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
     const viewAction = ["people", "documents"].includes(r.seg) ? "edit" : "view";
     router.get(`/:id/${r.seg}`, requirePermission(moduleKey, viewAction), controller.list);
     router.post(`/:id/${r.seg}`, requirePermission(moduleKey, "create"), validate(r.create), controller.create);
+    if (r.isDocument) router.post(`/:id/${r.seg}/:childId/verify`, requirePermission(moduleKey, "approve"), controller.verify);
     router.patch(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "edit"), validate(r.update), controller.update);
     router.delete(`/:id/${r.seg}/:childId`, requirePermission(moduleKey, "delete"), controller.remove);
   }

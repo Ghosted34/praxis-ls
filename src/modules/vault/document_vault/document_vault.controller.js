@@ -1,7 +1,37 @@
 "use strict";
+const path = require("path");
 const service = require("./document_vault.service");
 const { asyncHandler, AppError } = require("../../../utils/errors");
+
+const MIME_BY_EXT = {
+  pdf: "application/pdf",
+  png: "image/png",
+  jpg: "image/jpeg",
+  jpeg: "image/jpeg",
+  webp: "image/webp",
+  txt: "text/plain",
+  csv: "text/csv",
+  docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+};
+const EXT_BY_MIME = Object.fromEntries(Object.entries(MIME_BY_EXT).map(([ext, mime]) => [mime, ext === "jpeg" ? "jpg" : ext]));
+
+/**
+ * Uploaded scans are not all PDFs. Vault rows keep the extension selected by
+ * the upload service in their storage key, so derive a safe response type from
+ * it. This prevents a PNG or JPEG from being sent to the browser as
+ * `application/pdf`.
+ */
+function fileMeta(doc) {
+  const pathExt = path.extname(String(doc.storage_path || "")).slice(1).toLowerCase();
+  const contentType = MIME_BY_EXT[pathExt] || "application/octet-stream";
+  const extension = EXT_BY_MIME[contentType] || pathExt || "bin";
+  const stem = String(doc.doc_type || "document").replace(/[^A-Za-z0-9_-]+/g, "_");
+  return { contentType, extension, filename: `${stem}-${doc.doc_id}.${extension}` };
+}
+
 module.exports = {
+  fileMeta,
   list: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.list(c, req.query)) })),
   get: asyncHandler(async (req, res) => {
     const r = await req.tenantDb((c) => service.get(c, req.params.id));
@@ -10,8 +40,10 @@ module.exports = {
   }),
   download: asyncHandler(async (req, res) => {
     const { doc, buffer } = await req.tenantDb((c) => service.fetchBytes(c, req.params.id));
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition", "inline; filename=\"" + (doc.doc_type || "document") + "-" + doc.doc_id + ".pdf\"");
+    const meta = fileMeta(doc);
+    res.setHeader("Content-Type", meta.contentType);
+    res.setHeader("Content-Disposition", `inline; filename="${meta.filename}"`);
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.send(buffer);
   }),
   create: asyncHandler(async (req, res) => {

@@ -59,21 +59,29 @@ export function ScanAttachment({
   labelWhenEmpty?: string;
 }) {
   const [busy, setBusy] = React.useState<"upload" | "open" | null>(null);
+  const [progress, setProgress] = React.useState<number | null>(null);
+  const [uploadSuccess, setUploadSuccess] = React.useState(false);
 
   async function attach(file: File | null) {
     if (!file) return;
     const problem = scanFileProblem(file);
     if (problem) return onError?.(problem);
     setBusy("upload");
+    setProgress(0);
+    setUploadSuccess(false);
     onError?.(null);
     try {
       const vaulted = await api.uploadVaultDocument({
         data_url: await readFileAsDataUrl(file),
         doc_type: docType,
         entity_ref: entityRef,
-      });
+      }, setProgress);
       await onAttached(vaulted.doc_id);
+      setProgress(100);
+      setUploadSuccess(true);
     } catch (e) {
+      setProgress(null);
+      setUploadSuccess(false);
       onError?.(errMsg(e));
     } finally {
       setBusy(null);
@@ -114,6 +122,12 @@ export function ScanAttachment({
           }}
         />
       </label>
+      {busy === "upload" && progress !== null && (
+        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+          <span className="num">{progress}%</span>
+        </span>
+      )}
+      {uploadSuccess && <span className="text-xs text-ok" role="status">✓</span>}
     </span>
   );
 }

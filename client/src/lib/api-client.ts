@@ -316,7 +316,73 @@ export async function api<T = unknown>(path: string, opts: Opts = {}): Promise<T
   return (await apiPaged<T>(path, opts)).data;
 }
 
-export const tenant = <T = unknown>(p: string, o?: Opts) => api<T>(`/tenant${p}`, o);
+/**
+ * JSON request with real browser upload progress. `fetch` deliberately does not
+ * expose upload progress, so file uploads use XHR while keeping the same auth,
+ * tenant header, response unwrapping and one-time refresh semantics as `api()`.
+ */
+export async function apiWithProgress<T = unknown>(path: string, opts: Opts = {}, onProgress?: (percent: number) => void): Promise<T> {
+  const { body, auth = true, retry = true, headers, ...rest } = opts;
+  const method = String(rest.method || "GET");
+
+  return new Promise<T>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open(method, `/api${path}`);
+    const h = new Headers(headers);
+    if (body !== undefined) h.set("Content-Type", "application/json");
+    h.set("X-Praxis-Env", tokenStore.getEnv());
+    if (auth) {
+      const t = tokenStore.getAccess();
+      if (t) h.set("Authorization", `Bearer ${t}`);
+    }
+    h.forEach((value, key) => xhr.setRequestHeader(key, value));
+
+    onProgress?.(0);
+    xhr.upload.onprogress = (event) => {
+      if (event.lengthComputable) onProgress?.(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onerror = () => {
+      reportUnreachable();
+      reject(new ApiError(NETWORK_DOWN, "Can't reach the server — you appear to be offline.", 0));
+    };
+    xhr.onabort = () => reject(new ApiError("UPLOAD_ABORTED", "The upload was cancelled.", 0));
+    xhr.onload = async () => {
+      const text = xhr.responseText || "";
+      let json: unknown = null;
+      try { json = text ? JSON.parse(text) : null; } catch { /* non-JSON response */ }
+
+      if (xhr.status === 401 && auth && retry) {
+        const ok = await tryRefresh();
+        if (ok) {
+          try {
+            resolve(await apiWithProgress<T>(path, { ...opts, retry: false }, onProgress));
+          } catch (e) {
+            reject(e);
+          }
+          return;
+        }
+        endSession();
+      }
+
+      if (xhr.status >= 200 && xhr.status < 300) {
+        reportReachable();
+        onProgress?.(100);
+        const data = (json && typeof json === "object" && "data" in json ? (json as { data: T }).data : json) as T;
+        resolve(data);
+        return;
+      }
+
+      const err = json && typeof json === "object" && "error" in json ? (json as { error?: { code?: string; message?: string; fields?: FieldErrors } }).error || {} : {};
+      reject(new ApiError(err.code || "ERROR", err.message || xhr.statusText, xhr.status, err.fields));
+    };
+
+    xhr.send(body === undefined ? undefined : JSON.stringify(body));
+  });
+}
+
+export const tenant = <T = unknown>(p: string, o?: Opts) => api<T>(`/tenant${p}`, o); 
+export const tenantWithProgress = <T = unknown>(p: string, body: unknown, onProgress: (percent: number) => void) =>
+  apiWithProgress<T>(`/tenant${p}`, { method: "POST", body }, onProgress);
 export const tenantPaged = <T = unknown>(p: string, o?: Opts) => apiPaged<T>(`/tenant${p}`, o);
 export const platform = <T = unknown>(p: string, o?: Opts) => api<T>(`/platform${p}`, o);
 

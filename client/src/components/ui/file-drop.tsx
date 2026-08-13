@@ -10,8 +10,10 @@
  * link it onto the record); this component only surfaces the picker and reflects
  * what has been chosen.
  */
+import * as React from "react";
 import { cn } from "@/lib/cn";
 import { UploadIcon } from "@/components/ui/icons";
+import { Modal } from "@/components/ui/modal";
 
 /** Compact human file size for the chosen-file chip. */
 function fileSize(bytes: number): string {
@@ -28,6 +30,8 @@ export function FileDrop({
   hint,
   error,
   disabled,
+  uploadProgress = null,
+  uploadSuccess = false,
 }: {
   /** The currently chosen file, or null. */
   file: File | null;
@@ -42,7 +46,36 @@ export function FileDrop({
   /** A validation message shown under the dropzone (e.g. too large / wrong type). */
   error?: string | null;
   disabled?: boolean;
+  /** Bytes-uploaded percentage, 0–100. */
+  uploadProgress?: number | null;
+  /** True after the server confirms the upload. */
+  uploadSuccess?: boolean;
 }) {
+  const [previewOpen, setPreviewOpen] = React.useState(false);
+  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    setPreviewOpen(false);
+    if (!file || typeof URL.createObjectURL !== "function") {
+      setPreviewUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(file);
+    setPreviewUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
+
+  const isImage = !!file && (file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name));
+  const isPdf = !!file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+  const percent = uploadProgress == null ? null : Math.max(0, Math.min(100, Math.round(uploadProgress)));
+
+  function previewBody(full = false) {
+    if (!previewUrl || !file) return null;
+    if (isImage) return <img src={previewUrl} alt={`Preview of ${file.name}`} className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
+    if (isPdf) return <iframe src={previewUrl} title={`Preview of ${file.name}`} className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
+    return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
+  }
+
   return (
     <div className="space-y-1.5">
       {label && <span className="block text-sm font-medium text-foreground">{label}</span>}
@@ -81,12 +114,40 @@ export function FileDrop({
           onChange={(e) => { const f = e.target.files?.[0] ?? null; e.target.value = ""; onPick(f); }}
         />
       </label>
+      {file && previewUrl && (
+        <div className="rounded-lg border bg-muted/20 p-2">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="micro font-medium text-foreground">Preview</span>
+            <button type="button" className="micro text-primary-ink underline" onClick={() => setPreviewOpen(true)}>
+              Expand preview
+            </button>
+          </div>
+          {previewBody()}
+        </div>
+      )}
+      {percent !== null && (
+        <div className="space-y-1" aria-live="polite">
+          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+            <span>{percent === 100 ? "Upload complete" : "Uploading…"}</span>
+            <span className="num">{percent}%</span>
+          </div>
+          <div className="h-1.5 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Upload progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={percent}>
+            <div className="h-full rounded-full bg-primary transition-[width]" style={{ width: `${percent}%` }} />
+          </div>
+        </div>
+      )}
+      {uploadSuccess && <p className="text-xs text-ok" role="status">✓ Upload successful</p>}
       {file && (
         <button type="button" className="micro text-primary-ink underline" onClick={() => onPick(null)}>
           Remove file
         </button>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
+      {previewOpen && previewUrl && file && (
+        <Modal open onClose={() => setPreviewOpen(false)} title={`Preview — ${file.name}`} size="xl">
+          {previewBody(true)}
+        </Modal>
+      )}
     </div>
   );
 }

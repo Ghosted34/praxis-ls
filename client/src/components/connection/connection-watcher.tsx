@@ -13,17 +13,19 @@
  * the specification asked for genuinely earns its place, because something DID
  * happen in the background and the user is owed an account of it.
  *
- * WHY THE TOAST DOES NOT SAY "CLICK HERE TO RELOAD". Two reasons. The cache is
- * already invalidated by the outbox flush and by TanStack's own
- * `refetchOnWindowFocus`, so the data on screen refreshes without being asked —
- * a click to do the thing that already happened is theatre. And `toast.tsx`'s
- * own guidance is explicit that a control which exists nowhere else must not
- * live in something that times out. The recovery path that DOES need a control
- * — a write the server refused — gets a persistent panel instead, below.
+ * WHY THE TOAST DOES NOT SAY "CLICK HERE TO RELOAD". Two reasons. The data on
+ * screen refreshes without being asked — this handler invalidates the whole
+ * tenant query cache on reconnect (see below), so a click to do the thing that
+ * already happened is theatre. And `toast.tsx`'s own guidance is explicit that a
+ * control which exists nowhere else must not live in something that times out.
+ * The recovery path that DOES need a control — a write the server refused — gets
+ * a persistent panel instead, below.
  */
 import * as React from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/components/ui/toast";
 import { Button } from "@/components/ui/button";
+import { TENANT_KEY } from "@/lib/query-client";
 import { onReconnect, installConnectionMonitor } from "@/lib/connection";
 import {
   discardEntry,
@@ -37,6 +39,7 @@ import {
 
 export function ConnectionWatcher() {
   const toast = useToast();
+  const queryClient = useQueryClient();
 
   // Installed here rather than in main.tsx so the listeners live and die with
   // the shell — under React StrictMode's double-mount both calls are no-ops
@@ -53,6 +56,16 @@ export function ConnectionWatcher() {
   React.useEffect(
     () =>
       onReconnect(() => {
+        // FULL RE-HYDRATE. The outbox flush below invalidates the cache only
+        // when it actually SENT something; a reconnect with nothing queued — the
+        // common read-only case, a laptop reopened on a working network — left
+        // every screen showing whatever it had when the wifi died until the next
+        // window focus happened to fire `refetchOnWindowFocus`. Invalidating the
+        // whole tenant tree here refetches every mounted screen the instant the
+        // server is back, which is what "up to date" in the toast below has to
+        // mean. Identity and session re-hydrate on the same signal (see
+        // branding-context.tsx and auth-context.tsx).
+        void queryClient.invalidateQueries({ queryKey: [TENANT_KEY] });
         // `installOutbox` also flushes on reconnect; `flushOutbox` is a no-op
         // while one is in flight, so this awaits the SAME flush rather than
         // starting a second one — it is here for the summary, not the send.
@@ -71,7 +84,7 @@ export function ConnectionWatcher() {
           }
         });
       }),
-    [toast],
+    [toast, queryClient],
   );
 
   return <RejectedChanges />;

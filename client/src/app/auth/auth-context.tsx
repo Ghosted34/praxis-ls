@@ -15,6 +15,7 @@ import * as React from "react";
 import { tenant, ApiError, tryRefresh, SESSION_ENDED_EVENT } from "@/lib/api-client";
 import { tokenStore } from "@/lib/token-store";
 import { pinStore } from "@/lib/pin-store";
+import { onReconnect, probeNow, reportUnreachable } from "@/lib/connection";
 
 export type User = {
   user_id: string;
@@ -74,9 +75,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [status, setStatus] = React.useState<AuthState["status"]>("loading");
   const [pendingToken, setPendingToken] = React.useState<string | null>(null);
 
-  // Boot: if we have a refresh token, exchange it for an access token and
-  // restore the cached user. Otherwise we're anonymous.
-  React.useEffect(() => {
+  // Read the live status without re-subscribing the reconnect handler below.
+  const statusRef = React.useRef(status);
+  statusRef.current = status;
+
+  /**
+   * Restore the session from the stored refresh token. Shared by boot and by the
+   * reconnect handler, because the offline case needs to be RE-tried, not merely
+   * survived.
+   *
+   * THE OFFLINE DISTINCTION IS THE WHOLE POINT. `tryRefresh()` collapses every
+   * failure — a rejected token AND a dead network — to `false`, and the old boot
+   * cleared the tokens either way. So a cold reload in a tunnel silently signed
+   * the user out: they lost the crafted offline page (they were "anonymous", so
+   * the login showed), and even when the wifi came back they landed on that
+   * login instead of the screen they were on. Only a REACHABLE server that
+   * rejected the token should end a session. When we cannot reach the server at
+   * all, we keep the token, restore the cached user, and let reconnect verify it.
+   */
+  const restore = React.useCallback(() => {
     if (!tokenStore.getRefresh()) {
       setStatus("anon");
       return;
@@ -87,32 +104,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // first screen requests' 401-retries would present the same token twice and
     // trip that reuse-detection, logging the user out well before the 30-min
     // idle window. Sharing the de-dupe collapses them into one rotation.
-    tryRefresh()
-      .then(async (ok) => {
-        if (ok) {
-          setUser(readUser()); // instant restore from cache (no flicker)
-          setStatus("authed");
-          // Re-resolve the tenant feature block so a platform-console toggle
-          // (ai_enabled / channels) is reflected without a full re-login.
-          try {
-            const fresh = await tenant<User>("/auth/me");
-            persistUser(fresh);
-            setUser(fresh);
-          } catch {
-            /* keep the cached user block */
-          }
-        } else {
-          tokenStore.clear();
-          persistUser(null);
-          setStatus("anon");
+    void tryRefresh().then(async (ok) => {
+      if (ok) {
+        setUser(readUser()); // instant restore from cache (no flicker)
+        setStatus("authed");
+        // Re-resolve the tenant feature block so a platform-console toggle
+        // (ai_enabled / channels) is reflected without a full re-login.
+        try {
+          const fresh = await tenant<User>("/auth/me");
+          persistUser(fresh);
+          setUser(fresh);
+        } catch {
+          /* keep the cached user block */
         }
-      })
-      .catch(() => {
+        return;
+      }
+      // Refresh failed. Was it a dead session, or a dead network? Ask the health
+      // probe (unauthenticated, touches no dependency — lib/connection.ts).
+      const reachable = await probeNow();
+      if (reachable) {
+        // The server is up and said no. Genuinely signed out.
         tokenStore.clear();
         persistUser(null);
         setStatus("anon");
-      });
+      } else {
+        // Offline. KEEP the token so reconnect can verify it, and flip the
+        // connection state so the branded offline gate + pill show. `anon`
+        // gates the user out of protected DATA until we can confirm the session,
+        // but the OfflineBootGate (app.tsx) shows the offline page over the login
+        // for as long as we are unreachable, so they never see a login they
+        // cannot use — and are returned to their screen the moment we recover.
+        reportUnreachable();
+        setUser(readUser());
+        setStatus("anon");
+      }
+    });
   }, []);
+
+  // Boot restore, once.
+  React.useEffect(() => {
+    restore();
+  }, [restore]);
+
+  // Re-verify on reconnect. If we still hold a refresh token but are not authed
+  // — the offline-hold above, or a drop that happened while signed out — the
+  // moment the server answers again is the moment to exchange the token and get
+  // the user back into the app without a manual refresh.
+  React.useEffect(
+    () =>
+      onReconnect(() => {
+        if (statusRef.current !== "authed" && tokenStore.getRefresh()) restore();
+      }),
+    [restore],
+  );
 
   function acceptTokens(r: { access_token: string; refresh_token: string; user: User }) {
     tokenStore.setAccess(r.access_token);

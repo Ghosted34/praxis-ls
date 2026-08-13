@@ -339,9 +339,14 @@ function RightDrawer({ open, onOpenChange, title, children }: {
     <RadixDialog.Root open={open} onOpenChange={onOpenChange}>
       <RadixDialog.Portal>
         <RadixDialog.Overlay className="fixed inset-0 z-50 bg-black/30 data-[state=open]:animate-fade-in" />
+        {/* Starts at `--titlebar-h`, not at 0, for the reason the Praxis drawer
+            does (see praxis-drawer.tsx): pinned to the right edge, a full-height
+            sheet puts its own close button underneath the OS caption buttons in
+            an installed window. Any right-edge sheet inherits that problem, so
+            it inherits the same one-variable answer. */}
         <RadixDialog.Content
           aria-describedby={undefined}
-          className="fixed inset-y-0 right-0 z-50 flex w-[min(560px,100vw)] flex-col border-l border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
+          className="fixed bottom-0 right-0 top-[var(--titlebar-h)] z-50 flex w-[min(560px,100vw)] flex-col border-l border-t border-border bg-card shadow-2xl outline-none data-[state=open]:animate-fade-in"
         >
           <div className="flex items-center justify-between gap-3 border-b border-border px-5 py-4">
             <RadixDialog.Title className="font-display text-base">{title}</RadixDialog.Title>

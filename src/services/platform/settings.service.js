@@ -36,6 +36,10 @@ const SPEC = {
   // exercised one of them would be the more dangerous half going unchecked.
   "alerts.default": { probe: probes.alertWebhook, cfg: (value, secret) => ({ url: secret, ...value }) },
   "alerts.page": { probe: probes.alertWebhook, cfg: (value, secret) => ({ url: secret, ...value }) },
+  // The address is in `value`, not `secret`: a webhook URL is a bearer
+  // credential and is encrypted; an address is not, and hiding it would mean
+  // nobody can see where alerts are being sent.
+  "alerts.email": { probe: probes.alertEmail, cfg: (value) => ({ to: value.to }) },
   // WS-B1 — where backups are written. The probe takes no arguments: it asks
   // the storage service what is in force and exercises THAT, so the test proves
   // the configuration the backup job will actually use rather than a copy of it

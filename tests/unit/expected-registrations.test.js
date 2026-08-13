@@ -4,13 +4,18 @@
  *  Imported by file path: the helper is a ready module in packages/shared but is
  *  not re-exported from the shared index until PR3-B wires both consumers (see
  *  the note in packages/shared/index.js and the `check:schemas` gate). */
-const { expectedRegistrations, expectedKinds } = require("../../packages/shared/data/registrations");
+const {
+  expectedRegistrations,
+  expectedKinds,
+} = require("../../packages/shared/data/registrations");
 
 const kindsOf = (list) => list.map((r) => r.kind).sort();
 
 describe("expectedRegistrations — country requirements", () => {
   it("returns NIU + RCCM for an OHADA country (CM)", () => {
-    expect(kindsOf(expectedRegistrations({ country: "CM", kind: "client" }))).toEqual(["NIU", "RCCM"]);
+    expect(
+      kindsOf(expectedRegistrations({ country: "CM", kind: "client" })),
+    ).toEqual(["NIU", "RCCM"]);
   });
 
   it("returns VAT (+ EORI) for an EU country and NOT NIU/RCCM", () => {
@@ -25,17 +30,27 @@ describe("expectedRegistrations — country requirements", () => {
   });
 
   it("returns an empty set for a country with no defined profile", () => {
-    expect(expectedRegistrations({ country: "ZW", kind: "client" })).toEqual([]);
+    expect(expectedRegistrations({ country: "ZW", kind: "client" })).toEqual(
+      [],
+    );
   });
 
   it("marks each country-sourced entry with source 'country'", () => {
-    expect(expectedRegistrations({ country: "CM", kind: "client" }).every((r) => r.source === "country")).toBe(true);
+    expect(
+      expectedRegistrations({ country: "CM", kind: "client" }).every(
+        (r) => r.source === "country",
+      ),
+    ).toBe(true);
   });
 });
 
 describe("expectedRegistrations — role/category union (§2.1: adds, never removes)", () => {
   it("adds EORI (required) for a customs-broker supplier on top of the country set", () => {
-    const cm = expectedRegistrations({ country: "CM", kind: "supplier", category: "CUSTOMS_BROKER" });
+    const cm = expectedRegistrations({
+      country: "CM",
+      kind: "supplier",
+      category: "CUSTOMS_BROKER",
+    });
     expect(kindsOf(cm)).toEqual(["EORI", "NIU", "RCCM"]);
     // The country-mandated IDs are still there and still required.
     expect(cm.find((r) => r.kind === "NIU").required).toBe(true);
@@ -44,11 +59,21 @@ describe("expectedRegistrations — role/category union (§2.1: adds, never remo
   });
 
   it("does not add customs IDs for a non-customs supplier", () => {
-    expect(expectedKinds({ country: "CM", kind: "supplier", category: "WATER_SUPPLIER" })).toEqual(["NIU", "RCCM"]);
+    expect(
+      expectedKinds({
+        country: "CM",
+        kind: "supplier",
+        category: "WATER_SUPPLIER",
+      }),
+    ).toEqual(["NIU", "RCCM"]);
   });
 
   it("an EU supplier gets EORI even without the customs-broker category, merged with the country VAT", () => {
-    const fr = expectedRegistrations({ country: "FR", kind: "supplier", category: "SERVICE_PROVIDER" });
+    const fr = expectedRegistrations({
+      country: "FR",
+      kind: "supplier",
+      category: "SERVICE_PROVIDER",
+    });
     const eori = fr.find((r) => r.kind === "EORI");
     expect(eori).toBeTruthy();
     // FR's country profile already lists EORI (optional); the EU-supplier rule
@@ -58,6 +83,15 @@ describe("expectedRegistrations — role/category union (§2.1: adds, never remo
   });
 
   it("ignores unknown extra option keys (forward-compat with the form payload)", () => {
-    expect(kindsOf(expectedRegistrations({ country: "CM", kind: "client", category: "SHIPPER", docTypes: [{ code: "OTHER" }] }))).toEqual(["NIU", "RCCM"]);
+    expect(
+      kindsOf(
+        expectedRegistrations({
+          country: "CM",
+          kind: "client",
+          category: "SHIPPER",
+          docTypes: [{ code: "OTHER" }],
+        }),
+      ),
+    ).toEqual(["NIU", "RCCM"]);
   });
 });

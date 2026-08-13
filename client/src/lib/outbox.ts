@@ -21,7 +21,7 @@
  *
  * So every entry carries an `Idempotency-Key`, generated ONCE when the write is
  * first attempted and reused on every replay, and the tenant API stores the
- * outcome against that key (`src/middleware/idempotency.js`, migration 0660).
+ * outcome against that key (`src/middleware/idempotency.js`, migration 0662).
  * A replay of a request the server already completed returns the ORIGINAL
  * response instead of doing the work again. That is what makes automatic replay
  * safe, and without it this file would have to ask the user to confirm every

@@ -14,9 +14,15 @@
  */
 "use strict";
 
-const { ImapSmtpProvider } = require("../../src/modules/mail/providers/imapSmtp.provider");
+const {
+  ImapSmtpProvider,
+} = require("../../src/modules/mail/providers/imapSmtp.provider");
 
-const HAVE_CREDS = Boolean(process.env.MAIL_TEST_EMAIL && process.env.MAIL_TEST_PASS && process.env.MAIL_TEST_IMAP_HOST);
+const HAVE_CREDS = Boolean(
+  process.env.MAIL_TEST_EMAIL &&
+  process.env.MAIL_TEST_PASS &&
+  process.env.MAIL_TEST_IMAP_HOST,
+);
 const run = HAVE_CREDS ? describe : describe.skip;
 
 run("ImapSmtpProvider (live server)", () => {
@@ -25,7 +31,8 @@ run("ImapSmtpProvider (live server)", () => {
     imap_host: process.env.MAIL_TEST_IMAP_HOST,
     imap_port: Number(process.env.MAIL_TEST_IMAP_PORT) || 993,
     imap_secure: process.env.MAIL_TEST_IMAP_SECURE !== "false",
-    smtp_host: process.env.MAIL_TEST_SMTP_HOST || process.env.MAIL_TEST_IMAP_HOST,
+    smtp_host:
+      process.env.MAIL_TEST_SMTP_HOST || process.env.MAIL_TEST_IMAP_HOST,
     smtp_port: Number(process.env.MAIL_TEST_SMTP_PORT) || 465,
     smtp_secure: process.env.MAIL_TEST_SMTP_SECURE !== "false",
     auth_user: process.env.MAIL_TEST_USER || process.env.MAIL_TEST_EMAIL,
@@ -40,16 +47,19 @@ run("ImapSmtpProvider (live server)", () => {
 
   it("sends a message to itself and fetchSince ingests it", async () => {
     const subject = `praxis-mail-test-${Date.now()}`;
-    await provider().sendEmail({ to: conn.email_address, subject, bodyText: "integration test body" });
+    await provider().sendEmail({
+      to: conn.email_address,
+      subject,
+      bodyText: "integration test body",
+    });
 
     let cursor = null;
     let found = null;
     for (let i = 0; i < 12 && !found; i += 1) {
-       
       const { messages, nextCursor } = await provider().fetchSince(cursor);
       cursor = nextCursor;
       found = messages.find((m) => m.subject === subject) || null;
-       
+
       if (!found) await new Promise((res) => setTimeout(res, 2500));
     }
     expect(found).toBeTruthy();

@@ -86,20 +86,26 @@ describe("authMiddleware (TC-C2)", () => {
 
   describe("token type — the replay regression", () => {
     it("accepts a token explicitly typed as an access token", async () => {
-      const { error, nexted } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })));
+      const { error, nexted } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })),
+      );
       expect(error).toBeNull();
       expect(nexted).toBe(true);
     });
 
     it("REFUSES a refresh token replayed as a bearer token", async () => {
-      const { error, nexted } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "refresh" })));
+      const { error, nexted } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "refresh" })),
+      );
       expect(nexted).toBe(false);
       expect(error.code).toBe("INVALID_TOKEN");
       expect(error.status).toBe(401);
     });
 
     it("REFUSES a 2FA-pending token, which would otherwise skip the second factor", async () => {
-      const { error, nexted } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "2fa_pending" })));
+      const { error, nexted } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "2fa_pending" })),
+      );
       expect(nexted).toBe(false);
       expect(error.code).toBe("INVALID_TOKEN");
     });
@@ -108,14 +114,18 @@ describe("authMiddleware (TC-C2)", () => {
       // The guard is `typ && typ !== "access"`, i.e. deny-by-default. A future
       // token type invented elsewhere is refused here without anyone
       // remembering to add it to a list.
-      const { error } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "impersonation" })));
+      const { error } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "impersonation" })),
+      );
       expect(error.code).toBe("INVALID_TOKEN");
     });
 
     it("still accepts a legacy token with no typ claim", async () => {
       // Tokens issued before `typ` existed must keep working until they expire,
       // or the fix logs out every signed-in user on deploy.
-      const { error, nexted } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id })));
+      const { error, nexted } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id })),
+      );
       expect(error).toBeNull();
       expect(nexted).toBe(true);
     });
@@ -123,7 +133,10 @@ describe("authMiddleware (TC-C2)", () => {
 
   describe("signature and expiry", () => {
     it("refuses a token signed with the wrong secret", async () => {
-      const forged = jwt.sign({ sub: ACTIVE_USER.user_id, typ: "access" }, "not-the-secret");
+      const forged = jwt.sign(
+        { sub: ACTIVE_USER.user_id, typ: "access" },
+        "not-the-secret",
+      );
       const { error } = await run(makeReq(forged));
       expect(error.code).toBe("INVALID_TOKEN");
     });
@@ -132,9 +145,13 @@ describe("authMiddleware (TC-C2)", () => {
       // The client refresh flow keys on this: TOKEN_EXPIRED means "refresh and
       // retry", INVALID_TOKEN means "the session is gone". Collapsing them
       // would either log people out early or spin on a dead token.
-      const expired = jwt.sign({ sub: ACTIVE_USER.user_id, typ: "access" }, config.JWT_ACCESS_SECRET, {
-        expiresIn: "-1s",
-      });
+      const expired = jwt.sign(
+        { sub: ACTIVE_USER.user_id, typ: "access" },
+        config.JWT_ACCESS_SECRET,
+        {
+          expiresIn: "-1s",
+        },
+      );
       const { error } = await run(makeReq(expired));
       expect(error.code).toBe("TOKEN_EXPIRED");
       expect(error.status).toBe(401);
@@ -154,7 +171,10 @@ describe("authMiddleware (TC-C2)", () => {
     });
 
     it("refuses a non-Bearer scheme", async () => {
-      const { error } = await run({ headers: { authorization: "Basic abc123" }, identityDb: (f) => f({}) });
+      const { error } = await run({
+        headers: { authorization: "Basic abc123" },
+        identityDb: (f) => f({}),
+      });
       expect(error.code).toBe("AUTH_REQUIRED");
     });
   });
@@ -162,13 +182,17 @@ describe("authMiddleware (TC-C2)", () => {
   describe("account state", () => {
     it("refuses a suspended user holding a perfectly valid token", async () => {
       mockCacheUser = { ...ACTIVE_USER, status: "SUSPENDED" };
-      const { error } = await run(makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })));
+      const { error } = await run(
+        makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" })),
+      );
       expect(error.code).toBe("USER_INACTIVE");
     });
 
     it("refuses a token whose subject no longer exists", async () => {
       mockCacheUser = null;
-      const { error } = await run(makeReq(sign({ sub: "deleted-user", typ: "access" })));
+      const { error } = await run(
+        makeReq(sign({ sub: "deleted-user", typ: "access" })),
+      );
       expect(error.code).toBe("USER_INACTIVE");
     });
   });
@@ -192,7 +216,9 @@ describe("authMiddleware (TC-C2)", () => {
     });
 
     it("carries the session id so logout can revoke without being told (SEC-C2)", async () => {
-      const req = makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access", sid: "session-42" }));
+      const req = makeReq(
+        sign({ sub: ACTIVE_USER.user_id, typ: "access", sid: "session-42" }),
+      );
       await run(req);
       expect(req.user.session_id).toBe("session-42");
     });
@@ -204,7 +230,11 @@ describe("authMiddleware (TC-C2)", () => {
     });
 
     it("never copies a password hash or secret onto req.user", async () => {
-      mockCacheUser = { ...ACTIVE_USER, password_hash: "$argon2id$leak", totp_secret_enc: "leak" };
+      mockCacheUser = {
+        ...ACTIVE_USER,
+        password_hash: "$argon2id$leak",
+        totp_secret_enc: "leak",
+      };
       const req = makeReq(sign({ sub: ACTIVE_USER.user_id, typ: "access" }));
       await run(req);
       expect(JSON.stringify(req.user)).not.toContain("leak");

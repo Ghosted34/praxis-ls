@@ -27,9 +27,16 @@
 const store = require("../../src/shared/observability/error-store");
 const reporter = require("../../src/shared/observability/error-reporter");
 const { parseStack } = require("../../src/shared/observability/stack-parse");
-const { scrub, scrubObject, luhnValid } = require("../../src/shared/observability/scrub");
+const {
+  scrub,
+  scrubObject,
+  luhnValid,
+} = require("../../src/shared/observability/scrub");
 const shareSvc = require("../../src/services/platform/error-share.service");
-const { QUERY_SCHEMAS, BODY_SCHEMAS } = require("../../src/modules/platform/errors/errors.validator");
+const {
+  QUERY_SCHEMAS,
+  BODY_SCHEMAS,
+} = require("../../src/modules/platform/errors/errors.validator");
 
 /** The store's UPSERT puts the batch count at index 16. */
 const COUNT_PARAM = 16;
@@ -60,7 +67,9 @@ describe("stack parsing — criterion #2, exact module and line", () => {
     );
 
     expect(primary.module).toBe("shipments");
-    expect(primary.file).toBe("src/modules/logistics/shipments/shipment.service.js");
+    expect(primary.file).toBe(
+      "src/modules/logistics/shipments/shipment.service.js",
+    );
     expect(primary.line).toBe(89);
     // node_modules frames are still KEPT — they are diagnostic — but flagged so
     // the drawer can fold them and so `primary` never lands inside express.
@@ -68,7 +77,9 @@ describe("stack parsing — criterion #2, exact module and line", () => {
   });
 
   it("handles Firefox/Safari fn@url stacks", () => {
-    const { primary } = parseStack("doThing@https://app.praxisls.com/assets/main-a1b2.js:12:34");
+    const { primary } = parseStack(
+      "doThing@https://app.praxisls.com/assets/main-a1b2.js:12:34",
+    );
     expect(primary).not.toBeNull();
     expect(primary.line).toBe(12);
   });
@@ -118,12 +129,42 @@ describe("stack parsing — criterion #2, exact module and line", () => {
     // matters: a function name containing parens is why the location is taken
     // from the LAST '(' rather than the first.
     const cases = [
-      ["    at fn (/app/src/modules/x/y.js:12:3)", "fn", "src/modules/x/y.js", 12],
-      ["    at async fn (/app/src/modules/x/y.js:12:3)", "fn", "src/modules/x/y.js", 12],
-      ["    at /app/src/modules/x/y.js:12:3", "(anonymous)", "src/modules/x/y.js", 12],
-      ["    at Object.<anonymous> (/app/src/a.js:1:2)", "Object.<anonymous>", "src/a.js", 1],
-      ["fn@https://app.praxisls.com/assets/main.js:12:34", "fn", "assets/main.js", 12],
-      ["@https://app.praxisls.com/assets/main.js:9:1", "(anonymous)", "assets/main.js", 9],
+      [
+        "    at fn (/app/src/modules/x/y.js:12:3)",
+        "fn",
+        "src/modules/x/y.js",
+        12,
+      ],
+      [
+        "    at async fn (/app/src/modules/x/y.js:12:3)",
+        "fn",
+        "src/modules/x/y.js",
+        12,
+      ],
+      [
+        "    at /app/src/modules/x/y.js:12:3",
+        "(anonymous)",
+        "src/modules/x/y.js",
+        12,
+      ],
+      [
+        "    at Object.<anonymous> (/app/src/a.js:1:2)",
+        "Object.<anonymous>",
+        "src/a.js",
+        1,
+      ],
+      [
+        "fn@https://app.praxisls.com/assets/main.js:12:34",
+        "fn",
+        "assets/main.js",
+        12,
+      ],
+      [
+        "@https://app.praxisls.com/assets/main.js:9:1",
+        "(anonymous)",
+        "assets/main.js",
+        9,
+      ],
     ];
 
     for (const [raw, fn, file, line] of cases) {
@@ -136,8 +177,12 @@ describe("stack parsing — criterion #2, exact module and line", () => {
   });
 
   it("rejects a frame with no position rather than inventing one", () => {
-    expect(parseStack("Error: x\n    at fn (/app/src/a.js)").frames).toHaveLength(0);
-    expect(parseStack("Error: x\n    at fn (/app/src/a.js:notanumber:2)").frames).toHaveLength(0);
+    expect(
+      parseStack("Error: x\n    at fn (/app/src/a.js)").frames,
+    ).toHaveLength(0);
+    expect(
+      parseStack("Error: x\n    at fn (/app/src/a.js:notanumber:2)").frames,
+    ).toHaveLength(0);
   });
 });
 
@@ -258,45 +303,61 @@ describe("error-store — coalescing", () => {
     it("names the feature from the chunk, hash stripped", async () => {
       // The bounded {6,12} + `$` is what stops the hash's own hyphen
       // (`Cn8-yJdR`) swallowing `-data-page` with it.
-      expect(await moduleFor({
-        origin: "browser",
-        route: "/master/suppliers",
-        stack: "E\n    at Dt (https://x/assets/master-data-page-Cn8-yJdR.js:1:1)",
-      })).toBe("master-data-page");
+      expect(
+        await moduleFor({
+          origin: "browser",
+          route: "/master/suppliers",
+          stack:
+            "E\n    at Dt (https://x/assets/master-data-page-Cn8-yJdR.js:1:1)",
+        }),
+      ).toBe("master-data-page");
     });
 
     it("prefers the route over a generic chunk name", async () => {
       // "vendor" is true and useless: an exception inside React internals is
       // ABOUT the page that rendered them.
-      expect(await moduleFor({
-        origin: "browser",
-        route: "/master/clients",
-        stack: "E\n    at Vp (https://x/assets/vendor-Dx6jc4-T.js:38:1)",
-      })).toBe("master");
+      expect(
+        await moduleFor({
+          origin: "browser",
+          route: "/master/clients",
+          stack: "E\n    at Vp (https://x/assets/vendor-Dx6jc4-T.js:38:1)",
+        }),
+      ).toBe("master");
     });
 
     it("falls back to the route when there are no frames at all", async () => {
       // A failed ServiceWorker update parses to zero frames — "No parsed frames
       // for this error" in the drawer — and still has a route.
-      expect(await moduleFor({ origin: "browser", route: "/master/clients", stack: null })).toBe("master");
+      expect(
+        await moduleFor({
+          origin: "browser",
+          route: "/master/clients",
+          stack: null,
+        }),
+      ).toBe("master");
     });
 
     it("does NOT override a source-mapped stack", async () => {
       // Shipping source maps must make attribution better, not worse: a real
       // `src/...` path is what moduleOf is for.
-      expect(await moduleFor({
-        origin: "browser",
-        route: "/master/x",
-        stack: "E\n    at f (/app/src/features/masterdata/party-360.tsx:12:3)",
-      })).toBe("masterdata");
+      expect(
+        await moduleFor({
+          origin: "browser",
+          route: "/master/x",
+          stack:
+            "E\n    at f (/app/src/features/masterdata/party-360.tsx:12:3)",
+        }),
+      ).toBe("masterdata");
     });
 
     it("leaves server errors alone", async () => {
-      expect(await moduleFor({
-        origin: "server",
-        route: "GET /api/x",
-        stack: "E\n    at f (/app/src/modules/logistics/shipments/a.js:1:1)",
-      })).toBe("shipments");
+      expect(
+        await moduleFor({
+          origin: "server",
+          route: "GET /api/x",
+          stack: "E\n    at f (/app/src/modules/logistics/shipments/a.js:1:1)",
+        }),
+      ).toBe("shipments");
     });
 
     it("returns null rather than guessing when there is nothing to go on", async () => {
@@ -327,7 +388,9 @@ describe("error-store — coalescing", () => {
     await store.flush();
 
     expect(rows).toHaveLength(3);
-    const byTenant = Object.fromEntries(rows.map((r) => [String(r[0]), r[COUNT_PARAM]]));
+    const byTenant = Object.fromEntries(
+      rows.map((r) => [String(r[0]), r[COUNT_PARAM]]),
+    );
     expect(byTenant).toEqual({ smartls: 2, acme: 1, null: 1 });
   });
 
@@ -368,7 +431,9 @@ describe("the invariant — notification is deduped, counting is not", () => {
     const err = new Error("same");
     err.stack = "Error: same\n    at f (/app/src/modules/x/y.js:1:1)";
 
-    const results = await Promise.all(Array.from({ length: 50 }, () => reporter.report(err)));
+    const results = await Promise.all(
+      Array.from({ length: 50 }, () => reporter.report(err)),
+    );
     await store.flush();
 
     expect(results.filter((r) => r.reason === "deduped")).toHaveLength(49);
@@ -380,7 +445,9 @@ describe("the invariant — notification is deduped, counting is not", () => {
 // ───────────────────────────────────────────────────────────────────────────
 describe("scrubbing — spec §11, no PII in storage", () => {
   it("redacts an email but keeps the shape of the message", () => {
-    const out = scrub('duplicate key value violates unique constraint "user_email_key" Key (email)=(marie@client.cm) already exists.');
+    const out = scrub(
+      'duplicate key value violates unique constraint "user_email_key" Key (email)=(marie@client.cm) already exists.',
+    );
     expect(out).not.toContain("marie@client.cm");
     expect(out).toContain("<email>");
     // The diagnostic half must survive, or the feed is unusable and gets ignored.
@@ -396,27 +463,36 @@ describe("scrubbing — spec §11, no PII in storage", () => {
     // allow-list recognises, so the example stays readable without punching a
     // hole in the scanner. Widening the scanner instead would be the wrong fix:
     // "every entry is a hole", per its own comment.
-    const out = scrub("connect ECONNREFUSED postgres://user:pass@10.0.0.4:5432/tenant_x");
+    const out = scrub(
+      "connect ECONNREFUSED postgres://user:pass@10.0.0.4:5432/tenant_x",
+    );
     expect(out).toContain("<credentials>@10.0.0.4:5432/tenant_x");
     expect(out).not.toContain("user:pass");
   });
 
   it("redacts bearer tokens and JWTs", () => {
-    expect(scrub("401 (Authorization: Bearer abcdef0123456789abcdef)")).toContain("Bearer <token>");
     expect(
-      scrub("rejected eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
+      scrub("401 (Authorization: Bearer abcdef0123456789abcdef)"),
+    ).toContain("Bearer <token>");
+    expect(
+      scrub(
+        "rejected eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
+      ),
     ).toContain("<jwt>");
   });
 
   it("redacts the key names the logger already treats as sensitive", () => {
-    expect(scrub('failed with {"password":"hunter2","api_key":"live_9f8e7d"}')).not.toContain("hunter2");
+    expect(
+      scrub('failed with {"password":"hunter2","api_key":"live_9f8e7d"}'),
+    ).not.toContain("hunter2");
     expect(scrub("?refresh_token=abcdefghijkl&page=2")).toContain("<redacted>");
     // The rest of the query string is untouched — it is how you reproduce the bug.
     expect(scrub("?refresh_token=abcdefghijkl&page=2")).toContain("page=2");
   });
 
   it("leaves file paths, line numbers and uuids alone", () => {
-    const stack = "at createShipment (/app/src/modules/logistics/shipment.service.js:89:14)";
+    const stack =
+      "at createShipment (/app/src/modules/logistics/shipment.service.js:89:14)";
     expect(scrub(stack)).toBe(stack);
     const msg = "shipment 41f2c0de-1111-2222-3333-444455556666 not found";
     expect(scrub(msg)).toBe(msg);
@@ -437,7 +513,11 @@ describe("scrubbing — spec §11, no PII in storage", () => {
   });
 
   it("walks nested objects for the reporter's extra payload", () => {
-    const out = scrubObject({ url: "https://app/x?token=abcdefghijkl", nested: { who: "paul@client.cm" }, n: 3 });
+    const out = scrubObject({
+      url: "https://app/x?token=abcdefghijkl",
+      nested: { who: "paul@client.cm" },
+      n: 3,
+    });
     expect(out.url).toContain("<redacted>");
     expect(out.nested.who).toBe("<email>");
     expect(out.n).toBe(3);
@@ -450,8 +530,19 @@ describe("scrubbing — spec §11, no PII in storage", () => {
     const b = new Error("no user paul@client.cm");
     a.stack = "Error\n    at f (/app/src/x.js:1:1)";
     b.stack = "Error\n    at f (/app/src/x.js:1:1)";
-    expect(reporter.fingerprint({ name: "Error", message: scrub(a.message), stack: a.stack }))
-      .toBe(reporter.fingerprint({ name: "Error", message: scrub(b.message), stack: b.stack }));
+    expect(
+      reporter.fingerprint({
+        name: "Error",
+        message: scrub(a.message),
+        stack: a.stack,
+      }),
+    ).toBe(
+      reporter.fingerprint({
+        name: "Error",
+        message: scrub(b.message),
+        stack: b.stack,
+      }),
+    );
   });
 
   it("scrubs before the error reaches the store", async () => {
@@ -463,7 +554,9 @@ describe("scrubbing — spec §11, no PII in storage", () => {
     });
     reporter.__reset();
 
-    await reporter.report(new Error("login failed for accountant@tenant.cm"), { route: "POST /auth?token=abcdefghijkl" });
+    await reporter.report(new Error("login failed for accountant@tenant.cm"), {
+      route: "POST /auth?token=abcdefghijkl",
+    });
     await store.flush();
 
     const message = rows[0][4];
@@ -510,14 +603,16 @@ describe("escalation — the delay clock", () => {
    */
   function fakeDb(log) {
     return async (sql, params) => {
-      if (/^\s*SELECT .*FROM platform\.error_escalation_rule/s.test(sql)) return { rows: [RULE] };
+      if (/^\s*SELECT .*FROM platform\.error_escalation_rule/s.test(sql))
+        return { rows: [RULE] };
       if (/FROM platform\.error_event/s.test(sql)) return { rows: log.matches };
 
       if (/INSERT INTO platform\.error_escalation_log/s.test(sql)) {
         log.rows.push({
           rule_id: params[0],
           signature: params[2],
-          pending: String(params[3] || "").includes("pending") || /pending/.test(sql),
+          pending:
+            String(params[3] || "").includes("pending") || /pending/.test(sql),
           triggered_at: log.now(),
         });
         return { rows: [] };
@@ -534,12 +629,19 @@ describe("escalation — the delay clock", () => {
           : log.rows.filter((r) => !(r.pending && r.signature === arg));
         return { rowCount: 0, rows: [] };
       }
-      if (/SELECT triggered_at FROM platform\.error_escalation_log/s.test(sql)) {
+      if (
+        /SELECT triggered_at FROM platform\.error_escalation_log/s.test(sql)
+      ) {
         const r = log.rows.find((x) => x.pending && x.signature === params[1]);
         return { rows: r ? [{ triggered_at: r.triggered_at }] : [] };
       }
       if (/SELECT 1 FROM platform\.error_escalation_log/s.test(sql)) {
-        return { rows: log.rows.filter((x) => !x.pending && x.signature === params[1]).slice(0, 1).map(() => ({})) };
+        return {
+          rows: log.rows
+            .filter((x) => !x.pending && x.signature === params[1])
+            .slice(0, 1)
+            .map(() => ({})),
+        };
       }
       return { rows: [] };
     };
@@ -547,13 +649,19 @@ describe("escalation — the delay clock", () => {
 
   function loadService(log) {
     jest.resetModules();
-    jest.doMock("../../src/services/platform/db", () => ({ query: fakeDb(log) }));
+    jest.doMock("../../src/services/platform/db", () => ({
+      query: fakeDb(log),
+    }));
 
     return require("../../src/services/platform/error-escalation.service");
   }
 
   it("arms on the first sweep instead of notifying", async () => {
-    const log = { rows: [], matches: [MATCH], now: () => new Date().toISOString() };
+    const log = {
+      rows: [],
+      matches: [MATCH],
+      now: () => new Date().toISOString(),
+    };
     const svc = loadService(log);
 
     const out = await svc.evaluate();
@@ -565,7 +673,14 @@ describe("escalation — the delay clock", () => {
   it("delivers once the delay has elapsed", async () => {
     const armedAt = new Date(Date.now() - 11 * 60_000).toISOString();
     const log = {
-      rows: [{ rule_id: "r-1", signature: "sig-1", pending: true, triggered_at: armedAt }],
+      rows: [
+        {
+          rule_id: "r-1",
+          signature: "sig-1",
+          pending: true,
+          triggered_at: armedAt,
+        },
+      ],
       matches: [MATCH],
       now: () => new Date().toISOString(),
     };
@@ -580,7 +695,14 @@ describe("escalation — the delay clock", () => {
   it("does not deliver while the delay is still running", async () => {
     const armedAt = new Date(Date.now() - 2 * 60_000).toISOString();
     const log = {
-      rows: [{ rule_id: "r-1", signature: "sig-1", pending: true, triggered_at: armedAt }],
+      rows: [
+        {
+          rule_id: "r-1",
+          signature: "sig-1",
+          pending: true,
+          triggered_at: armedAt,
+        },
+      ],
       matches: [MATCH],
       now: () => new Date().toISOString(),
     };
@@ -592,7 +714,14 @@ describe("escalation — the delay clock", () => {
   it("forgets the armed clock when the condition clears — a blip pages nobody", async () => {
     const armedAt = new Date(Date.now() - 2 * 60_000).toISOString();
     const log = {
-      rows: [{ rule_id: "r-1", signature: "sig-1", pending: true, triggered_at: armedAt }],
+      rows: [
+        {
+          rule_id: "r-1",
+          signature: "sig-1",
+          pending: true,
+          triggered_at: armedAt,
+        },
+      ],
       matches: [], // recovered
       now: () => new Date().toISOString(),
     };
@@ -604,7 +733,11 @@ describe("escalation — the delay clock", () => {
   });
 
   it("a zero-delay rule still fires on the first sweep", async () => {
-    const log = { rows: [], matches: [MATCH], now: () => new Date().toISOString() };
+    const log = {
+      rows: [],
+      matches: [MATCH],
+      now: () => new Date().toISOString(),
+    };
     jest.resetModules();
     jest.doMock("../../src/services/platform/db", () => ({
       query: async (sql, params) => {
@@ -643,7 +776,15 @@ describe("share templates — Appendix B, field for field", () => {
 
   it("renders every WhatsApp field the spec names", () => {
     const t = shareSvc.build(ROW, { baseUrl: "https://admin.praxisls.com" });
-    for (const marker of ["❗ Error:", "📦 Module:", "🔗 Route:", "📄 Location:", "⏱ Occurred:", "🔁 Count:", "🔗 View in Admin:"]) {
+    for (const marker of [
+      "❗ Error:",
+      "📦 Module:",
+      "🔗 Route:",
+      "📄 Location:",
+      "⏱ Occurred:",
+      "🔁 Count:",
+      "🔗 View in Admin:",
+    ]) {
       expect(t.whatsapp.text).toContain(marker);
     }
     // The spec's Appendix B writes PRAXXIS-LS (double X). That is a typo in the
@@ -667,23 +808,42 @@ describe("share templates — Appendix B, field for field", () => {
 // ───────────────────────────────────────────────────────────────────────────
 describe("validators — the edge is the only place input is trusted", () => {
   it("rejects a sort value that would reach ORDER BY", () => {
-    expect(QUERY_SCHEMAS.errorList.safeParse({ sort: "; DROP TABLE x" }).success).toBe(false);
+    expect(
+      QUERY_SCHEMAS.errorList.safeParse({ sort: "; DROP TABLE x" }).success,
+    ).toBe(false);
   });
 
   it("rejects an unknown level and an oversized limit", () => {
-    expect(QUERY_SCHEMAS.errorList.safeParse({ level: "banana" }).success).toBe(false);
-    expect(QUERY_SCHEMAS.errorList.safeParse({ limit: "5000" }).success).toBe(false);
+    expect(QUERY_SCHEMAS.errorList.safeParse({ level: "banana" }).success).toBe(
+      false,
+    );
+    expect(QUERY_SCHEMAS.errorList.safeParse({ limit: "5000" }).success).toBe(
+      false,
+    );
   });
 
   it("rejects webhook URLs that are an SSRF primitive", () => {
     // Credentials in the URL both leak and bypass filters; non-http schemes are
     // not something the escalation fetch should ever be pointed at.
-    expect(BODY_SCHEMAS.ruleCreate.safeParse({ name: "r", action_webhook_url: "https://u:p@evil/x" }).success).toBe(false);
-    expect(BODY_SCHEMAS.ruleCreate.safeParse({ name: "r", action_webhook_url: "ftp://evil/x" }).success).toBe(false);
+    expect(
+      BODY_SCHEMAS.ruleCreate.safeParse({
+        name: "r",
+        action_webhook_url: "https://u:p@evil/x",
+      }).success,
+    ).toBe(false);
+    expect(
+      BODY_SCHEMAS.ruleCreate.safeParse({
+        name: "r",
+        action_webhook_url: "ftp://evil/x",
+      }).success,
+    ).toBe(false);
   });
 
   it("accepts a tenant scope on preview so a dry-run matches what will be saved", () => {
-    const parsed = BODY_SCHEMAS.rulePreview.safeParse({ tenant: "smartlog", level_filter: ["fatal"] });
+    const parsed = BODY_SCHEMAS.rulePreview.safeParse({
+      tenant: "smartlog",
+      level_filter: ["fatal"],
+    });
     expect(parsed.success).toBe(true);
     expect(parsed.data.tenant).toBe("smartlog");
   });

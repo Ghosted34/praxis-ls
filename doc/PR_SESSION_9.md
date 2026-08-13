@@ -29,14 +29,15 @@ stream. On inspection:
 - **Security was not** — `features/security/pages.tsx` was 104 lines of `ResourceList` stubs, as its own
   header stated. It needed building.
 
-The confusion traced to `FE_IA_BUILD_MAP.md` §4 conflating *a screen exists at that route* with *the screen
-works*. That section is corrected in this PR, and now flags stubs explicitly — including **`AssetsPage`,
+The confusion traced to `FE_IA_BUILD_MAP.md` §4 conflating _a screen exists at that route_ with _the screen
+works_. That section is corrected in this PR, and now flags stubs explicitly — including **`AssetsPage`,
 still a stub inside the otherwise-built `features/finance/pages.tsx`**, which `/finance/assets` routes
 straight at. That one is in the finance owner's lane and wasn't among the four areas named.
 
 ## What's in it
 
 **Security & access — full CRUD** (`features/security/pages.tsx`, 104 → 872 lines)
+
 - **Users** — create/edit, role assignment as toggle chips, status via the separate audited
   `POST /users/:id/status`, password via `/users/:id/password`. The edit modal re-fetches `GET /users/:id`
   because the list endpoint's `SAFE_COLS` omits `role_ids`.
@@ -48,6 +49,7 @@ straight at. That one is in the finance owner's lane and wasn't among the four a
 - Dead `PermissionsPage` export dropped; `app.tsx` always used `permission-matrix-page.tsx`.
 
 **Hubs** (`features/security/hub.tsx`, `features/vault/hub.tsx`)
+
 - FinanceHub-shaped: overview landing + tab bar + section map at `/security/:section`, `/vault/:section`.
 - **Why not the shared `TabbedHub`:** it publishes its tab bar via context and expects each tab page to
   render `<HubTabs/>`. None of these eleven pages do, so adopting it meant editing all eleven or
@@ -56,6 +58,7 @@ straight at. That one is in the finance owner's lane and wasn't among the four a
   ⌘K palette and `screen-registry.json` all keep working. Nav gained two "overview" entries.
 
 **Governance** (`features/governance/pages.tsx`; `WorkflowsPage` / `ApprovalsPage` untouched)
+
 - **Audit ledger** → four segments, matching what `/audit` actually exposes: Ledger (`immutable_ledger`,
   row → before/after JSON diff), Security events (`/audit/events`), Access reviews (create → decide each
   entry approved/revoked/flagged → complete; Complete stays disabled until every entry is decided), Restore
@@ -67,6 +70,7 @@ straight at. That one is in the finance owner's lane and wasn't among the four a
   small follow-up with redirects.
 
 **Control Tower KPI drill-downs** (`features/dashboard.tsx`)
+
 - All four cards now render real records — revenue → `/final-invoices` grouped by client, SLA →
   `/operations` scored `ata ≤ eta`, overdue → the new MOD-52 endpoint, fleet → `/vehicles`. **No new
   drill-down BE.** Each fetch catches independently, so a gated module shows that card's empty state.
@@ -77,6 +81,7 @@ straight at. That one is in the finance owner's lane and wasn't among the four a
   map**, so the iframe cannot navigate to an arbitrary path.
 
 **BE — `GET /receivables/overdue`** (MOD-52, gated `accounting.core`)
+
 - Registered before `/:id`. Reuses `repo.openInvoices`, so
   `overdue.total === d1_30 + d31_60 + d61_90 + d90_plus` for the same `as_of` **by construction**.
 - Fixture check: total **1100** = ageing past-due **1100**, with the not-yet-due invoice (250) correctly
@@ -86,6 +91,7 @@ straight at. That one is in the finance owner's lane and wasn't among the four a
   payload, amounts are `outstanding`, and the card no longer depends on the `reporting` flag.
 
 **BE — campaign per-recipient merge** (MOD-22)
+
 - `{{name}}`, `{{email}}`, `{{campaign}}`, `{{year}}` rendered per subscriber in subject and body.
 - **Body values are HTML-escaped, subjects are not.** `name` comes from the public subscribe endpoint, so
   it's untrusted — without escaping, one subscriber signing up as `<script>…` lands markup in every other

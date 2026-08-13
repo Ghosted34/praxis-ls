@@ -27,17 +27,38 @@ const request = require("supertest");
 jest.mock("../../src/services/platform/health-rollup.service", () => ({
   fleetHealth: jest.fn(async () => ({ tenants: [] })),
   tenantHistory: jest.fn(async () => []),
-  collectFleetHealth: jest.fn(async () => ({ total: 2, green: 2, amber: 0, red: 0 })),
+  collectFleetHealth: jest.fn(async () => ({
+    total: 2,
+    green: 2,
+    amber: 0,
+    red: 0,
+  })),
 }));
 jest.mock("../../src/services/platform/backup.service", () => ({
-  backupStatus: jest.fn(async () => ({ rpo_hours: 24, tenants: [], stale_count: 0, never_count: 0 })),
+  backupStatus: jest.fn(async () => ({
+    rpo_hours: 24,
+    tenants: [],
+    stale_count: 0,
+    never_count: 0,
+  })),
   recentRuns: jest.fn(async () => []),
-  preflight: jest.fn(async () => ({ ok: true, pg_dump: "16.2", pg_restore: "16.2", server: "16.2", error: null })),
+  preflight: jest.fn(async () => ({
+    ok: true,
+    pg_dump: "16.2",
+    pg_restore: "16.2",
+    server: "16.2",
+    error: null,
+  })),
   backupTenant: jest.fn(async () => ({ ok: true })),
   backupFleet: jest.fn(async () => ({ total: 1, ok: 1, failed: 0 })),
 }));
 jest.mock("../../src/services/platform/restore.service", () => ({
-  recentDrills: jest.fn(async () => ({ drills: [], coverage: [], never_drilled: [], rto_target_seconds: 3600 })),
+  recentDrills: jest.fn(async () => ({
+    drills: [],
+    coverage: [],
+    never_drilled: [],
+    rto_target_seconds: 3600,
+  })),
   restoreTenant: jest.fn(async () => ({ ok: true })),
   runScheduledDrill: jest.fn(async () => ({ ok: true, slug: "acme" })),
 }));
@@ -63,7 +84,9 @@ jest.mock("../../src/services/platform/backup-storage.service", () => ({
 }));
 jest.mock("../../src/services/tenant/registry.service", () => ({
   resolveBySlug: jest.fn(async (slug) =>
-    slug === "ghost" ? null : { slug, tenant_id: "11111111-1111-4111-8111-111111111111" },
+    slug === "ghost"
+      ? null
+      : { slug, tenant_id: "11111111-1111-4111-8111-111111111111" },
   ),
 }));
 
@@ -89,7 +112,9 @@ function makeApp() {
   // Mirrors the app's error envelope closely enough to assert status codes.
   // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
-    res.status(err.status || 500).json({ error: { code: err.code, message: err.message } });
+    res
+      .status(err.status || 500)
+      .json({ error: { code: err.code, message: err.message } });
   });
   return app;
 }
@@ -130,7 +155,11 @@ describe("capability gating", () => {
     // their writes. That does not follow from being allowed to run a backup.
     await request(app)
       .post("/ops/maintenance")
-      .send({ starts_at: "2026-08-12T01:00:00Z", ends_at: "2026-08-12T03:00:00Z", title: "x" })
+      .send({
+        starts_at: "2026-08-12T01:00:00Z",
+        ends_at: "2026-08-12T03:00:00Z",
+        title: "x",
+      })
       .expect(403);
     await request(app).delete(`/ops/maintenance/${WID}`).expect(403);
     expect(maintenance.schedule).not.toHaveBeenCalled();
@@ -195,7 +224,11 @@ describe("expensive actions are detached", () => {
 
   test("fleet backup answers 202 without awaiting the dump", async () => {
     let release;
-    backup.backupFleet.mockReturnValueOnce(new Promise((r) => { release = r; }));
+    backup.backupFleet.mockReturnValueOnce(
+      new Promise((r) => {
+        release = r;
+      }),
+    );
     const res = await request(app).post("/ops/backups").expect(202);
     expect(res.body.data.accepted).toBe(true);
     // The request finished while the job is still running — the point of 202.
@@ -220,7 +253,10 @@ describe("expensive actions are detached", () => {
   test("a drill for one tenant resolves the slug and detaches", async () => {
     await request(app).post("/ops/drills/acme").send({}).expect(202);
     expect(registry.resolveBySlug).toHaveBeenCalledWith("acme");
-    expect(restore.restoreTenant).toHaveBeenCalledWith({ slug: "acme", at: null });
+    expect(restore.restoreTenant).toHaveBeenCalledWith({
+      slug: "acme",
+      at: null,
+    });
   });
 
   test("an unknown tenant is a 404 before anything is started", async () => {
@@ -252,16 +288,26 @@ describe("maintenance windows", () => {
       })
       .expect(201);
     expect(maintenance.schedule).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: TID, mode: "READ_ONLY", title: "Database upgrade" }),
+      expect.objectContaining({
+        tenantId: TID,
+        mode: "READ_ONLY",
+        title: "Database upgrade",
+      }),
     );
   });
 
   test("no slug means a deliberate fleet-wide window", async () => {
     await request(app)
       .post("/ops/maintenance")
-      .send({ starts_at: "2026-08-12T01:00:00Z", ends_at: "2026-08-12T03:00:00Z", title: "Fleet migration" })
+      .send({
+        starts_at: "2026-08-12T01:00:00Z",
+        ends_at: "2026-08-12T03:00:00Z",
+        title: "Fleet migration",
+      })
       .expect(201);
-    expect(maintenance.schedule).toHaveBeenCalledWith(expect.objectContaining({ tenantId: null }));
+    expect(maintenance.schedule).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId: null }),
+    );
   });
 
   test("an unknown slug is 404 — never a silently fleet-wide window", async () => {
@@ -281,7 +327,11 @@ describe("maintenance windows", () => {
   test("ends_at before starts_at is rejected at the edge", async () => {
     await request(app)
       .post("/ops/maintenance")
-      .send({ starts_at: "2026-08-12T03:00:00Z", ends_at: "2026-08-12T01:00:00Z", title: "backwards" })
+      .send({
+        starts_at: "2026-08-12T03:00:00Z",
+        ends_at: "2026-08-12T01:00:00Z",
+        title: "backwards",
+      })
       .expect(422);
   });
 

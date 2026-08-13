@@ -25,7 +25,10 @@
 
 const { Readable } = require("stream");
 
-jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: jest.fn() }));
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(),
+  close: jest.fn(),
+}));
 jest.mock("../../src/services/platform/backup-storage.service", () => ({
   putStream: jest.fn(),
   openStream: jest.fn(),
@@ -39,7 +42,11 @@ jest.mock("../../src/services/tenant/registry.service", () => ({
   closeAll: jest.fn(),
 }));
 jest.mock("../../src/services/tenant/db-credential.service", () => ({
-  resolveCredential: jest.fn(async () => ({ user: "praxis_acme", password: "pw", source: "vault" })),
+  resolveCredential: jest.fn(async () => ({
+    user: "praxis_acme",
+    password: "pw",
+    source: "vault",
+  })),
 }));
 jest.mock("child_process", () => ({ spawn: jest.fn() }));
 
@@ -64,7 +71,11 @@ function fakePgDump({ code = 0, stderr = "" } = {}) {
   const handlers = {};
   const child = {
     stdout,
-    stderr: { on: (e, fn) => { if (e === "data" && stderr) fn(Buffer.from(stderr)); } },
+    stderr: {
+      on: (e, fn) => {
+        if (e === "data" && stderr) fn(Buffer.from(stderr));
+      },
+    },
     on: (event, fn) => {
       handlers[event] = fn;
       if (event === "close") setImmediate(() => fn(code));
@@ -95,7 +106,9 @@ describe("backupTenant", () => {
     expect(r.bytes).toBe(16);
     expect(r.checksum).toBe("abc123");
 
-    const update = platformDb.query.mock.calls.find(([sql]) => sql.includes("UPDATE platform.backup_run"));
+    const update = platformDb.query.mock.calls.find(([sql]) =>
+      sql.includes("UPDATE platform.backup_run"),
+    );
     expect(update[1][1]).toBe("OK");
   });
 
@@ -106,20 +119,29 @@ describe("backupTenant", () => {
    * dump that nobody discovers until a restore is attempted.
    */
   test("does NOT record OK when pg_dump exits non-zero after writing bytes", async () => {
-    spawn.mockReturnValue(fakePgDump({ code: 1, stderr: "server closed the connection unexpectedly" }));
+    spawn.mockReturnValue(
+      fakePgDump({
+        code: 1,
+        stderr: "server closed the connection unexpectedly",
+      }),
+    );
     const r = await backup.backupTenant(meta());
 
     expect(r.ok).toBe(false);
     expect(r.error).toMatch(/pg_dump exited 1/);
 
-    const update = platformDb.query.mock.calls.find(([sql]) => sql.includes("UPDATE platform.backup_run"));
+    const update = platformDb.query.mock.calls.find(([sql]) =>
+      sql.includes("UPDATE platform.backup_run"),
+    );
     expect(update[1][1]).toBe("FAILED");
   });
 
   test("opens the run row as FAILED so a crash mid-dump still leaves a trace", async () => {
     spawn.mockReturnValue(fakePgDump({ code: 0 }));
     await backup.backupTenant(meta());
-    const insert = platformDb.query.mock.calls.find(([sql]) => sql.includes("INSERT INTO platform.backup_run"));
+    const insert = platformDb.query.mock.calls.find(([sql]) =>
+      sql.includes("INSERT INTO platform.backup_run"),
+    );
     expect(insert[0]).toMatch(/'FAILED'/);
   });
 
@@ -297,14 +319,22 @@ describe("backupStatus", () => {
 
   test("marks a backup older than the RPO plus grace as stale", async () => {
     const old = new Date(Date.now() - 40 * 3600 * 1000);
-    platformDb.query.mockResolvedValue({ rows: [{ slug: "old", last_ok_at: old, last_ok_bytes: 1 }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ slug: "old", last_ok_at: old, last_ok_bytes: 1 }],
+    });
     const s = await backup.backupStatus({ rpoHours: 24, graceHours: 6 });
     expect(s.tenants[0].stale).toBe(true);
   });
 
   test("a backup inside the RPO is not stale", async () => {
     platformDb.query.mockResolvedValue({
-      rows: [{ slug: "ok", last_ok_at: new Date(Date.now() - 3600 * 1000), last_ok_bytes: 1 }],
+      rows: [
+        {
+          slug: "ok",
+          last_ok_at: new Date(Date.now() - 3600 * 1000),
+          last_ok_bytes: 1,
+        },
+      ],
     });
     const s = await backup.backupStatus();
     expect(s.tenants[0].stale).toBe(false);
@@ -315,7 +345,11 @@ describe("backupStatus", () => {
 describe("restore drill safety", () => {
   test("refuses a target that is not a scratch database", async () => {
     await expect(
-      restore.restoreTenant({ slug: "acme", into: "tenant_acme", recordDrill: false }),
+      restore.restoreTenant({
+        slug: "acme",
+        into: "tenant_acme",
+        recordDrill: false,
+      }),
     ).rejects.toThrow(/not a drill database/);
   });
 
@@ -342,14 +376,20 @@ describe("restore drill safety", () => {
   });
 
   test("parses both driver location formats back to a storage key", () => {
-    expect(restore.keyFromLocation("local:pg/acme/x.dump")).toBe("pg/acme/x.dump");
-    expect(restore.keyFromLocation("s3://praxis-backups/pg/acme/x.dump")).toBe("pg/acme/x.dump");
+    expect(restore.keyFromLocation("local:pg/acme/x.dump")).toBe(
+      "pg/acme/x.dump",
+    );
+    expect(restore.keyFromLocation("s3://praxis-backups/pg/acme/x.dump")).toBe(
+      "pg/acme/x.dump",
+    );
   });
 });
 
 describe("retention", () => {
   // The real pruneRetention is under test here, so un-mock it for this block.
-  const realStore = jest.requireActual("../../src/services/platform/backup-storage.service");
+  const realStore = jest.requireActual(
+    "../../src/services/platform/backup-storage.service",
+  );
   const day = 86_400_000;
 
   /** Drive the real retention logic with injected list/remove — no bucket, no disk. */
@@ -400,7 +440,10 @@ describe("retention", () => {
     const ancientSunday = new Date("2026-01-04T00:00:00Z"); // Sunday, >12 weeks
     expect(ancientSunday.getUTCDay()).toBe(0);
 
-    const r = await prune([{ key: "pg/a/ancient.dump", modified: ancientSunday }], now);
+    const r = await prune(
+      [{ key: "pg/a/ancient.dump", modified: ancientSunday }],
+      now,
+    );
     expect(r.removed).toEqual(["pg/a/ancient.dump"]);
   });
 });

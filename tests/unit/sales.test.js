@@ -16,7 +16,12 @@ describe("Sales funnel rules (MOD-20–26)", () => {
     expect(proposal.assertTransition("DRAFT", "IN_REVIEW")).toBe(true);
     expect(proposal.assertTransition("SENT", "ACCEPTED")).toBe(true);
     expect(() => proposal.assertTransition("DRAFT", "SENT")).toThrow();
-    expect(proposal.totalHt([{ qty: 2, unit_price: 100 }, { qty: 1, unit_price: 50.5 }])).toBe(250.5);
+    expect(
+      proposal.totalHt([
+        { qty: 2, unit_price: 100 },
+        { qty: 1, unit_price: 50.5 },
+      ]),
+    ).toBe(250.5);
   });
   test("campaign lifecycle", () => {
     expect(campaign.assertTransition("DRAFT", "ACTIVE")).toBe(true);

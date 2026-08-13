@@ -22,9 +22,18 @@
  */
 
 const { diffSurface } = require("../../scripts/check-api-contract");
-const { apiVersionHeaders, deprecate, CURRENT } = require("../../src/middleware/api-version");
+const {
+  apiVersionHeaders,
+  deprecate,
+  CURRENT,
+} = require("../../src/middleware/api-version");
 
-const route = (over = {}) => ({ auth: true, rbac: true, validated: true, ...over });
+const route = (over = {}) => ({
+  auth: true,
+  rbac: true,
+  validated: true,
+  ...over,
+});
 
 /** Minimal res that records what was set. */
 function makeRes() {
@@ -46,7 +55,10 @@ describe("API contract snapshot (F-30)", () => {
     });
 
     it("FAILS when a route disappears", () => {
-      const before = { "GET /api/tenant/clients": route(), "GET /api/tenant/leads": route() };
+      const before = {
+        "GET /api/tenant/clients": route(),
+        "GET /api/tenant/leads": route(),
+      };
       const after = { "GET /api/tenant/clients": route() };
       const d = diffSurface(before, after);
       expect(d.breaking).toBe(1);
@@ -69,13 +81,23 @@ describe("API contract snapshot (F-30)", () => {
 
     it("FAILS when a route loses its validator (SEC H3)", () => {
       const before = { "PUT /api/tenant/permissions/grant": route() };
-      const after = { "PUT /api/tenant/permissions/grant": route({ validated: false }) };
-      expect(diffSurface(before, after).weakened[0]).toContain("lost validated");
+      const after = {
+        "PUT /api/tenant/permissions/grant": route({ validated: false }),
+      };
+      expect(diffSurface(before, after).weakened[0]).toContain(
+        "lost validated",
+      );
     });
 
     it("reports every lost gate on a route, not just the first", () => {
       const before = { "POST /api/tenant/x": route() };
-      const after = { "POST /api/tenant/x": route({ auth: false, rbac: false, validated: false }) };
+      const after = {
+        "POST /api/tenant/x": route({
+          auth: false,
+          rbac: false,
+          validated: false,
+        }),
+      };
       expect(diffSurface(before, after).weakened).toHaveLength(3);
     });
 
@@ -121,7 +143,11 @@ describe("API contract snapshot (F-30)", () => {
 describe("API versioning (F-18)", () => {
   it("stamps every response with the version that served it", () => {
     const res = makeRes();
-    apiVersionHeaders({ originalUrl: `/api/${CURRENT}/tenant/clients` }, res, () => {});
+    apiVersionHeaders(
+      { originalUrl: `/api/${CURRENT}/tenant/clients` },
+      res,
+      () => {},
+    );
     expect(res.headers["X-API-Version"]).toBe(CURRENT);
   });
 
@@ -140,21 +166,25 @@ describe("API versioning (F-18)", () => {
 
   it("does not mark a versioned path as legacy", () => {
     const res = makeRes();
-    apiVersionHeaders({ originalUrl: `/api/${CURRENT}/tenant/clients` }, res, () => {});
+    apiVersionHeaders(
+      { originalUrl: `/api/${CURRENT}/tenant/clients` },
+      res,
+      () => {},
+    );
     expect(res.headers["X-API-Deprecation-Notice"]).toBeUndefined();
   });
 
   describe("deprecate()", () => {
     it("emits the RFC 8594 headers", () => {
       const res = makeRes();
-      deprecate({ sunset: "2026-04-01", replacement: "/api/v1/new", reason: "Superseded." })(
-        {},
-        res,
-        () => {},
-      );
+      deprecate({
+        sunset: "2026-04-01",
+        replacement: "/api/v1/new",
+        reason: "Superseded.",
+      })({}, res, () => {});
       expect(res.headers.Deprecation).toBe("true");
       expect(res.headers.Sunset).toContain("2026");
-      expect(res.headers.Link).toBe("</api/v1/new>; rel=\"successor-version\"");
+      expect(res.headers.Link).toBe('</api/v1/new>; rel="successor-version"');
       expect(res.headers.Warning).toContain("299");
       expect(res.headers.Warning).toContain("/api/v1/new");
     });

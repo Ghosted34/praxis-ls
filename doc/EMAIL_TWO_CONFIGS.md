@@ -3,15 +3,15 @@
 There are **two separate email configurations** in Praxis. They are often
 confused; this doc exists so we never are.
 
-| | **1. System email** | **2. Mailbox (messaging)** |
-|---|---|---|
-| What it is | Transactional sender for **system** messages the product generates: OTPs, invites, password resets, invoices/receipts, document links, notifications. | Each **user's own professional mailbox** — their company-domain address — echoed into the app so they can read, reply to and send mail without leaving Praxis. |
-| Who owns the sender | The **tenant** (per-purpose `email_identity`) → falls back to a **Praxis-owned** sender. | The **individual user** (their company email + credentials). |
-| Where it lives | `email_identity` + `email.default` setting; fallback in platform `mail.fallback` / env. | `email_connection` (IMAP/SMTP or Microsoft 365 / Google OAuth). |
-| Backing module | `src/services/email.service.js` | `src/modules/mail/` (+ BullMQ sync workers, Mail UI). |
-| Send path | `email.service.send(client, { purpose: "BILLING" | "DOCUMENTS" | "NOTIFICATIONS" | "SUPPORT" })` | `mail.service.send / reply` through the provider adapter. |
-| Direction | Outbound only (to users/clients/portals). | Inbound + outbound. |
-| Configured in | Settings → per-purpose sender; **Platform Console → Integrations → System-email fallback sender** for the fallback. | Mail UI → Mailboxes (connect). |
+|                     | **1. System email**                                                                                                                                   | **2. Mailbox (messaging)**                                                                                                                                     |
+| ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| What it is          | Transactional sender for **system** messages the product generates: OTPs, invites, password resets, invoices/receipts, document links, notifications. | Each **user's own professional mailbox** — their company-domain address — echoed into the app so they can read, reply to and send mail without leaving Praxis. |
+| Who owns the sender | The **tenant** (per-purpose `email_identity`) → falls back to a **Praxis-owned** sender.                                                              | The **individual user** (their company email + credentials).                                                                                                   |
+| Where it lives      | `email_identity` + `email.default` setting; fallback in platform `mail.fallback` / env.                                                               | `email_connection` (IMAP/SMTP or Microsoft 365 / Google OAuth).                                                                                                |
+| Backing module      | `src/services/email.service.js`                                                                                                                       | `src/modules/mail/` (+ BullMQ sync workers, Mail UI).                                                                                                          |
+| Send path           | `email.service.send(client, { purpose: "BILLING"                                                                                                      | "DOCUMENTS"                                                                                                                                                    | "NOTIFICATIONS" | "SUPPORT" })` | `mail.service.send / reply` through the provider adapter. |
+| Direction           | Outbound only (to users/clients/portals).                                                                                                             | Inbound + outbound.                                                                                                                                            |
+| Configured in       | Settings → per-purpose sender; **Platform Console → Integrations → System-email fallback sender** for the fallback.                                   | Mail UI → Mailboxes (connect).                                                                                                                                 |
 
 ---
 
@@ -37,11 +37,11 @@ When the fallback is used, system emails go out from a Praxis-owned address:
 
 …sent through the deploy-wide SMTP. **That fallback is configured + live-tested
 in the Platform Console** (Integrations → System-email fallback sender), stored
-encrypted in the platform `mail.fallback` setting — *not* in env. The env vars
+encrypted in the platform `mail.fallback` setting — _not_ in env. The env vars
 (`SMTP_*`, `MAIL_DEFAULT_FROM`, `MAIL_SUPPORT_FROM`, `MAIL_FALLBACK_DOMAIN`) are
 only the last-resort defaults for a fresh deployment.
 
-> Note on DNS: for the fallback to be *deliverable* (not just sent), `praxisls.com`
+> Note on DNS: for the fallback to be _deliverable_ (not just sent), `praxisls.com`
 > itself must be properly set up with SPF/DKIM/DMARC on the deploy-wide SMTP.
 > That is a one-time Praxis-side task, not something tenants configure.
 
@@ -50,12 +50,12 @@ only the last-resort defaults for a fresh deployment.
 There is one sender that belongs to **neither** column above: alerts the platform
 sends about itself — escalation email from the Error Command Center
 (`doc/PROMPT_ErrorMonitor_Module.md` §5.3). A fatal error in the host resolver,
-the tenant registry or boot itself happens *before* any tenant is known, so there
+the tenant registry or boot itself happens _before_ any tenant is known, so there
 is no `client`, no `email_identity`, and nothing for `email.service.send()` to
 resolve a sender from.
 
 This is **not a third configuration.** `src/services/platform/mail.service.js` is
-a second *consumer* of System email's bottom tier — the same `mail.fallback`
+a second _consumer_ of System email's bottom tier — the same `mail.fallback`
 platform setting, the same `no-reply@praxisls.com`, the same deploy-wide SMTP,
 resolved by the same `mail-fallback.service`. It builds its transport by calling
 `email.service.transportFrom`, so there is exactly one nodemailer configuration

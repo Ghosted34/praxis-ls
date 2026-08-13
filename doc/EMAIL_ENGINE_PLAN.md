@@ -10,16 +10,16 @@
 
 A generic "build an email engine" roadmap assumes a greenfield MySQL app with a `company_id` multi-tenancy column, a `src/services/email/` tree, and node-cron/RabbitMQ workers. **None of that matches Praxis.**
 
-| Generic roadmap | Praxis reality | Consequence |
-|---|---|---|
-| MySQL | **PostgreSQL** (`pg`, no ORM) | SQL migrations under `migrations/tenant/`, snake_case, uuid PKs |
-| `company_id` column | **Database-per-tenant** | Email tables carry **no** tenant column |
-| `src/services/email/` | **`src/modules/<group>/<module>/`** | Email is a module; adapters under it |
-| node-cron / RabbitMQ | **BullMQ + ioredis** (`src/jobs/`) | Sync worker is a BullMQ repeatable job |
-| Build `encrypted_*` cols | **`encryption.service.js` + `integration_secret` setting section** | Secrets via the setting service |
-| Greenfield outbound | **Outbound SMTP already works** (`src/services/email.service.js`) | Wrap it behind the interface |
-| Greenfield inbound | `email_inbound` (0451) was a **stub** | Inbound intake was the real net-new work |
-| Greenfield `mail` module | A **read-only `mail` module already existed** (senders + send log) | Extend it in place |
+| Generic roadmap          | Praxis reality                                                     | Consequence                                                     |
+| ------------------------ | ------------------------------------------------------------------ | --------------------------------------------------------------- |
+| MySQL                    | **PostgreSQL** (`pg`, no ORM)                                      | SQL migrations under `migrations/tenant/`, snake_case, uuid PKs |
+| `company_id` column      | **Database-per-tenant**                                            | Email tables carry **no** tenant column                         |
+| `src/services/email/`    | **`src/modules/<group>/<module>/`**                                | Email is a module; adapters under it                            |
+| node-cron / RabbitMQ     | **BullMQ + ioredis** (`src/jobs/`)                                 | Sync worker is a BullMQ repeatable job                          |
+| Build `encrypted_*` cols | **`encryption.service.js` + `integration_secret` setting section** | Secrets via the setting service                                 |
+| Greenfield outbound      | **Outbound SMTP already works** (`src/services/email.service.js`)  | Wrap it behind the interface                                    |
+| Greenfield inbound       | `email_inbound` (0451) was a **stub**                              | Inbound intake was the real net-new work                        |
+| Greenfield `mail` module | A **read-only `mail` module already existed** (senders + send log) | Extend it in place                                              |
 
 ---
 
@@ -115,6 +115,7 @@ Secrets encrypted via `encryption.service.js` into the `integration_secret` sett
 ## 8. Phasing & status
 
 **Phase 1 — IMAP/SMTP (largely landed)**
+
 1. ✅ Migrations `0480`, `0481`, `0482`.
 2. ✅ Extended `src/modules/mail/` + `providers/provider.interface.js`.
 3. ✅ `imapSmtp.provider.js`: send (+APPEND-to-Sent), reply, fetchSince (UIDVALIDITY-safe), getMessage, markAsRead, verify.
@@ -126,6 +127,7 @@ Secrets encrypted via `encryption.service.js` into the `integration_secret` sett
 Phase 1 follow-ups: ✅ IMAP **IDLE** — opt-in low-latency worker `src/jobs/mail-idle.js` (`npm run idle`), triggers the normal sync job; polling stays as the safety net. ✅ HTML **sanitization** on ingest (`sanitize-html`, `mail.service.cleanHtml`). ✅ IMAP **autodiscover** — `src/modules/mail/autodiscover.js` + `GET /mail/autodiscover?email=` (known domains → MX inference → convention + TLS probe), wired to an "Autodiscover" button in the connect form. ✅ **Live integration test** — `tests/integration/mail-imap.test.js` (env-gated; skips without `MAIL_TEST_*` creds) exercises the real imapflow/nodemailer paths.
 
 **Phase 2 — native OAuth providers (Microsoft landed):**
+
 - ✅ `providers/microsoftGraph.provider.js` (axios, no SDK): capabilities (push/delta/server-threads, no appendSent — Graph files Sent), verify, sendEmail (draft→send), createReply (in-thread), fetchSince (**delta**, cursor `{delta_link}`), getMessage, markAsRead, subscribe/renewSubscription.
 - ✅ `providers/microsoftOAuth.js`: authorize URL, code exchange, refresh. Deploy-wide Azure app via `MS_GRAPH_*` env; per-mailbox token bundle encrypted in the tenant vault (`mail_conn:<id>`), refreshed+persisted by `mail.service.graphAccessToken`.
 - ✅ Flow: `GET /mail/oauth/microsoft/start` (authed → consent URL, signed-JWT state), `GET /mail/oauth/microsoft/callback` (pre-auth, host-resolved tenant, upserts connection + stores tokens), `POST /mail/webhook/microsoft` (pre-auth: echoes `validationToken`, else syncs by `clientState`).
@@ -140,6 +142,7 @@ Phase 1 follow-ups: ✅ IMAP **IDLE** — opt-in low-latency worker `src/jobs/ma
 **Prerequisites.** Microsoft: Azure app (Mail.ReadWrite, Mail.Send, User.Read, offline_access) → `MS_GRAPH_CLIENT_ID/SECRET` + redirect `…/api/tenant/mail/oauth/microsoft/callback` (or `MS_GRAPH_REDIRECT_URI`). Google: Google Cloud OAuth client with the Gmail API enabled (`gmail.modify` + `openid email`) → `GOOGLE_CLIENT_ID/SECRET` + redirect `…/api/tenant/mail/oauth/google/callback` (or `GOOGLE_REDIRECT_URI`).
 
 **Phase 3 — CRM intelligence (started):**
+
 - ✅ Client linking: on ingest, `mail.service.linkToClient` matches the sender against `client_master.email` (0475) and tags the message `entity_ref = client:<id>` (best-effort, never breaks sync).
 - ✅ Client mail timeline: `repo.timelineByEntity` + `service.clientTimeline` + `GET /mail/client/:id/timeline`.
 - ✅ `mail.ai.js` copilot catalogue: reads (`list_mail_connections`, `list_mail_thread`, `client_mail_timeline`) + writes (`send_mail`, `reply_mail`, both `confirm:true`, MOD-64 create). Drafting/summarizing = the copilot composing over these; surfaced only when AI is enabled (EMV). Run `scripts/ai/sync-actions.js` to publish into `ai_action_catalogue`.

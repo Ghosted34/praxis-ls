@@ -23,17 +23,39 @@
  */
 
 const CATALOGUE = [
-  { module_key: "MOD-00A", group_key: "monitor", name: "Dashboard", sort_order: 0 },
-  { module_key: "MOD-29", group_key: "fulfill", name: "Operation files", sort_order: 29 },
-  { module_key: "MOD-33", group_key: "fulfill", name: "Warehouse", sort_order: 33 },
-  { module_key: "MOD-51", group_key: "transact", name: "Invoicing", sort_order: 51 },
+  {
+    module_key: "MOD-00A",
+    group_key: "monitor",
+    name: "Dashboard",
+    sort_order: 0,
+  },
+  {
+    module_key: "MOD-29",
+    group_key: "fulfill",
+    name: "Operation files",
+    sort_order: 29,
+  },
+  {
+    module_key: "MOD-33",
+    group_key: "fulfill",
+    name: "Warehouse",
+    sort_order: 33,
+  },
+  {
+    module_key: "MOD-51",
+    group_key: "transact",
+    name: "Invoicing",
+    sort_order: 51,
+  },
   { module_key: "MOD-67", group_key: "configure", name: "IAM", sort_order: 67 },
 ];
 
 /** The same module, filed under a different verb. Everything else identical —
  *  which is precisely the edit the digest used to be blind to. */
 function regrouped(moduleKey, verb) {
-  return CATALOGUE.map((m) => (m.module_key === moduleKey ? { ...m, group_key: verb } : m));
+  return CATALOGUE.map((m) =>
+    m.module_key === moduleKey ? { ...m, group_key: verb } : m,
+  );
 }
 
 function load({ granted = [], catalogue = CATALOGUE } = {}) {
@@ -46,10 +68,15 @@ function load({ granted = [], catalogue = CATALOGUE } = {}) {
   // load and every assertion below fails for a reason unrelated to what it
   // tests.
   jest.doMock("../../src/modules/security/permission/permission.repo", () => ({
-    ...jest.requireActual("../../src/modules/security/permission/permission.repo"),
+    ...jest.requireActual(
+      "../../src/modules/security/permission/permission.repo",
+    ),
     visibleModuleKeys: async () => granted,
   }));
-  jest.doMock("../../src/shared/events/emit", () => ({ audit: jest.fn(), emit: jest.fn() }));
+  jest.doMock("../../src/shared/events/emit", () => ({
+    audit: jest.fn(),
+    emit: jest.fn(),
+  }));
   return require("../../src/modules/security/permission/permission.service");
 }
 
@@ -60,7 +87,10 @@ afterEach(() => jest.resetModules());
 describe("navAccess — the shell agrees with the enforcement path", () => {
   it("returns only the modules the caller can read", async () => {
     const svc = load({ granted: ["MOD-29", "MOD-33"] });
-    const out = await svc.navAccess(CLIENT, { user_id: "u1", role_ids: ["r1"] });
+    const out = await svc.navAccess(CLIENT, {
+      user_id: "u1",
+      role_ids: ["r1"],
+    });
     expect(out.modules).toEqual(["MOD-29", "MOD-33"]);
     expect(out.isCeo).toBe(false);
   });
@@ -105,7 +135,10 @@ describe("navAccess — the shell agrees with the enforcement path", () => {
   it("spells out which modules belong to each tab", async () => {
     const svc = load({ granted: ["MOD-29", "MOD-33", "MOD-51"] });
     const out = await svc.navAccess(CLIENT, { role_ids: ["r1"] });
-    expect(out.byGroup).toEqual({ fulfill: ["MOD-29", "MOD-33"], transact: ["MOD-51"] });
+    expect(out.byGroup).toEqual({
+      fulfill: ["MOD-29", "MOD-33"],
+      transact: ["MOD-51"],
+    });
   });
 
   it("keeps byGroup and groups describing the same set", async () => {
@@ -116,7 +149,9 @@ describe("navAccess — the shell agrees with the enforcement path", () => {
     const out = await svc.navAccess(CLIENT, { role_ids: ["r1"] });
     expect(Object.keys(out.byGroup)).toEqual(out.groups);
     expect(Object.values(out.byGroup).flat().sort()).toEqual(out.modules);
-    expect(Object.values(out.byGroup).every((keys) => keys.length > 0)).toBe(true);
+    expect(Object.values(out.byGroup).every((keys) => keys.length > 0)).toBe(
+      true,
+    );
   });
 
   it("ignores a granted key the catalogue does not know", async () => {
@@ -131,7 +166,8 @@ describe("navAccess — the shell agrees with the enforcement path", () => {
 });
 
 describe("navAccess — `version` is the client's cache key", () => {
-  const forRoles = (granted) => load({ granted }).navAccess(CLIENT, { role_ids: ["r1"] });
+  const forRoles = (granted) =>
+    load({ granted }).navAccess(CLIENT, { role_ids: ["r1"] });
 
   it("is stable across calls when nothing changed", async () => {
     expect((await forRoles(["MOD-29", "MOD-33"])).version).toBe(
@@ -148,11 +184,15 @@ describe("navAccess — `version` is the client's cache key", () => {
   });
 
   it("changes when a module is granted", async () => {
-    expect((await forRoles(["MOD-29"])).version).not.toBe((await forRoles(["MOD-29", "MOD-33"])).version);
+    expect((await forRoles(["MOD-29"])).version).not.toBe(
+      (await forRoles(["MOD-29", "MOD-33"])).version,
+    );
   });
 
   it("changes when a module is revoked", async () => {
-    expect((await forRoles(["MOD-29", "MOD-33"])).version).not.toBe((await forRoles(["MOD-29"])).version);
+    expect((await forRoles(["MOD-29", "MOD-33"])).version).not.toBe(
+      (await forRoles(["MOD-29"])).version,
+    );
   });
 
   it("distinguishes a grant from a revocation by the set, not the digest", async () => {
@@ -168,7 +208,9 @@ describe("navAccess — `version` is the client's cache key", () => {
     const gained = granted.modules.filter((m) => !before.modules.includes(m));
     expect(lost).toEqual(["MOD-33"]);
     expect(gained).toEqual(["MOD-51"]);
-    expect(before.modules.filter((m) => !granted.modules.includes(m))).toEqual([]);
+    expect(before.modules.filter((m) => !granted.modules.includes(m))).toEqual(
+      [],
+    );
   });
 
   /**
@@ -183,7 +225,10 @@ describe("navAccess — `version` is the client's cache key", () => {
    * never fires on it.
    */
   it("changes when a module is regrouped, though the module set is identical", async () => {
-    const before = await load({ granted: ["MOD-29", "MOD-33"] }).navAccess(CLIENT, { role_ids: ["r1"] });
+    const before = await load({ granted: ["MOD-29", "MOD-33"] }).navAccess(
+      CLIENT,
+      { role_ids: ["r1"] },
+    );
     const after = await load({
       granted: ["MOD-29", "MOD-33"],
       catalogue: regrouped("MOD-33", "transact"),
@@ -201,7 +246,9 @@ describe("navAccess — `version` is the client's cache key", () => {
     // The digest describes THIS caller's ribbon. A verb change on a module they
     // were never granted rearranges nothing they can see, so waking their client
     // for it would be a reload that changes nothing on screen.
-    const before = await load({ granted: ["MOD-29"] }).navAccess(CLIENT, { role_ids: ["r1"] });
+    const before = await load({ granted: ["MOD-29"] }).navAccess(CLIENT, {
+      role_ids: ["r1"],
+    });
     const after = await load({
       granted: ["MOD-29"],
       catalogue: regrouped("MOD-51", "empower"),

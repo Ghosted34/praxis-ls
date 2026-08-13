@@ -19,7 +19,11 @@ describe("lenient payload validation", () => {
   function validatePayload(schema, payload) {
     const errors = [];
     for (const req of (schema && schema.required) || []) {
-      if (payload[req] === undefined || payload[req] === null || payload[req] === "") {
+      if (
+        payload[req] === undefined ||
+        payload[req] === null ||
+        payload[req] === ""
+      ) {
         errors.push(`missing '${req}'`);
       }
     }
@@ -27,29 +31,53 @@ describe("lenient payload validation", () => {
   }
 
   test("required field missing → error", () => {
-    const schema = { required: ["client_id", "dossier_id"], properties: { client_id: { type: "string" }, dossier_id: { type: "string" } } };
-    expect(validatePayload(schema, { client_id: "abc" })).toEqual(["missing 'dossier_id'"]);
+    const schema = {
+      required: ["client_id", "dossier_id"],
+      properties: {
+        client_id: { type: "string" },
+        dossier_id: { type: "string" },
+      },
+    };
+    expect(validatePayload(schema, { client_id: "abc" })).toEqual([
+      "missing 'dossier_id'",
+    ]);
   });
 
   test("required field empty string → error", () => {
-    const schema = { required: ["name"], properties: { name: { type: "string" } } };
+    const schema = {
+      required: ["name"],
+      properties: { name: { type: "string" } },
+    };
     expect(validatePayload(schema, { name: "" })).toEqual(["missing 'name'"]);
   });
 
   test("required field null → error", () => {
-    const schema = { required: ["name"], properties: { name: { type: "string" } } };
+    const schema = {
+      required: ["name"],
+      properties: { name: { type: "string" } },
+    };
     expect(validatePayload(schema, { name: null })).toEqual(["missing 'name'"]);
   });
 
   test("unknown fields pass through (field confusion fix)", () => {
-    const schema = { required: ["client_id"], properties: { client_id: { type: "string" } } };
+    const schema = {
+      required: ["client_id"],
+      properties: { client_id: { type: "string" } },
+    };
     // The model sent client_name alongside client_id — old validator rejected this.
-    expect(validatePayload(schema, { client_id: "abc", client_name: "SODECOTON" })).toEqual([]);
+    expect(
+      validatePayload(schema, { client_id: "abc", client_name: "SODECOTON" }),
+    ).toEqual([]);
   });
 
   test("all required fields present → no errors", () => {
-    const schema = { required: ["client_id", "amount"], properties: { client_id: { type: "string" }, amount: { type: "number" } } };
-    expect(validatePayload(schema, { client_id: "abc", amount: 50000 })).toEqual([]);
+    const schema = {
+      required: ["client_id", "amount"],
+      properties: { client_id: { type: "string" }, amount: { type: "number" } },
+    };
+    expect(
+      validatePayload(schema, { client_id: "abc", amount: 50000 }),
+    ).toEqual([]);
   });
 
   test("no schema → no errors (fail open when schema absent)", () => {
@@ -71,14 +99,17 @@ describe("SSE event parsing (client-side)", () => {
         if (!trimmed.startsWith("data:")) continue;
         try {
           events.push(JSON.parse(trimmed.slice(5).trim()));
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
     }
     return events;
   }
 
   test("parses delta events", () => {
-    const raw = 'data: {"type":"delta","text":"Hello "}\n\ndata: {"type":"delta","text":"world"}\n\n';
+    const raw =
+      'data: {"type":"delta","text":"Hello "}\n\ndata: {"type":"delta","text":"world"}\n\n';
     const events = parseSSE(raw);
     expect(events).toHaveLength(2);
     expect(events[0].text).toBe("Hello ");
@@ -86,13 +117,14 @@ describe("SSE event parsing (client-side)", () => {
   });
 
   test("parses mixed event types", () => {
-    const raw = [
-      'data: {"type":"delta","text":"The total is "}',
-      'data: {"type":"delta","text":"50,000 XAF."}',
-      'data: {"type":"answer","text":"The total is 50,000 XAF."}',
-      'data: {"type":"actions","actions":[],"batch_id":null}',
-      'data: {"type":"done","conversation_id":"abc-123"}',
-    ].join("\n\n") + "\n\n";
+    const raw =
+      [
+        'data: {"type":"delta","text":"The total is "}',
+        'data: {"type":"delta","text":"50,000 XAF."}',
+        'data: {"type":"answer","text":"The total is 50,000 XAF."}',
+        'data: {"type":"actions","actions":[],"batch_id":null}',
+        'data: {"type":"done","conversation_id":"abc-123"}',
+      ].join("\n\n") + "\n\n";
     const events = parseSSE(raw);
     expect(events).toHaveLength(5);
     expect(events[2].type).toBe("answer");
@@ -100,7 +132,8 @@ describe("SSE event parsing (client-side)", () => {
   });
 
   test("ignores heartbeats and comments", () => {
-    const raw = ': heartbeat\n\ndata: {"type":"delta","text":"ok"}\n\n: heartbeat\n\n';
+    const raw =
+      ': heartbeat\n\ndata: {"type":"delta","text":"ok"}\n\n: heartbeat\n\n';
     const events = parseSSE(raw);
     expect(events).toHaveLength(1);
     expect(events[0].text).toBe("ok");
@@ -126,12 +159,25 @@ describe("recent patterns for self-learning", () => {
 
   test("patterns produce a structured block", () => {
     const patterns = [
-      { action: "create_client", fields: ["name", "niu", "payment_terms_days"], ref: "client:c1" },
-      { action: "open_dossier", fields: ["client_id", "pol", "pod"], ref: "dossier:SBX-001" },
+      {
+        action: "create_client",
+        fields: ["name", "niu", "payment_terms_days"],
+        ref: "client:c1",
+      },
+      {
+        action: "open_dossier",
+        fields: ["client_id", "pol", "pod"],
+        ref: "dossier:SBX-001",
+      },
     ];
     const block = patterns.length
       ? "\n\nPATTERNS YOU HAVE SUCCESSFULLY EXECUTED:\n" +
-        patterns.map((p, i) => `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")} (${p.ref})`).join("\n")
+        patterns
+          .map(
+            (p, i) =>
+              `  ${i + 1}. ${p.action} → fields: ${p.fields.join(", ")} (${p.ref})`,
+          )
+          .join("\n")
       : "";
     expect(block).toContain("create_client");
     expect(block).toContain("open_dossier");

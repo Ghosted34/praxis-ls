@@ -111,24 +111,29 @@ jobs:
           echo "$SHA arrived via pull request. Proceeding."
 
       - name: Rolling deploy over SSH
-        uses: appleboy/ssh-action@v1.2.0
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          command_timeout: 30m
-          # TC-D7 / TC-R3. `DEPLOY_REF` pins the commit; blank means current main.
-          #
-          # On the AUTOMATIC path it is `workflow_run.head_sha` — the exact commit
-          # whose CI turned green. Previously the server pulled whatever `main`
-          # was when the script happened to run, so with two pushes in quick
-          # succession the deployed SHA could differ from the tested one, and
-          # nothing recorded either. Now the thing that was tested is the thing
-          # that ships, by name.
-          envs: DEPLOY_REF
-          script: |
-            set -e
-            cd ~/praxis-ls
-            bash scripts/deploy.sh
+        # NATIVE ssh — no runtime binary download. appleboy/ssh-action fetches a
+        # `drone-ssh` binary from the GitHub releases CDN on every run; on
+        # 2026-08-12 that download returned 503 repeatedly and the deploy failed
+        # before it ever reached the host. This uses the ssh client preinstalled
+        # on the runner, so a GitHub CDN blip can no longer fail the deploy.
         env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          # TC-D7 / TC-R3. DEPLOY_REF pins the commit; blank means current main.
+          # Automatic path = the exact commit whose CI turned green, so the thing
+          # that was tested is the thing that ships, by name.
           DEPLOY_REF: ${{ github.event.inputs.ref || github.event.workflow_run.head_sha || '' }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          # 30-minute cap (matches the old command_timeout). accept-new pins the
+          # host key on first contact — the same trust level the action used by
+          # default (its `fingerprint` input was blank).
+          timeout 30m ssh -i ~/.ssh/deploy_key \
+            -o StrictHostKeyChecking=accept-new \
+            -o ServerAliveInterval=30 -o ServerAliveCountMax=20 \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            "DEPLOY_REF='$DEPLOY_REF' bash -lc 'cd ~/praxis-ls && bash scripts/deploy.sh'"

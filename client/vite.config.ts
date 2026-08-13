@@ -2,7 +2,11 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "node:path";
-import { sharedAlias, SHARED_COMMONJS_INCLUDE, SHARED_OPTIMIZE_INCLUDE } from "./config/shared-alias";
+import {
+  sharedAlias,
+  SHARED_COMMONJS_INCLUDE,
+  SHARED_OPTIMIZE_INCLUDE,
+} from "./config/shared-alias";
 
 // Dev proxy: the SPA calls /api/* and Vite forwards to the Node API. `changeOrigin`
 // + the Host header rewrite make tenant resolution work locally without editing
@@ -23,7 +27,8 @@ const TENANT_HOST = process.env.VITE_TENANT_HOST || "smartls.praxisls.com";
  */
 const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client"];
 
-const inPackage = (id: string, pkg: string) => id.replace(/\\/g, "/").includes(`/node_modules/${pkg}/`);
+const inPackage = (id: string, pkg: string) =>
+  id.replace(/\\/g, "/").includes(`/node_modules/${pkg}/`);
 
 /**
  * The font library (lib/fonts.ts) dynamic-imports fifteen @fontsource families
@@ -37,7 +42,8 @@ const inPackage = (id: string, pkg: string) => id.replace(/\\/g, "/").includes(`
  * The same reasoning as ROUTE_LOCAL_VENDOR above; kept separate only because
  * this is a prefix match over a scope, not a list of package names.
  */
-const isFontPackage = (id: string) => id.replace(/\\/g, "/").includes("/node_modules/@fontsource");
+const isFontPackage = (id: string) =>
+  id.replace(/\\/g, "/").includes("/node_modules/@fontsource");
 
 export default defineConfig({
   plugins: [
@@ -74,7 +80,12 @@ export default defineConfig({
         clientsClaim: true,
         // Cache the app shell for offline; never precache the dynamic manifest.
         navigateFallback: "/index.html",
-        navigateFallbackDenylist: [/^\/api/, /^\/media/, /^\/manifest\.webmanifest$/, /^\/icons\//],
+        navigateFallbackDenylist: [
+          /^\/api/,
+          /^\/media/,
+          /^\/manifest\.webmanifest$/,
+          /^\/icons\//,
+        ],
         // woff2 is NOT precached. The glob used to include it, which was right
         // when one family was bundled and became wrong the moment fifteen were:
         // the service worker would have downloaded all 94 files — 2.8 MB — on
@@ -91,7 +102,8 @@ export default defineConfig({
         // hashed filenames make staleness impossible.
         runtimeCaching: [
           {
-            urlPattern: ({ request }: { request: Request }) => request.destination === "font",
+            urlPattern: ({ request }: { request: Request }) =>
+              request.destination === "font",
             handler: "CacheFirst",
             options: {
               cacheName: "praxis-fonts",
@@ -185,7 +197,8 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (!id.includes("node_modules")) return undefined;
-          if (ROUTE_LOCAL_VENDOR.some((pkg) => inPackage(id, pkg))) return undefined;
+          if (ROUTE_LOCAL_VENDOR.some((pkg) => inPackage(id, pkg)))
+            return undefined;
           if (isFontPackage(id)) return undefined;
           return "vendor";
         },

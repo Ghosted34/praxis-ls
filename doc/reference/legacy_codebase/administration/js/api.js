@@ -1,12 +1,13 @@
 /* api.js - shared fetch helpers */
 
 async function apiGet(url) {
-  const res = await fetch(url, { credentials: 'same-origin' });
+  const res = await fetch(url, { credentials: "same-origin" });
   const text = await res.text();
 
   let json;
-  try { json = JSON.parse(text); }
-  catch {
+  try {
+    json = JSON.parse(text);
+  } catch {
     throw new Error(`Non-JSON response from ${url}: ${text.slice(0, 200)}`);
   }
 
@@ -18,16 +19,17 @@ async function apiGet(url) {
 
 async function apiPost(url, payload) {
   const res = await fetch(url, {
-    method: 'POST',
-    credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json; charset=utf-8' },
-    body: JSON.stringify(payload || {})
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+    body: JSON.stringify(payload || {}),
   });
 
   const text = await res.text();
   let json;
-  try { json = JSON.parse(text); }
-  catch {
+  try {
+    json = JSON.parse(text);
+  } catch {
     throw new Error(`Non-JSON response from ${url}: ${text.slice(0, 200)}`);
   }
 

@@ -3,7 +3,7 @@
 Scope: audit **every** `src/**.js` file (713 total) for reachability/dead code,
 completeness against the `doc/` corpus (PRD, OHADA KB, AI architecture, RBAC
 journey, build conventions), end-to-end flow, and principle adherence. The bar:
-*if the code cannot "talk" (implement) the documented requirements, it isn't done.*
+_if the code cannot "talk" (implement) the documented requirements, it isn't done._
 
 Method: a require-graph reachability walk from the real entry points (`server.js`,
 `routes/index.js` → module-loader, `jobs/workers.js`, the AI registrar/orchestrator,
@@ -23,6 +23,7 @@ registrar, gated orchestrator, batch plans, voice/vision workers, reporting,
 pricing-variance, compliance) is real and DB-driven.
 
 **What it does NOT yet talk (must close):**
+
 1. **CRITICAL security hole** — the tenant router has no global auth; several real
    routers ship **no `authMiddleware`**, so they run unauthenticated. Worst:
    **`POST /tenant/god-mode/purge`** (CEO purge console) and `/workspace`,
@@ -62,9 +63,11 @@ will be reused (e.g. media/spreadsheet/socket/queue helpers). Nothing deleted.
 Classified below only for awareness; revisit at Phase-5 hardening.
 
 ### 1a. Foreign leftovers — safe to delete (old system; not wired, wrong domain)
+
 These are from the prior "Maroon Noir" ERP (Naira `₦`, `business` column,
 socket.io/web-push, Meta WhatsApp, sharp image pipeline) — same class as the
 Phase-0 Pixie Girl purge:
+
 - `src/services/notifications.service.js` (shared.notifications, `business`, web-push)
 - `src/services/whatsapp.service.js` (Meta WhatsApp Cloud API)
 - `src/services/geoapify.service.js` (HR clock-in geocoding)
@@ -77,12 +80,14 @@ Phase-0 Pixie Girl purge:
 - `src/middleware/audit.js` (foreign; audit is done in-service via shared/events/emit)
 
 ### 1b. Duplicates of already-wired services — safe to delete
+
 - `src/services/transcription.service.js` (dup of `services/ai/transcription.service.js`)
 - `src/services/numbering.service.js` (dup of `services/documents/numbering.service.js`)
 - `src/services/fx.service.js` (FX lives in `master/currency`)
 - `src/services/pdf.templates.js`, `src/services/pdf.tenant-docs.js` (pdf.service uses neither — verify no future need)
 
 ### 1c. Deprecated / dead stubs — delete or wire
+
 - `src/modules/ai/ai.controller.js` — explicitly `// DEPRECATED`, exports `{}`. Delete.
 - `src/modules/finance/tax_declaration/tax_declaration.repo.js` — 3-line stub; the
   service delegates to `financial_statement.repo`. Harmless; delete or fold in.
@@ -92,6 +97,7 @@ Phase-0 Pixie Girl purge:
   `.validator.js`. These are symptoms of those modules being generic stubs.
 
 ### 1d. Keep — pending wire, not dead
+
 - `src/jobs/queue.js` **and** `src/jobs/queue-producer.js` — two enqueue helpers;
   nothing enqueues yet (workers consume). Keep ONE, delete the redundant one when
   a module first enqueues (email/pdf/ai jobs).
@@ -104,26 +110,26 @@ Phase-0 Pixie Girl purge:
 
 ## 2. Completeness census (real vs generic-stub service, by group)
 
-| Group | Real | Stub | Notes |
-|-------|-----:|-----:|-------|
-| master | 10 | 0 | ✅ complete (incl. CoA, treasury, tax jurisdiction) |
-| finance | 8 | 0 | ✅ ledger/invoicing/statements/tax/receivables/debt |
-| costing | 4 | 0 | ✅ costing/tracking/regie/cash-request |
-| operations | 4 | 0 | ✅ dossier/milestone/transit/delivery |
-| procurement | 4 | 0 | ✅ PR/PO/GRN/supplier-invoice |
-| commercial | 3 | 1 | 🟡 **quotation stub** |
-| vault | 5 | 0 | ✅ vault/sig/verify/report/compliance |
-| sales | 7 | 0 | ✅ full funnel |
-| dashboard | 3 | 0 | 🟡 real but **ungated** (see §3) |
-| ai | 2 | 0 | ✅ assistant/governance |
-| catalogue, branding | 2 | 0 | ✅ |
-| **security** | **1** | **9** | 🔴 **admin surfaces generic** (P0 gap) |
-| workflow | 0 | 1 | 🔴 **config surface generic** (engine real) |
-| notification | 0 | 1 | 🟡 generic (acceptable for read/ack) |
-| smartcomm | 0 | 1 | ⬜ Phase-4 (WS pending) |
-| fleet | 4 | 3 | Phase 3 (partial) |
-| hr | 4 | 5 | Phase 3 (partial) |
-| wms | 2 | 4 | Phase 3 (partial) |
+| Group               |  Real |  Stub | Notes                                               |
+| ------------------- | ----: | ----: | --------------------------------------------------- |
+| master              |    10 |     0 | ✅ complete (incl. CoA, treasury, tax jurisdiction) |
+| finance             |     8 |     0 | ✅ ledger/invoicing/statements/tax/receivables/debt |
+| costing             |     4 |     0 | ✅ costing/tracking/regie/cash-request              |
+| operations          |     4 |     0 | ✅ dossier/milestone/transit/delivery               |
+| procurement         |     4 |     0 | ✅ PR/PO/GRN/supplier-invoice                       |
+| commercial          |     3 |     1 | 🟡 **quotation stub**                               |
+| vault               |     5 |     0 | ✅ vault/sig/verify/report/compliance               |
+| sales               |     7 |     0 | ✅ full funnel                                      |
+| dashboard           |     3 |     0 | 🟡 real but **ungated** (see §3)                    |
+| ai                  |     2 |     0 | ✅ assistant/governance                             |
+| catalogue, branding |     2 |     0 | ✅                                                  |
+| **security**        | **1** | **9** | 🔴 **admin surfaces generic** (P0 gap)              |
+| workflow            |     0 |     1 | 🔴 **config surface generic** (engine real)         |
+| notification        |     0 |     1 | 🟡 generic (acceptable for read/ack)                |
+| smartcomm           |     0 |     1 | ⬜ Phase-4 (WS pending)                             |
+| fleet               |     4 |     3 | Phase 3 (partial)                                   |
+| hr                  |     4 |     5 | Phase 3 (partial)                                   |
+| wms                 |     2 |     4 | Phase 3 (partial)                                   |
 
 Phase 0–2 + sales + AI core are real. The **P0 security admin** and **workflow
 config** stubs are the in-scope completeness gaps; hr/fleet/wms are Phase 3.
@@ -160,6 +166,7 @@ continuous. **Gap:** `quotation` is a stub, so proposal→quotation and pricing
 inputs are thin; and there is no client/investor **portal** surface yet.
 
 ## 5. Readiness caveats
+
 - No Postgres in this environment → everything verified at unit/mock/trigger-design
   level; DB triggers remain the runtime authority. A real integration run against
   a provisioned tenant is still owed.
@@ -169,6 +176,7 @@ inputs are thin; and there is no client/investor **portal** surface yet.
 ---
 
 ## 6. Prioritized close-out list (to make the code fully "talk the docs")
+
 1. **Gate the ungated routers** (God Mode CEO-only, workspace/dashboard/assistant auth). — security, do first.
 2. **Real `security` admin modules** (app_user w/ Argon2 + lifecycle, session token logic, iam_role/permission/scope/field_visibility editing, setting surface, audit_ledger read) — Phase-0 completion.
 3. **Real `workflow` config module** (create workflow/steps, level powers) over the existing executor.

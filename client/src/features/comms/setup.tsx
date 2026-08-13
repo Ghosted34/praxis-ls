@@ -1,75 +1,91 @@
 /**
- * Comms → Setup — messaging keys & channels. PER-SECTION sender identities
- * (Billing / Documents / Notifications / Support) each with their own From
- * address + SMTP, and the shared SMTP login.
- * Secrets are write-only (blank keeps current). Kit-styled; accents → --primary.
+ * Comms → Setup — messaging keys & channels.
+ *
+ * PER-SECTION sender identities are DYNAMIC: any labelled section (not a fixed
+ * four) can have its own From address + SMTP. They are listed in a TABLE with
+ * add / edit / view / archive; add and edit share one modal. Below sits the
+ * shared SMTP login. Secrets are write-only (blank keeps current).
+ * Kit-styled; accents → --primary.
  */
 import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Field } from "@/components/ui/modal";
+import { Modal, Field } from "@/components/ui/modal";
 import { ErrorState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
+import { DataList, type Column } from "@/components/data-list";
 import { useResource, errMsg } from "@/lib/use-resource";
+import { reportActionError } from "@/lib/action-error";
 import * as api from "@/lib/mail-api";
 import * as scapi from "@/lib/smartcomm-api";
 
-const PURPOSES: { key: string; label: string; blurb: string }[] = [
-  { key: "BILLING", label: "Billing", blurb: "Invoices, receipts, statements" },
-  { key: "DOCUMENTS", label: "Documents", blurb: "BLs, delivery notes, doc links" },
-  { key: "NOTIFICATIONS", label: "Notifications", blurb: "Alerts & reminders" },
-  { key: "SUPPORT", label: "Support", blurb: "Customer support replies" },
-];
+type SenderMode = "add" | "edit" | "view";
 
-/* one per-section sender card (create or edit that section's mailbox) */
-function SectionCard({ purpose, label, blurb, existing, onSaved }: { purpose: string; label: string; blurb: string; existing?: api.Sender; onSaved: () => void }) {
-  const [f, setF] = React.useState({
+/* Add / edit / view a section sender — one modal for all three (view = read-only).
+ * Save upserts by `purpose`: a new section inserts, an existing one updates.
+ * The section label can't be changed on edit (it keys the row). */
+function SenderModal({ open, mode, existing, onClose, onSaved }: {
+  open: boolean;
+  mode: SenderMode;
+  existing?: api.Sender;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const ro = mode === "view";
+  const blank = React.useCallback(() => ({
+    purpose: existing?.purpose || "",
     from_address: existing?.from_address || "", from_name: existing?.from_name || "", reply_to: existing?.reply_to || "",
     smtp_host: existing?.smtp_host || "", smtp_port: existing?.smtp_port != null ? String(existing.smtp_port) : "",
     is_active: existing?.is_active ?? true,
-  });
+  }), [existing]);
+  const [f, setF] = React.useState(blank);
+  React.useEffect(() => { setF(blank()); }, [blank, open]);
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
-  const [done, setDone] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  async function save(e: React.FormEvent) {
-    e.preventDefault(); setBusy(true); setError(null); setDone(false);
+
+  async function save() {
+    setBusy(true); setError(null);
     try {
       await api.upsertSender({
-        purpose, from_address: f.from_address, from_name: f.from_name, reply_to: f.reply_to || undefined,
+        purpose: f.purpose.trim(), from_address: f.from_address, from_name: f.from_name, reply_to: f.reply_to || undefined,
         smtp_host: f.smtp_host || undefined, smtp_port: f.smtp_port === "" ? undefined : Number(f.smtp_port), is_active: f.is_active,
       });
-      setDone(true); onSaved();
+      onSaved(); onClose();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
+
+  const title = mode === "add" ? "Add section sender" : mode === "edit" ? `Edit — ${existing?.purpose}` : `Sender — ${existing?.purpose}`;
+  const canSave = !ro && !!f.purpose.trim() && !!f.from_address && !!f.from_name;
+
   return (
-    <form onSubmit={save} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-      <div className="mb-3 flex items-center justify-between">
-        <div>
-          <h3 className="font-display text-base">{label}</h3>
-          <p className="micro">{blurb}</p>
-        </div>
-        <Pill tone={existing ? (existing.is_active ? "ok" : "mute") : "warn"}>{existing ? (existing.is_active ? "Active" : "Off") : "Not set"}</Pill>
-      </div>
+    <Modal open={open} onClose={onClose} title={title}
+      footer={ro
+        ? <Button size="sm" variant="outline" onClick={onClose}>Close</Button>
+        : <><Button size="sm" variant="outline" onClick={onClose}>Cancel</Button><Button size="sm" loading={busy} disabled={busy || !canSave} onClick={save}>Save</Button></>}>
       <div className="grid gap-3 sm:grid-cols-2">
-        <Field label="From address" required><Input value={f.from_address} onChange={(e) => set("from_address", e.target.value)} placeholder={`${purpose.toLowerCase()}@yourco.cm`} /></Field>
-        <Field label="From name" required><Input value={f.from_name} onChange={(e) => set("from_name", e.target.value)} placeholder={`YourCo ${label}`} /></Field>
-        <Field label="Reply-to"><Input value={f.reply_to} onChange={(e) => set("reply_to", e.target.value)} placeholder="optional" /></Field>
+        <Field label="Section" required hint={mode === "edit" ? "The section can't be renamed here." : "e.g. Billing, Documents, Ops"}>
+          <Input value={f.purpose} disabled={ro || mode === "edit"} onChange={(e) => set("purpose", e.target.value)} placeholder="Billing" />
+        </Field>
+        <Field label="Status">
+          <label className="flex h-9 items-center gap-2 text-sm"><input type="checkbox" checked={f.is_active} disabled={ro} onChange={(e) => set("is_active", e.target.checked)} /> Active</label>
+        </Field>
+        <Field label="From address" required><Input value={f.from_address} disabled={ro} onChange={(e) => set("from_address", e.target.value)} placeholder="billing@yourco.cm" /></Field>
+        <Field label="From name" required><Input value={f.from_name} disabled={ro} onChange={(e) => set("from_name", e.target.value)} placeholder="YourCo Billing" /></Field>
+        <Field label="Reply-to"><Input value={f.reply_to} disabled={ro} onChange={(e) => set("reply_to", e.target.value)} placeholder="optional" /></Field>
         <div />
-        <Field label="SMTP host"><Input value={f.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.provider.com" /></Field>
-        <Field label="SMTP port"><Input type="number" className="num" value={f.smtp_port} onChange={(e) => set("smtp_port", e.target.value)} placeholder="587" /></Field>
+        <Field label="SMTP host"><Input value={f.smtp_host} disabled={ro} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.provider.com" /></Field>
+        <Field label="SMTP port"><Input type="number" className="num" value={f.smtp_port} disabled={ro} onChange={(e) => set("smtp_port", e.target.value)} placeholder="587" /></Field>
       </div>
-      <div className="mt-3 flex items-center justify-between">
-        <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.is_active} onChange={(e) => set("is_active", e.target.checked)} /> Active</label>
-        <div className="flex items-center gap-3">
-          {done && <span className="micro text-[rgb(var(--ok))]">✓ Saved</span>}
-          <Button type="submit" size="sm" loading={busy} disabled={busy || !f.from_address || !f.from_name}>Save</Button>
-        </div>
-      </div>
+      {ro && (
+        <p className="mt-3 rounded-lg border border-border bg-muted/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
+          SMTP password: <span className="num">••••••••</span> — a shared login, set (masked) under <strong>Credentials</strong> below, not per sender.
+        </p>
+      )}
       {error && <div className="mt-2"><ErrorState message={error} /></div>}
-    </form>
+    </Modal>
   );
 }
 
@@ -104,11 +120,11 @@ function ChannelConfig() {
     <>
       <form onSubmit={saveEm} className="rounded-2xl border border-border bg-card p-5 shadow-sm">
         <div className="mb-3 flex items-center justify-between">
-          <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Transport for system emails (OTP, invoices, notifications) sent from the sender cards above. Password encrypted.</p></div>
+          <div><h3 className="font-display text-base">Shared SMTP login</h3><p className="micro">Transport for system emails (OTP, invoices, notifications) sent from the section senders above. Password encrypted.</p></div>
           <Pill tone={em?.pass_set ? "ok" : "warn"}>{em?.pass_set ? "Password set" : "Not set"}</Pill>
         </div>
         <p className="mb-3 rounded-lg border border-border bg-muted/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
-          <strong>Two separate configs.</strong> These sender cards + the SMTP login are your <strong>system-email</strong>
+          <strong>Two separate configs.</strong> These section senders + the SMTP login are your <strong>system-email</strong>
           config — how Praxis sends OTPs, invoices and notifications. Until you add a sender here, they go out from
           a Praxis address (<span className="num">no-reply@praxisls.com</span> / <span className="num">support@praxisls.com</span>)
           via the deploy-wide fallback, so nothing fails before you set your own DNS/SMTP. Your <strong>mailbox</strong>
@@ -135,11 +151,26 @@ function ChannelConfig() {
 export function SetupPage() {
   const senders = useResource(() => api.listSenders(), []);
   const navigate = useNavigate();
-  const byPurpose = React.useMemo(() => {
-    const m: Record<string, api.Sender> = {};
-    (senders.data || []).forEach((s) => { if (!m[s.purpose]) m[s.purpose] = s; });
-    return m;
-  }, [senders.data]);
+  const [modal, setModal] = React.useState<{ mode: SenderMode; existing?: api.Sender } | null>(null);
+
+  async function archive(s: api.Sender) {
+    if (!window.confirm(`Archive the "${s.purpose}" sender? It stops being available and is hidden from this list.`)) return;
+    try { await api.archiveSender(s.email_identity_id); senders.reload(); }
+    catch (e) { reportActionError(e); }
+  }
+
+  const cols: Column<api.Sender>[] = [
+    { key: "section", label: "Section", render: (s) => <span className="font-medium text-foreground">{s.purpose}</span> },
+    { key: "from", label: "From", render: (s) => <div><span className="num text-foreground">{s.from_address}</span>{s.from_name ? <span className="micro block">{s.from_name}</span> : null}</div> },
+    { key: "status", label: "Status", render: (s) => <Pill tone={s.is_active ? "ok" : "mute"}>{s.is_active ? "Active" : "Off"}</Pill> },
+    { key: "actions", label: "", render: (s) => (
+      <div className="flex items-center justify-end gap-1.5">
+        <Button size="sm" variant="outline" onClick={() => setModal({ mode: "view", existing: s })}>View</Button>
+        <Button size="sm" variant="outline" onClick={() => setModal({ mode: "edit", existing: s })}>Edit</Button>
+        <Button size="sm" variant="outline" onClick={() => archive(s)}>Archive</Button>
+      </div>
+    ) },
+  ];
 
   return (
     <section className={pageShell.wide}>
@@ -152,19 +183,24 @@ export function SetupPage() {
         <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
       </div>
 
-      <h2 className="mb-2 font-display text-lg">Section senders</h2>
-      <p className="micro mb-3">Each section mails from its own verified address. Set the From identity and (optionally) a dedicated SMTP host.</p>
-      {senders.error && <ErrorState message={senders.error} />}
-      <div className="grid gap-4 lg:grid-cols-2">
-        {PURPOSES.map((p) => (
-          <SectionCard key={p.key + (byPurpose[p.key]?.email_identity_id || "")} purpose={p.key} label={p.label} blurb={p.blurb} existing={byPurpose[p.key]} onSaved={senders.reload} />
-        ))}
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <div>
+          <h2 className="font-display text-lg">Section senders</h2>
+          <p className="micro">Each section mails from its own verified address. Add as many as you need.</p>
+        </div>
+        <Button size="sm" onClick={() => setModal({ mode: "add" })}>Add sender</Button>
       </div>
+      <DataList columns={cols} rows={senders.data} error={senders.error} loading={senders.loading} rowKey={(s) => s.email_identity_id}
+        empty={{ title: "No section senders yet", hint: "Add one to send system mail from your own verified address." }} />
 
       <h2 className="mb-2 mt-8 font-display text-lg">Credentials</h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChannelConfig />
       </div>
+
+      {modal && (
+        <SenderModal open mode={modal.mode} existing={modal.existing} onClose={() => setModal(null)} onSaved={senders.reload} />
+      )}
     </section>
   );
 }

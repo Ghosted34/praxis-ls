@@ -19,7 +19,8 @@ feature `ai.assistant.backend`) is a thin, correct wrapper over the orchestrator
 Per the AI-readiness rule, **every module now ships a `<module>.ai.js` manifest**
 — 32 manifests total (15 added this sprint for the modules built in the Phase-1/2
 gap-closure). Each declares `reads` (auto-approved) and `writes` (Zod-gated + RBAC
-+ confirm), so the auto-derived tool catalogue equals app capability with no drift.
+
+- confirm), so the auto-derived tool catalogue equals app capability with no drift.
 
 ## 2. Scaffold debt cleared on entry
 
@@ -32,6 +33,7 @@ schema-per-tenant, `dossier`/`invoice`/…). They were the two modules the loade
 had been silently skipping.
 
 Actions taken:
+
 - **Removed** both foreign modules entirely.
 - **Rebuilt `ai/governance` real** against the actual `ai_*` schema: the EMV
   feature toggle (`ai_feature_flag`), per-user access grants (`ai_access_grant`),
@@ -69,10 +71,10 @@ Result: the loader now discovers and mounts **87/87** modules with zero skips;
 5. **MOD-63 Reporting & Insights** — rebuild `insights` real against Praxis LS
    tables (dossier P&L, receivables ageing, procurement spend, cash position),
    with chat-on-dashboards.
-5. **MOD-27 Pricing Variance Index** — the Sales-facing R/Y/G view over
+6. **MOD-27 Pricing Variance Index** — the Sales-facing R/Y/G view over
    `pricing_variance` (quote vs actual cost; never exposes raw cost to Sales).
-6. **MOD-65 Compliance Checker** — proof-required rules over `cost_entry`/vault.
-7. **Portals + Smart Comms** — Client Portal (↔ dossier), Investor/Board terminal
+7. **MOD-65 Compliance Checker** — proof-required rules over `cost_entry`/vault.
+8. **Portals + Smart Comms** — Client Portal (↔ dossier), Investor/Board terminal
    (↔ statements), Audit data room (↔ vault); WebSocket messaging + certified
    export.
 

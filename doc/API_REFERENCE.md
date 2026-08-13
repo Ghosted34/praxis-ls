@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 984 |
+| Routes | 996 |
 | Modules mounted | 109 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 984 mounted routes, grouped by path prefix.
+All 996 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -1034,6 +1034,9 @@ All 984 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/operations/:id` | — |
 | PATCH | `/api/tenant/operations/:id` | — |
 | GET | `/api/tenant/operations/:id/360` | — |
+| GET | `/api/tenant/operations/:id/containers` | — |
+| PUT | `/api/tenant/operations/:id/containers` | — |
+| GET | `/api/tenant/operations/:id/shipment-details` | — |
 | POST | `/api/tenant/operations/:id/transition` | — |
 
 ### `tenant/opportunities`
@@ -1298,8 +1301,17 @@ All 984 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/service-types/:id` | — |
 | PATCH | `/api/tenant/service-types/:id` | — |
 | GET | `/api/tenant/service-types/:id/360` | — |
+| PUT | `/api/tenant/service-types/:id/containers` | — |
+| GET | `/api/tenant/service-types/:id/detail-form` | — |
 | DELETE | `/api/tenant/service-types/:id/dictionary/:itemId` | — |
 | PUT | `/api/tenant/service-types/:id/dictionary/:itemId` | — |
+| GET | `/api/tenant/service-types/:id/field-sets` | — |
+| POST | `/api/tenant/service-types/:id/field-sets` | — |
+| GET | `/api/tenant/service-types/:id/field-sets/:setId` | — |
+| POST | `/api/tenant/service-types/:id/field-sets/:setId/fields` | — |
+| DELETE | `/api/tenant/service-types/:id/field-sets/:setId/fields/:fieldId` | — |
+| PATCH | `/api/tenant/service-types/:id/field-sets/:setId/fields/:fieldId` | — |
+| POST | `/api/tenant/service-types/:id/field-sets/:setId/publish` | — |
 
 ### `tenant/sessions`
 

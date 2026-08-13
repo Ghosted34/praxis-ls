@@ -12,9 +12,9 @@ import { Modal, Field, Select } from "@/components/ui/modal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ErrorState } from "@/components/ui/states";
-import { PageHeader, DataList, type Column } from "@/components/data-list";
+import { DataList, type Column } from "@/components/data-list";
 import { Pill, type Tone } from "@/components/ui/pill";
-import { HubTabs, HubCrumb } from "@/components/tabbed-hub";
+import { HubTabs } from "@/components/tabbed-hub";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { getCommsSocket } from "@/lib/comms-socket";
 import { dateFmt } from "@/lib/format";
@@ -23,12 +23,6 @@ import { reportActionError } from "@/lib/action-error";
 import * as RadixDialog from "@radix-ui/react-dialog";
 import { XIcon } from "@/components/ui/icons";
 
-const sendTone = (s?: string | null): Tone => {
-  const u = String(s || "").toUpperCase();
-  if (u === "SENT" || u === "DELIVERED") return "ok";
-  if (u === "QUEUED") return "blue";
-  return "bad";
-};
 const connTone = (s?: string | null): Tone => {
   const u = String(s || "").toUpperCase();
   if (u === "CONNECTED") return "ok";
@@ -111,13 +105,42 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () => 
   );
 }
 
-function ComposeModal({ connections, onClose, onSent }: { connections: api.Connection[]; onClose: () => void; onSent: () => void }) {
-  const [connId, setConnId] = React.useState(connections[0]?.email_connection_id || "");
-  const [f, setF] = React.useState({ to: "", cc: "", subject: "", body: "" });
+/* Compose an email — from the user's OWN default mailbox, to any eligible party
+ * (client / supplier / staff / lead, via recipient search) or a typed address.
+ * Reusable: pass `connections` (Threads view) or let it self-fetch (New(+) / a
+ * 360 mail icon), and optionally prefill `initialTo`. WS-E8. */
+export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }: { connections?: api.Connection[]; initialTo?: string; lockTo?: boolean; onClose: () => void; onSent?: () => void }) {
+  // Self-fetch when the caller didn't hand us connections (New(+) / 360).
+  const owned = useResource(() => api.listConnections(), []);
+  const conns = (connections ?? owned.data ?? []).filter((c) => c.status === "CONNECTED");
+  const defaultId = conns.find((c) => c.is_default)?.email_connection_id || conns[0]?.email_connection_id || "";
+  const [connId, setConnId] = React.useState("");
+  React.useEffect(() => { if (!connId && defaultId) setConnId(defaultId); }, [defaultId, connId]);
+
+  const [f, setF] = React.useState({ to: initialTo || "", cc: "", subject: "", body: "" });
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [sent, setSent] = React.useState(false);
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+
+  // The To field IS the recipient search: typing the current token (after the
+  // last comma) queries clients / suppliers / staff / leads; picking one fills it
+  // in. Locked (mail-icon entry) pins To to the prefilled address — no edit, no search.
+  const locked = !!lockTo && !!initialTo;
+  const [results, setResults] = React.useState<api.Recipient[]>([]);
+  const lastToken = (s: string) => { const i = s.lastIndexOf(","); return s.slice(i + 1).trim(); };
+  React.useEffect(() => {
+    if (locked) { setResults([]); return; }
+    const term = lastToken(f.to);
+    if (term.length < 2) { setResults([]); return; }
+    let live = true;
+    const t = setTimeout(() => { api.searchRecipients(term).then((r) => { if (live) setResults(r); }).catch(() => {}); }, 200);
+    return () => { live = false; clearTimeout(t); };
+  }, [f.to, locked]);
+  function pickRecipient(r: api.Recipient) {
+    setF((s) => { const i = s.to.lastIndexOf(","); const head = i >= 0 ? `${s.to.slice(0, i + 1)} ` : ""; return { ...s, to: `${head}${r.email}, ` }; });
+    setResults([]);
+  }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
@@ -125,6 +148,7 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
       const to = f.to.split(",").map((s) => s.trim()).filter(Boolean);
       const cc = f.cc.split(",").map((s) => s.trim()).filter(Boolean);
       if (!to.length) throw new Error("At least one recipient is required");
+      if (!connId) throw new Error("Connect a mailbox first (Comms → Mailbox)");
       await api.sendMail({
         connectionId: connId,
         to,
@@ -132,19 +156,33 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
         subject: f.subject || undefined,
         text: f.body || undefined,
       });
-      setSent(true); onSent();
+      setSent(true); onSent?.();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
   }
 
   return (
-    <Modal open onClose={onClose} size="lg" title="New message" description="Send from one of your connected mailboxes.">
+    <Modal open onClose={onClose} size="lg" title="New message" description="Sent from your default mailbox — switch below if you have more than one.">
       <form className="space-y-3" onSubmit={submit}>
         <Field label="From mailbox" required>
-          <Select value={connId} onChange={(e) => setConnId(e.target.value)} disabled={!connections.length}>
-            {connections.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}</option>)}
+          <Select value={connId} onChange={(e) => setConnId(e.target.value)} disabled={!conns.length}>
+            {conns.map((c) => <option key={c.email_connection_id} value={c.email_connection_id}>{c.email_address}{c.is_default ? " (default)" : ""}</option>)}
           </Select>
         </Field>
-        <Field label="To" required><Input value={f.to} onChange={set("to")} placeholder="recipient@company.cm, another@company.cm" /></Field>
+        <Field label="To" required hint={locked ? undefined : "Type a name or email to find a client, supplier, staff or lead — or enter any address."}>
+          <div className="relative">
+            <Input value={f.to} onChange={set("to")} disabled={locked} placeholder="name or recipient@company.cm" />
+            {!locked && results.length > 0 && (
+              <div className="absolute z-10 mt-1 max-h-56 w-full overflow-auto rounded-lg border border-border bg-card shadow-lg">
+                {results.map((r) => (
+                  <button type="button" key={`${r.type}:${r.id}`} onClick={() => pickRecipient(r)} className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm hover:bg-accent">
+                    <span className="truncate"><span className="text-foreground">{r.name}</span> <span className="num text-muted-foreground">{r.email}</span></span>
+                    <Pill tone="mute">{r.type}</Pill>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </Field>
         <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
         <Field label="Subject"><Input value={f.subject} onChange={set("subject")} placeholder="Subject" /></Field>
         <Field label="Body"><Textarea value={f.body} onChange={set("body")} rows={7} placeholder="Write your message…" /></Field>
@@ -152,10 +190,25 @@ function ComposeModal({ connections, onClose, onSent }: { connections: api.Conne
         <div className="flex items-center justify-end gap-3 pt-1">
           {sent && <span className="micro text-[rgb(var(--ok))]">✓ Sent</span>}
           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
-          <Button type="submit" loading={busy} disabled={busy || !connections.length}>Send</Button>
+          <Button type="submit" loading={busy} disabled={busy || !conns.length}>Send</Button>
         </div>
       </form>
     </Modal>
+  );
+}
+
+/* Drop-in mail icon for any 360 / list row: opens the composer prefilled to an
+ * address, sending from the user's default mailbox. e.g. <ComposeIconButton to={client.email} /> */
+export function ComposeIconButton({ to, className }: { to?: string; className?: string }) {
+  const [open, setOpen] = React.useState(false);
+  return (
+    <>
+      <button type="button" onClick={() => setOpen(true)} aria-label="Compose email" title="Compose email"
+        className={className || "grid h-8 w-8 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"}>
+        <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="m3 7 9 6 9-6" /></svg>
+      </button>
+      {open && <ComposeModal initialTo={to} lockTo onClose={() => setOpen(false)} onSent={() => setOpen(false)} />}
+    </>
   );
 }
 
@@ -337,6 +390,7 @@ function MailboxesSection() {
   }
   async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
   async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+  async function makeDefault(id: string) { setBusyId(id); setNote(""); try { await api.setDefaultMailbox(id); setNote("✓ Default mailbox updated"); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
 
   return (
     <div className="space-y-5">
@@ -356,10 +410,12 @@ function MailboxesSection() {
                 <span className="num font-medium text-foreground">{c.email_address}</span>
                 <Pill tone="mute">{providerLabel[c.provider]}</Pill>
                 <Pill tone={connTone(c.status)}>{c.status}</Pill>
+                {c.is_default && <Pill tone="ok">Default</Pill>}
               </div>
               <p className="micro mt-0.5">Last sync {dateFmt(c.last_sync_at)}{c.last_error ? ` · ${c.last_error.slice(0, 60)}` : ""}</p>
             </div>
             <div className="flex items-center gap-2">
+              {!c.is_default && <Button size="sm" variant="outline" onClick={() => makeDefault(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Make default</Button>}
               <Button size="sm" variant="outline" onClick={() => test(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Test</Button>
               <Button size="sm" onClick={() => sync(c.email_connection_id)} loading={busyId === c.email_connection_id}>Sync now</Button>
             </div>
@@ -375,66 +431,18 @@ function MailboxesSection() {
   );
 }
 
-/* ── Legacy sender log (Outbound / Inbound by purpose) ───────────────────── */
-
-function LegacyLog() {
-  const senders = useResource(() => api.listSenders(), []);
-  const [identityId, setIdentityId] = React.useState<string>("");
-  const [dir, setDir] = React.useState<"out" | "in">("out");
-  const sent = useResource(() => api.listSent(identityId || undefined), [identityId]);
-  const inbox = useResource(() => api.listInbox(identityId || undefined), [identityId]);
-  const list = senders.data || [];
-
-  const outCols: Column<api.SentMail>[] = [
-    { key: "to", label: "To", render: (m) => <span className="num text-foreground">{m.to_address}</span> },
-    { key: "subject", label: "Subject", render: (m) => m.subject || <span className="text-muted-foreground">(no subject)</span> },
-    { key: "section", label: "Section", render: (m) => (m.purpose ? <Pill tone="mute">{m.purpose}</Pill> : "—") },
-    { key: "status", label: "Status", render: (m) => <Pill tone={sendTone(m.status)}>{m.status}</Pill> },
-    { key: "sent", label: "Sent", render: (m) => dateFmt(m.sent_at || m.queued_at) },
-  ];
-  const inCols: Column<api.InboundMail>[] = [
-    { key: "from", label: "From", render: (m) => <span className="num">{m.from_address}</span> },
-    { key: "subject", label: "Subject", render: (m) => m.subject || <span className="text-muted-foreground">(no subject)</span> },
-    { key: "section", label: "Into", render: (m) => (m.purpose ? <Pill tone="mute">{m.purpose}</Pill> : "—") },
-    { key: "received", label: "Received", render: (m) => dateFmt(m.received_at) },
-  ];
-
-  return (
-    <>
-      <div className="mb-3 inline-flex gap-1 rounded-xl border bg-muted p-1">
-        {(["out", "in"] as const).map((d) => (
-          <button key={d} onClick={() => setDir(d)} className={`rounded-lg px-3 py-1.5 text-sm transition-colors ${dir === d ? "bg-primary font-semibold text-primary-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}>
-            {d === "out" ? "Outbound" : "Inbound"}
-          </button>
-        ))}
-      </div>
-      <div className="chips mb-4">
-        <button onClick={() => setIdentityId("")} className={`chip ${!identityId ? "on" : ""}`}>All sections</button>
-        {list.map((s) => (
-          <button key={s.email_identity_id} onClick={() => setIdentityId(s.email_identity_id)} className={`chip ${identityId === s.email_identity_id ? "on" : ""}`}>{s.purpose}</button>
-        ))}
-      </div>
-      {dir === "out"
-        ? <DataList columns={outCols} rows={sent.data} error={sent.error} loading={sent.loading} rowKey={(m) => m.email_send_id} empty={{ title: "No mail sent yet", hint: "Outgoing mail from each section appears here." }} />
-        : <DataList columns={inCols} rows={inbox.data} error={inbox.error} loading={inbox.loading} rowKey={(m) => m.email_inbound_id} empty={{ title: "Inbox empty", hint: "Replies into these mailboxes appear here." }} />}
-    </>
-  );
-}
-
 /* ── Page ────────────────────────────────────────────────────────────────── */
 
-type Mode = "threads" | "mailboxes" | "log";
+type Mode = "threads" | "mailboxes";
 const MODES: { key: Mode; label: string }[] = [
   { key: "threads", label: "Threads" },
   { key: "mailboxes", label: "Mailboxes" },
-  { key: "log", label: "Send log" },
 ];
 
 export function MailPage() {
   const [mode, setMode] = React.useState<Mode>("threads");
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Comms" to="/comms" />} title="Mail" description="Connect any mailbox — Microsoft 365, Google, or IMAP/SMTP — and work every conversation in one place." />
       <HubTabs />
 
       <div className="mb-4 inline-flex gap-1 rounded-xl border bg-muted p-1">
@@ -447,7 +455,6 @@ export function MailPage() {
 
       {mode === "threads" && <ThreadsSection />}
       {mode === "mailboxes" && <MailboxesSection />}
-      {mode === "log" && <LegacyLog />}
     </section>
   );
 }

@@ -83,14 +83,18 @@ describe("env values that are really comments", () => {
   });
 
   test("leading whitespace before the # is still a comment", () => {
-    const { config } = loadEnvWith({ S3_ENDPOINT: "   # e.g. Hetzner/Backblaze" });
+    const { config } = loadEnvWith({
+      S3_ENDPOINT: "   # e.g. Hetzner/Backblaze",
+    });
     expect(config.S3_ENDPOINT).toBe("");
   });
 
   test("a legitimate value containing # later on is left alone", () => {
     // Only a value that STARTS with # is a mis-parse. A fragment or an anchor
     // inside a real value is not, and coercing it would be its own outage.
-    const { config } = loadEnvWith({ S3_ENDPOINT: "https://s3.example.com/#path" });
+    const { config } = loadEnvWith({
+      S3_ENDPOINT: "https://s3.example.com/#path",
+    });
     expect(config.S3_ENDPOINT).toBe("https://s3.example.com/#path");
   });
 });

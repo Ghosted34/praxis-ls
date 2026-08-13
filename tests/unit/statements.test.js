@@ -1,6 +1,11 @@
 "use strict";
 /** Statements aggregation (KB §12) — pure, on a self-consistent balanced ledger. */
-const { trialBalanceTotals, incomeStatement, balanceSheet, classOf } = require("../../src/modules/finance/financial_statement/financial_statement.rules");
+const {
+  trialBalanceTotals,
+  incomeStatement,
+  balanceSheet,
+  classOf,
+} = require("../../src/modules/finance/financial_statement/financial_statement.rules");
 
 // Capital 1,000,000 (Cr 101 / Dr 521); sale 2,000,000 (Dr 521 / Cr 706);
 // expense 1,200,000 (Dr 6110 / Cr 521). Aggregated trial balance:
@@ -31,8 +36,8 @@ describe("statements", () => {
   it("Bilan balances with the result folded into equity", () => {
     const cr = incomeStatement(rows);
     const b = balanceSheet(rows, cr.result);
-    expect(b.active).toBe(1800000);   // cash 521
-    expect(b.passif).toBe(1800000);   // capital 1,000,000 + result 800,000
+    expect(b.active).toBe(1800000); // cash 521
+    expect(b.passif).toBe(1800000); // capital 1,000,000 + result 800,000
     expect(b.balanced).toBe(true);
   });
 });

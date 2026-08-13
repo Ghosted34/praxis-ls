@@ -1,6 +1,9 @@
 "use strict";
 /** Dossier lifecycle transitions (MOD-29). */
-const { canTransition, isTerminal } = require("../../src/modules/operations/operations_file/operations_file.rules");
+const {
+  canTransition,
+  isTerminal,
+} = require("../../src/modules/operations/operations_file/operations_file.rules");
 describe("dossier transitions", () => {
   it("allows the forward path", () => {
     expect(canTransition("OPEN", "IN_PROGRESS")).toBe(true);

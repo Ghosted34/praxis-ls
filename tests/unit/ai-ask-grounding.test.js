@@ -12,7 +12,10 @@ const { logger } = require("../../src/config/logger");
 
 jest.mock("../../src/services/ai/llm.service", () => ({ chat: jest.fn() }));
 jest.mock("../../src/services/ai/retrieval.service", () => ({
-  retrieve: jest.fn(async () => [{ ref: "doc:kb", content: "context" }, { ref: "ui:screen/fin_invoices", content: "screen" }]),
+  retrieve: jest.fn(async () => [
+    { ref: "doc:kb", content: "context" },
+    { ref: "ui:screen/fin_invoices", content: "screen" },
+  ]),
   toContextBlock: () => "CONTEXT",
 }));
 
@@ -25,7 +28,9 @@ const registry = require("../../client/src/app/screen-registry.json");
 // path gets its own case below, with an ordinary user.
 const user = { user_id: "11111111-1111-1111-1111-111111111111", is_ceo: true };
 const staff = { user_id: "22222222-2222-2222-2222-222222222222", role_ids: [] };
-const INVOICES = registry.screens.find((s) => (s.actions || []).includes("list_final_invoices")).route;
+const INVOICES = registry.screens.find((s) =>
+  (s.actions || []).includes("list_final_invoices"),
+).route;
 
 /**
  * A tenant client that answers by SQL shape: the gate is open, the catalogue
@@ -40,7 +45,15 @@ function fakeClient() {
       if (/FROM ai_action_catalogue/.test(sql)) {
         return {
           rows: [
-            { action_key: "list_final_invoices", title: "list final invoices", description: null, payload_schema: {}, is_write: false, required_permission: null, requires_confirmation: false },
+            {
+              action_key: "list_final_invoices",
+              title: "list final invoices",
+              description: null,
+              payload_schema: {},
+              is_write: false,
+              required_permission: null,
+              requires_confirmation: false,
+            },
           ],
         };
       }
@@ -49,7 +62,10 @@ function fakeClient() {
   };
 }
 
-const toolCall = (name, args) => ({ id: "call-1", function: { name, arguments: JSON.stringify(args) } });
+const toolCall = (name, args) => ({
+  id: "call-1",
+  function: { name, arguments: JSON.stringify(args) },
+});
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -67,8 +83,20 @@ describe("ask() returns grounding derived from the reads it ran", () => {
     // prompt demands: no markdown links, no identifiers. The old derivation
     // (markdown links in prose) finds NOTHING here — that was the bug.
     llm.chat
-      .mockResolvedValueOnce({ text: "", toolCalls: [toolCall("list_final_invoices", { status: "OVERDUE", limit: 50 })], provider: "test", usage: {} })
-      .mockResolvedValueOnce({ text: "Two invoices are overdue: SBX-INV-0031 and SBX-INV-0044.", toolCalls: [], provider: "test", usage: {} });
+      .mockResolvedValueOnce({
+        text: "",
+        toolCalls: [
+          toolCall("list_final_invoices", { status: "OVERDUE", limit: 50 }),
+        ],
+        provider: "test",
+        usage: {},
+      })
+      .mockResolvedValueOnce({
+        text: "Two invoices are overdue: SBX-INV-0031 and SBX-INV-0044.",
+        toolCalls: [],
+        provider: "test",
+        usage: {},
+      });
 
     const res = await orchestrator.ask({
       client: fakeClient(),
@@ -85,7 +113,9 @@ describe("ask() returns grounding derived from the reads it ran", () => {
     });
 
     expect(res.answer).not.toMatch(/\]\(/); // no markdown link anywhere in the prose
-    expect(res.sources).toEqual([{ label: expect.stringContaining("· 2"), href: INVOICES, kind: "record" }]);
+    expect(res.sources).toEqual([
+      { label: expect.stringContaining("· 2"), href: INVOICES, kind: "record" },
+    ]);
     expect(res.trace).toEqual([
       "Searched the knowledge base — 2 passages recalled",
       "Read final invoices (status: OVERDUE) — 2 records",
@@ -93,8 +123,18 @@ describe("ask() returns grounding derived from the reads it ran", () => {
   });
 
   it("omits both fields when nothing was read, so the UI shows nothing", async () => {
-    llm.chat.mockResolvedValueOnce({ text: "Hello — what can I help with?", toolCalls: [], provider: "test", usage: {} });
-    const res = await orchestrator.ask({ client: fakeClient(), user, message: "hello", registry: {} });
+    llm.chat.mockResolvedValueOnce({
+      text: "Hello — what can I help with?",
+      toolCalls: [],
+      provider: "test",
+      usage: {},
+    });
+    const res = await orchestrator.ask({
+      client: fakeClient(),
+      user,
+      message: "hello",
+      registry: {},
+    });
     expect(res.sources).toBeUndefined();
     expect(res.trace).toBeUndefined();
   });
@@ -103,8 +143,18 @@ describe("ask() returns grounding derived from the reads it ran", () => {
     // A user with no grant for the action. The whole point of the step: told
     // "no overdue invoices", they can see the read never ran.
     llm.chat
-      .mockResolvedValueOnce({ text: "", toolCalls: [toolCall("list_final_invoices", {})], provider: "test", usage: {} })
-      .mockResolvedValueOnce({ text: "I could not check that.", toolCalls: [], provider: "test", usage: {} });
+      .mockResolvedValueOnce({
+        text: "",
+        toolCalls: [toolCall("list_final_invoices", {})],
+        provider: "test",
+        usage: {},
+      })
+      .mockResolvedValueOnce({
+        text: "I could not check that.",
+        toolCalls: [],
+        provider: "test",
+        usage: {},
+      });
 
     const ran = jest.fn();
     const res = await orchestrator.ask({
@@ -118,7 +168,9 @@ describe("ask() returns grounding derived from the reads it ran", () => {
     expect(res.sources).toBeUndefined(); // a refused read grounds nothing
     expect(res.trace).toEqual([
       expect.stringMatching(/passages recalled/),
-      expect.stringMatching(/^Read final invoices — failed: You do not have permission/),
+      expect.stringMatching(
+        /^Read final invoices — failed: You do not have permission/,
+      ),
     ]);
   });
 });

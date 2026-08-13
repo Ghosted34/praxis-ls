@@ -54,9 +54,32 @@ async function probeTargets() {
       WHERE s.is_primary AND t.status='LIVE'
       ORDER BY s.host`,
   );
-  const targets = rows.map((r) => ({ host: r.host, tenant_id: r.tenant_id, slug: r.slug }));
-  if (config.PLATFORM_HOST) {
-    targets.push({ host: config.PLATFORM_HOST, tenant_id: null, slug: null });
+  const targets = rows.map((r) => ({
+    // Hostnames are case-insensitive, and `host` is the grouping key for every
+    // availability figure. Two spellings of one host would silently split its
+    // history in two and each half would read as partially down.
+    host: String(r.host).trim().toLowerCase(),
+    tenant_id: r.tenant_id,
+    slug: r.slug,
+  }));
+
+  // PLATFORM_HOST falls back to PLATFORM_CONSOLE_HOST, because on every
+  // deployment so far they are the same host named twice.
+  //
+  // That duplication had a cost: PLATFORM_CONSOLE_HOST was set,
+  // PLATFORM_HOST was not, and the admin host was therefore absent from the
+  // probe list entirely — the one host whose availability nobody would think to
+  // question. A second variable for a value you already have is a variable
+  // someone forgets, and this file is not worth a config drift.
+  //
+  // Kept as an override rather than removed: a deployment that serves the
+  // console somewhere other than the host it wants probed is legitimate, it just
+  // is not the common case and should not be the default.
+  const platformHost = (config.PLATFORM_HOST || config.PLATFORM_CONSOLE_HOST || "")
+    .trim()
+    .toLowerCase();
+  if (platformHost && !targets.some((t) => t.host === platformHost)) {
+    targets.push({ host: platformHost, tenant_id: null, slug: null });
   }
   return targets;
 }

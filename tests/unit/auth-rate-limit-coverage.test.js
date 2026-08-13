@@ -20,10 +20,15 @@
  * cannot see is a control the test cannot defend.
  */
 
-const { isRateLimiter, rateLimitStoreKind } = require("../../src/shared/http/rate-limit");
+const {
+  isRateLimiter,
+  rateLimitStoreKind,
+} = require("../../src/shared/http/rate-limit");
 
-const tenantAuth = require("../../src/modules/security/app_user/app_user.routes").router;
-const portal = require("../../src/modules/portal_auth/portal_auth.routes").router;
+const tenantAuth =
+  require("../../src/modules/security/app_user/app_user.routes").router;
+const portal =
+  require("../../src/modules/portal_auth/portal_auth.routes").router;
 const platform = require("../../src/modules/platform/platform.routes");
 
 /**
@@ -85,14 +90,18 @@ const REQUIRED = [
 ];
 
 describe("SEC-C3 — every credential surface is rate limited", () => {
-  it.each(REQUIRED.map(([tier, r, key, limiter]) => [`${tier} ${key}`, r, key, limiter]))(
-    "%s carries the '%s' limiter",
-    (_label, router, key, expected) => {
-      const route = routesOf(router).find((r) => r.key === key);
-      expect(route).toBeDefined();
-      expect(route.limiters).toContain(expected);
-    },
-  );
+  it.each(
+    REQUIRED.map(([tier, r, key, limiter]) => [
+      `${tier} ${key}`,
+      r,
+      key,
+      limiter,
+    ]),
+  )("%s carries the '%s' limiter", (_label, router, key, expected) => {
+    const route = routesOf(router).find((r) => r.key === key);
+    expect(route).toBeDefined();
+    expect(route.limiters).toContain(expected);
+  });
 
   it("the limiter runs before the validator", () => {
     // Ordering matters: a malformed flood should be rejected by the cheap
@@ -118,7 +127,11 @@ describe("SEC-C3 — every credential surface is rate limited", () => {
     ]);
     const suspicious = /login|refresh|verify|forgot|reset|accept|pin|password/i;
     const missed = [];
-    for (const [tier, router] of [["tenant", tenantAuth], ["portal", portal], ["platform", platform]]) {
+    for (const [tier, router] of [
+      ["tenant", tenantAuth],
+      ["portal", portal],
+      ["platform", platform],
+    ]) {
       for (const r of routesOf(router)) {
         if (!suspicious.test(r.key)) continue;
         if (WAIVED.has(r.key)) continue;

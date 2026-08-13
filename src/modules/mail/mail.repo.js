@@ -7,7 +7,7 @@ const { insertOne, updateOne, getById, page } = require("../../shared/db/query-h
 async function listIdentities(client) {
   const { rows } = await client.query(
     "SELECT email_identity_id, purpose, from_address, from_name, reply_to, smtp_host, smtp_port, is_active " +
-      "FROM email_identity ORDER BY purpose",
+      "FROM email_identity WHERE archived_at IS NULL ORDER BY purpose",
   );
   return rows;
 }
@@ -76,6 +76,15 @@ async function upsertIdentity(client, d) {
   return rows[0];
 }
 
+/** Soft-archive a sender identity — hidden from listIdentities, never deleted. */
+async function archiveIdentity(client, id) {
+  const { rows } = await client.query(
+    "UPDATE email_identity SET archived_at = now() WHERE email_identity_id = $1 AND archived_at IS NULL RETURNING email_identity_id",
+    [id],
+  );
+  return rows[0] || null;
+}
+
 // ── Engine: connections (email_connection, 0480) ──
 const insertConnection = (client, data) => insertOne(client, "email_connection", data);
 const getConnection = (client, id) => getById(client, "email_connection", "email_connection_id", id);
@@ -83,11 +92,16 @@ const updateConnection = (client, id, patch) => updateOne(client, "email_connect
 
 async function listConnections(client, q = {}) {
   const { limit, offset } = page(q);
+  const params = [limit, offset];
+  let where = "";
+  // Per-user isolation (WS-E8): callers pass ownerUserId so a user sees only
+  // their own connected mailboxes. Absent = unscoped (internal callers only).
+  if (q.ownerUserId) { params.push(q.ownerUserId); where = "WHERE owner_user_id = $3 "; }
   const { rows } = await client.query(
     "SELECT email_connection_id, email_address, provider, display_name, status, last_sync_at, last_error, " +
-      "imap_host, imap_port, smtp_host, smtp_port, auth_user, created_at " +
-      "FROM email_connection ORDER BY created_at DESC LIMIT $1 OFFSET $2",
-    [limit, offset],
+      "imap_host, imap_port, smtp_host, smtp_port, auth_user, owner_user_id, is_default, created_at " +
+      "FROM email_connection " + where + "ORDER BY is_default DESC, created_at DESC LIMIT $1 OFFSET $2",
+    params,
   );
   return rows;
 }
@@ -127,6 +141,48 @@ async function setError(client, id, message) {
   await client.query(
     "UPDATE email_connection SET status = 'ERROR', last_error = $2 WHERE email_connection_id = $1",
     [id, String(message || "").slice(0, 2000)],
+  );
+}
+
+/** Set one connection as the owner's default send-from box (clears the rest).
+ *  Owner-scoped: a foreign id is a no-op — it never clears the caller's default.
+ *  Clears the OLD default BEFORE setting the new one: a single
+ *  `is_default = (id = $1)` UPDATE can momentarily leave two rows true and trip
+ *  the partial unique index (ux_email_connection_owner_default) mid-statement. */
+async function setDefaultConnection(client, id, ownerUserId) {
+  const owns = (await client.query(
+    "SELECT 1 FROM email_connection WHERE email_connection_id = $1 AND owner_user_id = $2",
+    [id, ownerUserId],
+  )).rowCount;
+  if (!owns) return [];
+  await client.query(
+    "UPDATE email_connection SET is_default = false WHERE owner_user_id = $1 AND is_default AND email_connection_id <> $2",
+    [ownerUserId, id],
+  );
+  const { rows } = await client.query(
+    "UPDATE email_connection SET is_default = true WHERE email_connection_id = $1 RETURNING email_connection_id, is_default",
+    [id],
+  );
+  return rows;
+}
+
+/** Give the owner a default if they have none — their oldest connection. Idempotent. */
+async function ensureDefaultConnection(client, ownerUserId) {
+  if (!ownerUserId) return;
+  await client.query(
+    "UPDATE email_connection SET is_default = true " +
+      "WHERE email_connection_id = (SELECT email_connection_id FROM email_connection WHERE owner_user_id = $1 ORDER BY created_at ASC LIMIT 1) " +
+      "AND NOT EXISTS (SELECT 1 FROM email_connection WHERE owner_user_id = $1 AND is_default)",
+    [ownerUserId],
+  );
+}
+
+/** Claim an unowned (legacy) mailbox for a user on reconnect. Never steals an owned one. */
+async function claimConnectionIfUnowned(client, id, ownerUserId) {
+  if (!ownerUserId) return;
+  await client.query(
+    "UPDATE email_connection SET owner_user_id = $2 WHERE email_connection_id = $1 AND owner_user_id IS NULL",
+    [id, ownerUserId],
   );
 }
 
@@ -208,10 +264,37 @@ async function listAttachments(client, inboundId) {
   )).rows;
 }
 
+/** Search mailable parties (clients, suppliers, employees, leads) by name or
+ *  email for the compose recipient picker (WS-E8). Read-only; runs live-schema. */
+async function searchRecipients(client, q, limit = 20) {
+  const term = String(q || "").trim();
+  if (!term) return [];
+  const like = `%${term}%`;
+  const { rows } = await client.query(
+    `SELECT type, id, name, email FROM (
+       SELECT 'client'::text AS type, client_id::text AS id, name, email::text AS email
+         FROM client_master   WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)
+       UNION ALL
+       SELECT 'supplier', supplier_id::text, name, email::text
+         FROM supplier_master WHERE email IS NOT NULL AND (email ILIKE $1 OR name ILIKE $1)
+       UNION ALL
+       SELECT 'employee', employee_id::text, full_name, email::text
+         FROM employee        WHERE email IS NOT NULL AND (email ILIKE $1 OR full_name ILIKE $1)
+       UNION ALL
+       SELECT 'lead', lead_id::text, COALESCE(contact_name, company_name), email::text
+         FROM lead            WHERE email IS NOT NULL AND (email ILIKE $1 OR contact_name ILIKE $1 OR company_name ILIKE $1)
+     ) r
+     ORDER BY name LIMIT $2`,
+    [like, limit],
+  );
+  return rows;
+}
+
 module.exports = {
-  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity,
+  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
+  setDefaultConnection, ensureDefaultConnection, claimConnectionIfUnowned,
   insertInbound, listInboundByConnection, getInbound, markInboundRead,
-  findClientByEmail, findDossierByRefs, setEntityRef, timelineByEntity,
+  findClientByEmail, searchRecipients, findDossierByRefs, setEntityRef, timelineByEntity,
   addAttachment, listAttachments,
 };

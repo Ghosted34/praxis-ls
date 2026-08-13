@@ -33,7 +33,10 @@ const argon2 = require("argon2");
 
 // No unit test may reach the network; password-policy calls HIBP and fails open.
 let fetchCalls = 0;
-global.fetch = async () => { fetchCalls += 1; throw new Error("network disabled in unit tests"); };
+global.fetch = async () => {
+  fetchCalls += 1;
+  throw new Error("network disabled in unit tests");
+};
 
 // ── the world these tests run against ────────────────────────────────────────
 
@@ -55,14 +58,17 @@ function mockFakeClient(database, opts = {}) {
     sql: [],
     async connect() {
       mockOpened.push({ database, superuser: opts.superuser === true });
-      if (mockUnreachable.has(database)) throw new Error(`could not connect to ${database}`);
+      if (mockUnreachable.has(database))
+        throw new Error(`could not connect to ${database}`);
     },
     async query(text, params = []) {
       this.sql.push({ text, params });
       mockAllSql.push({ database, text, params });
       return { rows: handler(text, params) || [] };
     },
-    async end() { mockClosed += 1; },
+    async end() {
+      mockClosed += 1;
+    },
   };
 }
 
@@ -78,12 +84,20 @@ jest.mock("../../src/services/platform/migrator", () => ({
     tenantSeeds: () => ["sd1.sql"],
   },
   client: (database, opts) => mockFakeClient(database, opts),
-  ensureDatabase: async (name) => { mockEnsured.push(name); },
+  ensureDatabase: async (name) => {
+    mockEnsured.push(name);
+  },
   ensureLedger: async () => {},
   appliedSet: async () => new Set(),
   applyTracked: async (cli, files, opts) => {
-    if (mockFailMigrationFor.has(cli.database)) throw new Error("relation \"live.dossier\" does not exist");
-    mockApplied.push({ database: cli.database, scope: opts.scope, searchPath: opts.searchPath || null, files: files.length });
+    if (mockFailMigrationFor.has(cli.database))
+      throw new Error('relation "live.dossier" does not exist');
+    mockApplied.push({
+      database: cli.database,
+      scope: opts.scope,
+      searchPath: opts.searchPath || null,
+      files: files.length,
+    });
     return files.length;
   },
   applyFiles: async () => 0,
@@ -97,7 +111,10 @@ let mockMirrorFails = false;
 jest.mock("../../src/shared/db/sandbox-user-mirror", () => ({
   mirrorUsersIntoSandbox: async (cli, opts) => {
     if (mockMirrorFails) throw new Error("sandbox mirror exploded");
-    mockMirrored.push({ database: cli.database, userId: opts ? opts.userId : null });
+    mockMirrored.push({
+      database: cli.database,
+      userId: opts ? opts.userId : null,
+    });
     return { mirrored: 1 };
   },
   mirrorUserBestEffort: async () => {},
@@ -106,18 +123,27 @@ jest.mock("../../src/shared/db/sandbox-user-mirror", () => ({
 const svc = require("../../src/services/platform/provisioning.service");
 
 async function rejection(promise) {
-  try { await promise; } catch (e) { return e; }
+  try {
+    await promise;
+  } catch (e) {
+    return e;
+  }
   throw new Error("expected a rejection, the call resolved");
 }
 
 /** Default platform responses: one plan, one tenant, an empty catalogue. */
 function platformDb({ slugs = ["acme"], plan = true, features = [] } = {}) {
   return (sql) => {
-    if (/FROM platform\.plan WHERE code/.test(sql)) return plan ? [{ plan_id: "plan-1" }] : [];
-    if (/INSERT INTO platform\.tenant \(/.test(sql)) return [{ tenant_id: "t-1" }];
-    if (/SELECT slug FROM platform\.tenant/.test(sql)) return slugs.map((s) => ({ slug: s }));
-    if (/SELECT tenant_id FROM platform\.tenant/.test(sql)) return [{ tenant_id: "t-1" }];
-    if (/FROM platform\.tenant t JOIN platform\.feature_catalogue/.test(sql)) return features;
+    if (/FROM platform\.plan WHERE code/.test(sql))
+      return plan ? [{ plan_id: "plan-1" }] : [];
+    if (/INSERT INTO platform\.tenant \(/.test(sql))
+      return [{ tenant_id: "t-1" }];
+    if (/SELECT slug FROM platform\.tenant/.test(sql))
+      return slugs.map((s) => ({ slug: s }));
+    if (/SELECT tenant_id FROM platform\.tenant/.test(sql))
+      return [{ tenant_id: "t-1" }];
+    if (/FROM platform\.tenant t JOIN platform\.feature_catalogue/.test(sql))
+      return features;
     return [];
   };
 }
@@ -125,9 +151,16 @@ function platformDb({ slugs = ["acme"], plan = true, features = [] } = {}) {
 describe("tenant provisioning (TC-C9)", () => {
   beforeEach(() => {
     mockDb = { praxis_platform: platformDb() };
-    mockEnsured = []; mockApplied = []; mockOpened = []; mockAllSql = []; mockMirrored = [];
-    mockClosed = 0; mockFailMigrationFor = new Set(); mockUnreachable = new Set();
-    mockMirrorFails = false; fetchCalls = 0;
+    mockEnsured = [];
+    mockApplied = [];
+    mockOpened = [];
+    mockAllSql = [];
+    mockMirrored = [];
+    mockClosed = 0;
+    mockFailMigrationFor = new Set();
+    mockUnreachable = new Set();
+    mockMirrorFails = false;
+    fetchCalls = 0;
   });
 
   // The platform database name comes from config; bind it once so the fixtures
@@ -149,7 +182,10 @@ describe("tenant provisioning (TC-C9)", () => {
       // feature off, including features with no dependencies at all.
       expect(svc.toDepsArray("{a,b}")).toEqual(["a", "b"]);
       expect(svc.toDepsArray("{ai.assistant}")).toEqual(["ai.assistant"]);
-      expect(svc.toDepsArray('{"quoted.key","other"}')).toEqual(["quoted.key", "other"]);
+      expect(svc.toDepsArray('{"quoted.key","other"}')).toEqual([
+        "quoted.key",
+        "other",
+      ]);
     });
 
     it("treats the empty literal as no dependencies, not as one blank one", () => {
@@ -162,15 +198,26 @@ describe("tenant provisioning (TC-C9)", () => {
   });
 
   describe("feature dependency enforcement", () => {
-    const f = (key, state, deps) => ({ feature_key: key, state, source: "plan", depends_on: deps });
+    const f = (key, state, deps) => ({
+      feature_key: key,
+      state,
+      source: "plan",
+      depends_on: deps,
+    });
 
     it("leaves an independent feature alone", () => {
-      const out = svc.enforceDependencies([f("a", "on", "{}"), f("b", "on", [])]);
+      const out = svc.enforceDependencies([
+        f("a", "on", "{}"),
+        f("b", "on", []),
+      ]);
       expect(out.map((x) => x.state)).toEqual(["on", "on"]);
     });
 
     it("forces a child off when its parent is off", () => {
-      const out = svc.enforceDependencies([f("parent", "off", []), f("child", "on", ["parent"])]);
+      const out = svc.enforceDependencies([
+        f("parent", "off", []),
+        f("child", "on", ["parent"]),
+      ]);
       expect(out.find((x) => x.feature_key === "child").state).toBe("off");
     });
 
@@ -204,12 +251,18 @@ describe("tenant provisioning (TC-C9)", () => {
     it("preserves source while flipping state", () => {
       // tenant feature_state.source has a CHECK allowing only
       // plan|override|default, so the reason cannot be smuggled in there.
-      const out = svc.enforceDependencies([f("parent", "off", []), f("child", "on", ["parent"])]);
+      const out = svc.enforceDependencies([
+        f("parent", "off", []),
+        f("child", "on", ["parent"]),
+      ]);
       expect(out.find((x) => x.feature_key === "child").source).toBe("plan");
     });
 
     it("does not turn on a feature that was already off", () => {
-      const out = svc.enforceDependencies([f("parent", "on", []), f("child", "off", ["parent"])]);
+      const out = svc.enforceDependencies([
+        f("parent", "on", []),
+        f("child", "off", ["parent"]),
+      ]);
       expect(out.find((x) => x.feature_key === "child").state).toBe("off");
     });
 
@@ -224,7 +277,10 @@ describe("tenant provisioning (TC-C9)", () => {
       // dependency resolves to off. This is unreachable from the current
       // catalogue (no cycles in it) and is not a finding I am claiming — but if
       // someone adds one, this test is where the behaviour is written down.
-      const out = svc.enforceDependencies([f("a", "on", ["b"]), f("b", "on", ["a"])]);
+      const out = svc.enforceDependencies([
+        f("a", "on", ["b"]),
+        f("b", "on", ["a"]),
+      ]);
       expect(out.map((x) => x.state)).toEqual(["on", "on"]);
     });
 
@@ -244,27 +300,49 @@ describe("tenant provisioning (TC-C9)", () => {
       // A feature that is on in live and absent in sandbox makes TEST mode
       // behave differently from LIVE for no visible reason.
       mockDb[config.DB_NAME] = platformDb({
-        features: [{ feature_key: "ai.assistant", depends_on: "{}", state: "on", source: "plan" }],
+        features: [
+          {
+            feature_key: "ai.assistant",
+            depends_on: "{}",
+            state: "on",
+            source: "plan",
+          },
+        ],
       });
       return svc.projectFeatures("acme").then((out) => {
         expect(out).toEqual({ projected: 1 });
         const writes = sqlMatching(/INSERT INTO (live|sandbox)\.feature_state/);
         expect(writes).toHaveLength(2);
-        expect(writes.some((w) => /INSERT INTO live\./.test(w.text))).toBe(true);
-        expect(writes.some((w) => /INSERT INTO sandbox\./.test(w.text))).toBe(true);
+        expect(writes.some((w) => /INSERT INTO live\./.test(w.text))).toBe(
+          true,
+        );
+        expect(writes.some((w) => /INSERT INTO sandbox\./.test(w.text))).toBe(
+          true,
+        );
       });
     });
 
     it("projects a dependency-blocked feature as off in both schemas", () => {
       mockDb[config.DB_NAME] = platformDb({
         features: [
-          { feature_key: "ai.assistant", depends_on: "{}", state: "off", source: "plan" },
-          { feature_key: "ai.assistant.backend", depends_on: "{ai.assistant}", state: "on", source: "plan" },
+          {
+            feature_key: "ai.assistant",
+            depends_on: "{}",
+            state: "off",
+            source: "plan",
+          },
+          {
+            feature_key: "ai.assistant.backend",
+            depends_on: "{ai.assistant}",
+            state: "on",
+            source: "plan",
+          },
         ],
       });
       return svc.projectFeatures("acme").then(() => {
-        const backend = sqlMatching(/INSERT INTO live\.feature_state/)
-          .find((w) => w.params[0] === "ai.assistant.backend");
+        const backend = sqlMatching(/INSERT INTO live\.feature_state/).find(
+          (w) => w.params[0] === "ai.assistant.backend",
+        );
         expect(backend.params[1]).toBe("off");
         expect(backend.params[2]).toBe("plan");
       });
@@ -275,7 +353,9 @@ describe("tenant provisioning (TC-C9)", () => {
       // back to returning the raw literal, and the only thing standing between
       // that and 19 dark modules is the fallback parser.
       return svc.projectFeatures("acme").then(() => {
-        const read = sqlMatching(/FROM platform\.tenant t JOIN platform\.feature_catalogue/);
+        const read = sqlMatching(
+          /FROM platform\.tenant t JOIN platform\.feature_catalogue/,
+        );
         expect(read).toHaveLength(1);
         expect(read[0].text).toMatch(/depends_on::text\[\]/);
       });
@@ -287,8 +367,9 @@ describe("tenant provisioning (TC-C9)", () => {
       // The slug becomes a DATABASE NAME and is interpolated into schema-qualified
       // DDL. This is the only thing standing between input and that.
       for (const bad of ["Acme", "9acme", "acme-corp", "acme;drop", ""]) {
-         
-        const err = await rejection(svc.provisionTenant({ slug: bad, name: "Acme" }));
+        const err = await rejection(
+          svc.provisionTenant({ slug: bad, name: "Acme" }),
+        );
         expect(err.message).toMatch(/invalid slug/);
       }
       expect(mockEnsured).toHaveLength(0);
@@ -301,9 +382,13 @@ describe("tenant provisioning (TC-C9)", () => {
 
     it("refuses an unknown plan before flipping the tenant live", async () => {
       mockDb[config.DB_NAME] = platformDb({ plan: false });
-      const err = await rejection(svc.provisionTenant({ slug: "acme", name: "Acme", plan: "nope" }));
+      const err = await rejection(
+        svc.provisionTenant({ slug: "acme", name: "Acme", plan: "nope" }),
+      );
       expect(err.message).toMatch(/unknown plan/);
-      expect(sqlMatching(/UPDATE platform\.tenant SET status='LIVE'/)).toHaveLength(0);
+      expect(
+        sqlMatching(/UPDATE platform\.tenant SET status='LIVE'/),
+      ).toHaveLength(0);
     });
 
     it("creates the database and migrates it before recording the tenant", async () => {
@@ -311,16 +396,28 @@ describe("tenant provisioning (TC-C9)", () => {
       // does not exist yet is a tenant the router will send traffic to.
       await svc.provisionTenant({ slug: "acme", name: "Acme Ltd" });
       expect(mockEnsured).toEqual(["praxis_acme"]);
-      const migratedAt = mockApplied.findIndex((a) => a.database === "praxis_acme");
+      const migratedAt = mockApplied.findIndex(
+        (a) => a.database === "praxis_acme",
+      );
       expect(migratedAt).toBeGreaterThanOrEqual(0);
-      const tenantRowAt = mockAllSql.findIndex((s) => /INSERT INTO platform\.tenant \(/.test(s.text));
+      const tenantRowAt = mockAllSql.findIndex((s) =>
+        /INSERT INTO platform\.tenant \(/.test(s.text),
+      );
       expect(tenantRowAt).toBeGreaterThanOrEqual(0);
     });
 
     it("migrates live AND sandbox, schema and seeds", async () => {
       await svc.provisionTenant({ slug: "acme", name: "Acme Ltd" });
-      const scopes = mockApplied.filter((a) => a.database === "praxis_acme").map((a) => a.scope);
-      expect(scopes).toEqual(["db", "live", "live-seed", "sandbox", "sandbox-seed"]);
+      const scopes = mockApplied
+        .filter((a) => a.database === "praxis_acme")
+        .map((a) => a.scope);
+      expect(scopes).toEqual([
+        "db",
+        "live",
+        "live-seed",
+        "sandbox",
+        "sandbox-seed",
+      ]);
       const live = mockApplied.find((a) => a.scope === "live");
       expect(live.searchPath).toBe("live,public");
       const sandbox = mockApplied.find((a) => a.scope === "sandbox");
@@ -328,12 +425,22 @@ describe("tenant provisioning (TC-C9)", () => {
     });
 
     it("ends PROVISIONING at LIVE and writes the audit trail", async () => {
-      const out = await svc.provisionTenant({ slug: "acme", name: "Acme Ltd", actorId: "op-1" });
-      expect(out).toMatchObject({ slug: "acme", dbName: "praxis_acme", tenantId: "t-1" });
+      const out = await svc.provisionTenant({
+        slug: "acme",
+        name: "Acme Ltd",
+        actorId: "op-1",
+      });
+      expect(out).toMatchObject({
+        slug: "acme",
+        dbName: "praxis_acme",
+        tenantId: "t-1",
+      });
 
       const insert = sqlMatching(/INSERT INTO platform\.tenant \(/)[0];
       expect(insert.text).toMatch(/'PROVISIONING'/);
-      expect(sqlMatching(/UPDATE platform\.tenant SET status='LIVE'/)).toHaveLength(1);
+      expect(
+        sqlMatching(/UPDATE platform\.tenant SET status='LIVE'/),
+      ).toHaveLength(1);
 
       const audit = sqlMatching(/INSERT INTO platform\.platform_audit/);
       expect(audit).toHaveLength(1);
@@ -349,7 +456,11 @@ describe("tenant provisioning (TC-C9)", () => {
     });
 
     it("honours an explicit subdomain", async () => {
-      const out = await svc.provisionTenant({ slug: "acme", name: "Acme Ltd", subdomain: "portal.acme.example" });
+      const out = await svc.provisionTenant({
+        slug: "acme",
+        name: "Acme Ltd",
+        subdomain: "portal.acme.example",
+      });
       expect(out.host).toBe("portal.acme.example");
     });
 
@@ -383,12 +494,20 @@ describe("tenant provisioning (TC-C9)", () => {
       // looked half-real: registered with no subdomain, or stuck in
       // PROVISIONING with its schema fully built and nothing routing to it.
       await svc.provisionTenant({ slug: "acme", name: "Acme Ltd" });
-      const platformSql = mockAllSql.filter((s) => s.database === config.DB_NAME);
-      expect(platformSql.filter((s) => /^\s*BEGIN/i.test(s.text))).toHaveLength(1);
-      expect(platformSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(1);
+      const platformSql = mockAllSql.filter(
+        (s) => s.database === config.DB_NAME,
+      );
+      expect(platformSql.filter((s) => /^\s*BEGIN/i.test(s.text))).toHaveLength(
+        1,
+      );
+      expect(
+        platformSql.filter((s) => /^\s*COMMIT/i.test(s.text)),
+      ).toHaveLength(1);
 
       const beginAt = platformSql.findIndex((s) => /^\s*BEGIN/i.test(s.text));
-      const liveAt = platformSql.findIndex((s) => /SET status='LIVE'/.test(s.text));
+      const liveAt = platformSql.findIndex((s) =>
+        /SET status='LIVE'/.test(s.text),
+      );
       const commitAt = platformSql.findIndex((s) => /^\s*COMMIT/i.test(s.text));
       expect(beginAt).toBeLessThan(liveAt);
       expect(liveAt).toBeLessThan(commitAt);
@@ -399,10 +518,18 @@ describe("tenant provisioning (TC-C9)", () => {
       // half-written tenant. Asserted through the one failure mode that is
       // reachable without a real database.
       mockDb[config.DB_NAME] = platformDb({ plan: false });
-      await rejection(svc.provisionTenant({ slug: "acme", name: "Acme", plan: "nope" }));
-      const platformSql = mockAllSql.filter((s) => s.database === config.DB_NAME);
-      expect(platformSql.filter((s) => /^\s*ROLLBACK/i.test(s.text))).toHaveLength(1);
-      expect(platformSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(0);
+      await rejection(
+        svc.provisionTenant({ slug: "acme", name: "Acme", plan: "nope" }),
+      );
+      const platformSql = mockAllSql.filter(
+        (s) => s.database === config.DB_NAME,
+      );
+      expect(
+        platformSql.filter((s) => /^\s*ROLLBACK/i.test(s.text)),
+      ).toHaveLength(1);
+      expect(
+        platformSql.filter((s) => /^\s*COMMIT/i.test(s.text)),
+      ).toHaveLength(0);
     });
 
     it("leaves the tenant DATABASE outside the transaction, deliberately", async () => {
@@ -412,7 +539,9 @@ describe("tenant provisioning (TC-C9)", () => {
       // whereas a platform row pointing at a database that does not exist
       // routes live traffic into a 500.
       await svc.provisionTenant({ slug: "acme", name: "Acme Ltd" });
-      const platformSql = mockAllSql.filter((s) => s.database === config.DB_NAME);
+      const platformSql = mockAllSql.filter(
+        (s) => s.database === config.DB_NAME,
+      );
       const beginAt = platformSql.findIndex((s) => /^\s*BEGIN/i.test(s.text));
       // ensureDatabase ran before any platform transaction was opened.
       expect(mockEnsured).toEqual(["praxis_acme"]);
@@ -441,7 +570,9 @@ describe("tenant provisioning (TC-C9)", () => {
 
       // c was reached. That is the entire point.
       expect(err.results.map((r) => r.slug)).toEqual(["a", "b", "c"]);
-      expect(err.results.find((r) => r.slug === "c").applied).toBeGreaterThan(0);
+      expect(err.results.find((r) => r.slug === "c").applied).toBeGreaterThan(
+        0,
+      );
     });
 
     it("enumerates which side of the line each tenant fell on", async () => {
@@ -494,7 +625,8 @@ describe("tenant provisioning (TC-C9)", () => {
   describe("fleetSchemaStatus", () => {
     function statusDb(rowsBySlug) {
       for (const [slug, rows] of Object.entries(rowsBySlug)) {
-        mockDb[`praxis_${slug}`] = (sql) => (/FROM public\.schema_migration/.test(sql) ? rows : []);
+        mockDb[`praxis_${slug}`] = (sql) =>
+          /FROM public\.schema_migration/.test(sql) ? rows : [];
       }
     }
 
@@ -546,8 +678,12 @@ describe("tenant provisioning (TC-C9)", () => {
   describe("wipeSandbox", () => {
     it("rebuilds only the sandbox schema and leaves live untouched", async () => {
       await svc.wipeSandbox({ slug: "acme" });
-      expect(sqlMatching(/DROP SCHEMA IF EXISTS sandbox CASCADE/)).toHaveLength(1);
-      expect(sqlMatching(/DROP SCHEMA/).every((s) => /sandbox/.test(s.text))).toBe(true);
+      expect(sqlMatching(/DROP SCHEMA IF EXISTS sandbox CASCADE/)).toHaveLength(
+        1,
+      );
+      expect(
+        sqlMatching(/DROP SCHEMA/).every((s) => /sandbox/.test(s.text)),
+      ).toBe(true);
       expect(sqlMatching(/DROP SCHEMA IF EXISTS live/)).toHaveLength(0);
     });
 
@@ -570,7 +706,9 @@ describe("tenant provisioning (TC-C9)", () => {
 
     it("re-projects features so TEST mode does not diverge from LIVE", async () => {
       await svc.wipeSandbox({ slug: "acme" });
-      expect(sqlMatching(/FROM platform\.tenant t JOIN platform\.feature_catalogue/)).toHaveLength(1);
+      expect(
+        sqlMatching(/FROM platform\.tenant t JOIN platform\.feature_catalogue/),
+      ).toHaveLength(1);
     });
 
     it("wraps the whole rebuild in ONE transaction (DI-5.6)", async () => {
@@ -584,8 +722,12 @@ describe("tenant provisioning (TC-C9)", () => {
       // the sandbox scopes were applied — self-healing was impossible.
       await svc.wipeSandbox({ slug: "acme" });
       const tenantSql = mockAllSql.filter((s) => s.database === "praxis_acme");
-      expect(tenantSql.filter((s) => /^\s*BEGIN/i.test(s.text))).toHaveLength(1);
-      expect(tenantSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(1);
+      expect(tenantSql.filter((s) => /^\s*BEGIN/i.test(s.text))).toHaveLength(
+        1,
+      );
+      expect(tenantSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(
+        1,
+      );
 
       // Ordering: the BEGIN must precede the DROP, or it protects nothing.
       const beginAt = tenantSql.findIndex((s) => /^\s*BEGIN/i.test(s.text));
@@ -604,8 +746,12 @@ describe("tenant provisioning (TC-C9)", () => {
       expect(err.message).toMatch(/does not exist/);
 
       const tenantSql = mockAllSql.filter((s) => s.database === "praxis_acme");
-      expect(tenantSql.filter((s) => /^\s*ROLLBACK/i.test(s.text))).toHaveLength(1);
-      expect(tenantSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(0);
+      expect(
+        tenantSql.filter((s) => /^\s*ROLLBACK/i.test(s.text)),
+      ).toHaveLength(1);
+      expect(tenantSql.filter((s) => /^\s*COMMIT/i.test(s.text))).toHaveLength(
+        0,
+      );
     });
 
     it("does not re-project features when the rebuild was rolled back", async () => {
@@ -613,7 +759,9 @@ describe("tenant provisioning (TC-C9)", () => {
       // rows into the OLD schema and report success.
       mockFailMigrationFor = new Set(["praxis_acme"]);
       await rejection(svc.wipeSandbox({ slug: "acme" }));
-      expect(sqlMatching(/FROM platform\.tenant t JOIN platform\.feature_catalogue/)).toHaveLength(0);
+      expect(
+        sqlMatching(/FROM platform\.tenant t JOIN platform\.feature_catalogue/),
+      ).toHaveLength(0);
     });
   });
 
@@ -628,76 +776,133 @@ describe("tenant provisioning (TC-C9)", () => {
 
     it("rejects the passwords zod's min(8) used to wave through", async () => {
       for (const weak of ["password", "12345678", "Passw0rd"]) {
-         
-        const err = await rejection(svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: weak }));
+        const err = await rejection(
+          svc.createAdmin({
+            slug: "acme",
+            email: "ceo@acme.example",
+            password: weak,
+          }),
+        );
         expect(err.code).toBe("WEAK_PASSWORD");
       }
       expect(sqlMatching(/INSERT INTO app_user/)).toHaveLength(0);
     });
 
     it("requires a slug, an email and a password", async () => {
-      expect((await rejection(svc.createAdmin({ email: "a@b.example", password: "x" }))).message).toMatch(/slug is required/);
-      const e = await rejection(svc.createAdmin({ slug: "acme", email: "a@b.example" }));
+      expect(
+        (
+          await rejection(
+            svc.createAdmin({ email: "a@b.example", password: "x" }),
+          )
+        ).message,
+      ).toMatch(/slug is required/);
+      const e = await rejection(
+        svc.createAdmin({ slug: "acme", email: "a@b.example" }),
+      );
       expect(e.message).toMatch(/email and password are required/);
       expect(e.status).toBe(400);
     });
 
     it("stores an argon2id hash and normalises the email", async () => {
-      await svc.createAdmin({ slug: "acme", email: "  CEO@Acme.Example ", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "  CEO@Acme.Example ",
+        password: "Tr0ubador!Quay7",
+      });
       const insert = sqlMatching(/INSERT INTO app_user/)[0];
       expect(insert.params[0]).toBe("ceo@acme.example");
       expect(insert.params[2]).toMatch(/^\$argon2id\$/);
-      expect(await argon2.verify(insert.params[2], "Tr0ubador!Quay7")).toBe(true);
+      expect(await argon2.verify(insert.params[2], "Tr0ubador!Quay7")).toBe(
+        true,
+      );
     });
 
     it("binds search_path to live before touching app_user", async () => {
       // Without this the admin could be created in whatever schema the
       // connection defaulted to — i.e. possibly sandbox, i.e. nobody can log in.
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+      });
       const tenantSql = mockAllSql.filter((s) => s.database === "praxis_acme");
       expect(tenantSql[0].text).toMatch(/SET search_path = live, public/);
     });
 
     it("refuses a role that is not seeded in the tenant", async () => {
-      mockDb.praxis_acme = (sql) => (/INSERT INTO app_user/.test(sql) ? [{ user_id: "u-1" }] : []);
-      const err = await rejection(svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7", role: "GHOST" }));
+      mockDb.praxis_acme = (sql) =>
+        /INSERT INTO app_user/.test(sql) ? [{ user_id: "u-1" }] : [];
+      const err = await rejection(
+        svc.createAdmin({
+          slug: "acme",
+          email: "ceo@acme.example",
+          password: "Tr0ubador!Quay7",
+          role: "GHOST",
+        }),
+      );
       expect(err.message).toMatch(/role 'GHOST' is not seeded/);
       expect(err.status).toBe(400);
     });
 
     it("defaults to CEO and assigns the role", async () => {
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+      });
       expect(sqlMatching(/SELECT role_id FROM role/)[0].params[0]).toBe("CEO");
       expect(sqlMatching(/INSERT INTO user_role/)).toHaveLength(1);
     });
 
     it("is idempotent on email — a re-run resets the password and reactivates", async () => {
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+      });
       const insert = sqlMatching(/INSERT INTO app_user/)[0];
-      expect(insert.text).toMatch(/ON CONFLICT \(email\) DO UPDATE SET password_hash = EXCLUDED\.password_hash, status = 'ACTIVE'/);
+      expect(insert.text).toMatch(
+        /ON CONFLICT \(email\) DO UPDATE SET password_hash = EXCLUDED\.password_hash, status = 'ACTIVE'/,
+      );
     });
 
     it("mirrors the new admin into sandbox — the fresh-tenant hole", async () => {
       // Provisioning cannot mirror; it runs before any user exists. This is the
       // moment that closes it, and without it the tenant's very first TEST-mode
       // write fails its actor FK with 23503.
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+      });
       expect(mockMirrored).toHaveLength(1);
       expect(mockMirrored[0].userId).toBe("u-1");
     });
 
     it("audits the bootstrap into the platform trail", async () => {
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7", actorId: "op-1" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+        actorId: "op-1",
+      });
       const audit = sqlMatching(/INSERT INTO platform\.platform_audit/)[0];
       expect(audit.params[2]).toBe("tenant.admin_created");
-      expect(audit.params[4]).toMatchObject({ email: "ceo@acme.example", role: "CEO" });
+      expect(audit.params[4]).toMatchObject({
+        email: "ceo@acme.example",
+        role: "CEO",
+      });
     });
 
     it("consults the breach corpus and fails open when it is unreachable", async () => {
       // Measured ACROSS the call, not read after a beforeEach reset — an
       // assertion on a counter nobody incremented is not an assertion.
       const before = fetchCalls;
-      await svc.createAdmin({ slug: "acme", email: "ceo@acme.example", password: "Tr0ubador!Quay7" });
+      await svc.createAdmin({
+        slug: "acme",
+        email: "ceo@acme.example",
+        password: "Tr0ubador!Quay7",
+      });
       expect(fetchCalls).toBeGreaterThan(before);
       // Fail-open: HIBP being down must not block a tenant bootstrap.
       expect(sqlMatching(/INSERT INTO app_user/)).toHaveLength(1);

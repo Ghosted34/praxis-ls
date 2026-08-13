@@ -15,6 +15,7 @@ tests pass.**
 ## 1. What is correct (verified)
 
 ### System email (two-config model)
+
 - `email.service.resolveMail` resolves tenant identity → **platform `mail.fallback`**
   → env. Tenants with no own SMTP get `no-reply@praxisls.com` (transactional) /
   `support@praxisls.com` (SUPPORT) through the deploy-wide SMTP, so OTP/invites/
@@ -30,6 +31,7 @@ tests pass.**
 - `MAIL_FALLBACK_DOMAIN` default corrected `nmail.praxisls.com` → `praxisls.com`.
 
 ### Mailbox engine
+
 - Provider-agnostic interface (`provider.interface.js`) + 3 adapters: **IMAP/SMTP**
   (inbound `fetchSince` with UIDVALIDITY-safe cursor, outbound with **Sent-folder
   APPEND**), **Microsoft Graph**, **Google Gmail** (both delta-cursor).
@@ -116,12 +118,14 @@ The email system touches your DNS in three places. All live in the **`praxisls.c
 zone on Cloudflare**.
 
 **a. Tenant resolution + OAuth redirects / webhooks (must be live for the whole app):**
+
 - A **wildcard** `*.praxisls.com` record (A/AAAA to your server, or a proxied CNAME
   to a host) so every tenant resolves to the app and the Microsoft/Google redirect +
   webhook URLs are publicly reachable over HTTPS. (This is for tenant subdomains —
   already part of the multi-tenant design.)
 
 **b. Deliverability of the fallback sender (`no-reply@` / `support@praxisls.com`) — the critical one:**
+
 - **SPF** — a TXT record on `praxisls.com` authorising the deploy SMTP relay, e.g.
   `v=spf1 include:<your-relay-spf> ~all` (plus Cloudflare's own if you proxy mail
   servers). Without it fallback mail is sent but often lands in spam or bounces.
@@ -130,14 +134,15 @@ zone on Cloudflare**.
 - **DMARC** — a TXT record `_dmarc.praxisls.com` = `v=DMARC1; p=none; rua=mailto:<report@praxisls.com>`.
   Start at `p=none` (monitor) before tightening to `p=quarantine`.
 - **MX** — only if you want replies addressed to `no-reply@praxisls.com` /
-  `support@praxisls.com` to actually be *received*. If you do, set MX records to a
+  `support@praxisls.com` to actually be _received_. If you do, set MX records to a
   real mailbox provider and create those addresses there; otherwise send-only is
   fine and a bounce to the fallback From will fail quietly (reply-to is usually a
   real address anyway).
 
 **c. Per-tenant mailbox deliverability (their own domain, not praxisls.com):**
+
 - Each tenant who connects a mailbox on **their own domain** (e.g. `smartls.cm`)
-  needs **their own** SPF/DKIM/DMARC records on *their* DNS. That is done by the
+  needs **their own** SPF/DKIM/DMARC records on _their_ DNS. That is done by the
   tenant, not on Cloudflare for `praxisls.com`. Praxis only shows them the values to
   add (and a "verified" flag in the senders UI).
 
@@ -151,7 +156,7 @@ zone on Cloudflare**.
    config; the env vars below are only the last-resort default.
 3. **Make `praxisls.com` deliverable** (one-time, critical): add the deploy SMTP
    relay to `praxisls.com` **SPF**, set **DKIM** for the relay, and **DMARC**. Without
-   this, fallback mail is *sent* but not *delivered*.
+   this, fallback mail is _sent_ but not _delivered_.
 
 ### 3.2 `.env` (used by `docker compose`, overridable per tenant/fallback)
 
@@ -169,7 +174,7 @@ MAIL_FALLBACK_FROM_NAME=Praxis
 ### 3.3 Mailbox engine runtime (workers + queue)
 
 - **Redis** must be up (BullMQ queue + the `mail-bus` realtime channel). `REDIS_URL`
-  + `REDIS_PASSWORD`.
+  - `REDIS_PASSWORD`.
 - **Run the worker process** — `npm run worker` (`src/jobs/workers.js`) — which
   registers the mail schedulers + handlers:
   - `MAIL_SYNC_INTERVAL_MS` — how often to poll each tenant's mailbox (default

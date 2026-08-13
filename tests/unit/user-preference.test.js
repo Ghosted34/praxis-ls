@@ -14,7 +14,10 @@
 "use strict";
 
 const service = require("../../src/modules/preference/preference.service");
-const { validateAppearance, validateShell } = require("../../src/modules/preference/preference.validator");
+const {
+  validateAppearance,
+  validateShell,
+} = require("../../src/modules/preference/preference.validator");
 
 /** Minimal in-memory stand-in for the `user_preference` table. */
 function fakeClient() {
@@ -66,7 +69,10 @@ describe("user appearance preferences", () => {
 
   it("round-trips a saved font", async () => {
     const c = fakeClient();
-    const saved = await service.setAppearance(c, { userId: USER, fontBody: '"Lora Variable", Lora, serif' });
+    const saved = await service.setAppearance(c, {
+      userId: USER,
+      fontBody: '"Lora Variable", Lora, serif',
+    });
     expect(saved.fontBody).toBe('"Lora Variable", Lora, serif');
     await expect(service.getAppearance(c, USER)).resolves.toMatchObject({
       fontBody: '"Lora Variable", Lora, serif',
@@ -81,28 +87,54 @@ describe("user appearance preferences", () => {
    */
   it("leaves untouched keys alone and treats null as a delete", async () => {
     const c = fakeClient();
-    await service.setAppearance(c, { userId: USER, fontDisplay: "Inter", fontBody: "Lora", fontMono: "Cascadia" });
+    await service.setAppearance(c, {
+      userId: USER,
+      fontDisplay: "Inter",
+      fontBody: "Lora",
+      fontMono: "Cascadia",
+    });
 
     // Absent keys survive.
-    const afterPartial = await service.setAppearance(c, { userId: USER, fontBody: "Merriweather" });
-    expect(afterPartial).toEqual({ fontDisplay: "Inter", fontBody: "Merriweather", fontMono: "Cascadia" });
+    const afterPartial = await service.setAppearance(c, {
+      userId: USER,
+      fontBody: "Merriweather",
+    });
+    expect(afterPartial).toEqual({
+      fontDisplay: "Inter",
+      fontBody: "Merriweather",
+      fontMono: "Cascadia",
+    });
 
     // Explicit null clears exactly one.
-    const afterClear = await service.setAppearance(c, { userId: USER, fontBody: null });
-    expect(afterClear).toEqual({ fontDisplay: "Inter", fontBody: null, fontMono: "Cascadia" });
+    const afterClear = await service.setAppearance(c, {
+      userId: USER,
+      fontBody: null,
+    });
+    expect(afterClear).toEqual({
+      fontDisplay: "Inter",
+      fontBody: null,
+      fontMono: "Cascadia",
+    });
   });
 
   it("treats an empty string like null, so a cleared field inherits rather than blanks", async () => {
     const c = fakeClient();
     await service.setAppearance(c, { userId: USER, fontDisplay: "Inter" });
-    await expect(service.setAppearance(c, { userId: USER, fontDisplay: "   " })).resolves.toMatchObject({
+    await expect(
+      service.setAppearance(c, { userId: USER, fontDisplay: "   " }),
+    ).resolves.toMatchObject({
       fontDisplay: null,
     });
   });
 
   it("resets every override in one call", async () => {
     const c = fakeClient();
-    await service.setAppearance(c, { userId: USER, fontDisplay: "Inter", fontBody: "Lora", fontMono: "Cascadia" });
+    await service.setAppearance(c, {
+      userId: USER,
+      fontDisplay: "Inter",
+      fontBody: "Lora",
+      fontMono: "Cascadia",
+    });
     await expect(service.resetAppearance(c, USER)).resolves.toEqual({
       fontDisplay: null,
       fontBody: null,
@@ -117,7 +149,12 @@ describe("user appearance preferences", () => {
    */
   it("ignores non-typography fields — a user cannot restyle the brand", async () => {
     const c = fakeClient();
-    await service.setAppearance(c, { userId: USER, primary: "#ff0000", logoUrl: "/evil.png", name: "Not Your Corp" });
+    await service.setAppearance(c, {
+      userId: USER,
+      primary: "#ff0000",
+      logoUrl: "/evil.png",
+      name: "Not Your Corp",
+    });
     expect([...c.rows.keys()]).toHaveLength(0);
   });
 
@@ -127,14 +164,16 @@ describe("user appearance preferences", () => {
    * stylesheet. These are the shapes that would let it.
    */
   it.each([
-    ["a closing declaration", 'Inter; background: url(https://evil.example/x)'],
-    ["a block escape", 'Inter} body{display:none'],
-    ["a remote font fetch", 'url(https://evil.example/f.woff2)'],
+    ["a closing declaration", "Inter; background: url(https://evil.example/x)"],
+    ["a block escape", "Inter} body{display:none"],
+    ["a remote font fetch", "url(https://evil.example/f.woff2)"],
     ["an import", '@import "https://evil.example/x.css"'],
-    ["a markup break-out", 'Inter</style><script>alert(1)</script>'],
+    ["a markup break-out", "Inter</style><script>alert(1)</script>"],
   ])("rejects %s", async (_label, value) => {
     const c = fakeClient();
-    await expect(service.setAppearance(c, { userId: USER, fontBody: value })).rejects.toMatchObject({
+    await expect(
+      service.setAppearance(c, { userId: USER, fontBody: value }),
+    ).rejects.toMatchObject({
       status: 422,
       code: "BAD_FONT",
     });
@@ -143,7 +182,9 @@ describe("user appearance preferences", () => {
 
   it("rejects an over-long stack", async () => {
     const c = fakeClient();
-    await expect(service.setAppearance(c, { userId: USER, fontBody: "x".repeat(201) })).rejects.toMatchObject({
+    await expect(
+      service.setAppearance(c, { userId: USER, fontBody: "x".repeat(201) }),
+    ).rejects.toMatchObject({
       status: 422,
     });
   });
@@ -196,13 +237,19 @@ describe("shell preferences", () => {
 
   it("round-trips the ribbon's pinned state", async () => {
     const c = fakeClient();
-    await expect(service.setShell(c, { userId: USER, ribbonPinned: false })).resolves.toMatchObject({
+    await expect(
+      service.setShell(c, { userId: USER, ribbonPinned: false }),
+    ).resolves.toMatchObject({
       ribbonPinned: false,
     });
-    await expect(service.getShell(c, USER)).resolves.toMatchObject({ ribbonPinned: false });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      ribbonPinned: false,
+    });
 
     await service.setShell(c, { userId: USER, ribbonPinned: true });
-    await expect(service.getShell(c, USER)).resolves.toMatchObject({ ribbonPinned: true });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      ribbonPinned: true,
+    });
   });
 
   /**
@@ -212,7 +259,11 @@ describe("shell preferences", () => {
    */
   it("stores false rather than treating it as no answer", async () => {
     const c = fakeClient();
-    await service.setShell(c, { userId: USER, ribbonPinned: false, railHintSeen: false });
+    await service.setShell(c, {
+      userId: USER,
+      ribbonPinned: false,
+      railHintSeen: false,
+    });
     expect([...c.rows.values()]).toEqual([false, false]);
   });
 
@@ -225,16 +276,27 @@ describe("shell preferences", () => {
   it("keeps 'never chosen' and 'deliberately empty' apart", async () => {
     const c = fakeClient();
     await service.setShell(c, { userId: USER, railPins: [] });
-    await expect(service.getShell(c, USER)).resolves.toMatchObject({ railPins: [] });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      railPins: [],
+    });
 
     await service.setShell(c, { userId: USER, railPins: null });
-    await expect(service.getShell(c, USER)).resolves.toMatchObject({ railPins: null });
+    await expect(service.getShell(c, USER)).resolves.toMatchObject({
+      railPins: null,
+    });
   });
 
   it("leaves untouched keys alone", async () => {
     const c = fakeClient();
-    await service.setShell(c, { userId: USER, ribbonPinned: false, railPins: ["finance"], railHintSeen: true });
-    await expect(service.setShell(c, { userId: USER, railPins: ["finance", "fleet"] })).resolves.toEqual({
+    await service.setShell(c, {
+      userId: USER,
+      ribbonPinned: false,
+      railPins: ["finance"],
+      railHintSeen: true,
+    });
+    await expect(
+      service.setShell(c, { userId: USER, railPins: ["finance", "fleet"] }),
+    ).resolves.toEqual({
       ribbonPinned: false,
       railPins: ["finance", "fleet"],
       towerPins: null,
@@ -247,7 +309,11 @@ describe("shell preferences", () => {
    *  rule, so the same test coverage applies. */
   it("keeps rail and tower pin lists apart", async () => {
     const c = fakeClient();
-    await service.setShell(c, { userId: USER, railPins: ["finance"], towerPins: ["operations", "wms"] });
+    await service.setShell(c, {
+      userId: USER,
+      railPins: ["finance"],
+      towerPins: ["operations", "wms"],
+    });
     await expect(service.getShell(c, USER)).resolves.toMatchObject({
       railPins: ["finance"],
       towerPins: ["operations", "wms"],
@@ -262,7 +328,11 @@ describe("shell preferences", () => {
 
   it("ignores fields outside the section — this endpoint cannot write a font", async () => {
     const c = fakeClient();
-    await service.setShell(c, { userId: USER, fontBody: "Lora", theme: "dark" });
+    await service.setShell(c, {
+      userId: USER,
+      fontBody: "Lora",
+      theme: "dark",
+    });
     expect([...c.rows.keys()]).toHaveLength(0);
   });
 });
@@ -284,13 +354,17 @@ describe("shell validator", () => {
 
   it("keeps an explicit null apart from an absent key", () => {
     expect(run({ railPins: null }).req.body).toEqual({ railPins: null });
-    expect(run({ ribbonPinned: true }).req.body).toEqual({ ribbonPinned: true });
+    expect(run({ ribbonPinned: true }).req.body).toEqual({
+      ribbonPinned: true,
+    });
   });
 
   /** The rail is a strip of icons a dozen tall. A request carrying hundreds is
    *  not a preference, and the row it writes is billed to the tenant. */
   it("422s an unbounded pin list", () => {
-    const { res, next } = run({ railPins: Array.from({ length: 40 }, (_, i) => `p${i}`) });
+    const { res, next } = run({
+      railPins: Array.from({ length: 40 }, (_, i) => `p${i}`),
+    });
     expect(next).not.toHaveBeenCalled();
     expect(res.status).toHaveBeenCalledWith(422);
   });
@@ -305,7 +379,9 @@ describe("shell validator", () => {
     expect(run({ towerPins: null }).req.body).toEqual({ towerPins: null });
     // Same 16-item cap as railPins — the Control Tower grid caps at 11 but the
     // envelope is shared, so a client sending a longer list is still bounded.
-    const bloated = run({ towerPins: Array.from({ length: 40 }, (_, i) => `p${i}`) });
+    const bloated = run({
+      towerPins: Array.from({ length: 40 }, (_, i) => `p${i}`),
+    });
     expect(bloated.next).not.toHaveBeenCalled();
     expect(bloated.res.status).toHaveBeenCalledWith(422);
   });

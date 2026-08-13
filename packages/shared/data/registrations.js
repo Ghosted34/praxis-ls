@@ -48,17 +48,24 @@ function categoryRequirements({ kind, category, country }) {
   // A customs broker (supplier) is an authorised economic operator: EORI.
   if (kind === "supplier" && cat === "CUSTOMS_BROKER") out.push(EORI);
   // An EU-domiciled supplier trading with us needs an EORI to clear customs.
-  if (kind === "supplier" && EU_SET.has(String(country || "").toUpperCase())) out.push(EORI);
+  if (kind === "supplier" && EU_SET.has(String(country || "").toUpperCase()))
+    out.push(EORI);
   return out;
 }
 
 /** Merge `extra` into `base` by `kind`, OR-ing `required` and marking source. */
 function mergeByKind(base, extra) {
-  const byKind = new Map(base.map((r) => [r.kind, { ...r, source: "country" }]));
+  const byKind = new Map(
+    base.map((r) => [r.kind, { ...r, source: "country" }]),
+  );
   for (const r of extra) {
     const existing = byKind.get(r.kind);
     if (existing) {
-      byKind.set(r.kind, { ...existing, required: !!existing.required || !!r.required, source: "both" });
+      byKind.set(r.kind, {
+        ...existing,
+        required: !!existing.required || !!r.required,
+        source: "both",
+      });
     } else {
       byKind.set(r.kind, { ...r, source: "category" });
     }
@@ -90,7 +97,9 @@ function expectedRegistrations(opts = {}) {
 /** The `kind`s (NIU, VAT, EORI, …) expected, as a plain sorted array — the form
  *  the backend validator compares a submitted registration set against. */
 function expectedKinds(opts = {}) {
-  return expectedRegistrations(opts).map((r) => r.kind).sort();
+  return expectedRegistrations(opts)
+    .map((r) => r.kind)
+    .sort();
 }
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }` — the client is

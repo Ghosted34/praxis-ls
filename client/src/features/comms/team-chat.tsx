@@ -5,7 +5,7 @@
  * Conversation rides in the URL (?channel=…). On our Control-Tower skin.
  */
 import * as React from "react";
-import { useSearchParams, useNavigate } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
@@ -15,6 +15,7 @@ import { useAuth } from "@/app/auth/auth-context";
 import { cn } from "@/lib/cn";
 import * as api from "@/lib/smartcomm-api";
 import { useCommsChannel } from "@/lib/comms-socket";
+import { ComposeModal } from "./mail";
 
 /* avatar colouring — a fixed per-person palette (pixie parity), not the brand accent */
 const AVATAR_COLOURS = ["#C9A86C", "#7FB069", "#5B9BD5", "#C0626E", "#9B7EDE", "#4DB6AC", "#E2934D", "#D46BA3"];
@@ -72,8 +73,22 @@ const FILTERS: { key: Filter; label: string }[] = [
 ];
 const EXTERNAL: Filter[] = ["email"];
 
-function NewChatModal({ colleagues, onClose, onCreated }: { colleagues: api.Colleague[]; onClose: () => void; onCreated: (id: string) => void }) {
-  const [mode, setMode] = React.useState<"DIRECT" | "GROUP">("DIRECT");
+/* The New (+) chooser: in-house message, group channel, or email. */
+function NewChoiceModal({ onPick, onClose }: { onPick: (k: "direct" | "group" | "email") => void; onClose: () => void }) {
+  const opt = "block w-full rounded-xl border border-border bg-card px-4 py-3 text-left transition-colors hover:border-primary hover:bg-primary/5";
+  return (
+    <Modal open onClose={onClose} title="New" description="Start an in-house message, a group channel, or an email.">
+      <div className="space-y-2">
+        <button type="button" className={opt} onClick={() => onPick("direct")}><span className="block font-medium text-foreground">In-house message</span><span className="micro">Direct message a colleague</span></button>
+        <button type="button" className={opt} onClick={() => onPick("group")}><span className="block font-medium text-foreground">Group channel</span><span className="micro">A shared channel with your team</span></button>
+        <button type="button" className={opt} onClick={() => onPick("email")}><span className="block font-medium text-foreground">Email</span><span className="micro">Email a client, supplier, colleague or lead — from your mailbox</span></button>
+      </div>
+    </Modal>
+  );
+}
+
+function NewChatModal({ colleagues, initialMode, onClose, onCreated }: { colleagues: api.Colleague[]; initialMode?: "DIRECT" | "GROUP"; onClose: () => void; onCreated: (id: string) => void }) {
+  const [mode, setMode] = React.useState<"DIRECT" | "GROUP">(initialMode || "DIRECT");
   const [name, setName] = React.useState("");
   const [selected, setSelected] = React.useState<string[]>([]);
   const [busy, setBusy] = React.useState(false);
@@ -182,10 +197,9 @@ export function TeamChatPage() {
   const activeId = params.get("channel");
   const channels = useResource(() => api.listChannels(), []);
   const colleagues = useResource(() => api.listColleagues(), []);
-  const [newChat, setNewChat] = React.useState(false);
+  const [newKind, setNewKind] = React.useState<"" | "menu" | "direct" | "group" | "email">("");
   const [q, setQ] = React.useState("");
   const [filter, setFilter] = React.useState<Filter>("all");
-  const navigate = useNavigate();
 
   const nameOf = React.useMemo(() => {
     const m: Record<string, string> = {};
@@ -211,17 +225,7 @@ export function TeamChatPage() {
 
   return (
     <section className="animate-fade-in">
-      <div className="mb-3 flex items-end justify-between gap-3">
-        <div>
-          <h1 className="font-display text-2xl tracking-tight text-foreground">Messaging</h1>
-          <p className="micro">Unified inbox</p>
-        </div>
-        <button onClick={() => navigate("/comms/setup")} className="rounded-lg border border-border p-2 text-muted-foreground transition-colors hover:text-foreground" aria-label="Setup & channels" title="Setup & channels">
-          <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={1.8}><circle cx="12" cy="12" r="3" /><path d="M19.4 13a7.9 7.9 0 000-2l2-1.5-2-3.5-2.4 1a8 8 0 00-1.7-1L14 3h-4l-.6 2.5a8 8 0 00-1.7 1l-2.4-1-2 3.5 2 1.5a7.9 7.9 0 000 2l-2 1.5 2 3.5 2.4-1a8 8 0 001.7 1L10 21h4l.6-2.5a8 8 0 001.7-1l2.4 1 2-3.5z" /></svg>
-        </button>
-      </div>
-
-      <div className="grid h-[calc(100vh-11rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
+      <div className="grid h-[calc(100vh-8rem)] grid-cols-1 overflow-hidden rounded-2xl border border-border bg-card shadow-sm md:grid-cols-[320px_1fr] lg:grid-cols-[320px_1fr_300px]">
         {/* conversation list */}
         <div className={cn("flex flex-col border-border md:border-r", activeId ? "hidden md:flex" : "flex")}>
           <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -229,7 +233,7 @@ export function TeamChatPage() {
               <h2 className="font-display text-[15px] font-medium">Inbox</h2>
               {unreadTotal > 0 && <span className="grid h-[18px] min-w-[18px] place-items-center rounded-full bg-primary px-1 text-[10px] font-bold text-primary-foreground">{unreadTotal > 99 ? "99+" : unreadTotal}</span>}
             </div>
-            <button onClick={() => setNewChat(true)} className="text-muted-foreground hover:text-foreground" title="New conversation" aria-label="New conversation">
+            <button onClick={() => setNewKind("menu")} className="text-muted-foreground hover:text-foreground" title="New conversation" aria-label="New conversation">
               <svg viewBox="0 0 24 24" width={16} height={16} fill="none" stroke="currentColor" strokeWidth={2}><path d="M12 5v14M5 12h14" /></svg>
             </button>
           </div>
@@ -268,7 +272,9 @@ export function TeamChatPage() {
         </div>
       </div>
 
-      {newChat && <NewChatModal colleagues={colleagues.data || []} onClose={() => setNewChat(false)} onCreated={(id) => { channels.reload(); select(id); }} />}
+      {newKind === "menu" && <NewChoiceModal onPick={(k) => setNewKind(k)} onClose={() => setNewKind("")} />}
+      {(newKind === "direct" || newKind === "group") && <NewChatModal colleagues={colleagues.data || []} initialMode={newKind === "group" ? "GROUP" : "DIRECT"} onClose={() => setNewKind("")} onCreated={(id) => { channels.reload(); select(id); }} />}
+      {newKind === "email" && <ComposeModal onClose={() => setNewKind("")} onSent={() => setNewKind("")} />}
     </section>
   );
 }

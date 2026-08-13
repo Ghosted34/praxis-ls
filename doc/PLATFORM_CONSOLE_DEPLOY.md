@@ -43,6 +43,7 @@ Automatic: push to `main` → CI green → the Deploy workflow runs `scripts/dep
 (build → migrate → roll standby api → roll primary → worker; zero-downtime).
 
 Manual, by hand:
+
 ```bash
 cd ~/praxis-ls && bash scripts/deploy.sh
 ```
@@ -116,10 +117,10 @@ setting a key:
 
 ## 4. Quick reference
 
-| Action | Command |
-|---|---|
-| Deploy (build → migrate → roll) | `bash scripts/deploy.sh` |
-| Platform migrations only | `docker compose run --rm api npm run db:migrate:platform` |
-| Tenant migrations only | `docker compose run --rm api npm run db:migrate:tenants` |
-| Create first Root Admin | `docker compose run --rm api npm run platform:create-admin` |
-| Console logs | `docker compose logs -f api` |
+| Action                          | Command                                                     |
+| ------------------------------- | ----------------------------------------------------------- |
+| Deploy (build → migrate → roll) | `bash scripts/deploy.sh`                                    |
+| Platform migrations only        | `docker compose run --rm api npm run db:migrate:platform`   |
+| Tenant migrations only          | `docker compose run --rm api npm run db:migrate:tenants`    |
+| Create first Root Admin         | `docker compose run --rm api npm run platform:create-admin` |
+| Console logs                    | `docker compose logs -f api`                                |

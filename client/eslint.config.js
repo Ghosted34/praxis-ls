@@ -9,7 +9,16 @@ import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "dev-dist", "coverage", "node_modules", "playwright-report", "test-results"] },
+  {
+    ignores: [
+      "dist",
+      "dev-dist",
+      "coverage",
+      "node_modules",
+      "playwright-report",
+      "test-results",
+    ],
+  },
   {
     files: ["**/*.{ts,tsx}"],
     extends: [js.configs.recommended, ...tseslint.configs.recommended],
@@ -42,8 +51,14 @@ export default tseslint.config(
        * exception someone had to justify, rather than a warning nobody reads.
        */
       "react-hooks/exhaustive-deps": "error",
-      "react-refresh/only-export-components": ["warn", { allowConstantExport: true }],
-      "@typescript-eslint/no-unused-vars": ["warn", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+      "react-refresh/only-export-components": [
+        "warn",
+        { allowConstantExport: true },
+      ],
+      "@typescript-eslint/no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", varsIgnorePattern: "^_" },
+      ],
       "@typescript-eslint/no-explicit-any": "off",
 
       /**
@@ -117,7 +132,17 @@ export default tseslint.config(
        */
       "jsx-a11y/label-has-associated-control": [
         "error",
-        { controlComponents: ["Input", "Textarea", "Select", "SearchSelect", "Checkbox", "RadioGroup", "OtpInput"] },
+        {
+          controlComponents: [
+            "Input",
+            "Textarea",
+            "Select",
+            "SearchSelect",
+            "Checkbox",
+            "RadioGroup",
+            "OtpInput",
+          ],
+        },
       ],
     },
   },

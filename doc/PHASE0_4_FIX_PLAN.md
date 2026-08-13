@@ -10,6 +10,7 @@ Legend: 🔴 blocking (doc states as a first-class RULE) · 🟠 completeness ga
 ---
 
 ## Step 1 — Generalise the approval workflow to every approvable document 🔴
+
 **Gap (§2.1):** only `final_invoice` calls `executor.start` + registers an
 `onApproved` handler. PRD §7.2 / BUILD_CONVENTIONS §2 require every approvable
 document to be governed by the tenant's configurable `workflow`/`workflow_step`
@@ -21,6 +22,7 @@ quotation each run a private hard-coded status ladder.
 approval).
 
 **Scope / files:**
+
 - `src/modules/finance/proforma/proforma.service.js`
 - `src/modules/procurement/purchase_order/purchase_order.service.js`
 - `src/modules/procurement/supplier_invoice/supplier_invoice.service.js`
@@ -51,6 +53,7 @@ workflow IS bound; eslint clean.
 ---
 
 ## Step 2 — Make the AI's write reach equal the app's 🔴
+
 **Gap (§2.2 + §2.5):** 169 write tools are catalogued but only 1 is executable —
 `src/services/ai/action-registry.js` whitelists just `ping`/`create_client`/
 `create_operations_file`. AI_ARCHITECTURE §0 promises "AI capability == app
@@ -58,13 +61,14 @@ capability." Also no event-driven re-embed, and ingest ignores the
 `ai.vectorization` toggle (AI_READINESS leak).
 
 **Scope / files:**
+
 - `src/services/ai/action-registry.js` — add vetted executors for the core write
   actions (raise proforma/final invoice, post journal, create/issue PO, record
   GRN + supplier invoice, post receipt, open/transition dossier, create/accept
   quotation, run/advance payroll). Each calls the module **service** with the
   caller's client + identity (RBAC/audit already apply in-service).
 - ~40 Phase-3 `*.ai.js` manifests — normalise `action:"update"` → `action:"edit"`
-  (fleet/*, hr/*, wms/*, etc.) so the vocabulary matches the rest of the codebase
+  (fleet/_, hr/_, wms/*, etc.) so the vocabulary matches the rest of the codebase
   and `middleware/rbac.js` mapping; **this also fixes the failing
   `action-registrar.test.js`.**
 - `src/services/ai/ingest.service.js` + `scripts/ai/reindex.js` — skip a tenant
@@ -80,11 +84,13 @@ changed record re-embeds on its event.
 ---
 
 ## Step 3 — Enforce field-level confidentiality on responses 🟠
+
 **Gap (§2.3):** `field_visibility` is config-only; no serializer masks anything on
 the way out (the lone real strip is `pricing_variance.salesView`; `employees`
-ships an *unused* `stripSensitive`). PRD §5.6/§7.3 make masking a [RULE].
+ships an _unused_ `stripSensitive`). PRD §5.6/§7.3 make masking a [RULE].
 
 **Scope / files:**
+
 - New `src/shared/rbac/field-mask.js` — `maskFields(row(s), { caller, entity })`
   driven by the caller's resolved `field_visibility` (via `identity-cache`).
 - Wire it into the response path of the sensitive surfaces:
@@ -101,18 +107,20 @@ role for employees + dossier-360 + supplier.
 ---
 
 ## Step 4 — Complete the statutory accounting outputs 🟠
+
 **Gap (§2.4):** `tax_declaration` implements only `vat-return` + `corporate-tax`.
 PRD §12.4 / the KB require the **withholding (2.2%/5.5%) return, CNPS declaration,
 and DSF dataset**, plus **Notes annexes** and a **guided monthly close** (period
 lock) for the statement suite.
 
 **Scope / files:**
+
 - `src/modules/finance/tax_declaration/tax_declaration.rules.js` +
   `.service.js` + `.routes.js` + `.validator.js` — add `withholdingReturn`,
   `cnpsDeclaration`, `dsfDataset`, each derived from the validated GL/trial
   balance (rules pure + unit-tested to KB figures).
 - `src/modules/finance/financial_statement/financial_statement.{rules,service,
-  routes}.js` — Notes annexes; a guided monthly-close path that locks
+routes}.js` — Notes annexes; a guided monthly-close path that locks
   `accounting_period` (validated entries already immutable via triggers).
 - Tests: `tax-center` / `statements-extra` extended for the new outputs.
 
@@ -128,6 +136,7 @@ suites, 0 lint errors).
 ---
 
 ## Sequencing & exit criteria
+
 1 → 2 → 3 → 4. Steps 1 and 2 are the 🔴 promises (approval hierarchy + AI reach);
 3 and 4 are the 🟠 completeness rules (masking + statutory outputs). After Step 4
 the two stale tests and the eslint error are gone, and every item under

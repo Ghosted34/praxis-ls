@@ -10,13 +10,13 @@ actual code in `src/`, `migrations/`, and config — **not** against the self-re
 ## Verdict: NOT production-ready. Do not deploy.
 
 The design is genuinely good — the RBAC model, the immutable-ledger triggers, the
-multi-tenant DB-per-tenant architecture, and the middleware *logic* are well thought out and
+multi-tenant DB-per-tenant architecture, and the middleware _logic_ are well thought out and
 mostly implemented. Phase 0 is roughly **80% built as a demo, ~35% ready for production.**
 But there are **three independent showstoppers**, any one of which fails a production gate,
 and each is triggerable by an anonymous attacker or by simply deploying the repo as-is.
 
-The self-assessment in `WORK_TO_BE_DONE.md` / `HANDOVER.md` is honest about *feature*
-completeness but silent on *operational safety*: it tracks "did we build the feature" and
+The self-assessment in `WORK_TO_BE_DONE.md` / `HANDOVER.md` is honest about _feature_
+completeness but silent on _operational safety_: it tracks "did we build the feature" and
 almost never "does it survive contact with a hostile or misconfigured production."
 
 ---
@@ -24,6 +24,7 @@ almost never "does it survive contact with a hostile or misconfigured production
 ## P0 — Showstoppers (block any deploy)
 
 ### 1. Any unauthenticated request to a gated route CRASHES the whole API
+
 **Severity: Critical — trivial remote DoS + total outage for all tenants.**
 
 `src/middleware/auth.js` (`authMiddleware`) and `src/middleware/rbac.js`
@@ -40,7 +41,7 @@ never reached. In production one anonymous `GET /api/tenant/capabilities` (no to
 entire process down, and with it **every tenant** on that process.
 
 Note the inconsistency that proves this is an oversight, not a pattern: `hostTenantResolver`
-*does* it correctly (`try/catch → next(err)`). The security-critical middleware does not.
+_does_ it correctly (`try/catch → next(err)`). The security-critical middleware does not.
 
 **Fix:** wrap every async middleware/handler in `asyncHandler` (already defined in
 `utils/errors.js`) or add `require('express-async-errors')` at boot, OR convert the auth/RBAC
@@ -48,9 +49,11 @@ middleware to `next(err)`. Add `unhandledRejection`/`uncaughtException` process 
 regardless. This is ~1 hour of work and must ship before anything else.
 
 ### 2. All secrets have public hardcoded defaults and there is no production guard
+
 **Severity: Critical — full auth bypass / token forgery in any misconfigured deploy.**
 
 `src/config/env.js`:
+
 - `JWT_ACCESS_SECRET` defaults to `"__dev_access__"`
 - `JWT_REFRESH_SECRET` defaults to `"__dev_refresh__"`
 - `ENCRYPTION_KEY` (used to encrypt 2FA TOTP secrets) defaults to a fixed, in-repo
@@ -66,6 +69,7 @@ user in any tenant, and decrypt every stored 2FA secret.
 defaults (Zod `superRefine`). Fail boot loudly instead of silently running insecure.
 
 ### 3. Zero automated tests
+
 **Severity: Critical for a financial/multi-tenant system.**
 
 `find tests -type f -name "*.test.js"` → **0**. CI runs `jest --passWithNoTests`, i.e. the
@@ -85,6 +89,7 @@ crash, (b) tenant A token rejected on tenant B, (c) non-CEO blocked on a gated w
 ## P1 — Serious (fix before real users, not necessarily before internal demo)
 
 ### 4. Foreign "Pixie Girl" storefront code is still in the running service
+
 The service still identifies itself as **`pixiegirl-hub-backend`** (`config/logger.js` default
 `APP_NAME`). 17 `src/` files reference storefront concepts (cart/checkout/shopper/buyer),
 including live middleware and services (`geo-currency.js`, `media-compression.service.js`,
@@ -99,24 +104,28 @@ supply-chain/maintenance risk: nobody can cleanly reason about what runs.
 handlers into one.
 
 ### 5. Background worker is an empty file
+
 `src/jobs/workers.js` is **0 bytes**. BullMQ producers exist; nothing consumes the queues. Any
 job enqueued today (and Phase 1's PDF/email/FX all depend on this) silently never runs, with no
 error surfaced. Documented in HANDOVER but it's a Phase-0-incomplete item, not a Phase-1 nicety.
 
 ### 6. RBAC record-level scoping: mechanism only, zero enforcement
+
 `requirePermission` resolves `scope_ids` and `makeRepo` accepts `scopeColumn`, but **no table
 declares it** and no business table even has a `scope_id` column (grep-confirmed: only the RBAC
 tables + `workflow_step`). So today RBAC is **module-level only** — any user with a module grant
-sees *all* rows in that module regardless of branch/entity. Correct for Phase 0's own tables;
+sees _all_ rows in that module regardless of branch/entity. Correct for Phase 0's own tables;
 must not be forgotten when Phase 1/2 tables land, or "scoped" access silently means "all access."
 
 ### 7. Default-permission seed never run against a real Postgres
+
 `9021_seed_default_permissions.sql` was hand-verified by string-matching, never executed
 (the author had no DB). Two matrix rows deliberately unseeded; `MOD-00A`/`MOD-63` seeded
 nowhere. Until a `db:migrate:tenants` run + a non-CEO login spot-check, treat the whole grant
 matrix as unproven.
 
 ### 8. `/media` is a flat public static mount
+
 Fine for logos (as noted), but there is **no auth-gated download route**, and Phase 1 puts
 confidential financial PDFs through the same storage. The S3 driver is interface-only. Must land
 before any sensitive document is stored.
@@ -143,7 +152,7 @@ before any sensitive document is stored.
 ## What is genuinely solid (credit where due)
 
 - Immutable ledger is real and DB-enforced: `trg_ledger_ro` (`BEFORE UPDATE OR DELETE →
-  forbid_mutation`) on `immutable_ledger`, plus validated-journal-entry immutability triggers in
+forbid_mutation`) on `immutable_ledger`, plus validated-journal-entry immutability triggers in
   `0220_ledger.sql`. This is the hardest thing to fake and it's done right.
 - Multi-tenancy (DB-per-tenant + platform registry + Host-header resolution) is coherent and the
   tenant-resolution middleware handles errors correctly.

@@ -89,7 +89,15 @@ class mockFakePool {
   }
 }
 
-jest.mock("pg", () => ({ Pool: mockFakePool }));
+// `types` as well as `Pool`: the registry requires `shared/db/pg-date-types`,
+// which registers the `date` passthrough parser on the pg module singleton
+// before any pool can query. A double that omits it makes the registry
+// unloadable — which is the point of including it rather than making the
+// parser registration tolerate a missing `types` in production.
+jest.mock("pg", () => ({
+  Pool: mockFakePool,
+  types: { setTypeParser: () => {} },
+}));
 jest.mock("pgvector/pg", () => ({ registerType: async () => {} }));
 
 const SCHEMA = Symbol.for("praxis.conn.schema");
@@ -180,7 +188,9 @@ describe("tenant registry — isolation (TC-C1)", () => {
       // Same pool, same underlying client object, now wanted as live.
       const second = await registry.acquire(meta("alpha"), "live");
       expect(second[SCHEMA]).toBe("live");
-      expect(second.queries.some((q) => q.includes("search_path = live"))).toBe(true);
+      expect(second.queries.some((q) => q.includes("search_path = live"))).toBe(
+        true,
+      );
     });
 
     it("honours a tenant's non-default schema names", async () => {
@@ -208,7 +218,8 @@ describe("tenant registry — isolation (TC-C1)", () => {
 
   describe("pool cache is bounded and LRU (PERF S1)", () => {
     it("evicts the least recently used pool past the cap", async () => {
-      for (const n of ["a", "b", "c", "d", "e"]) await registry.poolFor(meta(n));
+      for (const n of ["a", "b", "c", "d", "e"])
+        await registry.poolFor(meta(n));
       const stats = registry.poolStats();
       expect(stats.pools).toBe(3);
       expect(stats.cap).toBe(3);
@@ -236,7 +247,8 @@ describe("tenant registry — isolation (TC-C1)", () => {
 
   describe("host cache is bounded by attacker-controlled input (PERF S10)", () => {
     it("holds at the cap however many distinct hosts arrive", async () => {
-      for (let i = 0; i < 50; i += 1) await registry.resolveByHost(`junk-${i}.example.com`);
+      for (let i = 0; i < 50; i += 1)
+        await registry.resolveByHost(`junk-${i}.example.com`);
       const stats = registry.hostCacheStats();
       expect(stats.size).toBe(4);
       expect(stats.cap).toBe(4);

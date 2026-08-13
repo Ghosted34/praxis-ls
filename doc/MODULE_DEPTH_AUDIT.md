@@ -22,6 +22,7 @@ real behaviour, not CRUD.
 ## Findings by bucket
 
 ### Fixed this pass
+
 - **`notification`** — was pure generic `makeService`, and (per its own code
   comment) `list()` returned EVERY tenant notification, not the caller's — a
   cross-user data-exposure bug. Rebuilt: self-scoped inbox (`GET /`,
@@ -29,6 +30,7 @@ real behaviour, not CRUD.
   no create/delete via API (rows are event-engine-written). SQL in repo.
 
 ### Thin but adequate (read-only aggregators — by design)
+
 - **`dashboard`** (`GET /kpis`) and **`workspace`** (`GET /` → my approvals +
   recent activity + unread) are small because they're personal read surfaces that
   delegate to a KPI/aggregation repo. Functional. The PRD's "many interactive
@@ -40,14 +42,17 @@ real behaviour, not CRUD.
   small.
 
 ### Known dead (already tracked, retained)
+
 - **`ai/ai.routes.js`** — `// DEPRECATED`, `module.exports = {}`, not mounted.
   Counts as 0/0. Superseded by `ai/assistant`.
 
 ### Phase-3 (HR / WMS / Fleet / Assets) — IN SCOPE (P0–P4 = phases 0,1,2,3,4)
+
 Correction: an earlier draft wrongly called Phase 3 "out of scope." It is in
 scope, and on inspection its modules **do implement their documented domains** —
 they are lean "hybrid" modules (generic CRUD for boilerplate + hand-written
 domain methods), not shallow CRUD:
+
 - **`payroll` (MOD-17)** — the deepest domain logic after the OHADA ledger: full
   Cameroon statutory computation (`payroll.rules.js`): CNPS pension 4.2% ee+er
   with 750k ceiling, CNPS family 7% er, injury 1.75% er (risk-class overridable),
@@ -70,6 +75,7 @@ a regression. If a specific Phase-3 module should match Smart Comms' breadth,
 PRD-audit it individually.
 
 ## How to keep this honest
+
 Depth ≠ line count, but line count + endpoint count + rules-presence is a good
 smell test. The rule going forward (added to intake): before shipping a module,
 check the PRD/kickoff for the intended feature surface — Smart Comms failed
@@ -78,6 +84,7 @@ consulted. The Smart Comms rebuild (migration `0430` + 37 repo fns) is the
 reference bar for a "portal-grade" module.
 
 ## Deep-dive candidates if you want more depth later
+
 - `dashboard` — could gain configurable tiles (the `dashboard_tile` table exists
   and MOD-63 already manages tiles; wire a per-role default dashboard).
 - Phase-3 HR/WMS/Fleet — build to the same lifecycle depth as the finance/sales

@@ -24,40 +24,66 @@ describe("settings testSecret", () => {
   afterEach(() => jest.clearAllMocks());
 
   it("reports not-set when no secret row exists", async () => {
-    const res = await service.testSecret(clientReturning(null), "fx_exchangerate");
+    const res = await service.testSecret(
+      clientReturning(null),
+      "fx_exchangerate",
+    );
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/no integration secret/i);
   });
 
   it("reports no-probe for a provider without a test", async () => {
-    const row = { section: SECRET, key: "misc", value: { provider: "acme", secret_enc: encryption.encrypt("x") } };
+    const row = {
+      section: SECRET,
+      key: "misc",
+      value: { provider: "acme", secret_enc: encryption.encrypt("x") },
+    };
     const res = await service.testSecret(clientReturning(row), "misc");
     expect(res.ok).toBe(false);
     expect(res.error).toMatch(/no connectivity test/i);
   });
 
   it("passes when exchangerate-api authenticates, without leaking the key", async () => {
-    axios.get.mockResolvedValue({ data: { result: "success", terms_of_use: "t" } });
+    axios.get.mockResolvedValue({
+      data: { result: "success", terms_of_use: "t" },
+    });
     const row = {
       section: SECRET,
       key: "fx_exchangerate",
-      value: { provider: "exchangerate-api", secret_enc: encryption.encrypt("realkey123") },
+      value: {
+        provider: "exchangerate-api",
+        secret_enc: encryption.encrypt("realkey123"),
+      },
     };
-    const res = await service.testSecret(clientReturning(row), "fx_exchangerate");
+    const res = await service.testSecret(
+      clientReturning(row),
+      "fx_exchangerate",
+    );
     expect(res.ok).toBe(true);
     expect(res.provider).toBe("exchangerate-api");
-    expect(axios.get).toHaveBeenCalledWith(expect.stringContaining("realkey123"), expect.any(Object));
+    expect(axios.get).toHaveBeenCalledWith(
+      expect.stringContaining("realkey123"),
+      expect.any(Object),
+    );
     expect(JSON.stringify(res)).not.toContain("realkey123");
   });
 
   it("fails cleanly on an upstream 401", async () => {
-    axios.get.mockRejectedValue({ response: { status: 401, data: { "error-type": "invalid-key" } } });
+    axios.get.mockRejectedValue({
+      response: { status: 401, data: { "error-type": "invalid-key" } },
+    });
     const row = {
       section: SECRET,
       key: "fx_exchangerate",
-      value: { provider: "exchangerate-api", secret_enc: encryption.encrypt("badkey") },
+      value: {
+        provider: "exchangerate-api",
+        secret_enc: encryption.encrypt("badkey"),
+      },
     };
-    const res = await service.testSecret(clientReturning(row), "fx_exchangerate");
+    const res = await service.testSecret(
+      clientReturning(row),
+      "fx_exchangerate",
+    );
     expect(res.ok).toBe(false);
     expect(res.status).toBe(401);
     expect(res.error).toMatch(/invalid-key/);

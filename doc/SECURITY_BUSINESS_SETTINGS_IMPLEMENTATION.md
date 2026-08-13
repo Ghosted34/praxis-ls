@@ -18,14 +18,14 @@ The document is split into two independent halves. **Part A — Backend** and **
 
 Every module is a folder `src/modules/<name>/` (or `src/shared/<name>/` for cross-brand concerns) with a **fixed six-file shape**:
 
-| File | Responsibility | Hard rule |
-|------|----------------|-----------|
-| `<mod>.routes.js` | Express router, one line per endpoint, wires `requirePermission` + validator + controller | mounted under `/api/v1/<mod>` |
-| `<mod>.controller.js` | Thin HTTP glue — reads `req`, calls the service, sends `res.json({ data })` | **no business logic**, never touches the DB |
-| `<mod>.service.js` | Business logic, transactions, invariants, audit, event emission | **never touches `req`/`res`** |
-| `<mod>.repo.js` | Parameterised SQL only | **never emits events, never audits** |
-| `<mod>.validator.js` | Zod schemas wrapped as Express middleware | rejects unknown keys with `.strict()` |
-| `<mod>.events.js` | Domain event emitter | small payloads (IDs + brand only) |
+| File                  | Responsibility                                                                            | Hard rule                                   |
+| --------------------- | ----------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `<mod>.routes.js`     | Express router, one line per endpoint, wires `requirePermission` + validator + controller | mounted under `/api/v1/<mod>`               |
+| `<mod>.controller.js` | Thin HTTP glue — reads `req`, calls the service, sends `res.json({ data })`               | **no business logic**, never touches the DB |
+| `<mod>.service.js`    | Business logic, transactions, invariants, audit, event emission                           | **never touches `req`/`res`**               |
+| `<mod>.repo.js`       | Parameterised SQL only                                                                    | **never emits events, never audits**        |
+| `<mod>.validator.js`  | Zod schemas wrapped as Express middleware                                                 | rejects unknown keys with `.strict()`       |
+| `<mod>.events.js`     | Domain event emitter                                                                      | small payloads (IDs + brand only)           |
 
 The layering rule, stated once and enforced everywhere:
 
@@ -91,20 +91,33 @@ Resolves which brand (schema) the request operates on. Order: `X-Brand-Context` 
 
 ```js
 async function brandContextMiddleware(req, _res, next) {
-  if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required first", 401);
+  if (!req.user)
+    throw new AppError("AUTH_REQUIRED", "Authentication required first", 401);
 
-  let brand = req.headers["x-brand-context"] || req.params.brand || req.user.default_business_key;
+  let brand =
+    req.headers["x-brand-context"] ||
+    req.params.brand ||
+    req.user.default_business_key;
   brand = typeof brand === "string" ? brand.toLowerCase().trim() : null;
 
   if (!brand || !VALID_BRANDS.has(brand))
-    throw new AppError("BRAND_CONTEXT_REQUIRED", "Missing or invalid X-Brand-Context header", 400);
+    throw new AppError(
+      "BRAND_CONTEXT_REQUIRED",
+      "Missing or invalid X-Brand-Context header",
+      400,
+    );
 
   // CEO has implicit access to every brand; everyone else must be granted.
   if (!req.user.is_ceo && !req.user.available_businesses.includes(brand))
     throw new AppError("BRAND_ACCESS_DENIED", `No access to ${brand}`, 403);
 
   const business = await identityCache.getBrandConfig(brand); // 30s TTL cache
-  if (!business) throw new AppError("BRAND_NOT_FOUND", `Brand config not found for ${brand}`, 500);
+  if (!business)
+    throw new AppError(
+      "BRAND_NOT_FOUND",
+      `Brand config not found for ${brand}`,
+      500,
+    );
 
   req.brand = brand;
   req.brand_id = business.business_id;
@@ -113,58 +126,88 @@ async function brandContextMiddleware(req, _res, next) {
   // Bind brand+user into AsyncLocalStorage so downstream transactions set the
   // Postgres session GUCs (app.current_business / app.current_user_id) that
   // RLS + audit rely on. Wrapping next() keeps the async chain inside scope.
-  return requestContext.run(
-    { brand, userId: req.user.user_id },
-    () => next(),
-  );
+  return requestContext.run({ brand, userId: req.user.user_id }, () => next());
 }
 ```
 
 Key ideas to reproduce:
+
 - **Entity isolation is enforced here**, at the application layer. Each brand is a separate Postgres schema; the resolved `req.brand` selects the schema in every repo query.
 - The brand config is cached (30s) and invalidated when Business Setup edits the config.
 - Cross-brand aggregate views must bypass this middleware via dedicated `/group/*` routes.
 
 ### A1.3 RBAC middleware (`middleware/rbac.js`)
 
-Checks module × action. Scope (`own`/`team`/`all`) is *resolved* here but *enforced* inside repos (via SQL `WHERE`), because scope needs table-specific filters.
+Checks module × action. Scope (`own`/`team`/`all`) is _resolved_ here but _enforced_ inside repos (via SQL `WHERE`), because scope needs table-specific filters.
 
 ```js
-const VALID_ACTIONS = new Set(["view","create","edit","delete","approve","export","publish"]);
+const VALID_ACTIONS = new Set([
+  "view",
+  "create",
+  "edit",
+  "delete",
+  "approve",
+  "export",
+  "publish",
+]);
 
 function requirePermission(moduleKey, action) {
   if (!moduleKey) throw new Error("requirePermission: moduleKey required");
   if (!VALID_ACTIONS.has(action)) throw new Error(`invalid action "${action}"`);
 
   return async function rbacCheck(req, _res, next) {
-    if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+    if (!req.user)
+      throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
 
     // CEO bypass — sees everything by design.
-    if (req.user.is_ceo) { req.permission_scope = "all"; return next(); }
+    if (req.user.is_ceo) {
+      req.permission_scope = "all";
+      return next();
+    }
 
     // Only grants for the CURRENT brand ('*' = all brands) count.
-    const roleGrants = Array.isArray(req.user.role_grants) ? req.user.role_grants : null;
-    const role_ids = req.brand && roleGrants
-      ? [...new Set(roleGrants
-          .filter((g) => g.business === "*" || g.business === req.brand)
-          .map((g) => g.role_id))]
-      : req.user.role_ids;
+    const roleGrants = Array.isArray(req.user.role_grants)
+      ? req.user.role_grants
+      : null;
+    const role_ids =
+      req.brand && roleGrants
+        ? [
+            ...new Set(
+              roleGrants
+                .filter((g) => g.business === "*" || g.business === req.brand)
+                .map((g) => g.role_id),
+            ),
+          ]
+        : req.user.role_ids;
 
-    const grants = await identityCache.getGrants({ role_ids, module: moduleKey, action });
+    const grants = await identityCache.getGrants({
+      role_ids,
+      module: moduleKey,
+      action,
+    });
     if (!grants || grants.length === 0)
-      throw new AppError("PERMISSION_DENIED", `No permission for ${moduleKey}.${action}`, 403);
+      throw new AppError(
+        "PERMISSION_DENIED",
+        `No permission for ${moduleKey}.${action}`,
+        403,
+      );
 
     // Most-permissive scope wins.
-    req.permission_scope = grants.some((g) => g.record_scope === "all") ? "all"
-      : grants.some((g) => g.record_scope === "team") ? "team" : "own";
+    req.permission_scope = grants.some((g) => g.record_scope === "all")
+      ? "all"
+      : grants.some((g) => g.record_scope === "team")
+        ? "team"
+        : "own";
     return next();
   };
 }
 
 // Hard owner-only gate (no role can satisfy it) — for CEO-reserved surfaces.
 function requireCeo(req, _res, next) {
-  if (!req.user) throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
-  if (!req.user.is_ceo) throw new AppError("PERMISSION_DENIED", "Reserved to the CEO", 403);
+  if (!req.user)
+    throw new AppError("AUTH_REQUIRED", "Authentication required", 401);
+  if (!req.user.is_ceo)
+    throw new AppError("PERMISSION_DENIED", "Reserved to the CEO", 403);
   return next();
 }
 ```
@@ -174,6 +217,7 @@ Permission table layout (`shared.permissions`):
 ```
 role_id | module | action | record_scope | allowed
 ```
+
 - `module` ∈ the catalog keys (A2)
 - `action` ∈ view | create | edit | delete | approve | export | publish
 - `record_scope` ∈ all | own | team
@@ -182,15 +226,28 @@ Grants are cached with a 30s TTL and invalidated on any matrix edit, so changes 
 
 ### A1.4 Audit helper (`middleware/audit.js`)
 
-Not Express middleware — a function called *from services* where before/after snapshots are known. Writes one append-only row and **never throws** (audit failure must not break a committed action).
+Not Express middleware — a function called _from services_ where before/after snapshots are known. Writes one append-only row and **never throws** (audit failure must not break a committed action).
 
 ```js
-async function audit({ business, user_id, action_key, target_type, target_id,
-                       before=null, after=null, metadata=null, request_id=null,
-                       ip=null, user_agent=null, is_sensitive=false,
-                       user_name=null, module=null }) {
+async function audit({
+  business,
+  user_id,
+  action_key,
+  target_type,
+  target_id,
+  before = null,
+  after = null,
+  metadata = null,
+  request_id = null,
+  ip = null,
+  user_agent = null,
+  is_sensitive = false,
+  user_name = null,
+  module = null,
+}) {
   if (!config.ENABLE_AUDIT_LOG) return;
-  const mod = module || (action_key ? String(action_key).split(".")[0] : "system");
+  const mod =
+    module || (action_key ? String(action_key).split(".")[0] : "system");
   const meta = { ...(metadata || {}) };
   if (request_id) meta.request_id = request_id;
   try {
@@ -199,12 +256,25 @@ async function audit({ business, user_id, action_key, target_type, target_id,
          (business, user_id, user_name, module, action, table_name, record_id,
           before_state, after_state, ip_address, user_agent, is_sensitive, metadata)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-      [ business || "system", user_id, user_name || (user_id ? String(user_id) : "system"),
-        mod, action_key, target_type, target_id,
+      [
+        business || "system",
+        user_id,
+        user_name || (user_id ? String(user_id) : "system"),
+        mod,
+        action_key,
+        target_type,
+        target_id,
         before ? JSON.stringify(before) : null,
         after ? JSON.stringify(after) : null,
-        ip, user_agent, is_sensitive, JSON.stringify(meta) ]);
-  } catch (err) { logger.error({ err, action_key, target_id }, "audit log write failed"); }
+        ip,
+        user_agent,
+        is_sensitive,
+        JSON.stringify(meta),
+      ],
+    );
+  } catch (err) {
+    logger.error({ err, action_key, target_id }, "audit log write failed");
+  }
 }
 ```
 
@@ -217,8 +287,12 @@ Any settings-type write emits a Socket.io event so open browsers invalidate and 
 ```js
 function emitSettingsUpdated(payload) {
   try {
-    require("../../realtime/emitter").getBroadcaster().emit("settings:updated", payload);
-  } catch { /* socket not initialised — non-fatal */ }
+    require("../../realtime/emitter")
+      .getBroadcaster()
+      .emit("settings:updated", payload);
+  } catch {
+    /* socket not initialised — non-fatal */
+  }
 }
 ```
 
@@ -231,25 +305,54 @@ This is the spine of the whole security model. It is the **authoritative list of
 Structure:
 
 ```js
-const GROUPS = [ // sidebar sections; the grant grid bands columns by these
-  { key: "run", label: "Run" }, { key: "workspace", label: "Workspace" },
-  { key: "operate", label: "Operate" }, { key: "finance", label: "Finance" },
-  { key: "people", label: "People" }, { key: "grow", label: "Grow" },
+const GROUPS = [
+  // sidebar sections; the grant grid bands columns by these
+  { key: "run", label: "Run" },
+  { key: "workspace", label: "Workspace" },
+  { key: "operate", label: "Operate" },
+  { key: "finance", label: "Finance" },
+  { key: "people", label: "People" },
+  { key: "grow", label: "Grow" },
   { key: "system", label: "System" },
 ];
 
 const MODULE_CATALOG = [
-  { key: "dashboards", group: "run", label: "Dashboard", description: "KPIs & today's numbers" },
+  {
+    key: "dashboards",
+    group: "run",
+    label: "Dashboard",
+    description: "KPIs & today's numbers",
+  },
   // ... one row per enforced module, each with key + group + label + description
-  { key: "settings", group: "system", label: "Settings", description: "Configure the hub" },
-  { key: "business_setup", group: "system", label: "Business Setup", description: "Company profile, brands & payment gateways" },
-  { key: "iam", group: "system", label: "IAM & Security", description: "Users, access, sessions & audit" },
-  { key: "audit", group: "system", label: "Audit Log", description: "Who did what, and when" },
+  {
+    key: "settings",
+    group: "system",
+    label: "Settings",
+    description: "Configure the hub",
+  },
+  {
+    key: "business_setup",
+    group: "system",
+    label: "Business Setup",
+    description: "Company profile, brands & payment gateways",
+  },
+  {
+    key: "iam",
+    group: "system",
+    label: "IAM & Security",
+    description: "Users, access, sessions & audit",
+  },
+  {
+    key: "audit",
+    group: "system",
+    label: "Audit Log",
+    description: "Who did what, and when",
+  },
 ];
 
-const MODULES      = MODULE_CATALOG.map((m) => m.key);
-const ACTIONS      = ["view","create","edit","delete","approve","export"];
-const RECORD_SCOPES= ["all","own","team"];
+const MODULES = MODULE_CATALOG.map((m) => m.key);
+const ACTIONS = ["view", "create", "edit", "delete", "approve", "export"];
+const RECORD_SCOPES = ["all", "own", "team"];
 ```
 
 It exposes validators (`isValidModule`, `isValidAction`, `isValidScope`) and a `catalog()` function that returns the module×action grid the admin matrix UI renders:
@@ -257,9 +360,16 @@ It exposes validators (`isValidModule`, `isValidAction`, `isValidScope`) and a `
 ```js
 function catalog() {
   return {
-    modules: MODULE_CATALOG.map((m) => ({ module: m.key, label: m.label,
-      description: m.description, group: m.group, actions: ACTIONS })),
-    groups: GROUPS, actions: ACTIONS, record_scopes: RECORD_SCOPES,
+    modules: MODULE_CATALOG.map((m) => ({
+      module: m.key,
+      label: m.label,
+      description: m.description,
+      group: m.group,
+      actions: ACTIONS,
+    })),
+    groups: GROUPS,
+    actions: ACTIONS,
+    record_scopes: RECORD_SCOPES,
   };
 }
 ```
@@ -270,19 +380,36 @@ function catalog() {
 
 ## A3. Access escalation guards (`shared/access/access.guards.js`)
 
-Pure functions that throw on violation. They stop a *delegated* admin (has `settings` permission but is not the owner) from escalating their own privileges. The CEO bypasses them (already bypasses everything).
+Pure functions that throw on violation. They stop a _delegated_ admin (has `settings` permission but is not the owner) from escalating their own privileges. The CEO bypasses them (already bypasses everything).
 
 ```js
 const OWNER_ROLE_ID = "11111111-1111-1111-1111-000000000001"; // seeded owner role
 
 const isOwnerActor = (a) => Boolean(a && a.is_ceo);
-const isOwnerRole  = (r) => r && r.role_id === OWNER_ROLE_ID;
+const isOwnerRole = (r) => r && r.role_id === OWNER_ROLE_ID;
 
-function assertCanMutateRole(actor, role)      { if (role?.is_system && !isOwnerActor(actor)) throw new PermissionDeniedError("Only the owner can modify a system role"); }
-function assertCanDeleteRole(actor, role)      { if (role?.is_system) throw new ConflictError("System roles cannot be deleted"); }
-function assertCanEditPermissions(actor, role) { if (role?.is_system && !isOwnerActor(actor)) throw new PermissionDeniedError("Only the owner can edit a system role's permissions"); }
-function assertCanGrantRole(actor, role)       { if (isOwnerRole(role) && !isOwnerActor(actor)) throw new PermissionDeniedError("Only the owner can grant the owner role"); }
-function assertCanRevokeRole(actor, role)      { if (isOwnerRole(role) && !isOwnerActor(actor)) throw new PermissionDeniedError("Only the owner can revoke the owner role"); }
+function assertCanMutateRole(actor, role) {
+  if (role?.is_system && !isOwnerActor(actor))
+    throw new PermissionDeniedError("Only the owner can modify a system role");
+}
+function assertCanDeleteRole(actor, role) {
+  if (role?.is_system)
+    throw new ConflictError("System roles cannot be deleted");
+}
+function assertCanEditPermissions(actor, role) {
+  if (role?.is_system && !isOwnerActor(actor))
+    throw new PermissionDeniedError(
+      "Only the owner can edit a system role's permissions",
+    );
+}
+function assertCanGrantRole(actor, role) {
+  if (isOwnerRole(role) && !isOwnerActor(actor))
+    throw new PermissionDeniedError("Only the owner can grant the owner role");
+}
+function assertCanRevokeRole(actor, role) {
+  if (isOwnerRole(role) && !isOwnerActor(actor))
+    throw new PermissionDeniedError("Only the owner can revoke the owner role");
+}
 ```
 
 Rules: system roles can never be deleted; their definition/permissions change only by the owner; the owner role is granted/revoked only by the owner; and the service must never strand the system without an owner (see A6.3 revoke).
@@ -361,16 +488,16 @@ DELETE /payment-gateways/:provider       can(delete)
 
 ### A4.2 Shared config tables (schema `shared` unless noted)
 
-| Table | Notes |
-|-------|-------|
-| `business_config` | one row per brand; profile, currencies, rates, JSONB policy blobs, branding tokens |
-| `currencies` | currency catalogue (global) |
-| `currency_rates` | FX with manual-override support |
-| `bank_accounts` | per-brand; account number masked in API responses |
-| `tax_rates` | effective-dated; `excluded_modules[]`; `tax_type` sales/purchases/payroll |
-| `document_numbering` | prefix + padding; locks after first issued doc |
-| `custom_field_defs` | per-entity dynamic fields |
-| `pipeline_stage_defs` | crm/delivery/purchase_order/production stages |
+| Table                 | Notes                                                                              |
+| --------------------- | ---------------------------------------------------------------------------------- |
+| `business_config`     | one row per brand; profile, currencies, rates, JSONB policy blobs, branding tokens |
+| `currencies`          | currency catalogue (global)                                                        |
+| `currency_rates`      | FX with manual-override support                                                    |
+| `bank_accounts`       | per-brand; account number masked in API responses                                  |
+| `tax_rates`           | effective-dated; `excluded_modules[]`; `tax_type` sales/purchases/payroll          |
+| `document_numbering`  | prefix + padding; locks after first issued doc                                     |
+| `custom_field_defs`   | per-entity dynamic fields                                                          |
+| `pipeline_stage_defs` | crm/delivery/purchase_order/production stages                                      |
 
 ### A4.3 Service patterns worth copying
 
@@ -383,23 +510,49 @@ async function updateConfig({ brand, user, request_id, input }) {
     if (!current) throw new NotFoundError("Business config not found");
 
     // Invariant: document_prefix can't change after the first doc is issued.
-    if (input.document_prefix && input.document_prefix !== current.document_prefix) {
+    if (
+      input.document_prefix &&
+      input.document_prefix !== current.document_prefix
+    ) {
       const seqs = await repo.listNumbering({ client, brand });
       if (seqs.some((s) => s.next_number > 1))
-        throw new ConflictError("document_prefix cannot change after the first document has been issued");
+        throw new ConflictError(
+          "document_prefix cannot change after the first document has been issued",
+        );
     }
 
     const updated = await repo.updateConfig({ client, brand, patch: input });
-    await audit({ business: brand, user_id: user?.user_id,
-      action_key: "business_setup.config.update", target_type: "business_config",
-      target_id: updated.config_id, metadata: { fields: Object.keys(input) }, request_id });
+    await audit({
+      business: brand,
+      user_id: user?.user_id,
+      action_key: "business_setup.config.update",
+      target_type: "business_config",
+      target_id: updated.config_id,
+      metadata: { fields: Object.keys(input) },
+      request_id,
+    });
     events.emit("config.updated", { brand });
 
     // If branding tokens changed, tell open browsers to re-fetch /public/branding.
-    if (Object.keys(input).some((k) => ["accent_colour","secondary_colour","logo_path",
-        "logo_alt_path","favicon_path","brand_theme","brand_fonts","display_name"].includes(k))) {
-      try { require("../platform_settings/platform-settings.service")
-        .emitBrandingUpdated({ scope: "business", brand }); } catch {}
+    if (
+      Object.keys(input).some((k) =>
+        [
+          "accent_colour",
+          "secondary_colour",
+          "logo_path",
+          "logo_alt_path",
+          "favicon_path",
+          "brand_theme",
+          "brand_fonts",
+          "display_name",
+        ].includes(k),
+      )
+    ) {
+      try {
+        require("../platform_settings/platform-settings.service").emitBrandingUpdated(
+          { scope: "business", brand },
+        );
+      } catch {}
     }
     return updated;
   });
@@ -455,6 +608,7 @@ try {
 ### A4.5 Validators (Zod, `.strict()`)
 
 All bodies parsed by `mw(schema)`: `req.body = schema.parse(req.body ?? {})`. Highlights:
+
 - `configUpdate` — a large partial object; rates use `z.coerce.number().min(0).max(1)`; `instagram_handle` transforms a pasted URL/`@handle` into a bare handle; nested JSONB blobs typed `z.record(z.any())`.
 - `businessProvision` — `business_key` regex as above; currencies `z.string().length(3)`.
 - `taxCreate` — `tax_type` enum, `effective_from`/`effective_to` as `z.string().date()`, `excluded_modules[]`.
@@ -493,21 +647,37 @@ GET/POST/PATCH/DELETE  /policies[/:id]                  can(view/create/edit/del
 
 ### A5.2 Two patterns that matter
 
-**Write-only integration secrets.** The plaintext is encrypted with AES-256-GCM and *never* read back; the list endpoint returns only metadata (`provider`, `key_name`, `last4`). This is the secure alternative to writing API keys into `.env`.
+**Write-only integration secrets.** The plaintext is encrypted with AES-256-GCM and _never_ read back; the list endpoint returns only metadata (`provider`, `key_name`, `last4`). This is the secure alternative to writing API keys into `.env`.
 
 ```js
 async function setSecret({ brand, user, request_id, input }) {
   return transaction(async (client) => {
-    const secret_enc = crypto.encrypt(input.secret);      // AES-256-GCM
+    const secret_enc = crypto.encrypt(input.secret); // AES-256-GCM
     const last4 = String(input.secret).slice(-4);
-    const row = await repo.upsertSecret({ client, brand,
-      row: { provider: input.provider, key_name: input.key_name, secret_enc, last4 },
-      user_id: user?.user_id });
-    await audit({ business: brand, user_id: user?.user_id,
-      action_key: "settings.integration_secret.set", target_type: "integration_secret",
+    const row = await repo.upsertSecret({
+      client,
+      brand,
+      row: {
+        provider: input.provider,
+        key_name: input.key_name,
+        secret_enc,
+        last4,
+      },
+      user_id: user?.user_id,
+    });
+    await audit({
+      business: brand,
+      user_id: user?.user_id,
+      action_key: "settings.integration_secret.set",
+      target_type: "integration_secret",
       target_id: row.secret_id,
-      metadata: { provider: input.provider, key_name: input.key_name, sensitive: true },
-      request_id });
+      metadata: {
+        provider: input.provider,
+        key_name: input.key_name,
+        sensitive: true,
+      },
+      request_id,
+    });
     return row; // never includes secret_enc
   });
 }
@@ -530,6 +700,7 @@ Every settings write also calls `emitSettingsUpdated({ tile, brand })` (except t
 ## A6. Security / IAM module (`src/shared/iam/` + `src/shared/access/`)
 
 Two cooperating modules:
+
 - **`iam`** (mounted `/api/v1/iam`, gated on `iam`) — users, sessions, audit queries, security events, access reviews, TOTP.
 - **`access`** (mounted `/api/v1/access`, gated on `settings`) — roles, the role→permission matrix, user-role grants, per-user brand access.
 
@@ -584,7 +755,7 @@ POST /totp/disable    // POST not DELETE — carries password in body for re-aut
 GET  /totp/status
 ```
 
-> **Route ordering gotcha:** register `/audit/export` and `/audit/record/...` *before* `/audit/:logId`, or Express matches `export` as a `:logId` UUID.
+> **Route ordering gotcha:** register `/audit/export` and `/audit/record/...` _before_ `/audit/:logId`, or Express matches `export` as a `:logId` UUID.
 
 ### A6.2 IAM service — patterns to reproduce
 
@@ -597,21 +768,39 @@ async function provisionStaffLogin(ctx, profileId, input) {
 
   const user = await transaction(async (client) => {
     const existing = await repo.findLoginForProfile(client, profileId);
-    if (existing) throw new ConflictError(`This staff profile already has a login (${existing.email})`);
+    if (existing)
+      throw new ConflictError(
+        `This staff profile already has a login (${existing.email})`,
+      );
     const created = await repo.provisionStaffLogin(client, profileId, {
-      email: input.email, password_hash,
+      email: input.email,
+      password_hash,
       default_business: input.default_business,
-      permitted_businesses: input.permitted_businesses });
+      permitted_businesses: input.permitted_businesses,
+    });
     if (!created) throw new NotFoundError("Staff profile");
-    await grantProvisionRoles(client, { user_id: created.user_id,
-      role_ids: input.role_ids, business: input.default_business, granted_by: ctx.user_id });
+    await grantProvisionRoles(client, {
+      user_id: created.user_id,
+      role_ids: input.role_ids,
+      business: input.default_business,
+      granted_by: ctx.user_id,
+    });
     return created;
   });
 
-  await audit({ business: ctx.business, user_id: ctx.user_id, action_key: "provision_login",
-    target_type: "users", target_id: user.user_id,
-    after: { email: user.email, profile_type: "staff" }, request_id: ctx.request_id });
-  events.emit("user_provisioned", { business: ctx.business, user_id: user.user_id });
+  await audit({
+    business: ctx.business,
+    user_id: ctx.user_id,
+    action_key: "provision_login",
+    target_type: "users",
+    target_id: user.user_id,
+    after: { email: user.email, profile_type: "staff" },
+    request_id: ctx.request_id,
+  });
+  events.emit("user_provisioned", {
+    business: ctx.business,
+    user_id: user.user_id,
+  });
   return { ...user, temp_password: tempPassword };
 }
 ```
@@ -619,9 +808,14 @@ async function provisionStaffLogin(ctx, profileId, input) {
 **Deactivation revokes all Redis refresh tokens** so existing sessions die immediately, and refuses to deactivate the CEO:
 
 ```js
-if (existing.is_ceo) throw new AppError("CANNOT_DEACTIVATE_CEO", "Cannot deactivate the CEO account", 403);
+if (existing.is_ceo)
+  throw new AppError(
+    "CANNOT_DEACTIVATE_CEO",
+    "Cannot deactivate the CEO account",
+    403,
+  );
 // ... after repo.deactivateUser:
-await revokeAllRedisTokens(userId);   // SCAN refresh:* and DEL those owned by userId
+await revokeAllRedisTokens(userId); // SCAN refresh:* and DEL those owned by userId
 ```
 
 **Admin password reset** generates a temp password, hashes it, revokes Redis tokens + deletes sessions, and audits `is_sensitive: true`.
@@ -629,8 +823,9 @@ await revokeAllRedisTokens(userId);   // SCAN refresh:* and DEL those owned by u
 **TOTP is implemented from crypto primitives (RFC 6238), no external lib.** `setupTotp` generates 20 random bytes, base32-encodes them, encrypts for storage, and returns an `otpauth://` URI for the QR. `verifyTotp` decrypts, checks the 6-digit code over a ±1 step window, then flips `totp_enabled`. `disableTotp` requires the account password (argon2 verify) before disabling.
 
 ```js
-const uri = `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(user.email)}`
-          + `?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
+const uri =
+  `otpauth://totp/${encodeURIComponent(issuer)}:${encodeURIComponent(user.email)}` +
+  `?secret=${secretBase32}&issuer=${encodeURIComponent(issuer)}&algorithm=SHA1&digits=6&period=30`;
 ```
 
 **Access reviews snapshot the world at creation.** `createAccessReview` inserts the review then snapshots every active user with their roles/permissions into `access_review_entries`. Reviewers then decide each entry (`approved`/`revoked`/`flagged`) with a note; completing the review stamps `completed_at`/`completed_by`. Everything audits.
@@ -660,10 +855,19 @@ Patterns:
 - **Granting a brand-scoped role auto-extends brand access.** A role scoped to a brand the user can't enter is a silent no-op (brand-context 403s before RBAC sees it), so `grantUserRole` adds that brand to `permitted_businesses` when needed:
 
 ```js
-if (input.business !== "*" && !(target.permitted_businesses || []).includes(input.business)) {
-  await grantsRepo.setUserAccess({ client, user_id,
-    permitted_businesses: [...(target.permitted_businesses || []), input.business],
-    default_business: target.default_business || input.business });
+if (
+  input.business !== "*" &&
+  !(target.permitted_businesses || []).includes(input.business)
+) {
+  await grantsRepo.setUserAccess({
+    client,
+    user_id,
+    permitted_businesses: [
+      ...(target.permitted_businesses || []),
+      input.business,
+    ],
+    default_business: target.default_business || input.business,
+  });
 }
 ```
 
@@ -696,6 +900,7 @@ if (guards.isOwnerRole(role)) {
 8. Verify: RBAC denies without grant, brand isolation holds, audit rows are append-only, secrets never read back.
 
 ---
+
 ---
 
 # PART B — FRONTEND IMPLEMENTATION
@@ -704,19 +909,19 @@ The frontend is a React + TypeScript SPA (Vite). It renders the three modules as
 
 ## B0. Design system — reproduce these tokens exactly
 
-Two-layer theming. **Layer A** = platform skin (white-label). **Layer B** = per-brand tint. Colours are CSS variables holding *space-separated RGB channels* (so Tailwind `rgb(var(--x) / <alpha>)` works). Never inline a hex, font, or radius — always a token.
+Two-layer theming. **Layer A** = platform skin (white-label). **Layer B** = per-brand tint. Colours are CSS variables holding _space-separated RGB channels_ (so Tailwind `rgb(var(--x) / <alpha>)` works). Never inline a hex, font, or radius — always a token.
 
 `styles/index.css` `:root` (dark default):
 
 ```css
 :root {
-  --bg: 15 8 9;              /* #0F0809 near-black, maroon pinch */
-  --text: 244 233 217;       /* #F4E9D9 warm cream */
+  --bg: 15 8 9; /* #0F0809 near-black, maroon pinch */
+  --text: 244 233 217; /* #F4E9D9 warm cream */
   --text-muted: 179 164 155;
   --text-faint: 128 112 107;
 
-  --accent: 168 29 29;       /* #A81D1D working red (legible on black) */
-  --accent-deep: 105 9 9;    /* #690909 Pixie anchor — filled buttons */
+  --accent: 168 29 29; /* #A81D1D working red (legible on black) */
+  --accent-deep: 105 9 9; /* #690909 Pixie anchor — filled buttons */
   --accent-glow: 216 92 87;
 
   --info: 110 134 168;
@@ -724,9 +929,9 @@ Two-layer theming. **Layer A** = platform skin (white-label). **Layer B** = per-
   --warn: 201 162 75;
   --danger: 229 84 78;
 
-  --font-display: "Playfair Display", Georgia, serif;   /* headings, numerals */
-  --font-body: "Montserrat", system-ui, sans-serif;     /* body */
-  --font-mono: "JetBrains Mono", monospace;             /* money figures */
+  --font-display: "Playfair Display", Georgia, serif; /* headings, numerals */
+  --font-body: "Montserrat", system-ui, sans-serif; /* body */
+  --font-mono: "JetBrains Mono", monospace; /* money figures */
 
   --radius: 18px;
   --glass-shadow: /* layered soft shadow */;
@@ -738,14 +943,28 @@ A light theme overrides the same variables (near-white `--bg`, `--accent: 105 9 
 Utility classes to define once and reuse everywhere:
 
 ```css
-.glass    { background: <translucent panel>; backdrop-filter: blur(...); border: 1px solid rgb(var(--text)/0.08); box-shadow: var(--glass-shadow); }
-.hairline { border-color: rgb(var(--text) / 0.08); }
-.micro    { font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: rgb(var(--text-faint)); font-weight: 700; }
+.glass {
+  background: <translucent panel>;
+  backdrop-filter: blur(...);
+  border: 1px solid rgb(var(--text) / 0.08);
+  box-shadow: var(--glass-shadow);
+}
+.hairline {
+  border-color: rgb(var(--text) / 0.08);
+}
+.micro {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(var(--text-faint));
+  font-weight: 700;
+}
 ```
 
 Tailwind is configured to expose the tokens as colour utilities: `bg-accent`, `text-accent-glow`, `border-line`, `text-text-muted`, `bg-success/10`, `rounded-[var(--radius)]`, `shadow-glass`, `font-display`. **Only Tailwind core utilities** — no custom compiler.
 
 Mandatory UI rules (the "canon"):
+
 - **Glassmorphism** on every overlay, dropdown, drawer, menu (`.glass`).
 - **Four states on every screen**: loading skeleton, empty (with CTA), error (with retry), permission-denied.
 - **Permission-aware rendering** — hide controls the user lacks; the API still enforces.
@@ -769,18 +988,23 @@ Build these first; every page composes them.
 One fetch wrapper the whole app uses. Reproduce these behaviours exactly:
 
 - **Access token in memory only** (`let accessToken`), never localStorage (XSS can't read it). Refresh token is an httpOnly cookie sent via `credentials: "include"`.
-- **`X-Brand-Context` on every authed call**, read from the persisted business store (`localStorage["pgh-business"].state.activeKey`) *without importing the store* (avoids a cycle).
+- **`X-Brand-Context` on every authed call**, read from the persisted business store (`localStorage["pgh-business"].state.activeKey`) _without importing the store_ (avoids a cycle).
 - **Silent refresh-and-retry on 401**: POST `/auth/refresh` once (shared in-flight promise so concurrent 401s don't race), re-set the token, retry. On failure, clear token and fire a `pgh:session-expired` event; a root overlay then blurs the app and asks for password/PIN. A `pgh-session-locked` localStorage flag survives reloads so a locked session can't be silently revived.
 - **Unwraps the `{ data }` envelope** (leaves `{ data, meta }` intact for paginated lists).
 
 ```ts
 export const api = {
-  get:   <T>(p, scope="v1") => request<T>(p, { method:"GET", scope }),
-  post:  <T>(p, body?, scope="v1") => request<T>(p, { method:"POST", body, scope }),
-  patch: <T>(p, body?, scope="v1") => request<T>(p, { method:"PATCH", body, scope }),
-  put:   <T>(p, body?, scope="v1") => request<T>(p, { method:"PUT", body, scope }),
-  delete:<T>(p, scope="v1") => request<T>(p, { method:"DELETE", scope }),
-  getBlob, postForm, download,   // multipart upload w/ progress; authed blob download
+  get: <T>(p, scope = "v1") => request<T>(p, { method: "GET", scope }),
+  post: <T>(p, body?, scope = "v1") =>
+    request<T>(p, { method: "POST", body, scope }),
+  patch: <T>(p, body?, scope = "v1") =>
+    request<T>(p, { method: "PATCH", body, scope }),
+  put: <T>(p, body?, scope = "v1") =>
+    request<T>(p, { method: "PUT", body, scope }),
+  delete: <T>(p, scope = "v1") => request<T>(p, { method: "DELETE", scope }),
+  getBlob,
+  postForm,
+  download, // multipart upload w/ progress; authed blob download
 };
 ```
 
@@ -805,14 +1029,19 @@ Each module gets a `lib/<module>.ts` file of typed hooks. The **pattern is unifo
 ```ts
 export function useBusinessConfig() {
   const brand = useBrand();
-  return useQuery<BusinessConfig>({ queryKey: ["bs-config", brand],
-    queryFn: () => api.get("/business-setup/config") });
+  return useQuery<BusinessConfig>({
+    queryKey: ["bs-config", brand],
+    queryFn: () => api.get("/business-setup/config"),
+  });
 }
 export function useSaveBusinessConfig() {
-  const qc = useQueryClient(); const brand = useBrand();
-  return useMutation({ mutationFn: (patch: Partial<BusinessConfig>) =>
+  const qc = useQueryClient();
+  const brand = useBrand();
+  return useMutation({
+    mutationFn: (patch: Partial<BusinessConfig>) =>
       api.patch("/business-setup/config", patch),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bs-config", brand] }) });
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["bs-config", brand] }),
+  });
 }
 ```
 
@@ -871,12 +1100,14 @@ Structure:
 
 ```tsx
 <div className="max-w-[1280px] mx-auto">
-  <header>  {/* font-display 22px title + muted 13px subtitle */}  </header>
+  <header> {/* font-display 22px title + muted 13px subtitle */} </header>
   {SECTIONS.map((section) => (
     <section className="mb-7">
       <div className="micro mb-3">{section.title}</div>
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
-        {section.tiles.map((t) => <SettingsTile tile={t} />)}
+        {section.tiles.map((t) => (
+          <SettingsTile tile={t} />
+        ))}
       </div>
     </section>
   ))}
@@ -890,6 +1121,7 @@ Each `SettingsTile` is a `Link` styled `glass rounded-[var(--radius)] shadow-gla
 A **tabbed editor over the active brand's `business_config` row**, with a **preview-first dirty save** (only the diff is patched). Container `max-w-[860px] mx-auto pb-24`.
 
 Structure:
+
 1. **Header** — 44px icon chip + `font-display 22px` title + subtitle naming the active business.
 2. **Tab bar** — a pill group in a `bg-text-primary/[0.04] rounded-[10px] p-1 w-fit` track; active tab `bg-accent/15 text-accent-glow`. Tabs: **Profile · Financial · Identity · Policies**.
 3. **Tab body** — each tab renders `Card`s of `Field` + input controls.
@@ -899,18 +1131,24 @@ Dirty-tracking pattern (reproduce verbatim):
 
 ```tsx
 const [draft, setDraft] = useState<BusinessConfig | null>(null);
-useEffect(() => { if (cfg.data) setDraft(cfg.data); }, [cfg.data]);
+useEffect(() => {
+  if (cfg.data) setDraft(cfg.data);
+}, [cfg.data]);
 
-const dirty = useMemo(() =>
-  !!(cfg.data && draft && JSON.stringify(cfg.data) !== JSON.stringify(draft)),
-  [cfg.data, draft]);
+const dirty = useMemo(
+  () =>
+    !!(cfg.data && draft && JSON.stringify(cfg.data) !== JSON.stringify(draft)),
+  [cfg.data, draft],
+);
 
-const set = (k, v) => setDraft((d) => d ? { ...d, [k]: v } : d);
+const set = (k, v) => setDraft((d) => (d ? { ...d, [k]: v } : d));
 
-const onSave = () => {               // diff-only PATCH
+const onSave = () => {
+  // diff-only PATCH
   const patch = {};
   Object.keys(draft).forEach((k) => {
-    if (JSON.stringify(draft[k]) !== JSON.stringify(cfg.data[k])) patch[k] = draft[k];
+    if (JSON.stringify(draft[k]) !== JSON.stringify(cfg.data[k]))
+      patch[k] = draft[k];
   });
   if (Object.keys(patch).length) save.mutate(patch);
 };
@@ -919,6 +1157,7 @@ const onSave = () => {               // diff-only PATCH
 The four states are all present: loading (`Loader2` spinner + text), error (`ErrorState` with retry), and the render only proceeds once `draft` exists.
 
 Tab contents:
+
 - **Profile** — display/legal name, address, phone/email/website, Instagram (with a `@` prefix adornment), and three **`SensitiveField`s** (TIN, CAC, VAT) that mask by default and require a `ReauthDialog` (password re-confirm) to reveal/edit; mission statement textarea.
 - **Financial** — VAT/WHT rates shown as **percent** (stored as decimals, converted on edit), fiscal-year-start `Select`, a `Toggle` for staff-recorded manual payments, and deep-links to Currencies/Gateways/Tax tiles.
 - **Identity** — read-only document prefix (locked; managed in Document Numbering), deep-links to Appearance/Templates/Bank Accounts, plus **Public Identity** (storefront domain, sales subdomain), **Praxis brand voice** (tone, exclamation policy, banned words, no-fabricated-reviews toggle), and the **live viewer ticker** defaults.
@@ -929,6 +1168,7 @@ Tab contents:
 A **security dashboard**: health-card grid + quick-nav tiles + recent-events feed + click-through detail modals. Container `max-w-[1000px] mx-auto space-y-6`. Data from `useSecurityStats()` (auto-refetches every 5 min).
 
 Structure:
+
 1. **`<ModuleInsights module="iam_security" />`** — AI insight banner (optional).
 2. **Header** — `ShieldCheck` icon chip + title/subtitle.
 3. **Health cards** — a `grid sm:grid-cols-2 lg:grid-cols-3 gap-3` of six `HealthCard`s: Failed Logins (24h), Inactive Accounts, Locked Accounts, Pending Invites, Users Without MFA, Active Sessions. Each is a `Card` with a **left accent border** (`border-l-[3px]`) tinted by `tone` (`success | warn | danger`), a `micro` label + icon, and a big `font-display 28px tabular-nums` value. Clicking opens a detail `Modal`.
@@ -940,11 +1180,18 @@ Structure:
 `HealthCard` skeleton:
 
 ```tsx
-<Card className={cn("p-4 border-l-[3px] cursor-pointer hover:border-accent/40", toneMap[tone])}>
+<Card
+  className={cn(
+    "p-4 border-l-[3px] cursor-pointer hover:border-accent/40",
+    toneMap[tone],
+  )}
+>
   <button onClick={onClick} className="w-full text-left">
     <div className="flex items-center gap-2 mb-2">
       {icon}
-      <span className="text-[11px] uppercase tracking-wide font-bold text-text-muted">{label}</span>
+      <span className="text-[11px] uppercase tracking-wide font-bold text-text-muted">
+        {label}
+      </span>
     </div>
     <div className="font-display text-[28px] font-medium tabular-nums">
       {loading ? "..." : (value ?? 0)}
@@ -966,7 +1213,8 @@ The IAM sub-pages and the Settings sub-pages (Currencies, Tax Rates, Bank Accoun
 5. Mutations invalidate the relevant query key; success toasts; permission-aware action buttons.
 
 Specifics:
-- **Users** — filterable table (search/status/profile_type); provision-staff and provision-external modals return a **one-time temp password** to copy; row actions deactivate/reactivate/reset. 
+
+- **Users** — filterable table (search/status/profile_type); provision-staff and provision-external modals return a **one-time temp password** to copy; row actions deactivate/reactivate/reset.
 - **Audit** — filter bar (module, action, user, date range, sensitive), paginated table, before/after diff in a drawer, and CSV/xlsx export via `downloadAuditExport`.
 - **Sessions** — admin list + revoke (single/all); a self "my-sessions" view.
 - **Access Reviews** — list + create; a detail view iterates entries with approve/revoke/flag decisions and an export.
@@ -987,15 +1235,15 @@ Specifics:
 
 ## Appendix — the shared contract (both halves must agree)
 
-| Concern | Contract |
-|---|---|
-| Base URL | `/api/v1` (protected), `/api/public` (unauthed) |
-| Brand selection | `X-Brand-Context: <brand_key>` header on every authed call |
-| Success envelope | `{ data: <payload> }`; lists `{ data: { rows, total } }` or `{ data, meta }` |
-| Error envelope | `{ error: { code, message } }` with proper HTTP status |
-| Auth | access token (memory) in `Authorization: Bearer`, refresh token httpOnly cookie |
+| Concern               | Contract                                                                                                      |
+| --------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Base URL              | `/api/v1` (protected), `/api/public` (unauthed)                                                               |
+| Brand selection       | `X-Brand-Context: <brand_key>` header on every authed call                                                    |
+| Success envelope      | `{ data: <payload> }`; lists `{ data: { rows, total } }` or `{ data, meta }`                                  |
+| Error envelope        | `{ error: { code, message } }` with proper HTTP status                                                        |
+| Auth                  | access token (memory) in `Authorization: Bearer`, refresh token httpOnly cookie                               |
 | Permission vocabulary | modules from `access.catalog.js`; actions view/create/edit/delete/approve/export/publish; scopes all/own/team |
-| Module paths | `/business-setup/*`, `/settings/*`, `/iam/*`, `/access/*` |
-| Secrets | write-only; API returns metadata + `last4` only, never the value |
-| Sensitive data | bank numbers masked server-side; RBAC mutations audited `is_sensitive: true` |
-| Real-time | `settings:updated` and branding events → clients invalidate queries |
+| Module paths          | `/business-setup/*`, `/settings/*`, `/iam/*`, `/access/*`                                                     |
+| Secrets               | write-only; API returns metadata + `last4` only, never the value                                              |
+| Sensitive data        | bank numbers masked server-side; RBAC mutations audited `is_sensitive: true`                                  |
+| Real-time             | `settings:updated` and branding events → clients invalidate queries                                           |

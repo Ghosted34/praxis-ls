@@ -7,10 +7,10 @@
 
 **Decisions — all resolved as recommended (`doc/INFRASTRUCTURE_DECISIONS.md`):**
 
-| # | Decision | Resolution |
-|---|---|---|
-| D1 | Email domain onboarding | **Support both; default to full Cloudflare delegation; MX-only as fallback** |
-| D2 | Outbound transport | **Free-tier transactional SMTP (Brevo) now; Amazon SES at scale — no paid subscription. Cloudflare handles inbound only (Email Routing, free).** |
+| #   | Decision                | Resolution                                                                                                                                       |
+| --- | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| D1  | Email domain onboarding | **Support both; default to full Cloudflare delegation; MX-only as fallback**                                                                     |
+| D2  | Outbound transport      | **Free-tier transactional SMTP (Brevo) now; Amazon SES at scale — no paid subscription. Cloudflare handles inbound only (Email Routing, free).** |
 
 Those are treated as settled below — no longer open forks.
 
@@ -18,10 +18,10 @@ Those are treated as settled below — no longer open forks.
 
 ## 0. How to read this
 
-| Tag | Meaning |
-|---|---|
-| **BUILT** | In the codebase today, verified this pass; file evidence in §9. |
-| **PLANNED** | Not built. This document is the proposal. |
+| Tag         | Meaning                                                         |
+| ----------- | --------------------------------------------------------------- |
+| **BUILT**   | In the codebase today, verified this pass; file evidence in §9. |
+| **PLANNED** | Not built. This document is the proposal.                       |
 
 Each unit of work is a **WS-xx** with a rough **effort** (S ≈ ≤2 days, M ≈ 3–5 days, L ≈ 1–2 weeks, XL ≈ >2 weeks, one developer, excluding review) and a **verification** line — the objective test that closes it. DDL is illustrative (shapes to anchor review, not final migrations); real migrations follow the repo rules — additive, forward-only, never renumbered, one new file per change.
 
@@ -30,7 +30,7 @@ Each unit of work is a **WS-xx** with a rough **effort** (S ≈ ≤2 days, M ≈
 ## 1. Principles (what every integration obeys)
 
 1. **Secrets are configured from the Platform Console UI and stored encrypted — `.env` is fallback only, never the primary store.** Two vaults, both AES-256-GCM with the deployment's `ENCRYPTION_KEY`, both written from the UI, never from a hand-edited row or a committed file:
-   - **Deploy-wide secrets** (Microsoft/Google OAuth apps, the Cloudflare account token, the mail fallback SMTP, S3/Geoapify/VAPID, AI vendor keys) live in the **platform settings vault** (`platform_setting`, section/key, `secret`), managed under **Platform Console → Integrations**. This is the established pattern — AI vendor keys moved there in session 16, and mail fallback resolves *platform setting → env*.
+   - **Deploy-wide secrets** (Microsoft/Google OAuth apps, the Cloudflare account token, the mail fallback SMTP, S3/Geoapify/VAPID, AI vendor keys) live in the **platform settings vault** (`platform_setting`, section/key, `secret`), managed under **Platform Console → Integrations**. This is the established pattern — AI vendor keys moved there in session 16, and mail fallback resolves _platform setting → env_.
    - **Per-tenant secrets** (per-mailbox OAuth token bundles, a tenant's Cloudflare zone token) live in that tenant's **`integration_secret`** vault (`mail_conn:<id>`, `cf_zone:<tenantId>`), read via `settingService.readSecret/put`.
    - **`.env` is the last-resort fallback only** (used when a platform setting is absent — e.g. a fresh deploy before the console is configured), and secrets there are never committed. Resolution order everywhere: **platform/tenant vault → env**. **BUILT (pattern).**
 2. **Provider-agnostic.** Business code never branches on a provider. Adapters implement `providers/provider.interface.js`; the service resolves the adapter per connection and normalizes I/O. Cloudflare becomes one more adapter, not a special case. **BUILT (interface).**
@@ -43,6 +43,7 @@ Each unit of work is a **WS-xx** with a rough **effort** (S ≈ ≤2 days, M ≈
 ## 2. Current state
 
 **BUILT:**
+
 - **Provider-agnostic mail engine** (`src/modules/mail/*`): IMAP/SMTP, Microsoft Graph, Gmail behind `provider.interface.js`; per-mailbox secrets vaulted (`mail_conn:<id>`); dedup, attachment→vault, auto-link-to-dossier, HTML sanitize on ingest.
 - **Per-purpose system sender** (`src/services/email.service.js`) with tenant-identity → tenant-settings → platform-fallback → env resolution, deliverability-aware.
 - **Single canonical OAuth callback (shipped this session).** The mail OAuth callback now resolves its tenant from the **signed `state`**, not the Host, so one registered redirect URI serves the whole fleet (`registry.resolveBySlug`, `host-tenent-resolver.js`), and it redirects the browser back to `/comms/mail` on the tenant subdomain with a success/error flag (`mail.controller.js`, `comms/mail.tsx`). Graph webhook URL now targets the tenant's canonical subdomain.
@@ -75,6 +76,9 @@ Cloudflare does not store mail, and Praxis does not need it to — **Praxis is t
 **Cost model — $0 now.** Inbound is free (Cloudflare Email Routing, unlimited). Outbound rides a **free transactional tier** (Brevo, ~9k/mo) for the low-volume system fallback and early tenants; tenants who connect their own mailbox send through their own provider at no cost to Praxis. The only future spend is **Amazon SES at ~$0.10/1,000** once outbound across many tenant domains outgrows the free tier — usage-based pennies, not a subscription, and by then revenue-funded. Swapping Brevo → SES is a creds change in the platform console; nodemailer and the code are unchanged.
 
 **Decisions applied:** onboarding supports **both** delegation and MX-only, defaulting to delegation (WS-E5); outbound sends through a **free-tier transactional SMTP — Brevo now, Amazon SES at scale — via nodemailer, no paid subscription** (WS-E1).
+
+> **Admin note — why Brevo now, Amazon SES later, and not a self-hosted SMTP on our server.**
+> Sending mail is a _reputation_ problem, not a configuration one. SPF/DKIM/DMARC (Google's sender rules) only prove _identity_ — they get mail _considered_, not _inboxed_. Placement is decided by IP/domain reputation, complaint rates and warmup, none of which can be configured. A single server IP starts cold, often sits in a tainted range with port 25 blocked, and — worst — one bad tenant would sink _every_ tenant's deliverability on the one shared IP. Managed senders run warmed, monitored IP pools, which is the genuinely hard part. So: **Brevo free tier now** — 300 emails/day, which suffices because only tenants _without_ their own mailbox draw on it (own-mailbox tenants send through their own provider). **Past 300/day, sends queue until the next-day reset** — unacceptable for OTPs — so nearing that cap is the trigger to move the fallback to **Amazon SES** ($0.10/1k, no daily cap, unlimited domains; a creds-only swap). This is fully compatible with tenant provisioning — outbound is just SMTP creds swapped in the platform console (nodemailer and the code are unchanged), while **inbound for the 5 tenant addresses stays on free Cloudflare Email Routing**, independent of who sends. Self-hosting remains a future option only with a dedicated, clean IP plus ongoing deliverability ops.
 
 ### WS-E1 — Cloudflare (DNS + inbound routing) client + vaulted token · **PLANNED · M**
 
@@ -155,21 +159,34 @@ CREATE TABLE email_domain (
 ### WS-E6 — Deliverability & send-log dashboard · **PLANNED · M**
 
 `email_send_log` already records `status IN (QUEUED,SENT,DELIVERED,BOUNCED,COMPLAINED,FAILED)` + `provider_message_id` (migration `0410`). A Cloudflare delivery-event webhook updates the log row; the console surfaces per-tenant SPF/DKIM/DMARC status, send volume, bounce/complaint rate, latest failures, plus a suppression list for hard bounces/complaints.
+
 - **Verification:** a forced bounce moves the log row to `BOUNCED` and suppresses the address; the dashboard reflects it.
 
 ### WS-E7 — Override / import · **BUILT + S**
 
 The `email_connection` connect path (`mail.service.connect()` + Microsoft/Google OAuth, now with the canonical callback) already attaches a tenant's own mailbox. Remaining work: keep the section bindings pointed at the same slot when a provisioned CF address is swapped for an imported mailbox, plus the Comms UI affordance for the swap.
+
 - **Verification:** swapping a provisioned address for an imported M365 box preserves which ERP sections route to/from it.
+
+### WS-E8 — Direct compose surfaces + per-user mailbox ownership · **PLANNED · L**
+
+Opens **user-initiated** mail beyond the Document view: compose to any eligible recipient from Comms and from any 360. All of it is the user-initiated path — sends from the user's **connected mailbox**, audited to that user (never the system-identity path).
+
+- **Per-user mailbox ownership (schema change).** `email_connection` is tenant-shared today (no owner). Add `owner_user_id uuid REFERENCES app_user` (set from the OAuth state's connecting user, and from the actor on an IMAP connect) and `is_default boolean` (one default per user — partial unique index). A user **sees and sends from only their own** connected mailboxes; the default is the send-from box (switchable among the user's own). `listConnections` / test / sync / send all filter and guard by `owner_user_id = caller`.
+- **Eligible-recipient search.** `GET /mail/recipients?q=` over **all mailable parties — clients, suppliers, employees, leads/contacts** (any record with an email), returning name + email + type, RBAC-scoped; free-typed addresses allowed too.
+- **Surface A — Comms → New (+).** The (+) modal's **Email** option (alongside Group / In-house) opens a composer with the recipient search; sends from the user's default connected mailbox.
+- **Surface B — 360 mail icon.** A mail icon on every eligible 360 (client / supplier / employee / lead) opens the composer with the recipient pre-filled from that record.
+- **System mail unchanged.** Shared/section addresses (billing@, the provisioned tenant addresses) stay on the **system-identity** path (`email.service`, per-purpose) — personal connections are for personal sends. This is the confirmed rule: system-generated → per-purpose identity; user-initiated → the sender's own mailbox.
+- **Verification:** user A sees only A's mailboxes; a send logs `actor=A`, `From=A's default box`; the 360 icon pre-fills the party; recipient search finds a client, a supplier, an employee and a lead.
 
 ### 3.9 Email phasing
 
-| Phase | Workstreams | Outcome |
-|---|---|---|
-| **E-α** | WS-E1, WS-E5, WS-E3 | Domain onboarding + section model; no flows yet |
+| Phase   | Workstreams             | Outcome                                                    |
+| ------- | ----------------------- | ---------------------------------------------------------- |
+| **E-α** | WS-E1, WS-E5, WS-E3     | Domain onboarding + section model; no flows yet            |
 | **E-β** | WS-E2, WS-E7 (outbound) | 5 addresses provisioned; system + module mail sends via CF |
-| **E-γ** | WS-E4 | Full inbound; Comms Mail shows the real inbox |
-| **E-δ** | WS-E6 | Deliverability dashboard + suppression |
+| **E-γ** | WS-E4                   | Full inbound; Comms Mail shows the real inbox              |
+| **E-δ** | WS-E6                   | Deliverability dashboard + suppression                     |
 
 ---
 
@@ -192,6 +209,7 @@ These let a tenant connect a mailbox they already own — the "import your own m
 ### WS-M2 — Google verification (restricted scope) · **PLANNED · M (mostly external)**
 
 `gmail.modify` is a **restricted scope**: fine in Testing (test users, ~7-day refresh-token expiry), but production needs Google OAuth **verification** + a security assessment. Prerequisites: the app live at the canonical domain, a homepage, and hosted **privacy** + **terms** pages on an authorized domain (`praxisls.com`). Microsoft has no equivalent gate.
+
 - **Verification:** the Google app moves from Testing to In-production with the restricted scope approved; refresh tokens stop expiring at 7 days.
 
 ### 4.2 Token lifecycle · **BUILT (refresh) → PLANNED (rotation surface)**
@@ -202,10 +220,10 @@ Refresh-on-expiry is built (`oauthAccessToken`). What's missing is operator visi
 
 **Primary store: Platform Console → Integrations** (encrypted in the platform settings vault, `ENCRYPTION_KEY`). The env keys below are the **fallback only** — read when the platform setting is absent (e.g. a fresh deploy) and never committed. A small workstream (folds into WS-I2) adds the Microsoft/Google OAuth-app + Cloudflare panels alongside the existing **AI providers** panel, so an operator sets `client_id`/`client_secret`/`redirect_uri` in the UI and hits **Test**, exactly like the AI keys.
 
-| Provider | Secrets (Platform UI; env = fallback) | Non-secret settings (defaulted) |
-|---|---|---|
-| Microsoft 365 | `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_REDIRECT_URI` | `MS_GRAPH_TENANT` (`common`), `MS_GRAPH_SCOPES` |
-| Google | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI` | `GOOGLE_SCOPES`, `GOOGLE_PUBSUB_TOPIC` (empty = polling) |
+| Provider      | Secrets (Platform UI; env = fallback)                                   | Non-secret settings (defaulted)                          |
+| ------------- | ----------------------------------------------------------------------- | -------------------------------------------------------- |
+| Microsoft 365 | `MS_GRAPH_CLIENT_ID`, `MS_GRAPH_CLIENT_SECRET`, `MS_GRAPH_REDIRECT_URI` | `MS_GRAPH_TENANT` (`common`), `MS_GRAPH_SCOPES`          |
+| Google        | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`       | `GOOGLE_SCOPES`, `GOOGLE_PUBSUB_TOPIC` (empty = polling) |
 
 The `*_CLIENT_SECRET` values are the sensitive ones — they belong in the platform vault via the console, not in a committed file. These are **app-level** (deploy-wide, one set per deployment); per-mailbox OAuth token bundles are **per-tenant** in the tenant vault (`mail_conn:<id>`).
 
@@ -250,6 +268,7 @@ Each provider today has its own bespoke connect path. Standardize one lifecycle 
 ### WS-I3 — Cloudflare as a first-class integration · **PLANNED · S**
 
 Cloudflare (email + DNS) registers under the same vault + probe + health pattern as the rest, so §3's token handling isn't a special case. Its probe is `verifyZone`; its rotation swaps the scoped API token. Folds into WS-I1/WS-I2.
+
 - **Verification:** the Cloudflare integration appears in the health view with `VERIFIED` after a successful `verifyZone`.
 
 ### WS-I4 — Connector discovery (optional) · **PLANNED · S**
@@ -271,12 +290,12 @@ Where a tenant needs a surface Praxis doesn't natively integrate, expose the con
 
 Dependency- and value-ordered; each phase ends with its workstreams' verification.
 
-| Phase | Workstreams | Rationale |
-|---|---|---|
+| Phase   | Workstreams                                                                                          | Rationale                                                                                    |
+| ------- | ---------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
 | **I-1** | WS-M1 (finish OAuth connectors), WS-E1 (CF client), WS-E5 (domain onboarding), WS-E3 (section model) | Ship the connectors that are nearly done; stand up email's non-flow foundation. Independent. |
-| **I-2** | WS-E2 + WS-E7 outbound (provision 5 + send), WS-I1 (health view) | First provisioned addresses sending via Cloudflare; make integrations observable. |
-| **I-3** | WS-E4 (inbound), WS-I2 (connect/verify/rotate/revoke), WS-I3 (Cloudflare first-class) | Full mailbox; unified credential lifecycle across all providers. |
-| **I-4** | WS-E6 (deliverability), WS-M2 (Google verification), WS-I4 (connector discovery) | Deliverability hardening; open Gmail to production; demand-driven connectors. |
+| **I-2** | WS-E2 + WS-E7 outbound (provision 5 + send), WS-I1 (health view)                                     | First provisioned addresses sending via Cloudflare; make integrations observable.            |
+| **I-3** | WS-E4 (inbound), WS-I2 (connect/verify/rotate/revoke), WS-I3 (Cloudflare first-class)                | Full mailbox; unified credential lifecycle across all providers.                             |
+| **I-4** | WS-E6 (deliverability), WS-M2 (Google verification), WS-I4 (connector discovery)                     | Deliverability hardening; open Gmail to production; demand-driven connectors.                |
 
 Google verification (WS-M2) runs **in parallel** from I-1 onward, since it is mostly external wait time.
 
@@ -284,11 +303,11 @@ Google verification (WS-M2) runs **in parallel** from I-1 onward, since it is mo
 
 ## 8. Effort summary
 
-| Bucket | Workstreams | Rough total |
-|---|---|---|
-| Cloudflare email | E1 M, E2 L, E3 M, E4 L, E5 M, E6 M, E7 S | ~6–8 weeks |
-| Direct connectors | M1 S, M2 M (mostly external), token surface (I1) | ~1 week + verification wait |
-| Integrations layer | I1 M, I2 M, I3 S, I4 S | ~3 weeks |
+| Bucket             | Workstreams                                      | Rough total                 |
+| ------------------ | ------------------------------------------------ | --------------------------- |
+| Cloudflare email   | E1 M, E2 L, E3 M, E4 L, E5 M, E6 M, E7 S         | ~6–8 weeks                  |
+| Direct connectors  | M1 S, M2 M (mostly external), token surface (I1) | ~1 week + verification wait |
+| Integrations layer | I1 M, I2 M, I3 S, I4 S                           | ~3 weeks                    |
 
 Single-developer engineering estimates excluding review; parallelizable across §7.
 
@@ -304,4 +323,4 @@ Cloudflare capability claims (§3) verified against Cloudflare Email Routing doc
 
 ---
 
-*No production code is changed by this document. The single canonical OAuth callback (§2, §4.1) was implemented in the session that produced this plan; everything tagged PLANNED awaits build sign-off.*
+_No production code is changed by this document. The single canonical OAuth callback (§2, §4.1) was implemented in the session that produced this plan; everything tagged PLANNED awaits build sign-off._

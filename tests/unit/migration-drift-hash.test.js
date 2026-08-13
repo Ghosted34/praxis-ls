@@ -112,7 +112,9 @@ describe("contentDrift", () => {
   });
 
   test("a ledger row whose file no longer exists is skipped, not crashed on", async () => {
-    const cli = cliWith([{ filename: "tenant/9999_deleted.sql", sha256: "abc" }]);
+    const cli = cliWith([
+      { filename: "tenant/9999_deleted.sql", sha256: "abc" },
+    ]);
     const r = await m.contentDrift(cli, "live");
     expect(r.drifted).toEqual([]);
     expect(r.checked).toBe(0);
@@ -121,6 +123,9 @@ describe("contentDrift", () => {
   test("it queries the ledger scoped, not the whole table", async () => {
     const cli = cliWith([]);
     await m.contentDrift(cli, "live");
-    expect(cli.query).toHaveBeenCalledWith(expect.stringContaining("WHERE scope=$1"), ["live"]);
+    expect(cli.query).toHaveBeenCalledWith(
+      expect.stringContaining("WHERE scope=$1"),
+      ["live"],
+    );
   });
 });

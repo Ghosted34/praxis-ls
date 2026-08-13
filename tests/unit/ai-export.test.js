@@ -16,7 +16,11 @@
 "use strict";
 
 const ExcelJS = require("exceljs");
-const { buildTablesWorkbook, coerce, sheetName } = require("../../src/modules/ai/assistant/assistant.export");
+const {
+  buildTablesWorkbook,
+  coerce,
+  sheetName,
+} = require("../../src/modules/ai/assistant/assistant.export");
 
 describe("coerce — markdown cell to spreadsheet value", () => {
   it("reads grouped amounts as numbers", () => {
@@ -62,7 +66,9 @@ describe("coerce — markdown cell to spreadsheet value", () => {
 
 describe("sheetName", () => {
   it("strips the characters Excel forbids and caps at 31", () => {
-    expect(sheetName("Scenario A — Conservative (flat run-rate, no pipeline)", 0)).toHaveLength(31);
+    expect(
+      sheetName("Scenario A — Conservative (flat run-rate, no pipeline)", 0),
+    ).toHaveLength(31);
     expect(sheetName("a/b:c*d?e[f]g", 0)).not.toMatch(/[[\]:*?/\\]/);
   });
 

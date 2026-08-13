@@ -16,7 +16,7 @@ The universal approval engine is real and partially wired:
 
 ## 2. Root causes (why Approvals is empty)
 
-1. **No workflows are configured.** With no `workflow` bound to an approvable `event_type`, `start()` returns `autoApproved` for *every* event — so even the six integrated modules create **zero** approval tasks. The queue is structurally empty until a tenant designs workflows.
+1. **No workflows are configured.** With no `workflow` bound to an approvable `event_type`, `start()` returns `autoApproved` for _every_ event — so even the six integrated modules create **zero** approval tasks. The queue is structurally empty until a tenant designs workflows.
 2. **Leave (and most Phase-3 workstations) never call the engine.** Leave uses its own `/leave/:id/decision` (REQUESTED→APPROVED/REJECTED). Same for the transitions I built recently (contracts, incidents, dispatch, work orders, cycle counts, outbound, appraisal reward). None open an `approval_task`, so they can never appear in the central inbox — regardless of config.
 3. **No organigramme.** The `employee` table has no `reports_to`/manager column. Steps can only route to a **role**, never to "the requester's manager". There is no org-chart anywhere, so approval routing can't follow reporting lines.
 

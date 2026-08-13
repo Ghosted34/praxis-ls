@@ -33,7 +33,7 @@
  * because nothing was committed and the user must be free to fix their input
  * and try again. Caching a 422 would pin them to their own typo.
  *
- * IT IS NEVER FATAL. A tenant whose schema predates migration 0660 has no
+ * IT IS NEVER FATAL. A tenant whose schema predates migration 0662 has no
  * `idempotency_key` table; a database hiccup here is not a reason to fail a
  * write the user is waiting on. Both cases log and pass the request through
  * unchanged — i.e. degrade to exactly the behaviour that existed before this

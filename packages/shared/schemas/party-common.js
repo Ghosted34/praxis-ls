@@ -33,11 +33,23 @@ const {
 
 const optionalCurrency = blankToUndefined(currency);
 const roleTag = z.enum([
-  "BILLING", "OPERATIONS", "CUSTOMS", "LEGAL", "EMERGENCY", "PORTAL_ADMIN",
-  "ACCOUNTS_PAYABLE", "ACCOUNTS_RECEIVABLE",
+  "BILLING",
+  "OPERATIONS",
+  "CUSTOMS",
+  "LEGAL",
+  "EMERGENCY",
+  "PORTAL_ADMIN",
+  "ACCOUNTS_PAYABLE",
+  "ACCOUNTS_RECEIVABLE",
 ]);
 const addressType = z.enum([
-  "REGISTERED", "BILLING", "DELIVERY", "PICKUP", "WAREHOUSE", "REMITTANCE", "NOTIFY",
+  "REGISTERED",
+  "BILLING",
+  "DELIVERY",
+  "PICKUP",
+  "WAREHOUSE",
+  "REMITTANCE",
+  "NOTIFY",
 ]);
 
 /** A partial made optional field-by-field — the PATCH shape of any create schema. */
@@ -51,7 +63,9 @@ const contactShape = {
   phone,
   role_tags: z.array(roleTag).optional(),
   is_primary: z.boolean().optional(),
-  language: blankToUndefined(z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase()),
+  language: blankToUndefined(
+    z.string().trim().length(2, "Use a 2-letter language code.").toLowerCase(),
+  ),
   timezone: optionalText,
   portal_access: z.boolean().optional(),
   is_active: z.boolean().optional(),
@@ -152,7 +166,9 @@ exports.dedupeCheck = z.object({
   legal_name: optionalText,
   email,
   phone,
-  registrations: z.array(z.object({ kind: optionalText, number: optionalText })).optional(),
+  registrations: z
+    .array(z.object({ kind: optionalText, number: optionalText }))
+    .optional(),
   bank_last4: z.array(z.string()).optional(),
   exclude_id: blankToUndefined(uuid),
 });
@@ -167,7 +183,9 @@ exports.mergeRequest = z.object({ survivor_id: uuid, loser_id: uuid });
 // On a converted party, explicitly clone chosen sections from its linked origin
 // (never automatic — Hard Rule 2). At least one section.
 const cloneSection = z.enum(["banks", "contacts", "addresses"]);
-exports.cloneFromOrigin = z.object({ sections: z.array(cloneSection).min(1, "Choose at least one section to copy") });
+exports.cloneFromOrigin = z.object({
+  sections: z.array(cloneSection).min(1, "Choose at least one section to copy"),
+});
 exports.CLONE_SECTIONS = cloneSection.options;
 
 // The enum vocabularies, exported so a picker and the API agree on the option

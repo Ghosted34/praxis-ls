@@ -15,7 +15,9 @@ describe("currency catalogue", () => {
   });
 
   it("every catalogue row has a representative country for its flag", () => {
-    const orphans = currencies.CATALOGUE.filter((c) => !c.country_code).map((c) => c.code);
+    const orphans = currencies.CATALOGUE.filter((c) => !c.country_code).map(
+      (c) => c.code,
+    );
     expect(orphans).toEqual([]);
   });
 

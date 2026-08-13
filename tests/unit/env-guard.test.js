@@ -29,8 +29,12 @@ const REAL_ENCKEY = "0".repeat(63) + "1"; // 64 hex, not the default constant
  * below checks the guard DID speak, which keeps the silencing honest.
  */
 let errorSpy;
-beforeEach(() => { errorSpy = jest.spyOn(console, "error").mockImplementation(() => {}); });
-afterEach(() => { errorSpy.mockRestore(); });
+beforeEach(() => {
+  errorSpy = jest.spyOn(console, "error").mockImplementation(() => {});
+});
+afterEach(() => {
+  errorSpy.mockRestore();
+});
 
 function loadEnv(overrides) {
   let mod;

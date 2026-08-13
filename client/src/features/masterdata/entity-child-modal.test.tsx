@@ -26,6 +26,10 @@ import { apiClientMock, authContextMock, renderScreen } from "@/test/screen-harn
 vi.mock("@/lib/api-client", async () => apiClientMock());
 vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
+// Imported AFTER the mock so this is the faked namespace — the save test spies
+// on `tenant` to read the PATCH body the modal actually puts on the wire.
+import * as apiClient from "@/lib/api-client";
+
 import { EntityDossier } from "./entity-360";
 
 const ENTITY_360 = {
@@ -42,7 +46,15 @@ const ENTITY_360 = {
   people: [],
   contacts: [{ contact_id: "ct1", name: "Comptabilité", email: "compta@smartbox.cm", role_tags: ["BILLING", "TAX"], is_primary: true }],
   addresses: [],
-  registrations: [],
+  // `issued_on` deliberately carries a TIMESTAMP, which is what the API sent
+  // before `shared/db/pg-date-types` — and what a cached response still can.
+  // `expires_on` is the plain `YYYY-MM-DD` it sends now. Both must reach the
+  // form as a value the date input can render; see the date test below.
+  registrations: [{
+    registration_id: "rg1", country_code: "CM", kind: "RCCM", number: "RC/DLA/2021/B/206",
+    issuing_authority: "TPI Douala-Bonanjo", issued_on: "2021-09-21T00:00:00.000Z",
+    expires_on: "2026-08-14", is_primary: false, notes: "Filed in the vendor profile folder.",
+  }],
   establishments: [{ establishment_id: "es1", name: "Siège social", kind: "HEAD_OFFICE", city: "Douala" }],
   documents: [],
   tax_registrations: [],
@@ -113,6 +125,62 @@ describe("Master data · entity nested modals", () => {
     expect(within(await screen.findByRole("combobox", { name: /is also a client/i })).getByRole("option", { name: "Bolloré Transport" })).toBeTruthy();
 
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  /**
+   * The reported defect, end to end.
+   *
+   * "Once I enter to edit again the GET function does not bring the saved date.
+   * I need to type all over again." A date input renders ONLY `YYYY-MM-DD`;
+   * given anything else it shows an empty box while the form state keeps the
+   * original value — so Issued on looked unset for a date that was saved, and
+   * Save posted the unrenderable value straight back, which the API rejected
+   * with `issued_on: Use the format YYYY-MM-DD., That date doesn't exist.` on a
+   * field nobody had touched.
+   */
+  it("edit seeds the date controls with what was saved, so nothing has to be retyped", async () => {
+    const user = userEvent.setup();
+    open();
+    await user.click(await screen.findByRole("button", { name: /identity & registrations/i }));
+    await user.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
+
+    // Was blank. A timestamp from the API and a plain date both have to arrive
+    // in the one shape the control can display.
+    expect((await screen.findByLabelText("Issued on")).getAttribute("value")).toBe("2021-09-21");
+    expect((await screen.findByLabelText("Expires on")).getAttribute("value")).toBe("2026-08-14");
+    // The rest of the row is seeded too — the date was the only broken field,
+    // and it is worth knowing if that stops being true.
+    expect((await screen.findByLabelText("Number")).getAttribute("value")).toBe("RC/DLA/2021/B/206");
+    expect((await screen.findByLabelText("Issuing authority")).getAttribute("value")).toBe("TPI Douala-Bonanjo");
+  });
+
+  it("saving an untouched row sends the dates back in the format the API validates", async () => {
+    // The other half of the defect: what the blank control SUBMITTED. Both dates
+    // must go back as `YYYY-MM-DD`, which is what `isoDate` in packages/shared
+    // accepts — the timestamp that used to be sent is what produced the two red
+    // lines under the form.
+    const user = userEvent.setup();
+    const sent: Record<string, unknown>[] = [];
+    const readThrough = apiClient.tenant;
+    const spy = vi.spyOn(apiClient, "tenant").mockImplementation((async (p: string, init?: { method?: string; body?: Record<string, unknown> }) => {
+      // Reads still have to reach the fixtures — the dossier itself is one.
+      if (init?.method !== "PATCH") return readThrough(p, init as never);
+      if (init.body) sent.push(init.body);
+      return {};
+    }) as typeof apiClient.tenant);
+
+    try {
+      open();
+      await user.click(await screen.findByRole("button", { name: /identity & registrations/i }));
+      await user.click((await screen.findAllByRole("button", { name: /^edit$/i }))[0]);
+      await user.click(await screen.findByRole("button", { name: /^save$/i }));
+
+      await waitFor(() => expect(sent.length).toBeGreaterThan(0));
+      expect(sent[0].issued_on).toBe("2021-09-21");
+      expect(sent[0].expires_on).toBe("2026-08-14");
+    } finally {
+      spy.mockRestore();
+    }
   });
 
   it("the tax-registration modal can set the jurisdiction its table prints", async () => {

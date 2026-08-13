@@ -44,7 +44,8 @@ process.env.PRAXIS_SKIP_DOTENV = "1";
  * Conditional, so the integration job (which sets real credentials in its job
  * env) keeps them.
  */
-if (!process.env.DB_PASSWORD) process.env.DB_PASSWORD = "unit-tests-never-connect";
+if (!process.env.DB_PASSWORD)
+  process.env.DB_PASSWORD = "unit-tests-never-connect";
 
 // Deterministic env for unit tests: development mode with dev-safe secrets so
 // modules that read config at require-time don't trip the production guard.
@@ -58,23 +59,30 @@ process.env.LOG_LEVEL = process.env.LOG_LEVEL || "silent";
 // not override an already-set var, so pinning these to "" here (before any
 // service requires env.js) keeps the "no provider configured" paths testable.
 for (const k of [
-  "GROQ_API_KEY", "WHISPER_BASE_URL",
+  "GROQ_API_KEY",
+  "WHISPER_BASE_URL",
   "GEMINI_API_KEY",
   "DEEPSEEK_API_KEY",
   "OPENAI_API_KEY",
-  "SMTP_HOST", "SMTP_USER", "SMTP_PASS",
+  "SMTP_HOST",
+  "SMTP_USER",
+  "SMTP_PASS",
   // Mail-fallback defaults: a developer .env may set MAIL_FALLBACK_DOMAIN
   // (e.g. nmail.praxisls.com) for real runtime, which would otherwise leak into
   // mail-fallback.test.js and break its assertions against the code defaults.
   // Pin them empty so the service's own "praxisls.com" fallbacks apply.
-  "MAIL_FALLBACK_DOMAIN", "MAIL_DEFAULT_FROM", "MAIL_SUPPORT_FROM", "MAIL_FALLBACK_FROM_NAME",
+  "MAIL_FALLBACK_DOMAIN",
+  "MAIL_DEFAULT_FROM",
+  "MAIL_SUPPORT_FROM",
+  "MAIL_FALLBACK_FROM_NAME",
   // A unit test must never make a network call. error-reporter.report() POSTs
   // to ALERT_WEBHOOK_URL, and the orchestration dispatcher calls it when an
   // event goes DEAD — so a developer with a real webhook in .env had that path
   // hang on a live HTTP request. Found while writing the outbox tests
   // (TEST-C8): the suite ran fine in a clean environment and timed out in a
   // configured one, which is the worst kind of flake.
-  "ALERT_WEBHOOK_URL", "ALERT_EMAIL",
+  "ALERT_WEBHOOK_URL",
+  "ALERT_EMAIL",
 ]) {
   process.env[k] = "";
 }
@@ -98,6 +106,10 @@ for (const k of [
  * worth stating the rule: a unit test that reads a config default must not be
  * able to see the developer's .env.
  */
-for (const k of ["MAIL_FALLBACK_DOMAIN", "MAIL_DEFAULT_FROM", "MAIL_SUPPORT_FROM"]) {
+for (const k of [
+  "MAIL_FALLBACK_DOMAIN",
+  "MAIL_DEFAULT_FROM",
+  "MAIL_SUPPORT_FROM",
+]) {
   delete process.env[k];
 }

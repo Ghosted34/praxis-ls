@@ -270,6 +270,11 @@ export type ServiceTypeDossier = {
     has_active_template: boolean;
     active_template_version: number | null;
     has_dictionary_line: boolean;
+    /** A service type with no published detail form produces files that capture
+     *  nothing beyond client and carrier — the same trap as a missing milestone
+     *  template, surfaced in the same banner. */
+    has_active_field_set: boolean;
+    active_field_set_version: number | null;
     ever_used: boolean;
     /** null when finance is masked — the UI should not imply "no revenue" from a masked view. */
     ever_billed: boolean | null;
@@ -283,6 +288,11 @@ export type ServiceTypeDossier = {
   margin_simulations_more: number;
   invoices: ServiceTypeInvoiceRow[];
   money: ServiceTypeMoneyRollup;
+  /** The shipment/service-detail form (0660): every version, plus the fields of
+   *  whichever one is live. */
+  field_sets?: ServiceTypeFieldSet[];
+  field_set?: (ServiceTypeFieldSet & { fields: ServiceTypeField[] }) | null;
+  containers?: { captures_containers: boolean; container_detail_mode: "GROUPED" | "PER_BOX" };
 };
 
 export const getServiceTypeDossier = (id: string) =>
@@ -610,3 +620,220 @@ export type DossierOverview = {
 };
 /** 360° rollup for one operation file; money fields are role-masked server-side. */
 export const getOverview = (id: string) => tenant<DossierOverview>(`/operations/${id}/360`);
+
+/* ── The Shared Shipment/Service Detail Component (SSDC) ────────────────────
+ *
+ * The types below are the CONTRACT every consumer of an operations file binds
+ * to — costing, quotation, proforma, invoice, transit order, delivery note, the
+ * client portal, and whatever is built next. They are deliberately generic: a
+ * consumer renders `facets` and `groups` without knowing which service type it
+ * is looking at, which is what lets a service type invented years from now
+ * display correctly in a screen written today.
+ *
+ * Backend: src/modules/operations/shipment_details/*.
+ */
+
+/** What a field MEANS to the shared panel, independent of what it is called on
+ *  any particular service type. "Bill of Lading" on sea and "MAWB" on air are
+ *  both TRANSPORT_REF. Mirrors chk_stf_facet_role (migration 0660). */
+export type FacetRole =
+  | "TRANSPORT_REF" | "CONVEYANCE" | "CARRIER" | "ORIGIN" | "DESTINATION" | "ROUTE_VIA"
+  | "DEPARTURE_DATE" | "ARRIVAL_DATE"
+  | "CARGO_DESC" | "CARGO_WEIGHT" | "CARGO_VOLUME" | "CARGO_PACKAGES" | "CARGO_MARKS"
+  | "CUSTODY_LOCATION" | "CUSTODY_STATUS" | "CUSTODY_IN" | "CUSTODY_OUT"
+  | "INCOTERM" | "CUSTOMS_REF" | "CUSTOMS_REGIME"
+  | "SCOPE_SUMMARY" | "COUNTERPARTY" | "PERIOD_START" | "PERIOD_END";
+
+export type FieldDataType =
+  | "TEXT" | "TEXTAREA" | "NUMBER" | "INTEGER" | "DATE" | "DATETIME" | "BOOLEAN"
+  | "SELECT" | "MULTISELECT" | "GEO_PLACE" | "RATE_PROVIDER" | "REF" | "CURRENCY";
+
+export type FieldOption = { value: string; label_fr: string; label_en?: string };
+
+/** One field as the FORM renders it (definitions, no values). */
+export type DetailFieldDef = {
+  key: string;
+  label: string;
+  help?: string | null;
+  placeholder?: string | null;
+  data_type: FieldDataType;
+  options?: FieldOption[];
+  ref_kind?: string | null;
+  validation?: { min?: number; max?: number; min_length?: number; max_length?: number; pattern?: string };
+  default_value?: unknown;
+  is_required: boolean;
+  is_client_visible: boolean;
+  facet_role: FacetRole | null;
+  column_name: string | null;
+  width: "THIRD" | "HALF" | "FULL";
+};
+export type DetailGroupDef = { code: string; label: string; seq: number; fields: DetailFieldDef[] };
+
+export type DetailForm = {
+  field_set: { service_type_field_set_id: string; version: number; name?: string | null } | null;
+  groups: DetailGroupDef[];
+  containers: { enabled: boolean; mode: "GROUPED" | "PER_BOX" } | null;
+};
+
+/** One field as the PANEL renders it (definition + the file's value). */
+export type DetailFieldValue = Omit<DetailFieldDef, "help" | "placeholder" | "options" | "ref_kind" | "validation" | "default_value"> & {
+  value: unknown;
+  display: string | null;
+};
+export type DetailGroupValue = { code: string; label: string; seq: number; fields: DetailFieldValue[] };
+
+/** A canonical fact about the file. `parts` names the fields behind it, so a
+ *  panel can show "MSC ARUSHI / 128W" and still explain which is which. */
+export type Facet = {
+  role: FacetRole;
+  label: string;
+  value: string;
+  parts: { key: string; label: string; value: string }[];
+};
+
+export type ContainerUnit = {
+  dossier_container_unit_id?: string;
+  container_no?: string | null;
+  seal_no?: string | null;
+  tare_kg?: number | null;
+  gross_weight_kg?: number | null;
+  temperature_c?: number | null;
+  imdg_class?: string | null;
+  discharged_on?: string | null;
+  out_of_port_on?: string | null;
+  returned_on?: string | null;
+  notes?: string | null;
+};
+export type ContainerLine = {
+  dossier_container_line_id?: string;
+  seq?: number;
+  container_type_ref_id: string;
+  load_mode_ref_id?: string | null;
+  qty: number;
+  gross_weight_kg?: number | null;
+  volume_cbm?: number | null;
+  notes?: string | null;
+  units?: ContainerUnit[];
+  /** Joined from the registry (read-only). */
+  container_type_code?: string;
+  container_type_en?: string;
+  container_type_fr?: string;
+  container_type_extra?: { teu?: number; size?: string; family?: string; special?: boolean };
+  load_mode_code?: string | null;
+  load_mode_en?: string | null;
+};
+export type ContainerBlock = {
+  enabled: boolean;
+  mode: "GROUPED" | "PER_BOX";
+  lines: ContainerLine[];
+  summary?: { lines: number; boxes: number; teu: number; identified: number };
+};
+
+export type ShipmentDetails = {
+  dossier: {
+    dossier_id: string;
+    ref: string;
+    title?: string | null;
+    status: string;
+    client_id?: string | null;
+    client_name?: string | null;
+    service_type_id?: string | null;
+    service_type_key?: string | null;
+    service_type_name?: string | null;
+  };
+  field_set: { service_type_field_set_id: string; version: number; is_active: boolean; is_stale: boolean } | null;
+  /** Only the roles this service type actually defines AND has a value for —
+   *  absent, never blank, so a warehousing file renders no "Vessel: —". */
+  facets: Partial<Record<FacetRole, Facet>>;
+  /** `facets` in canonical reading order, already filtered to what exists. */
+  facet_order: FacetRole[];
+  route_label: string | null;
+  groups: DetailGroupValue[];
+  containers: ContainerBlock;
+  completeness: {
+    total: number; filled: number; percent: number;
+    required_total: number; required_filled: number;
+    missing_required: string[]; is_complete: boolean;
+  };
+};
+
+export const getShipmentDetails = (dossierId: string, lang?: string) =>
+  tenant<ShipmentDetails>(`/operations/${dossierId}/shipment-details${lang ? `?lang=${lang}` : ""}`);
+export const getDetailForm = (serviceTypeId: string, lang?: string) =>
+  tenant<DetailForm>(`/service-types/${serviceTypeId}/detail-form${lang ? `?lang=${lang}` : ""}`);
+export const getDossierContainers = (dossierId: string) =>
+  tenant<ContainerBlock>(`/operations/${dossierId}/containers`);
+export const putDossierContainers = (dossierId: string, lines: ContainerLine[]) =>
+  tenant<ContainerBlock>(`/operations/${dossierId}/containers`, { method: "PUT", body: { lines } });
+
+/* ── SSDC configuration (Service Types → Details) ─────────────────────────── */
+
+export type ServiceTypeField = {
+  service_type_field_id: string;
+  service_type_field_set_id: string;
+  group_code: string;
+  group_label_fr?: string | null;
+  group_label_en?: string | null;
+  group_seq: number;
+  seq: number | string;
+  key: string;
+  label_fr: string;
+  label_en?: string | null;
+  help_text_fr?: string | null;
+  help_text_en?: string | null;
+  placeholder?: string | null;
+  data_type: FieldDataType;
+  options_json: FieldOption[];
+  ref_kind?: string | null;
+  validation_json: Record<string, unknown>;
+  is_required: boolean;
+  is_client_visible: boolean;
+  is_active: boolean;
+  is_system: boolean;
+  facet_role: FacetRole | null;
+  column_name: string | null;
+  width: "THIRD" | "HALF" | "FULL";
+};
+export type ServiceTypeFieldSet = {
+  service_type_field_set_id: string;
+  service_type_id: string;
+  version: number;
+  is_active: boolean;
+  name?: string | null;
+  source_version?: number | null;
+  is_system: boolean;
+  published_at?: string | null;
+  created_at?: string;
+  field_count?: number;
+  dossier_count?: number;
+  fields?: ServiceTypeField[];
+  in_use?: boolean;
+};
+
+export const listFieldSets = (serviceTypeId: string) =>
+  tenant<ServiceTypeFieldSet[]>(`/service-types/${serviceTypeId}/field-sets`);
+export const getFieldSet = (serviceTypeId: string, setId: string) =>
+  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets/${setId}`);
+/** Start a new draft — by default a clone of the live version, which is what
+ *  "edit the form" means: a published version is never mutated in place. */
+export const createFieldSetVersion = (serviceTypeId: string, body: { from?: string; name?: string } = {}) =>
+  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets`, { method: "POST", body });
+export const publishFieldSet = (serviceTypeId: string, setId: string) =>
+  tenant<ServiceTypeFieldSet>(`/service-types/${serviceTypeId}/field-sets/${setId}/publish`, { method: "POST", body: {} });
+export const addFieldToSet = (serviceTypeId: string, setId: string, body: Partial<ServiceTypeField> & { key: string; label_fr: string }) =>
+  tenant<ServiceTypeField>(`/service-types/${serviceTypeId}/field-sets/${setId}/fields`, { method: "POST", body });
+export const updateFieldInSet = (serviceTypeId: string, setId: string, fieldId: string, body: Partial<ServiceTypeField>) =>
+  tenant<ServiceTypeField>(`/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`, { method: "PATCH", body });
+export const removeFieldFromSet = (serviceTypeId: string, setId: string, fieldId: string) =>
+  tenant<{ removed: boolean; deactivated: boolean }>(
+    `/service-types/${serviceTypeId}/field-sets/${setId}/fields/${fieldId}`, { method: "DELETE" });
+export const configureServiceTypeContainers = (
+  serviceTypeId: string,
+  body: { captures_containers?: boolean; container_detail_mode?: "GROUPED" | "PER_BOX" },
+) => tenant<{ captures_containers: boolean; container_detail_mode: "GROUPED" | "PER_BOX" }>(
+  `/service-types/${serviceTypeId}/containers`, { method: "PUT", body });
+
+/* The container-type registry is `dictionary_ref` kind CONTAINER_TYPE, already
+ * exposed by `masterdata-api.listDictRefs` and already priced against by expense
+ * rates (0634). It is NOT re-declared here: one reader means a file's equipment
+ * and its rate card can never disagree about what a 40' HC is. */

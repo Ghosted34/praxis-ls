@@ -10,6 +10,7 @@ const { canTransition, isTerminal } = require("./operations_file.rules");
 const numbering = require("../../../services/documents/numbering.service");
 const milestones = require("../milestone/milestone.service");
 const geoPlace = require("../geo_place/geo_place.service");
+const details = require("../shipment_details/shipment_details.service");
 const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
@@ -101,6 +102,49 @@ async function resolvePlaces(client, dossier) {
   }
 }
 
+/**
+ * Fold the service type's shipment-detail values into a dossier write.
+ *
+ * `data.details` arrives keyed by FIELD KEY, as the form renders it. The
+ * shipment-details service turns that into a real write: the fields bound to a
+ * dossier column become column values, the rest become `details_json`, every
+ * one is validated against its definition, and the version of the form used is
+ * pinned onto the file.
+ *
+ * WHY THIS IS THE ONLY PATH. `details_json` is a jsonb column, so anything that
+ * wrote it directly could put anything in it — and then the panel, the
+ * documents and the completeness figure would all be reading values nothing had
+ * checked. Routing every write through one place is what makes the field
+ * definitions a contract rather than a suggestion.
+ *
+ * `enforceRequired` is true on CREATE only. That is the product rule: a file
+ * opens on the day the booking lands, when the BL number and the ETA genuinely
+ * are not known — so only the fields the service-type owner marked required are
+ * demanded, and only at the moment the file is opened. Afterwards a value can be
+ * cleared and corrected without the save being refused; completeness reports it.
+ */
+async function foldDetails(client, { data, existing = null, enforceRequired }) {
+  const { details: values, ...rest } = data;
+  const serviceTypeId = rest.service_type_id || (existing && existing.service_type_id);
+  // Nothing to fold and no form to enforce: leave the write exactly as it was,
+  // so every caller that predates the SSDC keeps working untouched.
+  if (values === undefined && !enforceRequired) return rest;
+  const { patch } = await details.applyValues(client, {
+    serviceTypeId,
+    // On update the file keeps the version it was created under — republishing
+    // a form must not retroactively change what an open file is validated
+    // against. On create there is no pinned version yet, so the live one is used.
+    fieldSetId: existing ? existing.service_type_field_set_id : null,
+    values: values || {},
+    existingDetails: existing ? existing.details_json || {} : {},
+    enforceRequired,
+  });
+  // The explicit `rest` wins over the folded patch: a caller that set `pol`
+  // directly (the AI path, the sales→operations handoff) is not overridden by
+  // an absent detail value.
+  return { ...patch, ...rest };
+}
+
 async function create(client, { data, actor = {} }) {
   // Transactional compliance gate (§5): a hard-blocked client cannot open a
   // dossier. Softer states (SOFT_BLOCK/ESCALATED) pass so freight keeps moving —
@@ -109,16 +153,19 @@ async function create(client, { data, actor = {} }) {
     const gate = await compliance.assertAllowed(client, { kind: "client", partyId: data.client_id, action: "dossier_create" });
     if (!gate.allowed) throw new AppError("COMPLIANCE_BLOCKED", gate.reason || "This client is hard-blocked.", 409, { blockingFlags: gate.blockingFlags });
   }
+  // Outside the transaction: it only reads, and a validation failure should not
+  // have opened one.
+  const write = await foldDetails(client, { data, enforceRequired: true });
   await client.query("BEGIN");
   let row;
   try {
-    let ref = data.ref || null;
-    if (!ref && data.entity_id) {
-      const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId: data.entity_id, date: new Date().toISOString().slice(0, 10) });
+    let ref = write.ref || null;
+    if (!ref && write.entity_id) {
+      const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId: write.entity_id, date: new Date().toISOString().slice(0, 10) });
       ref = alloc.number;
     }
     if (!ref) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
-    row = await repo.insert(client, { ...data, ref, status: "OPEN" });
+    row = await repo.insert(client, { ...write, ref, status: "OPEN" });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: row });
     await client.query("COMMIT");
@@ -135,7 +182,8 @@ async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
   if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " dossier cannot be edited", 422);
-  const { status, ...fields } = patch;
+  const { status, ...rest } = patch;
+  const fields = await foldDetails(client, { data: rest, existing: before, enforceRequired: false });
   const row = await repo.update(client, id, fields);
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
   // Edits change ports too — retyping POL clears its id client-side, so this is

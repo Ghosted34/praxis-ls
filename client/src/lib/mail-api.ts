@@ -59,6 +59,9 @@ export const putSetting = (section: string, key: string, value: unknown) =>
 export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean }) =>
   tenant<Sender>("/mail/senders", { method: "POST", body });
 
+export const archiveSender = (id: string) =>
+  tenant<{ email_identity_id: string }>(`/mail/senders/${id}/archive`, { method: "POST" });
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Provider-agnostic email engine (Phase 1–3): connections, threads, send/reply.
  * See doc/EMAIL_ENGINE_PLAN.md.
@@ -79,8 +82,17 @@ export type Connection = {
   smtp_host?: string | null;
   smtp_port?: number | null;
   auth_user?: string | null;
+  owner_user_id?: string | null;
+  is_default?: boolean;
   created_at?: string | null;
 };
+
+export const setDefaultMailbox = (id: string) =>
+  tenant<{ email_connection_id: string; is_default: boolean }[]>(`/mail/connections/${id}/default`, { method: "POST" });
+
+export type Recipient = { type: "client" | "supplier" | "employee" | "lead"; id: string; name: string; email: string };
+export const searchRecipients = (q: string) =>
+  tenant<Recipient[]>(`/mail/recipients?q=${encodeURIComponent(q)}`);
 
 export type ThreadMsg = {
   email_inbound_id: string;

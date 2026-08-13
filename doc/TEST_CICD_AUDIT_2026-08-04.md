@@ -2,8 +2,8 @@
 
 **Phase 0 — audit only. No code, tests, CI config, or deployment process were changed.**
 
-The question this audit answers: *how much confidence does the team actually have that a
-given change won't break production, and how fast and safely can they ship?*
+The question this audit answers: _how much confidence does the team actually have that a
+given change won't break production, and how fast and safely can they ship?_
 
 Short answer: **shipping is fast and the pipeline is honest about what it checks — but what
 it checks is the shallow half of the system.** Every pure-arithmetic rule in the accounting
@@ -18,15 +18,15 @@ and there is no rollback.
 
 Nothing below is estimated. Sources:
 
-| Evidence | How it was obtained |
-|---|---|
-| Coverage numbers | `npx jest --runInBand --coverage` on this tree (deps installed fresh) |
-| Per-function coverage | `coverage/coverage-final.json` `fnMap`/`f` inspection |
-| Flakiness | 90 GitHub Actions runs via the Actions API — `run_attempt` on every one |
-| Merge behaviour | 60 most recent CI runs classified by `event` + `display_title` |
-| Branch protection | GitHub branches API — `"name":"main","protected":false` |
-| Releases / tags | GitHub releases API (`[]`), `git tag` (empty) |
-| Determinism | Suite run in-band and in parallel, results compared |
+| Evidence              | How it was obtained                                                     |
+| --------------------- | ----------------------------------------------------------------------- |
+| Coverage numbers      | `npx jest --runInBand --coverage` on this tree (deps installed fresh)   |
+| Per-function coverage | `coverage/coverage-final.json` `fnMap`/`f` inspection                   |
+| Flakiness             | 90 GitHub Actions runs via the Actions API — `run_attempt` on every one |
+| Merge behaviour       | 60 most recent CI runs classified by `event` + `display_title`          |
+| Branch protection     | GitHub branches API — `"name":"main","protected":false`                 |
+| Releases / tags       | GitHub releases API (`[]`), `git tag` (empty)                           |
+| Determinism           | Suite run in-band and in parallel, results compared                     |
 
 Measured against `main` at `3e913c1`. `main` advanced 11 commits during the audit; the suite was
 re-run on the rebased tree and the backend numbers are unchanged (the new commits touch the
@@ -48,71 +48,71 @@ Lines        40.68%  ( 6827/16780)
 
 **Read the function number, not the line number.** The 27-point gap between lines (40.68%)
 and functions (13.12%) is not noise — it is the shape of the whole problem. Requiring a
-module executes its top-level statements, so all 102 `*.routes.js` files report *100%
-statement coverage* while never handling a request. Any target set on lines or statements
+module executes its top-level statements, so all 102 `*.routes.js` files report _100%
+statement coverage_ while never handling a request. Any target set on lines or statements
 is gamed automatically by this repo's structure.
 
 ### Suite
 
-| | |
-|---|---|
-| Test suites | 80 (76 unit, 4 integration) |
-| Tests | 697 — **686 pass, 11 skipped** |
-| Assertions | ~990 |
-| Runtime | 22.5s (`--runInBand`) / 7.4s (parallel) |
-| Source under test | 857 JS files, 42,497 LOC |
-| Test code | 5,382 LOC (**12.7%** of source) |
-| Services with *any* test reference | **37 of 135** (27%) — reference, not exercise |
-| Frontend tests | **22** across 3 files / 235 LOC, all in `client`; `platform-console` has **0** |
-| E2E tests | **0** |
+|                                    |                                                                                |
+| ---------------------------------- | ------------------------------------------------------------------------------ |
+| Test suites                        | 80 (76 unit, 4 integration)                                                    |
+| Tests                              | 697 — **686 pass, 11 skipped**                                                 |
+| Assertions                         | ~990                                                                           |
+| Runtime                            | 22.5s (`--runInBand`) / 7.4s (parallel)                                        |
+| Source under test                  | 857 JS files, 42,497 LOC                                                       |
+| Test code                          | 5,382 LOC (**12.7%** of source)                                                |
+| Services with _any_ test reference | **37 of 135** (27%) — reference, not exercise                                  |
+| Frontend tests                     | **22** across 3 files / 235 LOC, all in `client`; `platform-console` has **0** |
+| E2E tests                          | **0**                                                                          |
 
 ### Coverage by module, sorted by function coverage
 
-| Module | Files | Stmts | Stmt% | **Func%** | Br% |
-|---|---:|---:|---:|---:|---:|
-| modules/platform | 3 | 190 | 0.0 | **0.0** | 0.0 |
-| src/orchestration | 14 | 346 | 0.0 | **0.0** | 0.0 |
-| src/routes | 2 | 84 | 0.0 | **0.0** | 0.0 |
-| modules/branding | 4 | 123 | 22.8 | **0.0** | 0.0 |
-| modules/catalogue | 4 | 19 | 78.9 | **0.0** | 0.0 |
-| modules/dashboard | 22 | 230 | 33.0 | **2.1** | 0.0 |
-| modules/workflow | 8 | 232 | 23.7 | **3.0** | 0.0 |
-| modules/documents | 4 | 386 | 13.5 | **3.0** | 0.0 |
-| modules/portal_auth | 6 | 244 | 23.8 | **3.2** | 0.8 |
-| src/jobs | 17 | 261 | 9.2 | **4.7** | 8.9 |
-| modules/hr | 88 | 1535 | 38.4 | **4.8** | 0.0 |
-| modules/fleet | 53 | 765 | 40.3 | **5.7** | 0.0 |
-| modules/sales | 52 | 1143 | 33.8 | **6.3** | 8.1 |
-| modules/operations | 43 | 749 | 35.6 | **7.0** | 2.2 |
-| **modules/wms** | 44 | 610 | 43.4 | **7.3** | 0.0 |
-| modules/master | 77 | 1604 | 35.0 | **8.6** | 13.0 |
-| **modules/security** | 65 | 1450 | 41.2 | **9.0** | 16.8 |
-| modules/procurement | 31 | 644 | 39.6 | **10.9** | 12.7 |
-| **modules/costing** | 31 | 638 | 37.5 | **12.7** | 5.9 |
-| src/config | 8 | 161 | 32.3 | **16.1** | 37.9 |
-| modules/commercial | 32 | 593 | 45.7 | **17.9** | 22.5 |
-| **modules/finance** | 68 | 1863 | 42.4 | **18.9** | 20.8 |
-| src/services | 58 | 3022 | 28.0 | **20.4** | 22.9 |
-| modules/vault | 38 | 772 | 48.4 | **23.7** | 27.1 |
-| **src/middleware** | 10 | 218 | 20.6 | **25.0** | 11.8 |
-| src/shared | 19 | 638 | 47.5 | **35.3** | 42.3 |
+| Module               | Files | Stmts | Stmt% | **Func%** |  Br% |
+| -------------------- | ----: | ----: | ----: | --------: | ---: |
+| modules/platform     |     3 |   190 |   0.0 |   **0.0** |  0.0 |
+| src/orchestration    |    14 |   346 |   0.0 |   **0.0** |  0.0 |
+| src/routes           |     2 |    84 |   0.0 |   **0.0** |  0.0 |
+| modules/branding     |     4 |   123 |  22.8 |   **0.0** |  0.0 |
+| modules/catalogue    |     4 |    19 |  78.9 |   **0.0** |  0.0 |
+| modules/dashboard    |    22 |   230 |  33.0 |   **2.1** |  0.0 |
+| modules/workflow     |     8 |   232 |  23.7 |   **3.0** |  0.0 |
+| modules/documents    |     4 |   386 |  13.5 |   **3.0** |  0.0 |
+| modules/portal_auth  |     6 |   244 |  23.8 |   **3.2** |  0.8 |
+| src/jobs             |    17 |   261 |   9.2 |   **4.7** |  8.9 |
+| modules/hr           |    88 |  1535 |  38.4 |   **4.8** |  0.0 |
+| modules/fleet        |    53 |   765 |  40.3 |   **5.7** |  0.0 |
+| modules/sales        |    52 |  1143 |  33.8 |   **6.3** |  8.1 |
+| modules/operations   |    43 |   749 |  35.6 |   **7.0** |  2.2 |
+| **modules/wms**      |    44 |   610 |  43.4 |   **7.3** |  0.0 |
+| modules/master       |    77 |  1604 |  35.0 |   **8.6** | 13.0 |
+| **modules/security** |    65 |  1450 |  41.2 |   **9.0** | 16.8 |
+| modules/procurement  |    31 |   644 |  39.6 |  **10.9** | 12.7 |
+| **modules/costing**  |    31 |   638 |  37.5 |  **12.7** |  5.9 |
+| src/config           |     8 |   161 |  32.3 |  **16.1** | 37.9 |
+| modules/commercial   |    32 |   593 |  45.7 |  **17.9** | 22.5 |
+| **modules/finance**  |    68 |  1863 |  42.4 |  **18.9** | 20.8 |
+| src/services         |    58 |  3022 |  28.0 |  **20.4** | 22.9 |
+| modules/vault        |    38 |   772 |  48.4 |  **23.7** | 27.1 |
+| **src/middleware**   |    10 |   218 |  20.6 |  **25.0** | 11.8 |
+| src/shared           |    19 |   638 |  47.5 |  **35.3** | 42.3 |
 
 The four domains the brief names as highest-risk — money, inventory, auth, multi-tenant
 isolation — occupy five of the seven lowest rows that contain real logic.
 
 ### Pipeline
 
-| | |
-|---|---|
-| CI runs recorded | 93 |
-| Median CI duration | **68s** (min 54, max 79) |
-| Deploy runs | 44, median ~68s |
-| Failures in last 60 runs | 9 (**15%**) |
-| `run_attempt > 1` (re-runs) | **0 of 90** |
-| Direct pushes to `main` (last 60) | **27** (45%) |
-| PR merge commits | 14 · local merge-branch pushes 3 · PR checks 16 |
-| `main` protected | **No** |
-| Releases / tags / CHANGELOG | **None / none / none** — all three `package.json` at `0.1.0` |
+|                                   |                                                              |
+| --------------------------------- | ------------------------------------------------------------ |
+| CI runs recorded                  | 93                                                           |
+| Median CI duration                | **68s** (min 54, max 79)                                     |
+| Deploy runs                       | 44, median ~68s                                              |
+| Failures in last 60 runs          | 9 (**15%**)                                                  |
+| `run_attempt > 1` (re-runs)       | **0 of 90**                                                  |
+| Direct pushes to `main` (last 60) | **27** (45%)                                                 |
+| PR merge commits                  | 14 · local merge-branch pushes 3 · PR checks 16              |
+| `main` protected                  | **No**                                                       |
+| Releases / tags / CHANGELOG       | **None / none / none** — all three `package.json` at `0.1.0` |
 
 ---
 
@@ -131,7 +131,7 @@ Effort is **Quick** (hours–1 day) or **Deeper** (a real work item or a process
 `fnMap`: `platform()`, `resolveByHost()`, `invalidateHost()`, `poolFor()`,
 `withTenantConnection()`, `listActiveTenants()`, `closeAll()`.
 
-This file *is* the tenancy boundary. `resolveByHost()` (`registry.service.js:43`) maps a Host
+This file _is_ the tenancy boundary. `resolveByHost()` (`registry.service.js:43`) maps a Host
 header to a tenant row through a 60-second cache; `poolFor()` (`:68`) hands out a pool keyed
 on `meta.db_name`; `withTenantConnection()` (`:95`) binds `search_path` to the live or sandbox
 schema. A defect anywhere on that chain — a cache key collision, a pool reused across tenants,
@@ -164,9 +164,9 @@ if (payload.typ && payload.typ !== "access") {
 }
 ```
 
-The file's own comment records why they exist: *"Was missing entirely: refresh tokens
+The file's own comment records why they exist: _"Was missing entirely: refresh tokens
 (typ:"refresh") and, now, 2FA pending tokens (typ:"2fa_pending") are signed with this same
-secret — without this check either could be replayed here as a real access token."* This is a
+secret — without this check either could be replayed here as a real access token."_ This is a
 patched vulnerability with **no regression test**. Delete those three lines and CI stays green.
 
 #### C3 · RBAC enforcement is untested — **CRITICAL** · Quick
@@ -237,7 +237,7 @@ const d = hasDb ? describe : describe.skip;
 CI sets neither variable. **11 tests, permanently skipped.** What is dark:
 
 - `journal-posting.test.js` — a balanced entry posts and reads back; an unbalanced entry is
-  rejected *by Postgres*.
+  rejected _by Postgres_.
 - `ledger-hardening.test.js` — proves the `migrations/tenant/0464_ledger_hardening.sql`
   triggers actually fire, deliberately using **raw SQL to bypass the app-layer pre-checks** so
   the database is what rejects. This is the highest-value test asset in the repository.
@@ -264,12 +264,12 @@ coverage. It is the largest fully-dark critical domain.
 #### C8 · Cross-module orchestration is 0% covered — **HIGH** · Deeper
 
 `src/orchestration/` — 14 files, 346 statements, **0% statements, 0% functions**. This is the
-event outbox that turns *costing approved* into a draft invoice, *opportunity won* into a
-dossier, *fuel log created* into a dossier cost — eleven handlers spanning sales, costing,
+event outbox that turns _costing approved_ into a draft invoice, _opportunity won_ into a
+dossier, _fuel log created_ into a dossier cost — eleven handlers spanning sales, costing,
 finance, fleet and WMS.
 
-`dispatcher.js` documents its own contract: *"Delivery is at-least-once — handlers MUST be
-idempotent (A2)."* The only test of that idempotency is in the skipped integration suite (C6).
+`dispatcher.js` documents its own contract: _"Delivery is at-least-once — handlers MUST be
+idempotent (A2)."_ The only test of that idempotency is in the skipped integration suite (C6).
 A non-idempotent handler produces duplicate invoices or duplicate cost entries on retry, and
 nothing would catch it before a customer did.
 
@@ -294,8 +294,8 @@ users — the least-trusted population that reaches the system.
 41,941 LOC of TypeScript (`client` 39,361 + `platform-console` 2,580).
 
 **This finding was revised during the audit.** An earlier draft recorded zero frontend tests;
-`main` advanced 11 commits mid-audit and `a686019` (*"Phase 1 PR2 — page containers, desktop
-widths, a11y + test gates"*) introduced a frontend suite. Current measured state:
+`main` advanced 11 commits mid-audit and `a686019` (_"Phase 1 PR2 — page containers, desktop
+widths, a11y + test gates"_) introduced a frontend suite. Current measured state:
 
 - `client` — Vitest 4.1.10 + React Testing Library 16.3.2, **22 tests across 3 files** (235 LOC):
   `data-list.test.tsx` (9), `page-container.test.tsx` (8), `lib/theme.test.ts` (5). Wired into
@@ -303,7 +303,7 @@ widths, a11y + test gates"*) introduced a frontend suite. Current measured state
 - `platform-console` — **still zero**: no `test` script, no runner. The CI step uses
   `npm run test --if-present`, so its absence passes silently rather than failing the matrix.
 
-The direction is right and the CI wiring is correct. The gap is *what* is covered: all three
+The direction is right and the CI wiring is correct. The gap is _what_ is covered: all three
 files test presentational and layout concerns. **Nothing tests money formatting or rounding on
 display, permission-conditional rendering, or the Live/Test toggle** — the last being the
 user-facing half of C1, on a frontend that drives journal entries, payroll runs and God-Mode
@@ -338,15 +338,16 @@ far better instrumented than it is.
 #### Q2 · Security logic extracted into a testable predicate, while the caller stays dark — **HIGH** · Quick
 
 `app_user.service.js:268-274` defines `refreshTokenReused(session, payload)`, whose own JSDoc
-says *"Pure reuse-detection predicate (exported for tests)"*. `tests/unit/auth-refresh-rotation.test.js`
+says _"Pure reuse-detection predicate (exported for tests)"_. `tests/unit/auth-refresh-rotation.test.js`
 covers it thoroughly — five cases, including the legacy-grandfathering path. The test file is
-candid about why: *"The refresh() flow is dependency-heavy (jwt/redis/repo), so the
-security-critical decision is a small pure predicate exported for exactly this test."*
+candid about why: _"The refresh() flow is dependency-heavy (jwt/redis/repo), so the
+security-critical decision is a small pure predicate exported for exactly this test."_
 
 But `refresh()` (`app_user.service.js:276`) is **0% covered**. It performs the session lookup,
 the revoked/killed check, the reuse-triggered session kill + Redis removal + cache invalidation
-+ audit event, and the 30-minute inactivity enforcement (which the code comments describe as
-*"the enforcement point that was missing"*). None of it is tested.
+
+- audit event, and the 30-minute inactivity enforcement (which the code comments describe as
+  _"the enforcement point that was missing"_). None of it is tested.
 
 If a refactor stopped calling `refreshTokenReused` at line 297, **all five tests still pass**.
 This is the textbook shape of testing an implementation detail instead of an outcome, and it is
@@ -370,7 +371,7 @@ Same file. Six `jest.mock` calls, two of which remove the thing under audit:
   to return a fixed `4111` line.
 - `journal_entry.service.buildAndInsert` — **posts the entry** — mocked to return `{entry_id:"je1"}`.
 
-The test then asserts that `numbering.allocate` and `documents.capture` *were called* and that
+The test then asserts that `numbering.allocate` and `documents.capture` _were called_ and that
 status became `POSTED_LOCKED`. Those are orchestration assertions. It never asserts that the
 resulting journal entry balances, or that a service invoice hits the correct OHADA accounts.
 
@@ -383,12 +384,12 @@ that is the central claim of the product.
 `tests/unit/approval-wiring.test.js` asserts `handlerFor("purchase_order:x")` returns a
 function for six document types — it never calls one. A handler registered under the right key
 that does entirely the wrong thing passes. `tests/unit/ai-writes.test.js` has the same shape
-for *"every ai_enabled write has a real executor in the map"* (though it does then execute one
+for _"every ai_enabled write has a real executor in the map"_ (though it does then execute one
 path properly).
 
 These are legitimate and useful anti-regression guards — a module dropping its `onApproved`
 registration is a real failure mode worth catching. The issue is bookkeeping: they should not
-be counted as coverage of the approval or AI-write *paths*, because they aren't.
+be counted as coverage of the approval or AI-write _paths_, because they aren't.
 
 #### Q6 · The best structural guard has two soft spots — **MEDIUM** · Quick
 
@@ -403,7 +404,7 @@ anonymous surface, and exactly the right instinct. Two weaknesses:
    **100** modules. If module loading broke and found 51, the suite stays green and the other
    49 routers go unchecked.
 
-And it proves *presence*, never *effect* — the middleware it guarantees is mounted has never
+And it proves _presence_, never _effect_ — the middleware it guarantees is mounted has never
 been shown to reject anything (C2).
 
 #### Q7 · Assertion strength is fine — **no action**
@@ -430,7 +431,7 @@ values. This is a healthy signal and worth preserving.
 
 **No failure in this repository's history was ignored as a flake, because there were none to
 ignore.** The caveat is honest: determinism here is largely a consequence of the suite not
-touching I/O. It is a property to *protect* as Phases 3–4 add database tests, not a
+touching I/O. It is a property to _protect_ as Phases 3–4 add database tests, not a
 property already earned.
 
 #### F2 · `--runInBand` costs 3× runtime for no observed benefit — **LOW** · Quick
@@ -438,7 +439,7 @@ property already earned.
 `package.json` (`"test": "jest --runInBand"`) and the CI `Test` step both pin it. Measured:
 22.5s serial vs **7.4s parallel**, identical results.
 
-Deliberately *not* filed as "just remove it": parallel workers surface latent shared-module
+Deliberately _not_ filed as "just remove it": parallel workers surface latent shared-module
 state, and the suite is about to grow database-touching tests where serialization may become
 load-bearing. The right sequencing is to drop `--runInBand` **now**, while the suite is pure
 and any breakage is obviously new, rather than after Phase 3 when the cause would be ambiguous.
@@ -497,8 +498,8 @@ remediation programme unmeasurable from day one.
 `security` job, `continue-on-error: true`, with the clearest rationale in the file: 7 findings
 (3 high), all transitive `uuid` reached via `exceljs` and `node-cron`; clearing them needs a
 breaking `exceljs` major that the team wants to do deliberately rather than to turn a pipeline
-green. The comment concludes *"A gate everyone learns to force past is worse than one that
-reports honestly."*
+green. The comment concludes _"A gate everyone learns to force past is worse than one that
+reports honestly."_
 
 **That reasoning is correct and I am not filing it as a defect.** The gap is that the
 suppression has no expiry: no tracking issue, no target date, no mechanism that makes it
@@ -507,8 +508,8 @@ resurface. Non-blocking-with-a-deadline is a decision; non-blocking-forever beco
 #### CI5 · Security scanning is one regex and no history — **MEDIUM** · Quick
 
 The `Secret scan` step greps the working tree for five patterns: `sk-…`, `AIza…`, `gsk_…`,
-PEM private keys, `AKIA…`. Right instinct — the file records that *"the kickoff shared provider
-keys in plaintext (Gemini/DeepSeek/Groq/exchangerate) and they had to be rotated"*. Two limits:
+PEM private keys, `AKIA…`. Right instinct — the file records that _"the kickoff shared provider
+keys in plaintext (Gemini/DeepSeek/Groq/exchangerate) and they had to be rotated"_. Two limits:
 
 1. **Coverage.** It would not catch a leaked database password, a JWT signing secret, a
    `postgres://user:pass@host` URI, a base64'd Google service-account JSON, an SMTP password,
@@ -522,14 +523,14 @@ with push protection does not appear to be relied on.
 
 #### CI6 · Migrations are never executed in CI — **HIGH** · Deeper
 
-`check-migration-numbers.js` validates **filenames**. Nothing ever *runs* the 8 platform + 69
+`check-migration-numbers.js` validates **filenames**. Nothing ever _runs_ the 8 platform + 69
 tenant migrations against a real Postgres. A migration's first execution anywhere is on the
 **production server**, during deploy.
 
 Two facts from the repo make that expensive rather than merely awkward. From
-`check-migration-numbers.js`: *"tenant migrations are not written to be idempotent (23 files
-use a bare `CREATE TRIGGER`, which fails 42710 on a second run)"* and *"Renaming an applied
-migration is therefore a live-database hazard, not a tidy-up."* And the tree already carries
+`check-migration-numbers.js`: _"tenant migrations are not written to be idempotent (23 files
+use a bare `CREATE TRIGGER`, which fails 42710 on a second run)"_ and _"Renaming an applied
+migration is therefore a live-database hazard, not a tidy-up."_ And the tree already carries
 two grandfathered number collisions (`tenant/0470`, `tenant/0475`) that cannot now be renamed.
 
 The guard that exists is thoughtful and correctly scoped. It just cannot tell you whether the
@@ -576,9 +577,10 @@ reaches production.
 
 `node --check` across `src` and `scripts` is a genuinely clever, near-free gate and should
 stay. But `doc/SmartLS_PRD_Master_Functional_Spec_v2.md:216` commits to *"every merge runs lint
-+ type-check + unit/integration tests"* — of those four, type-check does not exist for the
-backend, integration tests never run (C6), and lint does not block. The team is being measured
-against a standard the pipeline does not implement.
+
+- type-check + unit/integration tests"* — of those four, type-check does not exist for the
+  backend, integration tests never run (C6), and lint does not block. The team is being measured
+  against a standard the pipeline does not implement.
 
 ---
 
@@ -615,8 +617,8 @@ largest production risk in this audit.
 
 `docker compose run --rm migrate` executes at step 2. **Zero down/rollback migration files
 exist** (`find migrations -name "*down*" -o -name "*rollback*"` → empty). No `pg_dump` runs
-first. `doc/DEPLOYMENT.md:260-263` documents a manual backup command as *"minimum viable
-backup"* — nothing in the automated path invokes it.
+first. `doc/DEPLOYMENT.md:260-263` documents a manual backup command as _"minimum viable
+backup"_ — nothing in the automated path invokes it.
 
 Forward-only, additive-by-convention migration is a defensible choice and is what makes the
 zero-downtime roll safe (old code keeps working against the new schema mid-deploy). But it
@@ -648,7 +650,9 @@ same loop from the top.
 `src/routes/index.js:18-20`:
 
 ```js
-router.get("/health", (_req, res) => res.json({ ok: true, ts: new Date().toISOString() }));
+router.get("/health", (_req, res) =>
+  res.json({ ok: true, ts: new Date().toISOString() }),
+);
 ```
 
 No database check. No Redis check. Both `docker compose up -d --wait` (whose healthcheck hits
@@ -671,12 +675,12 @@ and no required approval. `workflow_dispatch` is open to anyone with write acces
 Action, a malicious dependency in a workflow step, or a leaked repo secret is a full host
 compromise rather than a bad deploy.
 
-#### D6 · No pre-production environment for *builds* — **HIGH** · Process
+#### D6 · No pre-production environment for _builds_ — **HIGH** · Process
 
 This one needs care, because it is a **deliberate, costed decision, not an oversight**.
-`doc/Praxis_LS_Kickoff_Meeting_Transcript.md:200-208` records decision **D6**: *"Test/Live
+`doc/Praxis_LS_Kickoff_Meeting_Transcript.md:200-208` records decision **D6**: _"Test/Live
 toggle; Live + Sandbox inside each tenant's Postgres; sandbox purged by cron every 14 days;
-**no shared staging server**"* — chosen explicitly over a staging server on cost grounds and
+**no shared staging server**"_ — chosen explicitly over a staging server on cost grounds and
 restated in `README.md:47`. I am not relitigating it.
 
 The honest consequence, which should be recorded rather than assumed away: **sandbox separates
@@ -686,8 +690,8 @@ opportunity to observe a new build before customers do. **A new build's first ex
 anywhere is on the production host serving live tenants.**
 
 Worth flagging separately: `doc/SmartLS_PRD_Master_Functional_Spec_v2.md:215-216` still
-specifies *"Local (Docker Compose) → Staging → Production"* and *"deploys are promoted staging
-→ prod"*. **The PRD and the kickoff decision directly contradict each other.** One should be
+specifies _"Local (Docker Compose) → Staging → Production"_ and _"deploys are promoted staging
+→ prod"_. **The PRD and the kickoff decision directly contradict each other.** One should be
 amended, so the team is not measured against a standard it consciously declined.
 
 The cheapest mitigations are not a staging server: they are CI7 (boot the image in CI) and CI6
@@ -709,7 +713,7 @@ an incident.
 
 `deploy.yaml` correctly sets `concurrency: { group: deploy-production, cancel-in-progress: false }`.
 But **CI has no `concurrency` block**, so two rapid pushes to `main` produce two CI runs, two
-`workflow_run` completion events, and two queued deploys ordered by *completion* time rather
+`workflow_run` completion events, and two queued deploys ordered by _completion_ time rather
 than commit order. Since `deploy.sh` always pulls current `main`, the practical result is a
 redundant deploy rather than a reversed one — but the trigger SHA and the deployed SHA are then
 provably different, which is the traceability failure in R3. On 2026-08-03 there were eight
@@ -727,7 +731,7 @@ boot in production** on default `JWT_ACCESS_SECRET` / `JWT_REFRESH_SECRET` / `EN
 on identical access and refresh secrets, or on an empty `DB_PASSWORD` (`env.js:178-198`). That
 guard is well built and is the right control.
 
-The problem is *when* it runs: at container start on the production host — deploy step 4-5,
+The problem is _when_ it runs: at container start on the production host — deploy step 4-5,
 **after migrations have already been applied**. A change that introduces a required env var
 passes CI (nothing validates any `.env` in CI), passes the image build, applies its migrations,
 and then fails to boot. Nothing anywhere compares `.env.example` against the Zod schema, so the
@@ -737,7 +741,7 @@ template silently drifts from what the app requires.
 
 `env.js` ships `JWT_ACCESS_SECRET: "__dev_access__"`, `JWT_REFRESH_SECRET: "__dev_refresh__"`,
 and a fixed 64-hex `ENCRYPTION_KEY`, all repeated in the committed `.env.example`. These are, as
-the file itself says, *"a full auth-bypass in production"*.
+the file itself says, _"a full auth-bypass in production"_.
 
 The production guard (E1) is exactly the right mitigation and it exists. The residual risk is
 that it keys solely on `NODE_ENV === "production"`. Any production-adjacent invocation that
@@ -805,7 +809,7 @@ three lines in the health route.
 #### R3 · Deploys are not traceable to commits — **MEDIUM–HIGH** · Quick to record
 
 The deploy job never checks out the repository and never records a SHA. It fires on CI
-completion and runs a script that pulls whatever `main` is at *execution* time. Given D8 (no CI
+completion and runs a script that pulls whatever `main` is at _execution_ time. Given D8 (no CI
 concurrency group), that is not necessarily the SHA whose CI run triggered it. So for any past
 deploy, the question "which commit did this deploy?" has no recorded answer — only an inference
 from timestamps.
@@ -833,53 +837,53 @@ into one.
 
 ## 3. Findings summary
 
-| ID | Finding | Severity | Effort |
-|---|---|---|---|
-| C1 | Multi-tenant isolation (`registry.service.js`) — 0/10 functions covered | CRITICAL | Deeper |
-| C2 | `authMiddleware()` uncovered; patched token-replay fix has no regression test | CRITICAL | Quick |
-| C3 | `rbacCheck()` and `ceoCheck()` uncovered — enforcement paths never run | CRITICAL | Quick |
-| C4 | `identity-cache.js` — 0/31 functions; grants, scope closure, invalidation | CRITICAL | Deeper |
-| D1 | No rollback; `docker image prune -f` destroys the previous build | CRITICAL | Deeper |
-| D2 | Migrations run pre-roll, no backup, zero down-migrations | CRITICAL | Quick/Process |
-| CI1 | `main` unprotected; 45% direct pushes; each green push auto-deploys | CRITICAL | Quick/Process |
-| C5 | Money services 0% functions; only rules layer tested | HIGH | Deeper |
-| C6 | All 4 integration suites permanently skipped — 11 tests dark in CI | HIGH | Deeper |
-| C7 | WMS/inventory 7.3% functions — no unit *or* integration coverage | HIGH | Deeper |
-| C8 | Orchestration outbox 0% — at-least-once idempotency unverified | HIGH | Deeper |
-| C9 | Platform/tenant-provisioning surface 0% | HIGH | Deeper |
-| C10 | Portal auth (external-facing) 3.2% functions | HIGH | Quick–Deeper |
-| C12 | No API-level or E2E test; middleware chain never runs as a chain | HIGH | Deeper |
-| Q2 | `refresh()` untested; only its extracted predicate is | HIGH | Quick |
-| Q4 | Invoice test mocks away determination + GL posting | HIGH | Deeper |
-| CI6 | Migrations never executed in CI; first run is production | HIGH | Deeper |
-| CI7 | Built image never started; boot failures reach deploy | HIGH | Quick |
-| CI8 | `npm install` not `ci` — CI doesn't test the deployed tree | HIGH | Deeper |
-| D3 | `migrateAllTenants` — no containment, mixed-fleet state on failure | HIGH | Deeper |
-| D4 | `/api/health` is shallow; deploy gate can't see a dead database | HIGH | Quick |
-| D5 | CI holds long-lived (likely root) SSH on production | HIGH | Quick–Deeper |
-| D6 | No pre-production for builds (deliberate; PRD contradicts it) | HIGH | Process |
-| E1 | Prod `.env` hand-maintained; validated only at boot, post-migration | HIGH | Quick |
-| R2 | Deployed build cannot be identified from the running system | HIGH | Quick |
-| CI2 | `main` red 15% of runs; no always-deployable branch | HIGH | Quick |
-| C11 | Frontend suite is 22 presentational tests; money/permissions/Live-Test untested, `platform-console` at zero | MEDIUM | Deeper |
-| Q1 | Line coverage inflated by import-time execution | MEDIUM | Quick |
-| Q3 | Regex SQL fakes absorb query changes silently | MEDIUM | Deeper |
-| Q6 | `auth-coverage` matches by function name; floor of 50 vs 100 modules | MEDIUM | Quick |
-| CI3 | Coverage never measured in CI | MEDIUM | Quick |
-| CI5 | Secret scan: 5 patterns, working tree only; no SAST | MEDIUM | Quick |
-| CI10 | No backend type-check; lint warnings never fail | MEDIUM | Deeper |
-| D7 | Server pulls `main`; no pinned artifact, can't deploy a chosen commit | MEDIUM | Deeper |
-| D8 | CI has no concurrency group; trigger SHA ≠ deployed SHA | MEDIUM | Quick |
-| E2 | Published dev secrets guarded only by `NODE_ENV` | MEDIUM | Quick |
-| E3 | No rotation story; `ENCRYPTION_KEY` effectively unrotatable | MEDIUM–HIGH | Process |
-| E4 | Secret scan blind to history; documented past exposure unverified | MEDIUM | Quick |
-| R3 | Deploys not traceable to commits | MEDIUM–HIGH | Quick |
-| R1 | No releases, tags, or changelog; version frozen at 0.1.0 | MEDIUM | Quick |
-| Q5 | Registration-only tests counted as path coverage | LOW–MEDIUM | Classify |
-| R4 | Merge commits carry the least information | LOW–MEDIUM | Quick |
-| CI4 | `npm audit` non-blocking with no expiry (rationale sound) | LOW–MEDIUM | Quick |
-| F2 | `--runInBand` costs 3× runtime for no observed benefit | LOW | Quick |
-| F3 | Expected-error noise trains people to ignore red CI output | LOW | Quick |
+| ID   | Finding                                                                                                     | Severity    | Effort        |
+| ---- | ----------------------------------------------------------------------------------------------------------- | ----------- | ------------- |
+| C1   | Multi-tenant isolation (`registry.service.js`) — 0/10 functions covered                                     | CRITICAL    | Deeper        |
+| C2   | `authMiddleware()` uncovered; patched token-replay fix has no regression test                               | CRITICAL    | Quick         |
+| C3   | `rbacCheck()` and `ceoCheck()` uncovered — enforcement paths never run                                      | CRITICAL    | Quick         |
+| C4   | `identity-cache.js` — 0/31 functions; grants, scope closure, invalidation                                   | CRITICAL    | Deeper        |
+| D1   | No rollback; `docker image prune -f` destroys the previous build                                            | CRITICAL    | Deeper        |
+| D2   | Migrations run pre-roll, no backup, zero down-migrations                                                    | CRITICAL    | Quick/Process |
+| CI1  | `main` unprotected; 45% direct pushes; each green push auto-deploys                                         | CRITICAL    | Quick/Process |
+| C5   | Money services 0% functions; only rules layer tested                                                        | HIGH        | Deeper        |
+| C6   | All 4 integration suites permanently skipped — 11 tests dark in CI                                          | HIGH        | Deeper        |
+| C7   | WMS/inventory 7.3% functions — no unit _or_ integration coverage                                            | HIGH        | Deeper        |
+| C8   | Orchestration outbox 0% — at-least-once idempotency unverified                                              | HIGH        | Deeper        |
+| C9   | Platform/tenant-provisioning surface 0%                                                                     | HIGH        | Deeper        |
+| C10  | Portal auth (external-facing) 3.2% functions                                                                | HIGH        | Quick–Deeper  |
+| C12  | No API-level or E2E test; middleware chain never runs as a chain                                            | HIGH        | Deeper        |
+| Q2   | `refresh()` untested; only its extracted predicate is                                                       | HIGH        | Quick         |
+| Q4   | Invoice test mocks away determination + GL posting                                                          | HIGH        | Deeper        |
+| CI6  | Migrations never executed in CI; first run is production                                                    | HIGH        | Deeper        |
+| CI7  | Built image never started; boot failures reach deploy                                                       | HIGH        | Quick         |
+| CI8  | `npm install` not `ci` — CI doesn't test the deployed tree                                                  | HIGH        | Deeper        |
+| D3   | `migrateAllTenants` — no containment, mixed-fleet state on failure                                          | HIGH        | Deeper        |
+| D4   | `/api/health` is shallow; deploy gate can't see a dead database                                             | HIGH        | Quick         |
+| D5   | CI holds long-lived (likely root) SSH on production                                                         | HIGH        | Quick–Deeper  |
+| D6   | No pre-production for builds (deliberate; PRD contradicts it)                                               | HIGH        | Process       |
+| E1   | Prod `.env` hand-maintained; validated only at boot, post-migration                                         | HIGH        | Quick         |
+| R2   | Deployed build cannot be identified from the running system                                                 | HIGH        | Quick         |
+| CI2  | `main` red 15% of runs; no always-deployable branch                                                         | HIGH        | Quick         |
+| C11  | Frontend suite is 22 presentational tests; money/permissions/Live-Test untested, `platform-console` at zero | MEDIUM      | Deeper        |
+| Q1   | Line coverage inflated by import-time execution                                                             | MEDIUM      | Quick         |
+| Q3   | Regex SQL fakes absorb query changes silently                                                               | MEDIUM      | Deeper        |
+| Q6   | `auth-coverage` matches by function name; floor of 50 vs 100 modules                                        | MEDIUM      | Quick         |
+| CI3  | Coverage never measured in CI                                                                               | MEDIUM      | Quick         |
+| CI5  | Secret scan: 5 patterns, working tree only; no SAST                                                         | MEDIUM      | Quick         |
+| CI10 | No backend type-check; lint warnings never fail                                                             | MEDIUM      | Deeper        |
+| D7   | Server pulls `main`; no pinned artifact, can't deploy a chosen commit                                       | MEDIUM      | Deeper        |
+| D8   | CI has no concurrency group; trigger SHA ≠ deployed SHA                                                     | MEDIUM      | Quick         |
+| E2   | Published dev secrets guarded only by `NODE_ENV`                                                            | MEDIUM      | Quick         |
+| E3   | No rotation story; `ENCRYPTION_KEY` effectively unrotatable                                                 | MEDIUM–HIGH | Process       |
+| E4   | Secret scan blind to history; documented past exposure unverified                                           | MEDIUM      | Quick         |
+| R3   | Deploys not traceable to commits                                                                            | MEDIUM–HIGH | Quick         |
+| R1   | No releases, tags, or changelog; version frozen at 0.1.0                                                    | MEDIUM      | Quick         |
+| Q5   | Registration-only tests counted as path coverage                                                            | LOW–MEDIUM  | Classify      |
+| R4   | Merge commits carry the least information                                                                   | LOW–MEDIUM  | Quick         |
+| CI4  | `npm audit` non-blocking with no expiry (rationale sound)                                                   | LOW–MEDIUM  | Quick         |
+| F2   | `--runInBand` costs 3× runtime for no observed benefit                                                      | LOW         | Quick         |
+| F3   | Expected-error noise trains people to ignore red CI output                                                  | LOW         | Quick         |
 
 **What is working and should be protected:** the pure-rules test layer (real OHADA assertions,
 exact figures); `auth-coverage.test.js` as a structural anti-regression guard; the deterministic
@@ -903,7 +907,7 @@ Sequencing rationale, stated up front because it drives everything below:
    the auth tests are also the cheapest (C2/C3 need no database).
 3. **Infrastructure before the tests that need it.** Phase 3 builds the Postgres harness;
    Phase 4 spends it on money and inventory.
-4. **Gates last.** Branch protection and coverage floors go in *after* the pipeline is worth
+4. **Gates last.** Branch protection and coverage floors go in _after_ the pipeline is worth
    waiting for. Imposing a required-checks regime on a 68-second pipeline that doesn't test
    auth teaches people to route around it — the exact failure mode `ci.yaml` already names in
    its `npm audit` comment.
@@ -913,6 +917,7 @@ Effort figures assume the current small team and are calendar estimates, not hea
 ---
 
 ### Phase 1 — Make production recoverable and identifiable
+
 **~1 week · no dependencies · nothing blocks a merge**
 
 Addresses D1, D2, D4, D8, R2, R3, CI7, F2, F3.
@@ -921,12 +926,13 @@ Addresses D1, D2, D4, D8, R2, R3, CI7, F2, F3.
 new gates, no impact on merge speed.
 
 **Deliverables**
+
 1. **Versioned images + rollback.** Tag each build `praxis-ls:<short-sha>` and `:previous`;
    replace bare `docker image prune -f` with a prune that retains the last N. Add
    `scripts/rollback.sh <sha>` that re-tags and rolls standby-then-primary using the existing
    sequencing.
 2. **Pre-migration backup.** `pg_dumpall` (the command already in `doc/DEPLOYMENT.md:260-263`)
-   into a retained, timestamped file *before* `docker compose run --rm migrate`, with the
+   into a retained, timestamped file _before_ `docker compose run --rm migrate`, with the
    deploy aborting if the dump fails.
 3. **`/api/ready`.** A deep check — `SELECT 1` on the platform pool plus a Redis `PING`. Point
    the compose healthchecks and `deploy.sh`'s final curl at it. Keep `/api/health` shallow for
@@ -942,6 +948,7 @@ new gates, no impact on merge speed.
    (F3).
 
 **Measurement**
+
 - Rollback drill: deliberately deploy a known-bad build and restore. Target **< 5 minutes**,
   timed, with the result written down. This number is the phase's headline.
 - 100% of deploys have a recorded SHA; `/api/health` reports the same SHA the deploy claims.
@@ -952,6 +959,7 @@ new gates, no impact on merge speed.
 ---
 
 ### Phase 2 — Cover the paths where a bug is a breach
+
 **~2 weeks · depends on Phase 1 only for the parallel-jest change · no database required**
 
 Addresses C2, C3, C4, C10, Q2, Q6, C12 (harness), Q1/CI3 (measurement).
@@ -962,6 +970,7 @@ and the code disagree, the code is right and the test is wrong, unless it expose
 security defect, which gets raised separately rather than silently "fixed" by a test.
 
 **Deliverables**
+
 1. **`tests/helpers/app.js`** — a supertest harness booting the real router with fake tenant
    resolution and a stubbed identity DB, so the chain
    `hostTenantResolver → tenantContext → authMiddleware → requirePermission → controller`
@@ -984,7 +993,7 @@ security defect, which gets raised separately rather than silently "fixed" by a 
    outside `NODE_ENV=development`; **`x-praxis-env: sandbox` is honoured only when
    `!is_live`**; `identityDb` always binds live even under sandbox.
 6. **`refresh()` end to end (Q2)** — full flow with a fake client: revoked session, reuse
-   detection *reached through `refresh()`*, session kill + cache invalidation + audit event,
+   detection _reached through `refresh()`_, session kill + cache invalidation + audit event,
    30-minute inactivity kill, and the "keep me signed in" opt-out.
 7. **Portal auth (C10)** — login, token issue, and the `portal_auth.middleware` gate.
 8. **Harden `auth-coverage.test.js` (Q6)** — assert the exact discovered module count
@@ -995,6 +1004,7 @@ security defect, which gets raised separately rather than silently "fixed" by a 
    **Report only — no threshold yet.**
 
 **Measurement**
+
 - Function coverage on `src/middleware` + `src/shared/cache` + `src/services/tenant`:
   **~8% → ≥ 80%**, reported per-directory.
 - **Sabotage check** (the real acceptance test, run manually): comment out `auth.js:52-54`
@@ -1005,6 +1015,7 @@ security defect, which gets raised separately rather than silently "fixed" by a 
 ---
 
 ### Phase 3 — Put a real database in CI
+
 **~2–3 weeks · depends on Phase 1 (pipeline discipline); unblocks Phase 4**
 
 Addresses C6, CI6, CI8, and the infrastructure half of C1.
@@ -1014,6 +1025,7 @@ highest-leverage: it turns 11 already-written, currently-dark tests green, and i
 possible at all.
 
 **Deliverables**
+
 1. **Postgres service container** in `ci.yaml` (`pgvector/pgvector:pg16`, matching production),
    in a new `integration` job so `build-test` stays fast.
 2. **Provision step** — `npm run db:migrate:platform` then `npm run db:provision --slug=citest`,
@@ -1036,6 +1048,7 @@ possible at all.
    job runs in parallel with the existing four.
 
 **Measurement**
+
 - **Skipped tests: 11 → 0.** The cleanest binary in this roadmap.
 - Migration gate catches at least one bad migration before merge (baseline: production is
   currently the first executor).
@@ -1046,6 +1059,7 @@ possible at all.
 ---
 
 ### Phase 4 — Behavioural coverage for money and data integrity
+
 **~3–4 weeks · depends on Phase 3 (needs the DB harness) and Phase 2 (needs the API harness)**
 
 Addresses C5, C7, C8, C9, Q3, Q4.
@@ -1055,6 +1069,7 @@ services, repos, and the orchestration outbox — asserting persisted outcomes r
 functions were called.
 
 **Deliverables**
+
 1. **A money-invariant suite.** One shared assertion applied to every posting path: for any
    operation that touches the general ledger, **sum(debits) === sum(credits)** and the affected
    accounts match the OHADA determination. Cover invoice posting, credit notes, debt drawdown
@@ -1081,6 +1096,7 @@ functions were called.
    rules function alone.
 
 **Measurement**
+
 - Function coverage: `modules/finance` **18.9% → ≥ 60%**; `modules/costing` **12.7% → ≥ 60%**;
   `modules/wms` **7.3% → ≥ 55%**; `src/orchestration` **0% → ≥ 70%**.
 - Branch coverage on those four: **≥ 45%** (from 20.8 / 5.9 / 0.0 / 0.0).
@@ -1091,6 +1107,7 @@ functions were called.
 ---
 
 ### Phase 5 — Gates, releases, and the frontend
+
 **~4 weeks · depends on Phases 1–4 · this is the phase that changes how people work**
 
 Addresses CI1, CI2, CI3 (enforce), CI4, CI5, CI10, C11, C12, D5, D6, D7, E1–E4, R1–R4.
@@ -1100,6 +1117,7 @@ first tests on the frontend. Deliberately last: **every item here trades speed f
 that trade is only honest once the checks being waited on actually test something.**
 
 **Deliverables**
+
 1. **Branch protection on `main` (CI1, CI2)** — require a PR, require `build-test`, `security`,
    `frontend`, `docker-build`, and `integration` to pass, require the branch to be current.
    **The largest process change in this roadmap — see the tradeoff table.**
@@ -1141,6 +1159,7 @@ that trade is only honest once the checks being waited on actually test somethin
     point.
 
 **Measurement**
+
 - **Direct pushes to `main`: 45% → < 5%** (measure the same way this audit did — classify CI
   runs by `event`).
 - **`main` red rate: 15% → < 5%**; time-to-green when red: **< 30 minutes** (worst observed
@@ -1159,20 +1178,20 @@ that trade is only honest once the checks being waited on actually test somethin
 Per the brief's constraint: **no process change is proposed without its cost stated.** Nothing
 in this table has been applied.
 
-| Change | Phase | Cost | Why it is still worth it |
-|---|---|---|---|
-| **Require PRs on `main`** | 5 | Slowest single item here. On a small team this can mean waiting for the only other reviewer, or self-approving — which is theatre. Direct-push velocity is genuinely lost. | Today one `git push` deploys to production unreviewed. The *required status checks* matter more than the human review — consider requiring checks while allowing self-merge, which recovers most safety at a fraction of the friction. |
-| **Postgres in CI** | 3 | CI goes from ~68s to an estimated 2–4 min. A new infra dependency that can itself flake. | Un-skips 11 already-written tests, including the only proof the GL rejects unbalanced entries. Runs as a parallel job so the fast feedback loop survives. |
-| **Coverage ratchet** | 5 | Can block an urgent fix on an unrelated coverage dip. Invites gaming. | Ratchet-not-target and function/branch-not-lines defuse both. Without it, Phase 4's gains erode within months. |
-| **Drop `--runInBand`** | 1 | Parallel workers can expose latent shared-module state; a stable suite could become intermittently red. | 3× faster today. Doing it *now*, while the suite is pure, means any breakage is unambiguously attributable — after Phase 3 it would be ambiguous. Reversible in one line. |
-| **`npm ci` + regenerated lockfile** | 3 | Real risk of a painful day: `npm ci` is stricter and platform binaries (`sharp`, `argon2`, rollup) are exactly what broke before. Needs a Linux regeneration and verification in all three Docker stages. | CI currently does not test the tree that gets deployed. Until this is fixed, "CI is green" says nothing about the artifact — and audit results aren't reproducible. |
-| **Deep `/api/ready` health gate** | 1 | A slow database makes a deploy fail that would previously have "succeeded". Deploys will fail more often. | They will fail *correctly*. Today the gate cannot distinguish a working app from one that cannot reach Postgres — a green deploy is not currently evidence of anything. |
-| **Retain N-1 images (no blanket prune)** | 1 | Disk on the VPS. A few GB per retained build. | It is the entire rollback capability. Cheapest insurance in this document. |
-| **Backup before migrate** | 1 | Adds ~seconds-to-minutes to each deploy, scaling with database size. Needs retention management. | With forward-only migrations and no down path, the pre-migration dump is the only route back past a schema change. |
-| **Non-root deploy user + Environment approvals** | 5 | Setup effort; `workflow_dispatch` needs a reviewer, so emergency manual deploys get slower. | Every CI run currently has (likely) root shell on production. An emergency deploy that needs one click is a fair price. |
-| **`--max-warnings=0` / `checkJs`** | 5 | Will fail immediately on existing warnings — a cleanup sprint before it can be enabled. `checkJs` on 42k LOC of untyped JS surfaces a lot at once. | Nothing currently sits between "it parses" and "this one tested function works". Scope to `src/middleware` and `src/shared` first. |
-| **Amending the PRD on staging** | 5 | Documentation work; may reopen a settled cost conversation. | Two contradictory standards are live in the docs. Whichever wins, the team should be measured against one. |
-| **Tagging + changelog** | 5 | Small ongoing discipline; nudges people toward descriptive PR titles. | "What is in production and what changed?" currently has no answer that survives the next `git pull`. |
+| Change                                           | Phase | Cost                                                                                                                                                                                                      | Why it is still worth it                                                                                                                                                                                                               |
+| ------------------------------------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Require PRs on `main`**                        | 5     | Slowest single item here. On a small team this can mean waiting for the only other reviewer, or self-approving — which is theatre. Direct-push velocity is genuinely lost.                                | Today one `git push` deploys to production unreviewed. The _required status checks_ matter more than the human review — consider requiring checks while allowing self-merge, which recovers most safety at a fraction of the friction. |
+| **Postgres in CI**                               | 3     | CI goes from ~68s to an estimated 2–4 min. A new infra dependency that can itself flake.                                                                                                                  | Un-skips 11 already-written tests, including the only proof the GL rejects unbalanced entries. Runs as a parallel job so the fast feedback loop survives.                                                                              |
+| **Coverage ratchet**                             | 5     | Can block an urgent fix on an unrelated coverage dip. Invites gaming.                                                                                                                                     | Ratchet-not-target and function/branch-not-lines defuse both. Without it, Phase 4's gains erode within months.                                                                                                                         |
+| **Drop `--runInBand`**                           | 1     | Parallel workers can expose latent shared-module state; a stable suite could become intermittently red.                                                                                                   | 3× faster today. Doing it _now_, while the suite is pure, means any breakage is unambiguously attributable — after Phase 3 it would be ambiguous. Reversible in one line.                                                              |
+| **`npm ci` + regenerated lockfile**              | 3     | Real risk of a painful day: `npm ci` is stricter and platform binaries (`sharp`, `argon2`, rollup) are exactly what broke before. Needs a Linux regeneration and verification in all three Docker stages. | CI currently does not test the tree that gets deployed. Until this is fixed, "CI is green" says nothing about the artifact — and audit results aren't reproducible.                                                                    |
+| **Deep `/api/ready` health gate**                | 1     | A slow database makes a deploy fail that would previously have "succeeded". Deploys will fail more often.                                                                                                 | They will fail _correctly_. Today the gate cannot distinguish a working app from one that cannot reach Postgres — a green deploy is not currently evidence of anything.                                                                |
+| **Retain N-1 images (no blanket prune)**         | 1     | Disk on the VPS. A few GB per retained build.                                                                                                                                                             | It is the entire rollback capability. Cheapest insurance in this document.                                                                                                                                                             |
+| **Backup before migrate**                        | 1     | Adds ~seconds-to-minutes to each deploy, scaling with database size. Needs retention management.                                                                                                          | With forward-only migrations and no down path, the pre-migration dump is the only route back past a schema change.                                                                                                                     |
+| **Non-root deploy user + Environment approvals** | 5     | Setup effort; `workflow_dispatch` needs a reviewer, so emergency manual deploys get slower.                                                                                                               | Every CI run currently has (likely) root shell on production. An emergency deploy that needs one click is a fair price.                                                                                                                |
+| **`--max-warnings=0` / `checkJs`**               | 5     | Will fail immediately on existing warnings — a cleanup sprint before it can be enabled. `checkJs` on 42k LOC of untyped JS surfaces a lot at once.                                                        | Nothing currently sits between "it parses" and "this one tested function works". Scope to `src/middleware` and `src/shared` first.                                                                                                     |
+| **Amending the PRD on staging**                  | 5     | Documentation work; may reopen a settled cost conversation.                                                                                                                                               | Two contradictory standards are live in the docs. Whichever wins, the team should be measured against one.                                                                                                                             |
+| **Tagging + changelog**                          | 5     | Small ongoing discipline; nudges people toward descriptive PR titles.                                                                                                                                     | "What is in production and what changed?" currently has no answer that survives the next `git pull`.                                                                                                                                   |
 
 ---
 

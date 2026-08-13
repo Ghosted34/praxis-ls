@@ -77,16 +77,16 @@ src/
 Base `/api/platform`. Success `{ data }`, error `{ error: { code, message, fields? } }`,
 auth `Authorization: Bearer <access_token>`.
 
-| Method | Path | Body |
-|---|---|---|
-| POST | `/auth/login` | `{ email, password }` |
-| GET | `/tenants` · `/tenants/:slug` | — |
-| POST | `/tenants` | `{ slug, name, plan?, subdomain? }` |
-| POST | `/tenants/:slug/{suspend,resume,go-live,migrate}` · `/sandbox/wipe` | — |
-| PATCH | `/tenants/:slug/capacity` · `/sandbox` | `{ tier }` · `{ days }` |
-| GET | `/tenants/:slug/features` | — |
-| PATCH · DELETE | `/tenants/:slug/features/:key` | `{ state }` · — |
-| GET | `/plans` · `/catalogue/modules` · `/catalogue/features` | — |
-| GET | `/audit` | `?tenant=<slug>&limit=<n>` |
-| GET | `/support/tickets` · `/support/tickets/:id` | `?status=&kind=&tenant=` |
-| PATCH | `/support/tickets/:id` | `{ status }` |
+| Method         | Path                                                                | Body                                |
+| -------------- | ------------------------------------------------------------------- | ----------------------------------- |
+| POST           | `/auth/login`                                                       | `{ email, password }`               |
+| GET            | `/tenants` · `/tenants/:slug`                                       | —                                   |
+| POST           | `/tenants`                                                          | `{ slug, name, plan?, subdomain? }` |
+| POST           | `/tenants/:slug/{suspend,resume,go-live,migrate}` · `/sandbox/wipe` | —                                   |
+| PATCH          | `/tenants/:slug/capacity` · `/sandbox`                              | `{ tier }` · `{ days }`             |
+| GET            | `/tenants/:slug/features`                                           | —                                   |
+| PATCH · DELETE | `/tenants/:slug/features/:key`                                      | `{ state }` · —                     |
+| GET            | `/plans` · `/catalogue/modules` · `/catalogue/features`             | —                                   |
+| GET            | `/audit`                                                            | `?tenant=<slug>&limit=<n>`          |
+| GET            | `/support/tickets` · `/support/tickets/:id`                         | `?status=&kind=&tenant=`            |
+| PATCH          | `/support/tickets/:id`                                              | `{ status }`                        |

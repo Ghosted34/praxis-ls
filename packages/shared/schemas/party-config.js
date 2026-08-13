@@ -70,21 +70,30 @@ const DEFAULT_ROWS = [
 ];
 
 /** The stable order groups render in on the settings page. */
-const GROUP_ORDER = ["IDENTITY", "CONTACT", "ADDRESS", "BANK", "ACCOUNTING", "COMPLIANCE"];
+const GROUP_ORDER = [
+  "IDENTITY",
+  "CONTACT",
+  "ADDRESS",
+  "BANK",
+  "ACCOUNTING",
+  "COMPLIANCE",
+];
 
 /** The seeded defaults for one side, as config-row objects. */
 function defaultsFor(appliesTo) {
   const want = String(appliesTo || "").toUpperCase();
-  return DEFAULT_ROWS.filter(([a]) => a === want).map(([applies_to, field_key, field_group, is_required], i) => ({
-    applies_to,
-    field_key,
-    field_group,
-    is_required,
-    is_visible: true,
-    is_custom: false,
-    sort_order: (i + 1) * 10,
-    label_override: null,
-  }));
+  return DEFAULT_ROWS.filter(([a]) => a === want).map(
+    ([applies_to, field_key, field_group, is_required], i) => ({
+      applies_to,
+      field_key,
+      field_group,
+      is_required,
+      is_visible: true,
+      is_custom: false,
+      sort_order: (i + 1) * 10,
+      label_override: null,
+    }),
+  );
 }
 
 /**
@@ -114,11 +123,14 @@ function resolveValue(data, key) {
   if (Object.prototype.hasOwnProperty.call(data, key)) return data[key];
   if (key.startsWith("contacts")) return data.contacts;
   if (key.startsWith("addresses")) return data.addresses;
-  if (key === "bank_accounts") return data.bank_accounts !== undefined ? data.bank_accounts : data.banks;
+  if (key === "bank_accounts")
+    return data.bank_accounts !== undefined ? data.bank_accounts : data.banks;
   if (key === "registrations") return data.registrations;
   if (key === "documents") return data.documents;
   if (key === "beneficial_owners") {
-    return data.beneficial_owners !== undefined ? data.beneficial_owners : data.beneficialOwners;
+    return data.beneficial_owners !== undefined
+      ? data.beneficial_owners
+      : data.beneficialOwners;
   }
   return undefined;
 }
@@ -136,7 +148,8 @@ function checkRequired(data, config) {
   for (const c of rows) {
     if (!c.is_required) continue;
     if (c.is_visible === false) continue; // a hidden field cannot be demanded of a form
-    if (isBlank(resolveValue(data || {}, c.field_key))) missing.push(c.field_key);
+    if (isBlank(resolveValue(data || {}, c.field_key)))
+      missing.push(c.field_key);
   }
   return { ok: missing.length === 0, missing };
 }

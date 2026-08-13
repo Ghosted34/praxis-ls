@@ -28,12 +28,12 @@ about each other is how a five-minute outage becomes an hour.
 
 ## 1. Severity — pick one, out loud
 
-| | Definition | Response | Examples |
-|---|---|---|---|
-| **SEV-1** | Money or data is wrong, or every tenant is down | Immediately, any hour | Ledger unbalanced, wrong VAT applied, cross-tenant data visible, all logins failing |
-| **SEV-2** | One tenant down, or a core workflow broken for everyone | Within 1 hour, working hours + evening | One tenant's DB unreachable, invoices will not post, deploy loop failing |
-| **SEV-3** | Degraded but usable; a workaround exists | Next working day | A report times out, realtime not delivering, one screen erroring |
-| **SEV-4** | Cosmetic or single-user | Backlog | Layout wrong, one user's export malformed |
+|           | Definition                                              | Response                               | Examples                                                                            |
+| --------- | ------------------------------------------------------- | -------------------------------------- | ----------------------------------------------------------------------------------- |
+| **SEV-1** | Money or data is wrong, or every tenant is down         | Immediately, any hour                  | Ledger unbalanced, wrong VAT applied, cross-tenant data visible, all logins failing |
+| **SEV-2** | One tenant down, or a core workflow broken for everyone | Within 1 hour, working hours + evening | One tenant's DB unreachable, invoices will not post, deploy loop failing            |
+| **SEV-3** | Degraded but usable; a workaround exists                | Next working day                       | A report times out, realtime not delivering, one screen erroring                    |
+| **SEV-4** | Cosmetic or single-user                                 | Backlog                                | Layout wrong, one user's export malformed                                           |
 
 **When unsure, pick the higher one.** Downgrading later costs nothing.
 Discovering at 09:00 that an overnight SEV-3 was silently corrupting the ledger
@@ -50,12 +50,12 @@ every hour it stands is another hour of reports built on it.
 
 Fill this in. An unfilled table is the same failure this document exists to fix.
 
-| Role | Who | Contact | When |
-|---|---|---|---|
-| Primary on-call | _TBD_ | _TBD_ | First responder, all severities |
-| Secondary | _TBD_ | _TBD_ | No ack from primary in 15 min (SEV-1/2) |
-| Database / accounting | _TBD_ | _TBD_ | Anything ledger-, tax- or migration-related |
-| Business owner | Mark | — | SEV-1, and any SEV-2 lasting > 2 hours |
+| Role                  | Who   | Contact | When                                        |
+| --------------------- | ----- | ------- | ------------------------------------------- |
+| Primary on-call       | _TBD_ | _TBD_   | First responder, all severities             |
+| Secondary             | _TBD_ | _TBD_   | No ack from primary in 15 min (SEV-1/2)     |
+| Database / accounting | _TBD_ | _TBD_   | Anything ledger-, tax- or migration-related |
+| Business owner        | Mark  | —       | SEV-1, and any SEV-2 lasting > 2 hours      |
 
 **Escalation:** no acknowledgement in 15 minutes on a SEV-1 → secondary. Still
 nothing after 15 more → business owner, whatever the hour.
@@ -78,14 +78,14 @@ curl -s https://<tenant-host>/api/health/ready    # readiness — 503 when it ca
 
 `/health/ready` returns the detail:
 
-| Field | Meaning if unhealthy |
-|---|---|
-| `checks.postgres` | **Fatal.** Platform DB unreachable — no request can be routed to a tenant |
-| `checks.redis` | Degraded, not fatal. Sessions, rate limiting and job queues are affected |
-| `checks.modules.skipped` | A feature module failed to mount. Those URLs are 404 right now |
-| `checks.dead_letters` | Business events permanently undelivered — see 4.4 |
-| `checks.tenant_pools.waiting` | Sustained > 0 means requests are queueing for a DB connection |
-| `build.commit` | Which commit is actually running |
+| Field                         | Meaning if unhealthy                                                      |
+| ----------------------------- | ------------------------------------------------------------------------- |
+| `checks.postgres`             | **Fatal.** Platform DB unreachable — no request can be routed to a tenant |
+| `checks.redis`                | Degraded, not fatal. Sessions, rate limiting and job queues are affected  |
+| `checks.modules.skipped`      | A feature module failed to mount. Those URLs are 404 right now            |
+| `checks.dead_letters`         | Business events permanently undelivered — see 4.4                         |
+| `checks.tenant_pools.waiting` | Sustained > 0 means requests are queueing for a DB connection             |
+| `build.commit`                | Which commit is actually running                                          |
 
 Note that `/health` cannot fail while the process is up — that is the point of
 having two endpoints, and the original single endpoint that could not fail is
@@ -223,6 +223,7 @@ one-person decision.
    every other write on that router — so any authenticated user can kill any
    session by id. That is convenient here and is not something to rely on;
    it is logged as a new finding.
+
 3. Rotate what may be exposed — `doc/MONITORING_SETUP.md` lists the secrets.
 4. Check for privilege escalation:
 
@@ -260,8 +261,8 @@ useful to everyone; "the tenant pool is saturated" is useful to two people.
 
 Within two working days, in `doc/incidents/YYYY-MM-DD-<slug>.md`:
 
-- **Timeline** — first symptom, detection, mitigation, resolution. Include *how
-  it was detected*: if a customer told you, that is the finding.
+- **Timeline** — first symptom, detection, mitigation, resolution. Include _how
+  it was detected_: if a customer told you, that is the finding.
 - **Impact** — who, how long, what data.
 - **Cause** — the technical one and the one behind it. "The health check
   couldn't fail" was the technical cause of six deploys shipping broken code;

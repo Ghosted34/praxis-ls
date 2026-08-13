@@ -31,7 +31,9 @@ function check(modules) {
     for (const key of routeKeys(router, basePath === "/" ? "" : basePath)) {
       const prior = byRoute.get(key);
       if (prior) {
-        throw new Error(`Duplicate tenant route "${key}": mounted by both ${prior} and ${name}.`);
+        throw new Error(
+          `Duplicate tenant route "${key}": mounted by both ${prior} and ${name}.`,
+        );
       }
       byRoute.set(key, name);
     }
@@ -67,8 +69,10 @@ describe("boot guard", () => {
   it("ALLOWS three modules sharing '/' with disjoint URLs — the regression", () => {
     // This exact configuration crashed the API container on 2026-08-04.
     const appUser = express.Router();
-    const u = express.Router(); u.get("/", () => {});
-    const a = express.Router(); a.post("/login", () => {});
+    const u = express.Router();
+    u.get("/", () => {});
+    const a = express.Router();
+    a.post("/login", () => {});
     appUser.use("/users", u);
     appUser.use("/auth", a);
 
@@ -119,8 +123,10 @@ describe("boot guard", () => {
   });
 
   it("does NOT confuse different methods on the same path", () => {
-    const a = express.Router(); a.get("/thing", () => {});
-    const b = express.Router(); b.post("/thing", () => {});
+    const a = express.Router();
+    a.get("/thing", () => {});
+    const b = express.Router();
+    b.post("/thing", () => {});
     expect(() =>
       check([
         { name: "mod/a", basePath: "/x", router: a },
@@ -130,8 +136,10 @@ describe("boot guard", () => {
   });
 
   it("names both modules in the error, so the fix is obvious", () => {
-    const a = express.Router(); a.get("/dup", () => {});
-    const b = express.Router(); b.get("/dup", () => {});
+    const a = express.Router();
+    a.get("/dup", () => {});
+    const b = express.Router();
+    b.get("/dup", () => {});
     expect(() =>
       check([
         { name: "group/alpha", basePath: "/", router: a },

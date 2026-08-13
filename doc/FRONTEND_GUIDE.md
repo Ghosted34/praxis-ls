@@ -9,19 +9,19 @@ This doc summarises them so a new screen looks like the rest without reverse-eng
 ## What this replaces
 
 F15 counted **six overlapping frontend plans**, and named the compounding problem
-precisely: *"a new engineer cannot tell which is current — and the one that reads most
-authoritative is the one that's wrong."* Phase 5 consolidates them here. Each of the
+precisely: _"a new engineer cannot tell which is current — and the one that reads most
+authoritative is the one that's wrong."_ Phase 5 consolidates them here. Each of the
 others now carries a banner saying so, and each is kept for the history it holds:
 
-| Superseded | What it was | Where its content lives now |
-|---|---|---|
-| `FE_DESIGN_RULES.md` | tokens + on-ramp | **this file** — it was renamed, not rewritten |
-| `FRONTEND_PLAN.md` | the Phase-0 hand-rolled stack | history; the platform-console proposal is still open |
-| `LOVABLE_FIDELITY_PLAN.md` | port the mock's look | done in session 15, then largely undone by Phase 1's token pass (F17) |
-| `UI_DEPTH_OVERHAUL_PLAN.md` | HR / Fleet / WMS archetypes | done; the screens are the record |
-| `FE_IA_HANDOFF.md` | module → navigation mapping | still useful as a **reference**, not a plan |
-| `FE_IA_BUILD_MAP.md` | which screens were scaffolded | superseded by `features/scaffold/screen-specs.ts`, which the app actually renders |
-| `FE_WIRING_PLAN.md` | wire scaffolds to APIs | done through Phases 3-4 |
+| Superseded                  | What it was                   | Where its content lives now                                                       |
+| --------------------------- | ----------------------------- | --------------------------------------------------------------------------------- |
+| `FE_DESIGN_RULES.md`        | tokens + on-ramp              | **this file** — it was renamed, not rewritten                                     |
+| `FRONTEND_PLAN.md`          | the Phase-0 hand-rolled stack | history; the platform-console proposal is still open                              |
+| `LOVABLE_FIDELITY_PLAN.md`  | port the mock's look          | done in session 15, then largely undone by Phase 1's token pass (F17)             |
+| `UI_DEPTH_OVERHAUL_PLAN.md` | HR / Fleet / WMS archetypes   | done; the screens are the record                                                  |
+| `FE_IA_HANDOFF.md`          | module → navigation mapping   | still useful as a **reference**, not a plan                                       |
+| `FE_IA_BUILD_MAP.md`        | which screens were scaffolded | superseded by `features/scaffold/screen-specs.ts`, which the app actually renders |
+| `FE_WIRING_PLAN.md`         | wire scaffolds to APIs        | done through Phases 3-4                                                           |
 
 Phase records, which are history rather than instruction, stay where they are:
 `DESKTOP_UI_AUDIT.md` (the audit and its addenda), `PHASE4_CHECKLIST.md`,
@@ -38,7 +38,7 @@ documented two components, one deleted and one dead, for months.
 > every new engineer that the default list screen was `<ResourceList>` and that
 > write-capable lists used `<CrudResource>`. `crud-resource.tsx` never existed.
 > `resource-list.tsx` existed with **zero call sites**. That is finding **F5** in
-> `doc/DESKTOP_UI_AUDIT.md`, and the audit names it the *root cause* of most
+> `doc/DESKTOP_UI_AUDIT.md`, and the audit names it the _root cause_ of most
 > other drift in the frontend: with no working paved road, 24 feature areas each
 > paved their own.
 >
@@ -55,7 +55,7 @@ Two hard rules underpin everything:
    and every one that remains breaks tenant white-labelling.
 2. **Every accent resolves to `--primary`** — but **never use `--primary` for text.**
    The white-label loader (`lib/theme.ts`) overrides `--primary` at runtime, so anything
-   tinted with it re-colours per tenant. As *type* it measures **2.59:1** and fails WCAG AA,
+   tinted with it re-colours per tenant. As _type_ it measures **2.59:1** and fails WCAG AA,
    so text uses **`--primary-ink`** (`text-primary-ink`), which is derived per tenant to clear
    4.5:1 in both themes.
 
@@ -68,29 +68,29 @@ below are current.
 
 **Surfaces / text**
 
-| Token | Light | Purpose |
-|---|---|---|
-| `--background` | `rgb(243 246 251)` | App backdrop |
-| `--foreground` | `rgb(16 30 52)` | Primary text |
-| `--card` / `--popover` | `rgb(255 255 255)` | Panel / dropdown surface |
-| `--muted` / `--secondary` | `rgb(247 250 253)` | Subtle fills |
-| `--muted-foreground` | `rgb(78 98 128)` | Secondary text (6.21:1) |
-| `--accent` | `rgb(239 244 250)` | Hover / selected fill |
-| `--border` | `rgb(16 30 52 / 0.09)` | Hairline borders |
-| `--input` | `rgb(16 30 52 / 0.12)` | Field borders |
-| `--ink-3` | `rgb(90 108 133)` | `.micro` label text (5.36:1) |
+| Token                     | Light                  | Purpose                      |
+| ------------------------- | ---------------------- | ---------------------------- |
+| `--background`            | `rgb(243 246 251)`     | App backdrop                 |
+| `--foreground`            | `rgb(16 30 52)`        | Primary text                 |
+| `--card` / `--popover`    | `rgb(255 255 255)`     | Panel / dropdown surface     |
+| `--muted` / `--secondary` | `rgb(247 250 253)`     | Subtle fills                 |
+| `--muted-foreground`      | `rgb(78 98 128)`       | Secondary text (6.21:1)      |
+| `--accent`                | `rgb(239 244 250)`     | Hover / selected fill        |
+| `--border`                | `rgb(16 30 52 / 0.09)` | Hairline borders             |
+| `--input`                 | `rgb(16 30 52 / 0.12)` | Field borders                |
+| `--ink-3`                 | `rgb(90 108 133)`      | `.micro` label text (5.36:1) |
 
 **Accent (tenant-overridable at runtime)**
 
-| Token | Value | Purpose |
-|---|---|---|
-| `--primary` | `rgb(245 130 31)` | Brand accent — **fills only** |
-| `--primary-ink` | `rgb(169 77 12)` light / `rgb(250 158 78)` dark | Brand accent **as text** (4.93:1 on the pill ground) |
-| `--primary-foreground` | `rgb(255 255 255)` | Text *on* primary |
-| `--ring` | `rgb(245 130 31)` | Focus ring |
-| `--destructive` | `rgb(210 68 58)` | Danger |
+| Token                  | Value                                           | Purpose                                              |
+| ---------------------- | ----------------------------------------------- | ---------------------------------------------------- |
+| `--primary`            | `rgb(245 130 31)`                               | Brand accent — **fills only**                        |
+| `--primary-ink`        | `rgb(169 77 12)` light / `rgb(250 158 78)` dark | Brand accent **as text** (4.93:1 on the pill ground) |
+| `--primary-foreground` | `rgb(255 255 255)`                              | Text _on_ primary                                    |
+| `--ring`               | `rgb(245 130 31)`                               | Focus ring                                           |
+| `--destructive`        | `rgb(210 68 58)`                                | Danger                                               |
 
-**Status.** Used as *text* (pills, ledger figures), so tuned to clear 4.5:1 **on the tinted
+**Status.** Used as _text_ (pills, ledger figures), so tuned to clear 4.5:1 **on the tinted
 pill ground they actually sit on**, not on `--card`:
 `--ok 25 117 73`, `--warn 133 95 11`, `--bad 181 58 50`, `--brand-blue-ink 20 108 161`.
 
@@ -127,15 +127,15 @@ A grid that goes two-up at `sm:` and never changes again is exactly the bug F2 d
 
 ## 2. Signature classes
 
-| Class | Use |
-|---|---|
-| `.lux-card` | Legacy panel surface. **New code uses `<Card>` / `<Panel>`.** |
-| `.micro` | 11px uppercase tracked label (eyebrows, table captions). |
-| `.num` | Tabular figures for money/quantities — aligns columns. |
-| `.status` + `.st-*` | Status pill. Use the **`<Pill>` / `<StatusPill>`** primitive rather than the classes. Variants: `st-ok`, `st-warn`, `st-bad`, `st-blue`, `st-orange`, `st-info`, `st-mute`. |
-| `.chip` (+ `.on`) | Filter token. Use the **`<Chips>`** primitive. |
-| `.lux-navlink` (+ `.active`) | Top-bar nav item. Nav only. |
-| `.lux-mark` | Brand glyph tile. |
+| Class                        | Use                                                                                                                                                                         |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `.lux-card`                  | Legacy panel surface. **New code uses `<Card>` / `<Panel>`.**                                                                                                               |
+| `.micro`                     | 11px uppercase tracked label (eyebrows, table captions).                                                                                                                    |
+| `.num`                       | Tabular figures for money/quantities — aligns columns.                                                                                                                      |
+| `.status` + `.st-*`          | Status pill. Use the **`<Pill>` / `<StatusPill>`** primitive rather than the classes. Variants: `st-ok`, `st-warn`, `st-bad`, `st-blue`, `st-orange`, `st-info`, `st-mute`. |
+| `.chip` (+ `.on`)            | Filter token. Use the **`<Chips>`** primitive.                                                                                                                              |
+| `.lux-navlink` (+ `.active`) | Top-bar nav item. Nav only.                                                                                                                                                 |
+| `.lux-mark`                  | Brand glyph tile.                                                                                                                                                           |
 
 **Pre-auth only:** `landing-*` and `login-*` carry their own dark surface and deliberately
 keep their entrance motion. Not for in-app screens.
@@ -147,13 +147,13 @@ keep their entrance motion. Not for in-app screens.
 ### 3.1 Where things live
 
 Screens are components under `client/src/features/<area>/`, exported, and routed in
-`client/src/app/app.tsx`. Two more files decide whether anyone can *find* them:
+`client/src/app/app.tsx`. Two more files decide whether anyone can _find_ them:
 
 - **`client/src/app/layout/areas.ts`** — the area's section list. This is what the ribbon's
   second row draws AND what `hubTabs()` gives the hub, so a section added here appears in both
   or in neither. `areas.test.ts` fails if a hub has a page the list does not know about.
 - **`client/src/app/screen-registry.json`** — the route's `module_key`. The ribbon filters on
-  it, so an unregistered route is shown to *everyone* regardless of their grants. Register the
+  it, so an unregistered route is shown to _everyone_ regardless of their grants. Register the
   route when you add it; `areas.test.ts` enforces this for every section.
 
 `NAV` (`app/layout/nav-model.ts`) is still the ⌘K palette's and the phone drawer's index — a
@@ -175,7 +175,13 @@ import { StatusPill } from "@/components/ui/pill";
 import { money, dateFmt } from "@/lib/format";
 import type { Column } from "@/components/data-list";
 
-type Invoice = { invoice_id: string; doc_number: string; status: string; total_ttc: number; due_on: string };
+type Invoice = {
+  invoice_id: string;
+  doc_number: string;
+  status: string;
+  total_ttc: number;
+  due_on: string;
+};
 
 export function InvoicesPage() {
   const { rows, error, loading, reload } = useList<Invoice>("/final-invoices");
@@ -183,14 +189,26 @@ export function InvoicesPage() {
   const [open, setOpen] = React.useState(false);
 
   const shown = React.useMemo(
-    () => (rows ?? []).filter((r) => r.doc_number.toLowerCase().includes(q.trim().toLowerCase())),
+    () =>
+      (rows ?? []).filter((r) =>
+        r.doc_number.toLowerCase().includes(q.trim().toLowerCase()),
+      ),
     [rows, q],
   );
 
   const columns: Column<Invoice>[] = [
     { key: "doc_number", label: "Invoice", className: "num font-medium" },
-    { key: "status", label: "Status", render: (r) => <StatusPill status={r.status} /> },
-    { key: "total_ttc", label: "Amount · XAF", className: "num text-right", render: (r) => money(r.total_ttc) },
+    {
+      key: "status",
+      label: "Status",
+      render: (r) => <StatusPill status={r.status} />,
+    },
+    {
+      key: "total_ttc",
+      label: "Amount · XAF",
+      className: "num text-right",
+      render: (r) => money(r.total_ttc),
+    },
     { key: "due_on", label: "Due", render: (r) => dateFmt(r.due_on) },
   ];
 
@@ -199,7 +217,14 @@ export function InvoicesPage() {
       title="Invoices"
       description="Every money event posts to the ledger."
       action={<Button onClick={() => setOpen(true)}>New invoice</Button>}
-      toolbar={<Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search invoices…" className="max-w-xs" />}
+      toolbar={
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search invoices…"
+          className="max-w-xs"
+        />
+      }
       columns={columns}
       rows={shown}
       error={error}
@@ -214,10 +239,18 @@ export function InvoicesPage() {
       emptyFiltered={{
         title: "No invoices match",
         hint: "Try a different reference.",
-        action: <Button variant="outline" onClick={() => setQ("")}>Clear search</Button>,
+        action: (
+          <Button variant="outline" onClick={() => setQ("")}>
+            Clear search
+          </Button>
+        ),
       }}
     >
-      <InvoiceForm open={open} onClose={() => setOpen(false)} onSaved={reload} />
+      <InvoiceForm
+        open={open}
+        onClose={() => setOpen(false)}
+        onSaved={reload}
+      />
     </ListPage>
   );
 }
@@ -295,36 +328,36 @@ return `{ rows | data, error, loading, reload }`.
 
 ### 3.5 The primitives — don't hand-roll these
 
-| Need | Use | Notes |
-|---|---|---|
-| Page shell | `<PageContainer>` | `wide` (2160) · `standard` (1280) · `reading` (768) · `full`. Never write `mx-auto max-w-*`. |
-| List screen | `<ListPage>` | §3.2. |
-| Table | `Table, THead, TBody, TR, TH, TD` | `components/ui/table.tsx` |
-| Surface | `<Card>` / `<Panel>` | `Panel` = titled card. Never nest cards. |
-| Modal | `<Dialog>` | Has the focus trap + restore the old `Modal` lacked. `Modal` is now an alias of it. |
-| Confirm | `<ConfirmDialog>` | Name the object and the action, not "Yes/No". |
-| Form field | `<Field>` | Supplies the label association and `aria-required` / `aria-invalid`. |
-| Text input | `<Input>` / `<Textarea>` | |
-| Choose one | `<NativeSelect>` (default) · `<Select>` (rich options) · `<SearchSelect>` (server-backed) | |
-| Toggle | `<Checkbox>` / `<RadioGroup>` | |
-| View switch | `<Segmented>` (2–5 fixed) · `<Chips>` (wrapping filters) | |
-| Tabs | `<Tabs>` / `<TabList>` | Real `tablist`/`tab` semantics + arrow keys. |
-| Menu | `<DropdownMenu>` (actions) · `<Popover>` (content) | A panel with its own buttons is a Popover, not a menu. |
-| Status | `<Pill>` / `<StatusPill>` | `StatusPill` picks its tone from the value. |
-| Figures | `<Stat>` (tile) · `<KpiRow>`+`<KpiTile>` (strip) | |
-| States | `<EmptyState>` (with `action`) · `<ErrorState>` · `<LoadingRow>` · `<SkeletonTable>` | |
-| A screen's fetch failed | `<ScreenError message={error} what="Corporate entities" onRetry={reload} />` | **Prefer this over a bare `<ErrorState>` for a failed fetch.** It shows the server's own message when the server answered, and `<ConnectionLost>` when it did not. |
+| Need            | Use                                                                                       | Notes                                                                                        |
+| --------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| Page shell      | `<PageContainer>`                                                                         | `wide` (2160) · `standard` (1280) · `reading` (768) · `full`. Never write `mx-auto max-w-*`. |
+| List screen     | `<ListPage>`                                                                              | §3.2.                                                                                        |
+| Table           | `Table, THead, TBody, TR, TH, TD`                                                         | `components/ui/table.tsx`                                                                    |
+| Surface         | `<Card>` / `<Panel>`                                                                      | `Panel` = titled card. Never nest cards.                                                     |
+| Modal           | `<Dialog>`                                                                                | Has the focus trap + restore the old `Modal` lacked. `Modal` is now an alias of it.          |
+| Confirm         | `<ConfirmDialog>`                                                                         | Name the object and the action, not "Yes/No".                                                |
+| Form field      | `<Field>`                                                                                 | Supplies the label association and `aria-required` / `aria-invalid`.                         |
+| Text input      | `<Input>` / `<Textarea>`                                                                  |                                                                                              |
+| Choose one      | `<NativeSelect>` (default) · `<Select>` (rich options) · `<SearchSelect>` (server-backed) |                                                                                              |
+| Toggle          | `<Checkbox>` / `<RadioGroup>`                                                             |                                                                                              |
+| View switch     | `<Segmented>` (2–5 fixed) · `<Chips>` (wrapping filters)                                  |                                                                                              |
+| Tabs            | `<Tabs>` / `<TabList>`                                                                    | Real `tablist`/`tab` semantics + arrow keys.                                                 |
+| Menu            | `<DropdownMenu>` (actions) · `<Popover>` (content)                                        | A panel with its own buttons is a Popover, not a menu.                                       |
+| Status          | `<Pill>` / `<StatusPill>`                                                                 | `StatusPill` picks its tone from the value.                                                  |
+| Figures         | `<Stat>` (tile) · `<KpiRow>`+`<KpiTile>` (strip)                                          |                                                                                              |
+| States          | `<EmptyState>` (with `action`) · `<ErrorState>` · `<LoadingRow>` · `<SkeletonTable>`      |                                                                                              |
+| A screen's fetch failed | `<ScreenError message={error} what="Corporate entities" onRetry={reload} />` | **Prefer this over a bare `<ErrorState>` for a failed fetch.** Shows the server's own message when the server answered, and `<ConnectionLost>` when it did not. |
 | Unsaved form rescue | `useFormDraft()` + `<DraftBanner>` | Autosaves what was typed; offers it back after a drop or a reload. Never restores silently. |
-| A write that must survive a drop | `submitQueued()` (`lib/outbox.ts`) | Queues on network failure and replays on reconnect, under an `Idempotency-Key`. Still throws a 422/403 — only "nothing answered" is queued. |
-| Feedback | `useToast()` | `success` / `error` / `info`. |
-| Paging | `<Pagination>` | |
-| Crash safety | `<ErrorBoundary>` | Already at the app root and per route; add around risky widgets. |
-| Unknown payload | `<DataView>` | Never `<pre>{JSON.stringify(…)}</pre>` in the UI. |
-| Edit one field | `<InlineEdit>` | Descriptive master data only — **never** a field on a posted document (§7.3). |
-| Master-detail | `<SplitPane>` | Keyboard-resizable. Replaces `lg:grid-cols-[260px_1fr]`. |
-| Bulk actions | `<BulkBar>` + `useRowSelection` | Announces the count; scoped to visible rows (§7.2). |
-| Column control | `<ColumnsMenu>` + `useColumnVisibility` | Persists the HIDDEN set, per screen (§7.2). |
-| Row actions | `<RowActions>` | Also what bounds the row-action button to the row height (§7.1). |
+| A write that must survive a drop | `submitQueued()` (`lib/outbox.ts`) | Queues on network failure and replays on reconnect under an `Idempotency-Key`. Still throws a 422/403 — only "nothing answered" is queued. |
+| Feedback        | `useToast()`                                                                              | `success` / `error` / `info`.                                                                |
+| Paging          | `<Pagination>`                                                                            |                                                                                              |
+| Crash safety    | `<ErrorBoundary>`                                                                         | Already at the app root and per route; add around risky widgets.                             |
+| Unknown payload | `<DataView>`                                                                              | Never `<pre>{JSON.stringify(…)}</pre>` in the UI.                                            |
+| Edit one field  | `<InlineEdit>`                                                                            | Descriptive master data only — **never** a field on a posted document (§7.3).                |
+| Master-detail   | `<SplitPane>`                                                                             | Keyboard-resizable. Replaces `lg:grid-cols-[260px_1fr]`.                                     |
+| Bulk actions    | `<BulkBar>` + `useRowSelection`                                                           | Announces the count; scoped to visible rows (§7.2).                                          |
+| Column control  | `<ColumnsMenu>` + `useColumnVisibility`                                                   | Persists the HIDDEN set, per screen (§7.2).                                                  |
+| Row actions     | `<RowActions>`                                                                            | Also what bounds the row-action button to the row height (§7.1).                             |
 
 **See them all:** `npm run workbench` in `client/` opens the Ladle workbench —
 every primitive, every state, light and dark, with an a11y panel.
@@ -352,7 +385,7 @@ the app from serving a blank page, and it has been broken once already:
 > re-entered the other before React's export binding was assigned, and TanStack Query's top-level
 > `createContext` read `undefined`:
 > `Uncaught TypeError: Cannot read properties of undefined (reading 'createContext')`.
-> That throws during module evaluation, *before* React renders — so neither ErrorBoundary can
+> That throws during module evaluation, _before_ React renders — so neither ErrorBoundary can
 > catch it and there is no fallback UI at all. The `feature-*` buckets were circular too
 > (settings → hr → wms → fleet → settings).
 
@@ -370,11 +403,11 @@ re-derives the graph from what was actually written to `dist/`.
 
 Desktop chrome is three bands, each with one job:
 
-| Band | Component | Contents |
-| --- | --- | --- |
-| Title bar | `.wco` in `app-shell.tsx` | logo, search, LIVE/TEST, theme, alerts, account |
-| Ribbon | `<Ribbon>` | row A the workflow families; row B the family's destinations, and the current screen's commands |
-| Rail | `<IconRail>` | a constant strip of shortcuts — never route-dependent |
+| Band      | Component                 | Contents                                                                                        |
+| --------- | ------------------------- | ----------------------------------------------------------------------------------------------- |
+| Title bar | `.wco` in `app-shell.tsx` | logo, search, LIVE/TEST, theme, alerts, account                                                 |
+| Ribbon    | `<Ribbon>`                | row A the workflow families; row B the family's destinations, and the current screen's commands |
+| Rail      | `<IconRail>`              | a constant strip of shortcuts — never route-dependent                                           |
 
 **The six families come from the server.** `GET /permissions/mine` returns `groups` (which verbs
 this user has modules in, in catalogue order) and `byGroup` (which modules are under each). That
@@ -396,7 +429,10 @@ view — and keep a `md:hidden` copy in the page header, since a phone has no ri
 
 ```tsx
 useRibbonCommands(
-  React.useMemo(() => [{ key: "new", label: `New ${noun}`, primary: true, onSelect: go }], [noun, go]),
+  React.useMemo(
+    () => [{ key: "new", label: `New ${noun}`, primary: true, onSelect: go }],
+    [noun, go],
+  ),
 );
 ```
 
@@ -414,7 +450,7 @@ all three were broken until 2026-08-04 because nothing routed imported the
 package and so no build ever compiled it:
 
 - **`build.commonjsOptions.include`** covers `packages/shared`. Vite applies
-  CommonJS interop only inside `node_modules` by default, and this is *source*.
+  CommonJS interop only inside `node_modules` by default, and this is _source_.
 - **`optimizeDeps.include`** names the package, so the dev server pre-bundles it.
   Without that, `npm run dev` serves its raw `require()` to the browser —
   `commonjsOptions` is build-only.
@@ -447,9 +483,9 @@ are axe-tested. What that leaves to you:
   failure and must not read the same. `<ScreenError>` dispatches on the live connection
   state, so passing it the string you already had is the whole migration. Never send a
   user to fix their wifi over our 500 — a server that answered proves the network works.
-- **Never offer a reload as the way out of an error.** In this app a reload discards
-  every unsaved form on the screen, which is exactly the loss the user is trying to
-  avoid. Offer a retry that re-runs the fetch instead.
+- **Never offer a reload as the way out of an error.** In this app a reload discards every
+  unsaved form on the screen, which is exactly the loss the user is trying to avoid. Offer
+  a retry that re-runs the fetch instead.
 - **One `<h1>` per screen** — `PageHeader` renders it. Cards/panels default to `<h2>`.
   Don't skip levels.
 - **Test both themes.** If you only used tokens, dark mode already works. Check it anyway.
@@ -508,11 +544,11 @@ it needs a formatter before it reaches the DOM.
 
 Three levels, chosen by the user in the account menu, stored per browser:
 
-| Level | Cell padding | Row |
-|---|---|---|
-| Compact | 4px | 28px |
-| Default | 6px | 32px |
-| Comfortable | 10px | 40px |
+| Level       | Cell padding | Row  |
+| ----------- | ------------ | ---- |
+| Compact     | 4px          | 28px |
+| Default     | 6px          | 32px |
+| Comfortable | 10px         | 40px |
 
 It is plumbed as **one CSS variable set by an attribute on `<html>`** (`data-density` →
 `--row-py`), which `tailwind.config.ts` maps to the `row` spacing step. So every `py-row` in
@@ -557,7 +593,7 @@ Opt-in on `<DataList>` / `<ListPage>`, because each costs something:
 - **Rows are keyboard-navigable.** `DataList` runs a roving tabindex when `onRowClick` is set:
   one tab stop for the table, arrow keys between rows, Home/End to the ends. It does **not**
   declare `role="grid"` — that would cost row/column position and header association in a
-  screen reader's browse mode, which on a 200-row financial table *is* the usability.
+  screen reader's browse mode, which on a 200-row financial table _is_ the usability.
 - **`<InlineEdit>` is for descriptive master data only.** Never a field on a posted document.
   This ledger's rule is reversal-not-edit: a validated journal entry, a locked FINAL invoice
   and a posted payroll run are immutable by design, and a pencil on any of them offers
@@ -603,10 +639,10 @@ engineer's first hour.
 Two surfaces, one conversation. Both live under `src/components/ai/` (the shared parts) with the
 page in `src/features/ai/`.
 
-| Surface | Where | Entry point |
-| --- | --- | --- |
-| **Drawer** | `components/praxis-drawer.tsx` — mounted once in the app shell, rides every screen | `window.dispatchEvent(new CustomEvent("praxis:open-copilot"))`, optionally `{ detail: { prompt } }` |
-| **Workspace** | `features/ai/workspace.tsx` at `/ai` — three panes, outer two collapsible | Overview in the ribbon, or the drawer's middle header button |
+| Surface       | Where                                                                              | Entry point                                                                                         |
+| ------------- | ---------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| **Drawer**    | `components/praxis-drawer.tsx` — mounted once in the app shell, rides every screen | `window.dispatchEvent(new CustomEvent("praxis:open-copilot"))`, optionally `{ detail: { prompt } }` |
+| **Workspace** | `features/ai/workspace.tsx` at `/ai` — three panes, outer two collapsible          | Overview in the ribbon, or the drawer's middle header button                                        |
 
 **The rules that keep them one product, not two.**
 

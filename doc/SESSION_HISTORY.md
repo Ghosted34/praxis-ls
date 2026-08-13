@@ -19,6 +19,7 @@ The other dev merged main on his side; both streams landed large commits the sam
 his side takes precedence on BE and on any overlapping screen.** Merged tree verified **`tsc` clean**.
 
 **Collisions found + resolved:**
+
 1. **Migration number clash.** Both streams used 0450/0451. His keep `0450_comms_channel_flags.sql` +
    `0451_email_inbound.sql`; mine renumbered via `git mv` → **`0452_campaign_templates.sql`** and
    **`0453_session_refresh_jti.sql`**. Confirmed **no environment had applied either pair**, so no
@@ -54,12 +55,13 @@ removed — if git complains about a lock again, delete `.git/index.lock`.
 
 **Idiom convergence.** The merge left three apparently-competing pairs; on inspection only one was a
 real duplicate:
-- **AI — no work needed.** His `ScreenAi` *imports* this stream's `AiActions`, and `PraxisCopilot`
+
+- **AI — no work needed.** His `ScreenAi` _imports_ this stream's `AiActions`, and `PraxisCopilot`
   imports `useAiEnabled` and returns null when off. His layer already composes on the global gate.
 - **Lists — both kept, they're different abstractions.** `ResourceList` self-fetches from an `endpoint`
   prop (quick read-only screens); `DataList`/`PageHeader` is presentational with 4 states + custom cells
   (page owns the data). **`DataList` is the default for new wired screens.** The real duplication was
-  `cell()` existing twice *and diverging* on boolean casing — now one implementation in **`lib/format.ts`**,
+  `cell()` existing twice _and diverging_ on boolean casing — now one implementation in **`lib/format.ts`**,
   re-exported from both modules so no import path changed (his `"Yes"/"No"` casing won).
 - **Tabs — both kept.** `TabbedHub` is a route-driven hub shell (`/base/:section`); `Segmented` is
   in-page state. The genuine duplicate was the Master data hub hand-rolling an identical tab bar → it now
@@ -92,6 +94,7 @@ revert that file; nothing depends on it. Note it improves caching/parallel downl
 bytes** — routes are still eagerly imported; route-level `React.lazy` is the deferred follow-up.
 
 **Remaining FE:** only **Factory languages** and **Help center**, both genuinely BE-blocked (no endpoint).
+
 ## Session log — 2026-07-27 (session 15: Lovable kit fidelity, AI gate + clickable actions, workflow blocks, SOPs/Talent build-out, fixes)
 
 A large FE-fidelity + depth batch driven screen-by-screen against the user's local tenant. **In-sandbox
@@ -102,24 +105,25 @@ platform-console ESLint (their new flat-config deps aren't installed here). Wind
 **1. Lovable kit-fidelity restyle — finished (was "audit complete, kit restyle NOT started" in
 `LOVABLE_FIDELITY_PLAN.md`).** All restyle lives in the shared kit so every screen re-skins at once, tokens
 only (colours track `--primary` via `color-mix` so tenant re-tint keeps working):
-   - **`index.css`**: `--ease`/`--dur` motion tokens, `fadeUp` + `modalRise` keyframes, a global
-     `prefers-reduced-motion` kill-switch, `.chip`/`.chip.on`/`.chip .ct` + `.sec` classes, and
-     `.btn-primary`/`.btn-surface` recipes. `.font-display` already forced weight 400; **stripped the
-     now-redundant `font-semibold` off every serif heading** (~9 files: operations, finance, security, vault,
-     comms, help, workspace, permission-matrix).
-   - **`components/ui/button.tsx`** — `default` = gradient + orange glow + `-1px` hover lift; `outline` =
-     surface + lift + orange hover border (radius 11, 13px/600).
-   - **`components/ui/table.tsx` + `data-list.tsx`** — tablecard wrapper (`rounded-[var(--radius)]`, overflow-x
-     scroll), micro uppercase header on `--secondary`, faint row borders, **orange row hover**, `fadeUp`.
-     Header no longer `font-semibold`. **Mobile card fallback** added to `DataList`: table on `sm+`, a
-     label/value card per row on phones (unlabelled action columns drop to a full-width footer).
-   - **`components/ui/kpi-tile.tsx`** — 38px orange-tinted icon square + serif-30 value + optional `delta` +
-     `-3px` hover lift + `fadeUp`.
-   - **`components/ui/modal.tsx` + `input.tsx`** — modal radius 22 + `shadow-l` + `modalRise`; inputs/select
-     surface bg, radius 10, 13px, **border-tint focus** (no ring). Dark-mode option-colour fix kept.
-   - **Chips/segmented** — `features/sales/ui.tsx` `Chips`→`.chip` and `Segmented`→reference seg recipe; **every
-     hand-rolled filter/nav pill row converted** (operations, finance hub + "more modules", chart-of-accounts,
-     comms/mail, vault hub, security hub, security role-toggle).
+
+- **`index.css`**: `--ease`/`--dur` motion tokens, `fadeUp` + `modalRise` keyframes, a global
+  `prefers-reduced-motion` kill-switch, `.chip`/`.chip.on`/`.chip .ct` + `.sec` classes, and
+  `.btn-primary`/`.btn-surface` recipes. `.font-display` already forced weight 400; **stripped the
+  now-redundant `font-semibold` off every serif heading** (~9 files: operations, finance, security, vault,
+  comms, help, workspace, permission-matrix).
+- **`components/ui/button.tsx`** — `default` = gradient + orange glow + `-1px` hover lift; `outline` =
+  surface + lift + orange hover border (radius 11, 13px/600).
+- **`components/ui/table.tsx` + `data-list.tsx`** — tablecard wrapper (`rounded-[var(--radius)]`, overflow-x
+  scroll), micro uppercase header on `--secondary`, faint row borders, **orange row hover**, `fadeUp`.
+  Header no longer `font-semibold`. **Mobile card fallback** added to `DataList`: table on `sm+`, a
+  label/value card per row on phones (unlabelled action columns drop to a full-width footer).
+- **`components/ui/kpi-tile.tsx`** — 38px orange-tinted icon square + serif-30 value + optional `delta` +
+  `-3px` hover lift + `fadeUp`.
+- **`components/ui/modal.tsx` + `input.tsx`** — modal radius 22 + `shadow-l` + `modalRise`; inputs/select
+  surface bg, radius 10, 13px, **border-tint focus** (no ring). Dark-mode option-colour fix kept.
+- **Chips/segmented** — `features/sales/ui.tsx` `Chips`→`.chip` and `Segmented`→reference seg recipe; **every
+  hand-rolled filter/nav pill row converted** (operations, finance hub + "more modules", chart-of-accounts,
+  comms/mail, vault hub, security hub, security role-toggle).
 
 **2. Per-screen AI gate restored across HR/Fleet/WMS (was a systematic gap).** `screen-specs.ts` had **zero**
 `ai` entries for `hr/`, `fleet/`, `wms/` while every other area had them, and none of the 21 rebuilt screens
@@ -142,61 +146,63 @@ for the Active⇄Inactive→Disposed ladder). StepBar is only used where the lif
 **4. SOPs & Talent pool built out for real (was "light reference lists", backend-blocked).** The tables
 existed (`0360_hr_breadth.sql`: `succession_plan`, `onboarding_checklist`, `onboarding_item`) but had **no
 routes** — so two NEW auto-discovered modules were added:
-   - **`src/modules/hr/succession/`** (MOD-19, basePath `/succession`, `feature:null`) — CRUD via the shared
-     resource kit; `repo.list` LEFT-JOINs `employee` for incumbent/successor names. Mirrors `talent_pool`.
-   - **`src/modules/hr/onboarding/`** (MOD-16, basePath `/onboarding`) — custom parent/child: list checklists
-     (w/ employee name + done/total counts), create (employee + optional initial items), add item, toggle item
-     (sets `done_at`), complete. `audit`-only (no `emitEvent`; `event_log.event_type_key` has no FK so it'd be
-     safe either way).
-   - **FE**: Talent tab → **"Talent & succession"** (KPIs + a succession board of role→incumbent/successor
-     cards with a readiness pill + New-plan form, above the candidate bench). SOPs tab → **"SOPs & onboarding"**
-     with a Procedures/Onboarding chip toggle; Onboarding = checklist cards w/ progress bars + a detail modal
-     (tick items, add steps, mark complete). No migration needed (tables pre-existed) — **API restart mounts
-     the two modules**; tenant DBs must have run 0360 (normal provisioning has).
+
+- **`src/modules/hr/succession/`** (MOD-19, basePath `/succession`, `feature:null`) — CRUD via the shared
+  resource kit; `repo.list` LEFT-JOINs `employee` for incumbent/successor names. Mirrors `talent_pool`.
+- **`src/modules/hr/onboarding/`** (MOD-16, basePath `/onboarding`) — custom parent/child: list checklists
+  (w/ employee name + done/total counts), create (employee + optional initial items), add item, toggle item
+  (sets `done_at`), complete. `audit`-only (no `emitEvent`; `event_log.event_type_key` has no FK so it'd be
+  safe either way).
+- **FE**: Talent tab → **"Talent & succession"** (KPIs + a succession board of role→incumbent/successor
+  cards with a readiness pill + New-plan form, above the candidate bench). SOPs tab → **"SOPs & onboarding"**
+  with a Procedures/Onboarding chip toggle; Onboarding = checklist cards w/ progress bars + a detail modal
+  (tick items, add steps, mark complete). No migration needed (tables pre-existed) — **API restart mounts
+  the two modules**; tenant DBs must have run 0360 (normal provisioning has).
 
 **5. Fixes.**
-   - **Platform-console `citext = uuid` 500 (empty Features/Roles).** `plans.service.planIdOf` compared one
-     param against a `uuid` column AND a `citext` column (`WHERE plan_id = $1 OR code = $1`); a uuid arg made PG
-     type `$1` as uuid, so `code = $1` errored (`42883`), 500'd the endpoint, and the console rendered the error
-     as an **empty table** (it was never a missing seed — the catalogue seed exists + is complete). Fixed by
-     comparing on text (`plan_id::text = $1 OR code = $1`); **same latent bug fixed in `roles.service.roleIdOf`**.
-   - **Vacancy → employee role carry-over.** `vacancy.service.setApplicantStatus` (on the transition into
-     `HIRED`) provisioned the employee with only `full_name` — so the profile showed "—". Now copies the
-     vacancy's `title` → `employee.job_title` and `department` → `employee.department`. (Email/phone/CV still
-     don't carry — no columns; would need a migration.)
-   - **Employee 360 Edit.** New Edit button + prefilled modal (name / entity / department / job title /
-     employment type) → `PATCH /employees/:id` (endpoint already existed; added `updateEmployee` to `hr-api.ts`)
-     — the way to fix pre-fix hires like the "Jane Doe / role —" case.
-   - **Mobile overflow.** Wide tables scroll in-card + the new card fallback; the **vacancy kanban** clipped its
-     last column because it sat in a grid track (`min-width:auto` grew to content) — fixed with `min-w-0` so the
-     board's `overflow-x-auto` engages. (Sales kanban is in a block section, already fine.)
-   - **AI runtime gate disconnected from the console (AI "unavailable: feature disabled" despite the toggle
-     on).** Session-14 wired `feature_state` → the login/UI gate, but the orchestrator's per-call gate
-     (`governance.canUseFeature`) still read a **never-seeded `ai_feature_flag['assistant']` row** (key mismatch
-     vs the console's `ai.assistant.backend`) and treated a missing row as OFF — so the panel showed but every
-     ask 403'd. Fixed: `canUseFeature` now resolves tenant enablement via **`isFeatureEnabled('ai.assistant.
-     backend')`** (the same feature_state ceiling + default-ON preference the UI uses), and a **missing per-user
-     access grant is now permissive** (opt-out: only an explicit *revoked* grant blocks; budget hard-cap still
-     blocks) — the copilot is already RBAC-bounded, and grants were never provisioned so requiring one made the
-     console toggle inert. Pure `canUse` rules untouched (its tests stay green); `tests/unit/ai-gate.test.js`
-     updated to the console-driven model. **Restart the API** to apply.
-   - **AI retrieval crashed instead of degrading when embeddings fail.** On a bad/absent embeddings key the
-     vendor service logs "skipping vectors" and returns `[]`, but `retrieval.service.retrieve` then did
-     `toVec(embedOne(...))` → `undefined.join` → a 500. Guarded it: no embedding → return no vector hits, so the
-     assistant still answers (just without KB grounding).
-   - **AI vendor keys had no way in.** "AI Control → Vendors" lists rows meant to be *seeded on bootstrap* +
-     edited to paste a key, but **no seed ever created them** (`0400_ai.sql` makes the table, inserts nothing) —
-     empty list, no Add button = dead end. Added an **"Add vendor" button** + form (`features/ai-control/
-     pages.tsx`) using the runtime's real vendor ids (**`embeddings`** ← the one that fixes the pgvector 401,
-     `deepseek` chat, `gemini` vision, `groq` voice; `PUT /vendors/:vendor` upserts), AND a seed
-     **`migrations/tenant/0470_seed_ai_vendors.sql`** (endpoint+model only, no key, `ON CONFLICT DO NOTHING`) so
-     the four rows pre-appear. A DB vendor row overrides the `.env` key (which ships `__rotate_me__`
-     placeholders → the 401). Run `db:migrate:tenants` to seed existing tenants.
-   - **Dead code.** Deleted the unused `components/crud-resource.tsx`.
-   - **ESLint gates.** `client/` and `platform-console/` shipped **no** flat config, so `eslint .` self-ignored
-     under ESLint 9 (client lint gate was effectively off). Added `eslint.config.js` (typescript-eslint +
-     react-hooks + react-refresh) + devDeps + fixed the `lint` script (dropped the ineffective `--ext`) to both.
-     **Needs `npm install` in each before the lint runs.**
+
+- **Platform-console `citext = uuid` 500 (empty Features/Roles).** `plans.service.planIdOf` compared one
+  param against a `uuid` column AND a `citext` column (`WHERE plan_id = $1 OR code = $1`); a uuid arg made PG
+  type `$1` as uuid, so `code = $1` errored (`42883`), 500'd the endpoint, and the console rendered the error
+  as an **empty table** (it was never a missing seed — the catalogue seed exists + is complete). Fixed by
+  comparing on text (`plan_id::text = $1 OR code = $1`); **same latent bug fixed in `roles.service.roleIdOf`**.
+- **Vacancy → employee role carry-over.** `vacancy.service.setApplicantStatus` (on the transition into
+  `HIRED`) provisioned the employee with only `full_name` — so the profile showed "—". Now copies the
+  vacancy's `title` → `employee.job_title` and `department` → `employee.department`. (Email/phone/CV still
+  don't carry — no columns; would need a migration.)
+- **Employee 360 Edit.** New Edit button + prefilled modal (name / entity / department / job title /
+  employment type) → `PATCH /employees/:id` (endpoint already existed; added `updateEmployee` to `hr-api.ts`)
+  — the way to fix pre-fix hires like the "Jane Doe / role —" case.
+- **Mobile overflow.** Wide tables scroll in-card + the new card fallback; the **vacancy kanban** clipped its
+  last column because it sat in a grid track (`min-width:auto` grew to content) — fixed with `min-w-0` so the
+  board's `overflow-x-auto` engages. (Sales kanban is in a block section, already fine.)
+- **AI runtime gate disconnected from the console (AI "unavailable: feature disabled" despite the toggle
+  on).** Session-14 wired `feature_state` → the login/UI gate, but the orchestrator's per-call gate
+  (`governance.canUseFeature`) still read a **never-seeded `ai_feature_flag['assistant']` row** (key mismatch
+  vs the console's `ai.assistant.backend`) and treated a missing row as OFF — so the panel showed but every
+  ask 403'd. Fixed: `canUseFeature` now resolves tenant enablement via **`isFeatureEnabled('ai.assistant.
+backend')`** (the same feature_state ceiling + default-ON preference the UI uses), and a **missing per-user
+  access grant is now permissive** (opt-out: only an explicit _revoked_ grant blocks; budget hard-cap still
+  blocks) — the copilot is already RBAC-bounded, and grants were never provisioned so requiring one made the
+  console toggle inert. Pure `canUse` rules untouched (its tests stay green); `tests/unit/ai-gate.test.js`
+  updated to the console-driven model. **Restart the API** to apply.
+- **AI retrieval crashed instead of degrading when embeddings fail.** On a bad/absent embeddings key the
+  vendor service logs "skipping vectors" and returns `[]`, but `retrieval.service.retrieve` then did
+  `toVec(embedOne(...))` → `undefined.join` → a 500. Guarded it: no embedding → return no vector hits, so the
+  assistant still answers (just without KB grounding).
+- **AI vendor keys had no way in.** "AI Control → Vendors" lists rows meant to be _seeded on bootstrap_ +
+  edited to paste a key, but **no seed ever created them** (`0400_ai.sql` makes the table, inserts nothing) —
+  empty list, no Add button = dead end. Added an **"Add vendor" button** + form (`features/ai-control/
+pages.tsx`) using the runtime's real vendor ids (**`embeddings`** ← the one that fixes the pgvector 401,
+  `deepseek` chat, `gemini` vision, `groq` voice; `PUT /vendors/:vendor` upserts), AND a seed
+  **`migrations/tenant/0470_seed_ai_vendors.sql`** (endpoint+model only, no key, `ON CONFLICT DO NOTHING`) so
+  the four rows pre-appear. A DB vendor row overrides the `.env` key (which ships `__rotate_me__`
+  placeholders → the 401). Run `db:migrate:tenants` to seed existing tenants.
+- **Dead code.** Deleted the unused `components/crud-resource.tsx`.
+- **ESLint gates.** `client/` and `platform-console/` shipped **no** flat config, so `eslint .` self-ignored
+  under ESLint 9 (client lint gate was effectively off). Added `eslint.config.js` (typescript-eslint +
+  react-hooks + react-refresh) + devDeps + fixed the `lint` script (dropped the ineffective `--ext`) to both.
+  **Needs `npm install` in each before the lint runs.**
 
 **6. Owed / notes.** Windows: `npm install && npm run lint && npm run build` in `client/` and `npm install &&
 npm run lint` in `platform-console/`; `npm test` at root. **`db:migrate:tenants`** (applies `0466_employee_
@@ -277,25 +283,26 @@ activity humanized (`humanizeAction`, `kvSummary`, `enumLabel` added to `platfor
 popover subtitle (kept as a hover title).
 
 **7. UI fixes (all user-screenshot-driven).**
-   - **Permission-matrix popover** (`security/permission-matrix-page.tsx`) opened far from the clicked cell —
-     a transformed page ancestor broke `position:fixed`. Now **portaled to `document.body`** + anchored to
-     the cell (flips above when tight). Same root cause + fix applies to the FAB below.
-   - **Draggable floating pin** (`components/floating-actions.tsx`): now draggable (press-drag the FAB,
-     position persisted to localStorage), **portaled to body** (fixed = viewport) and anchored by the
-     **right/bottom edge** so it doesn't drift when the cluster expands; hover-open suppressed mid-drag. A
-     **live clock** was added to the cluster, replacing the Lovable mock's standalone floating clock.
-   - **Lovable-mock chrome removed**: the mock's orange sun `.fab` and clock `.floatbar` are now hidden via
-     the dashboard iframe's `HIDE_CHROME` (`features/dashboard.tsx`).
-   - **Header**: the duplicate **Messages** icon removed (it lives on the floating pin); only Notifications
-     stays. `ChatIcon` def removed (unused).
-   - **Browser tab title** now shows the tenant brand name (`branding-context.tsx` sets `document.title` in
-     `paint()`), falling back to "Praxis LS".
-   - **Appearance form re-sync**: its fields were seeded from `branding` once at mount, so a hard reload
-     landing on that page captured the pre-fetch defaults ("Praxis LS" + default colours) and never
-     re-synced. Now re-seeds once when branding becomes `ready` (guarded so it never clobbers edits/saves).
-   - **Console Overview** "Provisioning 0 / everything 0" was a stat bug: it counted **Live by `is_live`**,
-     so a provisioned tenant (status=LIVE but `is_live=false`, i.e. not yet gone-live) fell into no bucket.
-     Now counts **by status**, so every tenant lands in exactly one.
+
+- **Permission-matrix popover** (`security/permission-matrix-page.tsx`) opened far from the clicked cell —
+  a transformed page ancestor broke `position:fixed`. Now **portaled to `document.body`** + anchored to
+  the cell (flips above when tight). Same root cause + fix applies to the FAB below.
+- **Draggable floating pin** (`components/floating-actions.tsx`): now draggable (press-drag the FAB,
+  position persisted to localStorage), **portaled to body** (fixed = viewport) and anchored by the
+  **right/bottom edge** so it doesn't drift when the cluster expands; hover-open suppressed mid-drag. A
+  **live clock** was added to the cluster, replacing the Lovable mock's standalone floating clock.
+- **Lovable-mock chrome removed**: the mock's orange sun `.fab` and clock `.floatbar` are now hidden via
+  the dashboard iframe's `HIDE_CHROME` (`features/dashboard.tsx`).
+- **Header**: the duplicate **Messages** icon removed (it lives on the floating pin); only Notifications
+  stays. `ChatIcon` def removed (unused).
+- **Browser tab title** now shows the tenant brand name (`branding-context.tsx` sets `document.title` in
+  `paint()`), falling back to "Praxis LS".
+- **Appearance form re-sync**: its fields were seeded from `branding` once at mount, so a hard reload
+  landing on that page captured the pre-fetch defaults ("Praxis LS" + default colours) and never
+  re-synced. Now re-seeds once when branding becomes `ready` (guarded so it never clobbers edits/saves).
+- **Console Overview** "Provisioning 0 / everything 0" was a stat bug: it counted **Live by `is_live`**,
+  so a provisioned tenant (status=LIVE but `is_live=false`, i.e. not yet gone-live) fell into no bucket.
+  Now counts **by status**, so every tenant lands in exactly one.
 
 **8. Owed / notes.** Apply **0031** (+ 9112) to the platform DB and **restart the API** for the BE changes;
 `db:migrate:platform && db:migrate:tenants` (what the deploy `migrate` service runs) covers both tiers + the
@@ -311,7 +318,7 @@ never had a frontend; (2) shipped **Support & Feedback** (PRD §11.2) end-to-end
 time:** console `tsc -b` + `vite build` clean, full client `tsc -b --force` clean, all touched BE files
 `node --check` clean. **Not run against a live API** — Windows validators + a click-through still owed.
 
-**1. Platform Console — new standalone app `platform-console/`.** Chosen with the user: a *separate*
+**1. Platform Console — new standalone app `platform-console/`.** Chosen with the user: a _separate_
 React 18 + Vite 5 + TS app (its own toolchain, `npm install` not `ci` — same Windows-lockfile caveat as
 `client/`), **not** folded into the tenant `client/` (different auth, must never touch tenant data). No
 Tailwind — plain CSS with a distinct dark "ops" palette (brand orange/blue accents) so it's unmistakably
@@ -343,6 +350,7 @@ on Tenant detail. No schema change.
 **already existed** in `0030_platform_ops.sql` (central, keyed by `tenant_id`) — so tickets live in the
 platform DB and the console triages across all tenants **with no cross-tenant fan-out**, and **no migration
 was needed**.
+
 - **Tenant BE — new `src/modules/dashboard/support/`** (auto-mounts at `/api/tenant/support`, **ungated**
   `feature:null` — reaching Praxis for help must never be switchable off; `authMiddleware`). `POST /tickets`
   (kind SUPPORT|BUG|FEATURE, title, body, context), `GET /tickets` (this tenant only), `GET /tickets/:id`,
@@ -443,7 +451,7 @@ into `features/comms/team-chat.tsx` (live messages + typing; the 8s poll stays a
 per request (revoke is immediate) and injects the scope; `GET /portal/{me,client,investor,auditor}`
 reuse `portal.service`'s scoped views; staff invite/manage via `MOD-67`-gated `/portal/users`.
 Auto-mounts at `/portal` (feature null → login ungated). **Apply migration 0460 to each tenant
-(live+sandbox).** FE portal *pages* still pending.
+(live+sandbox).** FE portal _pages_ still pending.
 
 **6. Early-logout fix (auth).** Access TTL is 15m; on refresh the BE **rotates** the refresh token
 and **revokes the session on reuse** (any stale refresh presented after rotation). `auth-context`'s
@@ -455,32 +463,34 @@ the second looked like reuse → session revoked well before the 30-min idle win
 de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it recurs.
 
 **7. FE polish pass.**
-   - **Command palette** (`components/command-palette.tsx`) rebuilt to the Pixie design: **JUMP TO**
-     (areas w/ icons) + **ACTIONS** (New file / New invoice / File a tax return / Open Messages /
-     **Ask Praxis AI…**). "Ask Praxis AI…" opens the copilot via a `praxis:open-copilot` window event.
-   - **Header** (`app-shell.tsx`): inline nav Control Tower · Operations · Fleet · Finance · More;
-     right cluster = Search · Live/Test · theme · **Messages** + **Notifications** icon links (with
-     **unread badges** from `/smartcomm/unread` [summed] + `/notifications/unread-count`) · **user
-     avatar menu** (name/email · My security · Appearance · Sign out), replacing the email+Sign-out.
-   - **Floating action cluster** (`components/floating-actions.tsx`): Pixie floatbar — primary FAB
-     (unread badge) that **opens on hover**, expanding to Praxis AI (gated on `useAiEnabled`),
-     Messages, Help. The copilot's standalone launcher was removed; the cluster opens it. **Help →
-     new `/help` Help center page** (`features/help/help-page.tsx`).
-   - **Dark-mode `<select>`** fixed in the shared `Select` (solid bg + explicit `[&>option]` colours).
-   - **Login brand** "The Pixie Hub" → tenant brand name, fallback **Praxis LS** (`login-modal.tsx`).
-   - **Theme toggle** is Light/Dark only now; "system" is just the silent initial default.
-   - **Appearance preview** now reflects **all** settings live (name, logos, all colour tokens, the
-     status tokens, display/body/mono fonts, radius, light/dark).
-   - **Human-readable data**: `lib/format.ts` gained `dateTimeFmt`, `humanizeEvent`, `humanizeRef`;
-     the workspace activity feed (`workspace-page.tsx`) and the journal-entries date
-     (`finance/pages.tsx`) now render readable values instead of raw event keys / `type:uuid` / ISO.
-     Rule written into **`doc/FE_DESIGN_RULES.md` §5**.
+
+- **Command palette** (`components/command-palette.tsx`) rebuilt to the Pixie design: **JUMP TO**
+  (areas w/ icons) + **ACTIONS** (New file / New invoice / File a tax return / Open Messages /
+  **Ask Praxis AI…**). "Ask Praxis AI…" opens the copilot via a `praxis:open-copilot` window event.
+- **Header** (`app-shell.tsx`): inline nav Control Tower · Operations · Fleet · Finance · More;
+  right cluster = Search · Live/Test · theme · **Messages** + **Notifications** icon links (with
+  **unread badges** from `/smartcomm/unread` [summed] + `/notifications/unread-count`) · **user
+  avatar menu** (name/email · My security · Appearance · Sign out), replacing the email+Sign-out.
+- **Floating action cluster** (`components/floating-actions.tsx`): Pixie floatbar — primary FAB
+  (unread badge) that **opens on hover**, expanding to Praxis AI (gated on `useAiEnabled`),
+  Messages, Help. The copilot's standalone launcher was removed; the cluster opens it. **Help →
+  new `/help` Help center page** (`features/help/help-page.tsx`).
+- **Dark-mode `<select>`** fixed in the shared `Select` (solid bg + explicit `[&>option]` colours).
+- **Login brand** "The Pixie Hub" → tenant brand name, fallback **Praxis LS** (`login-modal.tsx`).
+- **Theme toggle** is Light/Dark only now; "system" is just the silent initial default.
+- **Appearance preview** now reflects **all** settings live (name, logos, all colour tokens, the
+  status tokens, display/body/mono fonts, radius, light/dark).
+- **Human-readable data**: `lib/format.ts` gained `dateTimeFmt`, `humanizeEvent`, `humanizeRef`;
+  the workspace activity feed (`workspace-page.tsx`) and the journal-entries date
+  (`finance/pages.tsx`) now render readable values instead of raw event keys / `type:uuid` / ISO.
+  Rule written into **`doc/FE_DESIGN_RULES.md` §5**.
 
 **8. Docs updated:** `FE_DESIGN_RULES.md` (§5 human-readable data, `CrudResource`, dark-mode select),
 `WORK_TO_BE_DONE.md` (S3 done; portal external-user auth done + apply 0460; Support & Feedback held),
 `SANDBOX_TESTING.md` (money-path seeder), and this handoff.
 
 **⭐ ~~Next (owed)~~ — DONE (2026-07-22, session 12): operations 360° modal full-match.**
+
 - **BE** — `operations_file.repo.overview()` extended: costing rollup now splits
   `planned_service_cost` / `planned_disbursement` (FILTER on `cl.is_disbursement`); the FINAL-invoice rollup
   adds `billed_service_ht` / `billed_disbursement` / `billed_vat` (locked statuses only, same filter as
@@ -488,7 +498,7 @@ de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it
   approver; latest locked FINAL invoice → issuer + validator + approver, names via `app_user`
   LEFT-joined **in the env schema** — sandbox relies on the identity mirror, missing mirror just
   yields null names); new **documentRows** (transit `ot_number AS ref` / delivery `doc_number AS
-  ref` / non-archived vault docs, 20 each). `service.overview()` composes a **`money`** block
+ref` / non-archived vault docs, 20 each). `service.overview()` composes a **`money`** block
   (billed service HT / débours / TVA / `revenue_ht` / TTC, planned split, actual, **`dossier_margin`
   = HT revenue − actual costs** + `margin_percent`, `budget` via costing.rules `reconcile`) and a
   **`people`** block. ⚠️ **Margin keys deliberately named `dossier_margin`/`margin_percent`** so the
@@ -506,6 +516,7 @@ de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it
   margin-masked role) are owed.**
 
 **Also session 12 — Finance hub human-readable pass (§5) + sandbox seed stale-identity fix.**
+
 - **Seed fix (BE tooling):** on a machine switch, a re-created live admin (same email, NEW
   user_id) collided with the stale sandbox `app_user` row on the UNIQUE email — the mirror's bare
   `ON CONFLICT DO NOTHING` silently dropped it, so every TEST-mode write 409'd ("Referenced record
@@ -528,6 +539,7 @@ de-dup is per-tab) — offer a cross-tab lock or a one-generation BE grace if it
 - Verified by hand only (sandbox shell still down); Windows validators + a visual pass owed.
 
 **Session 12 (cont.) — user visual-pass feedback fixed + Docker deployment made real.**
+
 - **Statements `Report` viewer rebuilt** (`finance/pages.tsx`): payloads like the trial balance
   (`{rows, totals}`) now render the rows array as a real table + a titled totals card (was
   "rows: 5 items"); nested figure groups like the notes' `class_balances` render as their own
@@ -600,7 +612,7 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
 
 1. **Merge audit (asked for before anything else).** `main` was at `e68a8df`, working tree clean. **PR #13
    (`3833bc9`) merged session 9 in and everything survived** — both hubs, the routes, `GET
-   /receivables/overdue` still registered before `/:id`, `MERGE_FIELDS`, Governance, the 5 new tests.
+/receivables/overdue` still registered before `/:id`, `MERGE_FIELDS`, Governance, the 5 new tests.
    The colleague's newer `e68a8df` collapsed **fleet (7 routes) + wms (6)** into `FleetHub`/`WarehouseHub`
    using the shared **`TabbedHub`** (not the `features/security/{pages,hub}.tsx` pattern the session-9 note
    recommended — his choice works, just be aware there are now two hub idioms). Old deep paths still
@@ -608,7 +620,7 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
    - ⚠️ **He edited the shared `components/resource-list.tsx`** — `ResourceList` now renders `<HubTabs />`
      under its header and takes an `eyebrow` passthrough. Safe today (`HubTabs` reads a context defaulting
      to `null`, and no current `ResourceList` consumer sits inside a `TabbedHub`), but the invariant is now
-     *"any `ResourceList` inside a `TabbedHub` draws a tab bar."* **Master data is the only `inlineTabs`
+     _"any `ResourceList` inside a `TabbedHub` draws a tab bar."_ **Master data is the only `inlineTabs`
      hub; the day one of its 8 tab pages uses `ResourceList`, you get two tab bars.**
    - Nav collapsed to one entry per area, so the **13 fleet/wms sub-screens are no longer findable in ⌘K**
      (the palette filters `NAV`). Security/Vault kept per-section entries — the two lanes are inconsistent.
@@ -622,11 +634,13 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
    `bool_or(r.code='CEO')`) and `requireFeature` (`middleware/feature-gate.js`), which `module-loader.js:67`
    mounts **in front of the entire router** and which **nothing bypasses — not the CEO, not the owner**.
    Root cause is in `provisioning.service.js projectFeatures()`:
+
    ```sql
    CASE WHEN ov.state IS NOT NULL THEN ov.state          -- per-tenant override
         WHEN pf.included          THEN fc.default_state  -- plan says yes... but THIS decides
         ELSE 'off' END
    ```
+
    Plan inclusion **defers to `default_state`** rather than turning anything on, so smartls — on the
    **full** plan, which includes every feature — still inherited `off` for nine keys. **Measured before:
    `84 modules mounted · 17 gated+ON · 19 gated+OFF`**, the 19 being fleet ×6, wms ×3, wms.inventory ×2,
@@ -657,7 +671,7 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
    each Fleet/WMS tab with the server log open is the fast way to flush the rest out.
 
 4. **Permission matrix rebuilt to the Pixie reference** (`features/security/permission-matrix-page.tsx`).
-   Source: the user's screen recording of Pixie's *Org & Workflow › Permissions* (that hub is 4 tabs —
+   Source: the user's screen recording of Pixie's _Org & Workflow › Permissions_ (that hub is 4 tabs —
    Org Chart / Permissions / Workflows / Pending — worth knowing if we ever build the other three).
    **Transposed to roles-as-rows / modules-as-columns** under spanning group headers, sticky role column,
    horizontal scroll. The old layout was modules-as-rows × roles-as-columns with **five letter buttons per
@@ -697,7 +711,7 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
      mock's fake panel: a live-looking input whose `praxisSend()` cycles canned replies on a 520 ms timer,
      opening with "Hi Amara — I'm tracking 7 live dossiers". The **real** assistant already exists app-side
      (`components/praxis-copilot.tsx`, mounted in `app-shell.tsx:614`, self-gating on `ai_enabled`). When
-     the chatbot work lands: decide whether the floatbar entry point should return and open the *real*
+     the chatbot work lands: decide whether the floatbar entry point should return and open the _real_
      copilot (a `postMessage` type + a trigger on `PraxisCopilot`), and turn on `ai.assistant.backend` —
      which also needs a re-login, since the FE gate reads `user.ai_enabled` off the session payload.
    - **Map kept, badged `Sample view · not live`** (top-right, using the mock's own `st-mute` pill). Fixed
@@ -712,7 +726,7 @@ access denied on a **CEO** account". The second turned out not to be RBAC at all
    numbering scheme). Swapped **~35 list slots to `SkeletonTable`** — these pages already render their
    header first, so the skeleton lands exactly where the rows will. **`LoadingRow` deliberately survives in
    the 9 genuinely inline spots** (modals, expanding panels, detail views: "Loading invoice…", "Checking
-   credit…", "Running…"). `skeleton.tsx` documents which of the three to reach for. Note this covers *data*
+   credit…", "Running…"). `skeleton.tsx` documents which of the three to reach for. Note this covers _data_
    loading only — routes are still eagerly imported, so page switches don't suspend; if route-level
    `React.lazy` ever lands, `PageSkeleton` is the right `Suspense` fallback.
 
@@ -750,7 +764,7 @@ client` remain authoritative — jest could not run in the sandbox this session 
    `screen-registry.json` all keep working. Nav gained "Security overview" / "Vault overview" entries.
 
 3. **Control Tower KPI drill-downs — now real** (`features/dashboard.tsx`). Clicking a card used to open
-   the mock's hardcoded `kpiData` (Bolloré, Sonara, LT-4471) even though the card *values* were live. All
+   the mock's hardcoded `kpiData` (Bolloré, Sonara, LT-4471) even though the card _values_ were live. All
    four now build from endpoints the user already reads: revenue → `/final-invoices` grouped by client
    (names via `/clients`), SLA → `/operations` scored `ata ≤ eta`, overdue → see §5, fleet → `/vehicles`.
    **No new drill-down BE.** Each fetch catches independently so a gated module yields that card's empty
@@ -822,13 +836,14 @@ Two-part session. **Part A (FE follow-ons, all `tsc`-clean, recorded inline abov
 remaining reference pickers to `SearchSelect` (session-7 log §4; added an optional `filter` prop);
 built the Settings store tiles (`features/settings/store-pages.tsx` — document templates / custom
 fields / email signatures / policies; session-7 log §9); built the **whole vault trio** (`DocumentsPage`
-+ `SignaturesPage` + `VerificationPage` in `features/vault/pages.tsx`, routed); PWA `background_color`
-now follows theme (`src/routes/pwa.js`); converted the opportunity win-form entity picker (and confirmed
-`placeholder/coming-soon.tsx` was already deleted). QuickPIN marked done. Also built two more lane
-screens: **Smart Comms** (`features/comms/pages.tsx`, `/comms` — feature `comms`; two-pane channel list
-+ thread + composer + new-channel modal over `/smartcomm`) and **My Workspace** (`features/workspace/
+
+- `SignaturesPage` + `VerificationPage` in `features/vault/pages.tsx`, routed); PWA `background_color`
+  now follows theme (`src/routes/pwa.js`); converted the opportunity win-form entity picker (and confirmed
+  `placeholder/coming-soon.tsx` was already deleted). QuickPIN marked done. Also built two more lane
+  screens: **Smart Comms** (`features/comms/pages.tsx`, `/comms` — feature `comms`; two-pane channel list
+- thread + composer + new-channel modal over `/smartcomm`) and **My Workspace** (`features/workspace/
 pages.tsx`, `/workspace` — greeting + awaiting-approval + notifications + quick links), both routed
-(replaced `<Planned/>`).
+  (replaced `<Planned/>`).
 
 **Part B — all pending BE jobs, built BE-then-FE (BE `node --check` + `eslint` clean; client `tsc`
 clean; `npm test` + Windows lint/build authoritative — sandbox can't run DB tests):**
@@ -847,7 +862,7 @@ clean; `npm test` + Windows lint/build authoritative — sandbox can't run DB te
    migration `0453_session_refresh_jti.sql`). On refresh the presented token's jti must match the session's
    current one; a mismatch = a rotated-away/replayed token → the session is **revoked** (reuse-detection).
    Legacy sessions (NULL `refresh_jti`) are grandfathered until their next refresh stamps one. `issueSession
-   Tokens` stamps the jti on login/2FA/pin.
+Tokens` stamps the jti on login/2FA/pin.
 
 3. **Campaign templates + senders + send (BE+FE).** Migration `0452_campaign_templates.sql`
    (`campaign_sender` + `campaign_template`). Extended `sales/marketing_campaign` (MOD-22) with
@@ -918,7 +933,7 @@ clean; BE edits `node --check` clean. Windows `npm run lint` + `npm run build --
    allowed. Added a per-line **tax-code `<Select>`** (disabled on débours) sourced from
    `listSalesTaxCodes()` (new in `lib/masterdata-api.ts` — aggregates VAT codes across
    `/tax-jurisdictions/:id/codes` since there's no flat endpoint). Lines now submit `dictionary_item_id`
-   + `tax_code_id` (both already accepted by the BE quotation validator), so `total_ttc != total_ht`.
+   - `tax_code_id` (both already accepted by the BE quotation validator), so `total_ttc != total_ht`.
 
 6. **Reports — Dashboard tiles tab** (`features/vault/pages.tsx` `ReportsPage`). New "Dashboard tiles"
    segment reads `GET /reports/tiles`, lists the catalogue with **Add tile / Show-Hide / position**
@@ -988,7 +1003,7 @@ Started Phase A. Pixie design pulled from the user's screen recording (`Recordin
    `commercial.quotation`; portal external views need their `portal.*` flags.
 
 2. **Leads & intake — BUILT** (`client/src/features/sales/pages.tsx`, `LeadsPage`). Two-tab screen
-   (segmented control): **Leads** and **Inbound intake**. Leads tab = Pixie *Clients*-tab layout
+   (segmented control): **Leads** and **Inbound intake**. Leads tab = Pixie _Clients_-tab layout
    (search + filter chips All/New/Contacted/Qualified/Converted/Lost + avatar list-rows) wired to
    `/leads`: capture/edit (`POST`/`PATCH`), advance (`POST /leads/:id/transition` → CONTACTED /
    QUALIFIED / LOST), and **Convert** (`POST /leads/:id/convert`, QUALIFIED only → client_master).
@@ -1006,7 +1021,7 @@ Started Phase A. Pixie design pulled from the user's screen recording (`Recordin
    slots + added the intake redirect. `app/layout/app-shell.tsx` — nav relabelled "Leads" →
    "Leads & intake"; "Inbound intake" now deep-links `?tab=intake`.
 
-5. **Design fidelity.** The Pixie mock is dark crimson; we take its *structure* (tabbed CRM,
+5. **Design fidelity.** The Pixie mock is dark crimson; we take its _structure_ (tabbed CRM,
    filter chips, avatar rows, segmented controls) but render through the app's `--primary` token set
    so it re-tints per tenant. New primitives (`Segmented`, `Chips`, `Avatar`, `Badge`) are local to
    `features/sales/pages.tsx` for now — promote to `components/ui` if reused by the ⭐ hubs.
@@ -1025,7 +1040,7 @@ served full files this session). **Authoritative check still: `npm run build --p
    Per-card **Win** (modal, optional `create_dossier` + entity picker → `POST /:id/win`), **Lose**
    (`POST /:id/lose`), **Edit** (`PATCH`, name/value/currency/probability only — BE locks settled +
    won't PATCH stage/links). **List** view has a stage-move `<select>`. New primitive `MetricTile`
-   added locally. Route wired in `app.tsx`; gated AI panel. Design = Pixie *Pipeline* tab.
+   added locally. Route wired in `app.tsx`; gated AI panel. Design = Pixie _Pipeline_ tab.
    Note: BE `board` returns only per-stage aggregates (no cards), which is why the board composes
    `/stages` + `/` (list) rather than rendering `/board` directly.
 
@@ -1035,15 +1050,15 @@ served full files this session). **Authoritative check still: `npm run build --p
    and line-item editors (`POST` / `PATCH` — PATCH replaces children, DRAFT-only per BE). Lifecycle
    via inline action panels: Submit (`→IN_REVIEW`), Send (`→SENT`, needs entity → numbers the doc),
    Back to draft, Reject (`→REJECTED`), **Accept** (`POST /:id/accept`, optional `create_quotation`
-   + entity → spins a quotation from the lines). Transitions follow the BE rules
-   (DRAFT→IN_REVIEW→SENT→ACCEPTED/REJECTED). Gated AI panel (Draft/tighten = assist). Route wired.
+   - entity → spins a quotation from the lines). Transitions follow the BE rules
+     (DRAFT→IN_REVIEW→SENT→ACCEPTED/REJECTED). Gated AI panel (Draft/tighten = assist). Route wired.
 
 8. **Marketing campaigns — BUILT (Phase C, session 6)** (`CampaignsPage`). Tabs Campaigns |
    Subscribers. Campaigns tab = metric strip (Active/Draft/Ended/Subscribers) + campaign cards with
    lifecycle buttons (`POST /campaigns/:id/transition`; DRAFT→ACTIVE→PAUSED↔ACTIVE→ENDED per BE
    rules); New campaign (`POST /campaigns`, name/channel/dates). Subscribers tab = list of active
    newsletter subscribers + Add (`POST /campaigns/subscribers`) + Unsubscribe
-   (`POST /campaigns/subscribers/unsubscribe`). Pixie *Sales campaigns* layout. Gated AI panel.
+   (`POST /campaigns/subscribers/unsubscribe`). Pixie _Sales campaigns_ layout. Gated AI panel.
 9. **Success stories — BUILT (Phase C, session 6)** (`SuccessStoriesPage`). Filter chips
    (All/Draft/Signed off/Published; status derived from `is_published`/`signed_off_by`) + case-study
    cards. Create/edit **draft** (`POST` / `PATCH` — PATCH locked once published, per BE). Lifecycle
@@ -1089,7 +1104,7 @@ for all six (~2000 lines, like `finance/pages.tsx`).
     - **Portal access** (`/portal/access`, MOD-67) in **`client/src/features/portal/pages.tsx`** —
       active-grant list + **Grant** (client/investor/auditor; CLIENT needs a client scope) + **Revoke**
       (`/access/:id/revoke`). **Preview** buttons GET the external views (`/portals/client|investor|
-      auditor`) and render the scope; each is gated `portal.client|investor|audit` → graceful "enable
+auditor`) and render the scope; each is gated `portal.client|investor|audit` → graceful "enable
       it" state when off. External-user auth (magic link) is a separate BE surface, not this screen.
 
 13. **Control Tower — now LIVE (session 6).** `client/src/features/dashboard.tsx` **replaced** the
@@ -1112,10 +1127,11 @@ Documents/Signatures/Verification have BE gaps (see build map).
 
 **Vault BE surface — checked 2026-07-18** (all three modules exist and are mounted; none are as thin as
 "gap" implied):
+
 - **Documents — BUILT (2026-07-18).** `document_vault` (MOD-64, `/documents`, no feature flag). GET `/`
   (list), GET `/:id`, GET `/:id/download` (confidential, not the public `/media` mount), POST `/` (upload;
   `validator.create` = `{ data_url (base64, req), doc_type?, entity_ref?, file_context? ∈ OPS|OVH,
-  folder_ref?, dossier_id? }`), DELETE `/:id` (archive). Shipped `DocumentsPage` in
+folder_ref?, dossier_id? }`), DELETE `/:id` (archive). Shipped `DocumentsPage` in
   `features/vault/pages.tsx` (list + status filter/search, **upload** via base64 data-URL with 25 MB cap,
   **archive**, and an **authed binary download** — a raw `fetch` with the Bearer + `X-Praxis-Env` headers
   that opens the PDF blob in a tab, since the endpoint returns bytes not JSON; 409 → "not rendered yet").
@@ -1123,7 +1139,7 @@ Documents/Signatures/Verification have BE gaps (see build map).
 - **Signatures — BUILT (2026-07-18).** `document_signature` (MOD-64, `/signatures`, **feature `signatures`**).
   GET `/?entity_ref=<ref>` (list is **keyed by entity_ref** — no all-signatures list) + POST `/` (sign, needs
   **`approve`** perm; `validator.sign` = `{ entity_ref (req), signer_name?, method? ∈ DIGITAL|PHYSICAL,
-  signature_ref? }`). Shipped `SignaturesPage`: look up a document by reference → its signatures list + an
+signature_ref? }`). Shipped `SignaturesPage`: look up a document by reference → its signatures list + an
   **Add signature** modal; graceful "signatures not enabled" state (via `isGated`) when the flag/RBAC blocks it.
 - **Verification — BUILT (2026-07-18).** `document_verification` (MOD-66, `/document-verification`, no flag).
   GET `/scan` (PUBLIC) + GET `/verify` (gated), query `{ hash (req, ≥4 chars), doc_id? | entity_ref? }` →
@@ -1163,9 +1179,9 @@ smoke-test register/login when convenient.
    - **Corporate entities** `/master/corporate-entities` (MOD-01 `/entities`): list +
      create/edit (code immutable on edit, legal name, NIU/RCCM, ISO-2 country, doc prefix,
      language, FY start month) + **Activate/Deactivate** (`POST /entities/:id/active`).
-   Routed in `app.tsx` (replaced the three `<Planned/>` slots); nav already listed all
-   three; `screen-registry.json` left as-is (not load-bearing for built pages — currencies/
-   tax-jurisdictions have no entries either).
+     Routed in `app.tsx` (replaced the three `<Planned/>` slots); nav already listed all
+     three; `screen-registry.json` left as-is (not load-bearing for built pages — currencies/
+     tax-jurisdictions have no entries either).
 3. **Design fidelity:** the Lovable reference mock is dashboard-only (no per-entity Pixie
    layouts exist), so per the agreed fallback these three reuse the existing table+modal
    pattern. Pixie layouts to be pulled for the ⭐ hub screens next (Opportunities board,
@@ -1229,7 +1245,7 @@ separate app's reference in `doc/SECURITY_BUSINESS_SETTINGS_IMPLEMENTATION.md`).
    `lib/pin-store.ts` (device registry, survives logout), `lib/security-api.ts`, self-service
    `features/security/my-security.tsx` (route `/security/my-security`, in the Security & Access
    menu), and the login modal's Quick PIN tab is now real. `auth-context.tsx` gained `pinLogin`
-   + `registerPin`. **QuickPIN currently errors — missing `user_device` table (see gaps).**
+   - `registerPin`. **QuickPIN currently errors — missing `user_device` table (see gaps).**
 
 **Not verified in-sandbox:** the sandbox degraded then died this session ("Failed to create
 bridge sockets"), so no in-sandbox `tsc`. Files are correct on disk. **Run
@@ -1280,10 +1296,10 @@ batch; the shell/CSS batch is verified by inspection but the sandbox mount cache
    migration + remaining Settings endpoints + Finance write endpoints are all available.
 3. **Finance write forms built** (against the verified BE contracts):
    - **Tax Center → Declarations / filing tab** (`features/finance/pages.tsx` `DeclarationsPanel`
-     + `FileDeclarationForm`/`SubmitDeclarationForm`): list declarations, **File a return** (kind
-     ∈ TVA/IS/MIN_TAX/WHT/DSF/CNPS/DIPE/PATENTE, period_code, entity, from/to/due_on) →
-     `POST /tax/declarations`; per-row **Approve** (`/approve`) and **Submit** (`/submit` with
-     `filed_ref`). Status pill DRAFT→COMPUTED→APPROVED→FILED.
+     - `FileDeclarationForm`/`SubmitDeclarationForm`): list declarations, **File a return** (kind
+       ∈ TVA/IS/MIN_TAX/WHT/DSF/CNPS/DIPE/PATENTE, period_code, entity, from/to/due_on) →
+       `POST /tax/declarations`; per-row **Approve** (`/approve`) and **Submit** (`/submit` with
+       `filed_ref`). Status pill DRAFT→COMPUTED→APPROVED→FILED.
    - **Credit notes** (`CreditNotesPage`, route `/finance/credit-notes`): create (entity, client,
      reverses a FINAL invoice, lines with required `label`) → edit draft → **Post** (`/post`).
    - Helpers added to `lib/finance-api.ts` (tax: `listDeclarations`/`fileDeclaration`/`approve`/
@@ -1305,9 +1321,9 @@ Implemented the answer to open question #1 — the LIVE/TEST toggle no longer lo
    logout, verifyTotp, setup/enable/disable TOTP, pin register/login/list/revoke, user CRUD),
    `security/session` (mine/kill/killAllMine + base CRUD).
 4. **RBAC-admin writes pinned** so grants edited = grants enforced: `permission` (`upsertGrant`
-   + base), `iam_role`, `capability`, `scope`, `field_visibility`. Enabled by a new
-   `makeController(service, label, { identity: true })` option in `shared/crud/resource.js`
-   (defaults false → every business module is unchanged).
+   - base), `iam_role`, `capability`, `scope`, `field_visibility`. Enabled by a new
+     `makeController(service, label, { identity: true })` option in `shared/crud/resource.js`
+     (defaults false → every business module is unchanged).
 5. **Auth services untouched** — they already take a `client`; only the caller picks the schema.
 6. **Verified in-sandbox:** `node --check` + `eslint` clean on all 11 changed files. **Windows
    `npm run lint` + `npm test` still required** (sandbox can't run the DB integration tests).
@@ -1412,20 +1428,20 @@ All **ready** (endpoints confirmed by reading each `*.routes.js`); build by wiri
 `config-pages.tsx` / `master-data-pages.tsx`. Route = FE path; BE = API basePath under
 `/api/tenant`. ⭐ = strong Pixie-inspo candidate (distinctive layout).
 
-| Screen | FE route | BE endpoints (module) | Notes |
-|---|---|---|---|
-| **Clients** | `/master/clients` | `GET/POST /clients`, `PATCH /clients/:id`, `GET /clients/:id/credit` (MOD-03) | Master registry; referenced everywhere. Easy first win. |
-| **Suppliers** | `/master/suppliers` | `GET/POST /suppliers`, `PATCH /suppliers/:id` (MOD-04) | Twin of Clients. |
-| **Corporate entities** | `/master/corporate-entities` | `GET/POST /entities`, `PATCH /entities/:id`, `POST /entities/:id/active` (MOD-01) | Unlocks Business setup; already consumed by Bank accounts. |
-| ⭐ **Operations files (dossiers)** | `/operations/files` | `GET/POST /operations`, `PATCH /operations/:id`, `POST /operations/:id/transition`, `GET /operations/:id/360` (MOD-29) + milestones `/milestones/dossier/:id`,`/instantiate`,`/:id/advance` (MOD-31) + `/transit-orders` (MOD-30) + `/delivery-notes` (MOD-32) | The operational hub — a tabbed dossier workspace (360 view, milestones timeline, transit orders, delivery notes). Best single build. |
-| ⭐ **Opportunities (pipeline)** | `/sales/opportunities` | `GET /opportunities/board\|stages`, `GET/POST /opportunities`, `PATCH /opportunities/:id`, `POST /opportunities/:id/move\|win\|lose` (MOD-24) | **Kanban board** with drag-to-move + weighted-value forecast. High-visual Pixie candidate. |
-| **Leads + inbound intake** | `/sales/leads` | leads `GET/POST /leads`,`PATCH /leads/:id`,`POST /leads/:id/transition\|convert` (MOD-20); intake `/inbound/enquiries\|partnerships` + `/enquiries/:id/triage` (MOD-25) | Funnel top; AI **triage** assist. |
-| ⭐ **Supplier invoices (AP + 3-way match)** | `/procurement/supplier-invoices` | `GET/POST /supplier-invoices`, `POST /supplier-invoices/:id/match`, `POST /supplier-invoices/:id/post` (MOD-61) | Invoices tab + a **three-way-match** panel (PR↔PO↔GRN↔invoice); AI-assist match. |
-| **Cash requests + Régie** | `/costing/cash-requests`, `/costing/regie` | cash `/cash-requests` (+`/:id/transition\|disburse\|justify`, MOD-49); régie `/regie` (+`/issue`,`/age-due`) | Disbursement + advance lifecycle. |
-| **Financing & debt** | `/finance/debt` | `GET/POST /financing`, `PATCH/DELETE /financing/:id`, `POST /financing/:id/drawdown\|repay` (MOD-53) | Full CRUD (corrected). Loan register + drawdown/repay. |
-| ⭐ **Reports** | `/vault/reports` | `GET /reports/catalogue`, `GET /reports/run/:key`, `GET/POST /reports/saved`, `GET/PUT /reports/tiles` (MOD-63) | Report runner + saved reports + dashboard-tile picker. Feeds the Control Tower. |
-| **Compliance flags** | `/vault/compliance-flags` | `GET /compliance/catalogue`, `GET /compliance`, `POST /compliance/run`, `POST /compliance/:id/resolve` (MOD-65) | Rules catalogue + flag queue + resolve. |
-| ⭐ **Portal access** | `/portal/access` | `GET/POST /portals/access`, `POST /portals/access/:id/revoke`, `GET /portals/client\|investor\|auditor` (portal) | Grant manager + external client/investor/auditor read views. |
+| Screen                                      | FE route                                   | BE endpoints (module)                                                                                                                                                                                                                                          | Notes                                                                                                                                |
+| ------------------------------------------- | ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| **Clients**                                 | `/master/clients`                          | `GET/POST /clients`, `PATCH /clients/:id`, `GET /clients/:id/credit` (MOD-03)                                                                                                                                                                                  | Master registry; referenced everywhere. Easy first win.                                                                              |
+| **Suppliers**                               | `/master/suppliers`                        | `GET/POST /suppliers`, `PATCH /suppliers/:id` (MOD-04)                                                                                                                                                                                                         | Twin of Clients.                                                                                                                     |
+| **Corporate entities**                      | `/master/corporate-entities`               | `GET/POST /entities`, `PATCH /entities/:id`, `POST /entities/:id/active` (MOD-01)                                                                                                                                                                              | Unlocks Business setup; already consumed by Bank accounts.                                                                           |
+| ⭐ **Operations files (dossiers)**          | `/operations/files`                        | `GET/POST /operations`, `PATCH /operations/:id`, `POST /operations/:id/transition`, `GET /operations/:id/360` (MOD-29) + milestones `/milestones/dossier/:id`,`/instantiate`,`/:id/advance` (MOD-31) + `/transit-orders` (MOD-30) + `/delivery-notes` (MOD-32) | The operational hub — a tabbed dossier workspace (360 view, milestones timeline, transit orders, delivery notes). Best single build. |
+| ⭐ **Opportunities (pipeline)**             | `/sales/opportunities`                     | `GET /opportunities/board\|stages`, `GET/POST /opportunities`, `PATCH /opportunities/:id`, `POST /opportunities/:id/move\|win\|lose` (MOD-24)                                                                                                                  | **Kanban board** with drag-to-move + weighted-value forecast. High-visual Pixie candidate.                                           |
+| **Leads + inbound intake**                  | `/sales/leads`                             | leads `GET/POST /leads`,`PATCH /leads/:id`,`POST /leads/:id/transition\|convert` (MOD-20); intake `/inbound/enquiries\|partnerships` + `/enquiries/:id/triage` (MOD-25)                                                                                        | Funnel top; AI **triage** assist.                                                                                                    |
+| ⭐ **Supplier invoices (AP + 3-way match)** | `/procurement/supplier-invoices`           | `GET/POST /supplier-invoices`, `POST /supplier-invoices/:id/match`, `POST /supplier-invoices/:id/post` (MOD-61)                                                                                                                                                | Invoices tab + a **three-way-match** panel (PR↔PO↔GRN↔invoice); AI-assist match.                                                     |
+| **Cash requests + Régie**                   | `/costing/cash-requests`, `/costing/regie` | cash `/cash-requests` (+`/:id/transition\|disburse\|justify`, MOD-49); régie `/regie` (+`/issue`,`/age-due`)                                                                                                                                                   | Disbursement + advance lifecycle.                                                                                                    |
+| **Financing & debt**                        | `/finance/debt`                            | `GET/POST /financing`, `PATCH/DELETE /financing/:id`, `POST /financing/:id/drawdown\|repay` (MOD-53)                                                                                                                                                           | Full CRUD (corrected). Loan register + drawdown/repay.                                                                               |
+| ⭐ **Reports**                              | `/vault/reports`                           | `GET /reports/catalogue`, `GET /reports/run/:key`, `GET/POST /reports/saved`, `GET/PUT /reports/tiles` (MOD-63)                                                                                                                                                | Report runner + saved reports + dashboard-tile picker. Feeds the Control Tower.                                                      |
+| **Compliance flags**                        | `/vault/compliance-flags`                  | `GET /compliance/catalogue`, `GET /compliance`, `POST /compliance/run`, `POST /compliance/:id/resolve` (MOD-65)                                                                                                                                                | Rules catalogue + flag queue + resolve.                                                                                              |
+| ⭐ **Portal access**                        | `/portal/access`                           | `GET/POST /portals/access`, `POST /portals/access/:id/revoke`, `GET /portals/client\|investor\|auditor` (portal)                                                                                                                                               | Grant manager + external client/investor/auditor read views.                                                                         |
 
 **My pick order if I keep going:** (1) Clients + Suppliers + Corporate entities (fast, unblock
 everything), (2) ⭐ Operations files (the hub), (3) ⭐ Opportunities board, (4) ⭐ Supplier invoices
@@ -1437,11 +1453,11 @@ layouts for; the master-data trio reuse the existing table+modal pattern as-is.
 1. **Shared identity across LIVE/TEST? — RESOLVED: YES + IMPLEMENTED (2026-07-15).** Identity is
    now env-independent — see the session log "Identity pinned to the live schema" below. Auth,
    RBAC, sessions, devices, 2FA and user/role/permission admin all resolve against the live
-   schema via a new `req.identityDb`; only *business* data honours `X-Praxis-Env`. Backend
+   schema via a new `req.identityDb`; only _business_ data honours `X-Praxis-Env`. Backend
    `node --check` + eslint clean in-sandbox; **run `npm run lint` + `npm test` on Windows to
    confirm.**
 2. **`user_device` migration (QuickPIN) — DONE (2026-07-18).** Table (columns: `device_id,
-   user_id, label, pin_hash, status, failed_pin, last_used_at, created_at`) has landed in the
+user_id, label, pin_hash, status, failed_pin, last_used_at, created_at`) has landed in the
    **live schema**; the pin register/login/list/revoke controllers resolve via `req.identityDb`
    (live) per #1. FE was already wired — QuickPIN is now live.
 3. **Endpoints for the remaining Settings tiles — AVAILABLE (2026-07-15), partially verified.**
@@ -1463,7 +1479,7 @@ layouts for; the master-data trio reuse the existing table+modal pattern as-is.
      MOD-24) — AVAILABLE.
    - **api-keys / integration secrets → `/ai/governance/vendors`** (GET/PUT/test, MOD-70) — covers
      AI provider keys; if the tile means broader 3rd-party secrets, only AI vendors exist today.
-   - **NO endpoint (notify BE):** **custom fields**; **document templates** (only *milestone*
+   - **NO endpoint (notify BE):** **custom fields**; **document templates** (only _milestone_
      templates + smartcomm exist, not document/letterhead templates); **business policies** (maybe
      intended for the generic `/settings` key-value store — confirm with BE).
 4. **Finance write endpoints — AVAILABLE + CONTRACTS VERIFIED (2026-07-15).** Dedicated modules
@@ -1475,8 +1491,8 @@ layouts for; the master-data trio reuse the existing table+modal pattern as-is.
    - **Credit notes** `finance/credit_note` (MOD-51, basePath `/credit-notes`, feature
      `accounting.core`): `POST /credit-notes` (validator.create), `PATCH /credit-notes/:id`
      (validator.update), `POST /credit-notes/:id/post`, GET `/credit-notes`(+`/:id`).
-   **FE DONE (2026-07-15):** Tax Center **Declarations / filing** tab + **Credit notes** screen
-   (`/finance/credit-notes`) both wired to these endpoints. See the session log below.
+     **FE DONE (2026-07-15):** Tax Center **Declarations / filing** tab + **Credit notes** screen
+     (`/finance/credit-notes`) both wired to these endpoints. See the session log below.
 
 ## First thing to do in a new session
 
@@ -1490,27 +1506,29 @@ machine. Pull latest, then start at step 0.
 
 **Pick up here (priority order):**
 
-000. **Session 10 — Windows chores + a visual pass.** Nothing here is `tsc`/`eslint`-dirty, but none of it
+0. **Session 10 — Windows chores + a visual pass.** Nothing here is `tsc`/`eslint`-dirty, but none of it
    has been through `npm run lint` / `npm test` / `npm run build --prefix client`. Do the deletions first,
    since `noUnusedLocals` will catch anything they orphan:
-   ```powershell
-   Remove-Item .git\index.lock -Force     # left by a git rm the sandbox mount blocked
-   git rm client\vite.config.js client\vite.config.d.ts
-   git rm client\src\features\master\pages.tsx
-   npm run build --prefix client
-   ```
-   ⚠️ Deleting the two vite artifacts makes **`vite.config.ts` live config for the first time in a while**.
-   I diffed them — equivalent apart from compiled syntax (`feature-${area}` vs `.concat`) — so the build
-   should produce the same chunks. If it doesn't, that's the tell that something existed only in the `.js`.
-   Then `npm run dev` and click: **`/security/permissions`** (the rebuilt matrix — dot colours, the cell
-   popover, that the ceo row is locked, the module search), the **Control Tower** (every app tile, both
-   hero buttons, a live-shipment row landing on `/operations/files?ref=…`, the greeting showing *your*
-   name, the FAB opening the real palette, the map badge), **Fleet and Warehouse** tab by tab with the
-   server log open (see session-10 log §3 — more never-executed SQL is plausible), and any screen mid-load
-   for the new skeletons (throttle to Slow 3G if local is too fast to see them).
-   **Also still true from session 9: `npm test` has never run the five campaign merge-field cases.**
 
-00. **Session 9 needs Windows validation + a visual pass** — `npm run lint`, `npm test`, `npm run build
+```powershell
+Remove-Item .git\index.lock -Force     # left by a git rm the sandbox mount blocked
+git rm client\vite.config.js client\vite.config.d.ts
+git rm client\src\features\master\pages.tsx
+npm run build --prefix client
+```
+
+⚠️ Deleting the two vite artifacts makes **`vite.config.ts` live config for the first time in a while**.
+I diffed them — equivalent apart from compiled syntax (`feature-${area}` vs `.concat`) — so the build
+should produce the same chunks. If it doesn't, that's the tell that something existed only in the `.js`.
+Then `npm run dev` and click: **`/security/permissions`** (the rebuilt matrix — dot colours, the cell
+popover, that the ceo row is locked, the module search), the **Control Tower** (every app tile, both
+hero buttons, a live-shipment row landing on `/operations/files?ref=…`, the greeting showing _your_
+name, the FAB opening the real palette, the map badge), **Fleet and Warehouse** tab by tab with the
+server log open (see session-10 log §3 — more never-executed SQL is plausible), and any screen mid-load
+for the new skeletons (throttle to Slow 3G if local is too fast to see them).
+**Also still true from session 9: `npm test` has never run the five campaign merge-field cases.**
+
+0. **Session 9 needs Windows validation + a visual pass** — `npm run lint`, `npm test`, `npm run build
    --prefix client`. **`npm test` matters more than usual**: jest wouldn't run in the sandbox, so the five
    new merge-field cases in `tests/unit/campaign-send.test.js` have never executed. Then `npm run dev` and
    click: the Security and Vault hubs (all sections), the six new Security forms, **all four Control Tower
@@ -1520,13 +1538,13 @@ machine. Pull latest, then start at step 0.
    clear error, not a mystery failure). Also worth doing: the two `git rm` deletions in the session-9
    dead-code note, then re-run the client build — `noUnusedLocals` will catch any import that only those
    blocks used.
-0. **Session 7 needs Windows validation + a visual pass.** Session 7's FE is in-sandbox `tsc`-clean and
+1. **Session 7 needs Windows validation + a visual pass.** Session 7's FE is in-sandbox `tsc`-clean and
    the BE `q` edits are `node --check`-clean, but run `npm run lint` + `npm run build --prefix client` +
    `npm test` on Windows and **open `npm run dev`** to eyeball the rebuilt **Control Tower iframe** and the
    new forms (lead **Company** search, quotation **dictionary + tax-code** pickers, Reports **Dashboard
    tiles** tab, Campaigns **Templates** tab). Files in the session-7 log above. Session 6 (prior) was also
    `tsc`-clean — confirm both and commit.
-0b. **Next in this lane (session 7 leftovers):** (a) **DONE (2026-07-18)** — remaining reference pickers
+   0b. **Next in this lane (session 7 leftovers):** (a) **DONE (2026-07-18)** — remaining reference pickers
    converted to `SearchSelect` (meeting, opportunity, proposal, quotation entity, credit-note, bank-account,
    pricing-variance, portal; no assignee/user select existed). See session-7 log §4; `tsc`-clean.
    (b) **DONE (2026-07-18)** — the Settings tiles on the generic `/settings` store (document templates,
@@ -1534,7 +1552,7 @@ machine. Pull latest, then start at step 0.
    session-7 log §9. (c) **DONE (session 8)** — the endpoints proposed in
    `doc/CAMPAIGN_TEMPLATES_BE_HANDOFF.md` were built; that file is now a **record**, not a request.
    Nothing to hand over.
-1. **Sales/CRM funnel — DONE (session 6).** Model: **marketing → leads + opportunities → sales**;
+2. **Sales/CRM funnel — DONE (session 6).** Model: **marketing → leads + opportunities → sales**;
    build order in the session-6 log + `doc/FE_IA_BUILD_MAP.md` (Sales & CRM). All six shipped in
    `client/src/features/sales/pages.tsx`: Leads & intake (MOD-20 + folded MOD-25), Meetings (MOD-21),
    ⭐ Opportunities Kanban (MOD-24), Proposals (MOD-23), Marketing campaigns (MOD-22), Success stories
@@ -1547,21 +1565,21 @@ machine. Pull latest, then start at step 0.
    `features/portal/pages.tsx`. **This stream's entire lane is now built.** Follow-ons (not lane work):
    Control Tower live tiles (`/reports/tiles`), a tax-code picker for Quotations, the Reports
    dashboard-tile picker, platform/godmode console. All BE modules confirmed merged (session 6).
-2. **Settings tiles — DONE (session 4) + finding updated (session 7).** Bank accounts, payment gateways,
+3. **Settings tiles — DONE (session 4) + finding updated (session 7).** Bank accounts, payment gateways,
    scheduled reports, API keys, pipeline stages (read-only), numbering all built in `config-pages.tsx`.
    **DONE (2026-07-18):** document templates, custom fields, email signatures and policies are now built on
    the generic `/settings/:section/:key` store (`features/settings/store-pages.tsx`, routed; MOD-70-gated).
    Only genuinely BE-less tiles left: **factory languages** and **help center**.
-3. **Per-tenant PWA — DONE (session 4)** (`src/routes/pwa.js` + `vite.config.ts` + `index.html`).
+4. **Per-tenant PWA — DONE (session 4)** (`src/routes/pwa.js` + `vite.config.ts` + `index.html`).
    **Polish DONE (2026-07-18):** `manifest.background_color` now follows the tenant theme mode
    (`src/routes/pwa.js` `resolveBranding` → light `#f3f6fb` / dark `#071324`, matching the app's
    `--background`), so the launch splash doesn't flash the wrong colour. Maskable icons were already
    served on-demand (`/icons/app-icon-maskable-512.png`, sharp render + cache) — no pre-gen needed.
    Left to do: **Lighthouse audit + a real install on two tenant subdomains** (manual/ops step, no code
    dependency). `node --check` clean; Windows lint/test authoritative.
-4. **QuickPIN — DONE (2026-07-18).** The `user_device` migration has landed in the live schema;
+5. **QuickPIN — DONE (2026-07-18).** The `user_device` migration has landed in the live schema;
    FE + controllers were already wired, so QuickPIN is live. Nothing left here.
-5. **Control Tower — reverted to the Lovable mock, on live data (session 7).** `features/dashboard.tsx`
+6. **Control Tower — reverted to the Lovable mock, on live data (session 7).** `features/dashboard.tsx`
    renders the restored `features/dashboard-mock/*` in an `<iframe srcDoc>` and injects live
    `/dashboard/control-tower` + `/dashboard/kpis` (see session-7 log §8). **`dashboard-mock/*` is USED
    again — do NOT delete it.** Remaining: platform/godmode console UI; the decorative KPI cards
@@ -1578,7 +1596,7 @@ machine. Pull latest, then start at step 0.
    run `node scripts/tenant/feature-report.js --slug=<slug>` if a page 403s and you want to know which of
    the two layers is refusing.
 3. **Your `e68a8df` added `<HubTabs/>` to the shared `components/resource-list.tsx`.** Fine as it stands,
-   but it means *any* `ResourceList` rendered inside a `TabbedHub` now draws a tab bar. Master data is the
+   but it means _any_ `ResourceList` rendered inside a `TabbedHub` now draws a tab bar. Master data is the
    only `inlineTabs` hub — if one of its tab pages ever moves to `ResourceList`, it'll render two bars.
 4. **Fleet/WMS sub-screens dropped out of ⌘K** when the nav collapsed to one entry per area (the palette
    filters `NAV`). Security/Vault kept theirs, so the two lanes now behave differently — worth picking one.
@@ -1590,7 +1608,7 @@ machine. Pull latest, then start at step 0.
    uncommitted when you looked**. As of this branch all four governance screens are real: Audit ledger
    (`pages.tsx:255`, four segments), Notifications (`:510`, inbox + preferences), Workflows (`:736`) and
    Approvals (`:783`) — the last two are yours and untouched. Building Audit ledger now would collide head-on.
-   (Small correction for the record: before session 9, **both** Audit *and* Notifications were
+   (Small correction for the record: before session 9, **both** Audit _and_ Notifications were
    `ResourceList` stubs, not just Audit.)
 2. **Vault was already built** — all five pages shipped session 8. Your list had it as unbuilt; it only
    needed a hub, which session 9 added. **Security genuinely was stubs** and is now full CRUD.
@@ -1634,4 +1652,3 @@ clean checkout / CI those 3 tests already passed.
 To preview the app: `npm run dev` (backend, repo root) + `cd client && npm run dev`
 (Vite). Set `VITE_TENANT_HOST` to the provisioned tenant (e.g. `smartls.praxisls.com`).
 Check the new `/login` landing + the top-bar nav / More sidebar first.
-

@@ -26,6 +26,9 @@
 const { config } = require("../../config/env");
 const { logger } = require("../../config/logger");
 const platformSettings = require("./settings.service");
+// The system-email sender (mail fallback → platform setting → env). Used for the
+// email destination; it never throws, which is what an alerting path needs.
+const platformMail = require("./platform-mail.service");
 
 /**
  * Severity ladder. `page` is for things that should wake someone, `notify` for
@@ -115,6 +118,54 @@ async function destinationFor(severity) {
   return null;
 }
 
+/**
+ * The email destination, if one is configured.
+ *
+ * WHY EMAIL EXISTS ALONGSIDE THE WEBHOOK, rather than instead of it
+ * -----------------------------------------------------------------
+ * A webhook and the thing it posts to fail together more often than they should:
+ * a Slack outage, a revoked integration, a workspace someone archived. Email
+ * takes a different path out of the building, through the SMTP relay the system
+ * already uses for invoices and OTPs. For `page` severity — a failed backup, a
+ * tenant that cannot serve — one channel is a single point of failure on the
+ * exact day it matters.
+ *
+ * NOT A SECRET, unlike the webhooks. An incoming-webhook URL is a bearer
+ * credential and is stored encrypted; an address is not, so it lives in the
+ * setting's `value` and is readable in the console. Storing it as a secret would
+ * mean an operator could never see which address alerts go to, which is a worse
+ * property than it sounds.
+ *
+ * Resolution matches the webhooks: vault → env.
+ */
+async function emailDestination() {
+  let to = null;
+  try {
+    const row = await platformSettings.resolve("alerts", "email");
+    to = row && row.value && row.value.to ? String(row.value.to).trim() : null;
+  } catch (err) {
+    logger.warn({ err }, "alert email destination vault read failed — falling back to env");
+  }
+  to = to || (config.ALERT_EMAIL ? String(config.ALERT_EMAIL).trim() : "");
+  return to || null;
+}
+
+/**
+ * Every configured destination for a severity, webhook and email both.
+ *
+ * Returns an ARRAY because "which channel did it go to" stopped being a single
+ * answer. `destinationFor` is kept as-is: it is the webhook-only question, the
+ * console's Test button asks it, and the existing tests assert on it.
+ */
+async function destinationsFor(severity) {
+  const out = [];
+  const hook = await destinationFor(severity);
+  if (hook) out.push({ kind: "webhook", channel: hook.channel, url: hook.url });
+  const to = await emailDestination();
+  if (to) out.push({ kind: "email", channel: "email", to });
+  return out;
+}
+
 function formatOpsEvent({ event, severity, subject, detail, tenant }) {
   const head = severity === "page" ? "PAGE" : severity === "notify" ? "NOTICE" : "INFO";
   const lines = [
@@ -147,28 +198,60 @@ async function raise({ event, subject, detail = null, tenant = null, severity = 
 
   if (sev === "log") return { ...line, delivered: false, reason: "log-only severity" };
 
-  const dest = await destinationFor(sev);
-  if (!dest) {
+  const dests = await destinationsFor(sev);
+  if (!dests.length) {
     logger.warn(line, "ops alert had no destination — set one in Platform Console → Integrations → Alerts");
     return { ...line, delivered: false, reason: "no destination configured" };
   }
 
-  try {
-    const res = await fetch(dest.url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        text: formatOpsEvent({ event, severity: sev, subject, detail, tenant }),
-        praxis: { ...line, detail },
-      }),
-      signal: AbortSignal.timeout(5000),
-    });
-    return { ...line, delivered: res.ok, channel: dest.channel };
-  } catch (err) {
-    // Swallowed on purpose — see the header. Visible in the log line above.
-    logger.warn({ err, event }, "ops alert delivery failed");
-    return { ...line, delivered: false, reason: err.message };
+  const body = formatOpsEvent({ event, severity: sev, subject, detail, tenant });
+
+  // EVERY destination is attempted, and one failing does not stop the others.
+  // The point of having two channels is that they fail independently; delivering
+  // to the first that works would throw that away.
+  const results = await Promise.all(
+    dests.map(async (dest) => {
+      try {
+        if (dest.kind === "email") {
+          const head = sev === "page" ? "PAGE" : "NOTICE";
+          const r = await platformMail.send({
+            to: dest.to,
+            subject: `[Praxis ${head}] ${event}${tenant ? ` · ${tenant}` : ""} — ${subject}`,
+            text: body,
+          });
+          // platform-mail never throws; it reports `ok:false` with a reason.
+          return { channel: "email", ok: Boolean(r && r.ok), reason: r && r.reason };
+        }
+        const res = await fetch(dest.url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: body, praxis: { ...line, detail } }),
+          signal: AbortSignal.timeout(5000),
+        });
+        return { channel: dest.channel, ok: res.ok, reason: res.ok ? undefined : `HTTP ${res.status}` };
+      } catch (err) {
+        // Swallowed on purpose — see the header. Visible in the log line above.
+        logger.warn({ err, event, channel: dest.channel }, "ops alert delivery failed");
+        return { channel: dest.channel, ok: false, reason: err.message };
+      }
+    }),
+  );
+
+  const ok = results.filter((r) => r.ok);
+  const failed = results.filter((r) => !r.ok);
+  if (failed.length) {
+    logger.warn({ ...line, failed }, "one or more alert channels did not accept the alert");
   }
+
+  return {
+    ...line,
+    // Delivered if ANY channel took it. The whole point of a second channel is
+    // that the first one being down is survivable.
+    delivered: ok.length > 0,
+    channels: ok.map((r) => r.channel),
+    failed: failed.length ? failed : undefined,
+    reason: ok.length ? undefined : failed.map((f) => `${f.channel}: ${f.reason}`).join("; "),
+  };
 }
 
 /**
@@ -235,4 +318,4 @@ async function evaluateAndAlert() {
   return raised;
 }
 
-module.exports = { raise, evaluateAndAlert, destinationFor, EVENT_SEVERITY, SEVERITIES };
+module.exports = { raise, evaluateAndAlert, destinationFor, destinationsFor, emailDestination, EVENT_SEVERITY, SEVERITIES };

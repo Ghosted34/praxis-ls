@@ -20,7 +20,9 @@ describe("nextLeafCode — auto-mint of the CoA leaf under a class-5 parent", ()
   test("BANK (parent 521): first child is 521101, then increments by 1", () => {
     expect(rules.nextLeafCode("521", [])).toBe("521101");
     expect(rules.nextLeafCode("521", ["521101"])).toBe("521102");
-    expect(rules.nextLeafCode("521", ["521101", "521105", "521102"])).toBe("521106");
+    expect(rules.nextLeafCode("521", ["521101", "521105", "521102"])).toBe(
+      "521106",
+    );
   });
 
   test("CASH (parent 571): first child is 571101, then increments by 1", () => {
@@ -31,7 +33,9 @@ describe("nextLeafCode — auto-mint of the CoA leaf under a class-5 parent", ()
   test("PETTY CASH (parent 5711, 4-digit): first child is 571110, then increments by 1", () => {
     expect(rules.nextLeafCode("5711", [])).toBe("571110");
     expect(rules.nextLeafCode("5711", ["571110"])).toBe("571111");
-    expect(rules.nextLeafCode("5711", ["571110", "571111", "571112"])).toBe("571113");
+    expect(rules.nextLeafCode("5711", ["571110", "571111", "571112"])).toBe(
+      "571113",
+    );
   });
 
   test("MTN MoMo (parent 5381, 4-digit): first child is 538110", () => {
@@ -51,63 +55,84 @@ describe("nextLeafCode — auto-mint of the CoA leaf under a class-5 parent", ()
   });
 
   test("ignores non-6-digit / non-numeric children", () => {
-    expect(rules.nextLeafCode("521", ["521", "521A01", "521101"])).toBe("521102");
+    expect(rules.nextLeafCode("521", ["521", "521A01", "521101"])).toBe(
+      "521102",
+    );
   });
 
   test("refuses a parent that has no room for a 6-digit child", () => {
-    expect(() => rules.nextLeafCode("521100", [])).toThrow(/6-digit sub-account/);
+    expect(() => rules.nextLeafCode("521100", [])).toThrow(
+      /6-digit sub-account/,
+    );
   });
 });
 
 describe("assertCreate — the shape the create service refuses", () => {
-  const bankCat  = { code: "BANK",       is_active: true, requires_custodian: false };
-  const pettyCat = { code: "PETTY_CASH", is_active: true, requires_custodian: true };
+  const bankCat = { code: "BANK", is_active: true, requires_custodian: false };
+  const pettyCat = {
+    code: "PETTY_CASH",
+    is_active: true,
+    requires_custodian: true,
+  };
 
   test("passes for a well-formed bank account (no custodian, no coa_code)", () => {
     expect(rules.assertCreate({ category: bankCat })).toBe(true);
   });
 
   test("passes for a petty cash account with a custodian", () => {
-    expect(rules.assertCreate({
-      category: pettyCat,
-      custodianUserId: "00000000-0000-4000-8000-000000000001",
-    })).toBe(true);
+    expect(
+      rules.assertCreate({
+        category: pettyCat,
+        custodianUserId: "00000000-0000-4000-8000-000000000001",
+      }),
+    ).toBe(true);
   });
 
   test("refuses when category is missing", () => {
-    expect(() => rules.assertCreate({ category: null })).toThrow(/category_id is required/);
+    expect(() => rules.assertCreate({ category: null })).toThrow(
+      /category_id is required/,
+    );
   });
 
   test("refuses when category is inactive", () => {
-    expect(() => rules.assertCreate({ category: { ...bankCat, is_active: false } }))
-      .toThrow(/inactive/);
+    expect(() =>
+      rules.assertCreate({ category: { ...bankCat, is_active: false } }),
+    ).toThrow(/inactive/);
   });
 
   test("refuses petty cash without a custodian — the whole point of the audit", () => {
-    expect(() => rules.assertCreate({ category: pettyCat }))
-      .toThrow(/needs a custodian/);
+    expect(() => rules.assertCreate({ category: pettyCat })).toThrow(
+      /needs a custodian/,
+    );
   });
 
   test("refuses when the body supplies coa_code — that's the allocator's job", () => {
-    expect(() => rules.assertCreate({ category: bankCat, coaCode: "521100" }))
-      .toThrow(/auto-minted/);
+    expect(() =>
+      rules.assertCreate({ category: bankCat, coaCode: "521100" }),
+    ).toThrow(/auto-minted/);
   });
 });
 
 describe("assertCoaParent — a treasury CoA parent must be class 5, non-postable", () => {
   test("passes for a plausible class-5 non-postable parent", () => {
-    expect(rules.assertCoaParent({ code: "521", class: 5, is_postable: false })).toBe(true);
-    expect(rules.assertCoaParent({ code: "5711", class: 5, is_postable: false })).toBe(true);
+    expect(
+      rules.assertCoaParent({ code: "521", class: 5, is_postable: false }),
+    ).toBe(true);
+    expect(
+      rules.assertCoaParent({ code: "5711", class: 5, is_postable: false }),
+    ).toBe(true);
   });
 
   test("refuses a class-4 receivable used as a treasury parent", () => {
-    expect(() => rules.assertCoaParent({ code: "411", class: 4, is_postable: false }))
-      .toThrow(/class 5/);
+    expect(() =>
+      rules.assertCoaParent({ code: "411", class: 4, is_postable: false }),
+    ).toThrow(/class 5/);
   });
 
   test("refuses a postable leaf used as a parent", () => {
-    expect(() => rules.assertCoaParent({ code: "521100", class: 5, is_postable: true }))
-      .toThrow(/postable/);
+    expect(() =>
+      rules.assertCoaParent({ code: "521100", class: 5, is_postable: true }),
+    ).toThrow(/postable/);
   });
 
   test("refuses a missing row", () => {

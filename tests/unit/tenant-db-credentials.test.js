@@ -17,7 +17,10 @@
  * Platform DB and encryption are mocked; no network, no Postgres.
  */
 
-jest.mock("../../src/services/platform/db", () => ({ query: jest.fn(), close: jest.fn() }));
+jest.mock("../../src/services/platform/db", () => ({
+  query: jest.fn(),
+  close: jest.fn(),
+}));
 jest.mock("../../src/services/encryption.service", () => ({
   encrypt: jest.fn((s) => `enc(${s})`),
   decrypt: jest.fn((s) => String(s).replace(/^enc\(|\)$/g, "")),
@@ -74,14 +77,22 @@ describe("secret_ref parsing", () => {
 
 describe("resolveCredential", () => {
   test("returns the tenant's own password when one is vaulted", async () => {
-    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(tenant-secret)" }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ secret_enc: "enc(tenant-secret)" }],
+    });
     const cred = await creds.resolveCredential(meta());
-    expect(cred).toEqual({ user: "praxis_acme", password: "tenant-secret", source: "vault" });
+    expect(cred).toEqual({
+      user: "praxis_acme",
+      password: "tenant-secret",
+      source: "vault",
+    });
   });
 
   test("uses app_role from the registry row, not the deploy-wide role", async () => {
     platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(x)" }] });
-    const cred = await creds.resolveCredential(meta({ app_role: "praxis_other" }));
+    const cred = await creds.resolveCredential(
+      meta({ app_role: "praxis_other" }),
+    );
     expect(cred.user).toBe("praxis_other");
   });
 
@@ -114,15 +125,23 @@ describe("resolveCredential", () => {
   });
 
   test("falls back on an unparseable secret_ref instead of taking the tenant offline", async () => {
-    const cred = await creds.resolveCredential(meta({ secret_ref: "not-a-ref" }));
+    const cred = await creds.resolveCredential(
+      meta({ secret_ref: "not-a-ref" }),
+    );
     expect(cred.source).toBe("shared");
     expect(platformDb.query).not.toHaveBeenCalled();
   });
 
   test("reads the env scheme without touching the platform DB", async () => {
     process.env.ACME_DB_PASSWORD = "from-env";
-    const cred = await creds.resolveCredential(meta({ secret_ref: "env:ACME_DB_PASSWORD" }));
-    expect(cred).toEqual({ user: "praxis_acme", password: "from-env", source: "vault" });
+    const cred = await creds.resolveCredential(
+      meta({ secret_ref: "env:ACME_DB_PASSWORD" }),
+    );
+    expect(cred).toEqual({
+      user: "praxis_acme",
+      password: "from-env",
+      source: "vault",
+    });
     expect(platformDb.query).not.toHaveBeenCalled();
     delete process.env.ACME_DB_PASSWORD;
   });
@@ -130,7 +149,9 @@ describe("resolveCredential", () => {
 
 describe("caching and rotation", () => {
   test("caches a resolved credential so pool churn does not re-query the platform DB", async () => {
-    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(cached)" }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ secret_enc: "enc(cached)" }],
+    });
     await creds.resolveCredential(meta());
     await creds.resolveCredential(meta());
     expect(platformDb.query).toHaveBeenCalledTimes(1);
@@ -149,7 +170,9 @@ describe("caching and rotation", () => {
   test("a shared-credential fallback is NOT cached, so a backfilled tenant picks up its credential", async () => {
     platformDb.query.mockResolvedValue({ rows: [] });
     expect((await creds.resolveCredential(meta())).source).toBe("shared");
-    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(now-provisioned)" }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ secret_enc: "enc(now-provisioned)" }],
+    });
     expect((await creds.resolveCredential(meta())).source).toBe("vault");
   });
 });
@@ -186,7 +209,9 @@ describe("slow platform DB (incident 2026-08-12)", () => {
 
   test("the shared fallback keeps the deploy-wide role, never app_role with the shared password", async () => {
     platformDb.query.mockResolvedValue({ rows: [] });
-    const cred = await creds.resolveCredential(meta({ app_role: "praxis_acme" }));
+    const cred = await creds.resolveCredential(
+      meta({ app_role: "praxis_acme" }),
+    );
 
     // Pairing the per-tenant ROLE with the deploy-wide PASSWORD authenticates as
     // a role that either does not exist or has a different password. The role and
@@ -197,7 +222,9 @@ describe("slow platform DB (incident 2026-08-12)", () => {
   });
 
   test("an expired entry is served from cache and refreshed behind the request", async () => {
-    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(first)" }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ secret_enc: "enc(first)" }],
+    });
     expect((await creds.resolveCredential(meta())).password).toBe("first");
 
     // Expire it the way time would, without waiting an hour.
@@ -206,7 +233,9 @@ describe("slow platform DB (incident 2026-08-12)", () => {
     // The request is served immediately from the stale entry — it does NOT pay
     // for the platform round trip. That inline payment, once per tenant per
     // minute, is what queued up behind the saturated platform DB.
-    platformDb.query.mockResolvedValue({ rows: [{ secret_enc: "enc(second)" }] });
+    platformDb.query.mockResolvedValue({
+      rows: [{ secret_enc: "enc(second)" }],
+    });
     expect((await creds.resolveCredential(meta())).password).toBe("first");
 
     // The refresh happened in the background, so the NEXT request sees the new
@@ -223,10 +252,15 @@ describe("slow platform DB (incident 2026-08-12)", () => {
     platformDb.query.mockClear();
     let release;
     platformDb.query.mockImplementation(
-      () => new Promise((resolve) => { release = () => resolve({ rows: [{ secret_enc: "enc(v2)" }] }); }),
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve({ rows: [{ secret_enc: "enc(v2)" }] });
+        }),
     );
 
-    await Promise.all(Array.from({ length: 25 }, () => creds.resolveCredential(meta())));
+    await Promise.all(
+      Array.from({ length: 25 }, () => creds.resolveCredential(meta())),
+    );
 
     // 25 concurrent cold-ish reads used to mean 25 platform queries. De-duplication
     // is what stops a fleet-wide expiry from becoming a self-inflicted load spike.
@@ -250,7 +284,9 @@ describe("putCredential", () => {
 
   test("rejects an empty or oversized password", async () => {
     await expect(creds.putCredential("acme", "")).rejects.toThrow(/1–4000/);
-    await expect(creds.putCredential("acme", "x".repeat(4001))).rejects.toThrow(/1–4000/);
+    await expect(creds.putCredential("acme", "x".repeat(4001))).rejects.toThrow(
+      /1–4000/,
+    );
   });
 
   test("writes under the tenant_db section keyed by slug, lowercased", async () => {

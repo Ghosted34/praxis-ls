@@ -22,6 +22,7 @@ client` clean; `node --check` + `eslint` clean on all changed BE files.** DB int
 ## What's in it
 
 **FE follow-ons**
+
 - Remaining reference pickers → shared `SearchSelect` (sales/commercial/finance/settings/portal), plus a
   new optional `filter` prop (keeps the credit-note reversed-invoice picker scoped to FINAL invoices).
 - Settings store tiles — `features/settings/store-pages.tsx`: Document templates, Custom fields, Email
@@ -31,6 +32,7 @@ client` clean; `node --check` + `eslint` clean on all changed BE files.** DB int
 - PWA `manifest.background_color` follows the tenant theme (`src/routes/pwa.js`).
 
 **Pending BE jobs (BE + FE)**
+
 - **Dashboard KPI aggregates** — guarded `revenue_final_ttc` / `fleet_active`+`fleet_total` /
   `sla_on_time_pct` in `dashboard.repo.js`; Control Tower cards fed live, null cards hidden.
 - **Refresh-token rotation + reuse-detection** — `app_user.service.refresh()` rotates the refresh token
@@ -42,10 +44,12 @@ client` clean; `node --check` + `eslint` clean on all changed BE files.** DB int
   **Send…** modal.
 
 **New lane screens**
+
 - **Smart Comms** (`/comms`) — channel list + thread + composer + new-channel modal over `/smartcomm`.
 - **My Workspace** (`/workspace`) — personal approvals + notifications landing + quick links.
 
 **Tests (new)**
+
 - `tests/unit/auth-refresh-rotation.test.js` — reuse-detection predicate `refreshTokenReused` (extracted
   as a pure, exported seam): current jti → not reuse; rotated-away jti → reuse; legacy null-jti
   grandfathered; defensive null cases.
@@ -56,6 +60,7 @@ client` clean; `node --check` + `eslint` clean on all changed BE files.** DB int
   can't boot here without Redis/Postgres (same limit as `npm test`); run on CI/Windows.
 
 **Tooling / docs**
+
 - Postman: new folder **13 · Marketing / Campaigns**; `POST /auth/refresh` now captures the rotated token.
 - Docs updated: `SESSION_HANDOFF.md`, `WORK_DONE.md`, `FE_IA_BUILD_MAP.md` (statuses corrected — the
   Master data hub was already built), `CAMPAIGN_TEMPLATES_BE_HANDOFF.md`.

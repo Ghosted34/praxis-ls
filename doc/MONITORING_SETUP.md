@@ -8,9 +8,9 @@ The code changes are done. What is below needs an account, a URL or a person,
 so it could not be committed — but none of it takes more than twenty minutes,
 and until it is done, **nothing in this system is watched**.
 
-> The observability audit's closing line: *"If only one thing is done: fix the
+> The observability audit's closing line: _"If only one thing is done: fix the
 > health check and put an external uptime monitor on it. Everything else in that
-> report assumes someone finds out."* The first half shipped today. The second
+> report assumes someone finds out."_ The first half shipped today. The second
 > half is step 1 below.
 
 ---
@@ -43,12 +43,12 @@ is the endpoint that produced OBS-A2 in the first place.
 
 Any of these work; the audit expresses no preference:
 
-| Provider | Free tier | Body matching |
-|---|---|---|
-| Better Stack (Betteruptime) | 10 monitors | yes |
-| UptimeRobot | 50 monitors, 5-min interval | paid only |
-| Healthchecks.io | 20 checks | n/a (push model) |
-| Pingdom | trial | yes |
+| Provider                    | Free tier                   | Body matching    |
+| --------------------------- | --------------------------- | ---------------- |
+| Better Stack (Betteruptime) | 10 monitors                 | yes              |
+| UptimeRobot                 | 50 monitors, 5-min interval | paid only        |
+| Healthchecks.io             | 20 checks                   | n/a (push model) |
+| Pingdom                     | trial                       | yes              |
 
 **Also monitor the platform console host** (`admin.<domain>`) if it is served
 separately — it is a different nginx vhost and can fail independently.
@@ -123,7 +123,7 @@ stays down until a human notices. Add to `api`, `api-standby`, `worker`,
 `postgres` and `redis`:
 
 ```yaml
-    restart: unless-stopped
+restart: unless-stopped
 ```
 
 `unless-stopped` rather than `always`: it will not resurrect a container you

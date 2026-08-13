@@ -7,7 +7,7 @@
  * Payload shape is what the server sends (shared/push/push.service.js sendToUser):
  *   { title, body, url, tag }
  */
- 
+
 self.addEventListener("push", (event) => {
   let data = {};
   try {
@@ -28,18 +28,22 @@ self.addEventListener("push", (event) => {
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const target = (event.notification.data && event.notification.data.url) || "/notifications";
+  const target =
+    (event.notification.data && event.notification.data.url) ||
+    "/notifications";
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((clients) => {
-      // Focus an existing tab if one is open; otherwise open a new one.
-      for (const client of clients) {
-        if ("focus" in client) {
-          client.navigate(target).catch(() => {});
-          return client.focus();
+    self.clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clients) => {
+        // Focus an existing tab if one is open; otherwise open a new one.
+        for (const client of clients) {
+          if ("focus" in client) {
+            client.navigate(target).catch(() => {});
+            return client.focus();
+          }
         }
-      }
-      if (self.clients.openWindow) return self.clients.openWindow(target);
-      return undefined;
-    }),
+        if (self.clients.openWindow) return self.clients.openWindow(target);
+        return undefined;
+      }),
   );
 });

@@ -10,7 +10,7 @@ P1 items are fixed and verified in-sandbox (lint + unit tests + live boot).
    `src/server.js` and `src/jobs/workers.js`. Every async middleware/handler
    rejection now routes to the error handler instead of crashing the process.
    Added `unhandledRejection`/`uncaughtException` guards as defense-in-depth.
-   *Verified:* booting the real app and hitting `/api/platform/tenants` with no
+   _Verified:_ booting the real app and hitting `/api/platform/tenants` with no
    token now returns `401 AUTH_REQUIRED` with **no process crash** (was: full
    crash). Regression test: `tests/unit/async-safe.test.js`.
 
@@ -57,6 +57,7 @@ P1 items are fixed and verified in-sandbox (lint + unit tests + live boot).
    (backend + tests: 0 errors).
 
 ## Verified in sandbox
+
 - `npm run lint` → exit 0 (0 errors).
 - `find src scripts -name '*.js' | xargs -n1 node --check` → all parse.
 - `npx jest --runInBand` → 2 suites, 7 tests, all pass.
@@ -64,6 +65,7 @@ P1 items are fixed and verified in-sandbox (lint + unit tests + live boot).
 - `NODE_ENV=production` with defaults → boot refused with a clear message.
 
 ## Still open (tracked, not P0 — needs a real Postgres/decision)
+
 - Run `9021_seed_default_permissions.sql` against a real Postgres + non-CEO login
   spot-check (audit §7). No DB in the build sandbox.
 - DB-gated integration tests (tenant A cannot read tenant B; ledger UPDATE/DELETE

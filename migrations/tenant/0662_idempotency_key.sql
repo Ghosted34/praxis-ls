@@ -1,5 +1,5 @@
 -- ============================================================================
--- TENANT DB — 0660 Idempotency keys: replaying a write must not double-post.
+-- TENANT DB — 0662 Idempotency keys: replaying a write must not double-post.
 --
 -- WHY THIS TABLE EXISTS
 --

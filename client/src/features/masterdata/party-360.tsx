@@ -23,7 +23,9 @@ import { useToast } from "@/components/ui/toast";
 import { useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
+import { ScanAttachment } from "@/components/scan-attachment";
 import * as api from "@/lib/masterdata-api";
+import { ComposeIconButton } from "@/features/comms/mail";
 
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
@@ -772,6 +774,21 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
   // Explicit copy-from-origin (§6) — only offered on a converted party.
   const copySection = (section: api.CloneSection) =>
     act(async () => { const r = await api.cloneFromOrigin(kind, partyId, [section]); return r; }, "Copied from origin");
+  /**
+   * Point a KYC document at the file the vault just took.
+   *
+   * The upload itself is `<ScanAttachment>`'s; this second call is what turns a
+   * paper-only record into a scanned one. `_shared/nested.js` reads the new
+   * `vault_id` and advances scan_status PENDING → SCANNED by itself — the human
+   * step that follows (SCANNED → VERIFIED) stays human, which is Hard Rule 9's
+   * digital-scan gate on verifying the party at all.
+   */
+  async function linkScan(doc: api.PartyDocument, vaultId: string) {
+    await api.documents.update(kind, partyId, doc.document_id, { vault_id: vaultId });
+    toast.success("Scan attached — the document is now marked scanned.");
+    reload();
+  }
+
   async function revealBankNumber(bankId: string) {
     setError(null);
     try { const r = await api.revealBank(kind, partyId, bankId); setRevealed((s) => ({ ...s, [bankId]: r.account_number || r.iban || r.swift_bic || "—" })); }
@@ -799,7 +816,8 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
               <p className="mt-1 micro">Also known as: {(d.aliases || []).map((a) => a.alias).join(", ")}</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ComposeIconButton to={(p as { email?: string | null }).email || undefined} className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" />
             <Button size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
             {comp.can_verify && p.verification_status !== "VERIFIED" && (
               <Button size="sm" variant="outline" loading={busy} onClick={() => act(() => api.verifyParty(kind, partyId), "Verified")}>Verify</Button>
@@ -952,7 +970,11 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
 
       {tab === "Documents" && (
         <Section title="KYC / compliance documents" onAdd={() => setAdding("document")}>
-          <MiniTable empty={d.documents.length === 0} head={<><Th>Type</Th><Th>Number</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th></>}>
+          <p className="mb-2 micro text-muted-foreground">
+            Add the document to record its details, then attach the file on its row — a PDF or a photo of the
+            original, up to 25 MB. Verification (Hard Rule 9) needs the scan, not just the reference.
+          </p>
+          <MiniTable empty={d.documents.length === 0} head={<><Th>Type</Th><Th>Number</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th><Th r>File</Th></>}>
             {d.documents.map((doc: api.PartyDocument) => (
               <tr key={doc.document_id}>
                 <Td>{doc.document_type_name || "—"}</Td>
@@ -960,6 +982,15 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
                 <Td>{dateFmt(doc.expires_on)}</Td>
                 <Td><Pill tone={SCAN_TONE[doc.scan_status || "PENDING"] || "mute"}>{enumLabel(doc.scan_status)}</Pill></Td>
                 <Td>{enumLabel(doc.verification_status)}</Td>
+                <Td r>
+                  <ScanAttachment
+                    vaultId={doc.vault_id}
+                    docType={isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"}
+                    entityRef={`${kind}_document:${doc.document_id}`}
+                    onAttached={(vaultId) => linkScan(doc, vaultId)}
+                    onError={setError}
+                  />
+                </Td>
               </tr>
             ))}
           </MiniTable>

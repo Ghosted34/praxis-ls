@@ -17,7 +17,7 @@ _Last updated: 2026-08-02 (session 19)._
 
 - **The approval engine enforces something for the first time.** It was designed well and wired to
   nothing: steps bound to a role, a scope and a capability, and `act()` checked only that the task
-  was still PENDING. A chain routed *notifications*, not authority. Session 19 closed that —
+  was still PENDING. A chain routed _notifications_, not authority. Session 19 closed that —
   eligibility, maker-checker, per-module gating, and the bypass routes. **Proven end to end on
   smartls** (submit → task → self-approval refused → second user approves). Read
   `doc/ORGANOGRAMME_AUDIT_2026-08-02.md` before touching any of it.
@@ -27,7 +27,7 @@ _Last updated: 2026-08-02 (session 19)._
 - **TEST mode is writable for the first time since session 3.** Identity is pinned to the LIVE
   schema while business data writes to the env-selected one, and 60+ tenant columns are
   `REFERENCES app_user(user_id)` — so a user missing from `sandbox.app_user` makes that user's TEST
-  writes fail with 23503, usually *after* the row has committed. Mirroring now runs on user
+  writes fail with 23503, usually _after_ the row has committed. Mirroring now runs on user
   create/update and on every deploy (`shared/db/sandbox-user-mirror.js`).
 - **The external client portal is live** at `/client-portal` — client + investor terminals, with an
   invite/reset flow (`0482`) that creates the login a grant was always missing. Auditor room is
@@ -63,7 +63,7 @@ _Last updated: 2026-08-02 (session 19)._
   has no CEO bypass. If a screen 403s, run `node scripts/tenant/feature-report.js --slug=<slug>`
   before suspecting permissions.
 - **The bash mount serves stale copies of freshly written files.** In-sandbox `node`/`jest` can
-  fail on files that are actually fine — and it can hide a file *entirely*: on 2026-08-02 four
+  fail on files that are actually fine — and it can hide a file _entirely_: on 2026-08-02 four
   greps reported `9120_hr_discipline_module.sql` did not exist, and an audit wrongly accused a
   colleague of shipping an uncatalogued module key on that basis. Windows validators are
   authoritative — see "Sandbox gotcha" at the end.
@@ -78,29 +78,30 @@ _Last updated: 2026-08-02 (session 19)._
 
 Newest first. Sessions 16–18 log below; 1–15 in `doc/SESSION_HISTORY.md`.
 
-| # | Date | Headline |
-|---|---|---|
-| 19b | 2026-08-02 | **Approval engine made to enforce** (eligibility, maker-checker, per-module gating, bypasses closed — `0488`–`0492`); organigramme wired (`user_scope` assignment + chart); departments became scopes (`0490`); PRs joined the engine (`0491`); **reporting line — B1** (`0493`); **auth: session recovery + "keep me signed in" honoured** (`0494`); mail RBAC (`MOD-72`); permission matrix stopped wiping grants; screen registry 59→96 |
-| 19 | 2026-08-02 | `depends_on` enforced at projection; **user↔capability assignment built** + `requireCapability` mounted on disburse/costing-status (`0487` backfill); **self-grant maker-checker block**; AssetsPage write UI (create/depreciate/dispose) |
-| 18 | 2026-08-02 | TEST-mode writes fully fixed; AI rolling summary (`0481`); `/media` safe under S3; **client + investor portals** (`0482`); open-list re-audit |
-| 17 | 2026-08-01 | Control Tower map made real (`0478`/`0479`); `/media` bypass closed; milestone auto-seeding; AI memory; service types + `0480`; doc-truth audit |
-| 16 | 2026-07-29 | Document-UI overhaul; master emails (`0475`); document line items (`0476`); logo fix; AI vendor keys → platform |
-| 15 | 2026-07-27 | Lovable kit fidelity; per-screen AI gate; workflow blocks; HR succession + onboarding modules |
-| 14 | 2026-07-24 | Feature-toggle → tenant-screen fix; platform RBAC (`0031`); Plans CRUD; tenant lifecycle |
-| 13 | 2026-07-23 | Platform Console built from zero; Support & Feedback end-to-end |
-| 11 | 2026-07-22 | Sandbox data tooling; S3 driver; Fleet/WMS/HR CRUD; real-time comms; portal auth (`0460`) |
-| 10 | 2026-07-20 | Feature-gate root cause (19 modules dark for everyone); Pixie permission matrix; Control Tower de-mock |
-| 9 | 2026-07-19 | Security CRUD + Security/Vault hubs; Control Tower drill-downs; Governance |
-| 8 | 2026-07-18 | FE follow-ons + all pending BE jobs |
-| 7 | 2026-07-17 | Cross-cutting FE pass: token rotation, search everywhere, quotations, campaigns |
-| 6 | 2026-07-17 | Sales/CRM funnel + Commercial group |
-| 5 | 2026-07-16 | Master-data trio; global AI gate; BE `ai_enabled` |
-| 4 | 2026-07-15 | Settings tiles; per-tenant PWA; screen scaffolds |
-| 1–3 | 2026-07-13/15 | IA menu + ⌘K palette; landing/login rebuild; test isolation; identity pinned to live; LIVE/TEST toggle |
+| #   | Date          | Headline                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| --- | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 19b | 2026-08-02    | **Approval engine made to enforce** (eligibility, maker-checker, per-module gating, bypasses closed — `0488`–`0492`); organigramme wired (`user_scope` assignment + chart); departments became scopes (`0490`); PRs joined the engine (`0491`); **reporting line — B1** (`0493`); **auth: session recovery + "keep me signed in" honoured** (`0494`); mail RBAC (`MOD-72`); permission matrix stopped wiping grants; screen registry 59→96 |
+| 19  | 2026-08-02    | `depends_on` enforced at projection; **user↔capability assignment built** + `requireCapability` mounted on disburse/costing-status (`0487` backfill); **self-grant maker-checker block**; AssetsPage write UI (create/depreciate/dispose)                                                                                                                                                                                                  |
+| 18  | 2026-08-02    | TEST-mode writes fully fixed; AI rolling summary (`0481`); `/media` safe under S3; **client + investor portals** (`0482`); open-list re-audit                                                                                                                                                                                                                                                                                              |
+| 17  | 2026-08-01    | Control Tower map made real (`0478`/`0479`); `/media` bypass closed; milestone auto-seeding; AI memory; service types + `0480`; doc-truth audit                                                                                                                                                                                                                                                                                            |
+| 16  | 2026-07-29    | Document-UI overhaul; master emails (`0475`); document line items (`0476`); logo fix; AI vendor keys → platform                                                                                                                                                                                                                                                                                                                            |
+| 15  | 2026-07-27    | Lovable kit fidelity; per-screen AI gate; workflow blocks; HR succession + onboarding modules                                                                                                                                                                                                                                                                                                                                              |
+| 14  | 2026-07-24    | Feature-toggle → tenant-screen fix; platform RBAC (`0031`); Plans CRUD; tenant lifecycle                                                                                                                                                                                                                                                                                                                                                   |
+| 13  | 2026-07-23    | Platform Console built from zero; Support & Feedback end-to-end                                                                                                                                                                                                                                                                                                                                                                            |
+| 11  | 2026-07-22    | Sandbox data tooling; S3 driver; Fleet/WMS/HR CRUD; real-time comms; portal auth (`0460`)                                                                                                                                                                                                                                                                                                                                                  |
+| 10  | 2026-07-20    | Feature-gate root cause (19 modules dark for everyone); Pixie permission matrix; Control Tower de-mock                                                                                                                                                                                                                                                                                                                                     |
+| 9   | 2026-07-19    | Security CRUD + Security/Vault hubs; Control Tower drill-downs; Governance                                                                                                                                                                                                                                                                                                                                                                 |
+| 8   | 2026-07-18    | FE follow-ons + all pending BE jobs                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 7   | 2026-07-17    | Cross-cutting FE pass: token rotation, search everywhere, quotations, campaigns                                                                                                                                                                                                                                                                                                                                                            |
+| 6   | 2026-07-17    | Sales/CRM funnel + Commercial group                                                                                                                                                                                                                                                                                                                                                                                                        |
+| 5   | 2026-07-16    | Master-data trio; global AI gate; BE `ai_enabled`                                                                                                                                                                                                                                                                                                                                                                                          |
+| 4   | 2026-07-15    | Settings tiles; per-tenant PWA; screen scaffolds                                                                                                                                                                                                                                                                                                                                                                                           |
+| 1–3 | 2026-07-13/15 | IA menu + ⌘K palette; landing/login rebuild; test isolation; identity pinned to live; LIVE/TEST toggle                                                                                                                                                                                                                                                                                                                                     |
 
 ## Project
 
 Praxis LS (SmartLS) — multi-tenant OHADA/Cameroon logistics + accounting ERP.
+
 - **Backend:** Node 20 CommonJS + Express + PostgreSQL 16/pgvector + Redis. Repo root.
 - **Frontend:** Vite + React 18 + TS SPA in `client/`.
 - **Working folder:** `C:\Users\user\Documents\work\praxis-ls` (was
@@ -122,8 +123,8 @@ audit banners in `WORK_TO_BE_DONE.md` are the correction).
   Fleet/WMS/HR built here). Tests + lint green.
 - **Frontend reskinned to the Lovable "Control Tower" look**, keeping the existing
   client's working plumbing (auth, api-client with refresh-on-401, branding, theme,
-  screen-registry). Approach chosen with the user: *functionality of the existing
-  client, looks of Lovable.*
+  screen-registry). Approach chosen with the user: _functionality of the existing
+  client, looks of Lovable._
   - `client/src/index.css` — Lovable design tokens (orange `#F5821F` + blue `#1C9BD7`,
     off-white/navy palette, Playfair Display + Montserrat, mesh backdrop) mapped onto
     the existing semantic tokens, so every screen re-tints automatically. Signature
@@ -208,7 +209,7 @@ the approval hierarchy.
    names both, null = unrestricted), the capability if the step names one, and `step_kind` against the
    verb. **Maker-checker is enforced for everyone including the CEO** — the requester was already
    resolved, and used only to decide whether to send a notification. Deliberate departure from the CEO
-   RBAC bypass; on a tenant where one person is the only approver *and* the only requester this WILL
+   RBAC bypass; on a tenant where one person is the only approver _and_ the only requester this WILL
    block, which is the control working.
 
 3. **Scope resolves as a CLOSURE** (`identity-cache.getUserScopeClosure`) — a manager at HQ can act on
@@ -314,7 +315,8 @@ preview but not the external surface it exists to control), and the `last_seen_a
 
 **⚠️ VALIDATION STATUS: NONE (sandbox VM down — "Not enough disk space").** No `tsc`/`eslint`/`jest`/`vite build`
 ran. Windows validators are the gate. Backend changes are plain CommonJS; the FE touch is `finance/pages.tsx`
-+ `finance-api.ts` + `security/pages.tsx`. New tenant migration **`0487`** to run.
+
+- `finance-api.ts` + `security/pages.tsx`. New tenant migration **`0487`** to run.
 
 0. **⚠️ POSTMORTEM — the first cut of point 1 caused a production outage; fixed.** `depends_on` is a
    **`citext[]`**, and node-postgres has no array parser for the extension type, so it returns the raw literal
@@ -367,7 +369,7 @@ ran. Windows validators are the gate. Backend changes are plain CommonJS; the FE
    rule (DB_ARCHITECTURE §108) is "a Super Admin cannot self-grant Issuer/Validator/Approver", i.e. it is about
    the **capability** overlay, which only became assignable via the writer built in point 2. `setForUser` now
    rejects (403 `SELF_GRANT_FORBIDDEN`) a user **adding** a restricted authority (ISSUER/VALIDATOR/APPROVER) to
-   **themselves** — keeping or removing one a *different* admin granted, and clearing the set, stay allowed; a
+   **themselves** — keeping or removing one a _different_ admin granted, and clearing the set, stay allowed; a
    diff against current holdings, not a blanket ban. The TODO's `req.env` dependency was moot: capabilities are
    identity data pinned to the live schema, so the block is unconditional (there is no sandbox authority set to
    exempt). The permission role×module matrix is deliberately untouched — the rule names the authority overlay,
@@ -414,7 +416,7 @@ mechanism that had never been recorded.
 1. **The mirror was running at one moment, not continuously.** Session 17 copied `live.app_user` into the
    rebuilt sandbox at the end of `wipeSandbox`. Correct, insufficient — mirroring at wipe time leaves
    **(a)** a newly provisioned tenant with an empty sandbox (provisioning runs before `create-admin.js`, so
-   there is nothing to copy — the known gap), and **(b)** *any* user created after the last wipe missing on an
+   there is nothing to copy — the known gap), and **(b)** _any_ user created after the last wipe missing on an
    otherwise-healthy tenant — the drift case, which nobody had identified. Not hypothetical: the backfill found
    **2 such users on smartls**, so the deployment was already broken by a route the docs didn't describe.
    Both produce the same 23503 "Referenced record not found" on the first TEST-mode write, after the business
@@ -439,13 +441,13 @@ mechanism that had never been recorded.
    `tests/unit/sandbox-user-mirror.test.js` — nine cases.
 
 4b. **Deploy covers it.** `migrateTenant()` mirrors after `projectFeatures()`, so `scripts/deploy.sh`'s migrate
-   service (platform + all tenants, every deploy) self-heals drift on **every** environment — no manual step to
-   forget. Best-effort: a deploy must not fail over sandbox convenience data, so a failure logs at error level
-   and the script re-runs it on demand. The manual script is now for ad-hoc/local use, not a release checklist
-   item.
+service (platform + all tenants, every deploy) self-heals drift on **every** environment — no manual step to
+forget. Best-effort: a deploy must not fail over sandbox convenience data, so a failure logs at error level
+and the script re-runs it on demand. The manual script is now for ad-hoc/local use, not a release checklist
+item.
 
 5. **Validated (user-run on Windows):** lint + test clean, `--all` → `smartls: mirrored 2 of 2 missing
-   user(s)`, and a TEST-mode write with a real actor confirmed in the UI. **TEST mode is writable for the
+user(s)`, and a TEST-mode write with a real actor confirmed in the UI. **TEST mode is writable for the
    first time since session 3.** `migrateTenant` (the deploy-path mirror) was re-validated in the same pass.
 
 6. **AI memory stopped forgetting (`0481`).** Rolling summary on `ai_conversation` — everything that scrolls
@@ -488,14 +490,14 @@ mechanism that had never been recorded.
 
 9. **Re-audited the open list against source** (detail + line numbers in `WORK_TO_BE_DONE.md`, "Repo audit —
    2026-08-02"). Four corrections: the **xlsx/csv export is half-built** — `services/spreadsheet.service.js`
-   + `services/excel/workbook.js` exist, are house-styled, and have **zero consumers**, so the gap is wiring
-   plus a non-PDF job handler (`jobs/workers.js:25` registers `pdf` only), not authorship; **Help center is
-   built and routed** at `/help`, only the settings tile is `<Planned/>` (factory languages is the genuinely
-   unbuilt one); **two session-10 chores were never done** — `client/vite.config.js` still shadows
-   `vite.config.ts` and `features/master/pages.tsx` still has zero importers; and **`depends_on` is concrete**
-   — `ai.assistant.backend`/`ai.vectorization` both declare `{ai.assistant}` and nothing enforces it. Also
-   missed by the 08-01 audit: **`AssetsPage` is still a `ResourceList` stub** (`finance/pages.tsx:1120`)
-   behind a complete `finance/asset/` backend.
+   - `services/excel/workbook.js` exist, are house-styled, and have **zero consumers**, so the gap is wiring
+     plus a non-PDF job handler (`jobs/workers.js:25` registers `pdf` only), not authorship; **Help center is
+     built and routed** at `/help`, only the settings tile is `<Planned/>` (factory languages is the genuinely
+     unbuilt one); **two session-10 chores were never done** — `client/vite.config.js` still shadows
+     `vite.config.ts` and `features/master/pages.tsx` still has zero importers; and **`depends_on` is concrete**
+     — `ai.assistant.backend`/`ai.vectorization` both declare `{ai.assistant}` and nothing enforces it. Also
+     missed by the 08-01 audit: **`AssetsPage` is still a `ResourceList` stub** (`finance/pages.tsx:1120`)
+     behind a complete `finance/asset/` backend.
 
 ## Session log — 2026-08-01 (session 17: Control Tower map made real, /media bypass closed, milestone auto-seeding, AI memory, doc-truth audit)
 
@@ -585,11 +587,11 @@ Windows validators are the gate. `npm install --prefix client` is REQUIRED first
    messages replayed** with everything stored indefinitely — the cap bounds per-call token cost, which matters
    because AI spend is budget-capped. History is `redact()`ed on replay like live input, saved **after** the
    model call (no orphan question replayed forever with no answer), and best-effort throughout. `GET /ai/history`
-   + `POST /ai/history/clear` (clear starts a NEW thread — deleting would strip the `ai_action_run` audit trail,
-   which references `conversation_id`). Executed actions append a factual assistant note, so the assistant knows
-   what it **did**, not only what it proposed. Fixed: action runs recorded `conversation_id` from a request
-   field the copilot never sent, orphaning every one. **Known limit:** no summarisation, so turn 21 doesn't
-   fade — it vanishes.
+   - `POST /ai/history/clear` (clear starts a NEW thread — deleting would strip the `ai_action_run` audit trail,
+     which references `conversation_id`). Executed actions append a factual assistant note, so the assistant knows
+     what it **did**, not only what it proposed. Fixed: action runs recorded `conversation_id` from a request
+     field the copilot never sent, orphaning every one. **Known limit:** no summarisation, so turn 21 doesn't
+     fade — it vanishes.
 
 8. **CI.** `npm audit --audit-level=high`, a secret scan (deliberately not matching the `__rotate_me__`
    placeholders), a **duplicate-migration-number guard** (`scripts/db/check-migration-numbers.js`), and a
@@ -606,7 +608,7 @@ Windows validators are the gate. `npm install --prefix client` is REQUIRED first
    the dossier arriving with a live milestone chain, a progress bar and a plotted map lane.
    - **⚠️ TEST-MODE WRITES BROKEN SINCE SESSION 3 — the most important finding here.** Identity pinned to LIVE
      (`req.identityDb`) vs business writes on `req.tenantDb` (sandbox), and **60+ columns typed
-     `REFERENCES app_user(user_id)`** between them → **23503** on any actor column, *after* the business row
+     `REFERENCES app_user(user_id)`** between them → **23503** on any actor column, _after_ the business row
      had already committed. Hidden for fourteen sessions because `sandbox.app_user` kept its provisioning
      rows; the first `DROP SCHEMA sandbox CASCADE` exposed it. **Fixed by mirroring `live.app_user` into the
      rebuilt sandbox** (`provisioning.service.js` `mirrorUsersIntoSandbox`). Per-site guards were tried and
@@ -617,7 +619,7 @@ Windows validators are the gate. `npm install --prefix client` is REQUIRED first
    - **Onboarding gap closed.** `service_type` had **no module** (ten modules referenced it; only
      `seed-sandbox.sql` ever created one) and `POST /milestones/templates` had no caller. Built
      `operations/service_type/` (shared kit, MOD-29, immutable `key`, DELETE archives — `dossier.
-     service_type_id` is a plain FK), `features/operations/service-types.tsx` **with the template editor on
+service_type_id` is a plain FK), `features/operations/service-types.tsx` **with the template editor on
      the same screen** (a service type with no active template silently produces chainless dossiers, so the
      list warns), and the **service-type field on the dossier form** — every UI-created dossier previously had
      `service_type_id = null`.
@@ -681,7 +683,7 @@ bundlers segfault in-sandbox, so no full `vite build` here).
 2. **Real `loadRecord` loaders** in `src/modules/documents/template/template.service.js` for the whole set.
    Gotchas resolved: **proforma** reads the `advance` table (not `invoice`); **credit note** is an `invoice`
    row `type='CREDIT_NOTE'` (no separate table); **receipts** now load `payment_allocation → invoice` so the
-   doc shows *what is being paid for* (native + PDF template); **régie** page was crashing (`SELECT *` returns
+   doc shows _what is being paid for_ (native + PDF template); **régie** page was crashing (`SELECT *` returns
    `regie_advance_id`/`state`, the client read `regie_id`/`status`) — reconciled the client type + wired View.
 
 3. **Native renderer fixes.** Work orders (`parts`/`cost` tables), contracts (employee party + type/effective/
@@ -722,7 +724,7 @@ bundlers segfault in-sandbox, so no full `vite build` here).
 9. **AI vendor keys → platform (shared, deploy-wide).** New **`platform/0060_ai_vendor.sql`** (shared
    `ai_vendor_credential` on the platform DB, seeds the 4 vendors). New `services/platform/ai-vendor.service.js`
    (list/set/getConfig/test via `platformDb` + `encryption`) + platform routes `GET/PUT/POST
-   /api/platform/ai-vendors[/:vendor[/test]]`. **Runtime swap:** `llm.service`, `embeddings.service`,
+/api/platform/ai-vendors[/:vendor[/test]]`. **Runtime swap:** `llm.service`, `embeddings.service`,
    `ai-transcribe`, `ai-vision` now read the shared keys via `platformVendors.getConfig()` (env fallback kept)
    instead of the per-tenant governance store. **Tenant side removed:** Vendors tab dropped from `AiControlHub`;
    `/ai/governance/vendors` routes removed. **Console:** managed under **Integrations → AI providers**
@@ -752,10 +754,12 @@ bundlers segfault in-sandbox, so no full `vite build` here).
     empty until the dictionary/inventory masters have rows.
 
 **Migrations to run:** platform **`0060_ai_vendor`** + tenant **`0475_master_email`** + **`0476_document_lines`**
-+ **`0477_line_item_refs`** (`deploy.sh`'s migrate service runs both sets). **Owed:** full `tsc` / `vite build`
-/ `jest` on a real machine; set the shared AI keys in the console; verify a live AI chat/embedding on a tenant
-(credential path changed); ensure the financial-dictionary + inventory masters are seeded so the line selects
-have options.
+
+- **`0477_line_item_refs`** (`deploy.sh`'s migrate service runs both sets). **Owed:** full `tsc` / `vite build`
+  / `jest` on a real machine; set the shared AI keys in the console; verify a live AI chat/embedding on a tenant
+  (credential path changed); ensure the financial-dictionary + inventory masters are seeded so the line selects
+  have options.
+
 ## First thing to do in a new session
 
 Sessions 1–15 each left a "pick up here" list; every one of those items has since been done or
@@ -800,7 +804,7 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
 
 ## Known remaining work / gaps
 
-- **AI chatbot — COMING, not cancelled (2026-07-20).** Session 10 deleted the *mock's* Praxis chat from the
+- **AI chatbot — COMING, not cancelled (2026-07-20).** Session 10 deleted the _mock's_ Praxis chat from the
   Control Tower (canned replies on a timer, greeting a hardcoded "Amara"). The real assistant already
   exists: `components/praxis-copilot.tsx`, mounted in `app-shell.tsx:614`, self-gating on `ai_enabled`,
   and `/ai/ask` + `/ai/governance` are built. Three things when the work lands: (a) turn on
@@ -810,7 +814,7 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
   the **real** copilot via a `postMessage` type plus a trigger on `PraxisCopilot`; (c) `ai.assistant` and
   `ai.vectorization` are separate keys, also off.
 - **Control Tower — still mock (2026-07-20):** the **map** (fixed geography + three hardcoded lanes; now
-  badged *Sample view · not live*, wiring deferred by decision) and the **Recent activity** feed (deleted
+  badged _Sample view · not live_, wiring deferred by decision) and the **Recent activity** feed (deleted
   rather than left fictional — needs an activity endpoint that doesn't exist). Everything else on the home
   view is live or routes into the real app; see session-10 log §5.
 - **`depends_on` IS enforced at projection time (session 19).** `projectFeatures()` now runs
@@ -823,7 +827,7 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
 
 - **Quick PIN — DONE (2026-07-18).** FE done (login modal + `/security/my-security`, backend
   `/auth/pin/*`); the `user_device` migration (columns: `device_id, user_id, label, pin_hash,
-  status, failed_pin, last_used_at, created_at`) has landed in the **identity/live schema** per
+status, failed_pin, last_used_at, created_at`) has landed in the **identity/live schema** per
   the pin-auth-to-identity decision. QuickPIN is live; no FE or BE work remaining.
 - **⌘K command palette built** (`command-palette.tsx`). **Mobile bottom nav — DONE (session 2)**
   (`app-shell.tsx` `BottomNav`).
@@ -842,7 +846,7 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
 - Platform console UI and per-tenant PWA manifest still not built (Phase 0 items).
 - **Cleanup — DONE (session 2):** the stray `client/src/_wtest.txt` was removed.
 - **LIVE/TEST toggle logs the user out — architectural, not a UI bug (diagnosed 2026-07-13).**
-  `X-Praxis-Env` is a *database-schema switch*: `middleware/tenant-context.js` binds every DB
+  `X-Praxis-Env` is a _database-schema switch_: `middleware/tenant-context.js` binds every DB
   call in the request to the live or sandbox schema (`registry.service.js` → `SET search_path`).
   Crucially the **auth path is bound to that same schema**: `middleware/auth.js` loads the user
   via `req.tenantDb(getAuthUser)` and `app_user.service.refresh()` validates the session via
@@ -853,14 +857,14 @@ to a provisioned tenant (e.g. `smartls.praxisls.com`).
   `401`s (`SESSION_REVOKED`), and the user is bounced to `/login`. The `window.location.reload()`
   in `toggleEnv()` (app-shell) isn't the cause — it just triggers it immediately.
   **Fix — IMPLEMENTED (2026-07-15): identity pinned to the live schema.** `middleware/tenant-
-  context.js` now exposes **`req.identityDb`** (always the live schema); `req.tenantDb` still
+context.js` now exposes **`req.identityDb`** (always the live schema); `req.tenantDb` still
   honours `req.env` for business data. Pinned to `req.identityDb`: `middleware/auth.js`
   (`getAuthUser`), `middleware/rbac.js` (grants / scope / capabilities), the whole
   `security/app_user` controller (login, refresh, logout, verifyTotp, setup/enable/disable TOTP,
   pin register/login/list/revoke, and user CRUD), `security/session`, and the RBAC-admin writes
   (`permission` incl. `upsertGrant`, `iam_role`, `capability`, `scope`, `field_visibility`) via a
   new `makeController(service, label, { identity: true })` option in `shared/crud/resource.js`.
-  The auth *services* were untouched — they already take a `client`; only the controller/middleware
+  The auth _services_ were untouched — they already take a `client`; only the controller/middleware
   chooses which schema's client to pass (`environment` on the session row stays as metadata).
   Alternative (seed users/sessions into sandbox) was rejected as messier. **FE polish — DONE
   (2026-07-15, part 3):** soft toggle without reload (`key={env}` remount), segmented Live|Test

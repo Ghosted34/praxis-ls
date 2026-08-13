@@ -17,9 +17,9 @@ Build a real-time error monitoring and collaboration module for the Praxis LS ad
 
 ### Placement in Admin Dashboard
 
-| View | What Shows |
-|------|------------|
-| **Overview Page** | Minimal: Uptime %, Error Rate (e.g., "3 errors today") |
+| View                  | What Shows                                                |
+| --------------------- | --------------------------------------------------------- |
+| **Overview Page**     | Minimal: Uptime %, Error Rate (e.g., "3 errors today")    |
 | **Error Center Page** | Full KPI dashboard + error feed + all management features |
 
 This is a **full feature set** build expected to take **4-6 weeks**.
@@ -253,13 +253,13 @@ POST /api/admin/notifications/push
 
 ### 3.4 Filter & Search Bar
 
-| Control | Options | Behavior |
-|---------|---------|----------|
-| Status | All / Active / Resolved | Toggle |
-| Level | All / Fatal / Error / Warning / Notice / Info | Multi-select |
-| Time Range | Last hour / 6 hours / 24 hours / 7 days / 30 days / Custom | Dropdown + date picker |
-| Module | All modules / Dropdown of detected modules | Filter by affected module |
-| Search | Text input | Searches message, file path, stack trace |
+| Control    | Options                                                    | Behavior                                 |
+| ---------- | ---------------------------------------------------------- | ---------------------------------------- |
+| Status     | All / Active / Resolved                                    | Toggle                                   |
+| Level      | All / Fatal / Error / Warning / Notice / Info              | Multi-select                             |
+| Time Range | Last hour / 6 hours / 24 hours / 7 days / 30 days / Custom | Dropdown + date picker                   |
+| Module     | All modules / Dropdown of detected modules                 | Filter by affected module                |
+| Search     | Text input                                                 | Searches message, file path, stack trace |
 
 ---
 
@@ -269,10 +269,10 @@ POST /api/admin/notifications/push
 
 Errors fall into two categories:
 
-| Scope | Description | Visibility |
-|-------|-------------|------------|
-| **Tenant-specific** | Errors from a specific tenant's operations | Filter by tenant |
-| **Platform-wide** | Infrastructure, core framework, auth errors | All admins see these |
+| Scope               | Description                                 | Visibility           |
+| ------------------- | ------------------------------------------- | -------------------- |
+| **Tenant-specific** | Errors from a specific tenant's operations  | Filter by tenant     |
+| **Platform-wide**   | Infrastructure, core framework, auth errors | All admins see these |
 
 ### 4.2 Filtering
 
@@ -296,20 +296,20 @@ Errors fall into two categories:
 ```typescript
 interface EscalationRule {
   id: string;
-  tenant_id: UUID | null;  // null = platform-wide rule
+  tenant_id: UUID | null; // null = platform-wide rule
   name: string;
   conditions: {
-    level: ('fatal' | 'error' | 'warning')[];
-    threshold_count: number;      // e.g., 5
-    threshold_window_minutes: number;  // e.g., 10
+    level: ("fatal" | "error" | "warning")[];
+    threshold_count: number; // e.g., 5
+    threshold_window_minutes: number; // e.g., 10
   };
   actions: {
     email: boolean;
     in_house: boolean;
     webhook_url?: string;
   };
-  escalation_delay_minutes: number;  // Wait before escalating
-  repeat_interval_minutes: number;  // Repeat if still active
+  escalation_delay_minutes: number; // Wait before escalating
+  repeat_interval_minutes: number; // Repeat if still active
   active: boolean;
 }
 ```
@@ -362,11 +362,11 @@ Located at `/admin/error-center/settings`:
 ```typescript
 // New error event
 interface ErrorEvent {
-  type: 'new_error';
+  type: "new_error";
   payload: {
     id: string;
     signature: string;
-    level: 'fatal' | 'error' | 'warning' | 'notice' | 'info';
+    level: "fatal" | "error" | "warning" | "notice" | "info";
     message: string;
     module: string;
     route: string;
@@ -380,7 +380,7 @@ interface ErrorEvent {
 
 // Error resolved event
 interface ErrorResolvedEvent {
-  type: 'error_resolved';
+  type: "error_resolved";
   payload: {
     signature: string;
     resolved_by: string;
@@ -401,37 +401,37 @@ interface ErrorResolvedEvent {
 
 ### 4.2 REST Endpoints
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/admin/errors` | List errors with pagination, filtering |
-| GET | `/api/admin/errors/:id` | Get single error detail |
-| GET | `/api/admin/errors/recent` | Recent errors (for polling fallback) |
-| POST | `/api/admin/errors/:id/resolve` | Mark error as resolved |
-| POST | `/api/admin/errors/:id/explain` | Get AI explanation |
-| GET | `/api/admin/errors/stats` | Dashboard statistics |
-| GET | `/api/admin/errors/trends` | 30-day trend data |
-| POST | `/api/admin/notifications/push` | Send in-house notification |
-| GET | `/api/admin/errors/export` | Export errors (CSV/JSON) |
-| GET | `/api/admin/escalation/rules` | List escalation rules |
-| POST | `/api/admin/escalation/rules` | Create escalation rule |
-| PUT | `/api/admin/escalation/rules/:id` | Update rule |
-| DELETE | `/api/admin/escalation/rules/:id` | Delete rule |
-| GET | `/api/admin/health` | System health metrics (uptime, latency) |
+| Method | Endpoint                          | Description                             |
+| ------ | --------------------------------- | --------------------------------------- |
+| GET    | `/api/admin/errors`               | List errors with pagination, filtering  |
+| GET    | `/api/admin/errors/:id`           | Get single error detail                 |
+| GET    | `/api/admin/errors/recent`        | Recent errors (for polling fallback)    |
+| POST   | `/api/admin/errors/:id/resolve`   | Mark error as resolved                  |
+| POST   | `/api/admin/errors/:id/explain`   | Get AI explanation                      |
+| GET    | `/api/admin/errors/stats`         | Dashboard statistics                    |
+| GET    | `/api/admin/errors/trends`        | 30-day trend data                       |
+| POST   | `/api/admin/notifications/push`   | Send in-house notification              |
+| GET    | `/api/admin/errors/export`        | Export errors (CSV/JSON)                |
+| GET    | `/api/admin/escalation/rules`     | List escalation rules                   |
+| POST   | `/api/admin/escalation/rules`     | Create escalation rule                  |
+| PUT    | `/api/admin/escalation/rules/:id` | Update rule                             |
+| DELETE | `/api/admin/escalation/rules/:id` | Delete rule                             |
+| GET    | `/api/admin/health`               | System health metrics (uptime, latency) |
 
 ### 4.3 Query Parameters for GET /api/admin/errors
 
 ```typescript
 interface ErrorQuery {
-  page?: number;           // Default: 1
-  limit?: number;          // Default: 20, Max: 100
-  level?: string;          // Comma-separated: 'fatal,error,warning'
-  status?: 'active' | 'resolved' | 'all';  // Default: 'active'
-  module?: string;          // Filter by module name
-  signature?: string;      // Specific error signature
-  search?: string;         // Text search
-  from?: string;           // ISO date
-  to?: string;             // ISO date
-  sort?: 'recent' | 'count' | 'severity';  // Default: 'recent'
+  page?: number; // Default: 1
+  limit?: number; // Default: 20, Max: 100
+  level?: string; // Comma-separated: 'fatal,error,warning'
+  status?: "active" | "resolved" | "all"; // Default: 'active'
+  module?: string; // Filter by module name
+  signature?: string; // Specific error signature
+  search?: string; // Text search
+  from?: string; // ISO date
+  to?: string; // ISO date
+  sort?: "recent" | "count" | "severity"; // Default: 'recent'
 }
 ```
 
@@ -461,7 +461,7 @@ interface ExplainRequest {
 4. Backend calls AI (DeepSeek primary, Gemini fallback):
 
 ```
-System prompt: "You are an expert backend developer specializing in Node.js/NestJS debugging. 
+System prompt: "You are an expert backend developer specializing in Node.js/NestJS debugging.
 Explain this error in plain English for a non-technical ops team lead. Include:
 1. What happened (one sentence)
 2. Why it happened (technical cause)
@@ -598,7 +598,7 @@ src/
 
 ```typescript
 // Capture unhandled errors
-window.addEventListener('error', (event) => {
+window.addEventListener("error", (event) => {
   ErrorMonitor.capture({
     message: event.message,
     filename: event.filename,
@@ -608,9 +608,9 @@ window.addEventListener('error', (event) => {
   });
 });
 
-window.addEventListener('unhandledrejection', (event) => {
+window.addEventListener("unhandledrejection", (event) => {
   ErrorMonitor.capture({
-    message: 'Unhandled Promise Rejection',
+    message: "Unhandled Promise Rejection",
     stack: event.reason?.stack || String(event.reason),
   });
 });
@@ -622,13 +622,13 @@ window.addEventListener('unhandledrejection', (event) => {
 
 ### 7.1 Color Tokens
 
-| Severity | Background | Text | Border | Badge |
-|----------|------------|------|--------|-------|
-| Fatal | `#FEE2E2` | `#991B1B` | `#FECACA` | 🔴 |
-| Error | `#FEF3C7` | `#92400E` | `#FDE68A` | 🟠 |
-| Warning | `#FEF9C3` | `#854D0E` | `#FDE047` | 🟡 |
-| Notice | `#DBEAFE` | `#1E40AF` | `#BFDBFE` | 🔵 |
-| Info | `#F3F4F6` | `#374151` | `#D1D5DB` | ⚪ |
+| Severity | Background | Text      | Border    | Badge |
+| -------- | ---------- | --------- | --------- | ----- |
+| Fatal    | `#FEE2E2`  | `#991B1B` | `#FECACA` | 🔴    |
+| Error    | `#FEF3C7`  | `#92400E` | `#FDE68A` | 🟠    |
+| Warning  | `#FEF9C3`  | `#854D0E` | `#FDE047` | 🟡    |
+| Notice   | `#DBEAFE`  | `#1E40AF` | `#BFDBFE` | 🔵    |
+| Info     | `#F3F4F6`  | `#374151` | `#D1D5DB` | ⚪    |
 
 ### 7.2 Typography
 
@@ -723,6 +723,7 @@ All of these patterns should inform the design of this module.
 ## Appendix B: Share Modal Message Templates
 
 **WhatsApp:**
+
 ```
 🔴 [PRAXXIS-LS] Fatal Error Detected
 
@@ -737,11 +738,13 @@ All of these patterns should inform the design of this module.
 ```
 
 **Email Subject:**
+
 ```
 [PRAXXIS-LS] [{level}] {module} — {message_truncated}
 ```
 
 **Email Body:**
+
 ```
 Error Level: {level}
 Module: {module}
@@ -759,6 +762,7 @@ View in Admin Dashboard:
 ```
 
 **In-House Notification:**
+
 ```
 Title: [{level}] {module}
 Body: {message_truncated} — {occurrence_count} occurrences
@@ -767,6 +771,6 @@ Metadata: {error_id, signature, route}
 
 ---
 
-*Document Version: 1.0*
-*Created: 2026-08-06*
-*For: Praxis LS Development Team*
+_Document Version: 1.0_
+_Created: 2026-08-06_
+_For: Praxis LS Development Team_

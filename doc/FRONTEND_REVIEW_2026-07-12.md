@@ -21,21 +21,21 @@ Finance, Security & Access, Fleet, Warehouse, People & HR, Governance.
 The PRD ships **13 module groups** (I–XIII). The nav collapses and reshuffles them,
 so the information architecture doesn't match the system it's fronting:
 
-| PRD group (src) | In the sidebar? |
-|---|---|
-| I. Dashboard & Workspace | Partial ("Overview" → one item; no My Workspace) |
-| II. Master Data | **Missing as a group** — COA is dumped under "Finance"; Clients/Suppliers/Entities/FinDict/Tax/Currency/Treasury/Expense-rates have no nav at all |
-| III. HR | Yes ("People & HR") |
-| IV. Sales & CRM | **Missing entirely** |
-| V. Commercial & Pricing | **Missing entirely** |
-| VI. Logistics Operations | **Missing entirely** (no dossier, transit, milestones, delivery) |
-| VII. Warehouse (WMS) | Yes ("Warehouse") |
-| VIII. Fleet | Yes |
-| IX. Ops Costing | **Missing entirely** |
-| X. Finance & Treasury | Partial (accounting only; no treasury) |
-| XI. Procurement | **Missing entirely** |
-| XII. Document Vault & Insights | **Missing entirely** |
-| XIII. System & Security | Split across "Security & Access" + "Governance" (Settings/Appearance mis-filed under Governance) |
+| PRD group (src)                | In the sidebar?                                                                                                                                   |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| I. Dashboard & Workspace       | Partial ("Overview" → one item; no My Workspace)                                                                                                  |
+| II. Master Data                | **Missing as a group** — COA is dumped under "Finance"; Clients/Suppliers/Entities/FinDict/Tax/Currency/Treasury/Expense-rates have no nav at all |
+| III. HR                        | Yes ("People & HR")                                                                                                                               |
+| IV. Sales & CRM                | **Missing entirely**                                                                                                                              |
+| V. Commercial & Pricing        | **Missing entirely**                                                                                                                              |
+| VI. Logistics Operations       | **Missing entirely** (no dossier, transit, milestones, delivery)                                                                                  |
+| VII. Warehouse (WMS)           | Yes ("Warehouse")                                                                                                                                 |
+| VIII. Fleet                    | Yes                                                                                                                                               |
+| IX. Ops Costing                | **Missing entirely**                                                                                                                              |
+| X. Finance & Treasury          | Partial (accounting only; no treasury)                                                                                                            |
+| XI. Procurement                | **Missing entirely**                                                                                                                              |
+| XII. Document Vault & Insights | **Missing entirely**                                                                                                                              |
+| XIII. System & Security        | Split across "Security & Access" + "Governance" (Settings/Appearance mis-filed under Governance)                                                  |
 
 So **6 of the 13 groups have no presence in the nav at all**, and two groups
 (Master Data, System) are dissolved into others. Fixing the grouping is not enough on
@@ -51,6 +51,7 @@ mounted in the shell. Mapped against what Phase 1 & 2 actually require:
 ### Phase 1 — Accounting spine (PRD §17.2). Status: **partial, ~55–60%**
 
 Genuinely built and real (not stubs) — credit where due:
+
 - **Journals** (`features/finance/pages.tsx` `JournalsPage`) — real post form,
   balanced-or-rejected check client-side, validate-to-lock, and reversal-not-edit.
 - **Proforma / advance** — real form, posts the advance (4191) correctly framed.
@@ -60,6 +61,7 @@ Genuinely built and real (not stubs) — credit where due:
 - **Tax center** — TVA return + corporate tax.
 
 Missing or hollow inside Phase 1:
+
 - **Financial Dictionary (MOD-05): no screen.** This is load-bearing — the invoice
   form has a "Dictionary item" dropdown, but there is **no UI to create or manage
   dictionary items or their posting rules.** You can consume dict items you can't
@@ -81,10 +83,12 @@ Missing or hollow inside Phase 1:
 ### Phase 2 — Commercial cycle (PRD §17.3). Status: **~10%, effectively absent**
 
 Present:
+
 - Proforma, Final invoice, Receivables — i.e. the **finance sliver** of Phase 2 only.
   Receivables is a **read-only list** with no ageing buckets or dunning UI.
 
 Missing — and this is the damning part, because these ARE Phase 2:
+
 - **Master data — Clients (MOD-03) and Suppliers (MOD-04): no screens.** You cannot
   create a client in the app, yet the invoice/advance forms depend on picking one.
 - **Corporate entities (MOD-01): no management screen** (only dropdowns).
@@ -150,15 +154,15 @@ like two different products stitched together:
   token system and "Control Tower" experience.
 - **Actual app:** `react-router-dom`, no react-query, **~8 hand-rolled UI primitives**
   (`button`, `card`, `input`, `label`, `table`, `modal`, `otp-input`, `states`), custom
-  `lux-*` classes. It ported the *look of the topbar* and then **embedded the mock's
+  `lux-*` classes. It ported the _look of the topbar_ and then **embedded the mock's
   static HTML in an iframe** for the home instead of building it in React.
-- Net effect: the dashboard is pixel-close (because it literally *is* the mock), and
+- Net effect: the dashboard is pixel-close (because it literally _is_ the mock), and
   **every other screen looks nothing like it** — plain admin tables. That's the
   inconsistency you're seeing.
 - **Your own plan already says this is wrong.** `doc/FRONTEND_PLAN.md` (top):
-  *"the FE is being rebuilt to replicate the Lovable mock … the hand-rolled client/ …
+  _"the FE is being rebuilt to replicate the Lovable mock … the hand-rolled client/ …
   is being superseded … Phase 2 frontend should follow the Lovable replication, not
-  this stack."* The dev is still shipping on the superseded Phase-0 stack and has not
+  this stack."_ The dev is still shipping on the superseded Phase-0 stack and has not
   started the replication.
 
 ---
@@ -166,7 +170,7 @@ like two different products stitched together:
 ## 5. Bottom line
 
 - **Sidebar:** 7 improvised groups, not the 13 module groups; 6 groups have no nav. ✅ your complaint holds.
-- **Phase 1:** the accounting *transaction* screens (journals, invoice, advance, statements, tax) are real and decent. The accounting *master-data* screens (Financial Dictionary, Posting Rules, Treasury, Currency/FX, Tax config, Expense rates) and half the tax outputs are **missing**. ~55–60%.
+- **Phase 1:** the accounting _transaction_ screens (journals, invoice, advance, statements, tax) are real and decent. The accounting _master-data_ screens (Financial Dictionary, Posting Rules, Treasury, Currency/FX, Tax config, Expense rates) and half the tax outputs are **missing**. ~55–60%.
 - **Phase 2:** essentially **not built** — no clients/suppliers, no dossier, no milestones, no costing, no procurement, no simulators, no 360° modal. ~10%.
 - **Effort was spent on out-of-scope Phase-3 read-only shells** instead of the Phase-2 core.
 - **Design:** a real Lovable dashboard-by-iframe bolted onto an otherwise hand-rolled admin UI; the mandated Lovable replication hasn't started.

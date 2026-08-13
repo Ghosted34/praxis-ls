@@ -33,7 +33,9 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..", "..");
 const MIGRATIONS = path.join(ROOT, "migrations", "tenant");
 
-const { WRITABLE } = require("../../src/modules/operations/operations_file/operations_file.repo");
+const {
+  WRITABLE,
+} = require("../../src/modules/operations/operations_file/operations_file.repo");
 
 /** Columns set by the database or by `touch`, never by a caller's payload. */
 const NOT_WRITABLE = new Set(["dossier_id", "created_at", "updated_at"]);
@@ -66,29 +68,46 @@ function stripComments(sql) {
  */
 function columnsOfDossier() {
   const cols = new Set();
-  const files = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();
+  const files = fs
+    .readdirSync(MIGRATIONS)
+    .filter((f) => f.endsWith(".sql"))
+    .sort();
 
   for (const file of files) {
-    const sql = stripComments(fs.readFileSync(path.join(MIGRATIONS, file), "utf8"));
+    const sql = stripComments(
+      fs.readFileSync(path.join(MIGRATIONS, file), "utf8"),
+    );
 
     // CREATE TABLE dossier ( ... );  — take the body up to the closing paren.
-    const created = sql.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?dossier\s*\(([\s\S]*?)\n\)\s*;/i);
+    const created = sql.match(
+      /CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?dossier\s*\(([\s\S]*?)\n\)\s*;/i,
+    );
     if (created) {
       for (const line of created[1].split("\n")) {
         const bare = line.replace(/--.*$/, "").trim();
         // A column definition opens with the name; a table constraint opens
         // with a keyword. Skip the latter.
-        if (/^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK|EXCLUDE)\b/i.test(bare)) continue;
+        if (/^(CONSTRAINT|PRIMARY|FOREIGN|UNIQUE|CHECK|EXCLUDE)\b/i.test(bare))
+          continue;
         const m = bare.match(/^([a-z_][a-z0-9_]*)\s+\S/i);
         if (m) cols.add(m[1]);
       }
     }
 
-    // ALTER TABLE dossier ADD COLUMN [IF NOT EXISTS] <name> ...
-    for (const m of sql.matchAll(
-      /ALTER\s+TABLE\s+dossier\s+ADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi,
-    )) {
-      cols.add(m[1]);
+    // ALTER TABLE dossier ADD COLUMN [IF NOT EXISTS] <name> …[, ADD COLUMN …];
+    //
+    // Read the WHOLE statement, not just its first clause. Postgres takes a
+    // comma-separated list of actions in one ALTER TABLE, and 0660 adds nine
+    // columns that way — only the first of which follows the literal text
+    // "ALTER TABLE dossier ADD COLUMN". Matching per-clause instead of
+    // per-statement reported the other eight as phantom columns, which is the
+    // "teach the reader the new shape" failure this function's header predicts.
+    for (const stmt of sql.matchAll(/ALTER\s+TABLE\s+dossier\b([\s\S]*?);/gi)) {
+      for (const m of stmt[1].matchAll(
+        /\bADD\s+COLUMN\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi,
+      )) {
+        cols.add(m[1]);
+      }
     }
 
     // The same, inside a DO block: EXECUTE 'ALTER TABLE dossier ADD COLUMN x t'
@@ -98,8 +117,13 @@ function columnsOfDossier() {
       cols.add(m[1]);
     }
 
-    for (const m of sql.matchAll(/ALTER\s+TABLE\s+dossier\s+DROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi)) {
-      cols.delete(m[1]);
+    // Same shape for drops — a multi-clause ALTER can drop several at once.
+    for (const stmt of sql.matchAll(/ALTER\s+TABLE\s+dossier\b([\s\S]*?);/gi)) {
+      for (const m of stmt[1].matchAll(
+        /\bDROP\s+COLUMN\s+(?:IF\s+EXISTS\s+)?([a-z_][a-z0-9_]*)/gi,
+      )) {
+        cols.delete(m[1]);
+      }
     }
   }
   return cols;
@@ -117,11 +141,16 @@ function dataKeysIn(relPath) {
     if (src[i] === "{") depth += 1;
     else if (src[i] === "}") {
       depth -= 1;
-      if (depth === 0) { end = i; break; }
+      if (depth === 0) {
+        end = i;
+        break;
+      }
     }
   }
   const body = src.slice(open + 1, end);
-  return [...body.matchAll(/(?:^|,)\s*([a-z_][a-z0-9_]*)\s*:/gi)].map((m) => m[1]);
+  return [...body.matchAll(/(?:^|,)\s*([a-z_][a-z0-9_]*)\s*:/gi)].map(
+    (m) => m[1],
+  );
 }
 
 describe("dossier columns: code vs schema", () => {
@@ -148,7 +177,9 @@ describe("dossier columns: code vs schema", () => {
   it("leaves no schema column unaccounted for", () => {
     // Either writable, or deliberately not. A new column that is neither is a
     // decision nobody has made yet.
-    const unaccounted = [...schema].filter((c) => !WRITABLE.has(c) && !NOT_WRITABLE.has(c));
+    const unaccounted = [...schema].filter(
+      (c) => !WRITABLE.has(c) && !NOT_WRITABLE.has(c),
+    );
     expect(unaccounted).toEqual([]);
   });
 });

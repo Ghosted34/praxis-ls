@@ -13,8 +13,8 @@ ships. All fifteen are self-hosted through `@fontsource` under SIL OFL or
 Apache-2.0, which is the whole point: **what a tenant picks is what every user
 renders, on every device.**
 
-| Sans | Serif | Mono |
-| --- | --- | --- |
+| Sans                                                                                                                                     | Serif               | Mono                           |
+| ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------- | ------------------------------ |
 | Inter · Roboto · Noto Sans · Plus Jakarta Sans · IBM Plex Sans · Work Sans · Open Sans · Public Sans · Montserrat · Source Sans 3 · Lato | Lora · Merriweather | JetBrains Mono · Cascadia Code |
 
 ### Why Segoe UI, SF Pro and Helvetica Neue are not in it
@@ -79,13 +79,13 @@ who eventually turns up with a licensed corporate typeface on their own CDN.
 
 ## Two layers: tenant, then user
 
-| | Tenant appearance | My appearance |
-| --- | --- | --- |
-| Screen | `/appearance` | `/my-appearance` |
-| Who | Settings edit (MOD-70) | any signed-in user, self-service |
-| API | `PUT /branding` | `PUT /me/preferences/appearance` |
-| Storage | `setting` (section `appearance`) | `user_preference` (0496) |
-| Scope | colours, logos, favicon, type, radius, theme | **type only** |
+|         | Tenant appearance                            | My appearance                    |
+| ------- | -------------------------------------------- | -------------------------------- |
+| Screen  | `/appearance`                                | `/my-appearance`                 |
+| Who     | Settings edit (MOD-70)                       | any signed-in user, self-service |
+| API     | `PUT /branding`                              | `PUT /me/preferences/appearance` |
+| Storage | `setting` (section `appearance`)             | `user_preference` (0496)         |
+| Scope   | colours, logos, favicon, type, radius, theme | **type only**                    |
 
 The user layer overrides the tenant's fonts **for that user only**, and follows
 them to any device they sign in on. Colour, logo and favicon are deliberately
@@ -99,7 +99,7 @@ like, and support screenshots you cannot trust. The allow-list in
 `branding-context.tsx` merges both layers in one place, `resolveFonts()`:
 the user's value if set, the tenant's otherwise. Merging at a single point is
 what keeps a partial override honest — a user who overrides only the body font
-keeps *tracking* the tenant on display and mono, rather than freezing at
+keeps _tracking_ the tenant on display and mono, rather than freezing at
 whatever those were the day they saved.
 
 `absent ≠ null` runs the whole way down: an omitted key in a `PUT` is left
@@ -128,18 +128,18 @@ It is a grep rather than a lint rule because the failure is not a syntax error.
 **A font name that resolves to nothing does not error — it substitutes,
 silently.** Nine surfaces were doing exactly that when the gate was written:
 
-| Where | Named | Actually rendered |
-| --- | --- | --- |
-| `index.css` `--font-display/body` | `"InterVariable"` | system-ui — the family is `'Inter Variable'`, with a space |
-| `index.css` `--font-mono` | *nothing at all* | Tailwind's default: Menlo / Consolas / Courier New |
-| `tailwind.config.ts` | *no `fontFamily`* | `font-mono`/`font-sans` ignored the brand tokens entirely |
-| `excel/workbook.js` | `Playfair Display` | whatever Excel substituted — never shipped |
-| `pdf.templates.js` | `'Noto Sans'`, `'Noto Sans Mono'` | FreeSans — the container installs only `ttf-freefont` |
-| `documents/templates/kit.js` | `'Noto Sans', 'Segoe UI', Arial` | FreeSans |
-| 3 × email shells | `'Segoe UI', Roboto, Helvetica, Arial` | recipient's client default |
-| `routes/pwa.js` icon | `Montserrat, Arial` | container default |
-| `platform-console/styles.css` | `"Montserrat"`, SF Mono / Menlo / Consolas | OS default — the console bundled no fonts |
-| `seed-branding.js` | `Playfair Display` + `Montserrat` | Georgia + system-ui |
+| Where                             | Named                                      | Actually rendered                                          |
+| --------------------------------- | ------------------------------------------ | ---------------------------------------------------------- |
+| `index.css` `--font-display/body` | `"InterVariable"`                          | system-ui — the family is `'Inter Variable'`, with a space |
+| `index.css` `--font-mono`         | _nothing at all_                           | Tailwind's default: Menlo / Consolas / Courier New         |
+| `tailwind.config.ts`              | _no `fontFamily`_                          | `font-mono`/`font-sans` ignored the brand tokens entirely  |
+| `excel/workbook.js`               | `Playfair Display`                         | whatever Excel substituted — never shipped                 |
+| `pdf.templates.js`                | `'Noto Sans'`, `'Noto Sans Mono'`          | FreeSans — the container installs only `ttf-freefont`      |
+| `documents/templates/kit.js`      | `'Noto Sans', 'Segoe UI', Arial`           | FreeSans                                                   |
+| 3 × email shells                  | `'Segoe UI', Roboto, Helvetica, Arial`     | recipient's client default                                 |
+| `routes/pwa.js` icon              | `Montserrat, Arial`                        | container default                                          |
+| `platform-console/styles.css`     | `"Montserrat"`, SF Mono / Menlo / Consolas | OS default — the console bundled no fonts                  |
+| `seed-branding.js`                | `Playfair Display` + `Montserrat`          | Georgia + system-ui                                        |
 
 ### Fallbacks are bare generic keywords
 
@@ -151,13 +151,13 @@ system, which is the per-device inconsistency the library exists to remove.
 
 ### Where the guarantee is absolute, and where it is not
 
-| Surface | Guarantee |
-| --- | --- |
-| The ERP UI | **Absolute.** Self-hosted woff2, cached on device. |
-| Platform console | **Absolute.** Same, statically imported. |
+| Surface                            | Guarantee                                                                                                                                       |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| The ERP UI                         | **Absolute.** Self-hosted woff2, cached on device.                                                                                              |
+| Platform console                   | **Absolute.** Same, statically imported.                                                                                                        |
 | PDFs (invoices, payslips, reports) | **Absolute.** The woff2 is base64-embedded into each document by `pdf.fonts.js`, so output does not depend on fonts installed in the container. |
-| Excel exports | **Name only.** The format names a font, it cannot embed one; renders as Montserrat where Montserrat is installed. |
-| Emails | **Name only.** Outlook and most desktop clients ignore `@font-face`; the stack names library faces first over a generic keyword. |
+| Excel exports                      | **Name only.** The format names a font, it cannot embed one; renders as Montserrat where Montserrat is installed.                               |
+| Emails                             | **Name only.** Outlook and most desktop clients ignore `@font-face`; the stack names library faces first over a generic keyword.                |
 
 The last two are format limits, not omissions. Both name library faces
 exclusively, which is the most those surfaces can honestly promise.

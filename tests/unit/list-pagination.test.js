@@ -9,7 +9,11 @@
  * That is wrong data, not slow data — hence tests at the SQL-shape level rather
  * than only on the happy path.
  */
-const { splitTotal, TOTAL_COL, page } = require("../../src/shared/db/query-helpers");
+const {
+  splitTotal,
+  TOTAL_COL,
+  page,
+} = require("../../src/shared/db/query-helpers");
 const invoiceRepo = require("../../src/modules/finance/final_invoice/final_invoice.repo");
 const journalRepo = require("../../src/modules/finance/journal_entry/journal_entry.repo");
 const receiptRepo = require("../../src/modules/finance/smart_receivables/smart_receivables.repo");
@@ -192,7 +196,9 @@ describe("dossier list: total + the four fields the screen advertises", () => {
 
   test("list() still hands back a bare array for its non-paging callers", async () => {
     const c = fakeClient([{ dossier_id: "d1", _total: "1" }]);
-    await expect(dossierRepo.list(c, {})).resolves.toEqual([{ dossier_id: "d1" }]);
+    await expect(dossierRepo.list(c, {})).resolves.toEqual([
+      { dossier_id: "d1" },
+    ]);
   });
 });
 
@@ -200,7 +206,9 @@ describe("sendPaged", () => {
   test("puts the count in X-Total-Count and leaves the body a bare array", () => {
     const headers = {};
     const res = {
-      set: (k, v) => { headers[k] = v; },
+      set: (k, v) => {
+        headers[k] = v;
+      },
       json: (b) => b,
     };
     const body = sendPaged(res, { rows: [{ a: 1 }], total: 300 });

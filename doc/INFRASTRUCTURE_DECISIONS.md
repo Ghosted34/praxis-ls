@@ -7,14 +7,14 @@
 
 ## Sign-off summary
 
-| # | Decision | Recommendation | Blocks | Status |
-|---|---|---|---|---|
-| D1 | Email domain onboarding model | Support both; default delegation | WS-E2, WS-E5 | ☑ **approved** 2026-08-10 |
-| D2 | Outbound transport | CF authenticated SMTP first | WS-E1 | ☑ **approved** 2026-08-10 |
-| D3 | PgBouncer / transaction pooling | Yes — deploy now | WS-S1 | ☑ **approved** 2026-08-10 |
-| D4 | Backup targets + RPO/RTO | RPO ≤24h (≤5m PITR), RTO ≤1h | WS-B1, WS-B3 | ☑ **approved** 2026-08-10 |
-| D5 | Entitlement/metering scope | Spend + seats first | WS-S3 | ☑ **approved** 2026-08-10 |
-| D6 | Backup account separation + key custody | Independent account, Praxis-held key | WS-B1, WS-B2 | ☑ **approved** 2026-08-10 |
+| #   | Decision                                | Recommendation                       | Blocks       | Status                    |
+| --- | --------------------------------------- | ------------------------------------ | ------------ | ------------------------- |
+| D1  | Email domain onboarding model           | Support both; default delegation     | WS-E2, WS-E5 | ☑ **approved** 2026-08-10 |
+| D2  | Outbound transport                      | CF authenticated SMTP first          | WS-E1        | ☑ **approved** 2026-08-10 |
+| D3  | PgBouncer / transaction pooling         | Yes — deploy now                     | WS-S1        | ☑ **approved** 2026-08-10 |
+| D4  | Backup targets + RPO/RTO                | RPO ≤24h (≤5m PITR), RTO ≤1h         | WS-B1, WS-B3 | ☑ **approved** 2026-08-10 |
+| D5  | Entitlement/metering scope              | Spend + seats first                  | WS-S3        | ☑ **approved** 2026-08-10 |
+| D6  | Backup account separation + key custody | Independent account, Praxis-held key | WS-B1, WS-B2 | ☑ **approved** 2026-08-10 |
 
 ---
 
@@ -102,4 +102,4 @@ Owner: JBS Praxis engineering Date: 2026-08-10 Notes: Approved as recommended. T
 
 ---
 
-*All six decisions resolved 2026-08-10. Every phase in `doc/INFRASTRUCTURE_PLAN.md` §7 is unblocked; D1/D2 are additionally carried in `doc/INTEGRATION_PLAN.md`.*
+_All six decisions resolved 2026-08-10. Every phase in `doc/INFRASTRUCTURE_PLAN.md` §7 is unblocked; D1/D2 are additionally carried in `doc/INTEGRATION_PLAN.md`._

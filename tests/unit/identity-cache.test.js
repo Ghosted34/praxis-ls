@@ -67,7 +67,10 @@ const mockFakeRedis = {
     const all = [...store.keys()].filter((k) => re.test(k));
     const start = Number(cursor);
     const page = all.slice(start, start + Number(count));
-    return [start + Number(count) >= all.length ? "0" : String(start + Number(count)), page];
+    return [
+      start + Number(count) >= all.length ? "0" : String(start + Number(count)),
+      page,
+    ];
   },
 };
 
@@ -94,12 +97,15 @@ function makeClient(rows) {
     rows,
     async query() {
       this.count += 1;
-      return { rows: typeof this.rows === "function" ? this.rows() : this.rows };
+      return {
+        rows: typeof this.rows === "function" ? this.rows() : this.rows,
+      };
     },
   };
 }
 
-const keysMatching = (frag) => [...store.keys()].filter((k) => k.includes(frag));
+const keysMatching = (frag) =>
+  [...store.keys()].filter((k) => k.includes(frag));
 
 describe("identity cache (TC-C4)", () => {
   beforeEach(() => {
@@ -114,8 +120,14 @@ describe("identity cache (TC-C4)", () => {
   describe("getGrants", () => {
     it("reads through to the database on a miss, then serves from cache", async () => {
       const client = makeClient([{ can_read: true }]);
-      const first = await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
-      const second = await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
+      const first = await cache.getGrants(client, {
+        role_ids: ["r1"],
+        module: "MOD-35",
+      });
+      const second = await cache.getGrants(client, {
+        role_ids: ["r1"],
+        module: "MOD-35",
+      });
       expect(first).toEqual([{ can_read: true }]);
       expect(second).toEqual([{ can_read: true }]);
       expect(client.count).toBe(1);
@@ -144,15 +156,22 @@ describe("identity cache (TC-C4)", () => {
 
     it("returns empty without touching the database when there are no roles", async () => {
       const client = makeClient([{ can_read: true }]);
-      expect(await cache.getGrants(client, { role_ids: [], module: "MOD-35" })).toEqual([]);
-      expect(await cache.getGrants(client, { role_ids: null, module: "MOD-35" })).toEqual([]);
+      expect(
+        await cache.getGrants(client, { role_ids: [], module: "MOD-35" }),
+      ).toEqual([]);
+      expect(
+        await cache.getGrants(client, { role_ids: null, module: "MOD-35" }),
+      ).toEqual([]);
       expect(client.count).toBe(0);
     });
 
     it("still answers correctly with Redis down (best-effort, PERF S9)", async () => {
       MOCK_REDIS_UP = false;
       const client = makeClient([{ can_update: true }]);
-      const grants = await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
+      const grants = await cache.getGrants(client, {
+        role_ids: ["r1"],
+        module: "MOD-35",
+      });
       expect(grants).toEqual([{ can_update: true }]);
       // No caching is possible, so every call reads through — slow, not wrong.
       await cache.getGrants(client, { role_ids: ["r1"], module: "MOD-35" });
@@ -221,7 +240,8 @@ describe("identity cache (TC-C4)", () => {
   describe("getUserScopeClosure (PERF S4)", () => {
     it("caches the closure so the recursive CTE does not run per request", async () => {
       const client = makeClient([{ scope_id: "hq" }, { scope_id: "douala" }]);
-      for (let i = 0; i < 10; i += 1) await cache.getUserScopeClosure(client, "u1");
+      for (let i = 0; i < 10; i += 1)
+        await cache.getUserScopeClosure(client, "u1");
       expect(client.count).toBe(1);
     });
 
@@ -241,12 +261,16 @@ describe("identity cache (TC-C4)", () => {
       expect(await cache.getUserScopeClosure(client, "u1")).toEqual(["hq"]); // still cached
 
       await cache.bumpScopeVersion();
-      expect(await cache.getUserScopeClosure(client, "u1")).toEqual(["hq", "bafoussam"]);
+      expect(await cache.getUserScopeClosure(client, "u1")).toEqual([
+        "hq",
+        "bafoussam",
+      ]);
     });
 
     it("invalidates the whole tree in ONE command, not one per user", async () => {
       const client = makeClient([{ scope_id: "hq" }]);
-      for (const u of ["u1", "u2", "u3", "u4"]) await cache.getUserScopeClosure(client, u);
+      for (const u of ["u1", "u2", "u3", "u4"])
+        await cache.getUserScopeClosure(client, u);
       commands.length = 0;
       await cache.bumpScopeVersion();
       expect(commands).toHaveLength(1);
@@ -293,7 +317,9 @@ describe("identity cache (TC-C4)", () => {
 
   describe("getAuthUser", () => {
     it("caches the projection and serves it on the next request", async () => {
-      const client = makeClient([{ user_id: "u1", status: "ACTIVE", role_ids: [] }]);
+      const client = makeClient([
+        { user_id: "u1", status: "ACTIVE", role_ids: [] },
+      ]);
       await cache.getAuthUser(client, "u1");
       await cache.getAuthUser(client, "u1");
       expect(client.count).toBe(1);

@@ -17,7 +17,7 @@ The `doc/reference/reference-mock-lovable` scaffold uses TanStack Router +
 TanStack Query + the full shadcn set, and `doc/FRONTEND_REVIEW_2026-07-12.md`
 recommended migrating to match it. **That recommendation is stale**, and it is
 worth knowing why rather than rediscovering the argument: it was made to close a
-*design-fidelity* gap, and the gap was closed another way — the Lovable tokens
+_design-fidelity_ gap, and the gap was closed another way — the Lovable tokens
 were mapped onto the existing semantic tokens in `src/index.css` (session 6) and
 the kit-fidelity pass finished in session 15. Migrating now would mean rewriting
 routing across ~50 screens to arrive at a look the app already has.

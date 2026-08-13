@@ -100,12 +100,16 @@ function makeOutbox(events, { featuresOn = true } = {}) {
         return {
           rows: due.slice(0, limit).map((e) => ({
             ...e,
-            attempts: dispatch.get(e.event_id) ? dispatch.get(e.event_id).attempts : 0,
+            attempts: dispatch.get(e.event_id)
+              ? dispatch.get(e.event_id).attempts
+              : 0,
           })),
         };
       }
       if (/feature_state|feature/.test(sql) && /SELECT/i.test(sql)) {
-        return { rows: [{ enabled: featuresOn, state: featuresOn ? "ON" : "OFF" }] };
+        return {
+          rows: [{ enabled: featuresOn, state: featuresOn ? "ON" : "OFF" }],
+        };
       }
       // Two distinct upserts, modelled from the real statements rather than
       // guessed at — markDone hardcodes 'DONE' and attempts 0 in the SQL text,
@@ -116,7 +120,10 @@ function makeOutbox(events, { featuresOn = true } = {}) {
       if (/INSERT INTO event_dispatch/.test(sql)) {
         const id = params[0];
         if (/'DONE'/.test(sql)) {
-          dispatch.set(id, { status: "DONE", attempts: dispatch.get(id)?.attempts || 0 });
+          dispatch.set(id, {
+            status: "DONE",
+            attempts: dispatch.get(id)?.attempts || 0,
+          });
           return { rows: [{ status: "DONE" }] };
         }
         const [, status, attempts] = params;
@@ -161,7 +168,15 @@ describe("orchestration outbox (TC-C8)", () => {
 
   it("runs a subscribed handler and marks the event done exactly once", async () => {
     let runs = 0;
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => { runs += 1; } }];
+    mockHandlers = [
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          runs += 1;
+        },
+      },
+    ];
     const db = makeOutbox([ev(1, "costing.approved")]);
     const out = await dispatcher.dispatchPending(db);
     expect(runs).toBe(1);
@@ -173,7 +188,15 @@ describe("orchestration outbox (TC-C8)", () => {
     // The at-least-once contract in its ordinary case: a second sweep must not
     // produce a second draft invoice.
     let runs = 0;
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => { runs += 1; } }];
+    mockHandlers = [
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          runs += 1;
+        },
+      },
+    ];
     const db = makeOutbox([ev(1, "costing.approved")]);
     await dispatcher.dispatchPending(db);
     await dispatcher.dispatchPending(db);
@@ -182,11 +205,16 @@ describe("orchestration outbox (TC-C8)", () => {
 
   it("retries a failing handler on the next sweep", async () => {
     let runs = 0;
-    mockHandlers = [{
-      key: "costing.approved",
-      feature: null,
-      run: async () => { runs += 1; if (runs === 1) throw new Error("transient"); },
-    }];
+    mockHandlers = [
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          runs += 1;
+          if (runs === 1) throw new Error("transient");
+        },
+      },
+    ];
     const db = makeOutbox([ev(1, "costing.approved")]);
     const first = await dispatcher.dispatchPending(db);
     expect(first.failed).toBe(1);
@@ -200,12 +228,20 @@ describe("orchestration outbox (TC-C8)", () => {
 
   it("stops retrying at MAX_ATTEMPTS instead of looping forever", async () => {
     let runs = 0;
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => { runs += 1; throw new Error("permanent"); } }];
+    mockHandlers = [
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          runs += 1;
+          throw new Error("permanent");
+        },
+      },
+    ];
     const db = makeOutbox([ev(1, "costing.approved")]);
 
     // Sweep well past the ceiling; the handler must not run past it.
     for (let i = 0; i < dispatcher.MAX_ATTEMPTS + 5; i += 1) {
-       
       await dispatcher.dispatchPending(db);
     }
     expect(runs).toBeLessThan(dispatcher.MAX_ATTEMPTS + 5);
@@ -215,10 +251,17 @@ describe("orchestration outbox (TC-C8)", () => {
   it("leaves a permanently failing event visible rather than silently dropped", async () => {
     // OBS-A6's counterpart: a DEAD row is a business action that will never
     // happen unless a person intervenes, so it must stay findable.
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => { throw new Error("permanent"); } }];
+    mockHandlers = [
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          throw new Error("permanent");
+        },
+      },
+    ];
     const db = makeOutbox([ev(1, "costing.approved")]);
     for (let i = 0; i < dispatcher.MAX_ATTEMPTS; i += 1) {
-       
       await dispatcher.dispatchPending(db);
     }
     const final = db.dispatch.get(1);
@@ -231,8 +274,20 @@ describe("orchestration outbox (TC-C8)", () => {
     // handler's work happened, the failed one's never will, and nothing says so.
     let good = 0;
     mockHandlers = [
-      { key: "costing.approved", feature: null, run: async () => { good += 1; } },
-      { key: "costing.approved", feature: null, run: async () => { throw new Error("second handler"); } },
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          good += 1;
+        },
+      },
+      {
+        key: "costing.approved",
+        feature: null,
+        run: async () => {
+          throw new Error("second handler");
+        },
+      },
     ];
     const db = makeOutbox([ev(1, "costing.approved")]);
     const out = await dispatcher.dispatchPending(db);
@@ -243,15 +298,21 @@ describe("orchestration outbox (TC-C8)", () => {
   });
 
   it("honours the limit so one sweep cannot monopolise a connection", async () => {
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => {} }];
-    const many = Array.from({ length: 50 }, (_, i) => ev(i + 1, "costing.approved"));
+    mockHandlers = [
+      { key: "costing.approved", feature: null, run: async () => {} },
+    ];
+    const many = Array.from({ length: 50 }, (_, i) =>
+      ev(i + 1, "costing.approved"),
+    );
     const db = makeOutbox(many);
     const out = await dispatcher.dispatchPending(db, { limit: 10 });
     expect(out.processed).toBe(10);
   });
 
   it("reports counts that add up", async () => {
-    mockHandlers = [{ key: "costing.approved", feature: null, run: async () => {} }];
+    mockHandlers = [
+      { key: "costing.approved", feature: null, run: async () => {} },
+    ];
     const db = makeOutbox([ev(1, "costing.approved"), ev(2, "nobody.listens")]);
     const out = await dispatcher.dispatchPending(db);
     expect(out.processed + out.skipped + out.failed).toBe(2);

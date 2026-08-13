@@ -72,7 +72,9 @@ function makeClient(db, name = "c1") {
     if (held.some((h) => h.id === id)) return;
     const tail = db.locks.get(id);
     let release;
-    const next = new Promise((res) => { release = res; });
+    const next = new Promise((res) => {
+      release = res;
+    });
     db.locks.set(id, tail ? tail.then(() => next) : next);
     if (tail) {
       db.lockWaits += 1;
@@ -91,12 +93,17 @@ function makeClient(db, name = "c1") {
       // ── transaction control ──
       if (/^BEGIN/i.test(t)) {
         if (inTx) throw new Error("nested BEGIN — the depth counter failed");
-        inTx = true; undo = []; myMovements = [];
+        inTx = true;
+        undo = [];
+        myMovements = [];
         return { rows: [] };
       }
       if (/^COMMIT/i.test(t)) {
         if (!inTx) throw new Error("COMMIT outside a transaction");
-        inTx = false; undo = null; myMovements = null; releaseLocks();
+        inTx = false;
+        undo = null;
+        myMovements = null;
+        releaseLocks();
         return { rows: [] };
       }
       if (/^ROLLBACK/i.test(t)) {
@@ -116,14 +123,23 @@ function makeClient(db, name = "c1") {
           const at = db.movements.indexOf(m);
           if (at >= 0) db.movements.splice(at, 1);
         }
-        inTx = false; undo = null; myMovements = null; releaseLocks();
+        inTx = false;
+        undo = null;
+        myMovements = null;
+        releaseLocks();
         return { rows: [] };
       }
       // shared/db/tx.js probes with a SAVEPOINT: legal only inside a
       // transaction block, 25P01 outside one. That probe is how it detects a
       // BEGIN someone else opened.
       if (/^SAVEPOINT/i.test(t)) {
-        if (!inTx) { const e = new Error("SAVEPOINT can only be used in transaction blocks"); e.code = "25P01"; throw e; }
+        if (!inTx) {
+          const e = new Error(
+            "SAVEPOINT can only be used in transaction blocks",
+          );
+          e.code = "25P01";
+          throw e;
+        }
         return { rows: [] };
       }
       if (/^RELEASE SAVEPOINT/i.test(t)) return { rows: [] };
@@ -137,40 +153,65 @@ function makeClient(db, name = "c1") {
       };
 
       // ── inventory_item ──
-      if (/^SELECT \* FROM inventory_item WHERE "?inventory_item_id"? = \$1 FOR UPDATE$/i.test(t)) {
+      if (
+        /^SELECT \* FROM inventory_item WHERE "?inventory_item_id"? = \$1 FOR UPDATE$/i.test(
+          t,
+        )
+      ) {
         await acquire(params[0]);
         const row = db.items.get(params[0]);
         return { rows: row ? [{ ...row }] : [] };
       }
-      if (/^SELECT \* FROM inventory_item WHERE "?inventory_item_id"? = \$1$/i.test(t)) {
+      if (
+        /^SELECT \* FROM inventory_item WHERE "?inventory_item_id"? = \$1$/i.test(
+          t,
+        )
+      ) {
         const row = db.items.get(params[0]);
         return { rows: row ? [{ ...row }] : [] };
       }
-      if (/^UPDATE inventory_item SET .* WHERE inventory_item_id = \$1 AND qty_on_hand \+ \$2 >= 0 RETURNING \*$/i.test(t)) {
+      if (
+        /^UPDATE inventory_item SET .* WHERE inventory_item_id = \$1 AND qty_on_hand \+ \$2 >= 0 RETURNING \*$/i.test(
+          t,
+        )
+      ) {
         const [id, delta] = params;
         const row = db.items.get(id);
         if (!row) return { rows: [] };
         // The floor is checked against the STORED value under the lock.
         if (Number(row.qty_on_hand) + Number(delta) < 0) return { rows: [] };
         snapshot(id);
-        const next = { ...row, qty_on_hand: Number(row.qty_on_hand) + Number(delta), updated_at: new Date() };
+        const next = {
+          ...row,
+          qty_on_hand: Number(row.qty_on_hand) + Number(delta),
+          updated_at: new Date(),
+        };
         if (/location_id = \$3/.test(t)) next.location_id = params[2];
         db.items.set(id, next);
         return { rows: [{ ...next }] };
       }
-      if (/^UPDATE inventory_item SET .* WHERE "?inventory_item_id"? = \$\d+ RETURNING \*$/i.test(t)) {
+      if (
+        /^UPDATE inventory_item SET .* WHERE "?inventory_item_id"? = \$\d+ RETURNING \*$/i.test(
+          t,
+        )
+      ) {
         // makeRepo's generic patch update (used by setState). It quotes its
         // identifiers and binds the pk as $1, so the id must be read from the
         // WHERE placeholder rather than assumed to be the last parameter.
-        const id = params[Number(t.match(/WHERE "?inventory_item_id"? = \$(\d+)/i)[1]) - 1];
+        const id =
+          params[
+            Number(t.match(/WHERE "?inventory_item_id"? = \$(\d+)/i)[1]) - 1
+          ];
         const row = db.items.get(id);
         if (!row) return { rows: [] };
         snapshot(id);
         const next = { ...row };
-        t.match(/SET (.*?) WHERE/i)[1].split(", ").forEach((c) => {
-          const mm = c.match(/^"?([a-z_]+)"? = \$(\d+)$/i);
-          if (mm) next[mm[1]] = params[Number(mm[2]) - 1];
-        });
+        t.match(/SET (.*?) WHERE/i)[1]
+          .split(", ")
+          .forEach((c) => {
+            const mm = c.match(/^"?([a-z_]+)"? = \$(\d+)$/i);
+            if (mm) next[mm[1]] = params[Number(mm[2]) - 1];
+          });
         db.items.set(id, next);
         return { rows: [{ ...next }] };
       }
@@ -181,20 +222,34 @@ function makeClient(db, name = "c1") {
       // in `sandbox`, where that user does not exist. Modelling the table is
       // what lets a test tell "guard applied" from "guard skipped".
       if (/^SELECT user_id FROM app_user WHERE user_id = \$1$/i.test(t)) {
-        return { rows: db.users.has(params[0]) ? [{ user_id: params[0] }] : [] };
+        return {
+          rows: db.users.has(params[0]) ? [{ user_id: params[0] }] : [],
+        };
       }
 
       // ── stock_movement (append-only journal) ──
       if (/^INSERT INTO stock_movement \(/i.test(t)) {
-        const cols = t.match(/\(([^)]*)\) VALUES/)[1].split(", ").map((c) => c.replace(/"/g, ""));
-        const row = { stock_movement_id: `mv-${db.movements.length + 1}`, moved_at: new Date() };
-        cols.forEach((c, i) => { row[c] = params[i]; });
+        const cols = t
+          .match(/\(([^)]*)\) VALUES/)[1]
+          .split(", ")
+          .map((c) => c.replace(/"/g, ""));
+        const row = {
+          stock_movement_id: `mv-${db.movements.length + 1}`,
+          moved_at: new Date(),
+        };
+        cols.forEach((c, i) => {
+          row[c] = params[i];
+        });
         db.movements.push(row);
         if (inTx) myMovements.push(row);
         return { rows: [row] };
       }
-      if (/^SELECT \* FROM stock_movement WHERE inventory_item_id = \$1/i.test(t)) {
-        return { rows: db.movements.filter((m) => m.inventory_item_id === params[0]) };
+      if (
+        /^SELECT \* FROM stock_movement WHERE inventory_item_id = \$1/i.test(t)
+      ) {
+        return {
+          rows: db.movements.filter((m) => m.inventory_item_id === params[0]),
+        };
       }
       if (/^INSERT INTO soft_delete/i.test(t)) {
         db.softDeletes.push(params);
@@ -224,9 +279,15 @@ let mockEmitFails = false;
 let mockUsersInSchema = new Set(["u-1"]);
 
 jest.mock("../../src/shared/events/emit", () => ({
-  emitEvent: async (c, e) => { if (mockEmitFails) throw new Error("event_log write failed"); mockEmitted.push(e); },
-  audit: async (c, a) => { mockAudited.push(a); },
-  resolveActorId: async (c, userId) => (userId && mockUsersInSchema.has(userId) ? userId : null),
+  emitEvent: async (c, e) => {
+    if (mockEmitFails) throw new Error("event_log write failed");
+    mockEmitted.push(e);
+  },
+  audit: async (c, a) => {
+    mockAudited.push(a);
+  },
+  resolveActorId: async (c, userId) =>
+    userId && mockUsersInSchema.has(userId) ? userId : null,
   clearEventTypeCache: () => {},
   WATCHER_ROLE_CODES: [],
 }));
@@ -236,12 +297,22 @@ const outbound = require("../../src/modules/wms/outbound/outbound.service");
 
 const ACTOR = { user_id: "u-1" };
 const item = (over = {}) => ({
-  inventory_item_id: "i-1", sku: "SKU-1", qty_on_hand: 10,
-  state: "AVAILABLE", location_id: "loc-a", created_at: new Date(), updated_at: new Date(), ...over,
+  inventory_item_id: "i-1",
+  sku: "SKU-1",
+  qty_on_hand: 10,
+  state: "AVAILABLE",
+  location_id: "loc-a",
+  created_at: new Date(),
+  updated_at: new Date(),
+  ...over,
 });
 
 async function rejection(promise) {
-  try { await promise; } catch (e) { return e; }
+  try {
+    await promise;
+  } catch (e) {
+    return e;
+  }
   throw new Error("expected a rejection, the call resolved");
 }
 
@@ -252,43 +323,74 @@ describe("WMS inventory (TC-C7)", () => {
   beforeEach(() => {
     db = makeDb([item()]);
     client = makeClient(db);
-    mockEmitted.length = 0; mockAudited.length = 0; mockEmitFails = false;
+    mockEmitted.length = 0;
+    mockAudited.length = 0;
+    mockEmitFails = false;
     mockUsersInSchema = new Set(["u-1"]);
   });
 
   describe("the movement journal and the balance move together (DATA 5.1)", () => {
     it("applies a positive delta and writes exactly one movement", async () => {
-      const row = await inventory.move(client, { id: "i-1", movement_kind: "RECEIPT", qty: 5, actor: ACTOR });
+      const row = await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "RECEIPT",
+        qty: 5,
+        actor: ACTOR,
+      });
       expect(row.qty_on_hand).toBe(15);
       expect(db.items.get("i-1").qty_on_hand).toBe(15);
       expect(db.movements).toHaveLength(1);
-      expect(db.movements[0]).toMatchObject({ inventory_item_id: "i-1", movement_kind: "RECEIPT", qty: 5, moved_by: "u-1" });
+      expect(db.movements[0]).toMatchObject({
+        inventory_item_id: "i-1",
+        movement_kind: "RECEIPT",
+        qty: 5,
+        moved_by: "u-1",
+      });
     });
 
     it("applies a negative delta", async () => {
-      const row = await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -4, actor: ACTOR });
+      const row = await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -4,
+        actor: ACTOR,
+      });
       expect(row.qty_on_hand).toBe(6);
       expect(db.movements[0].qty).toBe(-4);
     });
 
     it("wraps the whole move in ONE transaction", async () => {
-      await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       const begins = client.sql.filter((s) => /^BEGIN/.test(s.text));
       const commits = client.sql.filter((s) => /^COMMIT/.test(s.text));
       expect(begins).toHaveLength(1);
       expect(commits).toHaveLength(1);
       // …and the balance write happens inside it.
       const beginAt = client.sql.findIndex((s) => /^BEGIN/.test(s.text));
-      const updateAt = client.sql.findIndex((s) => /^UPDATE inventory_item/.test(s.text));
+      const updateAt = client.sql.findIndex((s) =>
+        /^UPDATE inventory_item/.test(s.text),
+      );
       const commitAt = client.sql.findIndex((s) => /^COMMIT/.test(s.text));
       expect(beginAt).toBeLessThan(updateAt);
       expect(updateAt).toBeLessThan(commitAt);
     });
 
     it("takes the row lock BEFORE computing anything", async () => {
-      await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       const lockAt = client.sql.findIndex((s) => /FOR UPDATE/.test(s.text));
-      const updateAt = client.sql.findIndex((s) => /^UPDATE inventory_item/.test(s.text));
+      const updateAt = client.sql.findIndex((s) =>
+        /^UPDATE inventory_item/.test(s.text),
+      );
       expect(lockAt).toBeGreaterThanOrEqual(0);
       expect(lockAt).toBeLessThan(updateAt);
     });
@@ -296,8 +398,15 @@ describe("WMS inventory (TC-C7)", () => {
     it("derives the new balance IN SQL rather than writing an absolute value", async () => {
       // The distinction the fix turns on. An absolute write is what made two
       // concurrent moves lose one of them.
-      await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -3, actor: ACTOR });
-      const update = client.sql.find((s) => /^UPDATE inventory_item SET qty_on_hand/.test(s.text));
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -3,
+        actor: ACTOR,
+      });
+      const update = client.sql.find((s) =>
+        /^UPDATE inventory_item SET qty_on_hand/.test(s.text),
+      );
       expect(update.text).toMatch(/qty_on_hand = qty_on_hand \+ \$2/);
       expect(update.params[1]).toBe(-3); // the DELTA is the parameter, not the result
     });
@@ -309,10 +418,18 @@ describe("WMS inventory (TC-C7)", () => {
       const broken = makeClient(db, "broken");
       const realQuery = broken.query.bind(broken);
       broken.query = async (t, p) => {
-        if (/^INSERT INTO stock_movement/i.test(String(t).trim())) throw new Error("journal write failed");
+        if (/^INSERT INTO stock_movement/i.test(String(t).trim()))
+          throw new Error("journal write failed");
         return realQuery(t, p);
       };
-      await rejection(inventory.move(broken, { id: "i-1", movement_kind: "ISSUE", qty: -4, actor: ACTOR }));
+      await rejection(
+        inventory.move(broken, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -4,
+          actor: ACTOR,
+        }),
+      );
 
       expect(db.items.get("i-1").qty_on_hand).toBe(10); // untouched
       expect(db.movements).toHaveLength(0);
@@ -323,13 +440,25 @@ describe("WMS inventory (TC-C7)", () => {
       // event_log is written inside the business transaction (the outbox
       // pattern). If it cannot be written, the movement did not happen.
       mockEmitFails = true;
-      await rejection(inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -4, actor: ACTOR }));
+      await rejection(
+        inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -4,
+          actor: ACTOR,
+        }),
+      );
       expect(db.items.get("i-1").qty_on_hand).toBe(10);
       expect(db.movements).toHaveLength(0);
     });
 
     it("returns null for an unknown item without opening a write", async () => {
-      const out = await inventory.move(client, { id: "nope", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      const out = await inventory.move(client, {
+        id: "nope",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       expect(out).toBeNull();
       expect(db.movements).toHaveLength(0);
     });
@@ -337,13 +466,25 @@ describe("WMS inventory (TC-C7)", () => {
     it("records the origin location when the caller does not supply one", async () => {
       // Otherwise the journal cannot say where the stock came from, which is
       // the whole point of a movement row.
-      await inventory.move(client, { id: "i-1", movement_kind: "TRANSFER", qty: 0, to_location: "loc-b", actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "TRANSFER",
+        qty: 0,
+        to_location: "loc-b",
+        actor: ACTOR,
+      });
       expect(db.movements[0].from_location).toBe("loc-a");
       expect(db.movements[0].to_location).toBe("loc-b");
     });
 
     it("relocates the item as part of the same atomic move", async () => {
-      await inventory.move(client, { id: "i-1", movement_kind: "TRANSFER", qty: -2, to_location: "loc-b", actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "TRANSFER",
+        qty: -2,
+        to_location: "loc-b",
+        actor: ACTOR,
+      });
       const row = db.items.get("i-1");
       expect(row.location_id).toBe("loc-b");
       expect(row.qty_on_hand).toBe(8);
@@ -354,7 +495,12 @@ describe("WMS inventory (TC-C7)", () => {
       // LIVE schema while this write lands in whichever schema the request
       // selected, so the raw id used to raise 23503 here — and, before DATA 5.1
       // made this transactional, the balance had ALREADY committed when it did.
-      await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       expect(db.movements[0].moved_by).toBe("u-1");
     });
 
@@ -363,16 +509,29 @@ describe("WMS inventory (TC-C7)", () => {
       // failing the stock movement it describes — and the movement row must
       // still be written.
       mockUsersInSchema = new Set();
-      const row = await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      const row = await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       expect(row.qty_on_hand).toBe(9);
       expect(db.movements).toHaveLength(1);
       expect(db.movements[0].moved_by).toBeNull();
     });
 
     it("emits and audits once, inside the transaction", async () => {
-      await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       expect(mockEmitted).toHaveLength(1);
-      expect(mockEmitted[0]).toMatchObject({ entityRef: "inventory:i-1", actorUserId: "u-1" });
+      expect(mockEmitted[0]).toMatchObject({
+        entityRef: "inventory:i-1",
+        actorUserId: "u-1",
+      });
       expect(mockAudited).toHaveLength(1);
       expect(mockAudited[0].before.qty_on_hand).toBe(10);
       expect(mockAudited[0].after.qty_on_hand).toBe(9);
@@ -381,7 +540,14 @@ describe("WMS inventory (TC-C7)", () => {
 
   describe("the negative-stock floor", () => {
     it("refuses a move that would drive the balance below zero", async () => {
-      const err = await rejection(inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -11, actor: ACTOR }));
+      const err = await rejection(
+        inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -11,
+          actor: ACTOR,
+        }),
+      );
       expect(err.code).toBe("NEGATIVE_STOCK");
       expect(err.status).toBe(422);
       expect(db.items.get("i-1").qty_on_hand).toBe(10);
@@ -389,20 +555,41 @@ describe("WMS inventory (TC-C7)", () => {
     });
 
     it("allows a move to exactly zero", async () => {
-      const row = await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -10, actor: ACTOR });
+      const row = await inventory.move(client, {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -10,
+        actor: ACTOR,
+      });
       expect(row.qty_on_hand).toBe(0);
     });
 
     it("enforces the floor in the WHERE clause, not in JavaScript", async () => {
       // Failure 2: a JS-side guard ran before the lock, so two concurrent -6
       // moves against 10 both passed it.
-      await rejection(inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -99, actor: ACTOR }));
-      const update = client.sql.find((s) => /^UPDATE inventory_item SET qty_on_hand/.test(s.text));
+      await rejection(
+        inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -99,
+          actor: ACTOR,
+        }),
+      );
+      const update = client.sql.find((s) =>
+        /^UPDATE inventory_item SET qty_on_hand/.test(s.text),
+      );
       expect(update.text).toMatch(/AND qty_on_hand \+ \$2 >= 0/);
     });
 
     it("reports the balance the DATABASE held, not one read earlier", async () => {
-      const err = await rejection(inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -11, actor: ACTOR }));
+      const err = await rejection(
+        inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -11,
+          actor: ACTOR,
+        }),
+      );
       expect(err.message).toContain("10");
       expect(err.message).toContain("-11");
     });
@@ -416,8 +603,18 @@ describe("WMS inventory (TC-C7)", () => {
       const a = makeClient(db, "a");
       const b = makeClient(db, "b");
       await Promise.all([
-        inventory.move(a, { id: "i-1", movement_kind: "ISSUE", qty: -5, actor: ACTOR }),
-        inventory.move(b, { id: "i-1", movement_kind: "ISSUE", qty: -3, actor: ACTOR }),
+        inventory.move(a, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -5,
+          actor: ACTOR,
+        }),
+        inventory.move(b, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -3,
+          actor: ACTOR,
+        }),
       ]);
       expect(db.items.get("i-1").qty_on_hand).toBe(2); // 10 - 5 - 3
       expect(db.movements).toHaveLength(2);
@@ -430,8 +627,18 @@ describe("WMS inventory (TC-C7)", () => {
       const a = makeClient(db, "a");
       const b = makeClient(db, "b");
       const results = await Promise.allSettled([
-        inventory.move(a, { id: "i-1", movement_kind: "ISSUE", qty: -6, actor: ACTOR }),
-        inventory.move(b, { id: "i-1", movement_kind: "ISSUE", qty: -6, actor: ACTOR }),
+        inventory.move(a, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -6,
+          actor: ACTOR,
+        }),
+        inventory.move(b, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -6,
+          actor: ACTOR,
+        }),
       ]);
       const ok = results.filter((r) => r.status === "fulfilled");
       const failed = results.filter((r) => r.status === "rejected");
@@ -447,10 +654,23 @@ describe("WMS inventory (TC-C7)", () => {
     it("keeps the balance equal to the sum of the journal under load", async () => {
       // The invariant that makes stock reconstructable. Twenty interleaved
       // moves, then one comparison.
-      const deltas = [5, -3, 8, -2, -6, 4, -1, 7, -9, 2, -4, 6, -5, 3, -2, 1, -1, 10, -8, 4];
-      await Promise.all(deltas.map((d, i) =>
-        inventory.move(makeClient(db, `w${i}`), { id: "i-1", movement_kind: "ADJUST", qty: d, actor: ACTOR })
-          .catch((e) => { if (e.code !== "NEGATIVE_STOCK") throw e; })));
+      const deltas = [
+        5, -3, 8, -2, -6, 4, -1, 7, -9, 2, -4, 6, -5, 3, -2, 1, -1, 10, -8, 4,
+      ];
+      await Promise.all(
+        deltas.map((d, i) =>
+          inventory
+            .move(makeClient(db, `w${i}`), {
+              id: "i-1",
+              movement_kind: "ADJUST",
+              qty: d,
+              actor: ACTOR,
+            })
+            .catch((e) => {
+              if (e.code !== "NEGATIVE_STOCK") throw e;
+            }),
+        ),
+      );
 
       const journalSum = db.movements.reduce((s, m) => s + Number(m.qty), 0);
       expect(db.items.get("i-1").qty_on_hand).toBe(10 + journalSum);
@@ -462,8 +682,18 @@ describe("WMS inventory (TC-C7)", () => {
       // operation in the tenant queues behind every other one.
       db = makeDb([item(), item({ inventory_item_id: "i-2", sku: "SKU-2" })]);
       await Promise.all([
-        inventory.move(makeClient(db, "a"), { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR }),
-        inventory.move(makeClient(db, "b"), { id: "i-2", movement_kind: "ISSUE", qty: -1, actor: ACTOR }),
+        inventory.move(makeClient(db, "a"), {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -1,
+          actor: ACTOR,
+        }),
+        inventory.move(makeClient(db, "b"), {
+          id: "i-2",
+          movement_kind: "ISSUE",
+          qty: -1,
+          actor: ACTOR,
+        }),
       ]);
       expect(db.lockWaits).toBe(0);
       expect(db.items.get("i-1").qty_on_hand).toBe(9);
@@ -473,8 +703,20 @@ describe("WMS inventory (TC-C7)", () => {
     it("releases the row lock when a move fails", async () => {
       // A lock held past a failure deadlocks the item for every later move.
       const a = makeClient(db, "a");
-      await rejection(inventory.move(a, { id: "i-1", movement_kind: "ISSUE", qty: -99, actor: ACTOR }));
-      const row = await inventory.move(makeClient(db, "b"), { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
+      await rejection(
+        inventory.move(a, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -99,
+          actor: ACTOR,
+        }),
+      );
+      const row = await inventory.move(makeClient(db, "b"), {
+        id: "i-1",
+        movement_kind: "ISSUE",
+        qty: -1,
+        actor: ACTOR,
+      });
       expect(row.qty_on_hand).toBe(9);
     });
   });
@@ -485,8 +727,18 @@ describe("WMS inventory (TC-C7)", () => {
       // OUTER transaction, and the caller would believe it still held one.
       const { atomically } = require("../../src/shared/db/tx");
       await atomically(client, async () => {
-        await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
-        await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -2, actor: ACTOR });
+        await inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -1,
+          actor: ACTOR,
+        });
+        await inventory.move(client, {
+          id: "i-1",
+          movement_kind: "ISSUE",
+          qty: -2,
+          actor: ACTOR,
+        });
       });
       expect(client.sql.filter((s) => /^BEGIN/.test(s.text))).toHaveLength(1);
       expect(client.sql.filter((s) => /^COMMIT/.test(s.text))).toHaveLength(1);
@@ -495,11 +747,23 @@ describe("WMS inventory (TC-C7)", () => {
 
     it("rolls BOTH nested moves back when the outer transaction fails", async () => {
       const { atomically } = require("../../src/shared/db/tx");
-      await rejection(atomically(client, async () => {
-        await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -1, actor: ACTOR });
-        await inventory.move(client, { id: "i-1", movement_kind: "ISSUE", qty: -2, actor: ACTOR });
-        throw new Error("the caller changed its mind");
-      }));
+      await rejection(
+        atomically(client, async () => {
+          await inventory.move(client, {
+            id: "i-1",
+            movement_kind: "ISSUE",
+            qty: -1,
+            actor: ACTOR,
+          });
+          await inventory.move(client, {
+            id: "i-1",
+            movement_kind: "ISSUE",
+            qty: -2,
+            actor: ACTOR,
+          });
+          throw new Error("the caller changed its mind");
+        }),
+      );
       expect(db.items.get("i-1").qty_on_hand).toBe(10);
       expect(db.movements).toHaveLength(0);
     });
@@ -507,12 +771,20 @@ describe("WMS inventory (TC-C7)", () => {
 
   describe("the stock state machine", () => {
     const transitions = [
-      ["AVAILABLE", "QA_HOLD", true], ["AVAILABLE", "ALLOCATED", true], ["AVAILABLE", "DAMAGED", true],
+      ["AVAILABLE", "QA_HOLD", true],
+      ["AVAILABLE", "ALLOCATED", true],
+      ["AVAILABLE", "DAMAGED", true],
       ["AVAILABLE", "DISPATCHED", false],
-      ["QA_HOLD", "AVAILABLE", true], ["QA_HOLD", "DAMAGED", true], ["QA_HOLD", "ALLOCATED", false],
-      ["ALLOCATED", "DISPATCHED", true], ["ALLOCATED", "AVAILABLE", true], ["ALLOCATED", "QA_HOLD", false],
-      ["DAMAGED", "AVAILABLE", true], ["DAMAGED", "ALLOCATED", false],
-      ["DISPATCHED", "AVAILABLE", false], ["DISPATCHED", "ALLOCATED", false],
+      ["QA_HOLD", "AVAILABLE", true],
+      ["QA_HOLD", "DAMAGED", true],
+      ["QA_HOLD", "ALLOCATED", false],
+      ["ALLOCATED", "DISPATCHED", true],
+      ["ALLOCATED", "AVAILABLE", true],
+      ["ALLOCATED", "QA_HOLD", false],
+      ["DAMAGED", "AVAILABLE", true],
+      ["DAMAGED", "ALLOCATED", false],
+      ["DISPATCHED", "AVAILABLE", false],
+      ["DISPATCHED", "ALLOCATED", false],
     ];
 
     it("permits exactly the transitions the table declares, and no others", async () => {
@@ -520,12 +792,16 @@ describe("WMS inventory (TC-C7)", () => {
         db = makeDb([item({ state: from })]);
         const c = makeClient(db);
         if (allowed) {
-           
-          const row = await inventory.setState(c, { id: "i-1", state: to, actor: ACTOR });
+          const row = await inventory.setState(c, {
+            id: "i-1",
+            state: to,
+            actor: ACTOR,
+          });
           expect(row.state).toBe(to);
         } else {
-           
-          const err = await rejection(inventory.setState(c, { id: "i-1", state: to, actor: ACTOR }));
+          const err = await rejection(
+            inventory.setState(c, { id: "i-1", state: to, actor: ACTOR }),
+          );
           expect(err.code).toBe("INVALID_TRANSITION");
           expect(err.status).toBe(422);
         }
@@ -537,29 +813,55 @@ describe("WMS inventory (TC-C7)", () => {
       // comes back as a RETURN movement with its own journal row.
       for (const to of ["AVAILABLE", "QA_HOLD", "ALLOCATED", "DAMAGED"]) {
         db = makeDb([item({ state: "DISPATCHED" })]);
-         
-        const err = await rejection(inventory.setState(makeClient(db), { id: "i-1", state: to, actor: ACTOR }));
+
+        const err = await rejection(
+          inventory.setState(makeClient(db), {
+            id: "i-1",
+            state: to,
+            actor: ACTOR,
+          }),
+        );
         expect(err.code).toBe("INVALID_TRANSITION");
       }
     });
 
     it("rejects a state that is not in the machine at all", async () => {
-      const err = await rejection(inventory.setState(client, { id: "i-1", state: "TELEPORTED", actor: ACTOR }));
+      const err = await rejection(
+        inventory.setState(client, {
+          id: "i-1",
+          state: "TELEPORTED",
+          actor: ACTOR,
+        }),
+      );
       expect(err.code).toBe("INVALID_TRANSITION");
     });
 
     it("returns null for an unknown item rather than inventing a transition", async () => {
-      expect(await inventory.setState(client, { id: "nope", state: "QA_HOLD", actor: ACTOR })).toBeNull();
+      expect(
+        await inventory.setState(client, {
+          id: "nope",
+          state: "QA_HOLD",
+          actor: ACTOR,
+        }),
+      ).toBeNull();
     });
 
     it("audits the before and after state", async () => {
-      await inventory.setState(client, { id: "i-1", state: "QA_HOLD", actor: ACTOR });
+      await inventory.setState(client, {
+        id: "i-1",
+        state: "QA_HOLD",
+        actor: ACTOR,
+      });
       expect(mockAudited[0].before.state).toBe("AVAILABLE");
       expect(mockAudited[0].after.state).toBe("QA_HOLD");
     });
 
     it("does not change the quantity", async () => {
-      await inventory.setState(client, { id: "i-1", state: "ALLOCATED", actor: ACTOR });
+      await inventory.setState(client, {
+        id: "i-1",
+        state: "ALLOCATED",
+        actor: ACTOR,
+      });
       expect(db.items.get("i-1").qty_on_hand).toBe(10);
       expect(db.movements).toHaveLength(0);
     });
@@ -567,7 +869,9 @@ describe("WMS inventory (TC-C7)", () => {
 
   describe("outbound order lifecycle", () => {
     function outboundDb(status = "CREATED") {
-      const orders = new Map([["o-1", { outbound_order_id: "o-1", status, dispatched_at: null }]]);
+      const orders = new Map([
+        ["o-1", { outbound_order_id: "o-1", status, dispatched_at: null }],
+      ]);
       const lines = new Map();
       return {
         orders,
@@ -577,26 +881,41 @@ describe("WMS inventory (TC-C7)", () => {
           async query(text, params = []) {
             const t = String(text).trim().replace(/\s+/g, " ");
             this.sql.push({ text: t, params });
-            if (/^SELECT \* FROM outbound_order WHERE "?outbound_order_id"? = \$1$/i.test(t)) {
+            if (
+              /^SELECT \* FROM outbound_order WHERE "?outbound_order_id"? = \$1$/i.test(
+                t,
+              )
+            ) {
               const o = orders.get(params[0]);
               return { rows: o ? [{ ...o }] : [] };
             }
             if (/^UPDATE outbound_order SET/i.test(t)) {
-              const id = params[Number(t.match(/WHERE "?outbound_order_id"? = \$(\d+)/i)[1]) - 1];
+              const id =
+                params[
+                  Number(t.match(/WHERE "?outbound_order_id"? = \$(\d+)/i)[1]) -
+                    1
+                ];
               const o = orders.get(id);
               if (!o) return { rows: [] };
               const next = { ...o };
-              t.match(/SET (.*?) WHERE/i)[1].split(", ").forEach((c) => {
-                const m = c.match(/^"?([a-z_]+)"? = \$(\d+)$/i);
-                if (m) next[m[1]] = params[Number(m[2]) - 1];
-              });
+              t.match(/SET (.*?) WHERE/i)[1]
+                .split(", ")
+                .forEach((c) => {
+                  const m = c.match(/^"?([a-z_]+)"? = \$(\d+)$/i);
+                  if (m) next[m[1]] = params[Number(m[2]) - 1];
+                });
               orders.set(id, next);
               return { rows: [{ ...next }] };
             }
             if (/^INSERT INTO outbound_line \(/i.test(t)) {
-              const cols = t.match(/\(([^)]*)\) VALUES/)[1].split(", ").map((c) => c.replace(/"/g, ""));
+              const cols = t
+                .match(/\(([^)]*)\) VALUES/)[1]
+                .split(", ")
+                .map((c) => c.replace(/"/g, ""));
               const row = { outbound_line_id: `l-${lines.size + 1}` };
-              cols.forEach((c, i) => { row[c] = params[i]; });
+              cols.forEach((c, i) => {
+                row[c] = params[i];
+              });
               lines.set(row.outbound_line_id, row);
               return { rows: [row] };
             }
@@ -607,22 +926,34 @@ describe("WMS inventory (TC-C7)", () => {
     }
 
     const lifecycle = [
-      ["CREATED", "PICKING", true], ["CREATED", "CANCELLED", true], ["CREATED", "PACKED", false], ["CREATED", "DISPATCHED", false],
-      ["PICKING", "PACKED", true], ["PICKING", "CANCELLED", true], ["PICKING", "DISPATCHED", false],
-      ["PACKED", "DISPATCHED", true], ["PACKED", "CANCELLED", true], ["PACKED", "PICKING", false],
-      ["DISPATCHED", "CANCELLED", false], ["CANCELLED", "PICKING", false],
+      ["CREATED", "PICKING", true],
+      ["CREATED", "CANCELLED", true],
+      ["CREATED", "PACKED", false],
+      ["CREATED", "DISPATCHED", false],
+      ["PICKING", "PACKED", true],
+      ["PICKING", "CANCELLED", true],
+      ["PICKING", "DISPATCHED", false],
+      ["PACKED", "DISPATCHED", true],
+      ["PACKED", "CANCELLED", true],
+      ["PACKED", "PICKING", false],
+      ["DISPATCHED", "CANCELLED", false],
+      ["CANCELLED", "PICKING", false],
     ];
 
     it("permits exactly the lifecycle the table declares", async () => {
       for (const [from, to, allowed] of lifecycle) {
         const { client: c } = outboundDb(from);
         if (allowed) {
-           
-          const row = await outbound.setStatus(c, { id: "o-1", status: to, actor: ACTOR });
+          const row = await outbound.setStatus(c, {
+            id: "o-1",
+            status: to,
+            actor: ACTOR,
+          });
           expect(row.status).toBe(to);
         } else {
-           
-          const err = await rejection(outbound.setStatus(c, { id: "o-1", status: to, actor: ACTOR }));
+          const err = await rejection(
+            outbound.setStatus(c, { id: "o-1", status: to, actor: ACTOR }),
+          );
           expect(err.code).toBe("INVALID_TRANSITION");
         }
       }
@@ -632,26 +963,48 @@ describe("WMS inventory (TC-C7)", () => {
       // Dispatch is what triggers the stock decrement downstream. Skipping the
       // pick means shipping stock nobody confirmed was there.
       const { client: c } = outboundDb("CREATED");
-      const err = await rejection(outbound.setStatus(c, { id: "o-1", status: "DISPATCHED", actor: ACTOR }));
+      const err = await rejection(
+        outbound.setStatus(c, {
+          id: "o-1",
+          status: "DISPATCHED",
+          actor: ACTOR,
+        }),
+      );
       expect(err.code).toBe("INVALID_TRANSITION");
     });
 
     it("stamps dispatched_at on dispatch, and only then", async () => {
       const packed = outboundDb("PACKED");
-      const row = await outbound.setStatus(packed.client, { id: "o-1", status: "DISPATCHED", actor: ACTOR });
+      const row = await outbound.setStatus(packed.client, {
+        id: "o-1",
+        status: "DISPATCHED",
+        actor: ACTOR,
+      });
       expect(row.dispatched_at).toBeInstanceOf(Date);
 
       const picking = outboundDb("CREATED");
-      const other = await outbound.setStatus(picking.client, { id: "o-1", status: "PICKING", actor: ACTOR });
+      const other = await outbound.setStatus(picking.client, {
+        id: "o-1",
+        status: "PICKING",
+        actor: ACTOR,
+      });
       expect(other.dispatched_at).toBeNull();
     });
 
     it("makes DISPATCHED and CANCELLED terminal", async () => {
       for (const from of ["DISPATCHED", "CANCELLED"]) {
-        for (const to of ["CREATED", "PICKING", "PACKED", "DISPATCHED", "CANCELLED"]) {
+        for (const to of [
+          "CREATED",
+          "PICKING",
+          "PACKED",
+          "DISPATCHED",
+          "CANCELLED",
+        ]) {
           const { client: c } = outboundDb(from);
-           
-          const err = await rejection(outbound.setStatus(c, { id: "o-1", status: to, actor: ACTOR }));
+
+          const err = await rejection(
+            outbound.setStatus(c, { id: "o-1", status: to, actor: ACTOR }),
+          );
           expect(err.code).toBe("INVALID_TRANSITION");
         }
       }
@@ -662,8 +1015,14 @@ describe("WMS inventory (TC-C7)", () => {
       // disagree.
       for (const status of ["PACKED", "DISPATCHED", "CANCELLED"]) {
         const { client: c } = outboundDb(status);
-         
-        const err = await rejection(outbound.addLine(c, { orderId: "o-1", data: { sku: "S" }, actor: ACTOR }));
+
+        const err = await rejection(
+          outbound.addLine(c, {
+            orderId: "o-1",
+            data: { sku: "S" },
+            actor: ACTOR,
+          }),
+        );
         expect(err.code).toBe("ORDER_LOCKED");
         expect(err.status).toBe(422);
       }
@@ -672,8 +1031,12 @@ describe("WMS inventory (TC-C7)", () => {
     it("allows lines while the order is still CREATED or PICKING", async () => {
       for (const status of ["CREATED", "PICKING"]) {
         const { client: c, lines } = outboundDb(status);
-         
-        const line = await outbound.addLine(c, { orderId: "o-1", data: { sku: "S", qty: 2 }, actor: ACTOR });
+
+        const line = await outbound.addLine(c, {
+          orderId: "o-1",
+          data: { sku: "S", qty: 2 },
+          actor: ACTOR,
+        });
         expect(line.outbound_order_id).toBe("o-1");
         expect(lines.size).toBe(1);
       }
@@ -681,8 +1044,16 @@ describe("WMS inventory (TC-C7)", () => {
 
     it("returns null for an unknown order", async () => {
       const { client: c } = outboundDb();
-      expect(await outbound.setStatus(c, { id: "nope", status: "PICKING", actor: ACTOR })).toBeNull();
-      expect(await outbound.addLine(c, { orderId: "nope", data: {}, actor: ACTOR })).toBeNull();
+      expect(
+        await outbound.setStatus(c, {
+          id: "nope",
+          status: "PICKING",
+          actor: ACTOR,
+        }),
+      ).toBeNull();
+      expect(
+        await outbound.addLine(c, { orderId: "nope", data: {}, actor: ACTOR }),
+      ).toBeNull();
     });
   });
 });

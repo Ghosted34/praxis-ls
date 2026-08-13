@@ -85,7 +85,9 @@ function routesOf(r, prefix = "") {
 }
 
 const routes = routesOf(router);
-const gated = routes.filter((r) => !PUBLIC.has(r.key) && !SELF_SCOPED.has(r.key));
+const gated = routes.filter(
+  (r) => !PUBLIC.has(r.key) && !SELF_SCOPED.has(r.key),
+);
 
 describe("platform API — every authenticated route carries a capability gate", () => {
   it("introspects a non-trivial route table", () => {
@@ -95,36 +97,38 @@ describe("platform API — every authenticated route carries a capability gate",
   });
 
   it("mounts platformAuth for the whole router", () => {
-    const names = (router.stack || []).map((l) => l.name || (l.handle && l.handle.name));
+    const names = (router.stack || []).map(
+      (l) => l.name || (l.handle && l.handle.name),
+    );
     expect(names).toContain("platformAuth");
   });
 
-/**
- * The names an authorisation gate can have on this router.
- *
- * BOTH were called `check` until API-F23. `requireCap` and `requirePlatformRole`
- * each returned `function check(...)`, which is generic enough that nothing
- * reading the mounted routers could tell an authorisation step from any other
- * middleware — so the contract snapshot classified every platform route,
- * including `DELETE /tenants/:slug`, as "authenticated with no permission
- * check". They are now `platformCapCheck` and `platformRoleCheck`.
- *
- * THIS TEST BREAKING IS THE POINT, AND ALSO THE WARNING. Renaming a function
- * turned 53 assertions red, which is precisely the fragility TC-Q6 describes:
- * a guard that identifies middleware BY NAME stops guarding the moment someone
- * renames or wraps it, and here it failed loudly only because the rename was
- * deliberate. A wrapper — `asyncHandler(requireCap('x'))` — would have made it
- * fail silently instead, reporting every route ungated.
- *
- * Kept name-based rather than converted to identity matching because these are
- * FACTORY-produced closures: `requireCap('a')` and `requireCap('b')` are
- * different function objects, so there is no single reference to compare
- * against. The honest fix is a tag on the returned function (as
- * `makeLimiter` does with `praxisRateLimit`), which is a small change worth
- * making next time this file is touched.
- */
-const GATE_NAMES = ["platformCapCheck", "platformRoleCheck"];
-const isGated = (names) => names.some((n) => GATE_NAMES.includes(n));
+  /**
+   * The names an authorisation gate can have on this router.
+   *
+   * BOTH were called `check` until API-F23. `requireCap` and `requirePlatformRole`
+   * each returned `function check(...)`, which is generic enough that nothing
+   * reading the mounted routers could tell an authorisation step from any other
+   * middleware — so the contract snapshot classified every platform route,
+   * including `DELETE /tenants/:slug`, as "authenticated with no permission
+   * check". They are now `platformCapCheck` and `platformRoleCheck`.
+   *
+   * THIS TEST BREAKING IS THE POINT, AND ALSO THE WARNING. Renaming a function
+   * turned 53 assertions red, which is precisely the fragility TC-Q6 describes:
+   * a guard that identifies middleware BY NAME stops guarding the moment someone
+   * renames or wraps it, and here it failed loudly only because the rename was
+   * deliberate. A wrapper — `asyncHandler(requireCap('x'))` — would have made it
+   * fail silently instead, reporting every route ungated.
+   *
+   * Kept name-based rather than converted to identity matching because these are
+   * FACTORY-produced closures: `requireCap('a')` and `requireCap('b')` are
+   * different function objects, so there is no single reference to compare
+   * against. The honest fix is a tag on the returned function (as
+   * `makeLimiter` does with `praxisRateLimit`), which is a small change worth
+   * making next time this file is touched.
+   */
+  const GATE_NAMES = ["platformCapCheck", "platformRoleCheck"];
+  const isGated = (names) => names.some((n) => GATE_NAMES.includes(n));
 
   it.each(gated.map((r) => [r.key, r]))("%s is gated", (_key, route) => {
     // Either gate is an authorisation decision — an ungated route has neither.
@@ -162,7 +166,10 @@ const isGated = (names) => names.some((n) => GATE_NAMES.includes(n));
   it("the public allow-list has not grown", () => {
     // A deliberate tripwire. Widening the anonymous surface should require
     // editing a test that says, in words, what you are widening it to.
-    expect([...PUBLIC].sort()).toEqual(["post /auth/login", "post /auth/refresh"]);
+    expect([...PUBLIC].sort()).toEqual([
+      "post /auth/login",
+      "post /auth/refresh",
+    ]);
   });
 
   describe("self-scoped routes", () => {

@@ -1,40 +1,42 @@
-
-document.addEventListener('DOMContentLoaded', function () {
-  const toggler = document.querySelector('.navbar-toggler');
-  const mainNav = document.getElementById('mainNav');
+document.addEventListener("DOMContentLoaded", function () {
+  const toggler = document.querySelector(".navbar-toggler");
+  const mainNav = document.getElementById("mainNav");
 
   if (!toggler || !mainNav) return;
 
   // Listen for bootstrap collapse events to add/remove the .is-open class
-  mainNav.addEventListener('show.bs.collapse', () => {
-    toggler.classList.add('is-open');
+  mainNav.addEventListener("show.bs.collapse", () => {
+    toggler.classList.add("is-open");
   });
-  mainNav.addEventListener('hide.bs.collapse', () => {
-    toggler.classList.remove('is-open');
+  mainNav.addEventListener("hide.bs.collapse", () => {
+    toggler.classList.remove("is-open");
   });
 
   // Close collapse when clicking outside of it
-  document.addEventListener('click', (e) => {
+  document.addEventListener("click", (e) => {
     // Do nothing if nav is closed
-    if (!mainNav.classList.contains('show')) return;
+    if (!mainNav.classList.contains("show")) return;
 
     // If click is inside the navbar area or the toggler, ignore
     if (mainNav.contains(e.target) || toggler.contains(e.target)) return;
 
     // Otherwise hide the collapse using Bootstrap's API
-    const bsCollapse = bootstrap.Collapse.getInstance(mainNav) || new bootstrap.Collapse(mainNav, { toggle: false });
+    const bsCollapse =
+      bootstrap.Collapse.getInstance(mainNav) ||
+      new bootstrap.Collapse(mainNav, { toggle: false });
     bsCollapse.hide();
   });
 
   // Optional: close on 'Escape' key
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && mainNav.classList.contains('show')) {
-      const bsCollapse = bootstrap.Collapse.getInstance(mainNav) || new bootstrap.Collapse(mainNav, { toggle: false });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && mainNav.classList.contains("show")) {
+      const bsCollapse =
+        bootstrap.Collapse.getInstance(mainNav) ||
+        new bootstrap.Collapse(mainNav, { toggle: false });
       bsCollapse.hide();
       toggler.focus();
     }
   });
-
 });
 
 (function () {
@@ -57,7 +59,6 @@ document.addEventListener('DOMContentLoaded', function () {
     document.documentElement.setAttribute("lang", lang);
     localStorage.setItem(LANG_KEY, lang);
     document.cookie = `slas_lang=${lang}; path=/; max-age=31536000; samesite=lax`;
-
 
     document.querySelectorAll("[data-i18n]").forEach((el) => {
       const key = el.getAttribute("data-i18n");
@@ -142,7 +143,7 @@ document.addEventListener('DOMContentLoaded', function () {
           if (e.isIntersecting) e.target.classList.add("is-visible");
         });
       },
-      { threshold: 0.14 }
+      { threshold: 0.14 },
     );
     els.forEach((el) => io.observe(el));
   })();
@@ -178,7 +179,7 @@ document.addEventListener('DOMContentLoaded', function () {
           if (Number.isFinite(target)) animateCounter(el, target, 1100);
         });
       },
-      { threshold: 0.35 }
+      { threshold: 0.35 },
     );
     counters.forEach((el) => io.observe(el));
   })();
@@ -193,7 +194,11 @@ document.addEventListener('DOMContentLoaded', function () {
       alert("Please enter your Tracking Reference number.");
       return false;
     }
-    alert("Tracking reference captured: " + ref + "\nNext: connect Smart Track endpoint in Phase 2.");
+    alert(
+      "Tracking reference captured: " +
+        ref +
+        "\nNext: connect Smart Track endpoint in Phase 2.",
+    );
     return false;
   };
 })();

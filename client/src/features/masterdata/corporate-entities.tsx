@@ -39,6 +39,10 @@ import { FormButtons } from "@/components/ui/form-buttons";
 import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
+import { ScreenError } from "@/components/connection/screen-error";
+import { DraftBanner } from "@/components/ui/draft-banner";
+import { useFormDraft } from "@/lib/form-draft";
+import { submitQueued } from "@/lib/outbox";
 import { SplitPane } from "@/components/ui/split-pane";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
@@ -95,7 +99,20 @@ function EntityForm({ row, entities, onClose, onSaved }: {
   const [logoBusy, setLogoBusy] = React.useState<"light" | "dark" | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [queued, setQueued] = React.useState(false);
   const { rows: jurisdictions } = useList<api.TaxJurisdiction>("/tax-jurisdictions");
+
+  /**
+   * Autosave. Keyed by entity id (or "new") so the draft for a NEW entity and
+   * the draft for an edit of SLAS cannot overwrite each other — this modal is
+   * opened from three places, including a deep link, and the same component
+   * instance serves all of them.
+   */
+  const draft = useFormDraft<EntityFormValues>({
+    key: `entity:${row?.entity_id ?? "new"}`,
+    values: v,
+    label: "Corporate entity",
+  });
 
   const set = (k: string, value: string) => setV((s) => ({ ...s, [k]: value }));
 
@@ -131,12 +148,43 @@ function EntityForm({ row, entities, onClose, onSaved }: {
     setError(null);
     const body = entityFormBody(v);
     try {
-      const saved = isNew
+      /**
+       * Routed through the outbox rather than `api.createEntity` so that a
+       * network drop between pressing Save and the request landing HOLDS the
+       * write instead of losing it. Everything else is unchanged: a 422 still
+       * throws and still reaches `errMsg` below, because a validation failure
+       * is a decision the server made and queueing it would only delay the
+       * same answer.
+       */
+      const result = isNew
         // An entity may be opened as a DRAFT and completed over several sittings —
         // gathering statutes, certificates and a cap table is not a one-form job.
-        ? await api.createEntity({ ...body, code: v.code.trim(), legal_name: v.legal_name.trim(), registration_status: (v.registration_status || undefined) as api.EntityLifecycle | undefined } as api.EntityInput)
-        : await api.updateEntity(row!.entity_id, body);
-      onSaved(saved);
+        ? await submitQueued<api.Entity>({
+            path: "/entities",
+            method: "POST",
+            body: { ...body, code: v.code.trim(), legal_name: v.legal_name.trim(), registration_status: (v.registration_status || undefined) as api.EntityLifecycle | undefined },
+            label: `New corporate entity — ${v.legal_name.trim() || v.code.trim()}`,
+          })
+        : await submitQueued<api.Entity>({
+            path: `/entities/${row!.entity_id}`,
+            method: "PATCH",
+            body,
+            label: `Corporate entity — ${row!.legal_name}`,
+          });
+
+      // The draft has served its purpose either way: the values are now the
+      // server's problem (sent) or the outbox's (queued), and leaving it behind
+      // would offer to restore them on top of themselves.
+      draft.clear();
+
+      if (result.status === "queued") {
+        // Deliberately NOT closed. The user pressed Save and nothing has been
+        // saved yet; closing the form would look identical to a success and is
+        // exactly the lie this feature exists to stop telling.
+        setQueued(true);
+        return;
+      }
+      onSaved(result.data);
       onClose();
     } catch (err) {
       setError(errMsg(err));
@@ -170,6 +218,27 @@ function EntityForm({ row, entities, onClose, onSaved }: {
       description="A legal entity we bill and report from. Its registrations, shareholders and addresses are collections on the entity's own page."
     >
       <form className="space-y-4" onSubmit={submit}>
+        {draft.pending && (
+          <DraftBanner
+            savedAt={draft.pending.savedAt}
+            what="entity"
+            onRestore={() => {
+              const restored = draft.restore();
+              if (restored) setV(restored);
+            }}
+            onDiscard={draft.discard}
+          />
+        )}
+
+        {/* The write is held, not done. Said plainly, and the form stays open —
+            see `submit`. */}
+        {queued && (
+          <div role="status" className="rounded-lg border border-ok/40 bg-ok/10 p-3 text-sm text-ok">
+            You're offline, so this is saved on your device and will be sent automatically the moment the connection
+            comes back. You can close this — nothing will be lost.
+          </div>
+        )}
+
         <Fieldset legend="Identity">
           <Field label="Code" required hint="Short unique key"><Input value={v.code} onChange={(e) => set("code", e.target.value)} placeholder="SLAS" disabled={!isNew} /></Field>
           <Field label="Legal name" required><Input value={v.legal_name} onChange={(e) => set("legal_name", e.target.value)} placeholder="Smart Logistics and Services Ltd" /></Field>
@@ -291,7 +360,11 @@ function EntityForm({ row, entities, onClose, onSaved }: {
         )}
 
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} disabled={!v.code || !v.legal_name || busy} onCancel={onClose} saveLabel={isNew ? "Create entity" : "Save changes"} />
+        {/* `queued` disables Save. The entry already holds this write under its
+            own idempotency key; a second press would mint a NEW key and queue a
+            second entry, and the reconnect would then create two entities —
+            turning the rescue into the duplicate it was designed to prevent. */}
+        <FormButtons busy={busy} disabled={!v.code || !v.legal_name || busy || queued} onCancel={onClose} saveLabel={isNew ? "Create entity" : "Save changes"} />
       </form>
     </Modal>
   );
@@ -334,7 +407,7 @@ export function CorporateEntitiesPage() {
         action={<Button onClick={() => setEditing("new")}>New entity</Button>}
       />
       <HubTabs />
-      {error ? <ErrorState message={error} /> : (
+      {error ? <ScreenError message={error} what="Corporate entities" onRetry={reload} /> : (
         <SplitPane storageKey="master.corporate-entities" label="Entity list width" defaultSize={280} min={220} max={480}>
           <div className="space-y-2">
             <Input placeholder="Search entity…" value={q} onChange={(e) => setQ(e.target.value)} />

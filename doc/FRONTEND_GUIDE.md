@@ -346,6 +346,9 @@ return `{ rows | data, error, loading, reload }`.
 | Status          | `<Pill>` / `<StatusPill>`                                                                 | `StatusPill` picks its tone from the value.                                                  |
 | Figures         | `<Stat>` (tile) · `<KpiRow>`+`<KpiTile>` (strip)                                          |                                                                                              |
 | States          | `<EmptyState>` (with `action`) · `<ErrorState>` · `<LoadingRow>` · `<SkeletonTable>`      |                                                                                              |
+| A screen's fetch failed | `<ScreenError message={error} what="Corporate entities" onRetry={reload} />` | **Prefer this over a bare `<ErrorState>` for a failed fetch.** Shows the server's own message when the server answered, and `<ConnectionLost>` when it did not. |
+| Unsaved form rescue | `useFormDraft()` + `<DraftBanner>` | Autosaves what was typed; offers it back after a drop or a reload. Never restores silently. |
+| A write that must survive a drop | `submitQueued()` (`lib/outbox.ts`) | Queues on network failure and replays on reconnect under an `Idempotency-Key`. Still throws a 422/403 — only "nothing answered" is queued. |
 | Feedback        | `useToast()`                                                                              | `success` / `error` / `info`.                                                                |
 | Paging          | `<Pagination>`                                                                            |                                                                                              |
 | Crash safety    | `<ErrorBoundary>`                                                                         | Already at the app root and per route; add around risky widgets.                             |
@@ -476,6 +479,13 @@ are axe-tested. What that leaves to you:
   enforce it; a hand-built block must do it by hand.
 - **Announce async results.** `useToast()` for success/failure; `<ErrorState>` carries
   `role="alert"`.
+- **Distinguish "offline" from "refused".** A dead connection and a 403 are not the same
+  failure and must not read the same. `<ScreenError>` dispatches on the live connection
+  state, so passing it the string you already had is the whole migration. Never send a
+  user to fix their wifi over our 500 — a server that answered proves the network works.
+- **Never offer a reload as the way out of an error.** In this app a reload discards every
+  unsaved form on the screen, which is exactly the loss the user is trying to avoid. Offer
+  a retry that re-runs the fetch instead.
 - **One `<h1>` per screen** — `PageHeader` renders it. Cards/panels default to `<h2>`.
   Don't skip levels.
 - **Test both themes.** If you only used tokens, dark mode already works. Check it anyway.

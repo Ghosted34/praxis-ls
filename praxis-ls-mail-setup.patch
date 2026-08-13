@@ -1,0 +1,1987 @@
+diff --git a/client/src/components/mail/smtp-guide.tsx b/client/src/components/mail/smtp-guide.tsx
+new file mode 100644
+index 0000000..c1be7f7
+--- /dev/null
++++ b/client/src/components/mail/smtp-guide.tsx
+@@ -0,0 +1,106 @@
++/**
++ * SMTP fix-guide components — render the "how to fix this" panel for an
++ * outbound-mail failure wherever it surfaces. Registry + sniffing live in
++ * lib/smtp-errors.ts (SMTP_GUIDES, smtpCodeFor) so the machine-code → steps
++ * mapping is testable on its own.
++ *
++ * `<SmtpErrorGuide />`          — collapsible guide for ONE failure; render
++ *                                 directly UNDER the error state.
++ * `<MailTroubleshootingCard />` — always-visible condensed help for the two
++ *                                 screens where admins configure mail, so the
++ *                                 guidance is findable BEFORE the error hits.
++ */
++import * as React from "react";
++import { cn } from "@/lib/cn";
++import { Button } from "@/components/ui/button";
++import { SMTP_GUIDES, smtpCodeFor, smtpGuideFor } from "@/lib/smtp-errors";
++
++/* Collapsible "How to fix this" panel — render directly UNDER the error state. */
++export function SmtpErrorGuide({
++  err,
++  code,
++  message,
++  open = false,
++  className,
++}: {
++  err?: unknown;
++  code?: unknown;
++  message?: unknown;
++  open?: boolean;
++  className?: string;
++}) {
++  const [isOpen, setIsOpen] = React.useState(open);
++  const resolved = code ? String(code) : smtpCodeFor(err, message != null ? String(message) : undefined);
++  const guide = smtpGuideFor(resolved);
++  if (!guide) return null;
++  return (
++    <details
++      open={isOpen}
++      onToggle={(e) => setIsOpen((e.target as HTMLDetailsElement).open)}
++      className={cn(
++        "mt-2 rounded-lg border border-border bg-muted/40 text-[11px] leading-relaxed text-muted-foreground",
++        className,
++      )}
++    >
++      <summary className="flex cursor-pointer select-none items-center gap-2 px-2.5 py-2 font-medium text-foreground">
++        <span aria-hidden>🛠</span> How to fix this — {guide.title}
++        <span className={cn("ml-auto text-muted-foreground transition-transform", isOpen && "rotate-180")} aria-hidden>▾</span>
++      </summary>
++      <div className="border-t border-border/60 px-3 py-2.5">
++        <p className="mb-2">{guide.intro}</p>
++        <ol className="list-decimal space-y-1 pl-4">
++          {guide.steps.map((s) => (
++            <li key={s}>{s}</li>
++          ))}
++        </ol>
++      </div>
++    </details>
++  );
++}
++
++/* Always-visible condensed help for the mail-config screens (Comms → Setup,
++ * and in adapted form the platform console → Integrations). Rendered once per
++ * screen, under the credentials card — BEFORE anyone hits the error. */
++export function MailTroubleshootingCard({ className }: { className?: string }) {
++  const [open, setOpen] = React.useState(false);
++  const senderVerify = SMTP_GUIDES.SMTP_SENDER_REJECTED;
++  return (
++    <div className={cn("rounded-2xl border border-border bg-card p-5 shadow-sm", className)}>
++      <div className="mb-3 flex items-center justify-between">
++        <div>
++          <h3 className="font-display text-base">Email troubleshooting</h3>
++          <p className="micro">
++            The three checks that fix almost every send failure — expanded guide appears next to the error itself.
++          </p>
++        </div>
++        <Button type="button" size="sm" variant="ghost" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
++          {open ? "Hide" : "Show"} guide
++        </Button>
++      </div>
++      <ol className="list-decimal space-y-1 pl-4 text-[11px] leading-relaxed text-muted-foreground">
++        <li>
++          <strong className="text-foreground">From address must be a real mailbox</strong> on its domain — with valid{" "}
++          <span className="num">MX</span>, <span className="num">SPF</span> and <span className="num">DKIM</span> records.
++        </li>
++        <li>
++          <strong className="text-foreground">From must match the SMTP login</strong> — the address you send as is the
++          account you authenticate as (or an alias of it).
++        </li>
++        <li>
++          <strong className="text-foreground">Host, port, credentials</strong> — 587 STARTTLS / 465 SSL; app password for
++          2FA accounts. Press <strong>Test</strong> after every change.
++        </li>
++      </ol>
++      {open && (
++        <div className="mt-3 rounded-lg border border-border bg-muted/40 p-2.5">
++          <p className="mb-2 font-medium text-foreground">🛠 {senderVerify.title}</p>
++          <ol className="list-decimal space-y-1 pl-4">
++            {senderVerify.steps.map((s) => (
++              <li key={s}>{s}</li>
++            ))}
++          </ol>
++        </div>
++      )}
++    </div>
++  );
++}
+diff --git a/client/src/features/comms/mail-setup-wizard.tsx b/client/src/features/comms/mail-setup-wizard.tsx
+new file mode 100644
+index 0000000..4f94f65
+--- /dev/null
++++ b/client/src/features/comms/mail-setup-wizard.tsx
+@@ -0,0 +1,410 @@
++/**
++ * Mail setup guide — the Zoho-style assistant for Comms → Setup.
++ *
++ * Four steps, completed in order, each auto-verified where the backend can:
++ *   1. Sender address — at least one active From address on the tenant's domain
++ *   2. DNS records     — MX / SPF / DKIM lookups (with copyable values to add)
++ *   3. SMTP connection — live nodemailer verify() against the shared login
++ *   4. Test email      — a REAL message sent through the tenant's transport
++ *
++ * Where a lookup is impossible (resolver failure) the row falls back to a
++ * self-check tick — the product decision: max auto-verify, self-check only
++ * where practically impossible. Entry is manual-only (the Setup page's
++ * "Setup guide" button); no login auto-show.
++ *
++ * Failures reuse <SmtpErrorGuide />, so a 550 during step 3/4 shows the same
++ * fix list the rest of the mail surfaces show.
++ */
++import * as React from "react";
++import { Modal, Field } from "@/components/ui/modal";
++import { Button } from "@/components/ui/button";
++import { Input } from "@/components/ui/input";
++import { Pill } from "@/components/ui/pill";
++import { ErrorState } from "@/components/ui/states";
++import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
++import { useResource, errMsg } from "@/lib/use-resource";
++import { cn } from "@/lib/cn";
++import * as api from "@/lib/mail-api";
++import * as scapi from "@/lib/smartcomm-api";
++
++const domainOf = (addr: string) => addr.split("@")[1] || "";
++
++const STEPS = [
++  { id: "sender", title: "Sender address", sub: "The From address your email goes out from" },
++  { id: "dns", title: "DNS records", sub: "MX, SPF and DKIM for that domain" },
++  { id: "smtp", title: "SMTP connection", sub: "Credentials actually accepted by the server" },
++  { id: "test", title: "Test email", sub: "A real message leaves the building" },
++] as const;
++type StepId = (typeof STEPS)[number]["id"];
++
++/* Copyable record value — the thing the operator pastes into DNS. */
++function CopyRow({ value }: { value: string }) {
++  const [copied, setCopied] = React.useState(false);
++  async function copy() {
++    try { await navigator.clipboard.writeText(value); } catch { /* clipboard unavailable */ }
++    setCopied(true);
++    window.setTimeout(() => setCopied(false), 1500);
++  }
++  return (
++    <div className="flex items-center gap-2 rounded-lg border border-border bg-muted/40 px-2.5 py-1.5">
++      <code className="num min-w-0 flex-1 break-all text-[11px] text-foreground">{value}</code>
++      <Button type="button" size="sm" variant="ghost" onClick={copy}>{copied ? "✓ Copied" : "Copy"}</Button>
++    </div>
++  );
++}
++
++/* One DNS row: label, verdict pill, detail (record to add / hint / self-check). */
++function DnsRow({ label, check, manual, onManual }: {
++  label: string;
++  check: scapi.DnsRecordCheck | undefined;
++  manual: boolean;
++  onManual: (v: boolean) => void;
++}) {
++  if (!check) return null;
++  const tone = check.ok === true ? "ok" : check.ok === false ? "bad" : "warn";
++  const status = check.ok === true ? "OK" : check.ok === false ? "Missing" : "Unchecked";
++  return (
++    <div className="rounded-xl border border-border bg-card p-3.5">
++      <div className="flex items-center justify-between gap-3">
++        <span className="font-medium text-sm text-foreground">{label}</span>
++        <Pill tone={tone}>{status}</Pill>
++      </div>
++      <div className="mt-2 space-y-1.5 text-[11px] leading-relaxed text-muted-foreground">
++        {check.ok === true && check.records && check.records.length > 0 && (
++          <div>
++            {check.records.map((r) => (
++              <div key={`${r.host}:${r.priority}`} className="num">{r.host} <span className="text-muted-foreground/70">· priority {r.priority}</span></div>
++            ))}
++          </div>
++        )}
++        {check.ok === true && check.record && <CopyRow value={check.record} />}
++        {check.ok === true && check.selector && <div>Selector: <span className="num">{check.selector}</span></div>}
++        {check.ok === true && check.note && <div>{check.note}</div>}
++        {check.ok === false && check.suggest && check.suggest.length > 0 && (
++          <div className="space-y-1">
++            <div className="text-foreground">Add one of these TXT records to the domain:</div>
++            {check.suggest.map((s) => <CopyRow key={s} value={s} />)}
++          </div>
++        )}
++        {check.hint && <div>{check.hint}</div>}
++        {check.ok === null && (
++          <label className="flex cursor-pointer items-center gap-2 pt-1 text-foreground">
++            <input type="checkbox" checked={manual} onChange={(e) => onManual(e.target.checked)} />
++            I've set this up — count it as done
++          </label>
++        )}
++      </div>
++    </div>
++  );
++}
++
++export function MailSetupWizard({ open, onClose, onDone }: { open: boolean; onClose: () => void; onDone?: () => void }) {
++  const senders = useResource(() => api.listSenders(), []);
++  const active = React.useMemo(() => (senders.data || []).filter((s) => s.is_active), [senders.data]);
++  const senderKey = active.map((s) => s.email_identity_id).join("|");
++
++  const [step, setStep] = React.useState<number>(0);
++  const [domain, setDomain] = React.useState("");
++  const [dns, setDns] = React.useState<scapi.DnsCheckResult | null>(null);
++  const [dnsBusy, setDnsBusy] = React.useState(false);
++  const [dnsErr, setDnsErr] = React.useState<unknown>(null);
++  const [manual, setManual] = React.useState({ mx: false, spf: false, dkim: false });
++  const [smtp, setSmtp] = React.useState<scapi.TestResult | null>(null);
++  const [smtpBusy, setSmtpBusy] = React.useState(false);
++  const [to, setTo] = React.useState("");
++  const [send, setSend] = React.useState<scapi.TestResult | null>(null);
++  const [sendBusy, setSendBusy] = React.useState(false);
++
++  // Derived pass/fail — declared before the effects that consume them.
++  const dnsPassed = dns ? (["mx", "spf", "dkim"] as const).every((k) => dns[k].ok === true || manual[k]) : false;
++  const smtpPassed = smtp?.ok === true;
++  const sendPassed = send?.ok === true;
++  const passed: Record<StepId, boolean> = { sender: active.length > 0, dns: dnsPassed, smtp: smtpPassed, test: sendPassed };
++  const passedCount = Object.values(passed).filter(Boolean).length;
++  const summary = step === STEPS.length;
++
++  // Follow the senders: the domain checked is the first active sender's domain.
++  React.useEffect(() => {
++    if (!active.length) return;
++    const d = domainOf(active[0].from_address);
++    if (d && d !== domain) {
++      setDomain(d);
++      setDns(null);
++      setManual({ mx: false, spf: false, dkim: false });
++    }
++    // eslint-disable-next-line react-hooks/exhaustive-deps -- domain is guarded (early return once equal)
++  }, [senderKey]);
++
++  const checkDns = React.useCallback(async () => {
++    if (!domain) return;
++    setDnsBusy(true); setDnsErr(null);
++    setManual({ mx: false, spf: false, dkim: false });
++    try { setDns(await scapi.dnsCheckEmail(domain)); }
++    catch (err) { setDnsErr(err); }
++    finally { setDnsBusy(false); }
++  }, [domain]);
++
++  const runSmtp = React.useCallback(async () => {
++    setSmtpBusy(true);
++    try { setSmtp(await scapi.testEmail()); }
++    catch (err) { setSmtp({ ok: false, error: errMsg(err) }); }
++    finally { setSmtpBusy(false); }
++  }, []);
++
++  const sendTest = React.useCallback(async () => {
++    if (!to.trim()) return;
++    setSendBusy(true); setSend(null);
++    try { setSend(await scapi.testSendEmail({ to: to.trim() })); }
++    catch (err) { setSend({ ok: false, error: errMsg(err) }); }
++    finally { setSendBusy(false); }
++  }, [to]);
++
++  // Auto-verify on landing: DNS when the step has a domain, SMTP on its step.
++  React.useEffect(() => {
++    if (open && step === 1 && domain && !dns && !dnsBusy) void checkDns();
++  }, [open, step, domain, dns, dnsBusy, checkDns]);
++  React.useEffect(() => {
++    if (open && step === 2 && !smtp && !smtpBusy) void runSmtp();
++  }, [open, step, smtp, smtpBusy, runSmtp]);
++
++  // On open, resume at the first step that hasn't passed yet.
++  React.useEffect(() => {
++    if (!open) return;
++    if (!active.length) setStep(0);
++    else if (!dnsPassed) setStep(1);
++    else if (!smtpPassed) setStep(2);
++    else if (!sendPassed) setStep(3);
++    // eslint-disable-next-line react-hooks/exhaustive-deps -- resume point derives from live verification state, not deps
++  }, [open]);
++
++  const continueDisabled = !passed[STEPS[Math.min(step, STEPS.length - 1)].id];
++  const smtpUnconfigured = smtp && !smtp.ok && !smtp.code;
++
++  function continue_() {
++    if (step < STEPS.length) setStep(step + 1);
++  }
++
++  return (
++    <Modal
++      open={open}
++      onClose={onClose}
++      size="xl"
++      title={summary ? "Mail setup — complete" : "Mail setup guide"}
++      description={summary ? "Your outbound email is verified and working." : "Four steps to verified outbound email. Each check runs against your real configuration."}
++      footer={
++        summary
++          ? <Button size="sm" onClick={() => { onClose(); onDone?.(); }}>Done</Button>
++          : <>
++              {step > 0 && <Button size="sm" variant="outline" onClick={() => setStep(step - 1)}>Back</Button>}
++              <Button size="sm" onClick={continue_} disabled={continueDisabled}>{step === STEPS.length - 1 ? "Finish" : "Continue"}</Button>
++            </>
++      }
++    >
++      {/* Step chips + progress */}
++      {!summary && (
++        <div className="mb-4">
++          <div className="flex items-center gap-2">
++            {STEPS.map((s, i) => {
++              const done = passed[s.id];
++              const current = i === step;
++              const clickable = done || current;
++              return (
++                <button
++                  key={s.id}
++                  type="button"
++                  disabled={!clickable}
++                  onClick={() => setStep(i)}
++                  aria-current={current ? "step" : undefined}
++                  className={cn(
++                    "flex flex-1 items-center gap-2 rounded-lg border px-2.5 py-2 text-left text-[11px] leading-tight transition-colors",
++                    current ? "border-primary bg-primary/10 text-foreground" : done ? "border-border bg-card text-foreground" : "border-border bg-card/40 text-muted-foreground opacity-60",
++                    clickable && "cursor-pointer hover:border-primary/50",
++                  )}
++                >
++                  <span className={cn(
++                    "grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold",
++                    done ? "bg-[rgb(var(--ok))] text-white" : current ? "bg-primary text-white" : "bg-muted text-muted-foreground",
++                  )}>
++                    {done ? "✓" : i + 1}
++                  </span>
++                  <span className="min-w-0">
++                    <span className="block font-medium">{s.title}</span>
++                    <span className="block truncate text-muted-foreground">{s.sub}</span>
++                  </span>
++                </button>
++              );
++            })}
++          </div>
++          <div className="mt-2 h-1 overflow-hidden rounded-full bg-muted">
++            <div className="h-full rounded-full bg-[rgb(var(--ok))] transition-all" style={{ width: `${(passedCount / STEPS.length) * 100}%` }} />
++          </div>
++        </div>
++      )}
++
++      {/* ── Step 0 — Sender address ── */}
++      {step === 0 && (
++        <div className="space-y-3">
++          {active.length > 0 && (
++            <div className="space-y-2">
++              {active.map((s) => (
++                <div key={s.email_identity_id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
++                  <div className="min-w-0">
++                    <div className="num font-medium text-foreground">{s.from_address}</div>
++                    <div className="micro">{s.purpose}{s.from_name ? ` · ${s.from_name}` : ""}</div>
++                  </div>
++                  <Pill tone="ok">Active</Pill>
++                </div>
++              ))}
++              <p className="micro">Your email goes out from the first active sender. Add another section sender below if you need one.</p>
++            </div>
++          )}
++          <AddSenderInline onAdded={() => senders.reload()} />
++        </div>
++      )}
++
++      {/* ── Step 1 — DNS records ── */}
++      {step === 1 && (
++        <div className="space-y-3">
++          <p className="micro">
++            Checking <span className="num text-foreground">{domain}</span> — the domain of your From address. This is the step
++            that fixes <span className="num">550 Sender verify failed</span>: the domain must look like a real mail domain to
++            receiving servers.
++          </p>
++          {dnsErr != null && <ErrorState message={errMsg(dnsErr)} />}
++          {!dns && !dnsBusy && !dnsErr && (
++            <p className="micro">Press “Verify now” to check the domain's records.</p>
++          )}
++          {dns && (
++            <div className="space-y-2">
++              <DnsRow label="MX — mail exchange" check={dns.mx} manual={manual.mx} onManual={(v) => setManual((m) => ({ ...m, mx: v }))} />
++              <DnsRow label="SPF — sender policy framework" check={dns.spf} manual={manual.spf} onManual={(v) => setManual((m) => ({ ...m, spf: v }))} />
++              <DnsRow label="DKIM — signing key" check={dns.dkim} manual={manual.dkim} onManual={(v) => setManual((m) => ({ ...m, dkim: v }))} />
++            </div>
++          )}
++          <div className="flex items-center justify-end">
++            <Button size="sm" variant="outline" onClick={checkDns} loading={dnsBusy} disabled={dnsBusy || !domain}>
++              {dns ? "Verify again" : "Verify now"}
++            </Button>
++          </div>
++        </div>
++      )}
++
++      {/* ── Step 2 — SMTP connection ── */}
++      {step === 2 && (
++        <div className="space-y-3">
++          <p className="micro">We open a real connection to your SMTP server and authenticate — no message is sent.</p>
++          {smtpBusy && !smtp && <p className="micro">Testing the SMTP connection…</p>}
++          {smtp && smtp.ok && (
++            <div className="flex items-center gap-2 rounded-xl border border-border bg-card p-3">
++              <span className="text-[rgb(var(--ok))]">✓</span>
++              <span className="text-sm">SMTP connection accepted{typeof smtp.smtp_host === "string" ? <span className="num"> · {smtp.smtp_host}</span> : null}</span>
++            </div>
++          )}
++          {smtp && !smtp.ok && (
++            <div>
++              <ErrorState message={String(smtp.error || "SMTP test failed")} />
++              {smtpUnconfigured && (
++                <p className="micro mt-2">
++                  No SMTP host is configured yet — fill in the <strong>Shared SMTP login</strong> card on this page (Comms →
++                  Setup → Credentials), save it, then run the test again.
++                </p>
++              )}
++              <SmtpErrorGuide code={smtp.code} message={smtp.error} />
++            </div>
++          )}
++          <div className="flex items-center justify-end">
++            <Button size="sm" variant="outline" onClick={runSmtp} loading={smtpBusy} disabled={smtpBusy}>Run test again</Button>
++          </div>
++        </div>
++      )}
++
++      {/* ── Step 3 — Test email ── */}
++      {step === 3 && (
++        <div className="space-y-3">
++          <p className="micro">A real message, through your real sender. Send it to an inbox you can check.</p>
++          <div className="flex items-end gap-2">
++            <div className="flex-1">
++              <Field label="Send the test to" required>
++                <Input type="email" value={to} onChange={(e) => setTo(e.target.value)} placeholder="you@company.cm" />
++              </Field>
++            </div>
++            <Button size="sm" onClick={sendTest} loading={sendBusy} disabled={sendBusy || !to.trim()}>Send test email</Button>
++          </div>
++          {send && send.ok && (
++            <div className="rounded-xl border border-border bg-card p-3 text-sm">
++              <div className="text-[rgb(var(--ok))]">✓ Sent to {to} — check the inbox <strong>and the spam folder</strong>.</div>
++              <p className="micro mt-1">If it lands in spam, mark it “not spam” and return to step 2 — SPF/DKIM are usually the cause.</p>
++            </div>
++          )}
++          {send && !send.ok && (
++            <div>
++              <ErrorState message={String(send.error || "Test send failed")} />
++              <SmtpErrorGuide code={send.code} message={send.error} />
++            </div>
++          )}
++        </div>
++      )}
++
++      {/* ── Summary ── */}
++      {summary && (
++        <div className="space-y-2">
++          {STEPS.map((s) => (
++            <div key={s.id} className="flex items-center justify-between gap-3 rounded-xl border border-border bg-card p-3">
++              <div>
++                <div className="text-sm font-medium text-foreground">{s.title}</div>
++                <div className="micro">{s.sub}</div>
++              </div>
++              <Pill tone="ok">✓ Verified</Pill>
++            </div>
++          ))}
++          <p className="micro pt-1">
++            Outbound email is configured and verified. If a send ever fails later, the error will carry the same step-by-step
++            fix guide you just followed.
++          </p>
++        </div>
++      )}
++    </Modal>
++  );
++}
++
++/* Inline "add a sender" form for step 1 — the same upsert the page's modal
++ * uses, minimal fields (section label, From address, From name). */
++function AddSenderInline({ onAdded }: { onAdded: () => void }) {
++  const [f, setF] = React.useState({ purpose: "", from: "", name: "" });
++  const [busy, setBusy] = React.useState(false);
++  const [error, setError] = React.useState<unknown>(null);
++  const [open, setOpen] = React.useState(false);
++
++  async function add() {
++    setBusy(true); setError(null);
++    try {
++      await api.upsertSender({ purpose: f.purpose.trim(), from_address: f.from.trim(), from_name: f.name.trim() });
++      setF({ purpose: "", from: "", name: "" });
++      setOpen(false);
++      onAdded();
++    } catch (err) { setError(err); } finally { setBusy(false); }
++  }
++
++  if (!open) {
++    return <Button type="button" size="sm" variant="outline" onClick={() => setOpen(true)}>+ Add sender</Button>;
++  }
++  return (
++    <div className="rounded-xl border border-border bg-card p-3.5">
++      <div className="grid gap-3 sm:grid-cols-3">
++        <Field label="Section" required><Input value={f.purpose} onChange={(e) => setF((s) => ({ ...s, purpose: e.target.value }))} placeholder="e.g. Billing" /></Field>
++        <Field label="From address" required hint="Must be a real mailbox on your domain."><Input type="email" value={f.from} onChange={(e) => setF((s) => ({ ...s, from: e.target.value }))} placeholder="billing@yourco.cm" /></Field>
++        <Field label="From name" required><Input value={f.name} onChange={(e) => setF((s) => ({ ...s, name: e.target.value }))} placeholder="YourCo Billing" /></Field>
++      </div>
++      {error != null && (
++        <div className="mt-2">
++          <ErrorState message={errMsg(error)} />
++          <SmtpErrorGuide err={error} />
++        </div>
++      )}
++      <div className="mt-3 flex items-center justify-end gap-3">
++        <Button type="button" size="sm" variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
++        <Button type="button" size="sm" loading={busy} disabled={busy || !f.purpose.trim() || !f.from.trim() || !f.name.trim()} onClick={add}>Add sender</Button>
++      </div>
++    </div>
++  );
++}
+diff --git a/client/src/features/comms/mail.tsx b/client/src/features/comms/mail.tsx
+index 5efce8f..b857a64 100644
+--- a/client/src/features/comms/mail.tsx
++++ b/client/src/features/comms/mail.tsx
+@@ -20,6 +20,7 @@ import { getCommsSocket } from "@/lib/comms-socket";
+ import { dateFmt } from "@/lib/format";
+ import * as api from "@/lib/mail-api";
+ import { reportActionError } from "@/lib/action-error";
++import { SmtpErrorGuide } from "@/components/mail/smtp-guide";
+ import * as RadixDialog from "@radix-ui/react-dialog";
+ import { XIcon } from "@/components/ui/icons";
+ 
+@@ -43,7 +44,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () =>
+   const [reply, setReply] = React.useState("");
+   const [busy, setBusy] = React.useState(false);
+   const [sent, setSent] = React.useState(false);
+-  const [error, setError] = React.useState<string | null>(null);
++  const [error, setError] = React.useState<unknown>(null);
+   const m = msg.data;
+ 
+   React.useEffect(() => { if (m && !m.is_read) api.markThreadRead(id).then(onChanged).catch(() => {}); }, [m, id, onChanged]);
+@@ -54,7 +55,7 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () =>
+     try {
+       await api.replyMail(id, { connectionId: m.email_connection_id, text: reply });
+       setSent(true); setReply(""); onChanged();
+-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
++    } catch (err) { setError(err); } finally { setBusy(false); }
+   }
+ 
+   return (
+@@ -89,7 +90,12 @@ function ThreadMessage({ id, onClose, onChanged }: { id: string; onClose: () =>
+               <>
+                 <Textarea value={reply} onChange={(e) => setReply(e.target.value)} rows={3} placeholder="Write a reply…"
+                   />
+-                {error && <div className="mt-2"><ErrorState message={error} /></div>}
++                {error != null && (
++                  <div className="mt-2">
++                    <ErrorState message={errMsg(error)} />
++                    <SmtpErrorGuide err={error} />
++                  </div>
++                )}
+                 <div className="mt-2 flex items-center justify-end gap-3">
+                   {sent && <span className="micro text-[rgb(var(--ok))]">✓ Reply sent</span>}
+                   <Button size="sm" onClick={sendReply} loading={busy} disabled={busy || !reply.trim()}>Send reply</Button>
+@@ -119,7 +125,7 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
+ 
+   const [f, setF] = React.useState({ to: initialTo || "", cc: "", subject: "", body: "" });
+   const [busy, setBusy] = React.useState(false);
+-  const [error, setError] = React.useState<string | null>(null);
++  const [error, setError] = React.useState<unknown>(null);
+   const [sent, setSent] = React.useState(false);
+   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setF((s) => ({ ...s, [k]: e.target.value }));
+ 
+@@ -157,7 +163,7 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
+         text: f.body || undefined,
+       });
+       setSent(true); onSent?.();
+-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
++    } catch (err) { setError(err); } finally { setBusy(false); }
+   }
+ 
+   return (
+@@ -186,7 +192,12 @@ export function ComposeModal({ connections, initialTo, lockTo, onClose, onSent }
+         <Field label="Cc"><Input value={f.cc} onChange={set("cc")} placeholder="optional" /></Field>
+         <Field label="Subject"><Input value={f.subject} onChange={set("subject")} placeholder="Subject" /></Field>
+         <Field label="Body"><Textarea value={f.body} onChange={set("body")} rows={7} placeholder="Write your message…" /></Field>
+-        {error && <ErrorState message={error} />}
++        {error != null && (
++          <>
++            <ErrorState message={errMsg(error)} />
++            <SmtpErrorGuide err={error} />
++          </>
++        )}
+         <div className="flex items-center justify-end gap-3 pt-1">
+           {sent && <span className="micro text-[rgb(var(--ok))]">✓ Sent</span>}
+           <Button type="button" variant="outline" onClick={onClose} disabled={busy}>Cancel</Button>
+@@ -278,7 +289,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
+   const [discovering, setDiscovering] = React.useState(false);
+   const [hint, setHint] = React.useState<string>("");
+   const [result, setResult] = React.useState<api.TestResult | null>(null);
+-  const [error, setError] = React.useState<string | null>(null);
++  const [error, setError] = React.useState<unknown>(null);
+ 
+   async function discover() {
+     if (!f.email_address) return;
+@@ -291,7 +302,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
+         smtp_host: cfg.smtp_host || s.smtp_host, smtp_port: cfg.smtp_port ? String(cfg.smtp_port) : s.smtp_port,
+       }));
+       setHint(cfg.oauth_hint ? `Tip: ${cfg.oauth_hint === "google_gmail" ? "Google" : "Microsoft"} — consider OAuth above instead of a password.` : `Settings from ${cfg.source}. Verify, then connect.`);
+-    } catch (err) { setError(errMsg(err)); } finally { setDiscovering(false); }
++    } catch (err) { setError(err); } finally { setDiscovering(false); }
+   }
+ 
+   async function submit(e: React.FormEvent) {
+@@ -308,7 +319,7 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
+         : await api.connectImap({ ...body, password: f.password });
+       setResult(r.test || { ok: r.status === "CONNECTED" });
+       onDone();
+-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
++    } catch (err) { setError(err); } finally { setBusy(false); }
+   }
+ 
+   return (
+@@ -325,8 +336,14 @@ function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDo
+         <Field label="Password" required={!editing} hint={editing ? "Leave blank to keep the current password." : undefined}><Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••" /></Field>
+       </div>
+       {hint && <p className="mt-2 micro">{hint}</p>}
+-      {error && <div className="mt-2"><ErrorState message={error} /></div>}
++      {error != null && (
++        <div className="mt-2">
++          <ErrorState message={errMsg(error)} />
++          <SmtpErrorGuide err={error} />
++        </div>
++      )}
+       {result && <div className="mt-2 micro">{result.ok ? <span className="text-[rgb(var(--ok))]">✓ Connected</span> : <span className="text-[rgb(var(--bad))]">✗ {String(result.error || "Failed").slice(0, 90)}</span>}</div>}
++      {result && !result.ok && <SmtpErrorGuide code={result.code} message={result.error} />}
+       <div className="mt-3 flex items-center justify-between gap-3">
+         <Button type="button" size="sm" variant="outline" onClick={discover} loading={discovering} disabled={discovering || !f.email_address}>Autodiscover</Button>
+         <Button type="submit" size="sm" loading={busy} disabled={busy || !f.email_address || !f.imap_host || !f.smtp_host || (!editing && !f.password)}>{editing ? "Save & test" : "Connect & test"}</Button>
+@@ -378,6 +395,8 @@ function MailboxesSection() {
+   const [note, setNote] = React.useState<string>("");
+   const [imapOpen, setImapOpen] = React.useState(false);
+   const [editConn, setEditConn] = React.useState<api.Connection | null>(null);
++  // A failed connection test with a classified SMTP code — renders the fix guide.
++  const [testFail, setTestFail] = React.useState<{ code?: string; message?: string } | null>(null);
+ 
+   // Surface the OAuth callback result. The provider redirect lands back on
+   // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
+@@ -394,6 +413,7 @@ function MailboxesSection() {
+       conns.reload();
+     } else {
+       setNote(`✗ Connection failed (${bad})`);
++      setTestFail({ code: bad ?? undefined, message: undefined });
+     }
+     window.history.replaceState({}, "", window.location.pathname);
+     // eslint-disable-next-line react-hooks/exhaustive-deps
+@@ -403,7 +423,15 @@ function MailboxesSection() {
+     try { const r = kind === "ms" ? await api.startMicrosoft() : await api.startGoogle(); window.location.href = r.url; }
+     catch (err) { setNote(errMsg(err)); }
+   }
+-  async function test(id: string) { setBusyId(id); setNote(""); try { const r = await api.testConnection(id); setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
++  async function test(id: string) {
++    setBusyId(id); setNote(""); setTestFail(null);
++    try {
++      const r = await api.testConnection(id);
++      setNote(r.ok ? "✓ Connection OK" : `✗ ${r.error || "failed"}`);
++      if (!r.ok) setTestFail({ code: r.code, message: r.error });
++      conns.reload();
++    } catch (e) { reportActionError(e); } finally { setBusyId(""); }
++  }
+   async function sync(id: string) { setBusyId(id); setNote(""); try { const r = await api.syncConnection(id); setNote(r.error ? `✗ ${r.error}` : `✓ Synced — ${r.inserted ?? 0} new`); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+   async function makeDefault(id: string) { setBusyId(id); setNote(""); try { await api.setDefaultMailbox(id); setNote("✓ Default mailbox updated"); conns.reload(); } catch (e) { reportActionError(e); } finally { setBusyId(""); } }
+ 
+@@ -416,6 +444,7 @@ function MailboxesSection() {
+         {note && <span className="micro">{note}</span>}
+       </div>
+ 
++      {testFail && <SmtpErrorGuide code={testFail.code} message={testFail.message} />}
+       {conns.error && <ErrorState message={conns.error} />}
+       <div className="grid gap-3">
+         {(conns.data || []).map((c) => (
+diff --git a/client/src/features/comms/setup.tsx b/client/src/features/comms/setup.tsx
+index 7a6fb7b..dc5f5de 100644
+--- a/client/src/features/comms/setup.tsx
++++ b/client/src/features/comms/setup.tsx
+@@ -20,6 +20,8 @@ import { useResource, errMsg } from "@/lib/use-resource";
+ import { reportActionError } from "@/lib/action-error";
+ import * as api from "@/lib/mail-api";
+ import * as scapi from "@/lib/smartcomm-api";
++import { SmtpErrorGuide, MailTroubleshootingCard } from "@/components/mail/smtp-guide";
++import { MailSetupWizard } from "./mail-setup-wizard";
+ 
+ type SenderMode = "add" | "edit" | "view";
+ 
+@@ -44,7 +46,7 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
+   React.useEffect(() => { setF(blank()); }, [blank, open]);
+   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
+   const [busy, setBusy] = React.useState(false);
+-  const [error, setError] = React.useState<string | null>(null);
++  const [error, setError] = React.useState<unknown>(null);
+ 
+   async function save() {
+     setBusy(true); setError(null);
+@@ -54,7 +56,7 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
+         smtp_host: f.smtp_host || undefined, smtp_port: f.smtp_port === "" ? undefined : Number(f.smtp_port), is_active: f.is_active,
+       });
+       onSaved(); onClose();
+-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
++    } catch (err) { setError(err); } finally { setBusy(false); }
+   }
+ 
+   const title = mode === "add" ? "Add section sender" : mode === "edit" ? `Edit — ${existing?.purpose}` : `Sender — ${existing?.purpose}`;
+@@ -84,7 +86,12 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
+           SMTP password: <span className="num">••••••••</span> — a shared login, set (masked) under <strong>Credentials</strong> below, not per sender.
+         </p>
+       )}
+-      {error && <div className="mt-2"><ErrorState message={error} /></div>}
++      {error != null && (
++        <div className="mt-2">
++          <ErrorState message={errMsg(error)} />
++          <SmtpErrorGuide err={error} />
++        </div>
++      )}
+     </Modal>
+   );
+ }
+@@ -107,14 +114,14 @@ function ChannelConfig() {
+   const [emF, setEmF] = React.useState({ smtp_host: "", smtp_port: "", smtp_user: "", smtp_pass: "" });
+   const [emBusy, setEmBusy] = React.useState(false);
+   const [emTest, setEmTest] = React.useState<scapi.TestResult | null>(null);
+-  const [emErr, setEmErr] = React.useState<string | null>(null);
++  const [emErr, setEmErr] = React.useState<unknown>(null);
+   React.useEffect(() => { if (em) setEmF((s) => ({ ...s, smtp_host: em.smtp_host || "", smtp_port: em.smtp_port ? String(em.smtp_port) : "", smtp_user: em.smtp_user || "" })); }, [em]);
+   async function saveEm(e: React.FormEvent) {
+     e.preventDefault(); setEmBusy(true); setEmErr(null); setEmTest(null);
+     try { await scapi.setEmailConfig({ smtp_host: emF.smtp_host || undefined, smtp_port: emF.smtp_port === "" ? undefined : Number(emF.smtp_port), smtp_user: emF.smtp_user || undefined, smtp_pass: emF.smtp_pass || undefined }); setEmF((s) => ({ ...s, smtp_pass: "" })); cfg.reload(); }
+-    catch (err) { setEmErr(errMsg(err)); } finally { setEmBusy(false); }
++    catch (err) { setEmErr(err); } finally { setEmBusy(false); }
+   }
+-  async function testEm() { setEmTest(null); setEmErr(null); try { setEmTest(await scapi.testEmail()); } catch (err) { setEmErr(errMsg(err)); } }
++  async function testEm() { setEmTest(null); setEmErr(null); try { setEmTest(await scapi.testEmail()); } catch (err) { setEmErr(err); } }
+ 
+   return (
+     <>
+@@ -137,7 +144,13 @@ function ChannelConfig() {
+           <Field label="SMTP user"><Input value={emF.smtp_user} onChange={(e) => setEmF((s) => ({ ...s, smtp_user: e.target.value }))} placeholder="apikey / user" /></Field>
+           <Field label="SMTP password" hint={em?.pass_set ? "Leave blank to keep current." : undefined}><Input type="password" value={emF.smtp_pass} onChange={(e) => setEmF((s) => ({ ...s, smtp_pass: e.target.value }))} placeholder="••••••" /></Field>
+         </div>
+-        {emErr && <div className="mt-2"><ErrorState message={emErr} /></div>}
++        {emErr != null && (
++          <div className="mt-2">
++            <ErrorState message={errMsg(emErr)} />
++            <SmtpErrorGuide err={emErr} />
++          </div>
++        )}
++        {emTest && !emTest.ok && <SmtpErrorGuide code={emTest.code} message={emTest.error} />}
+         <div className="mt-3 flex items-center justify-end gap-3">
+           <TestLine result={emTest} />
+           <Button type="button" size="sm" variant="outline" onClick={testEm} disabled={emBusy}>Test</Button>
+@@ -152,6 +165,8 @@ export function SetupPage() {
+   const senders = useResource(() => api.listSenders(), []);
+   const navigate = useNavigate();
+   const [modal, setModal] = React.useState<{ mode: SenderMode; existing?: api.Sender } | null>(null);
++  const [guideOpen, setGuideOpen] = React.useState(false);
++  const activeCount = (senders.data || []).filter((s) => s.is_active).length;
+ 
+   async function archive(s: api.Sender) {
+     if (!window.confirm(`Archive the "${s.purpose}" sender? It stops being available and is hidden from this list.`)) return;
+@@ -180,7 +195,13 @@ export function SetupPage() {
+           <h1 className="font-display text-2xl tracking-tight text-foreground">Setup &amp; channels</h1>
+           <p className="mt-0.5 text-sm text-muted-foreground">Per-section email senders and shared credentials.</p>
+         </div>
+-        <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
++        <div className="flex flex-wrap items-center gap-3">
++          {activeCount > 0
++            ? <Pill tone="ok">✓ {activeCount} active sender{activeCount > 1 ? "s" : ""}</Pill>
++            : <Pill tone="warn">Email not set up</Pill>}
++          <Button onClick={() => setGuideOpen(true)}>📖 Setup guide</Button>
++          <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
++        </div>
+       </div>
+ 
+       <div className="mb-2 flex items-center justify-between gap-3">
+@@ -196,11 +217,15 @@ export function SetupPage() {
+       <h2 className="mb-2 mt-8 font-display text-lg">Credentials</h2>
+       <div className="grid gap-4 lg:grid-cols-2">
+         <ChannelConfig />
++        <MailTroubleshootingCard />
+       </div>
+ 
+       {modal && (
+         <SenderModal open mode={modal.mode} existing={modal.existing} onClose={() => setModal(null)} onSaved={senders.reload} />
+       )}
++      {guideOpen && (
++        <MailSetupWizard open onClose={() => setGuideOpen(false)} onDone={senders.reload} />
++      )}
+     </section>
+   );
+ }
+diff --git a/client/src/lib/mail-api.ts b/client/src/lib/mail-api.ts
+index f108e45..79d221b 100644
+--- a/client/src/lib/mail-api.ts
++++ b/client/src/lib/mail-api.ts
+@@ -118,7 +118,7 @@ export type Attachment = {
+   size_bytes?: number | null;
+ };
+ 
+-export type TestResult = { ok: boolean; error?: string; stage?: string };
++export type TestResult = { ok: boolean; error?: string; stage?: string; code?: string };
+ 
+ export type Autoconfig = {
+   source: string; provider?: string;
+diff --git a/client/src/lib/smartcomm-api.ts b/client/src/lib/smartcomm-api.ts
+index 3f024c6..537fda8 100644
+--- a/client/src/lib/smartcomm-api.ts
++++ b/client/src/lib/smartcomm-api.ts
+@@ -44,6 +44,38 @@ export const setEmailConfig = (body: { smtp_host?: string; smtp_port?: number; s
+   tenant<CommsConfig>("/smartcomm/config/email", { method: "PUT", body });
+ export const testEmail = () => tenant<TestResult>("/smartcomm/config/email/test", { method: "POST" });
+ 
++/* ─────────────────────────────────────────────────────────────────────────
++ * Mail-setup wizard probes (Comms → Setup guide).
++ *   dnsCheckEmail — MX / SPF / DKIM verification for the From domain.
++ *     ok: true = verified · false = definitively missing (suggested values
++ *     attached) · null = couldn't check (wizard falls back to a self-check).
++ *   testSendEmail — sends a REAL test message through the tenant's transport.
++ * ──────────────────────────────────────────────────────────────────────── */
++
++export type DnsRecordCheck = {
++  ok: boolean | null;
++  records?: { host: string; priority: number }[];
++  record?: string | null;
++  selector?: string | null;
++  domain?: string;
++  note?: string;
++  suggest?: string[];
++  hint?: string | null;
++  error?: string | null;
++};
++export type DnsCheckResult = {
++  domain: string;
++  mx: DnsRecordCheck;
++  spf: DnsRecordCheck;
++  dkim: DnsRecordCheck;
++  done: boolean;
++  checked_at?: string;
++};
++export const dnsCheckEmail = (domain: string) =>
++  tenant<DnsCheckResult>("/smartcomm/config/email/dns-check", { method: "POST", body: { domain } });
++export const testSendEmail = (body: { to: string; purpose?: string }) =>
++  tenant<TestResult & { to?: string; message_id?: string | null }>("/smartcomm/config/email/test-send", { method: "POST", body });
++
+ export const listChannels = () => tenant<Channel[]>("/smartcomm/channels");
+ export const getChannel = (id: string) => tenant<Channel>(`/smartcomm/channels/${id}`);
+ export const createChannel = (body: { name: string; kind?: ChannelKind; member_ids?: string[]; topic?: string }) =>
+diff --git a/client/src/lib/smtp-errors.ts b/client/src/lib/smtp-errors.ts
+new file mode 100644
+index 0000000..13e1eb7
+--- /dev/null
++++ b/client/src/lib/smtp-errors.ts
+@@ -0,0 +1,106 @@
++/**
++ * SMTP fix-guide registry — the machine-code → operator-steps mapping shared
++ * by the guide components. Codes come from the backend classifier
++ * (src/modules/mail/smtp-error.map.js): SMTP_SENDER_REJECTED,
++ * SMTP_AUTH_FAILED, SMTP_SEND_REJECTED, SMTP_SEND_FAILED.
++ */
++import { ApiError } from "./api-client";
++
++export type SmtpGuide = { title: string; intro: string; steps: string[] };
++
++export const SMTP_GUIDES: Record<string, SmtpGuide> = {
++  SMTP_SENDER_REJECTED: {
++    title: "550 Sender verify failed — the From address isn't accepted",
++    intro:
++      "The mail server checked the From address against the domain and found no real mailbox behind it. This is a DNS/mailbox setup problem, not a Praxis bug — fix it where the mail is hosted, then press Test again.",
++    steps: [
++      "Make the From address a REAL mailbox. The address you send from must exist on its domain (create the mailbox or alias — e.g. billing@yourco.cm — if it doesn't).",
++      "Check the domain's DNS records. It needs a valid MX record; add an SPF record that allows your mail server, and DKIM so verification and spam filters pass. (Checkers: mxtoolbox.com, dmarcian.com, mail-tester.com.)",
++      "Match From to the SMTP login. Send from the same address you authenticate with. If you must use another address (no-reply@, notifications@), create it as a real mailbox or alias first.",
++      "On cPanel/Exim hosts this is caller-verification. In the hosting panel, allow authenticated senders to use any From address (Email → Mailserver configuration) — or simply send from the account's own address.",
++      "On a relay (SendGrid, SES, Postmark), add the From domain as a verified sender identity in the relay's dashboard.",
++      "Fixed it? Come back here and press Test to confirm.",
++    ],
++  },
++  SMTP_AUTH_FAILED: {
++    title: "SMTP login rejected",
++    intro: "The server refused the credentials for this mailbox.",
++    steps: [
++      "Re-enter the password — the field is write-only, so a blank save keeps the old (wrong) one.",
++      "Accounts with 2-factor authentication (Google, Microsoft 365) need an APP PASSWORD, not the normal login password.",
++      "Check the SMTP user matches the mailbox account you're authenticating as.",
++      "Check the port/security: 587 with STARTTLS, or 465 with SSL.",
++    ],
++  },
++  SMTP_SEND_REJECTED: {
++    title: "The mail server refused the message",
++    intro: "The connection and login worked, but the server would not take the message.",
++    steps: [
++      "Check sending quotas/limits on the mailbox or relay (daily caps are the usual cause).",
++      "Confirm the From domain is verified/allowed on your relay (SES/SendGrid/Postmark).",
++      "If the server complains about content, check attachments and links in the message.",
++    ],
++  },
++  SMTP_SEND_FAILED: {
++    title: "Could not reach the mail server",
++    intro: "The message never got to the server.",
++    steps: [
++      "Confirm the SMTP host and port are correct (587 STARTTLS / 465 SSL are standard).",
++      "Make sure the network/firewall allows outbound SMTP ports.",
++      "Check that the SMTP hostname resolves in DNS.",
++    ],
++  },
++  // Codes from the mailbox-connection send path (mail.service explainSendError):
++  // the connected mailbox's own server refused the send.
++  SENDER_NOT_AUTHORIZED: {
++    title: "Your mailbox isn't authorised to send as the From address",
++    intro: "The mailbox's own mail server refused the message — this is the mailbox's SMTP setup, not Praxis.",
++    steps: [
++      "Make the From address a REAL mailbox on that server — create the mailbox or alias if it doesn't exist.",
++      "Match From to the login: the address you send as must be the account you connected with (or an alias of it).",
++      "Fix the connection: Comms → Mailbox → Edit on this mailbox, then Test.",
++      "On a relay (SendGrid/SES/Postmark), verify the From domain as a sender identity.",
++      "cPanel/Exim hosts: allow authenticated senders to use any From address, or send from the account's own address.",
++    ],
++  },
++  MAILBOX_AUTH_FAILED: {
++    title: "Login to the mailbox was rejected",
++    intro: "The mailbox's mail server refused the username or password.",
++    steps: [
++      "Edit the mailbox (Comms → Mailbox → Edit) and re-enter the password — leave it blank to keep the current one.",
++      "2FA accounts (Google, Microsoft 365) need an APP PASSWORD, not the normal login password.",
++      "Check the username matches the mailbox account, then Test.",
++    ],
++  },
++  MAIL_SEND_FAILED: {
++    title: "The mailbox's server rejected the message",
++    intro: "The connection works but the server would not take this message.",
++    steps: [
++      "Check sending quotas/limits on the mailbox or relay (daily caps are the usual cause).",
++      "Confirm the From domain is verified/allowed on your relay (SES/SendGrid/Postmark).",
++      "Check the message content — some servers refuse suspicious attachments or links.",
++    ],
++  },
++};
++
++/** Pick the right guide for a caught error (ApiError code first, message sniff
++ *  as a fallback for older backends and probe results that lost the code). */
++export function smtpCodeFor(err: unknown, message?: unknown): string | null {
++  const code = err instanceof ApiError ? err.code : null;
++  if (code && SMTP_GUIDES[code]) return code;
++  const text = [
++    message != null ? String(message) : "",
++    err instanceof ApiError ? err.message : err instanceof Error ? err.message : "",
++  ]
++    .join(" ")
++    .toLowerCase();
++  if (text.includes("sender verify")) return "SMTP_SENDER_REJECTED";
++  if (text.includes("535") || text.includes("eauth")) return "SMTP_AUTH_FAILED";
++  if (text.includes("authori") || text.includes("not allowed to send") || text.includes("not author")) return "SENDER_NOT_AUTHORIZED";
++  if (text.includes("login")) return "MAILBOX_AUTH_FAILED";
++  if (/\b5\d\d\b/.test(text) || text.includes("rejected") || text.includes("refused")) return "SMTP_SEND_REJECTED";
++  return null;
++}
++
++export const smtpGuideFor = (code: string | null): SmtpGuide | null =>
++  code && SMTP_GUIDES[code] ? SMTP_GUIDES[code] : null;
+diff --git a/doc/API_REFERENCE.md b/doc/API_REFERENCE.md
+index 8d02f66..f5b5c0c 100644
+--- a/doc/API_REFERENCE.md
++++ b/doc/API_REFERENCE.md
+@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
+ 
+ | | |
+ |---|---|
+-| Routes | 1001 |
++| Routes | 1007 |
+ | Modules mounted | 109 |
+ | API version | v1 |
+ 
+@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
+ 
+ ## Routes
+ 
+-All 1001 mounted routes, grouped by path prefix.
++All 1007 mounted routes, grouped by path prefix.
+ 
+ ### `platform/ai-vendors`
+ 
+@@ -921,6 +921,7 @@ All 1001 mounted routes, grouped by path prefix.
+ | GET | `/api/tenant/mail/client/:id/timeline` | — |
+ | GET | `/api/tenant/mail/connections` | — |
+ | POST | `/api/tenant/mail/connections` | — |
++| PATCH | `/api/tenant/mail/connections/:id` | — |
+ | POST | `/api/tenant/mail/connections/:id/default` | — |
+ | POST | `/api/tenant/mail/connections/:id/sync` | — |
+ | POST | `/api/tenant/mail/connections/:id/test` | — |
+@@ -1041,8 +1042,11 @@ All 1001 mounted routes, grouped by path prefix.
+ | GET | `/api/tenant/operations/:id/360` | — |
+ | GET | `/api/tenant/operations/:id/containers` | — |
+ | PUT | `/api/tenant/operations/:id/containers` | — |
++| POST | `/api/tenant/operations/:id/marks/revert` | — |
++| POST | `/api/tenant/operations/:id/promote` | — |
+ | GET | `/api/tenant/operations/:id/shipment-details` | — |
+ | POST | `/api/tenant/operations/:id/transition` | — |
++| POST | `/api/tenant/operations/drafts` | — |
+ 
+ ### `tenant/opportunities`
+ 
+@@ -1373,7 +1377,9 @@ All 1001 mounted routes, grouped by path prefix.
+ | GET | `/api/tenant/smartcomm/colleagues` | — |
+ | GET | `/api/tenant/smartcomm/config` | — |
+ | PUT | `/api/tenant/smartcomm/config/email` | — |
++| POST | `/api/tenant/smartcomm/config/email/dns-check` | — |
+ | POST | `/api/tenant/smartcomm/config/email/test` | — |
++| POST | `/api/tenant/smartcomm/config/email/test-send` | — |
+ | PUT | `/api/tenant/smartcomm/config/whatsapp` | — |
+ | POST | `/api/tenant/smartcomm/config/whatsapp/test` | — |
+ | DELETE | `/api/tenant/smartcomm/messages/:messageId` | — |
+diff --git a/doc/EMAIL_SETUP_WIZARD.md b/doc/EMAIL_SETUP_WIZARD.md
+new file mode 100644
+index 0000000..6798c30
+--- /dev/null
++++ b/doc/EMAIL_SETUP_WIZARD.md
+@@ -0,0 +1,46 @@
++# Mail setup guide (Zoho-style wizard) — Comms → Setup
++
++Status: implemented 2026-08-13 · Scope: tenant client + smartcomm backend
++
++## Product decision
++
++A step-by-step setup assistant on **Comms → Setup**, opened from a **“📖 Setup guide”**
++button (manual-only entry — no login auto-show). Four steps, completed in order,
++each **auto-verified where the backend can**, and falling back to a self-check tick
++only where a lookup is practically impossible (resolver failure, provider-only
++verification). This is the Zoho pattern: verify what is verifiable, tell the
++operator exactly which record to add, and don't let them continue until it passes.
++
++## The four steps
++
++| # | Step | Verification | Auto? |
++| --- | --- | --- | --- |
++| 1 | **Sender address** | ≥1 active per-section sender (`email_identity`) | auto (list) |
++| 2 | **DNS records** | MX / SPF / DKIM lookups for the From domain — missing rows show the **exact TXT value to add** (copy button) + provider-aware hints (SendGrid/SES/Mailgun/Zoho/M365/… presets, `include:` for the SMTP host's domain) | auto (DNS) / self-check when lookup fails |
++| 3 | **SMTP connection** | live nodemailer `verify()` against the shared SMTP login | auto on step entry |
++| 4 | **Test email** | a REAL message sent through the tenant's transport (proves more than verify() — same reasoning as the platform alert-email probe) | on demand (needs a recipient) |
++
++Failures reuse the existing `<SmtpErrorGuide />` (doc/SMTP_ERROR_GUIDE.md), so a
++550 during steps 3–4 shows the same fix list the rest of the mail surfaces show.
++The wizard resumes at the first unpassed step on open, shows step chips with a
++progress bar, and ends on a summary card when all four pass.
++
++## Implementation map
++
++| Layer | File | Change |
++| --- | --- | --- |
++| Backend | `src/modules/mail/dns-check.js` | **new** — MX/SPF/DKIM verification with relay-aware suggestions; `ok: null` = uncheckable (self-check fallback) |
++| Backend | `src/modules/smartcomm/smartcomm.config.service.js` | **new** `dnsCheck` (public-DNS read; uses the resolved transport only to sharpen SPF suggestions) and `testSend` (real send, SMTP verdicts classified via smtp-error.map) |
++| Backend | `src/modules/smartcomm/smartcomm.routes.js` | `POST /smartcomm/config/email/dns-check` (gated `view` — reads public DNS) · `POST /smartcomm/config/email/test-send` (gated `create` — sends real mail) |
++| Backend | `src/modules/smartcomm/smartcomm.controller.js` + `validator.js` | handlers + zod schemas (`emailDnsCheck`, `emailTestSend`) |
++| Client | `client/src/features/comms/mail-setup-wizard.tsx` | **new** — the wizard (step chips, progress, copyable DNS values, self-check fallback, inline fix guides, summary) |
++| Client | `client/src/features/comms/setup.tsx` | “📖 Setup guide” button + senders status pill in the page header |
++| Client | `client/src/lib/smartcomm-api.ts` | `dnsCheckEmail`, `testSendEmail` + result types |
++
++## Tests
++
++`tests/unit/mail-setup.test.js` — 8 hermetic tests: full pass, missing records with
++relay-aware suggestions, SPF on the parent domain, resolver-failure → `ok:null`,
++invalid-domain rejection, and test-send classification (550 → `SMTP_SENDER_REJECTED`,
++success message-id, raw reason preserved for non-SMTP failures). Backend suites,
++client `tsc`/`eslint` and the 69-file vitest suite all pass.
+diff --git a/doc/ERROR_CODES.md b/doc/ERROR_CODES.md
+index a07968f..22b12e9 100644
+--- a/doc/ERROR_CODES.md
++++ b/doc/ERROR_CODES.md
+@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
+ | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
+ | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
+ 
+-## All codes (284)
++## All codes (288)
+ 
+ | Code | Status | Raised | Alias of |
+ |---|---|---|---|
+@@ -272,6 +272,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
+ | `SESSION_EXPIRED` | 401 | 1× | — |
+ | `SESSION_REVOKED` | 401 | 8× | — |
+ | `SETUP_REQUIRED` | 400 | 1× | — |
++| `SMTP_AUTH_FAILED` | 502 | 1× | — |
++| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
++| `SMTP_SEND_FAILED` | 502 | 1× | — |
++| `SMTP_SEND_REJECTED` | 502 | 1× | — |
+ | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
+ | `SYSTEM_ACCOUNT` | 422 | 1× | — |
+ | `SYSTEM_CATEGORY` | 422 | 1× | — |
+diff --git a/doc/SMTP_ERROR_GUIDE.md b/doc/SMTP_ERROR_GUIDE.md
+new file mode 100644
+index 0000000..daf0a10
+--- /dev/null
++++ b/doc/SMTP_ERROR_GUIDE.md
+@@ -0,0 +1,75 @@
++# SMTP error guides in the UI (550 Sender verify failed & friends)
++
++Status: implemented 2026-08-13 · Scope: tenant client, platform console, backend classification
++
++## Problem
++
++Outbound mail failures (e.g. **`550 Sender verify failed`**) surfaced as raw, truncated
++messages with no guidance: a user seeing *"The mail server rejected the sender address
++(550 Sender verify failed)…"* had no idea which of the four causes applied to them, nor
++where to fix it. Support had to hand-hold every case.
++
++## Design decision
++
++**One registry, keyed on the machine error code, rendered where the error appears —
++plus an always-visible condensed card where admins configure mail.**
++
++1. The backend already classifies SMTP verdicts into stable codes
++   (`SMTP_SENDER_REJECTED`, `SMTP_AUTH_FAILED`, `SMTP_SEND_REJECTED`,
++   `SMTP_SEND_FAILED`). The UI never used them — `errMsg()` dropped the code and
++   showed only the message.
++2. A single guide registry (`client/src/lib/smtp-errors.ts`) maps each code to
++   operator-worded fix steps. One source of truth; the tenant console and the
++   platform console cannot drift apart.
++3. **Primary placement — inline, next to the error.** Every place an SMTP failure
++   surfaces renders a collapsible "🛠 How to fix this" panel directly under the
++   error message:
++   - Tenant **Comms → Setup** — sender save error; shared-SMTP save error; failed
++     **Test** result (the backend now returns `code` on the test result).
++   - Tenant **Comms → Mailbox** — reply/send errors in the thread composer; the
++     compose modal; the IMAP/SMTP connect form; the per-mailbox **Test** action.
++   - Platform console **Integrations → Mail fallback** — a failed **Test** renders
++     the same guide (its Test button lives in the card body so the guide has room).
++4. **Secondary placement — persistent help on the config screens** (`MailTroubleshootingCard`
++   in Comms → Setup; an expandable "Why would the Test fail?" in the platform
++   console's Mail fallback card), so guidance is findable *before* anyone hits the
++   error. A support person can point an admin at the screen and the steps are there.
++
++## What each code's guide says (condensed)
++
++- **SMTP_SENDER_REJECTED (550 Sender verify failed):** make the From address a real
++  mailbox; fix MX/SPF/DKIM; From must match the authenticated account; cPanel/Exim
++  caller-verification setting; verify the domain on relays (SES/SendGrid/Postmark).
++- **SMTP_AUTH_FAILED:** re-enter the password (write-only field); app password for
++  2FA; SMTP user must match the mailbox; 587 STARTTLS / 465 SSL.
++- **SMTP_SEND_REJECTED:** quotas/limits; From domain verified on the relay; content.
++- **SMTP_SEND_FAILED:** host/port; firewall; DNS resolution of the SMTP host.
++
++The mailbox-connection send path (compose/reply) classifies separately via
++`explainSendError` in `mail.service.js` (`SENDER_NOT_AUTHORIZED`,
++`MAILBOX_AUTH_FAILED`, `MAIL_SEND_FAILED`); those codes are registered in the
++same client registry so every mail failure surfaces a guide, whichever path it
++came from.
++
++## Implementation map
++
++| Layer | File | Change |
++| --- | --- | --- |
++| Backend | `src/modules/mail/smtp-error.map.js` | **new** — shared classifier (`mapSmtpError`, `smtpCodeFromMessage`, `isSmtpError`) extracted from `mail.service.js` |
++| Backend | `src/modules/mail/mail.service.js` | uses the shared classifier; `testConnection` returns `code` on SMTP verdicts |
++| Backend | `src/modules/mail/providers/imapSmtp.provider.js` | SMTP-stage `verify()` returns classified `code` |
++| Backend | `src/services/email.service.js` | `verifyTransport` (Comms → Setup Test) returns `code`; raw message kept for non-SMTP failures |
++| Backend | `src/services/platform/settings.probes.js` | `smtp` probe throws the classified message + `code` |
++| Backend | `src/services/platform/settings.service.js` | `test` result includes `code` |
++| Client | `client/src/lib/smtp-errors.ts` | **new** — guide registry + `smtpCodeFor` (code first, message sniff fallback) |
++| Client | `client/src/components/mail/smtp-guide.tsx` | **new** — `SmtpErrorGuide` (inline, collapsible) + `MailTroubleshootingCard` (persistent) |
++| Client | `client/src/features/comms/setup.tsx` | guide under save/test errors; troubleshooting card beside Credentials |
++| Client | `client/src/features/comms/mail.tsx` | guide under reply/send/connect/test failures |
++| Client | `client/src/lib/mail-api.ts` | `TestResult.code` |
++| Console | `platform-console/src/features/Integrations.tsx` | mail-fallback Test shows the guide; persistent "Why would the Test fail?" block |
++
++## Tests
++
++`tests/unit/mail-service.test.js` (550 → 502 AppError mapping) and the email /
++smartcomm / platform-mail / provider suites all pass; client `tsc --noEmit`,
++`eslint`, and the 69-file vitest suite pass.
+diff --git a/doc/api-contract.json b/doc/api-contract.json
+index 889f59e..1152f7f 100644
+--- a/doc/api-contract.json
++++ b/doc/api-contract.json
+@@ -2,11 +2,11 @@
+   "generated_by": "scripts/check-api-contract.js",
+   "api_version": "v1",
+   "modules_mounted": 109,
+-  "route_count": 1001,
++  "route_count": 1007,
+   "tiers": {
+     "public": 19,
+     "self-scoped": 65,
+-    "gated": 917
++    "gated": 923
+   },
+   "routes": {
+     "DELETE /api/platform/escalation/rules/:id": {
+@@ -3411,6 +3411,12 @@
+       "validated": false,
+       "tier": "gated"
+     },
++    "PATCH /api/tenant/mail/connections/:id": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
+     "PATCH /api/tenant/mail/senders/:id": {
+       "auth": true,
+       "rbac": true,
+@@ -5013,12 +5019,30 @@
+       "validated": false,
+       "tier": "gated"
+     },
++    "POST /api/tenant/operations/:id/marks/revert": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
++    "POST /api/tenant/operations/:id/promote": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
+     "POST /api/tenant/operations/:id/transition": {
+       "auth": true,
+       "rbac": true,
+       "validated": false,
+       "tier": "gated"
+     },
++    "POST /api/tenant/operations/drafts": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
+     "POST /api/tenant/opportunities/": {
+       "auth": true,
+       "rbac": true,
+@@ -5427,12 +5451,24 @@
+       "validated": false,
+       "tier": "gated"
+     },
++    "POST /api/tenant/smartcomm/config/email/dns-check": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
+     "POST /api/tenant/smartcomm/config/email/test": {
+       "auth": true,
+       "rbac": true,
+       "validated": false,
+       "tier": "gated"
+     },
++    "POST /api/tenant/smartcomm/config/email/test-send": {
++      "auth": true,
++      "rbac": true,
++      "validated": false,
++      "tier": "gated"
++    },
+     "POST /api/tenant/smartcomm/config/whatsapp/test": {
+       "auth": true,
+       "rbac": true,
+diff --git a/platform-console/src/features/Integrations.tsx b/platform-console/src/features/Integrations.tsx
+index 5b81590..ee9bf23 100644
+--- a/platform-console/src/features/Integrations.tsx
++++ b/platform-console/src/features/Integrations.tsx
+@@ -38,7 +38,45 @@ export function Integrations() {
+ }
+ 
+ /* Shared test button + result pill ---------------------------------------- */
+-function TestButton({ section, keyName }: { section: string; keyName: string }) {
++/* `mailHelp` (used by the Mail fallback card) renders the SMTP fix guide under
++ * a failed result — the same guidance the tenant console shows, keyed on the
++ * classified error code returned by settings.test(). */
++function MailTestHelp({ code, error }: { code?: string | unknown; error?: string | unknown }) {
++  const c = String(code || "").toUpperCase();
++  const text = String(error || "").toLowerCase();
++  const kind = c === "SMTP_SENDER_REJECTED" || text.includes("sender verify")
++    ? "sender"
++    : c === "SMTP_AUTH_FAILED" || text.includes("535") || text.includes("eauth")
++      ? "auth"
++      : null;
++  if (!kind) return null;
++  const steps = kind === "sender"
++    ? [
++        "Make the From address a REAL mailbox on its domain (create the mailbox or alias if it doesn't exist).",
++        "Check DNS: valid MX, plus SPF allowing this mail server and DKIM (mxtoolbox.com / dmarcian.com).",
++        "From must match the authenticated SMTP account — send as the login's own address or a real alias of it.",
++        "cPanel/Exim hosts: allow authenticated senders to use any From address, or send from the account's own address.",
++        "On a relay (SendGrid/SES/Postmark): verify the From domain as a sender identity.",
++        "Then press Test again.",
++      ]
++    : [
++        "Re-enter the SMTP password (blank keeps the old one).",
++        "2FA accounts need an APP password, not the login password.",
++        "SMTP user must match the mailbox account; port 587 (STARTTLS) or 465 (SSL).",
++      ];
++  return (
++    <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", fontSize: 12, lineHeight: 1.55, color: "var(--ink-2)" }}>
++      <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>
++        🛠 {kind === "sender" ? "550 Sender verify failed — how to fix" : "SMTP login rejected — how to fix"}
++      </div>
++      <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 3 }}>
++        {steps.map((s) => <li key={s}>{s}</li>)}
++      </ol>
++    </div>
++  );
++}
++
++function TestButton({ section, keyName, mailHelp }: { section: string; keyName: string; mailHelp?: boolean }) {
+   const [busy, setBusy] = useState(false);
+   const [res, setRes] = useState<SettingTestResult | null>(null);
+   const run = async () => {
+@@ -53,11 +91,16 @@ function TestButton({ section, keyName }: { section: string; keyName: string })
+     }
+   };
+   return (
+-    <span className="row" style={{ gap: 10, alignItems: "center" }}>
++    <span className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+       <Button variant="ghost" size="sm" onClick={run} loading={busy}>Test</Button>
+       {res && (res.ok
+         ? <Pill tone="ok">Connected{typeof res.bucket === "string" ? ` · ${res.bucket}` : ""}</Pill>
+         : <Pill tone="bad">Failed{res.status ? ` · ${res.status}` : ""}{res.error ? ` · ${String(res.error).slice(0, 60)}` : ""}</Pill>)}
++      {mailHelp && res && !res.ok && (
++        <span style={{ flexBasis: "100%" }}>
++          <MailTestHelp code={res.code} error={res.error} />
++        </span>
++      )}
+     </span>
+   );
+ }
+@@ -465,10 +508,7 @@ function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: ()
+     }
+   };
+   return (
+-    <Card
+-      title="System-email fallback sender"
+-      actions={<TestButton section="mail" keyName="fallback" />}
+-    >
++    <Card title="System-email fallback sender">
+       <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
+         Praxis-owned sender for system emails (OTP, invites, invoices, notifications) when a tenant
+         hasn’t configured their own mail. Tenants who don’t point their DNS at us fall back here so
+@@ -485,9 +525,25 @@ function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: ()
+         <Field label="SMTP user"><input className="in" value={f.smtp_user} onChange={set("smtp_user")} /></Field>
+         <Field label="SMTP password" hint={<SecretHint row={row} label="SMTP password" />}><input className="in" type="password" value={f.secret} onChange={set("secret")} placeholder="••••••••" /></Field>
+       </div>
+-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
++      {/* The Test lives in the body (not the card header like other cards) so a
++          failed send-verification renders its fix guide right beneath it. */}
++      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginTop: 12, gap: 12 }}>
++        <TestButton section="mail" keyName="fallback" mailHelp />
+         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
+       </div>
++      <details style={{ marginTop: 10, fontSize: 12, color: "var(--ink-2)" }}>
++        <summary style={{ cursor: "pointer", color: "var(--ink)", fontWeight: 600 }}>Why would the Test fail? (sender-verify guide)</summary>
++        <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", lineHeight: 1.55 }}>
++          “550 Sender verify failed” means the server checked the From address and found no real mailbox behind it — a
++          DNS/mailbox setup problem, not a Praxis bug:
++          <ol style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 3 }}>
++            <li>The From address must be a real mailbox on its domain with valid MX, SPF and DKIM records.</li>
++            <li>The From address must match the authenticated SMTP account (or be a real alias of it).</li>
++            <li>On cPanel/Exim hosts, allow authenticated senders to use any From address — or send from the account’s own address.</li>
++            <li>On a relay (SendGrid/SES/Postmark), verify the From domain as a sender identity first.</li>
++          </ol>
++        </div>
++      </details>
+     </Card>
+   );
+ }
+diff --git a/src/modules/mail/dns-check.js b/src/modules/mail/dns-check.js
+new file mode 100644
+index 0000000..4c5e4b4
+--- /dev/null
++++ b/src/modules/mail/dns-check.js
+@@ -0,0 +1,180 @@
++/**
++ * DNS deliverability checks for the mail-setup wizard (Comms → Setup guide).
++ *
++ * Zoho-style: verify what can be verified automatically — MX, SPF and DKIM
++ * lookups against the sending domain — and hand the UI a clear per-record
++ * verdict. Where a lookup is IMPOSSIBLE (resolver failure, provider-only
++ * verification), the verdict is `ok: null` and the wizard falls back to a
++ * self-check tick, per the product decision "max auto-verify, self-check only
++ * where practically impossible".
++ *
++ * Shape returned by `checkDomain`:
++ *   { domain, mx, spf, dkim, done, checked_at }
++ *   each record: { ok: true | false | null, ...details }
++ *     ok:true   — record present (and for SPF/DKIM, the record value)
++ *     ok:false  — definitively missing, with a suggested value / hint
++ *     ok:null   — could not be checked (resolver error); self-check territory
++ *
++ * `smtpHost` (from the tenant's resolved transport) only sharpens the
++ * suggestions: relay presets for known ESPs (SendGrid/SES/Mailgun/…), an
++ * `include:` for the SMTP host's own domain, or a plain `mx` record.
++ */
++"use strict";
++const dns = require("dns/promises");
++
++/** DNS codes that mean "no such record" rather than "could not look up". */
++const NO_RECORD = new Set(["ENOTFOUND", "ENODATA", "NXDOMAIN"]);
++
++const DKIM_SELECTORS = [
++  "default", "dkim", "google", "selector1", "selector2", "s1", "s2", "k1",
++  "mail", "smtp", "email", "cpanel", "x",
++];
++
++/** Known relays → SPF include + where DKIM gets enabled (their dashboard). */
++const RELAYS = [
++  { match: /sendgrid/i, include: "sendgrid.net", dkimHint: "Enable DKIM in SendGrid → Settings → Sender Authentication, then verify again." },
++  { match: /amazonses|amazonaws/i, include: "amazonses.com", dkimHint: "Verify the domain in SES and enable Easy DKIM, then verify again." },
++  { match: /mailgun/i, include: "mailgun.org", dkimHint: "Publish the DKIM record Mailgun shows under Sending → Domains." },
++  { match: /mailjet/i, include: "spf.mailjet.com", dkimHint: "Validate the domain in Mailjet — SPF & DKIM values are under Domain authentication." },
++  { match: /mandrill|mailchimp/i, include: "spf.mandrillapp.com", dkimHint: "Verify the sending domain in Mandrill and enable DKIM." },
++  { match: /postmark/i, include: "spf.mtasv.net", dkimHint: "Add a Sender Signature in Postmark and copy its DKIM record to DNS." },
++  { match: /zoho|zillum/i, include: "zoho.com", dkimHint: "Zoho Mail publishes DKIM automatically for its domains — check the admin console, then verify again." },
++  { match: /outlook|office365|protection\.outlook/i, include: "spf.protection.outlook.com", dkimHint: "Enable DKIM for the domain in Microsoft 365 (Defender → Email authentication), then verify again." },
++  { match: /google|gmail/i, include: "_spf.google.com", dkimHint: "Generate DKIM in Google Workspace (Apps → Gmail → Authenticate email); its selector is 'google'." },
++];
++
++const relayFor = (host) => RELAYS.find((r) => r.match.test(String(host || ""))) || null;
++
++/** Last two labels of a hostname — right for the OHADA region (co.cm, .cm…). */
++const domainOf = (host) => {
++  const parts = String(host || "").toLowerCase().split(".").filter(Boolean);
++  return parts.length >= 2 ? parts.slice(-2).join(".") : null;
++};
++
++/** Strip the left-most label ("mail.x.cm" → "x.cm"); null when already bare. */
++const parentOf = (domain) => {
++  const parts = String(domain).split(".");
++  return parts.length > 2 ? parts.slice(1).join(".") : null;
++};
++
++const readTxt = async (name) => {
++  try {
++    return { found: true, txts: await dns.resolveTxt(name) };
++  } catch (err) {
++    if (NO_RECORD.has(err.code)) return { found: false, txts: [] };
++    throw err;
++  }
++};
++
++async function checkMx(domain) {
++  try {
++    const recs = await dns.resolveMx(domain);
++    if (!recs.length) {
++      return { ok: false, records: [], hint: `The domain has no MX records. Add MX records at your DNS host (${domain}) so mail servers accept it as a sender domain.` };
++    }
++    return { ok: true, records: recs.map((r) => ({ host: r.exchange, priority: r.priority })) };
++  } catch (err) {
++    if (NO_RECORD.has(err.code)) {
++      return { ok: false, records: [], hint: `No MX records on ${domain}. Sending via a relay can work without MX, but the domain won't receive mail — add MX records to make it a full mailbox domain.` };
++    }
++    return { ok: null, records: [], error: err.code || err.message, hint: "MX check couldn't complete right now — tick the box below once you've added MX records." };
++  }
++}
++
++function spfSuggestions(domain, smtpHost) {
++  const relay = relayFor(smtpHost);
++  if (relay && relay.include) return [`v=spf1 include:${relay.include} ~all`];
++  const smtpDomain = domainOf(smtpHost);
++  if (smtpDomain && smtpDomain !== domain) return [`v=spf1 mx include:${smtpDomain} ~all`];
++  return ["v=spf1 mx ~all"];
++}
++
++async function checkSpf(domain, smtpHost) {
++  let result;
++  try {
++    result = await readTxt(domain);
++  } catch (err) {
++    return { ok: null, error: err.code || err.message, hint: "SPF check couldn't complete right now — tick the box below once you've published the record." };
++  }
++
++  let where = domain;
++  let txts = result.txts;
++  // SPF commonly lives on the parent domain and covers subdomains — check it
++  // before declaring the record missing.
++  if (!result.found) {
++    const parent = parentOf(domain);
++    if (parent) {
++      try {
++        const pr = await readTxt(parent);
++        if (pr.found) { txts = pr.txts; where = parent; }
++      } catch { /* parent check is best-effort */ }
++    }
++  }
++
++  const spf = txts.find((t) => t.join("").toLowerCase().startsWith("v=spf1"));
++  if (spf) {
++    return {
++      ok: true,
++      record: spf.join(""),
++      domain: where,
++      note: where !== domain ? `Found on ${where} (applies to ${domain} too)` : undefined,
++    };
++  }
++  return {
++    ok: false,
++    record: null,
++    suggest: spfSuggestions(domain, smtpHost),
++    hint: `Add a TXT record on ${domain} with one of the suggested values, then verify again.`,
++  };
++}
++
++async function checkDkim(domain, smtpHost) {
++  const relay = relayFor(smtpHost);
++  const results = await Promise.allSettled(
++    DKIM_SELECTORS.map(async (sel) => {
++      const r = await readTxt(`${sel}._domainkey.${domain}`);
++      return r.found ? { sel, txts: r.txts } : null;
++    }),
++  );
++  const found = results.find((r) => r.status === "fulfilled" && r.value);
++  if (found) {
++    const { sel, txts } = found.value;
++    return { ok: true, selector: sel, record: txts.map((t) => t.join("")).join("") };
++  }
++  const failures = results.filter((r) => r.status === "rejected");
++  if (failures.length === DKIM_SELECTORS.length) {
++    const first = failures[0].reason;
++    return { ok: null, error: (first && (first.code || first.message)) || "lookup failed", hint: "DKIM check couldn't complete right now — tick the box below once your provider has published the key." };
++  }
++  const hint = relay && relay.dkimHint
++    ? relay.dkimHint
++    : `No DKIM key found under the common selectors. Enable DKIM at your mail provider, or publish a TXT record at <selector>._domainkey.${domain} with the key your provider gives you (template: v=DKIM1; k=rsa; p=<public key>).`;
++  return { ok: false, selector: null, record: null, hint };
++}
++
++/**
++ * Verify a sending domain's deliverability records. Returns the per-record
++ * verdicts described in the header; `done` is true only when all three passed
++ * an automated check.
++ */
++async function checkDomain(domain, { smtpHost = null } = {}) {
++  const clean = String(domain || "").trim().toLowerCase();
++  if (!/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(clean)) {
++    throw new Error("Not a domain name");
++  }
++  const [mx, spf, dkim] = await Promise.all([
++    checkMx(clean),
++    checkSpf(clean, smtpHost),
++    checkDkim(clean, smtpHost),
++  ]);
++  return {
++    domain: clean,
++    mx,
++    spf,
++    dkim,
++    done: mx.ok === true && spf.ok === true && dkim.ok === true,
++    checked_at: new Date().toISOString(),
++  };
++}
++
++module.exports = { checkDomain, DKIM_SELECTORS };
+diff --git a/src/modules/mail/mail.service.js b/src/modules/mail/mail.service.js
+index 25cb7ff..1cd8070 100644
+--- a/src/modules/mail/mail.service.js
++++ b/src/modules/mail/mail.service.js
+@@ -15,6 +15,10 @@ const settings = require("../security/setting/setting.service");
+ const jwt = require("jsonwebtoken");
+ const { emitEvent } = require("../../shared/events/emit");
+ const { AppError } = require("../../utils/errors");
++// Shared SMTP-error classifier — the connection-test path and the system-email
++// paths (email.service, platform probes) share one map so the UI's fix guides
++// key off the same codes everywhere. See smtp-error.map.js.
++const { mapSmtpError, isSmtpError } = require("./smtp-error.map");
+ const { config } = require("../../config/env");
+ const { ImapSmtpProvider } = require("./providers/imapSmtp.provider");
+ const { MicrosoftGraphProvider } = require("./providers/microsoftGraph.provider");
+@@ -176,7 +180,10 @@ async function testConnection(client, id) {
+     const adapter = await resolveAdapter(client, conn);
+     result = await adapter.verify();
+   } catch (err) {
+-    result = { ok: false, error: err.message };
++    // Classify SMTP verdicts so the UI can render the matching fix guide.
++    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
++    result = { ok: false, error: mapped ? mapped.message : err.message };
++    if (mapped) result.code = mapped.code;
+   }
+   if (result.ok) await repo.updateConnection(client, id, { status: "CONNECTED", last_error: null });
+   else await repo.setError(client, id, result.error || result.stage || "verify failed");
+diff --git a/src/modules/mail/providers/imapSmtp.provider.js b/src/modules/mail/providers/imapSmtp.provider.js
+index d1c2b08..7d21225 100644
+--- a/src/modules/mail/providers/imapSmtp.provider.js
++++ b/src/modules/mail/providers/imapSmtp.provider.js
+@@ -94,7 +94,11 @@ class ImapSmtpProvider {
+     try {
+       await this._smtpTransport().verify();
+     } catch (err) {
+-      return { ok: false, stage: "smtp", error: err.message };
++      // Classify the SMTP verdict (550 sender verify, 535 auth, …) so callers
++      // can hand the UI a machine code for its fix guide.
++      const { mapSmtpError } = require("../smtp-error.map");
++      const mapped = mapSmtpError(err);
++      return { ok: false, stage: "smtp", error: mapped.message, code: mapped.code };
+     }
+     return { ok: true };
+   }
+diff --git a/src/modules/mail/smtp-error.map.js b/src/modules/mail/smtp-error.map.js
+new file mode 100644
+index 0000000..91ce864
+--- /dev/null
++++ b/src/modules/mail/smtp-error.map.js
+@@ -0,0 +1,68 @@
++/**
++ * Shared SMTP-error classifier — one map for every outbound-mail path.
++ *
++ * A raw nodemailer/SMTP rejection must surface as a clean, actionable AppError
++ * so the UI can show a fix guide keyed on `code`, not a leaked stack. The same
++ * classifier is used by:
++ *   - mail.service.js          (tenant sends / replies via mailbox connections)
++ *   - providers/imapSmtp.provider.js (connection test, SMTP stage)
++ *   - services/email.service.js (system-email transport + smartcomm test)
++ *   - services/platform/settings.probes.js (deploy-wide Mail-fallback probe)
++ *
++ * Keeping it in ONE file means `SMTP_SENDER_REJECTED` means the same thing in
++ * the tenant console, the mailbox page and the platform console — the fix guide
++ * is rendered from the code alone, so the two UIs cannot drift apart.
++ */
++"use strict";
++const { AppError } = require("../../utils/errors");
++
++/**
++ * Turn a raw nodemailer/SMTP rejection into a clean, actionable AppError.
++ * `550 Sender verify failed` in particular is a remote-server verdict on the
++ * FROM address (its domain needs a real mailbox + MX/SPF/DKIM, and the From
++ * must match the authenticated account); we say so rather than leaking a
++ * nodemailer stack.
++ */
++function mapSmtpError(err) {
++  if (err instanceof AppError) return err;
++  const code = err && err.responseCode; // SMTP reply code, e.g. 550, 535
++  const raw = String((err && err.response) || (err && err.message) || err || "");
++  if (/sender verify failed/i.test(raw) || (code === 550 && /verif/i.test(raw))) {
++    return new AppError(
++      "SMTP_SENDER_REJECTED",
++      "The mail server rejected the sender address (550 Sender verify failed). "
++        + "Check that the From address is a real mailbox on a domain with valid "
++        + "MX/SPF/DKIM records and that it matches the authenticated SMTP account.",
++      502,
++      { smtp_code: code || null, smtp_response: raw.slice(0, 300) },
++    );
++  }
++  if (err && err.code === "EAUTH") {
++    return new AppError("SMTP_AUTH_FAILED", "The mail server rejected the SMTP credentials for this mailbox.", 502, { smtp_code: code || null });
++  }
++  if (code >= 500 || (err && err.code === "EENVELOPE")) {
++    return new AppError("SMTP_SEND_REJECTED", `The mail server rejected the message${code ? ` (${code})` : ""}.`, 502, { smtp_code: code || null, smtp_response: raw.slice(0, 300) });
++  }
++  return new AppError("SMTP_SEND_FAILED", "Could not send the message through the mail server.", 502, { reason: raw.slice(0, 300) });
++}
++
++/**
++ * Best-effort code from a message string alone, for paths where the original
++ * error object is gone (probes, older adapters, logs). Mirrors mapSmtpError's
++ * sniffing so the UI can still pick the right guide.
++ */
++function smtpCodeFromMessage(msg) {
++  const text = String(msg || "");
++  if (/sender verify failed/i.test(text) || (/550/.test(text) && /verif/i.test(text))) return "SMTP_SENDER_REJECTED";
++  if (/535/.test(text) || /eauth|auth.*(failed|invalid|denied)/i.test(text)) return "SMTP_AUTH_FAILED";
++  if (/\b5\d\d\b/.test(text) || /rejected|refused|denied/i.test(text)) return "SMTP_SEND_REJECTED";
++  return null;
++}
++
++/** True when the error looks like an SMTP verdict rather than e.g. an IMAP one. */
++function isSmtpError(err) {
++  if (!err) return false;
++  return !!(err.responseCode || err.code === "EAUTH" || err.code === "EENVELOPE" || smtpCodeFromMessage(err.response || err.message));
++}
++
++module.exports = { mapSmtpError, smtpCodeFromMessage, isSmtpError };
+diff --git a/src/modules/smartcomm/smartcomm.config.service.js b/src/modules/smartcomm/smartcomm.config.service.js
+index 77f20d7..847a688 100644
+--- a/src/modules/smartcomm/smartcomm.config.service.js
++++ b/src/modules/smartcomm/smartcomm.config.service.js
+@@ -83,4 +83,52 @@ async function setEmail(client, { smtp_host, smtp_port, smtp_user, from, reply_t
+ const testWhatsapp = (client) => whatsapp.verifyConfig(client);
+ const testEmail = (client, opts = {}) => email.verifyTransport(client, opts);
+ 
+-module.exports = { getConfig, setWhatsapp, setEmail, testWhatsapp, testEmail };
++/**
++ * Mail-setup wizard: verify the sending domain's MX / SPF / DKIM records.
++ * `smtpHost` from the tenant's resolved transport sharpens the SPF suggestion
++ * (relay presets, include: for the SMTP domain). Public-DNS read only.
++ */
++async function dnsCheck(client, { domain }) {
++  const { checkDomain } = require("../mail/dns-check");
++  let smtpHost = null;
++  try {
++    smtpHost = (await email.resolveMail(client, { purpose: "NOTIFICATIONS" })).smtp_host || null;
++  } catch { /* the suggestion is best-effort; the checks themselves don't need it */ }
++  return checkDomain(domain, { smtpHost });
++}
++
++/**
++ * Mail-setup wizard: send a REAL test message through the tenant's transport
++ * (verify() only proves the connection — this proves a message actually leaves,
++ * the same reasoning as the platform alert-email probe). Failures are
++ * classified with smtp-error.map so the wizard can render the matching fix
++ * guide; never throws.
++ */
++async function testSend(client, { to, purpose = "NOTIFICATIONS" }) {
++  const { mapSmtpError, isSmtpError } = require("../mail/smtp-error.map");
++  try {
++    const info = await email.send(client, {
++      to,
++      purpose,
++      subject: "Praxis test email — your outbound email is working",
++      text:
++        "This is a test message from your Praxis tenant.\n\n"
++        + "If you received this, your sender address, DNS records and SMTP credentials are configured "
++        + "correctly, and outbound email is working.\n\n"
++        + "If you expected this but found it in spam, mark it as 'not spam' — that also tells you your "
++        + "SPF/DKIM setup is not being honoured by the inbox provider yet.",
++      moduleKey: "mail-setup-wizard",
++    });
++    return { ok: true, to, message_id: (info && (info.messageId || info.message_id)) || null };
++  } catch (err) {
++    const mapped = isSmtpError(err) ? mapSmtpError(err) : null;
++    return {
++      ok: false,
++      to,
++      error: mapped ? mapped.message : err.message,
++      code: mapped ? mapped.code : undefined,
++    };
++  }
++}
++
++module.exports = { getConfig, setWhatsapp, setEmail, testWhatsapp, testEmail, dnsCheck, testSend };
+diff --git a/src/modules/smartcomm/smartcomm.controller.js b/src/modules/smartcomm/smartcomm.controller.js
+index 378ffcf..fa7a2f5 100644
+--- a/src/modules/smartcomm/smartcomm.controller.js
++++ b/src/modules/smartcomm/smartcomm.controller.js
+@@ -12,6 +12,9 @@ module.exports = {
+   setEmail: A((c, req) => cfg.setEmail(c, { ...req.body, actor: actor(req) })),
+   testWhatsapp: A((c) => cfg.testWhatsapp(c)),
+   testEmail: A((c, req) => cfg.testEmail(c, { purpose: req.body && req.body.purpose })),
++  // Mail-setup wizard probes.
++  dnsCheck: A((c, req) => cfg.dnsCheck(c, { domain: req.body.domain })),
++  testSend: A((c, req) => cfg.testSend(c, { to: req.body.to, purpose: req.body.purpose })),
+   listChannels: A((c, req) => service.listChannels(c, actor(req), req.query)),
+   createChannel: C((c, req) => service.createChannel(c, { data: req.body, actor: actor(req) })),
+   getChannel: A((c, req) => service.getChannel(c, { id: req.params.id, actor: actor(req) })),
+diff --git a/src/modules/smartcomm/smartcomm.routes.js b/src/modules/smartcomm/smartcomm.routes.js
+index 4f98fa0..233f3ef 100644
+--- a/src/modules/smartcomm/smartcomm.routes.js
++++ b/src/modules/smartcomm/smartcomm.routes.js
+@@ -20,6 +20,11 @@ router.put("/config/whatsapp", create, v.whatsappConfig, c.setWhatsapp);
+ router.put("/config/email", create, v.emailConfig, c.setEmail);
+ router.post("/config/whatsapp/test", create, c.testWhatsapp);
+ router.post("/config/email/test", create, v.emailTest, c.testEmail);
++// Mail-setup wizard (Comms → Setup guide). dns-check reads PUBLIC DNS — a
++// read, gated `view`; test-send sends a real message through the tenant's
++// transport — a write with side effects, gated `create` like the other tests.
++router.post("/config/email/dns-check", view, v.emailDnsCheck, c.dnsCheck);
++router.post("/config/email/test-send", create, v.emailTestSend, c.testSend);
+ 
+ // directory + cross-channel reads
+ router.get("/colleagues", view, c.colleagues);
+diff --git a/src/modules/smartcomm/smartcomm.validator.js b/src/modules/smartcomm/smartcomm.validator.js
+index 741ec97..9c83ed0 100644
+--- a/src/modules/smartcomm/smartcomm.validator.js
++++ b/src/modules/smartcomm/smartcomm.validator.js
+@@ -12,6 +12,10 @@ const schemas = {
+     .strict()
+     .refine((o) => Object.keys(o).length === 1, "send exactly one of archived, pinned, muted"),
+   emailTest: z.object({ purpose: z.string().trim().min(1).max(64) }).strict(),
++  // Mail-setup wizard. The domain is the From address's domain; the send target
++  // is any address the admin wants the test message delivered to.
++  emailDnsCheck: z.object({ domain: z.string().trim().min(4).max(253).regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i, "not a domain name") }).strict(),
++  emailTestSend: z.object({ to: z.string().trim().email().max(254), purpose: z.string().trim().min(1).max(64).optional() }).strict(),
+   channel: z.object({ name: z.string().min(1), kind: z.enum(["DEPARTMENT", "PROJECT", "DOSSIER", "DIRECT", "CLIENT"]).optional(), dossier_id: z.string().uuid().optional().nullable(), client_id: z.string().uuid().optional().nullable(), topic: z.string().optional(), member_ids: z.array(z.string().uuid()).optional() }),
+   member: z.object({ user_id: z.string().uuid(), member_role: z.enum(["OWNER", "ADMIN", "MEMBER"]).optional() }),
+   message: z.object({ body: z.string().optional(), media_vault_id: z.string().uuid().optional().nullable(), reply_to: z.string().uuid().optional().nullable(), attachments: z.array(attachment).optional() }),
+@@ -28,4 +32,4 @@ const schemas = {
+   emailConfig: z.object({ smtp_host: z.string().min(1).optional(), smtp_port: z.coerce.number().int().positive().optional(), smtp_user: z.string().optional(), smtp_pass: z.string().min(1).max(4000).optional(), from: z.string().optional(), reply_to: z.string().optional() }),
+ };
+ const mw = (k) => (req, _res, next) => { const p = schemas[k].safeParse(req.body); if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors)); req.body = p.data; return next(); };
+-module.exports = { channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
++module.exports = { channel: mw("channel"), member: mw("member"), message: mw("message"), editMessage: mw("editMessage"), react: mw("react"), draft: mw("draft"), quickReply: mw("quickReply"), flag: mw("flag"), emailTest: mw("emailTest"), emailDnsCheck: mw("emailDnsCheck"), emailTestSend: mw("emailTestSend"), quickReplyPatch: mw("quickReplyPatch"), whatsappConfig: mw("whatsappConfig"), emailConfig: mw("emailConfig"), schemas };
+diff --git a/src/services/email.service.js b/src/services/email.service.js
+index eb4542a..d1a77b1 100644
+--- a/src/services/email.service.js
++++ b/src/services/email.service.js
+@@ -30,6 +30,7 @@ const { config } = require("../config/env");
+ const { getSetting } = require("../shared/config/settings");
+ const settingService = require("../modules/security/setting/setting.service");
+ const emailRepo = require("./email.repo");
++const { mapSmtpError, isSmtpError } = require("../modules/mail/smtp-error.map");
+ const mailFallback = require("./platform/mail-fallback.service");
+ const registry = require("./tenant/registry.service");
+ const entitlement = require("./platform/entitlement.service");
+@@ -193,6 +194,13 @@ async function verifyTransport(client, { purpose = "NOTIFICATIONS" } = {}) {
+     await transportFrom(cfg).verify();
+     return { ok: true, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, from: cfg.from };
+   } catch (err) {
++    // Classify SMTP verdicts (550 sender verify, 535 auth, 5xx rejections) so
++    // the UI can pick the matching fix guide; plain network failures keep their
++    // raw message — "could not send" would hide the actual getaddrinfo reason.
++    if (isSmtpError(err)) {
++      const mapped = mapSmtpError(err);
++      return { ok: false, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, error: mapped.message, code: mapped.code };
++    }
+     return { ok: false, smtp_host: cfg.smtp_host, smtp_port: cfg.smtp_port, error: err.message };
+   }
+ }
+diff --git a/src/services/platform/settings.probes.js b/src/services/platform/settings.probes.js
+index 649af14..8bbc362 100644
+--- a/src/services/platform/settings.probes.js
++++ b/src/services/platform/settings.probes.js
+@@ -49,7 +49,21 @@ async function smtp(cfg) {
+     secure: cfg.smtp_secure === true || port === 465,
+     auth: cfg.smtp_user && cfg.smtp_pass ? { user: cfg.smtp_user, pass: cfg.smtp_pass } : undefined,
+   });
+-  await transport.verify();
++  try {
++    await transport.verify();
++  } catch (err) {
++    // Classify the SMTP verdict (550 sender verify, 535 auth, …) so the
++    // platform console can render the same fix guide the tenant console does.
++    const { mapSmtpError, isSmtpError } = require("../../modules/mail/smtp-error.map");
++    if (isSmtpError(err)) {
++      const mapped = mapSmtpError(err);
++      const wrapped = new Error(mapped.message);
++      wrapped.code = mapped.code;
++      wrapped.smtp_code = err.responseCode || null;
++      throw wrapped;
++    }
++    throw err;
++  }
+   return { smtp_host: cfg.smtp_host, smtp_port: port, smtp_user: cfg.smtp_user || null };
+ }
+ 
+diff --git a/src/services/platform/settings.service.js b/src/services/platform/settings.service.js
+index 35b21ed..dcd9674 100644
+--- a/src/services/platform/settings.service.js
++++ b/src/services/platform/settings.service.js
+@@ -155,6 +155,9 @@ async function test(section, key) {
+       key,
+       status: (r && r.status) || err.statusCode || err.$metadata?.httpStatusCode,
+       error: (r && r.data && (r.data.error?.message || r.data.message)) || err.message,
++      // SMTP probes throw a classified error (smtp-error.map) so the console
++      // can render the matching fix guide; other probes simply omit the key.
++      code: err.code || undefined,
+     };
+   }
+ }
+diff --git a/tests/unit/mail-setup.test.js b/tests/unit/mail-setup.test.js
+new file mode 100644
+index 0000000..dc9baee
+--- /dev/null
++++ b/tests/unit/mail-setup.test.js
+@@ -0,0 +1,122 @@
++"use strict";
++
++/**
++ * Mail-setup wizard backend — hermetic.
++ *
++ * 1. dns-check module: MX / SPF / DKIM verdicts against mocked DNS answers —
++ *    present → ok:true (with record values), missing → ok:false (with
++ *    suggestions / hints), resolver failure → ok:null (self-check territory).
++ * 2. smartcomm.config.service.testSend: a real send through the tenant
++ *    transport; SMTP verdicts come back classified (SMTP_SENDER_REJECTED …)
++ *    so the wizard renders the same fix guide the rest of the UI does.
++ */
++
++const mockResolveMx = jest.fn();
++const mockResolveTxt = jest.fn();
++jest.mock("dns/promises", () => ({
++  resolveMx: (...a) => mockResolveMx(...a),
++  resolveTxt: (...a) => mockResolveTxt(...a),
++}));
++
++jest.mock("../../src/services/platform/mail-fallback.service", () => ({
++  resolve: jest.fn(async () => ({
++    from: "no-reply@praxisls.com", smtp_host: null, smtp_port: 587,
++    smtp_user: null, smtp_pass: null, source: "env",
++  })),
++}));
++jest.mock("../../src/services/email.service", () => ({
++  send: jest.fn(),
++  resolveMail: jest.fn(async () => ({ smtp_host: "smtp.sendgrid.net" })),
++}));
++
++const email = require("../../src/services/email.service");
++const { checkDomain } = require("../../src/modules/mail/dns-check");
++const cfg = require("../../src/modules/smartcomm/smartcomm.config.service");
++
++const noRecord = () => { const e = new Error("queryTxt ENOTFOUND x"); e.code = "ENOTFOUND"; return e; };
++
++beforeEach(() => {
++  jest.clearAllMocks();
++});
++
++describe("dns-check.checkDomain", () => {
++  it("passes everything when MX, SPF and DKIM are all published", async () => {
++    mockResolveMx.mockResolvedValue([{ exchange: "mail.x.cm", priority: 10 }]);
++    mockResolveTxt.mockImplementation((name) => {
++      if (name === "google._domainkey.x.cm") return Promise.resolve([["v=DKIM1; k=rsa; p=MIGfMA"]]);
++      if (name === "x.cm") return Promise.resolve([["v=spf1 mx ~all"]]);
++      return Promise.reject(noRecord());
++    });
++    const r = await checkDomain("x.cm", { smtpHost: "smtp.sendgrid.net" });
++    expect(r.done).toBe(true);
++    expect(r.mx.ok).toBe(true);
++    expect(r.mx.records[0].host).toBe("mail.x.cm");
++    expect(r.spf.record).toBe("v=spf1 mx ~all");
++    expect(r.dkim).toMatchObject({ ok: true, selector: "google" });
++  });
++
++  it("reports missing records with relay-aware SPF suggestions and DKIM hints", async () => {
++    mockResolveMx.mockRejectedValue(noRecord());
++    mockResolveTxt.mockRejectedValue(noRecord());
++    const r = await checkDomain("x.cm", { smtpHost: "smtp.sendgrid.net" });
++    expect(r.done).toBe(false);
++    expect(r.mx.ok).toBe(false);
++    expect(r.spf.ok).toBe(false);
++    expect(r.spf.suggest).toContain("v=spf1 include:sendgrid.net ~all");
++    expect(r.dkim.ok).toBe(false);
++    expect(r.dkim.hint).toMatch(/SendGrid/i);
++  });
++
++  it("accepts SPF published on the parent domain", async () => {
++    mockResolveMx.mockResolvedValue([{ exchange: "mail.x.cm", priority: 10 }]);
++    mockResolveTxt.mockImplementation((name) => {
++      if (name === "mail.x.cm") return Promise.reject(noRecord());
++      if (name === "x.cm") return Promise.resolve([["v=spf1 mx -all"]]); // parent
++      return Promise.reject(noRecord());
++    });
++    const r = await checkDomain("mail.x.cm");
++    expect(r.spf.ok).toBe(true);
++    expect(r.spf.domain).toBe("x.cm");
++  });
++
++  it("marks records ok:null when the resolver fails (self-check fallback)", async () => {
++    const mkErr = (code) => { const e = new Error(code); e.code = code; return e; };
++    mockResolveMx.mockRejectedValue(mkErr("ETIMEOUT"));
++    mockResolveTxt.mockRejectedValue(mkErr("ETIMEOUT"));
++    const r = await checkDomain("x.cm");
++    expect(r.done).toBe(false);
++    expect(r.mx.ok).toBeNull();
++    expect(r.spf.ok).toBeNull();
++    expect(r.dkim.ok).toBeNull();
++  });
++
++  it("rejects non-domain input", async () => {
++    await expect(checkDomain("not a domain")).rejects.toThrow("Not a domain name");
++  });
++});
++
++describe("smartcomm.config.testSend", () => {
++  it("classifies a 550 sender-verify rejection so the wizard shows the right guide", async () => {
++    const err = new Error("send failed");
++    err.response = "550 Sender verify failed";
++    err.responseCode = 550;
++    email.send.mockRejectedValue(err);
++    const r = await cfg.testSend({}, { to: "admin@x.cm" });
++    expect(r).toMatchObject({ ok: false, code: "SMTP_SENDER_REJECTED" });
++    expect(r.error).toMatch(/Sender verify failed/);
++  });
++
++  it("reports ok with the provider message id on success", async () => {
++    email.send.mockResolvedValue({ messageId: "abc-123" });
++    const r = await cfg.testSend({}, { to: "admin@x.cm" });
++    expect(r).toMatchObject({ ok: true, to: "admin@x.cm", message_id: "abc-123" });
++  });
++
++  it("keeps the raw reason for non-SMTP failures", async () => {
++    email.send.mockRejectedValue(new Error("email: no sender configured"));
++    const r = await cfg.testSend({}, { to: "admin@x.cm" });
++    expect(r.ok).toBe(false);
++    expect(r.code).toBeUndefined();
++    expect(r.error).toMatch(/no sender configured/);
++  });
++});

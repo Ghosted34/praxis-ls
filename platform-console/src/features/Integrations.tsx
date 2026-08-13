@@ -38,7 +38,45 @@ export function Integrations() {
 }
 
 /* Shared test button + result pill ---------------------------------------- */
-function TestButton({ section, keyName }: { section: string; keyName: string }) {
+/* `mailHelp` (used by the Mail fallback card) renders the SMTP fix guide under
+ * a failed result — the same guidance the tenant console shows, keyed on the
+ * classified error code returned by settings.test(). */
+function MailTestHelp({ code, error }: { code?: string | unknown; error?: string | unknown }) {
+  const c = String(code || "").toUpperCase();
+  const text = String(error || "").toLowerCase();
+  const kind = c === "SMTP_SENDER_REJECTED" || text.includes("sender verify")
+    ? "sender"
+    : c === "SMTP_AUTH_FAILED" || text.includes("535") || text.includes("eauth")
+      ? "auth"
+      : null;
+  if (!kind) return null;
+  const steps = kind === "sender"
+    ? [
+        "Make the From address a REAL mailbox on its domain (create the mailbox or alias if it doesn't exist).",
+        "Check DNS: valid MX, plus SPF allowing this mail server and DKIM (mxtoolbox.com / dmarcian.com).",
+        "From must match the authenticated SMTP account — send as the login's own address or a real alias of it.",
+        "cPanel/Exim hosts: allow authenticated senders to use any From address, or send from the account's own address.",
+        "On a relay (SendGrid/SES/Postmark): verify the From domain as a sender identity.",
+        "Then press Test again.",
+      ]
+    : [
+        "Re-enter the SMTP password (blank keeps the old one).",
+        "2FA accounts need an APP password, not the login password.",
+        "SMTP user must match the mailbox account; port 587 (STARTTLS) or 465 (SSL).",
+      ];
+  return (
+    <div style={{ marginTop: 8, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", fontSize: 12, lineHeight: 1.55, color: "var(--ink-2)" }}>
+      <div style={{ fontWeight: 600, color: "var(--ink)", marginBottom: 6 }}>
+        🛠 {kind === "sender" ? "550 Sender verify failed — how to fix" : "SMTP login rejected — how to fix"}
+      </div>
+      <ol style={{ margin: 0, paddingLeft: 18, display: "grid", gap: 3 }}>
+        {steps.map((s) => <li key={s}>{s}</li>)}
+      </ol>
+    </div>
+  );
+}
+
+function TestButton({ section, keyName, mailHelp }: { section: string; keyName: string; mailHelp?: boolean }) {
   const [busy, setBusy] = useState(false);
   const [res, setRes] = useState<SettingTestResult | null>(null);
   const run = async () => {
@@ -53,11 +91,16 @@ function TestButton({ section, keyName }: { section: string; keyName: string }) 
     }
   };
   return (
-    <span className="row" style={{ gap: 10, alignItems: "center" }}>
+    <span className="row" style={{ gap: 10, alignItems: "center", flexWrap: "wrap" }}>
       <Button variant="ghost" size="sm" onClick={run} loading={busy}>Test</Button>
       {res && (res.ok
         ? <Pill tone="ok">Connected{typeof res.bucket === "string" ? ` · ${res.bucket}` : ""}</Pill>
         : <Pill tone="bad">Failed{res.status ? ` · ${res.status}` : ""}{res.error ? ` · ${String(res.error).slice(0, 60)}` : ""}</Pill>)}
+      {mailHelp && res && !res.ok && (
+        <span style={{ flexBasis: "100%" }}>
+          <MailTestHelp code={res.code} error={res.error} />
+        </span>
+      )}
     </span>
   );
 }
@@ -465,10 +508,7 @@ function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: ()
     }
   };
   return (
-    <Card
-      title="System-email fallback sender"
-      actions={<TestButton section="mail" keyName="fallback" />}
-    >
+    <Card title="System-email fallback sender">
       <p className="muted" style={{ fontSize: 12, marginBottom: 12 }}>
         Praxis-owned sender for system emails (OTP, invites, invoices, notifications) when a tenant
         hasn’t configured their own mail. Tenants who don’t point their DNS at us fall back here so
@@ -485,9 +525,25 @@ function MailFallbackCard({ row, onSaved }: { row?: PlatformSetting; onSaved: ()
         <Field label="SMTP user"><input className="in" value={f.smtp_user} onChange={set("smtp_user")} /></Field>
         <Field label="SMTP password" hint={<SecretHint row={row} label="SMTP password" />}><input className="in" type="password" value={f.secret} onChange={set("secret")} placeholder="••••••••" /></Field>
       </div>
-      <div className="row" style={{ justifyContent: "flex-end", marginTop: 12 }}>
+      {/* The Test lives in the body (not the card header like other cards) so a
+          failed send-verification renders its fix guide right beneath it. */}
+      <div className="row" style={{ justifyContent: "space-between", alignItems: "flex-start", marginTop: 12, gap: 12 }}>
+        <TestButton section="mail" keyName="fallback" mailHelp />
         <Button variant="primary" onClick={save} loading={busy}>Save</Button>
       </div>
+      <details style={{ marginTop: 10, fontSize: 12, color: "var(--ink-2)" }}>
+        <summary style={{ cursor: "pointer", color: "var(--ink)", fontWeight: 600 }}>Why would the Test fail? (sender-verify guide)</summary>
+        <div style={{ marginTop: 6, padding: "10px 12px", borderRadius: 8, border: "1px solid var(--line)", background: "var(--panel-2)", lineHeight: 1.55 }}>
+          “550 Sender verify failed” means the server checked the From address and found no real mailbox behind it — a
+          DNS/mailbox setup problem, not a Praxis bug:
+          <ol style={{ margin: "6px 0 0", paddingLeft: 18, display: "grid", gap: 3 }}>
+            <li>The From address must be a real mailbox on its domain with valid MX, SPF and DKIM records.</li>
+            <li>The From address must match the authenticated SMTP account (or be a real alias of it).</li>
+            <li>On cPanel/Exim hosts, allow authenticated senders to use any From address — or send from the account’s own address.</li>
+            <li>On a relay (SendGrid/SES/Postmark), verify the From domain as a sender identity first.</li>
+          </ol>
+        </div>
+      </details>
     </Card>
   );
 }

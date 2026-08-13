@@ -20,6 +20,11 @@ router.put("/config/whatsapp", create, v.whatsappConfig, c.setWhatsapp);
 router.put("/config/email", create, v.emailConfig, c.setEmail);
 router.post("/config/whatsapp/test", create, c.testWhatsapp);
 router.post("/config/email/test", create, v.emailTest, c.testEmail);
+// Mail-setup wizard (Comms → Setup guide). dns-check reads PUBLIC DNS — a
+// read, gated `view`; test-send sends a real message through the tenant's
+// transport — a write with side effects, gated `create` like the other tests.
+router.post("/config/email/dns-check", view, v.emailDnsCheck, c.dnsCheck);
+router.post("/config/email/test-send", create, v.emailTestSend, c.testSend);
 
 // directory + cross-channel reads
 router.get("/colleagues", view, c.colleagues);

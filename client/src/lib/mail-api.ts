@@ -118,7 +118,7 @@ export type Attachment = {
   size_bytes?: number | null;
 };
 
-export type TestResult = { ok: boolean; error?: string; stage?: string };
+export type TestResult = { ok: boolean; error?: string; stage?: string; code?: string };
 
 export type Autoconfig = {
   source: string; provider?: string;

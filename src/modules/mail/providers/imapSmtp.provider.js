@@ -94,7 +94,11 @@ class ImapSmtpProvider {
     try {
       await this._smtpTransport().verify();
     } catch (err) {
-      return { ok: false, stage: "smtp", error: err.message };
+      // Classify the SMTP verdict (550 sender verify, 535 auth, …) so callers
+      // can hand the UI a machine code for its fix guide.
+      const { mapSmtpError } = require("../smtp-error.map");
+      const mapped = mapSmtpError(err);
+      return { ok: false, stage: "smtp", error: mapped.message, code: mapped.code };
     }
     return { ok: true };
   }

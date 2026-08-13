@@ -44,6 +44,38 @@ export const setEmailConfig = (body: { smtp_host?: string; smtp_port?: number; s
   tenant<CommsConfig>("/smartcomm/config/email", { method: "PUT", body });
 export const testEmail = () => tenant<TestResult>("/smartcomm/config/email/test", { method: "POST" });
 
+/* ─────────────────────────────────────────────────────────────────────────
+ * Mail-setup wizard probes (Comms → Setup guide).
+ *   dnsCheckEmail — MX / SPF / DKIM verification for the From domain.
+ *     ok: true = verified · false = definitively missing (suggested values
+ *     attached) · null = couldn't check (wizard falls back to a self-check).
+ *   testSendEmail — sends a REAL test message through the tenant's transport.
+ * ──────────────────────────────────────────────────────────────────────── */
+
+export type DnsRecordCheck = {
+  ok: boolean | null;
+  records?: { host: string; priority: number }[];
+  record?: string | null;
+  selector?: string | null;
+  domain?: string;
+  note?: string;
+  suggest?: string[];
+  hint?: string | null;
+  error?: string | null;
+};
+export type DnsCheckResult = {
+  domain: string;
+  mx: DnsRecordCheck;
+  spf: DnsRecordCheck;
+  dkim: DnsRecordCheck;
+  done: boolean;
+  checked_at?: string;
+};
+export const dnsCheckEmail = (domain: string) =>
+  tenant<DnsCheckResult>("/smartcomm/config/email/dns-check", { method: "POST", body: { domain } });
+export const testSendEmail = (body: { to: string; purpose?: string }) =>
+  tenant<TestResult & { to?: string; message_id?: string | null }>("/smartcomm/config/email/test-send", { method: "POST", body });
+
 export const listChannels = () => tenant<Channel[]>("/smartcomm/channels");
 export const getChannel = (id: string) => tenant<Channel>(`/smartcomm/channels/${id}`);
 export const createChannel = (body: { name: string; kind?: ChannelKind; member_ids?: string[]; topic?: string }) =>

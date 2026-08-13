@@ -49,7 +49,21 @@ async function smtp(cfg) {
     secure: cfg.smtp_secure === true || port === 465,
     auth: cfg.smtp_user && cfg.smtp_pass ? { user: cfg.smtp_user, pass: cfg.smtp_pass } : undefined,
   });
-  await transport.verify();
+  try {
+    await transport.verify();
+  } catch (err) {
+    // Classify the SMTP verdict (550 sender verify, 535 auth, …) so the
+    // platform console can render the same fix guide the tenant console does.
+    const { mapSmtpError, isSmtpError } = require("../../modules/mail/smtp-error.map");
+    if (isSmtpError(err)) {
+      const mapped = mapSmtpError(err);
+      const wrapped = new Error(mapped.message);
+      wrapped.code = mapped.code;
+      wrapped.smtp_code = err.responseCode || null;
+      throw wrapped;
+    }
+    throw err;
+  }
   return { smtp_host: cfg.smtp_host, smtp_port: port, smtp_user: cfg.smtp_user || null };
 }
 

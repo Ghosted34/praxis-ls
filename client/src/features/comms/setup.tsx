@@ -20,6 +20,8 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { reportActionError } from "@/lib/action-error";
 import * as api from "@/lib/mail-api";
 import * as scapi from "@/lib/smartcomm-api";
+import { SmtpErrorGuide, MailTroubleshootingCard } from "@/components/mail/smtp-guide";
+import { MailSetupWizard } from "./mail-setup-wizard";
 
 type SenderMode = "add" | "edit" | "view";
 
@@ -44,7 +46,7 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
   React.useEffect(() => { setF(blank()); }, [blank, open]);
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   async function save() {
     setBusy(true); setError(null);
@@ -54,7 +56,7 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
         smtp_host: f.smtp_host || undefined, smtp_port: f.smtp_port === "" ? undefined : Number(f.smtp_port), is_active: f.is_active,
       });
       onSaved(); onClose();
-    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+    } catch (err) { setError(err); } finally { setBusy(false); }
   }
 
   const title = mode === "add" ? "Add section sender" : mode === "edit" ? `Edit — ${existing?.purpose}` : `Sender — ${existing?.purpose}`;
@@ -84,7 +86,12 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
           SMTP password: <span className="num">••••••••</span> — a shared login, set (masked) under <strong>Credentials</strong> below, not per sender.
         </p>
       )}
-      {error && <div className="mt-2"><ErrorState message={error} /></div>}
+      {error != null && (
+        <div className="mt-2">
+          <ErrorState message={errMsg(error)} />
+          <SmtpErrorGuide err={error} />
+        </div>
+      )}
     </Modal>
   );
 }
@@ -107,14 +114,14 @@ function ChannelConfig() {
   const [emF, setEmF] = React.useState({ smtp_host: "", smtp_port: "", smtp_user: "", smtp_pass: "" });
   const [emBusy, setEmBusy] = React.useState(false);
   const [emTest, setEmTest] = React.useState<scapi.TestResult | null>(null);
-  const [emErr, setEmErr] = React.useState<string | null>(null);
+  const [emErr, setEmErr] = React.useState<unknown>(null);
   React.useEffect(() => { if (em) setEmF((s) => ({ ...s, smtp_host: em.smtp_host || "", smtp_port: em.smtp_port ? String(em.smtp_port) : "", smtp_user: em.smtp_user || "" })); }, [em]);
   async function saveEm(e: React.FormEvent) {
     e.preventDefault(); setEmBusy(true); setEmErr(null); setEmTest(null);
     try { await scapi.setEmailConfig({ smtp_host: emF.smtp_host || undefined, smtp_port: emF.smtp_port === "" ? undefined : Number(emF.smtp_port), smtp_user: emF.smtp_user || undefined, smtp_pass: emF.smtp_pass || undefined }); setEmF((s) => ({ ...s, smtp_pass: "" })); cfg.reload(); }
-    catch (err) { setEmErr(errMsg(err)); } finally { setEmBusy(false); }
+    catch (err) { setEmErr(err); } finally { setEmBusy(false); }
   }
-  async function testEm() { setEmTest(null); setEmErr(null); try { setEmTest(await scapi.testEmail()); } catch (err) { setEmErr(errMsg(err)); } }
+  async function testEm() { setEmTest(null); setEmErr(null); try { setEmTest(await scapi.testEmail()); } catch (err) { setEmErr(err); } }
 
   return (
     <>
@@ -137,7 +144,13 @@ function ChannelConfig() {
           <Field label="SMTP user"><Input value={emF.smtp_user} onChange={(e) => setEmF((s) => ({ ...s, smtp_user: e.target.value }))} placeholder="apikey / user" /></Field>
           <Field label="SMTP password" hint={em?.pass_set ? "Leave blank to keep current." : undefined}><Input type="password" value={emF.smtp_pass} onChange={(e) => setEmF((s) => ({ ...s, smtp_pass: e.target.value }))} placeholder="••••••" /></Field>
         </div>
-        {emErr && <div className="mt-2"><ErrorState message={emErr} /></div>}
+        {emErr != null && (
+          <div className="mt-2">
+            <ErrorState message={errMsg(emErr)} />
+            <SmtpErrorGuide err={emErr} />
+          </div>
+        )}
+        {emTest && !emTest.ok && <SmtpErrorGuide code={emTest.code} message={emTest.error} />}
         <div className="mt-3 flex items-center justify-end gap-3">
           <TestLine result={emTest} />
           <Button type="button" size="sm" variant="outline" onClick={testEm} disabled={emBusy}>Test</Button>
@@ -152,6 +165,8 @@ export function SetupPage() {
   const senders = useResource(() => api.listSenders(), []);
   const navigate = useNavigate();
   const [modal, setModal] = React.useState<{ mode: SenderMode; existing?: api.Sender } | null>(null);
+  const [guideOpen, setGuideOpen] = React.useState(false);
+  const activeCount = (senders.data || []).filter((s) => s.is_active).length;
 
   async function archive(s: api.Sender) {
     if (!window.confirm(`Archive the "${s.purpose}" sender? It stops being available and is hidden from this list.`)) return;
@@ -180,7 +195,13 @@ export function SetupPage() {
           <h1 className="font-display text-2xl tracking-tight text-foreground">Setup &amp; channels</h1>
           <p className="mt-0.5 text-sm text-muted-foreground">Per-section email senders and shared credentials.</p>
         </div>
-        <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
+        <div className="flex flex-wrap items-center gap-3">
+          {activeCount > 0
+            ? <Pill tone="ok">✓ {activeCount} active sender{activeCount > 1 ? "s" : ""}</Pill>
+            : <Pill tone="warn">Email not set up</Pill>}
+          <Button onClick={() => setGuideOpen(true)}>📖 Setup guide</Button>
+          <Button variant="outline" onClick={() => navigate("/comms")}>← Back to inbox</Button>
+        </div>
       </div>
 
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -196,10 +217,14 @@ export function SetupPage() {
       <h2 className="mb-2 mt-8 font-display text-lg">Credentials</h2>
       <div className="grid gap-4 lg:grid-cols-2">
         <ChannelConfig />
+        <MailTroubleshootingCard />
       </div>
 
       {modal && (
         <SenderModal open mode={modal.mode} existing={modal.existing} onClose={() => setModal(null)} onSaved={senders.reload} />
+      )}
+      {guideOpen && (
+        <MailSetupWizard open onClose={() => setGuideOpen(false)} onDone={senders.reload} />
       )}
     </section>
   );

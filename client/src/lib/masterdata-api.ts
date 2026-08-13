@@ -506,32 +506,28 @@ export type VaultDocument = {
   status?: string | null;
 };
 
-<<<<<<< ours
-/** Store a file in the document vault. `entity_ref` traces it back to its owner.
+/** Store a file in the document vault. `entity_ref` traces it back to the owner.
  *
- *  An upload carrying `dossier_id` is an OPERATIONS document and is held to
- *  legacy's rules server-side: 5 MB, PDF/PNG/JPG, and the contents checked
- *  rather than the declared type trusted. Everywhere else keeps the vault's
- *  wider defaults. `doc_type_ref_id` is the registry reference (0669) — the
- *  server derives the legacy `doc_type` text from it, so the two cannot drift. */
-export const uploadVaultDocument = (body: {
-  data_url: string;
-  doc_type?: string;
-  entity_ref?: string;
-  dossier_id?: string;
-  doc_type_ref_id?: string;
-  client_id?: string;
-  original_name?: string;
-}) => tenant<VaultDocument>("/documents", { method: "POST", body });
-=======
-/** Store a file in the document vault. `entity_ref` traces it back to its owner. */
+ * An upload carrying `dossier_id` is an OPERATIONS document and is held to
+ * legacy's rules server-side: 5 MB, PDF/PNG/JPG, and the contents checked
+ * rather than the declared type trusted. Everywhere else keeps the vault's
+ * wider defaults. `doc_type_ref_id` is the registry reference — the server
+ * derives the legacy `doc_type` text from it, so the two cannot drift.
+ */
 export const uploadVaultDocument = (
-  body: { data_url: string; doc_type?: string; entity_ref?: string },
+  body: {
+    data_url: string;
+    doc_type?: string;
+    entity_ref?: string;
+    dossier_id?: string;
+    doc_type_ref_id?: string;
+    client_id?: string;
+    original_name?: string;
+  },
   onProgress?: (percent: number) => void,
 ) => onProgress
   ? tenantWithProgress<VaultDocument>("/documents", body, onProgress)
   : tenant<VaultDocument>("/documents", { method: "POST", body });
->>>>>>> theirs
 
 /** Upload a per-entity letterhead logo (base64 data URL). MOD-01 edit — not the
  *  MOD-70-gated /branding/logo. Returns the updated entity with the /media URL. */

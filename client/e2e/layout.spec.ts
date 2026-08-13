@@ -267,6 +267,69 @@ test.describe("the ribbon's chrome budget", () => {
     }
   });
 
+  /**
+   * MASTER DATA FITS AT 1280, ALL NINE OF IT, and that is a promise to a real
+   * desktop rather than a nice-to-have. A 1920px monitor at Windows' 125%
+   * scaling reports 1536 CSS px; at 150% it reports 1280. So the tier below
+   * `2xl` is not the narrow case, it is the ordinary one, and a row that hides
+   * its ninth destination there hides it from a large share of the people
+   * using this product on a full-size screen.
+   *
+   * Nine labels including "Financial dictionary" and "Corporate entities" is
+   * the longest row in the app that is expected to complete, so this is also
+   * the assertion that would fail first if a section were renamed to something
+   * that no longer fits, or if a control were added to row B. Checking the
+   * clipping explicitly matters because the nav cluster carries `min-w-0`:
+   * flex would sooner shrink a label to an ellipsis than report an overflow,
+   * so "nothing overflowed" on its own is not evidence that anything is
+   * readable.
+   */
+  test("master data shows all nine sections at 1280, unclipped", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await openScreen(page, "/master/clients", /Clients/i);
+
+    const row = await page.evaluate(() => {
+      const nav = document.querySelector("nav[aria-label$='sections']") as
+        | HTMLElement
+        | undefined;
+      const links = Array.from(nav?.querySelectorAll("a") ?? []).filter(
+        (a) => a.getBoundingClientRect().width > 0,
+      );
+      return {
+        labels: links.map((a) => a.textContent ?? ""),
+        clipped: links
+          .filter((a) => a.scrollWidth > a.clientWidth)
+          .map((a) => a.textContent),
+        navOverflow: nav ? nav.scrollWidth - nav.clientWidth : -1,
+        pageScrollX:
+          document.documentElement.scrollWidth -
+          document.documentElement.clientWidth,
+      };
+    });
+
+    expect(row.labels).toEqual([
+      "Clients",
+      "Suppliers",
+      "Corporate entities",
+      "Treasury",
+      "Currencies",
+      "Expense rates",
+      "Financial dictionary",
+      "Tax",
+      "Service types",
+    ]);
+    expect(row.clipped, "a section label was cut to fit").toEqual([]);
+    expect(row.navOverflow, "the section row overflowed its space").toBe(0);
+    expect(row.pageScrollX, "row B pushed the page sideways").toBe(0);
+
+    // Nothing is hidden, so there is nothing for the menu to hold.
+    await expect(
+      page.getByRole("button", { name: /All Master data destinations/i }),
+    ).toBeHidden();
+  });
+
   test("the hub draws no tab strip of its own on a desktop", async ({
     page,
   }) => {

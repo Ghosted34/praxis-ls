@@ -60,7 +60,7 @@ const REVEAL = [
   "inline-flex",
   "hidden lg:inline-flex",
   "hidden lg:inline-flex",
-  "hidden 2xl:inline-flex",
+  "hidden xl:inline-flex",
   "hidden 2xl:inline-flex",
 ];
 const revealClass = (i: number) => REVEAL[i] ?? "hidden";
@@ -70,15 +70,21 @@ const revealClass = (i: number) => REVEAL[i] ?? "hidden";
  * so the overflow trigger can hide itself instead of sitting there as a
  * redundant "…" beside a complete row. Below that width the menu remains — no
  * destination is ever only reachable through it, and no destination is ever
- * unreachable without it. Must track REVEAL; the e2e test at
- * layout.spec.ts:209 asserts the narrow-vs-wide shed on Finance's 10-section
- * row (1280 < 1920), so items 8–9 stay at 2xl and 9–10-length rows keep the
- * menu until 2xl.
+ * unreachable without it.
+ *
+ * MUST TRACK REVEAL, and the layout gate asserts the equivalence in a real
+ * browser rather than trusting this comment. A nine-item row completes at `xl`
+ * and a ten-item row at `2xl`, which is what lets Master Data — nine sections,
+ * the longest of them "Financial dictionary" — show every one of them on a
+ * 1280px-wide viewport. That width is not hypothetical: a 1920px monitor at
+ * Windows' 125% scaling reports 1536 CSS px, so the tier below `2xl` is where
+ * a good share of real desktops actually sit.
  */
 function overflowHiddenAt(count: number): string {
   if (count <= 6) return "hidden"; // never needed — every item shows at md
   if (count <= 8) return "lg:hidden";
-  return "2xl:hidden"; // 9–10 items — all visible only at 2xl
+  if (count === 9) return "xl:hidden";
+  return "2xl:hidden"; // the tenth item is the only one held back to 2xl
 }
 
 /** A drawing pin, filled when the ribbon is held open. */

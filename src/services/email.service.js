@@ -150,9 +150,11 @@ async function send(client, { to, subject, html, text, from, replyTo, attachment
       //   every message. Since the answer can never stop the send, doing it
       //   first buys nothing and costs latency on the hottest path here.
       //
-      // Fire-and-forget, and un-awaited on purpose: the alert is deduplicated to
-      // once per tenant/metric/month inside `guard`, so the overwhelmingly
-      // common case is a no-op, and mail delivery must never wait on telemetry.
+      // Fire-and-forget, and un-awaited on purpose: mail delivery must never
+      // wait on telemetry. `guard` reads a short-TTL cache and the alert is
+      // deduplicated to once per tenant/metric/month, so the steady state costs
+      // no platform query and no alert — which it must, because this runs on
+      // every invoice, reset and OTP the system sends.
       //
       // Wrapped in try/catch as well as `.catch()`: the `.catch` only covers a
       // REJECTED promise, and a synchronous throw here — a partially stubbed

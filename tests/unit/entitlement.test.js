@@ -395,6 +395,34 @@ describe("guard — failure semantics", () => {
     expect(platformDb.query).not.toHaveBeenCalled();
   });
 
+  test("repeated guards do NOT hit the platform database every time", async () => {
+    // The regression this pins: `guard` runs on every outbound email, and
+    // uncached that put a platform-DB round trip on the hot path of invoices
+    // and OTPs. Incident 2026-08-12 was the platform DB being saturated until
+    // tenant logins timed out — this is the same database.
+    givenStatus([{ metric: "emails_month", used: 10, limit_value: 5000, hard: false, measured_at: null }]);
+
+    for (let i = 0; i < 25; i += 1) {
+      await entitlement.guard(TENANT, "emails_month", { additional: 1, neverBlock: true });
+    }
+    expect(platformDb.query).toHaveBeenCalledTimes(1);
+  });
+
+  test("changing a limit invalidates the cache rather than waiting out the TTL", async () => {
+    givenStatus([{ metric: "seats", used: 5, limit_value: 10, hard: true, measured_at: null }]);
+    await entitlement.guard(TENANT, "seats", { additional: 1 });
+    expect(platformDb.query).toHaveBeenCalledTimes(1);
+
+    // An operator raising a limit to unblock a customer must not be told to
+    // wait sixty seconds for it to take effect.
+    platformDb.query.mockResolvedValue({ rows: [{ plan_id: "p", metric: "seats" }] });
+    await entitlement.setEntitlement({ planId: "p", metric: "seats", limitValue: 50, hard: true });
+
+    givenStatus([{ metric: "seats", used: 5, limit_value: 50, hard: true, measured_at: null }]);
+    const r = await entitlement.guard(TENANT, "seats", { additional: 1 });
+    expect(r.limit).toBe(50);
+  });
+
   test("a soft breach allows and reports, and never throws", async () => {
     givenStatus([{ metric: "emails_month", used: 5000, limit_value: 4000, hard: false, measured_at: null }]);
     const r = await entitlement.guard(TENANT, "emails_month", { additional: 1 });

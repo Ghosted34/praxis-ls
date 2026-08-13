@@ -472,6 +472,13 @@ const Schema = z.object({
   // false when a prober runs on another host or region, which is better and is
   // what the service's own docstring recommends.
   UPTIME_PROBE_IN_COMPOSE: bool(true),
+
+  // How long `entitlement.guard` may reuse a tenant's resolved plan status.
+  // Usage is written by the metering sweep, so this cannot make the figure
+  // staler than it already is; it exists to keep a per-action check off the
+  // platform database. Limit CHANGES bypass it — the console invalidates on
+  // write. Deliberately absent from .env.example: it defaults at the call site.
+  ENTITLEMENT_STATUS_TTL_MS: int(60_000),
   // Retention for uptime_sample. Longer than health (30d) because this series
   // feeds monthly and annual availability reporting.
   UPTIME_RETAIN_DAYS: int(90),

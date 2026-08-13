@@ -56,6 +56,7 @@ const alerts = {
   raise: (...a) => require("./alert-routing.service").raise(...a),
 };
 const { logger } = require("../../config/logger");
+const { config } = require("../../config/env");
 const { AppError } = require("../../utils/errors");
 
 /**
@@ -123,6 +124,11 @@ async function setEntitlement({ planId, metric, limitValue, hard = false }) {
      RETURNING *`,
     [planId, metric, limitValue, hard],
   );
+  // An operator raising a limit to unblock a customer must not be told to wait
+  // out a TTL. Cleared wholesale rather than per tenant: entitlements are keyed
+  // by PLAN, so one write can change the answer for every tenant on it, and
+  // resolving which ones costs a query to save a handful of cheap misses.
+  invalidateStatus();
   return rows[0];
 }
 
@@ -131,6 +137,10 @@ async function removeEntitlement(planId, metric) {
     "DELETE FROM platform.plan_entitlement WHERE plan_id=$1 AND metric=$2",
     [planId, metric],
   );
+  // Removing an entitlement makes the metric UNLIMITED again. Leaving a stale
+  // cached limit in place would keep blocking an action that is no longer
+  // capped — the worst direction for this to be wrong in.
+  invalidateStatus();
   return rowCount > 0;
 }
 
@@ -328,7 +338,21 @@ async function statusFor(tenantId, { period = currentPeriod() } = {}) {
  * and the caller learns about it from the returned object.
  */
 async function check(tenantId, metric, { additional = 0, liveUsed = null } = {}) {
-  const rows = await statusFor(tenantId);
+  return decide(await statusFor(tenantId), metric, { additional, liveUsed });
+}
+
+/**
+ * The verdict, given already-resolved status rows.
+ *
+ * Split out of `check` so that `check` (always fresh) and `guard` (short-TTL
+ * cached) cannot drift apart on what counts as a breach. Two copies of this
+ * decision is exactly how "the console says they are over and the API let them
+ * through" happens.
+ *
+ * Synchronous and pure: it is the piece most worth being able to test with a
+ * plain array.
+ */
+function decide(rows, metric, { additional = 0, liveUsed = null } = {}) {
   const row = rows.find((r) => r.metric === metric);
 
   // No entitlement configured = unlimited. Deliberately permissive: an
@@ -383,6 +407,62 @@ async function check(tenantId, metric, { additional = 0, liveUsed = null } = {})
 const softAlerted = new Set();
 
 /**
+ * Short-lived cache of `statusFor`, read only by `guard`.
+ *
+ * WHY THIS IS NOT OPTIONAL.
+ *
+ *   `guard` runs at the point of an action, and one of those points is every
+ *   outbound email — invoices, OTPs, notifications. Uncached, that put a
+ *   PLATFORM-database round trip on the hot path of the busiest thing the mail
+ *   sender does, for a check whose answer cannot even stop the send.
+ *
+ *   INCIDENT 2026-08-12 is the precedent and it is close enough to be a warning
+ *   rather than an analogy: the Kaizen sweeps saturated the platform database,
+ *   tenant credential resolution queued behind it, and tenant LOGINS timed out.
+ *   Adding an unbounded per-email query to the same database is how that comes
+ *   back.
+ *
+ * WHY A CACHE COSTS NOTHING IN ACCURACY.
+ *
+ *   `tenant_usage` is written by the metering SWEEP, not by the actions being
+ *   guarded, so this data already changes only at sweep cadence — the service
+ *   docstring says so: "enforcement is as fresh as the last meter run." Caching
+ *   it for a minute cannot make it staler than it already is. The one figure
+ *   that must be live is the seat count, and that arrives as `liveUsed` from a
+ *   caller already holding the tenant connection, so it bypasses this entirely.
+ *
+ *   The LIMIT half can change at any moment from the console, which is why
+ *   `setEntitlement`/`removeEntitlement` clear this rather than waiting it out:
+ *   an operator who raises a limit to unblock a customer must not be told to
+ *   wait sixty seconds.
+ */
+const statusCache = new Map();
+const STATUS_TTL_MS = Number(config.ENTITLEMENT_STATUS_TTL_MS || 60_000);
+
+async function statusForCached(tenantId) {
+  const key = `${tenantId}:${currentPeriod()}`;
+  const hit = statusCache.get(key);
+  if (hit && Date.now() - hit.at < STATUS_TTL_MS) return hit.rows;
+
+  const rows = await statusFor(tenantId);
+  statusCache.set(key, { rows, at: Date.now() });
+
+  // The key carries the period, so entries turn over monthly rather than
+  // growing without bound — but a long-lived process with many tenants would
+  // still accumulate one entry each. Cheap, bounded sweep on write.
+  if (statusCache.size > 500) {
+    const cutoff = Date.now() - STATUS_TTL_MS;
+    for (const [k, v] of statusCache) if (v.at < cutoff) statusCache.delete(k);
+  }
+  return rows;
+}
+
+/** Drop cached entitlement status. Called whenever a limit changes. */
+function invalidateStatus() {
+  statusCache.clear();
+}
+
+/**
  * Enforcement, with the failure semantics every call site should share.
  *
  * ── WHY THIS FAILS CLOSED ──────────────────────────────────────────────────
@@ -429,7 +509,12 @@ async function guard(
 
   let result;
   try {
-    result = await check(tenantId, metric, { additional, liveUsed });
+    // Reads through the short-TTL cache rather than calling `check` directly —
+    // see `statusCache` for why a per-action platform query is a hazard here.
+    // `check` itself stays uncached: it is the primitive, and a caller that
+    // wants a guaranteed-fresh read should get one.
+    const rows = await statusForCached(tenantId);
+    result = decide(rows, metric, { additional, liveUsed });
   } catch (err) {
     // A real breach is the answer, not a failure. Pass it straight through.
     if (err && err.code === "ENTITLEMENT_EXCEEDED") {
@@ -497,9 +582,17 @@ async function notifySoft(tenantId, metric, { slug = null, action = null, forced
     .catch(() => {});
 }
 
-/** Clear the soft-alert memo. Tests, and a console "re-notify" action. */
+/**
+ * Clear the soft-alert memo AND the status cache.
+ *
+ * Both, because they are the two pieces of in-process state here and a test
+ * that resets one but not the other leaks the other between cases — which
+ * fails in the confusing direction, where a test passes alone and not in a
+ * suite.
+ */
 function resetSoftAlerts() {
   softAlerted.clear();
+  invalidateStatus();
 }
 
 /** Fleet roll-up for the console and for whatever eventually bills. */
@@ -560,7 +653,9 @@ module.exports = {
   measureFleet,
   statusFor,
   check,
+  decide,
   guard,
+  invalidateStatus,
   notifySoft,
   resetSoftAlerts,
   fleetUsage,

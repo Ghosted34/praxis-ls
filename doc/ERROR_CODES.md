@@ -66,7 +66,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_MONTH` | 422 | 1× | — |
 | `BAD_ORIGINAL` | 422 | 1× | — |
 | `BAD_PARENT` | 422, 500 | 3× | — |
-| `BAD_PARTY_KIND` | 422 | 8× | — |
+| `BAD_PARTY_KIND` | 422 | 9× | — |
 | `BAD_PORTAL` | 422 | 1× | — |
 | `BAD_PRINCIPAL` | 422 | 2× | — |
 | `BAD_PWA_VALUE` | 422 | 2× | — |
@@ -204,7 +204,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_HASH` | 422 | 1× | — |
 | `NO_ITEMS` | 422 | 1× | — |
 | `NO_LINES` | 422 | 6× | — |
-| `NO_MODULE` | 422 | 1× | — |
+| `NO_MODULE` | 422 | 2× | — |
 | `NO_NETWORK` | 422 | 1× | — |
 | `NO_OPEN_SHIFT` | 404 | 1× | — |
 | `NO_ORIGIN` | 422 | 1× | — |

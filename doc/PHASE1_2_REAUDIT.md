@@ -41,7 +41,7 @@ Every **behavioural** module in Phases 1 and 2 is a real module (custom service
 orchestrating a transaction, all SQL confined to its repo, pure rules that are
 unit-tested, gated routes, a Zod validator). The only Phase-1/2 module still on
 generic CRUD is `tax_jurisdiction` (MOD-07) — a seeded reference lookup where
-generic CRUD is appropriate; the tax *behaviour* lives in `tax_code` +
+generic CRUD is appropriate; the tax _behaviour_ lives in `tax_code` +
 `tax_declaration`, both real.
 
 ---
@@ -51,24 +51,24 @@ generic CRUD is appropriate; the tax *behaviour* lives in `tax_code` +
 Gap modules upgraded from stub → real, with their key domain logic and the
 OHADA/PRD rule each honours:
 
-| MOD | Module | Domain logic added | Rule honoured |
-|-----|--------|--------------------|---------------|
-| 06 | Chart of Accounts | class-of-code, postable-leaf invariant, no-delete-if-referenced, statutory rows undeletable | KB §2 (COA), §23 invariants |
-| 09 | Treasury Accounts | coa_code must be class-5; MoMo needs network + class-6 fee acct; activate/deactivate | KB §7 treasury |
-| 01 | Corporate Entities | unique code, NIU/RCCM, doc prefix, fiscal-year-start (1–12) | PRD entity model |
-| 10 | Expense Rates | effective-dated rate cards; most-specific resolver (line+variant, date) | PRD rate cards |
-| 27 | Margin Simulator | margin on services only, débours excluded; priceForMargin inversion | KB §6.7 |
-| 28 | Demurrage Simulator | tiered per-day tariff from settings, free-day handling | PRD extra-charges |
-| 30 | Transit Order | numbered (OT) + document capture | §8 numbering/capture |
-| 32 | Delivery Note | numbered + capture | §8 numbering/capture |
-| 49 | Cash Request | DRAFT→SUBMITTED→APPROVED→DISBURSED→JUSTIFIED; disburse issues a régie advance | KB §6.8 |
-| 52 | Smart Receivables | receipt Dr cash / Cr 4111, FIFO allocation, 0/1-30/31-60/61-90/90+ ageing, dunning policy | KB §8 |
-| 53 | Project Financing/Debt | drawdown Dr treasury / Cr 162; repayment Dr 162+671 / Cr treasury; auto-settle | KB §11 |
-| 56 | General Ledger | grand livre per-account running-balance movements | KB §22 |
-| 59 | Cash-Flow / TAFIRE | classify each cash entry's counterpart into operating/investing/financing | KB §12.1 |
-| 60/61/62 | PO / GRN+Supplier Invoice / PR | requisition→order→receive→3-way-match→GL (Dr expense + input-VAT, Cr supplier net of WHT + WHT) | KB §8.5 |
-| 66 | Document Verification | gated /verify + public /scan (tamper verdict, no confidential leak) | §8.4 doc DNA |
-| 29 | Operations File 360° | rollup of costing, actual GL cost, billed + outstanding, milestones, procurement, docs → gross margin | KB §6.7 cost object |
+| MOD      | Module                         | Domain logic added                                                                                    | Rule honoured               |
+| -------- | ------------------------------ | ----------------------------------------------------------------------------------------------------- | --------------------------- |
+| 06       | Chart of Accounts              | class-of-code, postable-leaf invariant, no-delete-if-referenced, statutory rows undeletable           | KB §2 (COA), §23 invariants |
+| 09       | Treasury Accounts              | coa_code must be class-5; MoMo needs network + class-6 fee acct; activate/deactivate                  | KB §7 treasury              |
+| 01       | Corporate Entities             | unique code, NIU/RCCM, doc prefix, fiscal-year-start (1–12)                                           | PRD entity model            |
+| 10       | Expense Rates                  | effective-dated rate cards; most-specific resolver (line+variant, date)                               | PRD rate cards              |
+| 27       | Margin Simulator               | margin on services only, débours excluded; priceForMargin inversion                                   | KB §6.7                     |
+| 28       | Demurrage Simulator            | tiered per-day tariff from settings, free-day handling                                                | PRD extra-charges           |
+| 30       | Transit Order                  | numbered (OT) + document capture                                                                      | §8 numbering/capture        |
+| 32       | Delivery Note                  | numbered + capture                                                                                    | §8 numbering/capture        |
+| 49       | Cash Request                   | DRAFT→SUBMITTED→APPROVED→DISBURSED→JUSTIFIED; disburse issues a régie advance                         | KB §6.8                     |
+| 52       | Smart Receivables              | receipt Dr cash / Cr 4111, FIFO allocation, 0/1-30/31-60/61-90/90+ ageing, dunning policy             | KB §8                       |
+| 53       | Project Financing/Debt         | drawdown Dr treasury / Cr 162; repayment Dr 162+671 / Cr treasury; auto-settle                        | KB §11                      |
+| 56       | General Ledger                 | grand livre per-account running-balance movements                                                     | KB §22                      |
+| 59       | Cash-Flow / TAFIRE             | classify each cash entry's counterpart into operating/investing/financing                             | KB §12.1                    |
+| 60/61/62 | PO / GRN+Supplier Invoice / PR | requisition→order→receive→3-way-match→GL (Dr expense + input-VAT, Cr supplier net of WHT + WHT)       | KB §8.5                     |
+| 66       | Document Verification          | gated /verify + public /scan (tamper verdict, no confidential leak)                                   | §8.4 doc DNA                |
+| 29       | Operations File 360°           | rollup of costing, actual GL cost, billed + outstanding, milestones, procurement, docs → gross margin | KB §6.7 cost object         |
 
 Also fixed: the nested AI modules `ai/governance` and `ai/insights` had a wrong
 relative path (`../../config` → corrected to `../../../config`). They still carry

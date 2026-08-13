@@ -6,7 +6,10 @@
  */
 "use strict";
 
-const { tabulate, toExport } = require("../../src/modules/vault/report/report-export");
+const {
+  tabulate,
+  toExport,
+} = require("../../src/modules/vault/report/report-export");
 
 describe("tabulate", () => {
   it("projects an array of objects into columns + rows", () => {
@@ -28,13 +31,19 @@ describe("tabulate", () => {
   });
 
   it("uses a wrapped rows-like array (trial_balance {rows, totals})", () => {
-    const t = tabulate("trial_balance", { rows: [{ account_code: "601", debit: 5 }], totals: { debit: 5 } });
+    const t = tabulate("trial_balance", {
+      rows: [{ account_code: "601", debit: 5 }],
+      totals: { debit: 5 },
+    });
     expect(t.columns.map((c) => c.key)).toEqual(["account_code", "debit"]);
     expect(t.rows).toHaveLength(1);
   });
 
   it("flattens a nested statement object to Field/Value pairs", () => {
-    const t = tabulate("income_statement", { revenue: 100, sections: { sales: 80, other: 20 } });
+    const t = tabulate("income_statement", {
+      revenue: 100,
+      sections: { sales: 80, other: 20 },
+    });
     expect(t.columns.map((c) => c.key)).toEqual(["field", "value"]);
     expect(t.rows).toEqual([
       { field: "revenue", value: 100 },
@@ -57,7 +66,11 @@ describe("tabulate", () => {
 
 describe("toExport", () => {
   it("renders csv with a BOM and header row", async () => {
-    const { buffer, contentType, extension } = await toExport("x", [{ a: 1, b: 2 }], "csv");
+    const { buffer, contentType, extension } = await toExport(
+      "x",
+      [{ a: 1, b: 2 }],
+      "csv",
+    );
     expect(extension).toBe("csv");
     expect(contentType).toMatch(/text\/csv/);
     const text = buffer.toString("utf8");
@@ -67,7 +80,11 @@ describe("toExport", () => {
   });
 
   it("renders a real xlsx (ZIP magic 'PK')", async () => {
-    const { buffer, contentType, extension } = await toExport("x", [{ a: 1 }], "xlsx");
+    const { buffer, contentType, extension } = await toExport(
+      "x",
+      [{ a: 1 }],
+      "xlsx",
+    );
     expect(extension).toBe("xlsx");
     expect(contentType).toMatch(/spreadsheetml/);
     expect(buffer[0]).toBe(0x50);
@@ -75,6 +92,9 @@ describe("toExport", () => {
   });
 
   it("rejects an unsupported format (pdf has its own endpoint)", async () => {
-    await expect(toExport("x", [], "pdf")).rejects.toMatchObject({ code: "UNSUPPORTED_FORMAT", status: 422 });
+    await expect(toExport("x", [], "pdf")).rejects.toMatchObject({
+      code: "UNSUPPORTED_FORMAT",
+      status: 422,
+    });
   });
 });

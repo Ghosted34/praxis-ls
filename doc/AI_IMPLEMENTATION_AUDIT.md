@@ -8,22 +8,22 @@
 
 ## 1. Executive Summary
 
-The Praxis LS AI layer is a **well-architected, deeply considered system** built around a "reads free, writes confirmed" autonomy model. The codebase demonstrates exceptional documentation discipline — nearly every non-obvious decision carries an inline rationale — and several critical security vulnerabilities were identified and remediated *within* the audit trail of the code itself (SEC H1: missing RBAC on AI actions; SEC H3: unvalidated confirm payloads). The architecture is sound, the governance model is layered, and the testing surface covers the key trust boundaries.
+The Praxis LS AI layer is a **well-architected, deeply considered system** built around a "reads free, writes confirmed" autonomy model. The codebase demonstrates exceptional documentation discipline — nearly every non-obvious decision carries an inline rationale — and several critical security vulnerabilities were identified and remediated _within_ the audit trail of the code itself (SEC H1: missing RBAC on AI actions; SEC H3: unvalidated confirm payloads). The architecture is sound, the governance model is layered, and the testing surface covers the key trust boundaries.
 
 **That said, the audit identified findings across all severity levels.** The most significant are a residual input-validation gap in the confirm path, a tool-scoping heuristic that can silently exclude relevant actions, the absence of rate-limiting on the ask endpoint, and a PII redaction layer that is acknowledged-coarse but still insufficient for the OHADA financial context.
 
 ### Scorecard
 
-| Area | Rating |
-|---|---|
-| Architecture & Design | ★★★★★ Excellent |
-| Security & Authorization | ★★★★☆ Good (post-remediation) |
-| Governance & Spend Control | ★★★★★ Excellent |
-| Reliability & Error Handling | ★★★★☆ Good |
-| Performance & Cost | ★★★★☆ Good |
-| Testing & Verification | ★★★★☆ Good |
-| PII Redaction | ★★★☆☆ Needs Improvement |
-| Observability | ★★★★☆ Good |
+| Area                         | Rating                        |
+| ---------------------------- | ----------------------------- |
+| Architecture & Design        | ★★★★★ Excellent               |
+| Security & Authorization     | ★★★★☆ Good (post-remediation) |
+| Governance & Spend Control   | ★★★★★ Excellent               |
+| Reliability & Error Handling | ★★★★☆ Good                    |
+| Performance & Cost           | ★★★★☆ Good                    |
+| Testing & Verification       | ★★★★☆ Good                    |
+| PII Redaction                | ★★★☆☆ Needs Improvement       |
+| Observability                | ★★★★☆ Good                    |
 
 ---
 
@@ -47,6 +47,7 @@ User → Composer (client) → POST /ai/ask
 ```
 
 **Key architectural decisions (all sound):**
+
 - Action manifests (`*.ai.js`) auto-derive the tool catalogue — zero drift between modules and AI capability.
 - Per-tenant encryption-isolated corpus with pgvector; global corpus in platform DB.
 - AES-256-GCM for vendor API keys at rest.
@@ -89,6 +90,7 @@ if (edited && typeof edited === "object") {
 **Severity:** High
 
 The ask endpoint has auth + governance gate but **no rate limiting**. A legitimate user (or compromised session) can fire requests in a tight loop. Each call invokes:
+
 1. Vector embedding (embeddings vendor API call)
 2. LLM chat (DeepSeek/Gemini API call)
 3. Optionally, read tool executions + a follow-up LLM call
@@ -112,6 +114,7 @@ const tokenize = (s) => (s || "").toLowerCase().match(/[a-z]{3,}/g) || [];
 ```
 
 This tokenizer:
+
 - Drops all tokens shorter than 3 characters (excluding abbreviations like "PO", "GRN", "BL", "VAT")
 - Uses no stemming or synonym handling
 - Scores a CORE tool at +100, which guarantees its inclusion but may crowd out a relevant non-CORE tool
@@ -151,6 +154,7 @@ The redaction layer handles three patterns:
 ```
 
 **Missed patterns for an OHADA logistics ERP:**
+
 - **Phone numbers** in various formats (+237 6XX XXX XXX, 2XX XXX XXX)
 - **Credit card numbers** (16 digits with spaces/dashes — not caught by `\d{9,}` if formatted)
 - **Bank account numbers** (RIB in the OHADA zone: 5+5+12+2 format with separators)
@@ -212,6 +216,7 @@ No maximum length on `message`. A very long message inflates the embedding cost,
 **Severity:** Low
 
 After every confirmed action, a separate LLM call generates a step-by-step recap. This is good UX but:
+
 1. It adds ~1 second latency and one more API cost to every confirm.
 2. It uses `HISTORY_TURNS` (20) messages of context — the same bounded window — but the narration doesn't need that much history.
 3. There's no way to disable it for cost-sensitive tenants.
@@ -333,19 +338,19 @@ The `canUseFeature` function is called at both ask time AND confirm time, closin
 
 **923 lines across 11 test files** covering:
 
-| Test File | Lines | Coverage |
-|---|---|---|
-| `ai-answer-sources.test.js` | 190 | Citation/source generation |
-| `ai-export.test.js` | 125 | Excel export |
-| `ai-ask-grounding.test.js` | 124 | Retrieval grounding |
-| `ai-readiness.test.js` | 118 | Module manifest discovery |
-| `ai-conversation-summary.test.js` | 101 | Rolling summary |
-| `ai-writes.test.js` | 69 | Write action proposal |
-| `ai-batch.test.js` | 59 | Batch confirmation |
-| `ai-gate.test.js` | 50 | Governance gate |
-| `ai-toggle.test.js` | 31 | Feature toggle |
-| `ai-workers.test.js` | 29 | Voice/vision workers |
-| `ai-governance.test.js` | 27 | Pure governance rules |
+| Test File                         | Lines | Coverage                   |
+| --------------------------------- | ----- | -------------------------- |
+| `ai-answer-sources.test.js`       | 190   | Citation/source generation |
+| `ai-export.test.js`               | 125   | Excel export               |
+| `ai-ask-grounding.test.js`        | 124   | Retrieval grounding        |
+| `ai-readiness.test.js`            | 118   | Module manifest discovery  |
+| `ai-conversation-summary.test.js` | 101   | Rolling summary            |
+| `ai-writes.test.js`               | 69    | Write action proposal      |
+| `ai-batch.test.js`                | 59    | Batch confirmation         |
+| `ai-gate.test.js`                 | 50    | Governance gate            |
+| `ai-toggle.test.js`               | 31    | Feature toggle             |
+| `ai-workers.test.js`              | 29    | Voice/vision workers       |
+| `ai-governance.test.js`           | 27    | Pure governance rules      |
 
 ### Testing Gaps
 
@@ -376,18 +381,18 @@ The client AI components (`client/src/components/ai/`, `client/src/lib/ai-api.ts
 
 ## 8. Recommendations Summary
 
-| # | Severity | Finding | Action |
-|---|---|---|---|
-| 3.1 | **High** | Confirm payload validation gap | Fail closed on missing catalogue row; add type checks |
-| 3.2 | **High** | No rate limiting on `/ai/ask` | Apply per-user rate limiter |
-| 3.3 | Medium | Tool scoping heuristic | Add domain synonyms; consider embedding-based selection |
-| 3.4 | Medium | Anti-stall nudge cost | Tighten regex; monitor frequency |
-| 3.5 | Medium | PII redaction gaps | Add phone, card, RIB, NIU patterns |
-| 3.6 | Medium | Silent vendor fallback | Distinguish transient vs config errors; record failures |
-| 3.7 | Low | Unbounded message length | Add `.max(10000)` to ask schema |
-| 3.8 | Low | Narration cost | Make configurable; reduce history window |
-| 3.9 | Low | Limited entity card builders | Expand to more entity types |
-| 3.10 | Low | `upsertVendor` SQL injection surface | Use allowlist or query-helpers |
+| #    | Severity | Finding                              | Action                                                  |
+| ---- | -------- | ------------------------------------ | ------------------------------------------------------- |
+| 3.1  | **High** | Confirm payload validation gap       | Fail closed on missing catalogue row; add type checks   |
+| 3.2  | **High** | No rate limiting on `/ai/ask`        | Apply per-user rate limiter                             |
+| 3.3  | Medium   | Tool scoping heuristic               | Add domain synonyms; consider embedding-based selection |
+| 3.4  | Medium   | Anti-stall nudge cost                | Tighten regex; monitor frequency                        |
+| 3.5  | Medium   | PII redaction gaps                   | Add phone, card, RIB, NIU patterns                      |
+| 3.6  | Medium   | Silent vendor fallback               | Distinguish transient vs config errors; record failures |
+| 3.7  | Low      | Unbounded message length             | Add `.max(10000)` to ask schema                         |
+| 3.8  | Low      | Narration cost                       | Make configurable; reduce history window                |
+| 3.9  | Low      | Limited entity card builders         | Expand to more entity types                             |
+| 3.10 | Low      | `upsertVendor` SQL injection surface | Use allowlist or query-helpers                          |
 
 ---
 

@@ -33,7 +33,9 @@ jest.mock("../../src/modules/security/app_user/app_user.repo", () => ({
   getActiveSession: async () => mockSession,
   killSession: async () => {},
   touchSession: async () => {},
-  setRefreshJti: async (_c, sid, jti) => { if (mockSession) mockSession.refresh_jti = jti; },
+  setRefreshJti: async (_c, sid, jti) => {
+    if (mockSession) mockSession.refresh_jti = jti;
+  },
   roleNames: async () => [],
 }));
 
@@ -54,8 +56,12 @@ jest.mock("../../src/shared/cache/identity-cache", () => ({
 // is audit's. If refresh() calls either with a refresh-typed key, this test
 // picks it up before the request leaves the process.
 jest.mock("../../src/shared/events/emit", () => ({
-  emitEvent: async (_c, e) => { mockCalls.events.push(e); },
-  audit: async (_c, a) => { mockCalls.audits.push(a); },
+  emitEvent: async (_c, e) => {
+    mockCalls.events.push(e);
+  },
+  audit: async (_c, a) => {
+    mockCalls.audits.push(a);
+  },
   withActor: () => ({}),
   resolveActorId: async () => null,
   clearEventTypeCache: () => {},
@@ -65,7 +71,11 @@ jest.mock("../../src/shared/events/emit", () => ({
 const { config } = require("../../src/config/env");
 const svc = require("../../src/modules/security/app_user/app_user.service");
 
-const client = { query() { throw new Error("refresh() went to the DB — every read must be mocked"); } };
+const client = {
+  query() {
+    throw new Error("refresh() went to the DB — every read must be mocked");
+  },
+};
 
 const USER = "user-1";
 const SID = "session-1";
@@ -127,7 +137,11 @@ describe("silent token refresh is not audited (Control Tower feed noise)", () =>
       const out = await svc.refresh(client, { refreshToken: token });
       token = out.refresh_token;
     }
-    expect(mockCalls.events.filter((e) => e.eventTypeKey === "auth.token_refreshed")).toHaveLength(0);
-    expect(mockCalls.audits.filter((a) => a.action === "auth.token_refreshed")).toHaveLength(0);
+    expect(
+      mockCalls.events.filter((e) => e.eventTypeKey === "auth.token_refreshed"),
+    ).toHaveLength(0);
+    expect(
+      mockCalls.audits.filter((a) => a.action === "auth.token_refreshed"),
+    ).toHaveLength(0);
   });
 });

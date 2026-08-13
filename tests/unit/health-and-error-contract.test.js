@@ -31,11 +31,18 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
   function buildAppWith({ pgFails = false, redisFails = false } = {}) {
     jest.resetModules();
     jest.doMock("../../src/services/platform/db", () => ({
-      query: jest.fn(() => (pgFails ? Promise.reject(new Error("connect ECONNREFUSED")) : Promise.resolve(OK))),
+      query: jest.fn(() =>
+        pgFails
+          ? Promise.reject(new Error("connect ECONNREFUSED"))
+          : Promise.resolve(OK),
+      ),
     }));
     jest.doMock("../../src/config/redis", () => ({
       getClient: () => ({
-        ping: () => (redisFails ? Promise.reject(new Error("redis down")) : Promise.resolve("PONG")),
+        ping: () =>
+          redisFails
+            ? Promise.reject(new Error("redis down"))
+            : Promise.resolve("PONG"),
       }),
     }));
     jest.doMock("../../src/shared/http/module-loader", () => ({
@@ -61,7 +68,9 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
   it("returns 503 when Postgres is unreachable — THE regression this exists for", async () => {
     // This is the exact scenario the old endpoint passed. If this test ever
     // goes green on a 200, the deploy gate is blind again.
-    const res = await request(buildAppWith({ pgFails: true })).get("/api/health/ready");
+    const res = await request(buildAppWith({ pgFails: true })).get(
+      "/api/health/ready",
+    );
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
     expect(res.body.status).toBe("unavailable");
@@ -72,7 +81,9 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
     // Redis loss degrades sessions and rate limiting but the API still serves,
     // so this must not 503 — a 503 here would make the deploy gate fail on a
     // cache blip and turn a degradation into an outage.
-    const res = await request(buildAppWith({ redisFails: true })).get("/api/health/ready");
+    const res = await request(buildAppWith({ redisFails: true })).get(
+      "/api/health/ready",
+    );
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("degraded");
     expect(res.body.checks.redis.status).toBe("down");
@@ -81,7 +92,9 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
   it("liveness stays up even when everything else is down", async () => {
     // Deliberate: a restart policy keyed on this must not restart every
     // container during a database incident.
-    const res = await request(buildAppWith({ pgFails: true, redisFails: true })).get("/api/health");
+    const res = await request(
+      buildAppWith({ pgFails: true, redisFails: true }),
+    ).get("/api/health");
     expect(res.status).toBe(200);
     expect(res.body.status).toBe("alive");
   });
@@ -95,10 +108,17 @@ describe("OBS-A2 — the readiness probe can actually fail", () => {
 
   it("surfaces modules that failed to load (API F-19)", async () => {
     jest.resetModules();
-    jest.doMock("../../src/services/platform/db", () => ({ query: jest.fn(() => Promise.resolve(OK)) }));
-    jest.doMock("../../src/config/redis", () => ({ getClient: () => ({ ping: () => Promise.resolve("PONG") }) }));
+    jest.doMock("../../src/services/platform/db", () => ({
+      query: jest.fn(() => Promise.resolve(OK)),
+    }));
+    jest.doMock("../../src/config/redis", () => ({
+      getClient: () => ({ ping: () => Promise.resolve("PONG") }),
+    }));
     jest.doMock("../../src/shared/http/module-loader", () => ({
-      mountReport: () => ({ mounted: ["a/b"], skipped: [{ module: "wms/inbound", error: "boom" }] }),
+      mountReport: () => ({
+        mounted: ["a/b"],
+        skipped: [{ module: "wms/inbound", error: "boom" }],
+      }),
     }));
     const { router } = require("../../src/routes/health");
     const app = express();
@@ -153,7 +173,9 @@ describe("API F-1 — the error handler honours err.status", () => {
   it("a thrown 5xx is still flattened to a generic 500", async () => {
     // Conservative on purpose: an arbitrary throw does not get to pick a
     // server-error code or leak its message to a client.
-    const err = new Error("upstream exploded with connection string user:pw@host");
+    const err = new Error(
+      "upstream exploded with connection string user:pw@host",
+    );
     err.status = 503;
     const res = await request(appThrowing(err)).get("/boom");
     expect(res.status).toBe(500);
@@ -162,7 +184,9 @@ describe("API F-1 — the error handler honours err.status", () => {
   });
 
   it("an ordinary Error with no status is still a 500", async () => {
-    const res = await request(appThrowing(new Error("genuinely unexpected"))).get("/boom");
+    const res = await request(
+      appThrowing(new Error("genuinely unexpected")),
+    ).get("/boom");
     expect(res.status).toBe(500);
     expect(res.body.error.code).toBe("INTERNAL_ERROR");
     expect(res.body.error.message).not.toMatch(/genuinely unexpected/);

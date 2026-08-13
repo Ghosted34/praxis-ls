@@ -29,17 +29,28 @@ const SEED_DIR = path.join(ROOT, "migrations", "seeds");
 
 /** The six workflow verbs. Changing this list is changing the app's IA, so it
  *  should be a deliberate edit with this test as the reminder. */
-const VERBS = ["monitor", "engage", "fulfill", "transact", "empower", "configure"];
+const VERBS = [
+  "monitor",
+  "engage",
+  "fulfill",
+  "transact",
+  "empower",
+  "configure",
+];
 
 /** Every ('MOD-xx','group',…) tuple across every seed that catalogues modules. */
 function catalogueRows() {
   const rows = [];
-  for (const file of fs.readdirSync(SEED_DIR).filter((f) => f.endsWith(".sql"))) {
+  for (const file of fs
+    .readdirSync(SEED_DIR)
+    .filter((f) => f.endsWith(".sql"))) {
     const sql = fs.readFileSync(path.join(SEED_DIR, file), "utf8");
     // Only the module_catalogue inserts — the feature catalogue also mentions
     // MOD keys but in a different shape (feature_key first).
     if (!/module_catalogue/i.test(sql)) continue;
-    for (const m of sql.matchAll(/\('(MOD-[0-9A-Za-z]+)',\s*'([a-z_]+)',\s*'([^']*)'/g)) {
+    for (const m of sql.matchAll(
+      /\('(MOD-[0-9A-Za-z]+)',\s*'([a-z_]+)',\s*'([^']*)'/g,
+    )) {
       rows.push({ key: m[1].toUpperCase(), group: m[2], name: m[3], file });
     }
   }
@@ -75,7 +86,9 @@ describe("module catalogue — the ribbon's source of truth", () => {
     for (const r of rows) {
       const seen = byKey.get(r.key);
       if (seen && seen.group !== r.group) {
-        throw new Error(`${r.key} is '${seen.group}' in ${seen.file} and '${r.group}' in ${r.file}`);
+        throw new Error(
+          `${r.key} is '${seen.group}' in ${seen.file} and '${r.group}' in ${r.file}`,
+        );
       }
       byKey.set(r.key, r);
     }
@@ -107,7 +120,9 @@ describe("module keys used in code have a catalogue row that describes them", ()
     // A key with no row is a permission that cannot be granted through the IAM
     // matrix, because that screen renders from the catalogue.
     const catalogued = new Set(catalogueRows().map((r) => r.key));
-    const missing = [...keysUsedInCode()].filter(([key]) => !catalogued.has(key));
+    const missing = [...keysUsedInCode()].filter(
+      ([key]) => !catalogued.has(key),
+    );
     expect(missing.map(([key, file]) => `${key} (${file})`)).toEqual([]);
   });
 

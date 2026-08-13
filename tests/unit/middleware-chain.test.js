@@ -46,7 +46,13 @@ let mockAuthUser = null;
 let mockGrants = [];
 let mockScopeClosure = null;
 
-const mockStats = { acquires: 0, releases: 0, schemaSets: [], getAuthUser: 0, getGrants: 0 };
+const mockStats = {
+  acquires: 0,
+  releases: 0,
+  schemaSets: [],
+  getAuthUser: 0,
+  getGrants: 0,
+};
 
 /**
  * A leased connection. Records the search_path re-binds tenantContext issues.
@@ -79,17 +85,24 @@ function mockMakeLease(schema) {
       if (/user_session/.test(sql)) return { rows: [{ killed_at: null }] };
       return { rows: [] };
     },
-    release() { mockStats.releases += 1; },
+    release() {
+      mockStats.releases += 1;
+    },
   };
 }
 
 jest.mock("../../src/services/tenant/registry.service", () => ({
   SCHEMA: Symbol.for("praxis.schema"),
   resolveByHost: async (host) => mockTenants[host] || null,
-  resolveBySlug: async (slug) => Object.values(mockTenants).find((t) => t.slug === slug) || null,
+  resolveBySlug: async (slug) =>
+    Object.values(mockTenants).find((t) => t.slug === slug) || null,
   acquire: async (tenant, env) => {
     mockStats.acquires += 1;
-    return mockMakeLease(env === "sandbox" ? tenant.sandbox_schema || "sandbox" : tenant.live_schema || "live");
+    return mockMakeLease(
+      env === "sandbox"
+        ? tenant.sandbox_schema || "sandbox"
+        : tenant.live_schema || "live",
+    );
   },
   withTenantConnection: async (tenant, env, fn) => fn(mockMakeLease(env)),
   invalidateHost: () => {},
@@ -101,8 +114,14 @@ jest.mock("../../src/services/tenant/registry.service", () => ({
 }));
 
 jest.mock("../../src/shared/cache/identity-cache", () => ({
-  getAuthUser: async () => { mockStats.getAuthUser += 1; return mockAuthUser; },
-  getGrants: async () => { mockStats.getGrants += 1; return mockGrants; },
+  getAuthUser: async () => {
+    mockStats.getAuthUser += 1;
+    return mockAuthUser;
+  },
+  getGrants: async () => {
+    mockStats.getGrants += 1;
+    return mockGrants;
+  },
   getUserScopeClosure: async () => mockScopeClosure,
   getUserScopeIds: async () => mockScopeClosure,
   invalidateUser: async () => {},
@@ -116,18 +135,28 @@ jest.mock("../../src/shared/cache/identity-cache", () => ({
 const { config } = require("../../src/config/env");
 const requestContext = require("../../src/config/request-context");
 const { requestIdMiddleware } = require("../../src/middleware/request-id");
-const { hostTenantResolver } = require("../../src/middleware/host-tenent-resolver");
+const {
+  hostTenantResolver,
+} = require("../../src/middleware/host-tenent-resolver");
 const { tenantContext } = require("../../src/middleware/tenant-context");
 const { authMiddleware } = require("../../src/middleware/auth");
 const { requirePermission } = require("../../src/middleware/rbac");
-const { errorHandler, notFoundHandler } = require("../../src/middleware/error-handler");
+const {
+  errorHandler,
+  notFoundHandler,
+} = require("../../src/middleware/error-handler");
 
 const HOST = `acme.${config.APP_BASE_DOMAIN}`;
 const OTHER_HOST = `globex.${config.APP_BASE_DOMAIN}`;
 
 const liveTenant = (over = {}) => ({
-  tenant_id: "t-1", slug: "acme", status: "LIVE", is_live: true,
-  live_schema: "live", sandbox_schema: "sandbox", ...over,
+  tenant_id: "t-1",
+  slug: "acme",
+  status: "LIVE",
+  is_live: true,
+  live_schema: "live",
+  sandbox_schema: "sandbox",
+  ...over,
 });
 
 /** The real chain, exactly as routes/index.js composes it. */
@@ -141,23 +170,30 @@ function buildApp() {
 
   // A controller that reports what the chain handed it. Deliberately does a
   // database read: PERF S2 is about the THIRD checkout.
-  tenantRouter.get("/dossiers", authMiddleware, requirePermission("MOD-30", "view"), async (req, res) => {
-    await req.tenantDb(async () => ({}));
-    res.json({
-      ok: true,
-      user_id: req.user.user_id,
-      tenant: req.tenant.slug,
-      env: req.env,
-      scope_ids: req.scope_ids,
-      permission_scope: req.permission_scope || null,
-      ctx_user_id: (requestContext.get() || {}).userId || null,
-      ctx_request_id: (requestContext.get() || {}).requestId || null,
-      ctx_env: (requestContext.get() || {}).env || null,
-    });
-  });
+  tenantRouter.get(
+    "/dossiers",
+    authMiddleware,
+    requirePermission("MOD-30", "view"),
+    async (req, res) => {
+      await req.tenantDb(async () => ({}));
+      res.json({
+        ok: true,
+        user_id: req.user.user_id,
+        tenant: req.tenant.slug,
+        env: req.env,
+        scope_ids: req.scope_ids,
+        permission_scope: req.permission_scope || null,
+        ctx_user_id: (requestContext.get() || {}).userId || null,
+        ctx_request_id: (requestContext.get() || {}).requestId || null,
+        ctx_env: (requestContext.get() || {}).env || null,
+      });
+    },
+  );
 
   // Authenticated but ungated, for asserting the auth/rbac split.
-  tenantRouter.get("/me", authMiddleware, (req, res) => res.json({ user_id: req.user.user_id }));
+  tenantRouter.get("/me", authMiddleware, (req, res) =>
+    res.json({ user_id: req.user.user_id }),
+  );
 
   // Reaches no database at all — the lazy-checkout case.
   tenantRouter.get("/ping", (_req, res) => res.json({ pong: true }));
@@ -165,7 +201,8 @@ function buildApp() {
   // Mail OAuth callback — tenant is resolved from the signed `state`, so this
   // works on the apex / a platform host with a single canonical redirect URI.
   tenantRouter.get("/mail/oauth/microsoft/callback", (req, res) =>
-    res.json({ ok: true, tenant: req.tenant.slug, env: req.env }));
+    res.json({ ok: true, tenant: req.tenant.slug, env: req.env }),
+  );
 
   app.use("/api", tenantRouter);
 
@@ -187,7 +224,13 @@ function buildApp() {
 
 const app = buildApp();
 
-function tokenFor({ sub = "u-1", typ = "access", sid = "s-1", expiresIn = "15m", secret = config.JWT_ACCESS_SECRET } = {}) {
+function tokenFor({
+  sub = "u-1",
+  typ = "access",
+  sid = "s-1",
+  expiresIn = "15m",
+  secret = config.JWT_ACCESS_SECRET,
+} = {}) {
   return jwt.sign({ sub, typ, sid, jti: "j-1" }, secret, { expiresIn });
 }
 const get = (path, { host = HOST, token, headers = {} } = {}) => {
@@ -199,19 +242,36 @@ const get = (path, { host = HOST, token, headers = {} } = {}) => {
 
 describe("the middleware chain, as a chain (TC-C12)", () => {
   beforeEach(() => {
-    mockTenants = { [HOST]: liveTenant(), [OTHER_HOST]: liveTenant({ tenant_id: "t-2", slug: "globex" }) };
-    mockAuthUser = { user_id: "u-1", email: "a@acme.example", display_name: "A", status: "ACTIVE", role_ids: ["r-1"], is_ceo: false };
+    mockTenants = {
+      [HOST]: liveTenant(),
+      [OTHER_HOST]: liveTenant({ tenant_id: "t-2", slug: "globex" }),
+    };
+    mockAuthUser = {
+      user_id: "u-1",
+      email: "a@acme.example",
+      display_name: "A",
+      status: "ACTIVE",
+      role_ids: ["r-1"],
+      is_ceo: false,
+    };
     mockGrants = [{ can_read: true }];
     mockScopeClosure = ["sc-1", "sc-2"];
-    mockStats.acquires = 0; mockStats.releases = 0; mockStats.schemaSets = [];
-    mockStats.getAuthUser = 0; mockStats.getGrants = 0;
+    mockStats.acquires = 0;
+    mockStats.releases = 0;
+    mockStats.schemaSets = [];
+    mockStats.getAuthUser = 0;
+    mockStats.getGrants = 0;
   });
 
   describe("the happy path reaches the controller with everything populated", () => {
     it("answers 200 and hands the controller a fully-built request", async () => {
       const res = await get("/api/dossiers", { token: tokenFor() }).expect(200);
       expect(res.body).toMatchObject({
-        ok: true, user_id: "u-1", tenant: "acme", env: "live", scope_ids: ["sc-1", "sc-2"],
+        ok: true,
+        user_id: "u-1",
+        tenant: "acme",
+        env: "live",
+        scope_ids: ["sc-1", "sc-2"],
       });
     });
 
@@ -227,15 +287,22 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
 
   describe("ordering — each stage refuses to run without its predecessor", () => {
     it("500s when tenantContext runs without hostTenantResolver", async () => {
-      const res = await request(app).get("/bad/orphan").set("Host", HOST).expect(500);
+      const res = await request(app)
+        .get("/bad/orphan")
+        .set("Host", HOST)
+        .expect(500);
       expect(res.body.error.code).toBe("NO_TENANT_CONTEXT");
-      expect(res.body.error.message).toMatch(/hostTenantResolver must run first/);
+      expect(res.body.error.message).toMatch(
+        /hostTenantResolver must run first/,
+      );
     });
 
     it("500s when authMiddleware runs without tenantContext", async () => {
       const res = await get("/bad/no-ctx", { token: tokenFor() }).expect(500);
       expect(res.body.error.code).toBe("NO_TENANT_CONTEXT");
-      expect(res.body.error.message).toMatch(/tenantContext must run before authMiddleware/);
+      expect(res.body.error.message).toMatch(
+        /tenantContext must run before authMiddleware/,
+      );
     });
 
     it("never reaches the identity cache when the chain is broken", async () => {
@@ -248,7 +315,9 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
     it("lands on the apex (a platform host) and still resolves the right tenant", async () => {
       // A single canonical redirect URI serves every tenant — Google forbids
       // wildcard redirect URIs — so the tenant rides in the signed state.
-      const state = jwt.sign({ slug: "acme" }, config.JWT_ACCESS_SECRET, { expiresIn: "10m" });
+      const state = jwt.sign({ slug: "acme" }, config.JWT_ACCESS_SECRET, {
+        expiresIn: "10m",
+      });
       const res = await get(
         `/api/mail/oauth/microsoft/callback?state=${encodeURIComponent(state)}`,
         { host: config.APP_BASE_DOMAIN }, // the apex — normally a platform host
@@ -257,12 +326,16 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
     });
 
     it("without a valid state, the apex is still WRONG_HOST (no silent tenant)", async () => {
-      const res = await get("/api/mail/oauth/microsoft/callback", { host: config.APP_BASE_DOMAIN }).expect(400);
+      const res = await get("/api/mail/oauth/microsoft/callback", {
+        host: config.APP_BASE_DOMAIN,
+      }).expect(400);
       expect(res.body.error.code).toBe("WRONG_HOST");
     });
 
     it("a forged/expired state does not resolve a tenant", async () => {
-      const bad = jwt.sign({ slug: "acme" }, "wrong-secret", { expiresIn: "10m" });
+      const bad = jwt.sign({ slug: "acme" }, "wrong-secret", {
+        expiresIn: "10m",
+      });
       const res = await get(
         `/api/mail/oauth/microsoft/callback?state=${encodeURIComponent(bad)}`,
         { host: config.APP_BASE_DOMAIN },
@@ -273,7 +346,10 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
 
   describe("the tenant gate short-circuits BEFORE authentication", () => {
     it("404s an unknown host without authenticating anyone", async () => {
-      const res = await get("/api/dossiers", { host: "nobody.example", token: tokenFor() }).expect(404);
+      const res = await get("/api/dossiers", {
+        host: "nobody.example",
+        token: tokenFor(),
+      }).expect(404);
       expect(res.body.error.code).toBe("TENANT_NOT_FOUND");
       expect(mockStats.getAuthUser).toBe(0);
       expect(mockStats.acquires).toBe(0);
@@ -297,7 +373,10 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
 
     it("keeps two hosts on two tenants in the same process", async () => {
       const a = await get("/api/dossiers", { token: tokenFor() }).expect(200);
-      const b = await get("/api/dossiers", { host: OTHER_HOST, token: tokenFor() }).expect(200);
+      const b = await get("/api/dossiers", {
+        host: OTHER_HOST,
+        token: tokenFor(),
+      }).expect(200);
       expect(a.body.tenant).toBe("acme");
       expect(b.body.tenant).toBe("globex");
     });
@@ -310,29 +389,39 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
     });
 
     it("401s a non-bearer scheme", async () => {
-      const res = await get("/api/dossiers", { headers: { Authorization: "Basic Zm9vOmJhcg==" } }).expect(401);
+      const res = await get("/api/dossiers", {
+        headers: { Authorization: "Basic Zm9vOmJhcg==" },
+      }).expect(401);
       expect(res.body.error.code).toBe("AUTH_REQUIRED");
     });
 
     it("401s a REFRESH token replayed as an access token", async () => {
       // Both are signed with secrets this process holds, and the refresh token
       // carries typ:"refresh". Without the typ check it would authenticate.
-      const res = await get("/api/dossiers", { token: tokenFor({ typ: "refresh" }) }).expect(401);
+      const res = await get("/api/dossiers", {
+        token: tokenFor({ typ: "refresh" }),
+      }).expect(401);
       expect(res.body.error.code).toBe("INVALID_TOKEN");
     });
 
     it("401s a 2FA-pending token", async () => {
-      const res = await get("/api/dossiers", { token: tokenFor({ typ: "2fa_pending" }) }).expect(401);
+      const res = await get("/api/dossiers", {
+        token: tokenFor({ typ: "2fa_pending" }),
+      }).expect(401);
       expect(res.body.error.code).toBe("INVALID_TOKEN");
     });
 
     it("401s a token signed with the refresh secret", async () => {
-      const res = await get("/api/dossiers", { token: tokenFor({ secret: config.JWT_REFRESH_SECRET }) }).expect(401);
+      const res = await get("/api/dossiers", {
+        token: tokenFor({ secret: config.JWT_REFRESH_SECRET }),
+      }).expect(401);
       expect(res.body.error.code).toBe("INVALID_TOKEN");
     });
 
     it("distinguishes an expired token", async () => {
-      const res = await get("/api/dossiers", { token: tokenFor({ expiresIn: "-1s" }) }).expect(401);
+      const res = await get("/api/dossiers", {
+        token: tokenFor({ expiresIn: "-1s" }),
+      }).expect(401);
       expect(res.body.error.code).toBe("TOKEN_EXPIRED");
     });
 
@@ -353,7 +442,9 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
       await get("/api/me", { token: tokenFor({ sid: "s-99" }) }).expect(200);
       // Asserted via the chain rather than the unit: sid must survive the whole
       // way, because logout revokes by session.
-      const res = await get("/api/dossiers", { token: tokenFor({ sid: "s-99" }) }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor({ sid: "s-99" }),
+      }).expect(200);
       expect(res.body.user_id).toBe("u-1");
     });
   });
@@ -434,13 +525,19 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
 
   describe("the LIVE/TEST toggle", () => {
     it("ignores X-Praxis-Env on a live tenant", async () => {
-      const res = await get("/api/dossiers", { token: tokenFor(), headers: { "X-Praxis-Env": "sandbox" } }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Praxis-Env": "sandbox" },
+      }).expect(200);
       expect(res.body.env).toBe("live");
     });
 
     it("honours sandbox on a non-live tenant", async () => {
       mockTenants[HOST] = liveTenant({ is_live: false });
-      const res = await get("/api/dossiers", { token: tokenFor(), headers: { "X-Praxis-Env": "sandbox" } }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Praxis-Env": "sandbox" },
+      }).expect(200);
       expect(res.body.env).toBe("sandbox");
       expect(res.body.ctx_env).toBe("sandbox");
     });
@@ -449,22 +546,35 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
       // Identity stays on live while business data goes to sandbox. That is one
       // connection and one SET, not two checkouts.
       mockTenants[HOST] = liveTenant({ is_live: false });
-      await get("/api/dossiers", { token: tokenFor(), headers: { "X-Praxis-Env": "sandbox" } }).expect(200);
+      await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Praxis-Env": "sandbox" },
+      }).expect(200);
       expect(mockStats.acquires).toBe(1);
-      expect(mockStats.schemaSets.some((s) => /SET search_path = (live|sandbox), public/.test(s))).toBe(true);
+      expect(
+        mockStats.schemaSets.some((s) =>
+          /SET search_path = (live|sandbox), public/.test(s),
+        ),
+      ).toBe(true);
     });
 
     it("does not log the user out when they flip to TEST", async () => {
       // Identity is env-independent: accounts live in the live schema, so a
       // sandbox request still authenticates.
       mockTenants[HOST] = liveTenant({ is_live: false });
-      const res = await get("/api/dossiers", { token: tokenFor(), headers: { "X-Praxis-Env": "sandbox" } }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Praxis-Env": "sandbox" },
+      }).expect(200);
       expect(res.body.user_id).toBe("u-1");
     });
 
     it("ignores an unrecognised env value", async () => {
       mockTenants[HOST] = liveTenant({ is_live: false });
-      const res = await get("/api/dossiers", { token: tokenFor(), headers: { "X-Praxis-Env": "production" } }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Praxis-Env": "production" },
+      }).expect(200);
       expect(res.body.env).toBe("live");
     });
   });
@@ -478,19 +588,26 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
     });
 
     it("adopts a client-supplied id", async () => {
-      const res = await get("/api/dossiers", { headers: { "X-Request-Id": "trace-abc-123" } }).expect(401);
+      const res = await get("/api/dossiers", {
+        headers: { "X-Request-Id": "trace-abc-123" },
+      }).expect(401);
       expect(res.headers["x-request-id"]).toBe("trace-abc-123");
       expect(res.body.request_id).toBe("trace-abc-123");
     });
 
     it("rejects an over-long client id rather than logging it", async () => {
-      const res = await get("/api/dossiers", { headers: { "X-Request-Id": "x".repeat(65) } }).expect(401);
+      const res = await get("/api/dossiers", {
+        headers: { "X-Request-Id": "x".repeat(65) },
+      }).expect(401);
       expect(res.headers["x-request-id"]).not.toBe("x".repeat(65));
       expect(res.headers["x-request-id"]).toBeTruthy();
     });
 
     it("carries the id into the ambient context the controller sees", async () => {
-      const res = await get("/api/dossiers", { token: tokenFor(), headers: { "X-Request-Id": "trace-xyz" } }).expect(200);
+      const res = await get("/api/dossiers", {
+        token: tokenFor(),
+        headers: { "X-Request-Id": "trace-xyz" },
+      }).expect(200);
       expect(res.body.ctx_request_id).toBe("trace-xyz");
     });
 
@@ -505,11 +622,16 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
       const cases = [
         [() => get("/api/dossiers"), 401],
         [() => get("/api/dossiers", { host: "nobody.example" }), 404],
-        [() => { mockGrants = []; return get("/api/dossiers", { token: tokenFor() }); }, 403],
+        [
+          () => {
+            mockGrants = [];
+            return get("/api/dossiers", { token: tokenFor() });
+          },
+          403,
+        ],
         [() => get("/api/nope"), 404],
       ];
       for (const [run, status] of cases) {
-         
         const res = await run().expect(status);
         expect(typeof res.body.error.code).toBe("string");
         expect(typeof res.body.error.message).toBe("string");
@@ -524,7 +646,9 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
       // gate the one part of the stack a customer could not quote an id for,
       // on exactly the failures ("unknown workspace", "suspended") they call
       // about. All three now go through next(AppError).
-      const unknown = await get("/api/dossiers", { host: "nobody.example" }).expect(404);
+      const unknown = await get("/api/dossiers", {
+        host: "nobody.example",
+      }).expect(404);
       expect(unknown.body.request_id).toBe(unknown.headers["x-request-id"]);
       expect(unknown.body.error.code).toBe("TENANT_NOT_FOUND");
 
@@ -536,17 +660,25 @@ describe("the middleware chain, as a chain (TC-C12)", () => {
       const notReady = await get("/api/dossiers").expect(423);
       expect(notReady.body.request_id).toBe(notReady.headers["x-request-id"]);
 
-      const misordered = await request(app).get("/bad/orphan").set("Host", HOST).expect(500);
-      expect(misordered.body.request_id).toBe(misordered.headers["x-request-id"]);
+      const misordered = await request(app)
+        .get("/bad/orphan")
+        .set("Host", HOST)
+        .expect(500);
+      expect(misordered.body.request_id).toBe(
+        misordered.headers["x-request-id"],
+      );
     });
 
     it("preserves the status and code the gate used to return", async () => {
       // Routing through the error handler must not have quietly changed the
       // contract — 404/403/423 with the same three codes, as before.
       const seen = [];
-      for (const [status, code] of [["SUSPENDED", 403], ["PROVISIONING", 423]]) {
+      for (const [status, code] of [
+        ["SUSPENDED", 403],
+        ["PROVISIONING", 423],
+      ]) {
         mockTenants[HOST] = liveTenant({ status });
-         
+
         const res = await get("/api/dossiers").expect(code);
         seen.push(res.body.error.code);
       }

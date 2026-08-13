@@ -31,7 +31,9 @@ describe("categoryFor — event domain → category", () => {
   });
 
   test("catalog exposes a locked security category", () => {
-    expect(cats.CATEGORIES.find((c) => c.key === "security")).toMatchObject({ security: true });
+    expect(cats.CATEGORIES.find((c) => c.key === "security")).toMatchObject({
+      security: true,
+    });
   });
 });
 
@@ -49,22 +51,45 @@ describe("notify() — preference enforcement", () => {
   });
 
   test("security notification is written WITHOUT consulting preferences", async () => {
-    await svc.notify(client, { userId: "u", eventTypeKey: "auth.password_reset_completed", title: "T" });
+    await svc.notify(client, {
+      userId: "u",
+      eventTypeKey: "auth.password_reset_completed",
+      title: "T",
+    });
     expect(repo.isChannelEnabled).not.toHaveBeenCalled();
-    expect(repo.insertForUser).toHaveBeenCalledWith(client, expect.objectContaining({ category: "security" }));
+    expect(repo.insertForUser).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ category: "security" }),
+    );
   });
 
   test("opted-out non-security category is suppressed (no insert)", async () => {
     repo.isChannelEnabled.mockResolvedValue(false);
-    const r = await svc.notify(client, { userId: "u", eventTypeKey: "invoice.posted", title: "Invoice" });
+    const r = await svc.notify(client, {
+      userId: "u",
+      eventTypeKey: "invoice.posted",
+      title: "Invoice",
+    });
     expect(r).toBeNull();
-    expect(repo.isChannelEnabled).toHaveBeenCalledWith(client, "u", "IN_APP", "finance");
+    expect(repo.isChannelEnabled).toHaveBeenCalledWith(
+      client,
+      "u",
+      "IN_APP",
+      "finance",
+    );
     expect(repo.insertForUser).not.toHaveBeenCalled();
   });
 
   test("allowed non-security category is written with its derived tag", async () => {
     repo.isChannelEnabled.mockResolvedValue(true);
-    await svc.notify(client, { userId: "u", eventTypeKey: "vehicle.insurance.expiring", title: "Insurance" });
-    expect(repo.insertForUser).toHaveBeenCalledWith(client, expect.objectContaining({ category: "operations" }));
+    await svc.notify(client, {
+      userId: "u",
+      eventTypeKey: "vehicle.insurance.expiring",
+      title: "Insurance",
+    });
+    expect(repo.insertForUser).toHaveBeenCalledWith(
+      client,
+      expect.objectContaining({ category: "operations" }),
+    );
   });
 });

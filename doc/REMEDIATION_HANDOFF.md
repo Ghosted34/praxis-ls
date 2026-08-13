@@ -151,7 +151,7 @@ Two consequences worth knowing:
   summary: the exact failure the timeout exists to remove.
 - **Set `process.exitCode`; do not call `process.exit()`.** `exit()` truncates
   buffered stdout when piped, which eats the summary line.
-- Make `resolves` / `rejects` proxy *every* matcher rather than a hand-picked
+- Make `resolves` / `rejects` proxy _every_ matcher rather than a hand-picked
   few, and implement `jest.doMock`. Missing either produces
   "`toMatchObject` is not a function", which reads exactly like a product
   failure and is not one.
@@ -159,14 +159,14 @@ Two consequences worth knowing:
 It earned its keep four times now: its own mock resolution was wrong; a fake
 pool that never recycled clients made a `search_path` re-bind test pass for the
 wrong reason; a fake's rollback truncated the movement journal to a high-water
-mark and so rolled back a *concurrent* transaction's committed work; and a
+mark and so rolled back a _concurrent_ transaction's committed work; and a
 non-re-entrant row lock in the same fake self-deadlocked nested moves. **Three of
 those four were fixture defects that looked like product bugs.** Suspect the
 fixture first.
 
 **Assertion counts in this section were measured under the substitute runner
 and are NOT a Jest result — see §11 before trusting them.** 372 assertions
-across seventeen files pass under  — the twelve that
+across seventeen files pass under — the twelve that
 already did (`tenant-registry`, `auth-middleware`, `rbac-enforcement`,
 `identity-cache`, `api-contract`, `money-path`, `auth-refresh-rotation`,
 `orchestration-outbox`, `capability-assignment`, `async-safe`,
@@ -177,13 +177,13 @@ already did (`tenant-registry`, `auth-middleware`, `rbac-enforcement`,
 
 ### The files this batch added
 
-| File | Finding | Assertions |
-|---|---|---|
-| `auth-refresh-flow.test.js` | TC-Q2 | 22 |
-| `portal-auth.test.js` | TC-C10 | 45 |
-| `tenant-provisioning.test.js` | TC-C9 | 52 |
-| `wms-inventory.test.js` | TC-C7 | 35 |
-| `middleware-chain.test.js` | TC-C12, API-F3 | 42 |
+| File                          | Finding        | Assertions |
+| ----------------------------- | -------------- | ---------- |
+| `auth-refresh-flow.test.js`   | TC-Q2          | 22         |
+| `portal-auth.test.js`         | TC-C10         | 45         |
+| `tenant-provisioning.test.js` | TC-C9          | 52         |
+| `wms-inventory.test.js`       | TC-C7          | 35         |
+| `middleware-chain.test.js`    | TC-C12, API-F3 | 42         |
 
 **Every one was mutation-tested**, because §6's second pattern says a passing
 test proves nothing on its own. In each case the pre-fix behaviour was
@@ -264,7 +264,7 @@ were written and then caught in this work:
 
 - **An assertion on a counter nobody incremented.** `expect(fetchCalls).toBe(0)`
   reads like a network guard and asserts nothing at all when `beforeEach` just
-  reset it to 0. Measure *across* the call — capture before, compare after.
+  reset it to 0. Measure _across_ the call — capture before, compare after.
 - **A fake that returns `{rows: []}` for unrecognised SQL.** It cannot tell a
   dropped `WHERE` clause from a query that was never issued. Throw instead. The
   two files here that do it found real mismatches immediately.
@@ -282,12 +282,12 @@ something else.
 
 **Remaining High (12)** — the test-coverage cluster is closed.
 
-| Cluster | Findings | Note |
-|---|---|---|
-| Deploy & environment | OBS-I3, OBS-I4, TC-CI2, TC-D5, TC-D6, TC-E1 | Mostly process + `deploy.sh`. The obvious next batch: six findings, all verifiable in-repo, none needing a database |
-| API contract | API-F21, API-F25 | F21 is a real inconsistency; F25 is now partly moot — `check-api-contract.js` derives the surface from code, which is what a spec was wanted for |
-| Data | DI-2.4, DI-3.5 | DI-3.5 is Partially fixed: new migrations must declare a down block, the existing 99 are grandfathered |
-| Perf / infra | OBS-I6, PERF-S8 | S8 is a Vite config change; needs a real build to verify |
+| Cluster              | Findings                                    | Note                                                                                                                                             |
+| -------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Deploy & environment | OBS-I3, OBS-I4, TC-CI2, TC-D5, TC-D6, TC-E1 | Mostly process + `deploy.sh`. The obvious next batch: six findings, all verifiable in-repo, none needing a database                              |
+| API contract         | API-F21, API-F25                            | F21 is a real inconsistency; F25 is now partly moot — `check-api-contract.js` derives the surface from code, which is what a spec was wanted for |
+| Data                 | DI-2.4, DI-3.5                              | DI-3.5 is Partially fixed: new migrations must declare a down block, the existing 99 are grandfathered                                           |
+| Perf / infra         | OBS-I6, PERF-S8                             | S8 is a Vite config change; needs a real build to verify                                                                                         |
 
 **Mediums and Lows (93)** — largely API-contract consistency (F10–F12, F17, F22,
 F23, F28, F29) and the long tail. Several Mediums are one-liners that were
@@ -297,7 +297,7 @@ Two of the remaining ones now have a test waiting for them, which is worth
 knowing before you start:
 
 - **DI-5.6** (sandbox wipe not transactional) — `tenant-provisioning.test.js`
-  asserts the *current* non-transactional behaviour deliberately, so it will
+  asserts the _current_ non-transactional behaviour deliberately, so it will
   fail when you fix it. That is the intent: update the test in the same pass.
 - **TC-Q3** (regex SQL fakes absorb query changes) — `wms-inventory.test.js`
   shows the alternative. Its fake throws on unrecognised SQL instead of
@@ -398,11 +398,11 @@ because it recurred four times in four files:
 > An earlier session tightened the product and left the test asserting the old
 > contract. Nothing caught it, because Jest was never run.
 
-| Suite | What had drifted |
-|---|---|
-| `notify-events` | PERF S5 replaced `notify` with batched `notifyMany`. 3 of 4 cases were stale; the 4th found the real `return await` bug. |
-| `ai-batch` | SEC H1 made `action-authz` FAIL CLOSED — an action whose catalogue row declares no `required_permission` is denied. The fake supplies no catalogue row, so every action was denied and the batch halted on the first. The subject of that file is halt-on-failure sequencing, so the gate is now satisfied explicitly with a CEO rather than the permission matrix being re-encoded into a sequencing test. |
-| `error-reporting` | TWO layered defects. (1) `errorHandler` was required at describe-time while `freshReporter()` calls `jest.resetModules()`, so the handler reported into a DEAD module instance and `received` stayed empty — the product was reporting correctly the whole time. The same identity trap made `err instanceof ZodError` false against a class from a different module instance, sending every validation error down the 500 branch. (2) With that fixed, the ZodError case returned **422** — because API F-2 standardised validation on 422 to match the 90 module validators, and this assertion predates it. The first defect had been *masking* the second. |
+| Suite             | What had drifted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notify-events`   | PERF S5 replaced `notify` with batched `notifyMany`. 3 of 4 cases were stale; the 4th found the real `return await` bug.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `ai-batch`        | SEC H1 made `action-authz` FAIL CLOSED — an action whose catalogue row declares no `required_permission` is denied. The fake supplies no catalogue row, so every action was denied and the batch halted on the first. The subject of that file is halt-on-failure sequencing, so the gate is now satisfied explicitly with a CEO rather than the permission matrix being re-encoded into a sequencing test.                                                                                                                                                                                                                                                    |
+| `error-reporting` | TWO layered defects. (1) `errorHandler` was required at describe-time while `freshReporter()` calls `jest.resetModules()`, so the handler reported into a DEAD module instance and `received` stayed empty — the product was reporting correctly the whole time. The same identity trap made `err instanceof ZodError` false against a class from a different module instance, sending every validation error down the 500 branch. (2) With that fixed, the ZodError case returned **422** — because API F-2 standardised validation on 422 to match the 90 module validators, and this assertion predates it. The first defect had been _masking_ the second. |
 
 **The generalisable lesson: `jest.resetModules()` invalidates every reference
 you captured before it.** Require inside the factory/helper that runs after the
@@ -429,14 +429,14 @@ into the register.
   taking the old cheaper path gets a 403. That 403 IS the fix — the transition
   gate used to be optional because PATCH bypassed it. One deliberate LOOSENING
   in the same change: `proposal` was flat `approve` for every target, so only
-  approvers could *submit*; DRAFT/IN_REVIEW/SENT relax to `edit`.
+  approvers could _submit_; DRAFT/IN_REVIEW/SENT relax to `edit`.
 - **Smart Comms writes moved from `view` to `edit` (F-22)** — archive, add and
   remove member, edit and delete another's message. Own-preference writes (pin,
   mute, read, draft, star, react) deliberately keep `view`.
 - **`400 WRONG_HOST` instead of `500` (F-4)** on a tenant-API request arriving
   on a platform host.
 - **`422` instead of silence for a bad filter or sort (F-28/F-29)** on the 16
-  repos that declare a `filterable` set. Those keys were being *ignored*, so
+  repos that declare a `filterable` set. Those keys were being _ignored_, so
   anything relying on them was already getting the wrong answer.
 
 **Two CI gates were added** — `check-actor-fk-guard.js` (DATA 2.4) and
@@ -471,7 +471,7 @@ Two things this cost that are worth internalising:
 
 - **Parse-checking is not enough.** I verified all of these against the real
   Postgres grammar via `libpg-query` (WASM) and it passed the `NOT VALID`
-  version happily — that rule is *semantic*, enforced only at execution. And
+  version happily — that rule is _semantic_, enforced only at execution. And
   `libpg-query` does not validate PL/pgSQL inside a `DO` block at all, which is
   where the third failure lived. **This is TC-CI6 exactly: the first execution
   of a migration is production.** Nothing short of running them against a real
@@ -489,8 +489,8 @@ self-scoped access tier in the generated API reference. `doc/api-contract.json`
 records `auth`/`rbac` from the middleware names on each route's own stack, but
 nearly every router applies auth once via `router.use(authMiddleware)`, which
 never appears on the route — so the flags read `auth: false` for hundreds of
-routes that are authenticated. Classifying off them produced *"713 public, 9
-self-scoped"* against the audit's 10 and 61. **A security tier table that lies is
+routes that are authenticated. Classifying off them produced _"713 public, 9
+self-scoped"_ against the audit's 10 and 61. **A security tier table that lies is
 worse than none**, so the section states why it is absent and points at
 `API_CONTRACT_AUDIT.md` §F-23/F-24 meanwhile. Closing it means resolving
 router-level middleware inside `check-api-contract.js`, so that CI and the doc
@@ -499,10 +499,10 @@ share one answer — contained, but it belongs to that script.
 **A note on PERF-S15.** Half of it was already done and the register did not say
 so: `use-resource.ts` had already been migrated to TanStack Query. Only the
 badge poller in `app-shell.tsx` was still outside the cache. Worth remembering
-that the register can lag the code in the *optimistic* direction too.
+that the register can lag the code in the _optimistic_ direction too.
 
 **The tripwire fired, as designed.** The DI-5.6 assertion left in
-`tenant-provisioning.test.js` — which asserted the *old* non-transactional
+`tenant-provisioning.test.js` — which asserted the _old_ non-transactional
 behaviour — failed the moment the fix landed and was rewritten deliberately.
 That is the mechanism working; leave more of them.
 
@@ -532,15 +532,15 @@ src/modules/sales/opportunity/opportunity.service.js:62    win({ createDossier }
 ```
 
 Both reach `insertOne(client, "dossier", data)`, which builds its column list
-from `Object.keys(data)`. Its identifier check asks whether a key is a *legal
-identifier* — `title` is — not whether the table has it. So the key went to
+from `Object.keys(data)`. Its identifier check asks whether a key is a _legal
+identifier_ — `title` is — not whether the table has it. So the key went to
 Postgres and came back `42703`.
 
 **Two failure modes, and the quiet one is worse.**
 
 - The **event** route fails inside the outbox. `dossierSvc.create` rolls back and
   rethrows, the dispatcher marks the row FAILED, retries, and lands it in DEAD.
-  The user who clicked *Won* gets a **200**. The opportunity is marked won, no
+  The user who clicked _Won_ gets a **200**. The opportunity is marked won, no
   dossier exists, nothing links them. Sales believes it handed the job to
   Operations; Operations never sees it. Nothing surfaces but a dead-letter row.
 - The **synchronous** route — `POST /opportunities/:id/win` with
@@ -570,14 +570,14 @@ layers each had a reason not to:
 3. the unit suites fake the client, and **a fake accepts any column name you
    hand it**.
 
-Only a real database ever said no. That is TC-Q3's argument — *the fix is not a
-better fake, it is a real database* — arriving as a concrete production bug
+Only a real database ever said no. That is TC-Q3's argument — _the fix is not a
+better fake, it is a real database_ — arriving as a concrete production bug
 rather than a finding.
 
 **What was added so the next one fails cheaply.** `operations_file.repo.js` now
 declares a `writable` allow-list (the layer that would have caught it, because
 it sits next to the SQL and applies to every caller, HTTP or not), and
-`tests/unit/dossier-columns.test.js` reconciles that list *and* both call-site
+`tests/unit/dossier-columns.test.js` reconciles that list _and_ both call-site
 payloads against the columns the migrations declare. No database needed — it
 fails in the fast suite, at the moment the mismatch is written.
 
@@ -612,7 +612,7 @@ empty dep array. Two read render state:
   `NO_PIN_DEVICE` **against a device that exists**
 
 `eslint react-hooks/exhaustive-deps` caught both. The other four are genuinely
-stable and keep `[]`. `acceptTokens` is deliberately *not* a dependency: it
+stable and keep `[]`. `acceptTokens` is deliberately _not_ a dependency: it
 closes over nothing from render scope, and listing it would make three handlers
 unstable every render and undo S14 for nothing.
 
@@ -623,7 +623,7 @@ failure this whole remediation is about, committed by the remediation.
 ### NEW-10 — a spy type that erased the contract, hiding nine bad fixtures
 
 Pinning the client to vitest 3 broke `tsc -b` on two test files.
-`ReturnType<typeof vi.spyOn>` names the generic *without instantiating it*, so it
+`ReturnType<typeof vi.spyOn>` names the generic _without instantiating it_, so it
 resolves to the uninstantiated default and the real spy will not assign to it. It
 compiled under vitest 4 by accident.
 
@@ -633,8 +633,8 @@ fixed it — and immediately failed nine more times, because every fixture passe
 The fake had been handing the hook `undefined` for all three and **nothing could
 complain**, because the erased type let `mockResolvedValue` accept anything.
 
-TC-Q3 again, from a new angle: *a fake that cannot disagree with the contract it
-replaces*.
+TC-Q3 again, from a new angle: _a fake that cannot disagree with the contract it
+replaces_.
 
 **Decision recorded:** stay on **vite 5 + vitest 3**. Forward (vite 7 + vitest 4)
 leaves those two files untouched but is a build-tool major nobody can verify
@@ -647,7 +647,7 @@ Both integration suites state their requirements in their own headers. The
 workflow fixture was written from what they obviously needed instead:
 
 - **no `accounting_period`** — journal-posting failed `No accounting period
-  covers <today>`; ledger-hardening's `beforeAll` left `period` undefined and all
+covers <today>`; ledger-hardening's `beforeAll` left `period` undefined and all
   six tests died on `period.period_id`, six identical errors naming the reader
   and not the cause
 - **account `521`** is the non-postable parent; `5211` is the leaf. The service
@@ -656,9 +656,9 @@ workflow fixture was written from what they obviously needed instead:
   `.rejects.toThrow()`, so it **passed on the not-postable error and never once
   reached the balance check it is named after**
 
-A negative test that cannot say *why* it failed will pass for the wrong reason
+A negative test that cannot say _why_ it failed will pass for the wrong reason
 indefinitely. It now asserts `/Out of balance/`, the fixture seeds an OPEN
-calendar-month period computed in SQL and *asserts* one covers today before
+calendar-month period computed in SQL and _asserts_ one covers today before
 running anything, and `beforeAll` throws a message naming the missing fixture.
 
 **Not executed here** — no Postgres in the session that wrote it. `ci.yaml` is
@@ -681,8 +681,8 @@ detail is NEW-12; the transferable parts:
   against the local bin scripts.
 
 - **A comment that was measurably false, again.** `config/shared-alias.ts` said
-  *"Vitest externalises node_modules and loads them through Node, whose exports
-  map hands BOTH sides ./index.cjs — already one instance."* Node does no such
+  _"Vitest externalises node_modules and loads them through Node, whose exports
+  map hands BOTH sides ./index.cjs — already one instance."_ Node does no such
   thing: `require("zod")` gets `./index.cjs`, `import "zod"` gets `./index.js`,
   and `instanceof` between them is false. It held only because vitest 4 put both
   sides through CJS interop, and broke when the client was pinned to vitest 3
@@ -692,12 +692,12 @@ detail is NEW-12; the transferable parts:
 
 - **A shell rendered without the app's providers.** `top-shell.test.tsx` mounted
   `AppShell` in a bare `MemoryRouter`; `useUnreadCounts` calls
-  `useQueryClient()`, which throws *during render*, so all six tests died before
+  `useQueryClient()`, which throws _during render_, so all six tests died before
   asserting anything about the strip. It uses `renderScreen()` now. Worth
   noticing that the harness's own comment predicted it — it gained
   `ToastProvider` after the journal-entry form lost four assertions the same
-  way, and says so: *"the only path that exercised the harness was the only path
-  that could not see what it was missing."* **Anything that renders a shell
+  way, and says so: _"the only path that exercised the harness was the only path
+  that could not see what it was missing."_ **Anything that renders a shell
   should go through the harness**, rather than assembling a subset of the root
   providers and discovering which one is missing one hook at a time.
 
@@ -710,7 +710,7 @@ detail is NEW-12; the transferable parts:
 A Postgres `date` leaves a WAT API as `…T23:00:00Z` and is formatted in the
 viewer's zone, so client and API only agree while they share a timezone. It
 needs a decision (serialise `date` as `YYYY-MM-DD` at the API? format with an
-explicit zone — the viewer's, the tenant's, or the *port's*?), not a patch.
+explicit zone — the viewer's, the tenant's, or the _port's_?), not a patch.
 
 **On the vitest pin.** It has now caused two `tsc` errors, a Zod instance split,
 and — via the precise typing that fixed the first — exposed nine incomplete
@@ -775,14 +775,14 @@ carries `router.use(...)` down to the routes it protects, accumulating in order.
 **Three live blind spots found by doing it** — all the same shape, an
 authorisation gate invisible because its function had no useful name:
 
-| Where | Was | Effect |
-|---|---|---|
-| `portal_auth.middleware.js` | anonymous function | the **entire external portal product** (`/portal/me`, `/client`, `/investor`, `/auditor`) read as PUBLIC |
-| `platform-auth.js` `requirePlatformRole` | `check` | platform admin routes unrecognisable |
-| `platform-auth.js` `requireCap` | `check` | same |
+| Where                                    | Was                | Effect                                                                                                   |
+| ---------------------------------------- | ------------------ | -------------------------------------------------------------------------------------------------------- |
+| `portal_auth.middleware.js`              | anonymous function | the **entire external portal product** (`/portal/me`, `/client`, `/investor`, `/auditor`) read as PUBLIC |
+| `platform-auth.js` `requirePlatformRole` | `check`            | platform admin routes unrecognisable                                                                     |
+| `platform-auth.js` `requireCap`          | `check`            | same                                                                                                     |
 
 Now `portalAuthCheck`, `platformRoleCheck`, `platformCapCheck`. These were real
-gaps in any inventory of *"what is reachable without credentials"*, not tooling
+gaps in any inventory of _"what is reachable without credentials"_, not tooling
 noise.
 
 **Deliberately NOT published, and this is the finding repeating itself.** About
@@ -807,7 +807,7 @@ Left Open deliberately (see §10 and the note above `renderApi` in
 rediscover why the obvious approach fails:
 
 **The problem.** `doc/api-contract.json` records `auth`/`rbac` per route from the
-middleware on *that route's own stack*. Almost every router does
+middleware on _that route's own stack_. Almost every router does
 `router.use(authMiddleware)` once at the top, which appears on no individual
 route — so hundreds of authenticated routes read `auth: false`. A first
 generator classified off those flags and produced **"713 public, 9 self-scoped"**
@@ -845,7 +845,7 @@ uncommenting.
 **Done:** SEC-M1, SEC-M4, SEC-L1, and NEW-07 **withdrawn**.
 
 **NEW-07 was my error, and the shape of it is the point.** I filed
-*"`POST /sessions/:id/kill` has auth but no `requirePermission`"* after reading
+_"`POST /sessions/:id/kill` has auth but no `requirePermission`"_ after reading
 `session.routes.js`. `session.service.js` `kill()` enforces exactly the right
 rule — self always allowed, `is_ceo` allowed, otherwise MOD-68 `can_update`,
 else 403 — and the route is ungated deliberately, with a comment one line above
@@ -853,7 +853,7 @@ saying so, because a `requirePermission` there would stop a user ending their
 own session. I judged a control by where I expected it to live rather than by
 what it does, which is the mistake this remediation keeps documenting in other
 people's code. Left in the register as Withdrawn rather than deleted: a
-withdrawn finding is evidence about the review. It also *strengthens* API-F23 —
+withdrawn finding is evidence about the review. It also _strengthens_ API-F23 —
 this is exactly a self-scoped route whose authorisation is real, enforced one
 layer down, and invisible at the route.
 
@@ -862,8 +862,8 @@ fix would have closed the hole and broken something real.
 
 - **SEC-M1** — rejecting on "not in Redis" would sign out every user of every
   tenant the first time Redis restarted, because Redis is a cache and
-  `killed_at` is the record. Hence a three-valued check where *absent* means
-  *ask Postgres* and only *unreachable* means *assume nothing*, and a deliberate
+  `killed_at` is the record. Hence a three-valued check where _absent_ means
+  _ask Postgres_ and only _unreachable_ means _assume nothing_, and a deliberate
   fail-open when neither layer can answer.
 - **SEC-M4** — deleting the client-supplied `auth.host` would have broken every
   developer's local socket, because it is a documented dev affordance for the
@@ -874,15 +874,15 @@ fix would have closed the hole and broken something real.
 
 **Remaining 7, with the honest reason each is still open:**
 
-| ID | Why it is not done |
-|---|---|
+| ID     | Why it is not done                                                                                                                                                                                 |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | SEC-M9 | Dependabot + CodeQL are file additions and safe; the `npm audit` fixes are not, on a tree that has already had lockfile trouble. Do the config here, the bumps on a machine that can run `npm ci`. |
-| SEC-L5 | Per-route anonymous-surface assertion. **Do this with API-F23 (§15) — it is the same router walk**, and doing them separately means writing it twice and risking two answers. |
-| SEC-L2 | Redis password + per-tenant key prefix + `KEYS`→`SCAN`. Touches the hot identity-cache path; needs care, not scale. |
-| SEC-M3 | Vault record-level authz. The pattern exists (`moduleKeyForDocType` in `template.routes.js`); it is a real design port, not a patch. |
-| SEC-M8 | CSP `unsafe-inline`. Needs the Control Tower mock moved to a per-route CSP, and I cannot exercise that iframe here. |
-| SEC-M6 | Platform session store, revocation, 2FA. New table + migration + service work — a batch of its own. |
-| SEC-L3 | httpOnly refresh cookie. Explicitly gated on M8 and C2, and breaking for every client. |
+| SEC-L5 | Per-route anonymous-surface assertion. **Do this with API-F23 (§15) — it is the same router walk**, and doing them separately means writing it twice and risking two answers.                      |
+| SEC-L2 | Redis password + per-tenant key prefix + `KEYS`→`SCAN`. Touches the hot identity-cache path; needs care, not scale.                                                                                |
+| SEC-M3 | Vault record-level authz. The pattern exists (`moduleKeyForDocType` in `template.routes.js`); it is a real design port, not a patch.                                                               |
+| SEC-M8 | CSP `unsafe-inline`. Needs the Control Tower mock moved to a per-route CSP, and I cannot exercise that iframe here.                                                                                |
+| SEC-M6 | Platform session store, revocation, 2FA. New table + migration + service work — a batch of its own.                                                                                                |
+| SEC-L3 | httpOnly refresh cookie. Explicitly gated on M8 and C2, and breaking for every client.                                                                                                             |
 
 ---
 
@@ -902,7 +902,7 @@ signals. Both are wrong here, and I wrote one before checking:
   machine, every unit test and every CI job**. I had this in the file before
   asking what the default actually was.
 - **`DB_HOST` is `postgres` in compose — and production uses compose.** So
-  "host is not local" never fires where it matters, and *does* fire for a
+  "host is not local" never fires where it matters, and _does_ fire for a
   developer pointed at a remote database. Exactly backwards.
 
 The audit's scenario is also narrower than it reads: the Dockerfile sets
@@ -914,7 +914,7 @@ default — which is a behaviour change needing sign-off, not a cleverer sniff.
 
 ### What the other five bought
 
-- **TC-E1** moves environment validation from *after* migrations to *before*
+- **TC-E1** moves environment validation from _after_ migrations to _before_
   them. Previously a change adding a required variable passed CI, passed the
   build, **migrated every tenant database**, and only then failed to boot.
 - **TC-Q1/CI3** — coverage is measured in CI and the threshold is on
@@ -937,7 +937,7 @@ Three decisions in there worth keeping:
 
 - **OBS-I4's auto-rollback is OPT-IN (`AUTO_ROLLBACK=1`), and that is the fix
   rather than a hedge.** Migrations have already run by the time the readiness
-  gate fails, and there are no down-migrations before 0500. Reverting the *code*
+  gate fails, and there are no down-migrations before 0500. Reverting the _code_
   under a schema that has moved forward is safe for an additive migration and
   **not** safe for anything else — an automatic revert could turn a broken
   deploy into a corrupted one. The operator makes that judgement once, in the
@@ -948,19 +948,19 @@ Three decisions in there worth keeping:
   first, which is how a gate becomes a comment. The number going down is the
   record that work happened.
 - **OBS-I3 requires a marker, not abstinence.** `-- DESTRUCTIVE: <what is lost
-  and why>` on the statement. Banning destructive migrations outright gets
+and why>` on the statement. Banning destructive migrations outright gets
   worked around; requiring the sentence puts it in the diff for a reviewer and
   in the file for whoever is restoring a backup at 02:00.
 
 ### Remaining 3 — none of them code I can write
 
-| ID | What is actually left |
-|---|---|
-| **TC-CI2** | `main` red 15% of runs. Follows from TC-CI1: switch on branch protection (`doc/BRANCH_PROTECTION.md`). The deploy-side guard already refuses to ship a commit that reached `main` without a PR. |
-| **TC-D5** (partial) | `environment: production` is declared in `deploy.yaml` and is inert until you create it. Then: an unprivileged `deploy` user, docker group + only the sudo entries `deploy.sh` needs, a restricted `authorized_keys` entry, a rotation date. **Until the user is unprivileged, a compromised Action is still a host compromise.** |
-| **TC-E2** | Needs sign-off, not cleverness — see above. Generate per-install secrets, or make the three required with no default. |
-| **TC-C11** (partial) | Frontend coverage of money, permissions and the Live/Test toggle. A body of test-writing, not a config change. |
-| **TC-CI10** (partial) | A backend type layer. The PRD promises one; the pipeline has never had one. The PRD is the thing that should move. |
+| ID                    | What is actually left                                                                                                                                                                                                                                                                                                             |
+| --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **TC-CI2**            | `main` red 15% of runs. Follows from TC-CI1: switch on branch protection (`doc/BRANCH_PROTECTION.md`). The deploy-side guard already refuses to ship a commit that reached `main` without a PR.                                                                                                                                   |
+| **TC-D5** (partial)   | `environment: production` is declared in `deploy.yaml` and is inert until you create it. Then: an unprivileged `deploy` user, docker group + only the sudo entries `deploy.sh` needs, a restricted `authorized_keys` entry, a rotation date. **Until the user is unprivileged, a compromised Action is still a host compromise.** |
+| **TC-E2**             | Needs sign-off, not cleverness — see above. Generate per-install secrets, or make the three required with no default.                                                                                                                                                                                                             |
+| **TC-C11** (partial)  | Frontend coverage of money, permissions and the Live/Test toggle. A body of test-writing, not a config change.                                                                                                                                                                                                                    |
+| **TC-CI10** (partial) | A backend type layer. The PRD promises one; the pipeline has never had one. The PRD is the thing that should move.                                                                                                                                                                                                                |
 
 ---
 
@@ -995,7 +995,7 @@ it)
 `SEC-M5` + `SEC-M7` + `TC-E3` are **one piece of work, not three**: one JWT
 secret across three tiers, one encryption key across all tenants, and no
 rotation path for anything. Individually they read as Mediums; together they are
-the answer to *"what happens after a credential compromise"*, which today is
+the answer to _"what happens after a credential compromise"_, which today is
 **everything, everywhere**. `ENCRYPTION_KEY` in particular cannot be rotated
 without a re-encryption migration nobody has written.
 

@@ -12,6 +12,7 @@ const express = require("express");
 const platformRoutes = require("../modules/platform/platform.routes");
 const { hostTenantResolver } = require("../middleware/host-tenent-resolver");
 const { tenantContext } = require("../middleware/tenant-context");
+const { idempotency } = require("../middleware/idempotency");
 const { mountTenantModules } = require("../shared/http/module-loader");
 const { router: healthRouter } = require("./health");
 const maintenance = require("../services/platform/maintenance.service");
@@ -58,6 +59,15 @@ tenantRouter.get("/maintenance", async (req, res) => {
     res.json({ data: null });
   }
 });
+/**
+ * Replay protection for client-retried writes. Above the module loader so all
+ * ~700 tenant write endpoints are covered without opting in one at a time, and
+ * below `tenantContext` because it needs `req.tenantDb`. A request without an
+ * `Idempotency-Key` header passes straight through, so this changes nothing for
+ * any caller that has not asked for it. See src/middleware/idempotency.js.
+ */
+tenantRouter.use(idempotency);
+
 mountTenantModules(tenantRouter); // discovers src/modules/<group>/<module>/*.routes.js
 router.use("/tenant", tenantRouter);
 

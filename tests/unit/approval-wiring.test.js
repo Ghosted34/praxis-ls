@@ -34,11 +34,21 @@ require("../../src/modules/procurement/supplier_invoice/supplier_invoice.service
  * end to end and is marked as such; the rest are declared as wiring.
  */
 describe("approval workflow — WIRING ONLY (registration, not behaviour)", () => {
-  const expected = ["invoice", "costing", "purchase_order", "payroll_run", "cash_request", "supplier_invoice"];
+  const expected = [
+    "invoice",
+    "costing",
+    "purchase_order",
+    "payroll_run",
+    "cash_request",
+    "supplier_invoice",
+  ];
 
-  it.each(expected)("a handler is REGISTERED for '%s' (not that it does the right thing)", (prefix) => {
-    expect(typeof onApproved.handlerFor(prefix + ":x")).toBe("function");
-  });
+  it.each(expected)(
+    "a handler is REGISTERED for '%s' (not that it does the right thing)",
+    (prefix) => {
+      expect(typeof onApproved.handlerFor(prefix + ":x")).toBe("function");
+    },
+  );
 
   it("routes a known prefix and ignores an unknown one — still routing, not posting", () => {
     // A fake entity_ref with no matching handler is a no-op; a known prefix routes.

@@ -3,7 +3,7 @@
 This file was renamed in Phase 5 of `doc/DESKTOP_UI_AUDIT.md`, which consolidates the
 frontend documentation into one guide (F15).
 
-**Nothing was lost.** `FRONTEND_GUIDE.md` *is* this document — same content, renamed, plus
+**Nothing was lost.** `FRONTEND_GUIDE.md` _is_ this document — same content, renamed, plus
 the density and desktop-interaction sections Phase 5 added and a table naming every older
 frontend plan it supersedes.
 

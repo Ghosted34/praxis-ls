@@ -61,6 +61,8 @@ router.get("/connections", requirePermission(M, "view"), c.listConnections);
 router.post("/connections", requirePermission(M, "create"), v.connect, c.connect);
 router.post("/connections/:id/test", requirePermission(M, "edit"), c.testConnection);
 router.post("/connections/:id/sync", requirePermission(M, "edit"), c.syncNow);
+router.post("/connections/:id/default", requirePermission(M, "edit"), c.setDefaultMailbox);
+router.get("/recipients", requirePermission(M, "view"), c.recipients);
 
 // Engine: messages
 router.get("/thread", requirePermission(M, "view"), c.thread);

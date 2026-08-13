@@ -6,7 +6,7 @@
   "nav_tracker": "Smart Track",
   "nav_about": "À propos",
   "nav_quote": "DEMANDER UN DEVIS",
-   "footer_brand_blurb": "SMART LOGISTICS & SERVICES LTD fournit des solutions logistiques conformes et fiables, avec une visibilité de niveau entreprise sur l’ensemble de la région CEMAC.",
+  "footer_brand_blurb": "SMART LOGISTICS & SERVICES LTD fournit des solutions logistiques conformes et fiables, avec une visibilité de niveau entreprise sur l’ensemble de la région CEMAC.",
   "footer_quick_links_title": "Liens rapides",
   "footer_quick_services": "Services",
   "footer_quick_industries": "Secteurs",
@@ -43,8 +43,8 @@
   "about_mission_body": "Notre mission est de révolutionner le paysage logistique en proposant des solutions qui non seulement répondent aux attentes de nos clients, mais les surpassent. Nous nous efforçons de créer un environnement qui suscite la passion, stimule la créativité et inspire nos équipes à offrir des expériences client inégalées. Animés par un engagement sans faille, nous bâtissons un avenir où l’excellence est la norme et l’innovation le moteur de chaque action. Notre héritage repose sur les piliers de la fiabilité, de la flexibilité et de la satisfaction client, définissant ainsi les nouveaux standards de référence de l'industrie.",
   "about_vision_label": "Vision :",
   "about_vision_body": "Notre vision est de nous imposer comme le partenaire logistique de référence, en définissant les standards d’excellence au Cameroun et dans toute la sous-région CEMAC. Nous aspirons à devenir la mesure de toute réussite dans notre secteur, reconnus pour offrir des expériences d’exception à nos clients les plus exigeants",
-"about_operational_guide": "Nos Principes Directeurs",
-"about_operational_guide_body": "L’Enchantement Client, l'Autonomisation des Équipes et l'Excellence.",
+  "about_operational_guide": "Nos Principes Directeurs",
+  "about_operational_guide_body": "L’Enchantement Client, l'Autonomisation des Équipes et l'Excellence.",
   "about_operational_title": "PRIORITÉS OPÉRATIONNELLES",
   "about_operational_li_1": "Processus rigoureux et conformité réglementaire",
   "about_operational_li_2": "Visibilité et contrôle dans des environnements opérationnels complexes",
@@ -110,22 +110,6 @@
   "airfreight_advantage_body": "Délais de transit réduits, dédouanement prévisible et visibilité complète des expéditions, de l’aéroport d’origine à la destination finale.",
 
   "airfreight_cta": "Demander un devis pour ce service",
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
   "home_hero_kicker": "Hub logistique digital • Conformité • Visibilité",
   "home_hero_tagline": "Aller au-delà de vos attentes",
@@ -227,7 +211,7 @@
   "home_contact_phone_value_label": "Téléphone",
   "home_contact_whatsapp_label": "WhatsApp",
   "home_contact_email_value_label": "E-mail",
-   "kaizen_not_found_title": "Article introuvable",
+  "kaizen_not_found_title": "Article introuvable",
   "kaizen_not_found_lead": "L’article demandé n’a pas pu être trouvé.",
   "kaizen_not_found_cta": "Retour au Kaizen Hub",
 
@@ -296,7 +280,7 @@
   "portfolio_title": "PORTFOLIO PROJETS",
   "portfolio_sub": "Études de cas détaillées, structurées autour de sections distinctes : « Défi », « Solution » et « Impact »",
   "portfolio_read_full_case": "Lire l’étude complète",
-  
+
   "seafreight_kicker": "🚢 FRET MARITIME",
   "seafreight_title": "Flexible. Scalable. Optimisé coûts.",
 
@@ -454,7 +438,7 @@
   "quote_success_id_label": "Votre ID de devis :",
   "quote_success_body_html": "Nous avons envoyé une confirmation à votre e-mail.<br>Votre demande a été transmise à <strong>customerservice@smartls.cm</strong><br>(CC : info@smartls.cm)",
   "quote_start_new": "Démarrer un nouveau devis",
-  
+
   "track_pill": "Hub logistique en temps réel",
   "track_lead": "Suivez votre cargaison avec précision.",
   "track_placeholder": "Saisir la référence (ex. SL0256721SM)",
@@ -498,14 +482,4 @@
 
   "kaizen_a5_title": "L'avenir est vert : la logistique durable en zone CEMAC",
   "kaizen_a5_author": "Par Timothée Massomba, Directeur Général, Smart Logistics & Services Ltd"
-
-
-
-
-
-
-
-
-
-
 }

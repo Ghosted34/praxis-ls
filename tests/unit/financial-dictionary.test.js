@@ -1,6 +1,12 @@
 "use strict";
 const {
-  directionLetter, formatCode, resolveDisbursement, tierRank, tierIncludes, primaryServiceKey, needsAttention,
+  directionLetter,
+  formatCode,
+  resolveDisbursement,
+  tierRank,
+  tierIncludes,
+  primaryServiceKey,
+  needsAttention,
 } = require("../../src/modules/master/financial_dictionary/financial_dictionary.rules");
 
 describe("financial dictionary rules (MOD-05)", () => {
@@ -44,13 +50,38 @@ describe("financial dictionary rules (MOD-05)", () => {
   test("primaryServiceKey prefers a BASIC tier, then the first, else null", () => {
     expect(primaryServiceKey([])).toBe(null);
     expect(primaryServiceKey(null)).toBe(null);
-    expect(primaryServiceKey([{ service_key: "AIR", tier: "ADVANCED" }, { service_key: "SEA", tier: "BASIC" }])).toBe("SEA");
-    expect(primaryServiceKey([{ service_key: "AIR", tier: "ADVANCED" }, { service_key: "RAIL", tier: "FULL" }])).toBe("AIR");
+    expect(
+      primaryServiceKey([
+        { service_key: "AIR", tier: "ADVANCED" },
+        { service_key: "SEA", tier: "BASIC" },
+      ]),
+    ).toBe("SEA");
+    expect(
+      primaryServiceKey([
+        { service_key: "AIR", tier: "ADVANCED" },
+        { service_key: "RAIL", tier: "FULL" },
+      ]),
+    ).toBe("AIR");
   });
 
   test("compliance gap: always-required receipt with no proof source", () => {
-    expect(needsAttention({ receipt_requirement: "ALWAYS_REQUIRED", proof_source: null })).toBe(true);
-    expect(needsAttention({ receipt_requirement: "ALWAYS_REQUIRED", proof_source: "PORT_TERMINAL" })).toBe(false);
-    expect(needsAttention({ receipt_requirement: "NOT_REQUIRED", proof_source: null })).toBe(false);
+    expect(
+      needsAttention({
+        receipt_requirement: "ALWAYS_REQUIRED",
+        proof_source: null,
+      }),
+    ).toBe(true);
+    expect(
+      needsAttention({
+        receipt_requirement: "ALWAYS_REQUIRED",
+        proof_source: "PORT_TERMINAL",
+      }),
+    ).toBe(false);
+    expect(
+      needsAttention({
+        receipt_requirement: "NOT_REQUIRED",
+        proof_source: null,
+      }),
+    ).toBe(false);
   });
 });

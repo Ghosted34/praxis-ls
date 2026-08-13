@@ -63,7 +63,9 @@
         try {
           var stored = localStorage.getItem("praxis.theme");
           var mode =
-            stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+            stored === "light" || stored === "dark" || stored === "system"
+              ? stored
+              : "system";
           var isDark =
             mode === "dark" ||
             (mode === "system" &&
@@ -76,14 +78,17 @@
           if (isDark) document.documentElement.classList.add("dark");
           // color-scheme lets the browser paint its own chrome (scrollbars,
           // form controls) in the right mode from frame 1 as well.
-          document.documentElement.style.colorScheme = isDark ? "dark" : "light";
+          document.documentElement.style.colorScheme = isDark
+            ? "dark"
+            : "light";
           // The cached titlebar colour from the LAST session under this theme
           // (written by applyPwaDocument). If none, fall back to the
           // theme-matched default so the strip never paints white on a dark
           // workspace — the whole point of this script.
           var barBg =
-            localStorage.getItem("praxis.titlebar." + (isDark ? "dark" : "light")) ||
-            (isDark ? SURFACE_DARK : SURFACE_LIGHT);
+            localStorage.getItem(
+              "praxis.titlebar." + (isDark ? "dark" : "light"),
+            ) || (isDark ? SURFACE_DARK : SURFACE_LIGHT);
           document.documentElement.style.setProperty("--titlebar-bg", barBg);
           // Update <meta name="theme-color"> in step — Chrome tints its own
           // chrome (tab strip, address bar) from this on first paint, and the
@@ -100,7 +105,10 @@
           // a white frame around a dark app on every refresh. Tell it.
           var manifest = document.querySelector('link[rel="manifest"]');
           if (manifest)
-            manifest.setAttribute("href", "/manifest.webmanifest?theme=" + (isDark ? "dark" : "light"));
+            manifest.setAttribute(
+              "href",
+              "/manifest.webmanifest?theme=" + (isDark ? "dark" : "light"),
+            );
         } catch (e) {
           /* private mode / storage disabled — the static fallbacks stand */
         }
@@ -144,7 +152,9 @@
       style="
         min-height: 44px;
         padding-left: env(titlebar-area-x, 0px);
-        padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
+        padding-right: calc(
+          100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%)
+        );
         background: var(--titlebar-bg);
         border-bottom: 1px solid rgb(128 128 128 / 0.14);
         -webkit-app-region: drag;

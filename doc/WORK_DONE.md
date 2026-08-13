@@ -3,7 +3,7 @@
 Running log of substantive changes landed against `doc/WORK_TO_BE_DONE.md`,
 newest entry on top. Companion to that file: WORK_TO_BE_DONE.md is the
 backlog (checkboxes get ticked in place), this file is the append-only
-record of *what actually happened and why*, for anyone picking up context
+record of _what actually happened and why_, for anyone picking up context
 later without re-reading every diff.
 
 ---
@@ -43,7 +43,7 @@ Three facts made it unenforceable rather than merely under-enforced:
 - **Maker-checker, enforced for everyone including the CEO.** `notify-approvals` already resolved the
   requester — to decide whether to send a notification. The same comparison now decides whether the action
   is allowed. Deliberate departure from the CEO's RBAC bypass: SoD exists precisely so no single person
-  completes a transaction alone. The product already enforces two-person integrity on *undeleting a row*
+  completes a transaction alone. The product already enforces two-person integrity on _undeleting a row_
   (`CHECK (restored_by <> deleted_by)`) and did not on approving a payroll run.
 - **Scope resolves as a closure** — `identity-cache.getUserScopeClosure`, a recursive walk down
   `parent_scope_id`, so authority flows downward. Raw `user_scope` rows would have made assigning a
@@ -55,7 +55,7 @@ Three facts made it unenforceable rather than merely under-enforced:
   prefix, so it cannot drift from `on-approved.js`'s handler map. Null falls back to MOD-67 — a task
   nobody can action is worse than one gated slightly too broadly.
 - **`services/workflow/pending-guard.js`** — the seven direct transition routes 422 `APPROVAL_PENDING`
-  while a task is live. Narrow on purpose: they refuse only while a chain is *pending*, so a document type
+  while a task is live. Narrow on purpose: they refuse only while a chain is _pending_, so a document type
   with no bound workflow keeps a working path.
 - **`W8` resolved by the guard, not by auto-finalising.** I implemented auto-finalise first and reverted
   it: for supplier invoices it posted to the general ledger because nobody had configured a workflow.
@@ -130,8 +130,8 @@ the set unpaginated.
 
 ### B1 — the reporting line (`0493`)
 
-`0490` answered *where* someone sits (branch / department, which is what approval routing needs). It did
-not answer *who reports to whom*, and three things wanted that: `role.is_line_manager` is seeded as
+`0490` answered _where_ someone sits (branch / department, which is what approval routing needs). It did
+not answer _who reports to whom_, and three things wanted that: `role.is_line_manager` is seeded as
 "approves for own team" and nothing could resolve a team; escalation (W13) had nowhere to escalate to; and
 an org chart of PEOPLE cannot be drawn from a reporting line that isn't recorded.
 
@@ -219,7 +219,7 @@ doesn't, then a duplicate-key error if they retry.
 Session 17 fixed it by copying `live.app_user` into the rebuilt sandbox at the end of `wipeSandbox`. That is
 correct but insufficient, because it mirrors at **one moment**:
 
-1. **Fresh tenants** (known, flagged). Provisioning creates both schemas *before* `create-admin.js` makes any
+1. **Fresh tenants** (known, flagged). Provisioning creates both schemas _before_ `create-admin.js` makes any
    user, so the mirror has nothing to copy and the sandbox starts empty. The tenant's first TEST-mode write
    fails, and the remedy — wipe the sandbox — is deeply unintuitive for something that reads like a
    permissions error.
@@ -237,7 +237,7 @@ correct but insufficient, because it mirrors at **one moment**:
     because callers arrive with it set to whatever they were already working in (live for the identity client,
     sandbox mid-wipe).
   - **`ON CONFLICT DO NOTHING` with no target**, deliberately: it must absorb a `user_id` clash (already
-    mirrored) *and* an `email` clash (a stale sandbox row under a different id). The single-user path then
+    mirrored) _and_ an `email` clash (a stale sandbox row under a different id). The single-user path then
     verifies presence and **warns** — an email collision is the one case where "nothing inserted" still leaves
     the FK unsatisfied, and silent success there would be the worst outcome.
   - **`to_regclass` guard** so the mirror is a no-op mid-wipe or on an unmigrated database instead of erroring
@@ -336,6 +336,7 @@ value that lets them sign in as an external party. Invite emails carry the **ten
 branding: an external contact has no idea what "Praxis LS" is, and an unattributed mail reads as phishing.
 
 **Frontend** — `features/portal/portal-app.tsx` + `lib/portal-api.ts`:
+
 - Mounted at **`/client-portal`, NOT `/portal`** — the staff grant screen already owns `/portal/access`.
   React Router would likely rank the static path above a splat and keep them apart, but an authentication
   boundary should not depend on route-scoring subtleties; one nested route added later and an external user
@@ -387,6 +388,7 @@ auditor grant is told the room isn't open rather than shown one report dressed u
 would not run in-sandbox. **`0482` applied and Windows validators green (user-run).**
 
 **Owed before this is usable by a real external party** — none of it is code:
+
 1. **SMTP must be configured for the tenant**, or invites fail silently from the recipient's point of view.
    The UI reports it ("Login ready … but the email could not be sent") and Resend exists, but nobody sees that
    message unless staff read it.
@@ -469,10 +471,10 @@ had been returning 422.
 **AI conversation memory.** `ai_conversation`/`ai_message` have existed since `0400_ai.sql` and nothing ever
 wrote to them — `orchestrator.ask` built `[system, user]` every call, so each question was the model's first.
 Now: one rolling thread per user (resolved server-side), last 20 messages replayed, everything stored
-indefinitely. History is redacted on replay like live input, saved *after* the model call (no orphan question
+indefinitely. History is redacted on replay like live input, saved _after_ the model call (no orphan question
 with no answer), and best-effort throughout. `GET /ai/history` + `POST /ai/history/clear` (clear starts a new
 thread rather than deleting — `ai_action_run` references `conversation_id`). Executed actions now append a
-factual assistant note, so the assistant knows what it *did*, not only what it proposed. Also fixed: action
+factual assistant note, so the assistant knows what it _did_, not only what it proposed. Also fixed: action
 runs recorded `conversation_id` from a request field the copilot never sent, so every one was orphaned.
 
 **CI.** `npm audit --audit-level=high`, a secret scan, a **duplicate-migration-number guard**
@@ -629,10 +631,10 @@ Windows:** `npm install` (client + platform-console, for the new ESLint deps) + 
 
 **Context.** The `/api/platform/*` backend (provision/suspend/resume/go-live/migrate/capacity/sandbox/
 feature-toggles/plans/catalogue) had shipped long ago with **no frontend** — the standing "platform console
-UI (proposal pending)" gap. Also closed out **Support & Feedback** (PRD §11.2), which had been *held until
-the console existed* because its triage half lives there.
+UI (proposal pending)" gap. Also closed out **Support & Feedback** (PRD §11.2), which had been _held until
+the console existed_ because its triage half lives there.
 
-**Platform Console — new standalone app `platform-console/`.** A *separate* React 18 + Vite 5 + TS app
+**Platform Console — new standalone app `platform-console/`.** A _separate_ React 18 + Vite 5 + TS app
 (own toolchain, `npm install` not `ci`), deliberately not folded into the tenant `client/` (own platform
 auth; must never touch tenant data). Plain CSS, distinct dark "ops" theme; HashRouter; typed `/api/platform`
 client with Bearer + `localStorage` token store. Screens: **Overview** (tenant counts by status/plan +
@@ -654,6 +656,7 @@ optional `?tenant=<slug>` + `?limit` (1–500). Powers the Audit page + per-tena
 **Support & Feedback — both halves + the loop.** The central `platform.support_ticket` table already
 existed (in `0030_platform_ops.sql`), so tickets live platform-side and the console aggregates with **no
 cross-tenant fan-out** and **no migration**.
+
 - Tenant BE: new `src/modules/dashboard/support/` (auto-mounts `/api/tenant/support`, **ungated**, authed) —
   create/list/detail + CSAT (only on resolved tickets), scoped to `req.tenant.tenant_id`, stamped with
   `req.user.email`, writing the platform DB via `services/platform/db`.
@@ -677,8 +680,8 @@ this stream takes **security + vault**, he takes **fleet / warehouse / vehicle /
 vault**: all five vault pages shipped in session 8. Security was the opposite — `features/security/
 pages.tsx` was 104 lines of read-only `ResourceList` stubs, as its own file header admitted ("skeletal
 (read-only lists) by intent"). So vault needed only a hub; security needed building from scratch. The
-root cause of the confusion was `FE_IA_BUILD_MAP.md` §4 conflating *a screen exists at that route* with
-*the screen works* — corrected in that file this session.
+root cause of the confusion was `FE_IA_BUILD_MAP.md` §4 conflating _a screen exists at that route_ with
+_the screen works_ — corrected in that file this session.
 
 **Security — full CRUD** (104 → 872 lines). Users (create/edit, role assignment as toggle chips, status
 through the separate audited `POST /users/:id/status`, password through `/users/:id/password`; the edit
@@ -707,7 +710,7 @@ convention with any already-stored category merged in. **No Governance hub** —
 unrelated top-level paths, so hubbing would move every URL for cosmetics.
 
 **Control Tower drill-downs — now real.** Clicking a KPI card opened the mock's hardcoded `kpiData`
-(Bolloré, Sonara, truck LT-4471) even though the card *values* had been live since session 8. All four now
+(Bolloré, Sonara, truck LT-4471) even though the card _values_ had been live since session 8. All four now
 build from endpoints the user already reads — revenue → `/final-invoices` grouped by client, SLA →
 `/operations` scored `ata ≤ eta`, overdue → the new endpoint below, fleet → `/vehicles` — with **no new
 drill-down BE**. Each fetch catches independently, so a gated module yields that card's empty state rather
@@ -768,6 +771,7 @@ rendered; the session-6 "safe to delete" note is stale.
 buildable FE items. **Client `tsc` clean; changed BE files `node --check` + `eslint` clean.**
 
 **Idiom convergence.** Of the three apparent conflicts, only one was real:
+
 - **AI** — no work: his `ScreenAi`/`PraxisCopilot` already import this stream's `AiActions`/`useAiEnabled`,
   so they compose on the global gate rather than competing with it.
 - **Lists** — kept both (`ResourceList` self-fetches; `DataList` is presentational, and is now the default
@@ -779,6 +783,7 @@ buildable FE items. **Client `tsc` clean; changed BE files `node --check` + `esl
   because that hub's pages don't render `<HubTabs/>` and would otherwise lose their tabs.
 
 **Screens.**
+
 - **Module catalogue** built — `features/settings/catalogue-page.tsx` over `GET /catalogue/modules`
   (MOD-67 view, read-only): group chips, search, counts, link to the permission matrix.
 - **Business setup retired** — it duplicated the Corporate entities editor; the route now redirects to
@@ -805,6 +810,7 @@ clean on all BE files; `tsc --noEmit -p client` clean.** `npm run lint`/`test`/`
 two new migrations** remain the authoritative Windows checks (sandbox can't run the DB tests).
 
 **Part A — FE follow-ons (all `tsc`-clean):**
+
 - **Reference pickers → `SearchSelect`** across sales/commercial/finance/settings/portal (meeting,
   opportunity, proposal entity/client, quotation entity, pricing-variance, credit-note entity/client/
   reversed-invoice, bank-account, portal client-scope, opportunity win-form). Added an optional
@@ -825,6 +831,7 @@ two new migrations** remain the authoritative Windows checks (sandbox can't run 
   built; `FE_IA_BUILD_MAP.md` corrected (no rebuild).
 
 **Part B — pending BE jobs (BE + FE):**
+
 - **Dashboard KPI aggregates.** `dashboard.repo.js kpis()` gained guarded `revenue_final_ttc`
   (Σ locked FINAL invoice TTC), `revenue_currency`, `fleet_active`/`fleet_total`, `sla_on_time_pct`
   (dossier `ata ≤ eta`; NULL-preserving `num()` helper). `features/dashboard.tsx` feeds the Control
@@ -860,7 +867,7 @@ send → cleanup, capturing ids) and made **`POST /auth/refresh`** capture the r
 portal / settings; the FS colleague owns finance + operations). Agreed a funnel model with the user
 — **marketing → leads + opportunities → sales** — and built the whole lane against the already-merged
 BE modules. Design pulled from the user's Pixie "Hub" CRM screen recording (`Recording 2026-07-17`):
-its *layout* (tabbed CRM, filter chips, avatar list-rows, segmented controls, metric strips) reused
+its _layout_ (tabbed CRM, filter chips, avatar list-rows, segmented controls, metric strips) reused
 but driven by the app's `--primary` tokens, not the mock's crimson — so every screen re-tints per
 tenant. All wired to live endpoints; **in-sandbox `tsc --noEmit` clean throughout; `npm run lint` +
 `npm run build --prefix client` pass on Windows (user-confirmed).**
@@ -871,6 +878,7 @@ tenant. All wired to live endpoints; **in-sandbox `tsc --noEmit` clean throughou
 Quotations needs `commercial.quotation`; portal external views need `portal.client|investor|audit`.
 
 **Sales & CRM funnel — `client/src/features/sales/pages.tsx` (all six):**
+
 - **Leads & intake** (`/sales/leads`, MOD-20) — two-tab (Leads + Inbound intake). Leads = Pixie
   Clients-tab layout (search + status chips + avatar rows) → capture/edit, advance
   (`/transition` → CONTACTED/QUALIFIED/LOST), **Convert** (`/convert`, QUALIFIED→client_master).
@@ -902,6 +910,7 @@ by every sales/commercial/vault/portal/dashboard screen (was inline in `sales/pa
 
 **Commercial group — `client/src/features/commercial/pages.tsx` (FS colleague verifying finance
 correctness):**
+
 - **Quotations** (`/commercial/quotations`, MOD-27) — **gated `commercial.quotation`** ("enable it"
   empty state when off). List + chips; detail (line table + HT/TTC from BE); create/edit draft with
   a line editor incl. a **débours** (untaxed pass-through) flag; lifecycle DRAFT→SENT (entity →
@@ -916,6 +925,7 @@ correctness):**
   optional quoted-price/actual-cost) → `/compute`.
 
 **Vault hubs — `client/src/features/vault/pages.tsx`:**
+
 - **Reports** (`/vault/reports`, MOD-63) — **gated `reporting`**. Catalogue (10 producers) → Run
   modal (optional from/to/as_of/period_code/dossier_id → generic table/JSON result → Save); Saved
   tab (run via `/saved/:id/run`, delete). Scheduling stays in Settings; tile picker deferred.
@@ -923,6 +933,7 @@ correctness):**
   severity chips + include-resolved toggle + Resolve (`/:id/resolve`); Rules tab = rule catalogue.
 
 **Portal — `client/src/features/portal/pages.tsx`:**
+
 - **Portal access** (`/portal/access`, MOD-67) — grant list + Grant (client/investor/auditor; CLIENT
   needs a client scope) + Revoke (`/access/:id/revoke`); Preview buttons GET the external views
   (`/portals/client|investor|auditor`), each gated `portal.*` → graceful "enable it" state.
@@ -948,10 +959,11 @@ updated screen-by-screen.
 
 **Context.** Follow-on to the write-forms round below. Gap audit found three actions
 whose **backend already exists** but had no UI; wired those. (Two other gaps — tax
-declaration *filing* and credit-note *creation* — are left because they have **no BE
+declaration _filing_ and credit-note _creation_ — are left because they have **no BE
 endpoint** either, so they're not just-wire-a-button; noted in the backlog.)
 
 **Wired (`client/src/features/finance/pages.tsx` + `client/src/lib/finance-api.ts`).**
+
 - **Journal reverse** (`POST /journal-entries/:id/reverse`, MOD-55 approve):
   `JournalsPage` converted from a generic `ResourceList` to a real table; validated
   entries (and not themselves reversals — `corrects_entry_id` shown as a "reversal"
@@ -999,6 +1011,7 @@ artifact is stripped — see the sandbox gotcha; validate on Windows with
 `npm run build --prefix client`).
 
 **New shared UI + plumbing.**
+
 - `client/src/components/ui/modal.tsx` — portal-based `Modal` (backdrop + Escape +
   body-scroll-lock), a `Field` label/hint/error wrapper, and a native `Select`
   styled to match `Input`. First reusable dialog in the client.
@@ -1013,6 +1026,7 @@ artifact is stripped — see the sandbox gotcha; validate on Windows with
   button and re-fetch after a successful write. Backwards-compatible.
 
 **Forms wired (`client/src/features/finance/pages.tsx`).**
+
 - **Post journal entry** (`POST /journal-entries`, MOD-55): multi-line editor with
   per-line account (postable-only) + debit/credit (mutually exclusive inputs), live
   balance indicator (blocks submit until Dr=Cr and >0), entity/journal-code (datalist
@@ -1051,12 +1065,13 @@ Phases 0–4. Reconciled `WORK_TO_BE_DONE.md` against the actual modules by pres
 re-audit — noted as such inline).
 
 **What the audit found landed (previously all-unchecked in the backlog):**
+
 - **Phase 1 (accounting spine) — substantially done:** COA + financial dictionary +
   determination/posting-rules, journal engine + invariants (`journal_entry.rules.js`
-  + ledger triggers), reversal-not-edit, régie aging, tax jurisdiction (versioned
-  tax_code), statements (Bilan/CR/TAFIRE), tax center, PDF worker + vault + QR,
-  per-tenant SMTP. Backed by `journal-*`, `final-invoice-lifecycle`, `invoicing`,
-  `statements`, `tax-center`, `determination`, `numbering` suites.
+  - ledger triggers), reversal-not-edit, régie aging, tax jurisdiction (versioned
+    tax_code), statements (Bilan/CR/TAFIRE), tax center, PDF worker + vault + QR,
+    per-tenant SMTP. Backed by `journal-*`, `final-invoice-lifecycle`, `invoicing`,
+    `statements`, `tax-center`, `determination`, `numbering` suites.
 - **Phase 2 (commercial cycle) — substantially done:** master data
   (entity/employee/client/supplier), currency+FX, dossier + service types, milestone
   engine (versioned templates), transit/delivery, costing + cost-tracking + régie
@@ -1091,6 +1106,7 @@ the real files through the file API. The definitive gate is `npm run lint`
 equivalent is `npm run build --prefix client` (tsc).
 
 ### Backend — 21 tenant modules brought from stub → full convention
+
 Each module now ships the 7-file layout (repo/service/controller/routes/validator/
 events/**ai.js**), RBAC-gated routers (`requirePermission`), real Zod validators,
 and keeps **all SQL in repos** (services do logic + `emitEvent`/`audit` only).
@@ -1118,6 +1134,7 @@ dedicated events (`*.status_changed` etc.) + audit. Multi-table modules
 GL legs of fuel_log/work_order (`entry_id`) and leave salary-advance (→4211).
 
 ### Frontend (`client/`)
+
 Added `features/fleet/pages.tsx` (7), `features/wms/pages.tsx` (6),
 `features/hr/pages.tsx` (8) on the existing `ResourceList` pattern; wired 26
 routes in `app/app.tsx`; added **Fleet**, **Warehouse** and **People & HR** nav
@@ -1127,6 +1144,7 @@ has 37 screens. Page components follow the repo pattern and can be superseded by
 the Lovable rebuild without touching routes/registry.
 
 ### Postman
+
 `postman/praxis-ls.phase0.postman_collection.json` gained "9 · Fleet" (17 reqs)
 and "10 · WMS" (21 reqs) folders under `/api/tenant/*`, chaining created IDs
 through the lifecycle actions via test-script variable capture.
@@ -1142,6 +1160,7 @@ session before handover to Phase 1 (see `doc/HANDOVER.md`).
 treat the first `npm run build --prefix client` as the real typecheck.
 
 ### Client scaffold (`client/`)
+
 Vite + React 18 + TS **PWA** (React Router, Tailwind v3 + the Lovable mock's
 oklch tokens, hand-rolled shadcn-style primitives — minimal deps). api-client
 (Bearer + refresh-on-401 + `X-Praxis-Env`, unwraps `{data}`), token store, auth
@@ -1151,6 +1170,7 @@ icons, password reveal, segmented 2FA OTP). Single-origin prod serving wired in
 `src/server.js` (Express serves `client/dist` when present).
 
 ### White-label (backend + frontend)
+
 New `src/modules/branding/`: **public** `GET /branding` (Host-resolved, pre-auth
 so the login is branded) + **gated** `PUT /branding` (MOD-70) upserting `setting`
 section='appearance'. FE applies colour/logo/name via CSS variables
@@ -1163,26 +1183,31 @@ fallback, proxied by Vite), and `POST /branding/logo` stores to
 disk + logged-out login shows it).
 
 ### Theming + boot polish
+
 Light/dark/**system** toggle (`lib/theme-mode.ts` + top-bar control; Tailwind
 `darkMode:"class"`, applied pre-paint). Branded **boot splash** (`boot-gate.tsx`
-+ `splash-screen.tsx`) inspired by the JBS Praxis "Pixie Hub" loader — centered
-glowing logo + progress, themed by tenant colour. Two fixes after user testing:
-(1) the splash **withholds identity until branding is `ready`** so the default
-"Praxis LS" never flashes before the tenant's; (2) the login defers autofocus via
-a `bootSignal` until the splash is gone (was popping the browser autofill over
-the splash).
+
+- `splash-screen.tsx`) inspired by the JBS Praxis "Pixie Hub" loader — centered
+  glowing logo + progress, themed by tenant colour. Two fixes after user testing:
+  (1) the splash **withholds identity until branding is `ready`** so the default
+  "Praxis LS" never flashes before the tenant's; (2) the login defers autofocus via
+  a `bootSignal` until the splash is gone (was popping the browser autofill over
+  the splash).
 
 ### Permission grant-matrix (the real RBAC editor)
+
 Backend: new tenant `GET /catalogue/modules` (reads `platform.module_catalogue`
 via the platform pool, gated MOD-67 view) and `PUT /permissions/grant` — an
 upsert by `(role_id, module_key)` (`ON CONFLICT`), which invalidates the grant
 cache and emits `permission.changed` (→ Watch-the-Watcher). Frontend
 `permission-matrix-page.tsx`: roles across the top, modules down the side grouped
-+ collapsible by `group_key`, each cell five toggles (R/C/U/D/A) mapping to the
-`permission` booleans; optimistic upsert with revert-on-error. Wired at
-`/security/permissions`.
+
+- collapsible by `group_key`, each cell five toggles (R/C/U/D/A) mapping to the
+  `permission` booleans; optimistic upsert with revert-on-error. Wired at
+  `/security/permissions`.
 
 ### Not done / deferred (see HANDOVER.md)
+
 Auth-gated download route for sensitive vault files; S3 storage driver; platform
 console UI; Test/Live toggle; per-tenant PWA manifest; `scopeColumn` adoption;
 Line-Manager application; the Live self-grant block.
@@ -1191,7 +1216,7 @@ Line-Manager application; the Live self-grant block.
 
 ## 2026-07-09 — Phase 0 close-out: /users gating, inactivity, Watch-the-Watcher, capabilities, event engine, CI + setup split
 
-**Phase:** 0 (Foundations). Goal: close the remaining *backend* Phase 0 gaps
+**Phase:** 0 (Foundations). Goal: close the remaining _backend_ Phase 0 gaps
 (everything not blocked on `client/`), fix a setup blocker the user hit, and
 make local-vs-Docker setup unambiguous. Frontend-blocked items (platform
 console UI, sandbox toggle/banner, white-label rendering) are untouched — still
@@ -1228,7 +1253,7 @@ when idle beyond the window. `last_seen_at` is bumped on every refresh, so an
 active client keeps its session; an idle one (no refresh) gets logged out on its
 next attempt. Same tradeoff already documented for remote kill: an
 already-issued access token stays valid until its own ≤15-min expiry — this
-blocks the *refresh* that extends the session, it doesn't retroactively revoke a
+blocks the _refresh_ that extends the session, it doesn't retroactively revoke a
 live access token. Refresh is the only place session state is consulted (access
 tokens are stateless and carry no `sid`), so it's the correct enforcement point.
 
@@ -1265,7 +1290,7 @@ The columns existed (`role.is_line_manager`, the `LINE_MANAGER` capability code,
 `user_capability`) but nothing resolved them. Added
 `identity-cache.getUserCapabilities()` (30s-cached like grants/scope; returns
 `{capabilities[], is_line_manager}` where `is_line_manager` is true if any role
-flags it *or* the user holds `LINE_MANAGER`), invalidated alongside the other
+flags it _or_ the user holds `LINE_MANAGER`), invalidated alongside the other
 per-user cache keys. Added `middleware/rbac.requireCapability(code)` — a gate for
 the segregation-of-duties overlay, usable independently of the module CRUD grant
 (`requireCapability('APPROVER')` etc.), with the same CEO bypass; it also
@@ -1280,6 +1305,7 @@ New `src/modules/workflow/` (flat module, gated `authMiddleware` +
 engine" shares MOD-67 until it earns its own module_key). The schema and the
 emit side already existed; this adds the missing admin surface so event types
 and approval chains stop being DB-hand-edits:
+
 - `GET/POST /event-types` — list + register (upsert on the UNIQUE key, idempotent).
 - `GET/POST /workflows`, `GET/PATCH /workflows/:id` — a workflow binds to an
   **approvable** event type (rejected otherwise); detail returns its ordered steps.
@@ -1287,11 +1313,11 @@ and approval chains stop being DB-hand-edits:
   steps (role/capability/scope + amount-threshold routing, matching the
   `workflow_step` schema).
 - `GET /approvals` — read-only runtime `approval_task` queue (`?status=`).
-Every write emits an event + writes the immutable audit trail, same contract as
-the generic `makeService` path (hand-written because it spans four tables). Zod
-validators on the write bodies; the module's own event keys (`workflow.created`
-etc.) are descriptive labels (`event_log.event_type_key` has no FK, so unseeded
-keys are fine).
+  Every write emits an event + writes the immutable audit trail, same contract as
+  the generic `makeService` path (hand-written because it spans four tables). Zod
+  validators on the write bodies; the module's own event keys (`workflow.created`
+  etc.) are descriptive labels (`event_log.event_type_key` has no FK, so unseeded
+  keys are fine).
 
 ### F — CI + the local/Docker setup split (the user's actual blocker)
 
@@ -1301,9 +1327,10 @@ had `REDIS_URL` defined **twice** — `redis://localhost:6379` then
 so the app tried to resolve the Docker service name `redis` on a local run.
 `NODE_ENV=production` was also set locally (hence `"env":"production"` in the
 logs). Fixes:
+
 - `.env`: removed the duplicate `REDIS_URL` (localhost wins), set
   `NODE_ENV=development`.
-- `docker-compose.yml`: so the *same* `.env` works for both, the `api`/`worker`
+- `docker-compose.yml`: so the _same_ `.env` works for both, the `api`/`worker`
   `environment:` blocks now override `REDIS_URL=redis://redis:6379` (the code
   reads `REDIS_URL`, **not** the dead `REDIS_HOST` that was there — removed) plus
   `NODE_ENV=production` and `PORT`. Also fixed two real compose bugs found in
@@ -1393,6 +1420,7 @@ isn't there.
 
 Two bugs found while building the features below, both fixed as
 prerequisites rather than worked around:
+
 - `src/config/redis.js` read `config.REDIS_HOST/PORT/PASSWORD/DB` — none
   of which exist in `env.js`'s Zod schema (only `REDIS_URL` does). Flagged
   as dead config drift in `RBAC_SECURITY_KICKOFF.md` and left alone at the
@@ -1422,6 +1450,7 @@ existing design; Redis is purely a fast index, best-effort like
 breaks login/logout).
 
 `session` module gained two actions generic CRUD doesn't cover:
+
 - `GET /sessions/mine` — self-scoped, no MOD-68 grant needed, just
   authentication. Matches the RBAC journey doc's "Everyone... only their
   own sessions."
@@ -1485,6 +1514,7 @@ not something to bulk-guess in one pass.
 `audit_ledger` module (already MOD-69-gated from part A) gained the
 maker-checker restore flow `WORK_TO_BE_DONE.md` flagged as entirely
 missing:
+
 - `GET /audit/soft-deletes` — open (unrestored) soft-deletes.
 - `POST /audit/soft-deletes/:id/request-restore` — step 1, flags intent.
 - `POST /audit/soft-deletes/:id/restore` — step 2, a **different** admin
@@ -1529,6 +1559,7 @@ two real conflicts with the user, then wrote
 `migrations/seeds/9021_seed_default_permissions.sql`.
 
 **Conflicts found and how they were resolved (user's call, not mine):**
+
 1. `MOD-67` is the only catalogue entry for **both** "IAM & user access"
    and "AI & event engine" (`feature_catalogue` ties
    `ai.assistant`/`ai.assistant.backend`/`ai.vectorization` to MOD-67 as a
@@ -1564,26 +1595,26 @@ module_keys.
 Full role→module grant table (● full, ◑ create/edit, ○ view, ▲ approve,
 – none — same legend as the source doc):
 
-| Module group (source doc row) | MOD-xx codes | SA | CEO | MGT | FIN | ACC | SAL | OPS | WH | FLT | PRC | HR |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Tenant / company setup | 70 | ● | ○ | ○ | – | – | – | – | – | – | – | – |
-| IAM & user access | 67, 68 | ● | ▲ | ○ | – | – | – | – | – | – | – | – |
-| Master data & dictionary | 01, 03, 04, 05, 09, 10 | ● | ○ | ○ | ◑ | ● | ○ | ○ | – | – | – | – |
-| Chart of accounts / tax | 06, 07, 08 | ● | ○ | ○ | ◑ | ● | – | – | – | – | – | – |
-| HR & payroll | 02, 11–19 | ○ | ○ | ○ | ○ | – | – | – | – | – | – | ● |
-| Sales & CRM | 20–26 | ○ | ○ | ▲ | ○ | – | ● | – | – | – | – | – |
-| Commercial / pricing | 27, 28 | ○ | ○ | ▲ | ▲ | – | ◑ | – | – | – | – | – |
-| Operations | 29–32 | ○ | ○ | ○ | ○ | – | – | ● | ○ | ○ | – | – |
-| Warehouse (WMS) | 33–38 | ○ | ○ | ○ | – | – | – | ○ | ● | – | – | – |
-| Fleet | 39–45 | ○ | ○ | ○ | ○ | – | – | ○ | – | ● | – | – |
-| Ops costing | 46–49 | ○ | ○ | ▲ | ● | ○ | – | ◑ | – | – | – | – |
-| Finance & treasury | 50–54 | ○ | ▲ | ▲ | ● | ● | – | – | – | – | – | – |
-| Accounting / GL / statements | 55–59 | ○ | ○ | ○ | ○ | ● | – | – | – | – | – | – |
-| Procurement | 60–62 | ○ | ○ | ▲ | ▲ | – | – | ○ | ○ | – | ● | – |
-| Document vault & compliance | 64, 65, 66 | ● | ○ | ○ | ○ | ○ | ◑ | ◑ | ◑ | ◑ | ◑ | ◑ |
-| Security / God Mode purge | 69, 00B | ○ | ● | – | – | – | – | – | – | – | – | – |
-| ~~AI & event engine~~ | (MOD-67 conflict) | — not seeded, see above — |
-| ~~Comms & portals admin~~ | (no module_key) | — not seeded, see above — |
+| Module group (source doc row) | MOD-xx codes           | SA                        | CEO | MGT | FIN | ACC | SAL | OPS | WH  | FLT | PRC | HR  |
+| ----------------------------- | ---------------------- | ------------------------- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Tenant / company setup        | 70                     | ●                         | ○   | ○   | –   | –   | –   | –   | –   | –   | –   | –   |
+| IAM & user access             | 67, 68                 | ●                         | ▲   | ○   | –   | –   | –   | –   | –   | –   | –   | –   |
+| Master data & dictionary      | 01, 03, 04, 05, 09, 10 | ●                         | ○   | ○   | ◑   | ●   | ○   | ○   | –   | –   | –   | –   |
+| Chart of accounts / tax       | 06, 07, 08             | ●                         | ○   | ○   | ◑   | ●   | –   | –   | –   | –   | –   | –   |
+| HR & payroll                  | 02, 11–19              | ○                         | ○   | ○   | ○   | –   | –   | –   | –   | –   | –   | ●   |
+| Sales & CRM                   | 20–26                  | ○                         | ○   | ▲   | ○   | –   | ●   | –   | –   | –   | –   | –   |
+| Commercial / pricing          | 27, 28                 | ○                         | ○   | ▲   | ▲   | –   | ◑   | –   | –   | –   | –   | –   |
+| Operations                    | 29–32                  | ○                         | ○   | ○   | ○   | –   | –   | ●   | ○   | ○   | –   | –   |
+| Warehouse (WMS)               | 33–38                  | ○                         | ○   | ○   | –   | –   | –   | ○   | ●   | –   | –   | –   |
+| Fleet                         | 39–45                  | ○                         | ○   | ○   | ○   | –   | –   | ○   | –   | ●   | –   | –   |
+| Ops costing                   | 46–49                  | ○                         | ○   | ▲   | ●   | ○   | –   | ◑   | –   | –   | –   | –   |
+| Finance & treasury            | 50–54                  | ○                         | ▲   | ▲   | ●   | ●   | –   | –   | –   | –   | –   | –   |
+| Accounting / GL / statements  | 55–59                  | ○                         | ○   | ○   | ○   | ●   | –   | –   | –   | –   | –   | –   |
+| Procurement                   | 60–62                  | ○                         | ○   | ▲   | ▲   | –   | –   | ○   | ○   | –   | ●   | –   |
+| Document vault & compliance   | 64, 65, 66             | ●                         | ○   | ○   | ○   | ○   | ◑   | ◑   | ◑   | ◑   | ◑   | ◑   |
+| Security / God Mode purge     | 69, 00B                | ○                         | ●   | –   | –   | –   | –   | –   | –   | –   | –   | –   |
+| ~~AI & event engine~~         | (MOD-67 conflict)      | — not seeded, see above — |
+| ~~Comms & portals admin~~     | (no module_key)        | — not seeded, see above — |
 
 **Not yet run against a real Postgres** — no `psql`/local DB in this
 sandbox. Verified instead by: cross-checking every role code used against
@@ -1609,7 +1640,7 @@ on the same entity. Folded `auth/`'s six files into `app_user/`'s six files
 one-for-one, per CONVENTIONS.md's module layout (`.repo/.service/.controller
 /.routes/.validator/.events`), then deleted `security/auth/`.
 
-**Why:** auth *is* app_user — login/session issuance reads and writes the
+**Why:** auth _is_ app_user — login/session issuance reads and writes the
 `app_user` table directly (`auth.repo.js`'s `findByEmail`,
 `recordLoginSuccess/Failure` were already raw SQL against `app_user`, not a
 separate table). Two module directories for one entity was incidental
@@ -1617,6 +1648,7 @@ history (auth was bolted on later in the RBAC kickoff), not a deliberate
 split.
 
 **How, per file:**
+
 - `app_user.repo.js` — generic CRUD repo (`makeRepo`) spread together with
   auth's `findByEmail`/`recordLoginSuccess`/`recordLoginFailure`/
   `createSession`/`getActiveSession`/`touchSession`/`killSession`.
@@ -1646,6 +1678,7 @@ split.
 
 **Explicitly out of scope for this change** (confirmed with the user
 before starting):
+
 - `app_user`'s CRUD routes (`/users/*`) remain **ungated** — no
   `authMiddleware`/`requirePermission`, same gap already flagged for
   `iam_role`/`session`/`audit_ledger`/`setting` in `WORK_TO_BE_DONE.md`.
@@ -1654,6 +1687,7 @@ before starting):
 - No other Phase 0 items were touched this session.
 
 **Verification:**
+
 - Grepped the full repo for `security/auth`, `security\auth`, and
   `auth.(repo|service|controller|routes|validator|events)` before starting
   — zero references outside the auth module's own directory, confirming

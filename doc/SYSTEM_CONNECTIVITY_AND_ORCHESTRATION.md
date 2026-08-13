@@ -2,7 +2,7 @@
 
 **Status:** analysis + draft plan for discussion.
 **Read alongside:** `DB_ARCHITECTURE.md` (§2 config→execution, §6 operations spine), `PHASE_MODULE_MAP.md`, `MODULE_DEPTH_AUDIT.md`, `WORK_TO_BE_DONE_NEXT.md`, the PRD Master Functional Spec v2, and the OHADA/Tax KB.
-**One-line thesis:** the system is *integrated by a shared cost object and reporting*, but not yet *orchestrated end-to-end by events* — that missing write-time automation is what makes the modules feel disconnected.
+**One-line thesis:** the system is _integrated by a shared cost object and reporting_, but not yet _orchestrated end-to-end by events_ — that missing write-time automation is what makes the modules feel disconnected.
 
 ---
 
@@ -27,25 +27,25 @@ At the data layer, the linkage is real — not cosmetic. The margin math (`reven
 
 Across the whole schema an **editable config layer feeds an append-only, invariant-guarded execution layer** (DB_ARCHITECTURE §2):
 
-| Concern | Config layer (editable) | Execution layer (append-only) |
-|---|---|---|
-| Operations | `service_type`, `milestone_template` | `dossier`, `milestone_instance` |
+| Concern    | Config layer (editable)                                            | Execution layer (append-only)                    |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------------ |
+| Operations | `service_type`, `milestone_template`                               | `dossier`, `milestone_instance`                  |
 | Accounting | `chart_of_accounts`, `dictionary_item`, `posting_rule`, `tax_code` | `journal_entry` / `journal_line` (`.dossier_id`) |
-| Access | `role`, `capability`, `scope`, `permission`, `field_visibility` | endpoint/field checks |
-| Workflow | `event_type`, `workflow`, `workflow_step` | `approval_task` |
-| Pay | `allowance_type`, `payroll_component` | `payroll_run` / `payroll_run_item` |
+| Access     | `role`, `capability`, `scope`, `permission`, `field_visibility`    | endpoint/field checks                            |
+| Workflow   | `event_type`, `workflow`, `workflow_step`                          | `approval_task`                                  |
+| Pay        | `allowance_type`, `payroll_component`                              | `payroll_run` / `payroll_run_item`               |
 
 Platform tier (Praxis console) decides plans/features; tenant tier (Settings) tunes within them. Nothing statutory is hard-coded.
 
 ## 3. The three pieces of connective tissue
 
 1. **`dossier_id`** — the shared analytical dimension threading sales → operations → costing → procurement → invoicing → GL.
-2. **The Universal Event Engine** — `event_type` / `workflow` / `workflow_step` / `event_log` / `approval_task`. Modules register events; approval chains are no-code; the same layer gates AI actions. *This is the intended orchestration backbone.*
+2. **The Universal Event Engine** — `event_type` / `workflow` / `workflow_step` / `event_log` / `approval_task`. Modules register events; approval chains are no-code; the same layer gates AI actions. _This is the intended orchestration backbone._
 3. **360° aggregation + reporting (MOD-63) + the immutable ledger** — the rollup/read and audit layer.
 
 ## 4. The golden thread (stage by stage)
 
-1. **Sales/CRM** — inbound intake → lead → opportunity (pipeline) → proposal → quotation; winning an opportunity *can* open a dossier.
+1. **Sales/CRM** — inbound intake → lead → opportunity (pipeline) → proposal → quotation; winning an opportunity _can_ open a dossier.
 2. **Operations** — dossier opens; its `service_type` selects a milestone template → milestone instances; transit orders + delivery notes captured, all tagged `dossier_id`.
 3. **Commercial** — margin / extra-charge simulators + quotation set the planned price; pricing-variance compares quoted vs actual.
 4. **Costing** — planned cost lines (service vs débours), approved under SoD; `cost_tracking` writes **actual** `cost_entry` rows tagged `dossier_id`.
@@ -57,26 +57,26 @@ Platform tier (Praxis console) decides plans/features; tenant tier (Settings) tu
 
 ## 5. What's real vs what's thin — the orchestration gap
 
-Per-module depth is genuinely built (payroll statutory compute, OHADA ledger, receivables FIFO, 3-way match, quotation lifecycle — see `MODULE_DEPTH_AUDIT.md`). **What's thin is the write-time orchestration *between* stages.** Handoff-by-handoff:
+Per-module depth is genuinely built (payroll statutory compute, OHADA ledger, receivables FIFO, 3-way match, quotation lifecycle — see `MODULE_DEPTH_AUDIT.md`). **What's thin is the write-time orchestration _between_ stages.** Handoff-by-handoff:
 
-| Handoff | Linked by `dossier_id`? | Auto or manual today? | Cost flows back to dossier/GL? |
-|---|---|---|---|
-| Opportunity won → dossier | n/a | **Manual/opt-in** (`opportunity.win({ createDossier })` flag) | — |
-| Quotation accepted → costing/invoice | Yes | Manual | — |
-| Costing approved → draft final invoice | Yes | **Manual** | n/a |
-| PO → GRN → supplier invoice (3-way) → GL | Yes | Semi (match posts GL) | Partial — GL yes; `cost_entry` not auto |
-| Fuel log → dossier cost | Yes (stores `dossier_id`) | **No posting** | **No** (KB §8.7 unmet) |
-| Payroll run posted → dossier labor cost | No | n/a | **No** (GL only) |
-| Fleet dispatch / work order cost → cost_entry | Partial | **No** | **No** |
-| WMS outbound/inbound → milestone / cost | Stores `dossier_id` | **No** | **No** |
-| Milestones all done → dossier COMPLETED | Yes | **Manual** | n/a |
-| Invoice paid in full → dossier close | Yes | **Manual** | n/a |
+| Handoff                                       | Linked by `dossier_id`?   | Auto or manual today?                                         | Cost flows back to dossier/GL?          |
+| --------------------------------------------- | ------------------------- | ------------------------------------------------------------- | --------------------------------------- |
+| Opportunity won → dossier                     | n/a                       | **Manual/opt-in** (`opportunity.win({ createDossier })` flag) | —                                       |
+| Quotation accepted → costing/invoice          | Yes                       | Manual                                                        | —                                       |
+| Costing approved → draft final invoice        | Yes                       | **Manual**                                                    | n/a                                     |
+| PO → GRN → supplier invoice (3-way) → GL      | Yes                       | Semi (match posts GL)                                         | Partial — GL yes; `cost_entry` not auto |
+| Fuel log → dossier cost                       | Yes (stores `dossier_id`) | **No posting**                                                | **No** (KB §8.7 unmet)                  |
+| Payroll run posted → dossier labor cost       | No                        | n/a                                                           | **No** (GL only)                        |
+| Fleet dispatch / work order cost → cost_entry | Partial                   | **No**                                                        | **No**                                  |
+| WMS outbound/inbound → milestone / cost       | Stores `dossier_id`       | **No**                                                        | **No**                                  |
+| Milestones all done → dossier COMPLETED       | Yes                       | **Manual**                                                    | n/a                                     |
+| Invoice paid in full → dossier close          | Yes                       | **Manual**                                                    | n/a                                     |
 
 **Reading:** modules line up along the dossier and aggregate correctly in read views, but an operator must manually create each next artifact, and several operational costs (fuel, labor, dispatch, WMS) never flow back into the dossier's actual cost — so the margin picture is structurally incomplete.
 
 ## 6. Root cause: `event_log` is written but never consumed
 
-`shared/events/emit.emitEvent` writes an `event_log` row and fans out Watch-the-Watcher notifications **inline** — and that's all. Nothing *consumes* `event_log` to trigger cross-module actions. The "outbox dispatcher replaying a committed event" is referenced in a comment (`config/database.js`) but **does not exist**: no consumer, no `processed_at` marker, no handler registry. `event_log` today is an audit/notification record, not an automation bus.
+`shared/events/emit.emitEvent` writes an `event_log` row and fans out Watch-the-Watcher notifications **inline** — and that's all. Nothing _consumes_ `event_log` to trigger cross-module actions. The "outbox dispatcher replaying a committed event" is referenced in a comment (`config/database.js`) but **does not exist**: no consumer, no `processed_at` marker, no handler registry. `event_log` today is an audit/notification record, not an automation bus.
 
 That single absence is why the Event Engine — designed to be the connective backbone — isn't actually connecting anything at write time.
 
@@ -91,13 +91,13 @@ That single absence is why the Event Engine — designed to be the connective ba
 Two options:
 
 - **Sync in-transaction handlers** — invoke the next-stage write inside the origin transaction. Atomic and immediate, but couples modules, lengthens transactions, and a downstream failure rolls back the origin business op. Rejected as the default.
-- **Async outbox** (recommended, and the design DB_ARCHITECTURE already assumes) — `event_log` *is* the outbox. A dispatcher worker reads unprocessed rows and runs registered handlers, each in its **own** tenant-scoped transaction, idempotently, with retry + dead-letter. Decoupled, resilient, replayable. Eventual consistency is acceptable here (seconds).
+- **Async outbox** (recommended, and the design DB_ARCHITECTURE already assumes) — `event_log` _is_ the outbox. A dispatcher worker reads unprocessed rows and runs registered handlers, each in its **own** tenant-scoped transaction, idempotently, with retry + dead-letter. Decoupled, resilient, replayable. Eventual consistency is acceptable here (seconds).
 
 ## A1. Foundation (build once)
 
-1. **Consumption marking — a separate `event_dispatch` table.** `event_log` is **append-only** (a `forbid_mutation` trigger blocks UPDATE/DELETE), so the consumption marker CANNOT be a column on it. Instead `event_dispatch(event_id → DONE|FAILED|DEAD, attempts, last_error)` tracks processing; the queue = event_log rows with no dispatch row, or a `FAILED` row under the retry cap. `DEAD` = dead-letter. *(Built: migration `0462_event_orchestration.sql`.)*
-2. **Handler registry.** `event_type_key → [{ handler_key, feature, run }]`; a module ships a handler and registers it in `src/orchestration/handlers/index.js`, mirroring the `*.ai.js` manifest convention. *(Built: `src/orchestration/registry.js`.)*
-3. **Outbox dispatcher + scheduler.** `dispatchPending(client)` runs on a tenant connection (BullMQ job `orchestration-dispatch` via `withTenantConnection`), invokes each event's handlers, records the outcome, retries `FAILED` up to the cap, then `DEAD`. **Handlers own their own transaction** (the module services already `BEGIN/COMMIT`), so the dispatcher does NOT wrap them in a shared tx — that would collide with a service's inner `COMMIT`; at-least-once + handler idempotency is what makes this safe. A BullMQ **repeatable `orchestration-scheduler`** (every `ORCHESTRATION_DISPATCH_INTERVAL_MS`, default 30s) enumerates LIVE tenants (`registry.listActiveTenants`) and fans a dispatch job per tenant × {live, sandbox}. *(Built: `src/orchestration/dispatcher.js`, `src/jobs/handlers/orchestration-dispatch.js`, `src/jobs/handlers/orchestration-scheduler.js`, scheduled in `jobs/workers.js`.)*
+1. **Consumption marking — a separate `event_dispatch` table.** `event_log` is **append-only** (a `forbid_mutation` trigger blocks UPDATE/DELETE), so the consumption marker CANNOT be a column on it. Instead `event_dispatch(event_id → DONE|FAILED|DEAD, attempts, last_error)` tracks processing; the queue = event_log rows with no dispatch row, or a `FAILED` row under the retry cap. `DEAD` = dead-letter. _(Built: migration `0462_event_orchestration.sql`.)_
+2. **Handler registry.** `event_type_key → [{ handler_key, feature, run }]`; a module ships a handler and registers it in `src/orchestration/handlers/index.js`, mirroring the `*.ai.js` manifest convention. _(Built: `src/orchestration/registry.js`.)_
+3. **Outbox dispatcher + scheduler.** `dispatchPending(client)` runs on a tenant connection (BullMQ job `orchestration-dispatch` via `withTenantConnection`), invokes each event's handlers, records the outcome, retries `FAILED` up to the cap, then `DEAD`. **Handlers own their own transaction** (the module services already `BEGIN/COMMIT`), so the dispatcher does NOT wrap them in a shared tx — that would collide with a service's inner `COMMIT`; at-least-once + handler idempotency is what makes this safe. A BullMQ **repeatable `orchestration-scheduler`** (every `ORCHESTRATION_DISPATCH_INTERVAL_MS`, default 30s) enumerates LIVE tenants (`registry.listActiveTenants`) and fans a dispatch job per tenant × {live, sandbox}. _(Built: `src/orchestration/dispatcher.js`, `src/jobs/handlers/orchestration-dispatch.js`, `src/jobs/handlers/orchestration-scheduler.js`, scheduled in `jobs/workers.js`.)_
 4. **Seed the event keys.** `event_type` keys are free-form citext today; seed the canonical ones the handlers subscribe to (`opportunity.won`, `costing.approved`, `grn.received`, `fuel_log.recorded`, `payroll_run.posted`, `invoice.posted`, `invoice.paid`, `milestones.completed`) with `is_security_critical=false`.
 
 ## A2. Cross-cutting rules every handler must honor
@@ -112,18 +112,21 @@ Two options:
 ## A3. Handler catalog (the actual linkages), phased
 
 **Phase 1 — the core money flow (highest leverage):**
+
 - `opportunity.won` → **create dossier** (make win auto-open a dossier; keep a manual override for edge cases).
 - `costing.approved` → **draft final invoice** from the costing lines (service + débours), status DRAFT, awaiting SoD.
 - `grn.received` / `supplier_invoice.matched` → **create `cost_entry`** (actual cost) tagged `dossier_id` (idempotent on the source doc).
 - `invoice.posted` → ensure a receivable is open (verify current behaviour; wire if missing).
 
 **Phase 2 — operational costs flow back (fixes the margin gap):**
+
 - `fuel_log.recorded` → **`cost_entry`** tagged `dossier_id` (KB §8.7).
 - `fleet_dispatch` / `work_order` completion → **`cost_entry`**.
 - `payroll_run.posted` → dossier labor allocation where labor is dossier-attributable (else GL-only, explicitly).
 - `wms.outbound`/`inbound` completion → milestone advance and/or handling cost.
 
 **Phase 3 — lifecycle & status propagation:**
+
 - `delivery_note.captured` → advance the matching milestone.
 - `milestones.completed` → flag dossier ready to COMPLETE (prompt, not force).
 - `invoice.paid` (in full) → flag dossier ready to close.
@@ -131,6 +134,7 @@ Two options:
 ### A3 build status
 
 **Built** (`src/orchestration/handlers/`):
+
 - `opportunity.won → open-dossier` — idempotent (skips if already linked); coexists with the manual `win({createDossier})` path.
 - `dossier.created → instantiate-milestones` — stamps the service_type's milestone template onto a new dossier; skips cleanly on ALREADY_INSTANTIATED / NO_TEMPLATE / no service_type.
 - `costing.approved → draft-invoice` — DRAFT shell bound to dossier+client; one per dossier; no fabricated prices, SoD intact. **Sync primary** (in `costing.service`) + this async backstop share `ensureDraftForCosting`.

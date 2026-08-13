@@ -53,10 +53,12 @@ module.exports = {
 
   // ── Engine: connections ──
   autodiscover: asyncHandler(async (req, res) => res.json({ data: await service.autodiscover({ email: req.query.email }) })),
-  listConnections: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listConnections(c, req.query)) })),
+  listConnections: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listConnections(c, { ...req.query, ownerUserId: actor(req).user_id })) })),
   connect: asyncHandler(async (req, res) => res.status(201).json({ data: await req.identityDb((c) => service.connect(c, { ...req.body, actor: actor(req) })) })),
   testConnection: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.testConnection(c, req.params.id)) })),
   syncNow: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.syncConnection(c, req.params.id, { slug: req.tenant && req.tenant.slug })) })),
+  setDefaultMailbox: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.setDefaultMailbox(c, req.params.id, actor(req).user_id)) })),
+  recipients: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.searchRecipients(c, req.query.q)) })),
 
   // ── Engine: messages ──
   thread: asyncHandler(async (req, res) => res.json({ data: await req.identityDb((c) => service.listThread(c, req.query)) })),

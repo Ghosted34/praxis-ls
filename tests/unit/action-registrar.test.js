@@ -17,7 +17,13 @@ describe("AI action registrar", () => {
     expect(reads.every((r) => r.ai_enabled === true)).toBe(true);
     expect(reads.every((r) => r.requires_confirmation === false)).toBe(true);
     // every write action names a permission "MOD-xx:action"
-    expect(writes.every((r) => /^MOD-\d+:(create|edit|approve|view|delete)$/.test(r.required_permission || ""))).toBe(true);
+    expect(
+      writes.every((r) =>
+        /^MOD-\d+:(create|edit|approve|view|delete)$/.test(
+          r.required_permission || "",
+        ),
+      ),
+    ).toBe(true);
     expect(writes.every((r) => r.requires_confirmation === true)).toBe(true);
   });
 
@@ -38,7 +44,12 @@ describe("AI action registrar", () => {
   });
 
   test("zodToJsonSchema derives top-level shape + required", () => {
-    const schema = z.object({ entity_id: z.string().uuid(), amount: z.number().positive(), note: z.string().optional(), kind: z.enum(["A", "B"]) });
+    const schema = z.object({
+      entity_id: z.string().uuid(),
+      amount: z.number().positive(),
+      note: z.string().optional(),
+      kind: z.enum(["A", "B"]),
+    });
     const js = registrar.zodToJsonSchema(schema);
     expect(js.type).toBe("object");
     expect(js.properties.entity_id.type).toBe("string");

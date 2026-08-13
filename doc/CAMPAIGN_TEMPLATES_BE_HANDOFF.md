@@ -19,14 +19,14 @@ PR #11 merge; 0450/0451 belong to the comms/mail stream).
 **Endpoints** — on the existing `sales/marketing_campaign` module (MOD-22, basePath `/campaigns`),
 all registered **before** `/:id` so the literal segments aren't captured as a campaign id:
 
-| Verb | Path |
-|---|---|
-| GET / POST | `/campaigns/senders` |
-| POST | `/campaigns/senders/:id/verify` |
-| DELETE | `/campaigns/senders/:id` |
-| GET / POST | `/campaigns/templates` |
-| GET / PATCH / DELETE | `/campaigns/templates/:id` |
-| POST | `/campaigns/:id/send` |
+| Verb                 | Path                            |
+| -------------------- | ------------------------------- |
+| GET / POST           | `/campaigns/senders`            |
+| POST                 | `/campaigns/senders/:id/verify` |
+| DELETE               | `/campaigns/senders/:id`        |
+| GET / POST           | `/campaigns/templates`          |
+| GET / PATCH / DELETE | `/campaigns/templates/:id`      |
+| POST                 | `/campaigns/:id/send`           |
 
 RBAC reuses MOD-22 (view/create/edit/delete), so a marketing role manages templates and senders
 **without** settings-admin rights — which was the whole point of moving off `/settings`.
@@ -64,8 +64,8 @@ from the name. That worked because the settings store accepts arbitrary sections
 
 The three caveats that motivated the dedicated module — and how they landed:
 
-| Caveat then | Now |
-|---|---|
-| `/settings/*` is MOD-70-gated, so a pure marketing role couldn't manage templates | **Resolved** — endpoints sit under MOD-22 |
-| Templates were stored only; nothing sent through them | **Resolved** — `POST /campaigns/:id/send` |
-| `from_address` was free text with no verification | **Partly** — there's a sender registry and a verify stamp, but no SPF/DKIM (gap 2 above) |
+| Caveat then                                                                       | Now                                                                                      |
+| --------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| `/settings/*` is MOD-70-gated, so a pure marketing role couldn't manage templates | **Resolved** — endpoints sit under MOD-22                                                |
+| Templates were stored only; nothing sent through them                             | **Resolved** — `POST /campaigns/:id/send`                                                |
+| `from_address` was free text with no verification                                 | **Partly** — there's a sender registry and a verify stamp, but no SPF/DKIM (gap 2 above) |

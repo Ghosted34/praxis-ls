@@ -6,6 +6,7 @@ must follow this end-to-end flow. Build each module with the **whole flow and th
 UI it needs** in mind so the pieces connect instead of scattering.
 
 ## 1. Every business record has a lifecycle (draft → post → get back)
+
 Records are never one-shot inserts. The standard status ladder (already on
 `invoice.status` in `0230`, reuse the same vocabulary):
 
@@ -25,6 +26,7 @@ A module that only exposes the terminal action (e.g. "post") without the
 draft/edit/list/get stages is **incomplete**.
 
 ## 2. Approval chain (for anything that needs one)
+
 Submitting a record binds it to a `workflow` (Universal Event Engine, `0120`):
 each step raises an `approval_task` (`PENDING → VALIDATED → APPROVED | REJECTED |
 SKIPPED`, with `amount_xaf` thresholds + `assigned_role_id`). The record advances
@@ -34,7 +36,9 @@ piece still to finish (Phase 4 runtime), but design every approvable module to
 plug into it now.
 
 ## 3. Document numbering + capture — once, then kept in sync
+
 Anything **drafted, posted, or generated that carries a document number**:
+
 - Allocate the number from `doc_sequence` (per `module_key`/`year`/`entity_id`)
   **inside the caller's transaction** so the number and the row commit together.
 - **Capture it in `document_vault` exactly once** (keyed by the doc number /
@@ -45,8 +49,10 @@ Anything **drafted, posted, or generated that carries a document number**:
   upsert) must own this so every module behaves identically.
 
 ## 4. AI generates → user approves — same path as the UI
+
 The AI can **create/generate any of these records**, but it never bypasses
 approval:
+
 - An AI write is proposed as an **action card** (`ai_action_run`,
   `PROPOSED → AWAITING_CONFIRM → CONFIRMED → EXECUTED`) that the user confirms.
 - Whether initiated **in the module screen or from chat**, it calls the **same
@@ -55,7 +61,9 @@ approval:
   converge on one code path — no separate AI back-door.
 
 ## 5. Design for the UI + end-to-end flow (no scatter)
+
 When building a module, define up front (and record in the screen registry):
+
 - **Screens:** list, draft editor (create/edit), detail/approve, posted view.
 - **State the UI drives:** which button → which action → which downstream
   effect (approval task, number allocation, document capture, PDF render, ledger
@@ -64,6 +72,7 @@ When building a module, define up front (and record in the screen registry):
   from it (AI-readiness Rule 2), so the app, the AI, and the docs agree.
 
 ## Definition of Done (per module — extends AI_READINESS)
+
 - [ ] Lifecycle: draft create, edit-while-unlocked, submit, approve, post, plus
       list + get. Locked records reject in-place edit (reversal instead).
 - [ ] Approvable actions bind a `workflow` and raise `approval_task`s.
@@ -74,6 +83,7 @@ When building a module, define up front (and record in the screen registry):
 - [ ] `screen-registry.json`: one entry per lifecycle screen + its action_keys.
 
 ## Known gaps to close (so this convention is real, not aspirational)
+
 - ~~**`shared document.service`** (numbering + `document_vault` capture/upsert)~~
   **DONE** — `src/services/documents/numbering.service.js` (tenant-schemed,
   atomic `doc_sequence`) + `src/services/documents/document.service.js`
@@ -90,6 +100,7 @@ When building a module, define up front (and record in the screen registry):
   `document_vault` capture onto them to match this convention.
 
 ## 6. Tenant self-configuration (numbering, workflows, business rules)
+
 None of the below is hard-coded. Provisioning seeds sensible **defaults**; the
 tenant edits them through **Settings (MOD-70)** / **Security → RBAC (MOD-67)**.
 The engines above read the tenant's config at runtime.
@@ -104,7 +115,7 @@ The engines above read the tenant's config at runtime.
   `workflow_step`s, each step declaring **who acts** (`assigned_role_id` /
   capability), **what they may do at that level** (validate / approve / reject /
   skip), and **amount thresholds** (`amount_xaf`) that route or short-circuit
-  steps. A module binds an *approvable event*; the tenant decides the levels and
+  steps. A module binds an _approvable event_; the tenant decides the levels and
   powers. The backend admin exists (`src/modules/workflow`, MOD-67) — it needs
   the config UI (designer) and the runtime executor.
 - **Business rules are tenant settings.** Per-module rules live in `setting`
@@ -120,6 +131,7 @@ constant a module introduces must be (a) seeded as a tenant default on provision
 hard-coded literal. Surface each as a Settings screen entry in the screen registry.
 
 ### Added to "known gaps to close"
+
 - **Settings surfaces** for numbering schemes and per-module business rules
   (Settings/MOD-70) — CRUD + defaults on provision.
 - **Workflow designer UI** + the runtime executor (bind event → build
@@ -129,7 +141,7 @@ hard-coded literal. Surface each as a Settings screen entry in the screen regist
 
 ## §7 Secrets & vendor keys — .env is for boot only
 
-Hard rule: **the only values in `.env` are those required to *start* the
+Hard rule: **the only values in `.env` are those required to _start_ the
 process** — database connection, JWT secret, Redis URL, port, node env. Nothing
 else.
 
@@ -146,6 +158,7 @@ the security/settings surface:
   (`getSetting`/`getSection`).
 
 Consequences for code:
+
 - A service that talks to an external vendor takes the **tenant client** and
   resolves its key from the DB. It must NOT read `config.*_API_KEY` /
   `groups.ai.*` / `config.SMTP_*`.
@@ -155,7 +168,7 @@ Consequences for code:
   a stub). `.env` is a convenience/last-resort, never the primary source.
 - Keys are entered **and connection-tested from the frontend**: every vendor
   surface exposes a "test connection" action (e.g. `POST
-  /ai/governance/vendors/:vendor/test`) that does a minimal live call and returns
+/ai/governance/vendors/:vendor/test`) that does a minimal live call and returns
   `{ ok, error }` without persisting anything new.
 
 ### Per-purpose email senders (no generic sender)
@@ -169,6 +182,7 @@ SPF/DKIM/DMARC verification flags (plus an `is_fallback` identity on
 A module declares its `purpose` when sending; the identity supplies the From and
 transport host. `email.send(client, { to, subject, html, from, replyTo, purpose,
 moduleKey })` resolves, DB-first with env fallback:
+
 - **From + host** ← `email_identity(purpose)` → `setting "email".default` → env
 - **auth creds** ← `setting "email".default` (`smtp_user/pass`) → `SMTP_*` env
 

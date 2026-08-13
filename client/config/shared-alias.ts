@@ -97,8 +97,13 @@ export type ZodTarget = "bundler" | "node";
  * package does not declare that shape, so the caller can fall back to the
  * directory rather than resolving to a path that does not exist.
  */
-function readEntry(dir: string, kind: "import" | "require" | "module" | "main"): string | null {
-  const pkg = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8")) as {
+function readEntry(
+  dir: string,
+  kind: "import" | "require" | "module" | "main",
+): string | null {
+  const pkg = JSON.parse(
+    fs.readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as {
     main?: string;
     module?: string;
     exports?: { "."?: { import?: string; require?: string } | string };
@@ -174,7 +179,10 @@ export function resolveZod(clientDir: string, target: ZodTarget): string {
 }
 
 /** The `@shared` + `zod` alias pair. `@` stays in each config; it differs per tool. */
-export function sharedAlias(clientDir: string, target: ZodTarget): Record<string, string> {
+export function sharedAlias(
+  clientDir: string,
+  target: ZodTarget,
+): Record<string, string> {
   return {
     // packages/shared — the Zod schemas the Express API validates with, so the
     // client enforces the SAME rules rather than a re-statement of them (F12).

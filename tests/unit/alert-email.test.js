@@ -36,7 +36,12 @@ jest.mock("../../src/config/env", () => ({
   },
 }));
 jest.mock("../../src/config/logger", () => ({
-  logger: { info: jest.fn(), warn: jest.fn(), error: jest.fn(), debug: jest.fn() },
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
 }));
 jest.mock("../../src/services/platform/settings.service", () => ({
   resolve: jest.fn(),
@@ -54,9 +59,11 @@ const { config } = require("../../src/config/env");
 function vault({ webhook = null, page = null, email = null }) {
   settings.resolve.mockImplementation(async (section, key) => {
     if (section !== "alerts") return null;
-    if (key === "default") return webhook ? { value: {}, secret: webhook } : null;
+    if (key === "default")
+      return webhook ? { value: {}, secret: webhook } : null;
     if (key === "page") return page ? { value: {}, secret: page } : null;
-    if (key === "email") return email ? { value: { to: email }, secret: null } : null;
+    if (key === "email")
+      return email ? { value: { to: email }, secret: null } : null;
     return null;
   });
 }
@@ -88,7 +95,10 @@ describe("email as an alert destination", () => {
   test("an alert reaches BOTH channels, not the first that works", async () => {
     vault({ webhook: "https://hooks.example.com/x", email: "ops@example.com" });
 
-    const r = await alerts.raise({ event: "backup.failed", subject: "nightly dump failed" });
+    const r = await alerts.raise({
+      event: "backup.failed",
+      subject: "nightly dump failed",
+    });
 
     expect(global.fetch).toHaveBeenCalledTimes(1);
     expect(mail.send).toHaveBeenCalledTimes(1);
@@ -100,12 +110,15 @@ describe("email as an alert destination", () => {
     vault({ webhook: "https://hooks.example.com/x", email: "ops@example.com" });
     global.fetch.mockRejectedValue(new Error("slack is down"));
 
-    const r = await alerts.raise({ event: "tenant.red", subject: "smartls cannot serve" });
+    const r = await alerts.raise({
+      event: "tenant.red",
+      subject: "smartls cannot serve",
+    });
 
     expect(mail.send).toHaveBeenCalledTimes(1);
-    expect(r.delivered).toBe(true);          // email got through
+    expect(r.delivered).toBe(true); // email got through
     expect(r.channels).toEqual(["email"]);
-    expect(r.failed).toHaveLength(1);        // and the failure is still reported
+    expect(r.failed).toHaveLength(1); // and the failure is still reported
   });
 
   test("the email failing does not stop the webhook", async () => {
@@ -113,7 +126,10 @@ describe("email as an alert destination", () => {
     // platform-mail never throws; it reports ok:false. Both shapes must be safe.
     mail.send.mockResolvedValue({ ok: false, reason: "no_smtp_configured" });
 
-    const r = await alerts.raise({ event: "backup.failed", subject: "nightly dump failed" });
+    const r = await alerts.raise({
+      event: "backup.failed",
+      subject: "nightly dump failed",
+    });
 
     expect(r.delivered).toBe(true);
     expect(r.channels).toEqual(["default"]);
@@ -124,7 +140,10 @@ describe("email as an alert destination", () => {
     global.fetch.mockRejectedValue(new Error("slack is down"));
     mail.send.mockResolvedValue({ ok: false, reason: "no_smtp_configured" });
 
-    const r = await alerts.raise({ event: "backup.failed", subject: "nightly dump failed" });
+    const r = await alerts.raise({
+      event: "backup.failed",
+      subject: "nightly dump failed",
+    });
 
     expect(r.delivered).toBe(false);
     expect(r.reason).toMatch(/no_smtp_configured/);
@@ -133,7 +152,10 @@ describe("email as an alert destination", () => {
   test("email alone is enough — a deployment with no webhook is still covered", async () => {
     vault({ email: "ops@example.com" });
 
-    const r = await alerts.raise({ event: "restore.drill.failed", subject: "drill failed" });
+    const r = await alerts.raise({
+      event: "restore.drill.failed",
+      subject: "drill failed",
+    });
 
     expect(global.fetch).not.toHaveBeenCalled();
     expect(r.delivered).toBe(true);
@@ -143,7 +165,10 @@ describe("email as an alert destination", () => {
   test("no destination at all still reports honestly rather than throwing", async () => {
     vault({});
 
-    const r = await alerts.raise({ event: "backup.failed", subject: "nightly dump failed" });
+    const r = await alerts.raise({
+      event: "backup.failed",
+      subject: "nightly dump failed",
+    });
 
     expect(r.delivered).toBe(false);
     expect(r.reason).toBe("no destination configured");
@@ -151,7 +176,10 @@ describe("email as an alert destination", () => {
 
   test("a `log` severity still sends nothing anywhere", async () => {
     vault({ webhook: "https://hooks.example.com/x", email: "ops@example.com" });
-    const r = await alerts.raise({ event: "maintenance.started", subject: "window opened" });
+    const r = await alerts.raise({
+      event: "maintenance.started",
+      subject: "window opened",
+    });
     expect(global.fetch).not.toHaveBeenCalled();
     expect(mail.send).not.toHaveBeenCalled();
     expect(r.delivered).toBe(false);
@@ -160,7 +188,11 @@ describe("email as an alert destination", () => {
   test("the subject carries severity, event and tenant — it is read on a phone", async () => {
     vault({ email: "ops@example.com" });
 
-    await alerts.raise({ event: "tenant.red", subject: "cannot serve", tenant: "smartls" });
+    await alerts.raise({
+      event: "tenant.red",
+      subject: "cannot serve",
+      tenant: "smartls",
+    });
 
     const { subject } = mail.send.mock.calls[0][0];
     expect(subject).toContain("PAGE");

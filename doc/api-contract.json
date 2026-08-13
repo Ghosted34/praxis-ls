@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 109,
-  "route_count": 998,
+  "route_count": 1000,
   "tiers": {
     "public": 19,
     "self-scoped": 64,
-    "gated": 915
+    "gated": 917
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1864,6 +1864,12 @@
       "tier": "public"
     },
     "GET /api/tenant/mail/oauth/microsoft/start": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/mail/recipients": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -4828,6 +4834,12 @@
       "tier": "gated"
     },
     "POST /api/tenant/mail/connections": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/mail/connections/:id/default": {
       "auth": true,
       "rbac": true,
       "validated": false,

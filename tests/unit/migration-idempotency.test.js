@@ -19,7 +19,10 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const SCRIPT = path.join(__dirname, "../../scripts/db/check-migration-idempotency.js");
+const SCRIPT = path.join(
+  __dirname,
+  "../../scripts/db/check-migration-idempotency.js",
+);
 
 /**
  * The rule engine is not exported (the script is a CLI that calls
@@ -27,7 +30,12 @@ const SCRIPT = path.join(__dirname, "../../scripts/db/check-migration-idempotenc
  * stubbed exit. Cheaper and far more legible than shelling out per case.
  */
 function loadViolations() {
-  const src = fs.readFileSync(SCRIPT, "utf8").replace(/process\.exit\(main\(\)\);?\s*$/, "module.exports = { violations };");
+  const src = fs
+    .readFileSync(SCRIPT, "utf8")
+    .replace(
+      /process\.exit\(main\(\)\);?\s*$/,
+      "module.exports = { violations };",
+    );
   // mkdtempSync, not a predictable name in the shared temp dir.
   //
   // CodeQL "Insecure temporary file", High: `os.tmpdir()/idem-<pid>.js` is
@@ -46,11 +54,16 @@ function loadViolations() {
 }
 
 const violations = loadViolations();
-const ids = (sql) => violations(sql).map((v) => v.rule).sort();
+const ids = (sql) =>
+  violations(sql)
+    .map((v) => v.rule)
+    .sort();
 
 describe("catches the statements that break a re-run", () => {
   it("flags an unguarded CREATE TABLE — the exact error from the incident", () => {
-    expect(ids("CREATE TABLE platform.error_event (id uuid);")).toContain("create-table");
+    expect(ids("CREATE TABLE platform.error_event (id uuid);")).toContain(
+      "create-table",
+    );
   });
 
   it("flags an unguarded index and a unique index", () => {
@@ -59,12 +72,17 @@ describe("catches the statements that break a re-run", () => {
   });
 
   it("flags an unguarded trigger", () => {
-    expect(ids("CREATE TRIGGER trg_x BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f();"))
-      .toContain("create-trigger");
+    expect(
+      ids(
+        "CREATE TRIGGER trg_x BEFORE UPDATE ON t FOR EACH ROW EXECUTE FUNCTION f();",
+      ),
+    ).toContain("create-trigger");
   });
 
   it("flags CREATE FUNCTION without OR REPLACE", () => {
-    expect(ids("CREATE FUNCTION f() RETURNS int AS 'SELECT 1' LANGUAGE sql;")).toContain("create-function");
+    expect(
+      ids("CREATE FUNCTION f() RETURNS int AS 'SELECT 1' LANGUAGE sql;"),
+    ).toContain("create-function");
   });
 
   it("flags ADD COLUMN, DROP, CREATE SCHEMA and CREATE EXTENSION", () => {
@@ -78,13 +96,17 @@ describe("catches the statements that break a re-run", () => {
     // There is no ADD CONSTRAINT IF NOT EXISTS and no CREATE TYPE IF NOT
     // EXISTS, in any version. These are the most common reason a migration
     // that "looks idempotent" is not.
-    expect(ids("ALTER TABLE t ADD CONSTRAINT ck_x CHECK (n > 0);")).toContain("add-constraint");
+    expect(ids("ALTER TABLE t ADD CONSTRAINT ck_x CHECK (n > 0);")).toContain(
+      "add-constraint",
+    );
     expect(ids("CREATE TYPE mood AS ENUM ('a','b');")).toContain("create-type");
   });
 
   it("flags a seed INSERT with no conflict target", () => {
     // The failure migrator.js names: re-running silently double-inserts.
-    expect(ids("INSERT INTO plan (code) VALUES ('PRO');")).toContain("insert-without-conflict");
+    expect(ids("INSERT INTO plan (code) VALUES ('PRO');")).toContain(
+      "insert-without-conflict",
+    );
   });
 });
 
@@ -147,7 +169,9 @@ describe("does NOT flag correct SQL", () => {
   it("does not confuse CREATE INDEX CONCURRENTLY with an unguarded index", () => {
     // It cannot run inside the migrator's transaction anyway; flagging it for
     // the wrong reason would send the author to the wrong fix.
-    expect(ids("CREATE INDEX CONCURRENTLY ix ON t (c);")).not.toContain("create-index");
+    expect(ids("CREATE INDEX CONCURRENTLY ix ON t (c);")).not.toContain(
+      "create-index",
+    );
   });
 });
 
@@ -171,7 +195,6 @@ describe("the baseline is real", () => {
     expect(`${r.stderr}${r.stdout}`).toMatch(/Migration idempotency OK/);
     expect(r.status).toBe(0);
   });
-
 });
 
 /**
@@ -191,7 +214,11 @@ describe("end-to-end, on a disposable tree", () => {
   const run = () =>
     spawnSync("node", [SCRIPT], {
       encoding: "utf8",
-      env: { ...process.env, PRAXIS_MIGRATIONS_DIR: dir, PRAXIS_IDEMPOTENCY_BASELINE: baselineFile },
+      env: {
+        ...process.env,
+        PRAXIS_MIGRATIONS_DIR: dir,
+        PRAXIS_IDEMPOTENCY_BASELINE: baselineFile,
+      },
     });
 
   const write = (rel, sql) => {
@@ -203,11 +230,20 @@ describe("end-to-end, on a disposable tree", () => {
   beforeEach(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "praxis-migrations-"));
     baselineFile = path.join(dir, "baseline.json");
-    write("platform/0001_base.sql", "CREATE TABLE IF NOT EXISTS platform.a (id uuid);\n");
-    expect(spawnSync("node", [SCRIPT, "--update-baseline"], {
-      encoding: "utf8",
-      env: { ...process.env, PRAXIS_MIGRATIONS_DIR: dir, PRAXIS_IDEMPOTENCY_BASELINE: baselineFile },
-    }).status).toBe(0);
+    write(
+      "platform/0001_base.sql",
+      "CREATE TABLE IF NOT EXISTS platform.a (id uuid);\n",
+    );
+    expect(
+      spawnSync("node", [SCRIPT, "--update-baseline"], {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          PRAXIS_MIGRATIONS_DIR: dir,
+          PRAXIS_IDEMPOTENCY_BASELINE: baselineFile,
+        },
+      }).status,
+    ).toBe(0);
   });
 
   afterEach(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -227,14 +263,17 @@ describe("end-to-end, on a disposable tree", () => {
   it("passes a NEW migration that is idempotent", () => {
     write(
       "platform/0002_new.sql",
-      "CREATE TABLE IF NOT EXISTS platform.b (id uuid);\n"
-        + "CREATE INDEX IF NOT EXISTS ix_b ON platform.b (id);\n",
+      "CREATE TABLE IF NOT EXISTS platform.b (id uuid);\n" +
+        "CREATE INDEX IF NOT EXISTS ix_b ON platform.b (id);\n",
     );
     expect(run().status).toBe(0);
   });
 
   it("fails loudly when a BASELINED migration is edited — the DATA 3.3 guard", () => {
-    write("platform/0001_base.sql", "CREATE TABLE IF NOT EXISTS platform.a (id uuid, extra int);\n");
+    write(
+      "platform/0001_base.sql",
+      "CREATE TABLE IF NOT EXISTS platform.a (id uuid, extra int);\n",
+    );
     const r = run();
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/EDITED/);
@@ -244,7 +283,10 @@ describe("end-to-end, on a disposable tree", () => {
   });
 
   it("is content-based, not sticky — restoring the file clears the failure", () => {
-    const original = fs.readFileSync(path.join(dir, "platform/0001_base.sql"), "utf8");
+    const original = fs.readFileSync(
+      path.join(dir, "platform/0001_base.sql"),
+      "utf8",
+    );
     write("platform/0001_base.sql", `${original}-- tampered\n`);
     expect(run().status).toBe(1);
     write("platform/0001_base.sql", original);
@@ -255,9 +297,15 @@ describe("end-to-end, on a disposable tree", () => {
     // 0090_b → 0100_b is what started this. The gate cannot stop the rename, but
     // it makes it visible: the new name is ungrandfathered and must be idempotent
     // before it can land, and the operator is pointed at mark-migration-applied.
-    const sql = fs.readFileSync(path.join(dir, "platform/0001_base.sql"), "utf8");
+    const sql = fs.readFileSync(
+      path.join(dir, "platform/0001_base.sql"),
+      "utf8",
+    );
     fs.rmSync(path.join(dir, "platform/0001_base.sql"));
-    write("platform/0002_base.sql", `${sql}CREATE TABLE platform.c (id uuid);\n`);
+    write(
+      "platform/0002_base.sql",
+      `${sql}CREATE TABLE platform.c (id uuid);\n`,
+    );
     const r = run();
     expect(r.status).toBe(1);
     expect(r.stderr).toMatch(/mark-migration-applied/);

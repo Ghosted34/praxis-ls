@@ -59,7 +59,8 @@ describe("UI screen registry", () => {
       // dynamic require of a discovered manifest path (trusted, local)
       const m = require(file);
       for (const a of [...(m.reads || []), ...(m.writes || [])]) {
-        if (!owner.has(a.key)) undeclared.push(`${a.key} (${path.relative(process.cwd(), file)})`);
+        if (!owner.has(a.key))
+          undeclared.push(`${a.key} (${path.relative(process.cwd(), file)})`);
       }
     }
     expect(undeclared).toEqual([]);
@@ -67,7 +68,10 @@ describe("UI screen registry", () => {
 });
 
 /** Every `<module>.ai.js` in the repo. */
-function manifestFiles(dir = path.resolve(__dirname, "../../src/modules"), out = []) {
+function manifestFiles(
+  dir = path.resolve(__dirname, "../../src/modules"),
+  out = [],
+) {
   for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
     if (e.name === "node_modules") continue;
     const full = path.join(dir, e.name);

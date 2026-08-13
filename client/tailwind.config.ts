@@ -44,7 +44,10 @@ export default {
         input: "var(--input)",
         ring: "var(--ring)",
         card: { DEFAULT: "var(--card)", foreground: "var(--card-foreground)" },
-        popover: { DEFAULT: "var(--popover)", foreground: "var(--popover-foreground)" },
+        popover: {
+          DEFAULT: "var(--popover)",
+          foreground: "var(--popover-foreground)",
+        },
         primary: {
           DEFAULT: "var(--primary)",
           foreground: "var(--primary-foreground)",
@@ -53,10 +56,22 @@ export default {
           // unchanged — fills keep --primary, text uses --primary-ink (4.64:1).
           ink: "var(--primary-ink)",
         },
-        secondary: { DEFAULT: "var(--secondary)", foreground: "var(--secondary-foreground)" },
-        muted: { DEFAULT: "var(--muted)", foreground: "var(--muted-foreground)" },
-        accent: { DEFAULT: "var(--accent)", foreground: "var(--accent-foreground)" },
-        destructive: { DEFAULT: "var(--destructive)", foreground: "var(--destructive-foreground)" },
+        secondary: {
+          DEFAULT: "var(--secondary)",
+          foreground: "var(--secondary-foreground)",
+        },
+        muted: {
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
+        },
+        accent: {
+          DEFAULT: "var(--accent)",
+          foreground: "var(--accent-foreground)",
+        },
+        destructive: {
+          DEFAULT: "var(--destructive)",
+          foreground: "var(--destructive-foreground)",
+        },
 
         /**
          * Semantic STATUS tones (Phase 4).
@@ -140,7 +155,10 @@ export default {
         sm: ["0.8125rem", { lineHeight: "1.25rem" }], // 13 — table + body default
         base: ["0.875rem", { lineHeight: "1.375rem" }], // 14
         lg: ["1rem", { lineHeight: "1.5rem" }], // 16
-        title: ["1.125rem", { lineHeight: "1.625rem", letterSpacing: "-0.01em" }], // 18
+        title: [
+          "1.125rem",
+          { lineHeight: "1.625rem", letterSpacing: "-0.01em" },
+        ], // 18
         h2: ["1.375rem", { lineHeight: "1.75rem", letterSpacing: "-0.015em" }], // 22
         h1: ["1.75rem", { lineHeight: "2.125rem", letterSpacing: "-0.02em" }], // 28
       },

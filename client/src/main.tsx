@@ -19,6 +19,7 @@ import { App } from "@/app/app";
 import "@fontsource-variable/inter";
 import "./index.css";
 import { clearChunkReloadFlag } from "@/lib/chunk-reload";
+import { pruneDrafts } from "@/lib/form-draft";
 
 // OBS-E2: window 'error' and 'unhandledrejection' — the two failure modes React
 // never sees (event handlers, timers, un-awaited promises). Installed FIRST so a
@@ -53,6 +54,11 @@ document.getElementById("pre-boot-titlebar")?.remove();
 // flag set would mean the NEXT deploy's stale chunk goes straight to the error
 // screen, having "already retried" in a session that succeeded hours ago.
 clearChunkReloadFlag();
+
+// Expired form drafts, dropped once per boot. Cheap (a scan of our own
+// localStorage prefix) and it keeps the origin's storage budget available for
+// the outbox, which is the half of this pair that must never fail to write.
+pruneDrafts();
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>

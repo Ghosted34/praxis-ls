@@ -38,7 +38,10 @@ const side = z
     if (v === undefined || v === null || v === "") return undefined;
     return typeof v === "number" ? v : Number(String(v).replace(/\s/g, ""));
   })
-  .refine((n) => n === undefined || (Number.isFinite(n) && n >= 0), "Enter an amount of zero or more.");
+  .refine(
+    (n) => n === undefined || (Number.isFinite(n) && n >= 0),
+    "Enter an amount of zero or more.",
+  );
 
 const line = z.object({
   account_code: requiredText("Account"),
@@ -60,7 +63,9 @@ const post = z
     entry_date: isoDate,
     description: z.string().optional(),
     source_doc_ref: z.string().optional(),
-    source: z.enum(["SYSTEM_AUTO", "SYSTEM_RULE", "HUMAN_MANUAL", "HUMAN_CORRECTION"]).optional(),
+    source: z
+      .enum(["SYSTEM_AUTO", "SYSTEM_RULE", "HUMAN_MANUAL", "HUMAN_CORRECTION"])
+      .optional(),
     validate: z.boolean().optional(),
     lines: z.array(line).min(2, "A journal entry needs at least two lines."),
   })

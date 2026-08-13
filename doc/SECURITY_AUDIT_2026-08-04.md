@@ -19,20 +19,20 @@ Route gating was verified by introspecting the live Express router stacks of all
 
 Checked before assuming anything was missing.
 
-| Control | State | Location |
-|---|---|---|
-| Dependency audit in CI | **Present but non-blocking** (`continue-on-error: true`, `--audit-level=high`) | `.github/workflows/ci.yaml` |
-| Secret scanning in CI | **Present, but with an exclusion that voids it** — `':!doc/reference'` | `.github/workflows/ci.yaml` |
-| SAST (CodeQL/Semgrep/Snyk) | **Absent** — no config anywhere in the repo | — |
-| Dependabot / renovate | **Absent** — no `.github/dependabot.yml` | — |
-| Lint / syntax gate / Docker build gate | Present | `.github/workflows/ci.yaml` |
-| Production secret guard | **Present and good** — refuses to boot with default JWT/encryption secrets, or with `JWT_ACCESS_SECRET == JWT_REFRESH_SECRET`, or an empty `DB_PASSWORD` | `src/config/env.js:213-232` |
-| Password strength policy | **Present and good** — 12 chars, complexity, email-local-part check, HIBP k-anonymity range check | `src/shared/security/password-policy.js` |
-| Anonymous-surface test | Present but shallow — asserts `authMiddleware` appears *somewhere* in each module router, not per route | `tests/unit/auth-coverage.test.js` |
-| Refresh-rotation test | Present | `tests/unit/auth-refresh-rotation.test.js` |
-| Prior audit artefacts | Present and substantial | `doc/PHASE0_PRODUCTION_AUDIT.md`, `doc/RBAC_SECURITY_KICKOFF.md`, `doc/PERMISSION_SWEEP_BACKLOG.md`, `doc/PHASE0_4_REAUDIT_2026-07-11.md` |
+| Control                                | State                                                                                                                                                    | Location                                                                                                                                  |
+| -------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| Dependency audit in CI                 | **Present but non-blocking** (`continue-on-error: true`, `--audit-level=high`)                                                                           | `.github/workflows/ci.yaml`                                                                                                               |
+| Secret scanning in CI                  | **Present, but with an exclusion that voids it** — `':!doc/reference'`                                                                                   | `.github/workflows/ci.yaml`                                                                                                               |
+| SAST (CodeQL/Semgrep/Snyk)             | **Absent** — no config anywhere in the repo                                                                                                              | —                                                                                                                                         |
+| Dependabot / renovate                  | **Absent** — no `.github/dependabot.yml`                                                                                                                 | —                                                                                                                                         |
+| Lint / syntax gate / Docker build gate | Present                                                                                                                                                  | `.github/workflows/ci.yaml`                                                                                                               |
+| Production secret guard                | **Present and good** — refuses to boot with default JWT/encryption secrets, or with `JWT_ACCESS_SECRET == JWT_REFRESH_SECRET`, or an empty `DB_PASSWORD` | `src/config/env.js:213-232`                                                                                                               |
+| Password strength policy               | **Present and good** — 12 chars, complexity, email-local-part check, HIBP k-anonymity range check                                                        | `src/shared/security/password-policy.js`                                                                                                  |
+| Anonymous-surface test                 | Present but shallow — asserts `authMiddleware` appears _somewhere_ in each module router, not per route                                                  | `tests/unit/auth-coverage.test.js`                                                                                                        |
+| Refresh-rotation test                  | Present                                                                                                                                                  | `tests/unit/auth-refresh-rotation.test.js`                                                                                                |
+| Prior audit artefacts                  | Present and substantial                                                                                                                                  | `doc/PHASE0_PRODUCTION_AUDIT.md`, `doc/RBAC_SECURITY_KICKOFF.md`, `doc/PERMISSION_SWEEP_BACKLOG.md`, `doc/PHASE0_4_REAUDIT_2026-07-11.md` |
 
-**Assessment.** The security *scaffolding* here is better than average for a product at this
+**Assessment.** The security _scaffolding_ here is better than average for a product at this
 stage — Argon2id, AES-256-GCM, refresh rotation with reuse detection, an allow-listed media
 mount, an explicit CORS allow-list, a boot-time insecure-secret guard. Several of the prior
 audits' fixes are real and correctly implemented. The problems below are not "no security was
@@ -52,8 +52,8 @@ Establishing this first, because several findings only make sense against it.
 **Tenancy is database-per-tenant, not row-level.** `hostTenantResolver`
 (`src/middleware/host-tenent-resolver.js`) maps the `Host` header to a tenant via
 `platform.subdomain`; `tenantContext` (`src/middleware/tenant-context.js`) then exposes
-`req.tenantDb(fn)` and `req.identityDb(fn)`, which take a pooled connection to *that tenant's own
-Postgres database* (`src/services/tenant/registry.service.js:79-106`) with `search_path` bound to
+`req.tenantDb(fn)` and `req.identityDb(fn)`, which take a pooled connection to _that tenant's own
+Postgres database_ (`src/services/tenant/registry.service.js:79-106`) with `search_path` bound to
 the `live` or `sandbox` schema. **This is a genuinely strong isolation primitive** — there is no
 shared table with a `tenant_id` column to forget a `WHERE` clause on. Provisioning
 (`src/services/platform/provisioning.service.js`) creates each tenant DB fresh and runs the
@@ -65,21 +65,21 @@ gaps around that primitive, not breaches of it.
 **Identity is pinned to the `live` schema regardless of the LIVE/TEST toggle**
 (`src/middleware/tenant-context.js:28-30`) — flipping to sandbox never signs a user out.
 
-**There are three separate, parallel auth tiers**, all signing with the *same*
+**There are three separate, parallel auth tiers**, all signing with the _same_
 `JWT_ACCESS_SECRET` and distinguished only by a `typ` claim:
 
-| Tier | Entry | Middleware | `typ` | Session state |
-|---|---|---|---|---|
-| Tenant staff | `POST /api/tenant/auth/login` | `src/middleware/auth.js` | `access` / `refresh` / `2fa_pending` | `user_session` row + Redis index |
-| Praxis platform | `POST /api/platform/auth/login` | `src/middleware/platform-auth.js` | `platform` / `platform_refresh` | **stateless — none** |
-| External portal | `POST /api/tenant/portal/auth/login` | `src/modules/portal_auth/portal_auth.middleware.js` | `portal` | stateless; grant re-checked per request |
+| Tier            | Entry                                | Middleware                                          | `typ`                                | Session state                           |
+| --------------- | ------------------------------------ | --------------------------------------------------- | ------------------------------------ | --------------------------------------- |
+| Tenant staff    | `POST /api/tenant/auth/login`        | `src/middleware/auth.js`                            | `access` / `refresh` / `2fa_pending` | `user_session` row + Redis index        |
+| Praxis platform | `POST /api/platform/auth/login`      | `src/middleware/platform-auth.js`                   | `platform` / `platform_refresh`      | **stateless — none**                    |
+| External portal | `POST /api/tenant/portal/auth/login` | `src/modules/portal_auth/portal_auth.middleware.js` | `portal`                             | stateless; grant re-checked per request |
 
 **Authorization is entirely route-middleware-based.** `requirePermission(moduleKey, action)`
 (`src/middleware/rbac.js:76`) resolves a role×module grant matrix; `requireCapability(code)` adds
 the segregation-of-duties overlay (ISSUER/VALIDATOR/APPROVER/LINE_MANAGER); `requireCeo()` guards
 God Mode. **No business service enforces permissions itself** — only 5 security-module services do
-(`capability`, `field_visibility`, `permission`, `scope`, `session`). *Any path that calls a module
-service without going through its route therefore has no authorization at all.* That fact is the
+(`capability`, `field_visibility`, `permission`, `scope`, `session`). _Any path that calls a module
+service without going through its route therefore has no authorization at all._ That fact is the
 root of H1.
 
 **Client (customer) isolation on the portal is correctly enforced.** `clientView` takes its
@@ -94,7 +94,7 @@ built.** The residual issue is M3 (the password policy protecting those accounts
 
 ## 3. Findings
 
-Severity reflects exploitability *in this system*: who can reach it, what they need, and what it
+Severity reflects exploitability _in this system_: who can reach it, what they need, and what it
 costs the business or a client.
 
 ---
@@ -104,6 +104,7 @@ costs the business or a client.
 #### C1 — Live production credentials and employee PII committed to the repository, in the one path CI is told not to scan
 
 **Files:**
+
 - `doc/reference/legacy_codebase/administration/config/db.php:9` — production MySQL password
 - `doc/reference/legacy_codebase/public_html/config/db.php:9` — same
 - `doc/reference/legacy_codebase/public_html/smart-logistics/administration/config/db.php:9` — same
@@ -156,7 +157,10 @@ pre-commit/pre-push secret scan (gitleaks or trufflehog) so the next one is caug
 **Mechanism.** The logout controller reads the session to end from the request body:
 
 ```js
-service.logout(client, { actor: req.user, sessionId: req.body.session_id || null })
+service.logout(client, {
+  actor: req.user,
+  sessionId: req.body.session_id || null,
+});
 ```
 
 and the service only revokes when that value is present:
@@ -209,7 +213,7 @@ sibling defect noted in M2 below (`killSession` has no ownership predicate).
 
 **Mechanism — two independent controls, both missing.**
 
-*Rate limiting.* `express-rate-limit` is imported in exactly one file and applied to exactly two
+_Rate limiting._ `express-rate-limit` is imported in exactly one file and applied to exactly two
 routes — `forgot-password` (5/15min) and `reset-password` (10/15min). A repository-wide search for
 `rateLimit` returns those two limiters and nothing else. Unlimited by consequence:
 
@@ -226,7 +230,7 @@ There is no global limiter in `src/server.js`. `rate-limit-redis` is declared in
 store — they reset on every deploy and are counted separately by the `api` and `api-standby`
 containers.
 
-*Account lockout.* `recordLoginFailure` increments `app_user.failed_logins`
+_Account lockout._ `recordLoginFailure` increments `app_user.failed_logins`
 (`app_user.repo.js:39-44`) and `login()` calls it on every failure. **Nothing ever reads that
 column for an authorization decision.** Grepping `failed_logins` across `src/` returns only the
 increment, the reset-to-zero on success, and its inclusion in the `SAFE_COLS` display projection.
@@ -245,7 +249,7 @@ a 6-digit TOTP can be attacked exhaustively inside the 5-minute pending window, 
 be renewed at will by re-running the password login the attacker now controls. **This makes 2FA
 non-load-bearing.** The highest-value target is `POST /api/platform/auth/login`: a platform Root
 Admin governs tenant provisioning, plans, features and the deploy-wide credential store for
-*every* tenant, that tier has no 2FA at all (it returns 501, `src/services/platform/auth.service.js:79-84`),
+_every_ tenant, that tier has no 2FA at all (it returns 501, `src/services/platform/auth.service.js:79-84`),
 and its login is as unprotected as the rest.
 
 **Fix.** Apply a Redis-backed limiter (`rate-limit-redis`, already a dependency) to every
@@ -256,7 +260,7 @@ with a defined auto-unlock, on both `app_user` and `portal_user`. Cap TOTP verif
 per pending token and invalidate the token when the cap is hit. Add a global fallback limiter in
 `src/server.js`.
 
-*(Enforcing lockout is user-visible — see Proposal P1 in §4.)*
+_(Enforcing lockout is user-visible — see Proposal P1 in §4.)_
 
 ---
 
@@ -276,11 +280,11 @@ it is even selected into the tool list at `orchestrator.service.js:149`. **It is
 against anything.** Both execution sites call the executor directly:
 
 ```js
-const out = fn ? await fn({ client, user, payload }) : { error: "no executor" };   // :319
-const result = await fn({ client, user, payload });                                // :430
+const out = fn ? await fn({ client, user, payload }) : { error: "no executor" }; // :319
+const result = await fn({ client, user, payload }); // :430
 ```
 
-The executors then call module *services* (`action-registry.js:26-70`). As established in §2,
+The executors then call module _services_ (`action-registry.js:26-70`). As established in §2,
 authorization in this codebase lives exclusively in route middleware — services do not check
 grants. `action-registry.js:2-4` states "Each calls a module SERVICE with the caller's client +
 identity (module RBAC/audit applies)". The audit half is true; **the RBAC half is not.** The
@@ -381,7 +385,7 @@ const set = keys.map((k, i) => `${k} = $${i + 2}`).join(", ");
 ... `UPDATE ${table} SET ${set} WHERE ${pk} = $1 ...`                            // updateOne
 ```
 
-The file's header asserts *"Table/column names are always code-provided (never user input)"*. That
+The file's header asserts _"Table/column names are always code-provided (never user input)"_. That
 holds for modules with a zod validator — `z.object` strips unknown keys and the middleware
 reassigns `req.body = p.data` — which is most of them, and is why this is High rather than
 Critical. **It does not hold where the validator is `passthrough`**, which is a pair of no-op
@@ -397,7 +401,7 @@ not only the intended ones. **Identifier injection:** the keys are concatenated 
 without quoting or validation, so a key is a SQL fragment.
 
 **Attack scenario.** A tenant IAM administrator holds MOD-67 `edit` — a legitimate, delegable
-role that a mid-size logistics firm would give an office manager, and which is *not* meant to
+role that a mid-size logistics firm would give an office manager, and which is _not_ meant to
 confer database access. `PATCH /api/tenant/sessions/:id` reaches `updateOne` against
 `user_session` with an unfiltered body. Via mass assignment alone they can clear `killed_at` on a
 revoked session — resurrecting an administrator's session that security staff believed they had
@@ -406,7 +410,7 @@ tenant-admin grant into arbitrary SQL execution on the tenant database under the
 reading `password_hash` and `totp_secret_enc` for every user in the tenant, rewriting the
 `permission` grant matrix directly, or editing the `immutable_ledger` and `soft_delete` tables that
 the audit trail depends on — which means the escalation can be performed and then erased. Because
-the application connects to *every* tenant database with the same role and password
+the application connects to _every_ tenant database with the same role and password
 (`registry.service.js:70-71`, and see M7), the blast radius of that database-level foothold is
 bounded by what that role has been granted across the cluster, not by the tenant boundary the rest
 of the architecture works hard to maintain.
@@ -435,7 +439,7 @@ Add a lint rule or test forbidding `passthrough` on any write route.
   target's current password, and does not exclude privileged targets.
 - `PATCH /users/:id` → `updateUser` — accepts `role_ids` and replaces the target's roles wholesale
   (`repo.setRoles` does `DELETE FROM user_role` then re-inserts). The only guard present is the
-  *last-CEO* check (`service.js:605-612`), which prevents removing the CEO role from the final CEO.
+  _last-CEO_ check (`service.js:605-612`), which prevents removing the CEO role from the final CEO.
   **There is no guard against adding a role**, and none against acting on oneself.
 
 `is_ceo` is derived from holding the role whose `code = 'CEO'`
@@ -469,7 +473,7 @@ reset path already does (`service.js:520-528`). Consider separating "reset a pas
 
 **Severity: High.**
 
-**Mechanism.** `app.set("trust proxy", true)` trusts *any* number of proxy hops, so
+**Mechanism.** `app.set("trust proxy", true)` trusts _any_ number of proxy hops, so
 `req.ip` is taken from the leftmost `X-Forwarded-For` entry — a header the client sets. The two
 existing limiters key on `req.ip` by default, and use the in-process memory store because
 `rate-limit-redis` is never wired up.
@@ -525,7 +529,7 @@ not applied.
 `createUser`/`setPassword`/`acceptInvite`, and the platform `userCreate`/`userPassword`/`admin`
 validators. The policy already fails open on an HIBP outage, so availability is unaffected.
 
-*(This changes what passwords are accepted — see Proposal P2 in §4.)*
+_(This changes what passwords are accepted — see Proposal P2 in §4.)_
 
 ---
 
@@ -538,7 +542,7 @@ validators. The policy already fails open on an HIBP outage, so availability is 
 `signAccessToken` emits `{ sub, jti, typ }` with no session id, and `authMiddleware` verifies the
 signature and loads the user but never checks that a session is still alive. Killing a session
 (`/sessions/:id/kill`), hitting the idle timeout, or tripping refresh-reuse detection therefore
-blocks the *next refresh* but leaves any already-issued access token valid for its remaining TTL
+blocks the _next refresh_ but leaves any already-issued access token valid for its remaining TTL
 (15 min default). The code documents this as an accepted trade-off, and at 15 minutes it is a
 defensible one — but it means "revoke this session now" is not what the security screen implies,
 and it is what makes C2 unrecoverable rather than merely wrong. Deactivating a user has a smaller
@@ -571,7 +575,7 @@ the repo function so it is safe at the lowest layer regardless of caller.
 has any relationship to the document. The vault holds contracts, payslips, ID documents and signed
 PDFs across HR, finance and operations. Anyone granted MOD-64 `view` for any legitimate reason can
 enumerate and download every document in the tenant, including HR files about colleagues. The
-`field_visibility` masking layer exists for *fields* but has no document analogue. The gating
+`field_visibility` masking layer exists for _fields_ but has no document analogue. The gating
 against the public `/media` mount is correct and well documented (`shared/http/media-guard.js`) —
 the gap is the granularity behind it. **Fix:** scope downloads by the owning module's grant (the
 pattern `document-templates` already implements via `moduleKeyForDocType`,
@@ -582,7 +586,7 @@ pattern `document-templates` already implements via `moduleKeyForDocType`,
 **File:** `src/realtime/index.js:64-66`
 
 ```js
-const host = String(auth.host || socket.handshake.headers.host || "")
+const host = String(auth.host || socket.handshake.headers.host || "");
 ```
 
 Client-supplied `auth.host` takes precedence over the actual Host header, so a socket client
@@ -670,28 +674,28 @@ restore the audit gate to blocking once the tree is clean.
 
 - **L1 — Containers run as root.** `Dockerfile` defines no `USER`; both `runtime` and `worker`
   stages run as root, and the compose file bind-mounts `./data` (the document vault) into them.
-  *Fix:* add a non-root user and `chown` the writable paths.
+  _Fix:_ add a non-root user and `chown` the writable paths.
 - **L2 — Redis is unauthenticated and its keyspace is not tenant-namespaced.**
   `docker-compose.yml:20-32` sets no `requirepass` (loopback-bound, which is the mitigation).
   Identity-cache keys are bare UUIDs with no tenant prefix (`identity-cache.js:27-31`), and
   `invalidateGrants()` uses `redis.keys("identity:grants:*")` (`:279`) — a blocking O(N) scan that
-  flushes every tenant's grants on any one tenant's permission edit. *Fix:* set a Redis password,
+  flushes every tenant's grants on any one tenant's permission edit. _Fix:_ set a Redis password,
   prefix keys per tenant, and replace `KEYS` with a maintained key set or `SCAN`.
 - **L3 — Refresh token in web storage.** `client/src/lib/token-store.ts:10-13` documents this
   trade-off explicitly and funnels all access through one module so the swap is a one-file change.
   Its severity is coupled to M8 (`unsafe-inline` CSP) and C2 (the token is never revoked).
-  *Fix:* httpOnly-cookie refresh with CSRF protection, once M8 and C2 are closed.
+  _Fix:_ httpOnly-cookie refresh with CSRF protection, once M8 and C2 are closed.
 - **L4 — Logger redaction has gaps.** `src/config/logger.js:22-36` redacts `*.password`, `*.token`,
   `*.secret`, `*.api_key`, `*.pin` — but pino path matching is literal, so `refresh_token`,
   `access_token`, `password_hash`, `totp_secret_enc` and `secret_enc` are **not** covered.
-  *Fix:* add those paths.
+  _Fix:_ add those paths.
 - **L5 — The anonymous-surface test is shallow.** `tests/unit/auth-coverage.test.js:6-14` returns
   true if `authMiddleware` appears anywhere in a module's router, so a router with one gated route
-  and several ungated ones passes. *Fix:* assert per route, with an explicit allow-list for the
+  and several ungated ones passes. _Fix:_ assert per route, with an explicit allow-list for the
   intentionally public ones (login, refresh, forgot/reset, 2FA verify, PIN login, branding,
   document-verification scan, mail OAuth callbacks).
 - **L6 — `src/middleware/audit.js` is dead code** — never imported or mounted; auditing happens via
-  per-service `audit()` calls. *Fix:* delete it, or wire it, so it cannot be mistaken for an active
+  per-service `audit()` calls. _Fix:_ delete it, or wire it, so it cannot be mistaken for an active
   control during a future review.
 
 ---
@@ -703,40 +707,40 @@ something a real user would notice. **None of these is included in the roadmap p
 automatic action** — each is gated on explicit approval.
 
 **P1 — Account lockout after repeated failed logins (from C3).**
-*Change:* an account locks temporarily after N failed attempts. *Trade-off:* a user who mistypes
+_Change:_ an account locks temporarily after N failed attempts. _Trade-off:_ a user who mistypes
 their password repeatedly is locked out, generating support load; an attacker can also lock a known
-account deliberately (denial of service against a named user). *Recommendation:* progressive delay
+account deliberately (denial of service against a named user). _Recommendation:_ progressive delay
 first (invisible to normal users, effective against automation), with a temporary auto-unlocking
 lock only at a high threshold. Rate limiting alone is a large improvement and is **not**
 user-visible — that part should proceed without waiting on this decision.
 
 **P2 — Applying the full password policy to portal and platform accounts (from H6).**
-*Change:* new and changed passwords on those tiers must meet 12 chars + complexity + not-breached.
-*Trade-off:* existing weak passwords keep working until next change unless a reset is forced;
-external portal users will hit more rejections at invite-acceptance. *Recommendation:* apply to all
+_Change:_ new and changed passwords on those tiers must meet 12 chars + complexity + not-breached.
+_Trade-off:_ existing weak passwords keep working until next change unless a reset is forced;
+external portal users will hit more rejections at invite-acceptance. _Recommendation:_ apply to all
 new/changed passwords immediately; decide separately whether to force rotation of existing ones.
 
 **P3 — Session-bound access tokens (from C2/M1).**
-*Change:* revocation becomes immediate rather than lagging by up to the access-token TTL.
-*Trade-off:* `authMiddleware` gains a session lookup on every request (mitigated by the existing
+_Change:_ revocation becomes immediate rather than lagging by up to the access-token TTL.
+_Trade-off:_ `authMiddleware` gains a session lookup on every request (mitigated by the existing
 Redis session index); users whose session is killed are cut off mid-action rather than at next
-refresh — which is the intent, but is a visible change. *Recommendation:* proceed; this is the core
+refresh — which is the intent, but is a visible change. _Recommendation:_ proceed; this is the core
 of the C2 fix.
 
 **P4 — Re-authentication for administrative password and role changes (from H4).**
-*Change:* an admin must re-enter their password (and TOTP if enrolled) to reset another user's
-password or change roles. *Trade-off:* extra friction on a routine helpdesk action.
-*Recommendation:* proceed, with a short grace window so a batch of onboarding actions needs one
+_Change:_ an admin must re-enter their password (and TOTP if enrolled) to reset another user's
+password or change roles. _Trade-off:_ extra friction on a routine helpdesk action.
+_Recommendation:_ proceed, with a short grace window so a batch of onboarding actions needs one
 challenge rather than one per user.
 
 **P5 — Shorter platform refresh TTL (from M6).**
-*Change:* platform admins re-authenticate more often than every 30 days. *Trade-off:* mild
-inconvenience for a small number of operators. *Recommendation:* proceed.
+_Change:_ platform admins re-authenticate more often than every 30 days. _Trade-off:_ mild
+inconvenience for a small number of operators. _Recommendation:_ proceed.
 
 **P6 — Enforcing `required_permission` on AI actions (from H1).**
-*Change:* users will start seeing the assistant decline actions it previously performed. This is
+_Change:_ users will start seeing the assistant decline actions it previously performed. This is
 the vulnerability being closed, but to a user it will read as a regression, and some users may be
-relying on it today. *Recommendation:* proceed, and pair it with a clear denial message naming the
+relying on it today. _Recommendation:_ proceed, and pair it with a clear denial message naming the
 missing grant so the helpdesk can act. Worth an advance note to tenants.
 
 ---
@@ -749,6 +753,7 @@ goes first. Each phase is independently shippable and independently verifiable.
 ---
 
 ### Phase 1 — Contain the live exposure
+
 **Addresses:** C1
 **Why grouped / why first:** These are credentials that are already outside the trust boundary and
 personal data already stored where it must not be. Every other finding requires an attacker to do
@@ -760,6 +765,7 @@ has no dependency on any other work, so it should not queue behind design decisi
 MySQL host.
 
 **Deliverables**
+
 1. Rotate the Gemini key, Groq key, `no-reply@smartls.cm` SMTP password, and the legacy MySQL
    password. Confirm the old values are rejected.
 2. Remove `doc/reference/legacy_codebase` from the working tree; purge from history with
@@ -772,6 +778,7 @@ MySQL host.
    not the engineering team's to make alone.
 
 **Verification**
+
 - `git log --all -S'<rotated value>'` returns nothing after the purge, for each secret.
 - CI's own secret-scan pattern run across the full tree (no exclusions) returns zero hits — this is
   the specific check that would have caught C1 and did not.
@@ -783,6 +790,7 @@ MySQL host.
 ---
 
 ### Phase 2 — Make authentication hold
+
 **Addresses:** C2, C3, H5, M1, M2
 **Why grouped:** These are one story, not five. Logout does not revoke (C2) because access tokens
 are not session-bound (M1); revocation cannot be trusted while `killSession` ignores ownership (M2);
@@ -796,6 +804,7 @@ appears to work and does not — the exact failure mode of C1. They must land to
 `client/src/app/auth/auth-context.tsx`, `client/src/lib/token-store.ts`.
 
 **Deliverables**
+
 1. Add `sid` to the access token; have `authMiddleware` reject a killed session via the Redis
    session index (**P3**).
 2. Rewrite `logout` to derive the session from `req.user` and revoke unconditionally — no request
@@ -803,14 +812,15 @@ appears to work and does not — the exact failure mode of C1. They must land to
 3. Add `AND user_id = $3` to `repo.killSession`.
 4. Correct `trust proxy` to the real hop count/proxy address; wire `rate-limit-redis` into the
    existing limiters.
-5. Redis-backed limiters on every auth route across all three tiers, keyed on client identity *and*
+5. Redis-backed limiters on every auth route across all three tiers, keyed on client identity _and_
    submitted identifier; global fallback limiter in `src/server.js`.
 6. Cap TOTP attempts per pending token; invalidate the token at the cap.
 7. Enforce `failed_logins` — progressive delay now; lockout only if **P1** is approved.
 
 **Verification**
+
 - Sign in, capture the refresh token, sign out, then present the refresh token: must return
-  `SESSION_REVOKED`. *(Today it returns a fresh token pair — this is the regression test for C2.)*
+  `SESSION_REVOKED`. _(Today it returns a fresh token pair — this is the regression test for C2.)_
 - Sign in, kill the session from another device, then use the still-unexpired access token: must
   return 401 immediately, not after the TTL.
 - Attempt to kill another user's session via `POST /auth/logout` with their session id: no rows
@@ -825,6 +835,7 @@ appears to work and does not — the exact failure mode of C1. They must land to
 ---
 
 ### Phase 3 — Close the authorization bypasses
+
 **Addresses:** H1, H2, H4, M3
 **Why grouped:** All four are the same class — a privileged action reachable without the check that
 was meant to guard it. They also share a verification method (attempt the action as an
@@ -838,6 +849,7 @@ privileges can actually be revoked.
 `src/modules/vault/document_vault/document_vault.routes.js`.
 
 **Deliverables**
+
 1. Enforce `required_permission` in the orchestrator at both execution sites; resolve transition
    actions and the APPROVER capability for `transition_*`; fail closed on a null permission (**P6**).
 2. Add `settings.read`/`settings.write` to `CAP_CATALOGUE`; apply `requireCap` to all nine
@@ -849,8 +861,9 @@ privileges can actually be revoked.
    already used by `document-templates`.
 
 **Verification**
+
 - As a user with WMS grants only, drive the assistant to `draft_supplier_invoice` and
-  `draft_cash_request`: both denied with the missing grant named. *(Today both succeed.)*
+  `draft_cash_request`: both denied with the missing grant named. _(Today both succeed.)_
 - As a user with module `edit` but no APPROVER capability, drive `transition_dossier` to a decision
   state: denied — matching what the HTTP route returns for the same user.
 - As a platform user holding only `support.read`, attempt `PUT /settings/storage/s3` and
@@ -864,6 +877,7 @@ privileges can actually be revoked.
 ---
 
 ### Phase 4 — Close the injection and data-handling gaps
+
 **Addresses:** H3, H6, M8, L4
 **Why grouped:** These are input-and-output hygiene at the boundaries — what is accepted into a SQL
 statement (H3), what is accepted as a password (H6), what the browser is allowed to execute (M8),
@@ -876,6 +890,7 @@ which is why they are not bundled into Phase 3's narrower authorization work.
 Control Tower mock route.
 
 **Deliverables**
+
 1. Validate and quote identifiers in `insertOne`/`updateOne`; add an explicit writable-column
    allow-list to the repo config so mass assignment is closed independently of injection.
 2. Replace `passthrough` with real zod schemas on all ten modules, security modules first
@@ -888,9 +903,10 @@ Control Tower mock route.
    logger redaction paths.
 
 **Verification**
+
 - Submit a body containing an unexpected key to each formerly-`passthrough` write route: the key is
   rejected or stripped, never reaches SQL, and the response is a clean 4xx.
-- Attempt to clear `killed_at` via `PATCH /sessions/:id`: rejected. *(Today it succeeds.)*
+- Attempt to clear `killed_at` via `PATCH /sessions/:id`: rejected. _(Today it succeeds.)_
 - Attempt to set a weak/known-breached password on a portal invite-accept, a platform user create,
   and a tenant-admin create: all rejected with the policy message. Confirm the HIBP fail-open path
   still allows a strong password when the API is unreachable.
@@ -904,6 +920,7 @@ Control Tower mock route.
 ---
 
 ### Phase 5 — Structural hardening and continuous assurance
+
 **Addresses:** M4, M5, M6, M7, M9, L1, L2, L3, L5, L6
 **Why grouped / why last:** Every item here is either defence-in-depth on an isolation boundary
 that currently holds (M4, M5, M7), a trade-off the team already documented and accepted (M6, L3),
@@ -919,6 +936,7 @@ from re-finding the same class of issue.
 `tests/unit/auth-coverage.test.js`.
 
 **Deliverables**
+
 1. Socket handshake derives the tenant from headers only (M4).
 2. Separate signing keys per auth tier; add and verify a `tid` claim on tenant and portal tokens (M5).
 3. Platform session table with kill/rotation semantics; shorter platform refresh TTL (**P5**);
@@ -933,6 +951,7 @@ from re-finding the same class of issue.
 9. Per-route auth assertions with an explicit public allow-list (L5); delete dead `middleware/audit.js` (L6).
 
 **Verification**
+
 - A socket handshake supplying `auth.host` for a different tenant resolves the tenant from the
   header and is refused.
 - A tenant-A token presented to tenant-B's host is rejected on the `tid` mismatch — explicitly, not
@@ -951,12 +970,12 @@ from re-finding the same class of issue.
 
 ## 6. Summary
 
-| Severity | Count | Findings |
-|---|---|---|
-| Critical | 3 | C1 committed credentials + PII (CI scan excluded), C2 logout does not revoke, C3 no brute-force protection |
-| High | 6 | H1 AI bypasses RBAC, H2 platform credential store ungated, H3 body keys → SQL identifiers, H4 MOD-67 → CEO takeover, H5 rate limiting bypassable, H6 weak password policy on privileged tiers |
-| Medium | 9 | M1–M9 |
-| Low | 6 | L1–L6 |
+| Severity | Count | Findings                                                                                                                                                                                      |
+| -------- | ----- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Critical | 3     | C1 committed credentials + PII (CI scan excluded), C2 logout does not revoke, C3 no brute-force protection                                                                                    |
+| High     | 6     | H1 AI bypasses RBAC, H2 platform credential store ungated, H3 body keys → SQL identifiers, H4 MOD-67 → CEO takeover, H5 rate limiting bypassable, H6 weak password policy on privileged tiers |
+| Medium   | 9     | M1–M9                                                                                                                                                                                         |
+| Low      | 6     | L1–L6                                                                                                                                                                                         |
 
 **The two things worth saying plainly.** First, database-per-tenant is the right call and it is
 working — I could not find a path from one tenant's session to another tenant's business data, and

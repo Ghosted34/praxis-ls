@@ -196,7 +196,11 @@ services:
     healthcheck:
       # `pg_isready` through the pooler proves it is listening AND can reach
       # Postgres; checking the port alone would pass while the upstream is down.
-      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -p 6432 -U ${PGBOUNCER_AUTH_USER:-pgbouncer} || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -h 127.0.0.1 -p 6432 -U ${PGBOUNCER_AUTH_USER:-pgbouncer} || exit 1",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5

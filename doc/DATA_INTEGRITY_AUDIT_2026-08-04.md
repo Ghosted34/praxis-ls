@@ -11,17 +11,17 @@
 
 Established from the code, not assumed:
 
-| Aspect | Reality |
-| --- | --- |
-| Engine | PostgreSQL. Extensions: `pgcrypto`, `citext`, `vector` (`migrations/tenant/0001_extensions.sql`) |
-| ORM | **None.** Raw `pg` with parameterised SQL and hand-rolled builders (`src/shared/db/query-helpers.js`) |
-| Tenancy | **Database per tenant** (`tenant_<slug>`), each with two schemas: `live` and `sandbox`. Registry in a separate `platform` database (`src/services/tenant/registry.service.js:95`) |
-| Migration tool | Bespoke. Ledger `public.schema_migration(scope, filename)`, keyed **by filename**, applied in alphabetical order (`src/services/platform/migrator.js:85-108`) |
-| Tenant schema size | 183 tables, 351 foreign keys, 72 explicit indexes, across 62 tenant migration files |
-| Platform schema size | 8 migration files, ~12 tables |
-| Down/rollback migrations | **Zero.** No `down` concept exists in the tooling |
+| Aspect                   | Reality                                                                                                                                                                           |
+| ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Engine                   | PostgreSQL. Extensions: `pgcrypto`, `citext`, `vector` (`migrations/tenant/0001_extensions.sql`)                                                                                  |
+| ORM                      | **None.** Raw `pg` with parameterised SQL and hand-rolled builders (`src/shared/db/query-helpers.js`)                                                                             |
+| Tenancy                  | **Database per tenant** (`tenant_<slug>`), each with two schemas: `live` and `sandbox`. Registry in a separate `platform` database (`src/services/tenant/registry.service.js:95`) |
+| Migration tool           | Bespoke. Ledger `public.schema_migration(scope, filename)`, keyed **by filename**, applied in alphabetical order (`src/services/platform/migrator.js:85-108`)                     |
+| Tenant schema size       | 183 tables, 351 foreign keys, 72 explicit indexes, across 62 tenant migration files                                                                                               |
+| Platform schema size     | 8 migration files, ~12 tables                                                                                                                                                     |
+| Down/rollback migrations | **Zero.** No `down` concept exists in the tooling                                                                                                                                 |
 
-The design intent is strong and, in the ledger core, well executed: journal entries and lines are guarded by real database triggers (balance, one-side-per-line, postable-leaf-only, débours rules, period lock, one-reversal-per-entry, immutability of validated entries). That core is the best part of this schema and most of what follows is about everything *around* it.
+The design intent is strong and, in the ledger core, well executed: journal entries and lines are guarded by real database triggers (balance, one-side-per-line, postable-leaf-only, débours rules, period lock, one-reversal-per-entry, immutability of validated entries). That core is the best part of this schema and most of what follows is about everything _around_ it.
 
 ---
 
@@ -52,12 +52,12 @@ Everything else accepts negatives, including:
 
 Several tables carry a total and its consumed portion with nothing tying them together:
 
-| Table | Columns | Missing invariant |
-| --- | --- | --- |
-| `advance` | `amount`, `applied_amount` | `applied_amount <= amount` |
-| `regie_advance` | `amount`, `justified_amount`, `returned_amount` | `justified + returned <= amount` |
-| `cash_request_line` | `budget_amount`, `spent_amount` | none enforced |
-| `payment_allocation` | `amount` per (receipt, invoice) | `Σ amount <= receipt.amount` **and** `Σ amount <= invoice.total_ttc` |
+| Table                | Columns                                         | Missing invariant                                                    |
+| -------------------- | ----------------------------------------------- | -------------------------------------------------------------------- |
+| `advance`            | `amount`, `applied_amount`                      | `applied_amount <= amount`                                           |
+| `regie_advance`      | `amount`, `justified_amount`, `returned_amount` | `justified + returned <= amount`                                     |
+| `cash_request_line`  | `budget_amount`, `spent_amount`                 | none enforced                                                        |
+| `payment_allocation` | `amount` per (receipt, invoice)                 | `Σ amount <= receipt.amount` **and** `Σ amount <= invoice.total_ttc` |
 
 `payment_allocation` additionally has no `UNIQUE (receipt_id, invoice_id)`, so the same receipt can be allocated to the same invoice more than once.
 
@@ -98,7 +98,7 @@ The allocator itself is sound — `doc_sequence` upsert with `RETURNING` seriali
 
 ### 1.8 — `tax_code` effective windows can overlap · **High** · quick, safe fix (constraint), careful backfill
 
-`tax_code` has `effective_from`/`effective_to` and a `CHECK (effective_to >= effective_from)` (`0210_tax.sql`), but **no exclusion constraint and no unique index** preventing two overlapping rows for the same `(jurisdiction_id, code)`. The migration's own comment concedes it: *"no overlapping windows is enforced in app; this index just makes 'current version' lookups fast."*
+`tax_code` has `effective_from`/`effective_to` and a `CHECK (effective_to >= effective_from)` (`0210_tax.sql`), but **no exclusion constraint and no unique index** preventing two overlapping rows for the same `(jurisdiction_id, code)`. The migration's own comment concedes it: _"no overlapping windows is enforced in app; this index just makes 'current version' lookups fast."_
 
 The app does not enforce it either. `addCode` (`tax_jurisdiction.service.js:55-72`) calls only `assertRate` and `assertEffectiveWindow`; `assertEffectiveWindow` compares the new row's own two dates and nothing else (`tax_jurisdiction.rules.js:26-31`). There is no query for a conflicting row.
 
@@ -120,17 +120,17 @@ The correct figure is already computable — `smart_receivables.repo.js:openInvo
 
 74 foreign keys use `ON DELETE CASCADE`. On configuration and truly-owned child rows this is right. On the following it destroys records that must be preserved:
 
-| Child (cascade-deleted) | Parent | What is lost |
-| --- | --- | --- |
-| `depreciation_schedule` | `asset` | Posted depreciation rows **carrying `entry_id` references to real journal entries.** Deleting an asset silently erases its depreciation history while the GL entries remain — the asset register and the ledger diverge with no trace. |
-| `payment_allocation` | `payment_receipt` | The receipt→invoice application record. Invoices silently revert to "unpaid". |
-| `invoice_line` | `invoice` | The composition of a posted invoice. |
-| `supplier_invoice_line` | `supplier_invoice` | Same, AP side. |
-| `cash_request_payment` | `cash_request` | Disbursement records carrying `entry_id`. |
-| `debt_repayment` | `debt_engagement` | Repayment history carrying `entry_id`. |
-| `stock_movement` | `inventory_item` | **The entire movement journal for that item.** The comment at `inventory.repo.js:6` calls it "its append-only movement journal" — it has no append-only trigger and is cascade-deleted. |
-| `close_checklist` | `accounting_period` | Period-close evidence. |
-| `payroll_run_item` | `payroll_run` | Per-employee pay detail. |
+| Child (cascade-deleted) | Parent              | What is lost                                                                                                                                                                                                                           |
+| ----------------------- | ------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `depreciation_schedule` | `asset`             | Posted depreciation rows **carrying `entry_id` references to real journal entries.** Deleting an asset silently erases its depreciation history while the GL entries remain — the asset register and the ledger diverge with no trace. |
+| `payment_allocation`    | `payment_receipt`   | The receipt→invoice application record. Invoices silently revert to "unpaid".                                                                                                                                                          |
+| `invoice_line`          | `invoice`           | The composition of a posted invoice.                                                                                                                                                                                                   |
+| `supplier_invoice_line` | `supplier_invoice`  | Same, AP side.                                                                                                                                                                                                                         |
+| `cash_request_payment`  | `cash_request`      | Disbursement records carrying `entry_id`.                                                                                                                                                                                              |
+| `debt_repayment`        | `debt_engagement`   | Repayment history carrying `entry_id`.                                                                                                                                                                                                 |
+| `stock_movement`        | `inventory_item`    | **The entire movement journal for that item.** The comment at `inventory.repo.js:6` calls it "its append-only movement journal" — it has no append-only trigger and is cascade-deleted.                                                |
+| `close_checklist`       | `accounting_period` | Period-close evidence.                                                                                                                                                                                                                 |
+| `payroll_run_item`      | `payroll_run`       | Per-employee pay detail.                                                                                                                                                                                                               |
 
 `journal_line → journal_entry ON DELETE CASCADE` (`0220_ledger.sql:52`) is safe **only** because `protect_validated_entry` blocks deletion of a validated entry. Draft entries do cascade, which is correct. This is the pattern the others should follow: block the parent delete rather than cascade the child.
 
@@ -154,7 +154,7 @@ Zero of 351 FKs declare `ON UPDATE`. For UUID surrogate keys this is harmless. I
 - `chart_of_accounts.code` is the primary key and is referenced by `journal_line.account_code`, `treasury_account.coa_code`, `treasury_account.momo_fee_account`, `asset.coa_asset_code`, `asset.coa_depr_code`, `posting_rule.debit_account`, `posting_rule.credit_account`, `tax_code.posts_debit_account`, `tax_code.posts_credit_account`, `payroll_component.coa_code`, `debt_engagement.coa_code`, `supplier_invoice_line.expense_account`.
 - `currency.code` similarly.
 
-Default `NO ACTION` means renaming an account code is simply blocked once it has been posted to. That is arguably the *correct* behaviour for a statutory chart — but it is undocumented, and the COA service exposes edit paths. This should be an explicit decision recorded in the schema, not a default.
+Default `NO ACTION` means renaming an account code is simply blocked once it has been posted to. That is arguably the _correct_ behaviour for a statutory chart — but it is undocumented, and the COA service exposes edit paths. This should be an explicit decision recorded in the schema, not a default.
 
 ### 2.4 — Sandbox actor FKs are structurally unsatisfiable, and the workaround is inconsistently applied · **High** · needs design decision
 
@@ -197,7 +197,7 @@ Nothing currently reads `created_at` from this table (`notification.repo.js:49` 
 
 `tenant/0470` and `tenant/0475` each have two files. `scripts/db/check-migration-numbers.js` documents this accurately, explains why renaming an applied migration is a live-database hazard (the ledger keys on filename, so a rename re-runs a non-idempotent file), grandfathers the two known pairs, and fails CI on any new collision. It is wired into CI (`.github/workflows/ci.yaml:50`).
 
-This is correct handling and should not be "fixed". The residual risk the script itself names is the real one: the next collision where two same-numbered files touch the *same* object, where apply order becomes an alphabetical accident.
+This is correct handling and should not be "fixed". The residual risk the script itself names is the real one: the next collision where two same-numbered files touch the _same_ object, where apply order becomes an alphabetical accident.
 
 ### 3.5 — No migration is reversible · **High** · policy gap
 
@@ -211,7 +211,7 @@ This was diagnosed and corrected for one file — `0492_default_workflows_repair
 
 ### 3.7 — Data backfills are well built · **positive finding**
 
-`0490_department_scope_refs.sql:63-112` is the pattern to standardise on: it fills only `NULL`s, matches on a normalised key, **leaves ambiguous rows unlinked rather than guessing**, counts what it did, and warns rather than failing the deploy. `0463_cost_entry_source_ref.sql` correctly introduces an idempotency key as a *partial* unique index so existing NULL rows are unaffected. Both are additive and safe to re-run.
+`0490_department_scope_refs.sql:63-112` is the pattern to standardise on: it fills only `NULL`s, matches on a normalised key, **leaves ambiguous rows unlinked rather than guessing**, counts what it did, and warns rather than failing the deploy. `0463_cost_entry_source_ref.sql` correctly introduces an idempotency key as a _partial_ unique index so existing NULL rows are unaffected. Both are additive and safe to re-run.
 
 ---
 
@@ -219,27 +219,27 @@ This was diagnosed and corrected for one file — `0492_default_workflows_repair
 
 Where the DB does enforce, it enforces well — the ledger triggers in `0220`, `0221` and `0464` are genuine defence-in-depth and the integration test `tests/integration/ledger-hardening.test.js` proves they fire against real Postgres. Outside the ledger, almost nothing is enforced below the API.
 
-| Rule | Enforced in | Nothing at DB level | Severity |
-| --- | --- | --- | --- |
-| Tax-code windows must not overlap | nowhere (see §1.8) | ✔ | **High** |
-| Sums (`applied <= amount`, `Σ allocations <= total`) | nowhere | ✔ | **Critical** |
-| Amounts must be non-negative | Zod validators per module | ✔ | **Critical** |
-| `qty_on_hand` must not go negative | `inventory.service.js:43` (racy, see §5.1) | ✔ | **High** |
-| Inventory state transitions | `inventory.service.js:11-17` | ✔ | Medium |
-| Invoice / costing / PO status transitions | each service's guard clauses | ✔ | Medium |
-| Outbound order transitions | `outbound.service.js:11-18` | ✔ | Medium |
-| `report_key` must be in the catalogue | `0440_settings_gaps.sql:24` says so explicitly | ✔ | Low |
-| Entity-scoped row isolation | **nothing** (see §4.1) | ✔ | Medium |
+| Rule                                                 | Enforced in                                    | Nothing at DB level | Severity     |
+| ---------------------------------------------------- | ---------------------------------------------- | ------------------- | ------------ |
+| Tax-code windows must not overlap                    | nowhere (see §1.8)                             | ✔                   | **High**     |
+| Sums (`applied <= amount`, `Σ allocations <= total`) | nowhere                                        | ✔                   | **Critical** |
+| Amounts must be non-negative                         | Zod validators per module                      | ✔                   | **Critical** |
+| `qty_on_hand` must not go negative                   | `inventory.service.js:43` (racy, see §5.1)     | ✔                   | **High**     |
+| Inventory state transitions                          | `inventory.service.js:11-17`                   | ✔                   | Medium       |
+| Invoice / costing / PO status transitions            | each service's guard clauses                   | ✔                   | Medium       |
+| Outbound order transitions                           | `outbound.service.js:11-18`                    | ✔                   | Medium       |
+| `report_key` must be in the catalogue                | `0440_settings_gaps.sql:24` says so explicitly | ✔                   | Low          |
+| Entity-scoped row isolation                          | **nothing** (see §4.1)                         | ✔                   | Medium       |
 
-Status columns are a good example of the split: `CHECK (status IN (...))` constrains the *set* of values, so the DB knows the vocabulary, but the *transitions* live only in JS. Any write that does not go through the owning service can move a `POSTED_LOCKED` invoice back to `DRAFT`.
+Status columns are a good example of the split: `CHECK (status IN (...))` constrains the _set_ of values, so the DB knows the vocabulary, but the _transitions_ live only in JS. Any write that does not go through the owning service can move a `POSTED_LOCKED` invoice back to `DRAFT`.
 
 ### 4.1 — The RLS layer described in the code does not exist · **Medium** · dead code, remove or implement
 
-`src/config/database.js` carries a full RLS apparatus: an `RLS_READ_ENFORCE` flag, `applySessionContext` setting `app.current_business` / `app.current_user_id`, a `queryWithContext` path that wraps single reads in a transaction so the GUC applies, and a boot-time warning about superuser bypass. Comments at `database.js:191` and `request-context.js:8` attribute the policies to *"migration 000200"*.
+`src/config/database.js` carries a full RLS apparatus: an `RLS_READ_ENFORCE` flag, `applySessionContext` setting `app.current_business` / `app.current_user_id`, a `queryWithContext` path that wraps single reads in a transaction so the GUC applies, and a boot-time warning about superuser bypass. Comments at `database.js:191` and `request-context.js:8` attribute the policies to _"migration 000200"_.
 
 **There is no migration 000200, and no `ROW LEVEL SECURITY` or `CREATE POLICY` statement anywhere in `migrations/`.** Verified across all files.
 
-Cross-tenant isolation is not at risk — it is achieved by the database boundary, as `doc/DB_ARCHITECTURE.md:§1` intends, and that boundary is real. What does not exist is the *entity-level* filtering the GUC implies. `corporate_entity` scoping is enforced only by whatever `WHERE entity_id = $1` each query happens to carry.
+Cross-tenant isolation is not at risk — it is achieved by the database boundary, as `doc/DB_ARCHITECTURE.md:§1` intends, and that boundary is real. What does not exist is the _entity-level_ filtering the GUC implies. `corporate_entity` scoping is enforced only by whatever `WHERE entity_id = $1` each query happens to carry.
 
 The risk is the misleading affordance: turning on `RLS_READ_ENFORCE` today adds a transaction round-trip per read and filters nothing, while reading as though isolation were enabled.
 
@@ -272,9 +272,9 @@ await emitEvent(...); await audit(...);                  // two more
 
 The controller calls it through `req.tenantDb(...)` with no wrapper (`inventory.controller.js:15-28`). **Every statement autocommits independently.** Three distinct failures:
 
-1. **Lost update.** Two concurrent moves both read `qty = 10`; one writes `5`, the other writes `7`. Final quantity is `7` instead of `2`. Silent, no error, and undetectable afterwards because the two movement rows *are* both written.
+1. **Lost update.** Two concurrent moves both read `qty = 10`; one writes `5`, the other writes `7`. Final quantity is `7` instead of `2`. Silent, no error, and undetectable afterwards because the two movement rows _are_ both written.
 2. **The negative-stock guard is racy and has no DB backstop.** Two concurrent `-6` moves against `qty = 10` both pass the check. There is no `CHECK (qty_on_hand >= 0)`.
-3. **Balance and journal diverge permanently.** If `insertMovement` fails — and per §2.4 it *will* raise `23503` in sandbox on `moved_by` — the quantity change is already committed. The item's balance moved with no movement record. Since `qty_on_hand` is an absolute value rather than a derived sum, there is no way to detect or reconstruct it.
+3. **Balance and journal diverge permanently.** If `insertMovement` fails — and per §2.4 it _will_ raise `23503` in sandbox on `moved_by` — the quantity change is already committed. The item's balance moved with no movement record. Since `qty_on_hand` is an absolute value rather than a derived sum, there is no way to detect or reconstruct it.
 
 Read-modify-write on a stock balance, unlocked and uncommitted-as-a-unit, is the single highest-risk pattern in this codebase for inventory correctness.
 
@@ -287,10 +287,10 @@ Read-modify-write on a stock balance, unlocked and uncommitted-as-a-unit, is the
 **Consequences, in ascending severity:**
 
 - A business row commits and its `immutable_ledger` entry does not → the audit trail has a hole and no error is raised anywhere.
-- `archive` writes the `soft_delete` recovery row, then `DELETE`s. If the `DELETE` fails a foreign key, the `soft_delete` row remains, asserting a deletion that did not happen. The code comment at `resource.js:130-134` reasons carefully about the *ordering* of these statements while leaving them non-atomic — ordering only matters because atomicity is absent.
+- `archive` writes the `soft_delete` recovery row, then `DELETE`s. If the `DELETE` fails a foreign key, the `soft_delete` row remains, asserting a deletion that did not happen. The code comment at `resource.js:130-134` reasons carefully about the _ordering_ of these statements while leaving them non-atomic — ordering only matters because atomicity is absent.
 - An approval task can be opened by `executor.start` for a record whose own write then fails.
 
-This is also the root cause of the failure mode described at length in `emit.js`: *"the audit row lands in `sandbox.immutable_ledger` carrying a user id that `sandbox.app_user` has never heard of → 23503 … AFTER the business row had already committed — so the record existed but the request 409'd, and a retry then hit a duplicate-key error."* The guarded sub-select fixes the FK; the reason a mid-sequence failure could strand a committed row is the missing transaction, and that remains.
+This is also the root cause of the failure mode described at length in `emit.js`: _"the audit row lands in `sandbox.immutable_ledger` carrying a user id that `sandbox.app_user` has never heard of → 23503 … AFTER the business row had already committed — so the record existed but the request 409'd, and a retry then hit a duplicate-key error."_ The guarded sub-select fixes the FK; the reason a mid-sequence failure could strand a committed row is the missing transaction, and that remains.
 
 ### 5.3 — Receipt allocation reads unlocked and can over-allocate · **High** · code fix + constraint
 
@@ -327,14 +327,14 @@ const updated = await repo.markPosted(client, row.depreciation_id, entryId);  //
 
 Two independent defects compound:
 
-1. **The lines use `account:`, not `account_code:`.** `buildAndInsert` reads `ln.account_code` (`journal_entry.service.js:74`). It also requires `sourceDocRef` when `validate` is true (default), and `depreciate` passes none — so the call throws `SOURCE_DOC_REQUIRED` before it ever reaches the account. This is the *identical* bug that was found and fixed in payroll, where the fix is documented in a comment: *"buildAndInsert expects `account_code` (not `account`) and requires a source_doc_ref to validate — both were missing, so this post silently threw and degraded to null (payroll never hit the GL). Fixed."* (`payroll.service.js:149-151`). The same fix was never applied to `asset`.
+1. **The lines use `account:`, not `account_code:`.** `buildAndInsert` reads `ln.account_code` (`journal_entry.service.js:74`). It also requires `sourceDocRef` when `validate` is true (default), and `depreciate` passes none — so the call throws `SOURCE_DOC_REQUIRED` before it ever reaches the account. This is the _identical_ bug that was found and fixed in payroll, where the fix is documented in a comment: _"buildAndInsert expects `account_code` (not `account`) and requires a source_doc_ref to validate — both were missing, so this post silently threw and degraded to null (payroll never hit the GL). Fixed."_ (`payroll.service.js:149-151`). The same fix was never applied to `asset`.
 2. **The catch swallows every error** and `markPosted` then sets `posted = true` with `entry_id = NULL`.
 
 **Net effect: depreciation never reaches the general ledger, on any asset, ever — and is recorded as posted.** Because `accumulatedPosted` sums `depreciation_schedule WHERE posted = true` (`asset.repo.js:62-68`), the fixed-asset register reports accumulated depreciation and net book value that the trial balance does not contain. `dispose` then computes gain/loss from that same unposted figure (`asset.service.js:93-95`) and **posts nothing at all** — no journal entry is created on disposal despite the module header claiming it "recognises gain/loss".
 
 There are no tests for the asset module (verified: no `asset` or `deprec` test file among 80 test files).
 
-The `catch → entryId = null` pattern is worth calling out on its own: "record without posting" converts a hard ledger rejection — which might be a closed period, an unbalanced entry, or a non-postable account — into a silent divergence between a subledger and the GL. Note also that `journal.post` opens its own transaction, so `markPosted` runs *after* that transaction has committed; if `markPosted` then fails, the GL carries a dotation the schedule still shows as unposted, and the next run posts it again.
+The `catch → entryId = null` pattern is worth calling out on its own: "record without posting" converts a hard ledger rejection — which might be a closed period, an unbalanced entry, or a non-postable account — into a silent divergence between a subledger and the GL. Note also that `journal.post` opens its own transaction, so `markPosted` runs _after_ that transaction has committed; if `markPosted` then fails, the GL carries a dotation the schedule still shows as unposted, and the next run posts it again.
 
 ### 5.6 — Tenant provisioning is not transactional · **Medium** · code fix
 
@@ -396,13 +396,13 @@ Beyond §2.2's 295 unindexed FKs:
 
 ### 7.1 — Missing uniqueness that should exist · **High** · needs careful migration (duplicates may exist)
 
-| Table | Should be unique | Consequence today |
-| --- | --- | --- |
-| `invoice`, `costing`, `purchase_order`, `supplier_invoice`, `cash_request`, `delivery_note`, `regie_advance` | `doc_number` (per entity/year) | duplicate statutory document numbers |
-| `payment_allocation` | `(receipt_id, invoice_id)` | the same receipt applied twice to one invoice |
-| `tax_code` | non-overlapping `(jurisdiction_id, code, effective_from..to)` | ambiguous rate resolution (§1.8) |
-| `expense_rate` | non-overlapping `(dictionary_item_id, shipping_line, variant, effective_from..to)` | ambiguous cost rate |
-| `journal` | `(entity_id, code)` exists — but `entity_id` is nullable, so `NULL`-entity journals can duplicate | duplicate global journals |
+| Table                                                                                                        | Should be unique                                                                                  | Consequence today                             |
+| ------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `invoice`, `costing`, `purchase_order`, `supplier_invoice`, `cash_request`, `delivery_note`, `regie_advance` | `doc_number` (per entity/year)                                                                    | duplicate statutory document numbers          |
+| `payment_allocation`                                                                                         | `(receipt_id, invoice_id)`                                                                        | the same receipt applied twice to one invoice |
+| `tax_code`                                                                                                   | non-overlapping `(jurisdiction_id, code, effective_from..to)`                                     | ambiguous rate resolution (§1.8)              |
+| `expense_rate`                                                                                               | non-overlapping `(dictionary_item_id, shipping_line, variant, effective_from..to)`                | ambiguous cost rate                           |
+| `journal`                                                                                                    | `(entity_id, code)` exists — but `entity_id` is nullable, so `NULL`-entity journals can duplicate | duplicate global journals                     |
 
 `journal_entry` correctly has `UNIQUE (journal_id, period_id, entry_no)` (`0220_ledger.sql:50`).
 
@@ -426,41 +426,41 @@ That last one is worth emphasising: the hottest lookup in the accounting engine 
 
 ## Severity summary
 
-| # | Finding | Severity | Fix class |
-| --- | --- | --- | --- |
-| 5.5 | Asset depreciation never posts to GL, recorded as posted | **Critical** | code, quick |
-| 5.1 | Inventory balance: no transaction, no lock, no DB floor | **Critical** | code + constraint |
-| 5.2 | Shared CRUD kit: business/event/audit in separate commits | **Critical** | code, mechanical |
-| 1.1 | ~100 money/qty columns with no `CHECK` | **Critical** | migration, needs data probe |
-| 1.2 | No sum invariants (over-allocation, over-justification) | **Critical** | migration, needs data probe |
-| 2.1 | `ON DELETE CASCADE` on financial/inventory history | **Critical** | migration, careful |
-| 1.3 | Multi-currency lines never reconciled to base | **High** | migration + code |
-| 1.6 | `doc_number` not unique anywhere | **High** | migration, needs dedupe |
-| 1.8 | `tax_code` windows can overlap → wrong VAT silently | **High** | migration + code |
-| 1.9 | `cached_receivables` read but never written; credit limit inert | **High** | code, quick |
-| 2.2 | 295/351 FKs unindexed | **High** | migration, online |
-| 2.4 | Sandbox actor-FK guard applied inconsistently | **High** | code |
-| 3.1 | Migration apply not atomic with ledger entry | **High** | tooling |
-| 3.2 | Partial fleet upgrade leaves version skew | **High** | tooling |
-| 3.3 | `notification_preference` drift — file ≠ live schema | **High** | verify + tooling |
-| 3.5 | No migration is reversible | **High** | policy |
-| 5.3 | Receipt allocation unlocked → over-allocation | **High** | code + constraint |
-| 5.4 | Tax supersession splits transactions → no effective rate | **High** | code, quick |
-| 6.2 | `before_hash`/`after_hash` never populated | **High** | code, quick |
-| 6.3 | Audit coverage depends on service discipline | **High** | code + triggers |
-| 6.4 | `stock_movement` mutable, cascade-deleted, can be incomplete | **High** | migration |
-| 7.1 | Missing uniqueness on document numbers and allocations | **High** | migration, needs dedupe |
-| 1.4 | `currency` typing inconsistent | Medium | migration |
-| 1.5 | No cycle guard on self-referencing hierarchies | Medium | migration |
-| 2.3 | No `ON UPDATE` on natural-key FKs | Medium | decision |
-| 3.4 | Duplicate migration numbers (handled correctly) | Medium | prevention |
-| 3.6 | `EXCEPTION WHEN OTHERS THEN NULL` in 0467/0468 | Medium | forward-fix |
-| 4.1 | RLS apparatus references a migration that does not exist | Medium | remove or implement |
-| 4.2 | 32 references to a non-existent `shared.*` schema | Medium | remove |
-| 5.6 | Provisioning / sandbox wipe not transactional | Medium | code |
-| 6.5 | Locked documents protected only in the service layer | Medium | migration |
-| 7.2 | Missing indexes on correctness-critical filters | Medium | migration, online |
-| 1.7 | `§23.14` invariant one-directional | Low | migration |
+| #   | Finding                                                         | Severity     | Fix class                   |
+| --- | --------------------------------------------------------------- | ------------ | --------------------------- |
+| 5.5 | Asset depreciation never posts to GL, recorded as posted        | **Critical** | code, quick                 |
+| 5.1 | Inventory balance: no transaction, no lock, no DB floor         | **Critical** | code + constraint           |
+| 5.2 | Shared CRUD kit: business/event/audit in separate commits       | **Critical** | code, mechanical            |
+| 1.1 | ~100 money/qty columns with no `CHECK`                          | **Critical** | migration, needs data probe |
+| 1.2 | No sum invariants (over-allocation, over-justification)         | **Critical** | migration, needs data probe |
+| 2.1 | `ON DELETE CASCADE` on financial/inventory history              | **Critical** | migration, careful          |
+| 1.3 | Multi-currency lines never reconciled to base                   | **High**     | migration + code            |
+| 1.6 | `doc_number` not unique anywhere                                | **High**     | migration, needs dedupe     |
+| 1.8 | `tax_code` windows can overlap → wrong VAT silently             | **High**     | migration + code            |
+| 1.9 | `cached_receivables` read but never written; credit limit inert | **High**     | code, quick                 |
+| 2.2 | 295/351 FKs unindexed                                           | **High**     | migration, online           |
+| 2.4 | Sandbox actor-FK guard applied inconsistently                   | **High**     | code                        |
+| 3.1 | Migration apply not atomic with ledger entry                    | **High**     | tooling                     |
+| 3.2 | Partial fleet upgrade leaves version skew                       | **High**     | tooling                     |
+| 3.3 | `notification_preference` drift — file ≠ live schema            | **High**     | verify + tooling            |
+| 3.5 | No migration is reversible                                      | **High**     | policy                      |
+| 5.3 | Receipt allocation unlocked → over-allocation                   | **High**     | code + constraint           |
+| 5.4 | Tax supersession splits transactions → no effective rate        | **High**     | code, quick                 |
+| 6.2 | `before_hash`/`after_hash` never populated                      | **High**     | code, quick                 |
+| 6.3 | Audit coverage depends on service discipline                    | **High**     | code + triggers             |
+| 6.4 | `stock_movement` mutable, cascade-deleted, can be incomplete    | **High**     | migration                   |
+| 7.1 | Missing uniqueness on document numbers and allocations          | **High**     | migration, needs dedupe     |
+| 1.4 | `currency` typing inconsistent                                  | Medium       | migration                   |
+| 1.5 | No cycle guard on self-referencing hierarchies                  | Medium       | migration                   |
+| 2.3 | No `ON UPDATE` on natural-key FKs                               | Medium       | decision                    |
+| 3.4 | Duplicate migration numbers (handled correctly)                 | Medium       | prevention                  |
+| 3.6 | `EXCEPTION WHEN OTHERS THEN NULL` in 0467/0468                  | Medium       | forward-fix                 |
+| 4.1 | RLS apparatus references a migration that does not exist        | Medium       | remove or implement         |
+| 4.2 | 32 references to a non-existent `shared.*` schema               | Medium       | remove                      |
+| 5.6 | Provisioning / sandbox wipe not transactional                   | Medium       | code                        |
+| 6.5 | Locked documents protected only in the service layer            | Medium       | migration                   |
+| 7.2 | Missing indexes on correctness-critical filters                 | Medium       | migration, online           |
+| 1.7 | `§23.14` invariant one-directional                              | Low          | migration                   |
 
 ---
 
@@ -485,30 +485,31 @@ These apply to every migration proposed below:
 
 ### Phase 1 — Stop the active bleeding
 
-**Scope:** the defects that are corrupting or losing data *right now*, plus the tooling needed to deploy anything safely. Almost entirely application code; two small, fully-reversible migrations.
+**Scope:** the defects that are corrupting or losing data _right now_, plus the tooling needed to deploy anything safely. Almost entirely application code; two small, fully-reversible migrations.
 
 **Dependencies:** none. Start here.
 
 **Deliverables**
 
-*Tooling (blocking prerequisite)*
+_Tooling (blocking prerequisite)_
+
 1. `migrator.applyTracked` wraps file execution and the ledger insert in one `BEGIN`/`COMMIT` (`migrator.js:96-103`). Add a `-- praxis:no-transaction` marker for files needing `CREATE INDEX CONCURRENTLY`, which the runner detects and runs unwrapped, recording the ledger row separately with a documented caveat.
 2. `migrateAllTenants` records per-tenant start/finish in `platform.provisioning_job` (the table already exists, `0030_platform_ops.sql:20`), continues past a failed tenant, and returns a structured pass/fail report. Add `scripts/db/schema-drift-check.js`: connect to each tenant, dump `information_schema` columns/constraints/indexes, diff against a schema built from the migration files in a scratch database, and report divergence. Run it in CI and on demand.
 3. Adopt the down-migration convention (above) and write down-files for the two Phase 1 migrations.
 
-*Correctness fixes — code only, no schema change*
+_Correctness fixes — code only, no schema change_
 
 4. **`asset.depreciate`** (`asset.service.js:70-82`): `account:` → `account_code:`; pass a `sourceDocRef`; replace `catch { entryId = null }` with a real failure that leaves the schedule row unposted. Add `asset.dispose` GL posting (Dr accumulated depreciation, Dr/Cr gain-or-loss, Cr asset). Wrap `depreciate` in one transaction spanning the ledger post and `markPosted` — currently `journal.post` commits before `markPosted` runs, which is the double-post window. **Add unit + integration tests; the module currently has none.**
-   *Data remediation:* a read-only probe reports every `depreciation_schedule` row with `posted = true AND entry_id IS NULL` (expected: all of them). These rows are wrong but not corrupt — the amounts are right, the GL entries are simply absent. Remediation is a **separate, reviewed, opt-in backfill** in Phase 3 that posts the missing entries into open periods, or a documented prior-period adjustment for closed ones. Phase 1 stops new occurrences and quantifies the existing gap; it does not touch the rows.
+   _Data remediation:_ a read-only probe reports every `depreciation_schedule` row with `posted = true AND entry_id IS NULL` (expected: all of them). These rows are wrong but not corrupt — the amounts are right, the GL entries are simply absent. Remediation is a **separate, reviewed, opt-in backfill** in Phase 3 that posts the missing entries into open periods, or a documented prior-period adjustment for closed ones. Phase 1 stops new occurrences and quantifies the existing gap; it does not touch the rows.
 5. **`inventory.move`** (`inventory.service.js:38-58`): wrap in a transaction; replace the read-modify-write with `UPDATE inventory_item SET qty_on_hand = qty_on_hand + $delta WHERE inventory_item_id = $1 RETURNING qty_on_hand` (atomic, no lost update); route `moved_by` through `resolveActorId` (`emit.js`). Same treatment for `setState`.
 6. **Shared CRUD kit** (`resource.js:79-146`): wrap `create`, `update` and `archive` each in a single transaction. This is the highest-leverage change in the roadmap — one file, 25 modules fixed. Verify no caller already holds an open transaction (audit shows none do: zero `transaction(` calls in controllers).
 7. **`supersedeCode`** (`tax_jurisdiction.service.js:75-88`): one transaction spanning expire-old and insert-new. Extract `addCore` from `addCode` the way `final_invoice` separates `createDraftCore` from `createDraft` — the pattern is already established in this codebase.
-   *Data remediation:* probe for `(jurisdiction_id, code)` groups with no row effective today. If any exist, a tax code is currently unresolvable and invoices are failing — treat as an incident, not a migration.
+   _Data remediation:_ probe for `(jurisdiction_id, code)` groups with no row effective today. If any exist, a tax code is currently unresolvable and invoices are failing — treat as an incident, not a migration.
 8. **`smart_receivables.post`**: add `FOR UPDATE` to `openInvoices` when called from the posting path (keep the unlocked read for reporting).
 9. **`cached_receivables` / `cached_overdue` / `cached_payables`**: rather than start writing them, change `creditStatus` to take the derived figure from `openInvoices` and pass it in from the service. Leave the columns in place, untouched, marked deprecated in a comment. No data migration, no risk, and the credit limit starts working.
 10. **`emit.js audit()`**: populate `before_hash` / `after_hash` as `sha256` of the canonicalised JSON. Additive; existing rows keep NULL hashes and the chain starts from the deploy date, which is honest and verifiable.
 
-*Migrations — both trivially reversible*
+_Migrations — both trivially reversible_
 
 11. `05xx_stock_movement_immutable.sql` — `CREATE TRIGGER trg_stock_movement_ro BEFORE UPDATE OR DELETE ON stock_movement ... forbid_mutation()`.
     **Safety:** affects future writes only; touches no existing row. **Rollback:** `DROP TRIGGER`. Fully reversible.
@@ -557,7 +558,7 @@ These apply to every migration proposed below:
    - Zero violations → `VALIDATE` immediately.
    - Few → business reviews and corrects each, then `VALIDATE`.
    - Systematic (e.g. credit notes stored as negative invoices) → the constraint is **wrong for that column** and is dropped rather than forced. Note that `invoice.type = 'CREDIT_NOTE'` exists (`0230`) and `reverses_invoice_id` was added in `0442`, which suggests credit notes are modelled as their own document rather than as negatives — but this must be confirmed against real data, not inferred.
-   **Rollback:** `DROP CONSTRAINT` per constraint. Fully reversible at every step. Leaving a constraint `NOT VALID` indefinitely is a legitimate outcome: it guards new writes while historic rows are worked through.
+     **Rollback:** `DROP CONSTRAINT` per constraint. Fully reversible at every step. Leaving a constraint `NOT VALID` indefinitely is a legitimate outcome: it guards new writes while historic rows are worked through.
 2. **Sum invariants** (§1.2) as `BEFORE INSERT OR UPDATE` triggers — `advance.applied_amount <= amount`; `regie_advance.justified + returned <= amount`; `Σ payment_allocation.amount <= receipt.amount` and `<= invoice.total_ttc`.
    Deferred constraint triggers where a multi-row assembly must be permitted mid-transaction, following the `trg_entry_balanced` pattern (`0220_ledger.sql:126-131`) which is already proven in this schema.
    **Probe:** identify existing violations. Over-allocations are likely given §5.3 — each is a real accounting discrepancy needing business resolution, not a silent fix. **Rollback:** `DROP TRIGGER`. Fully reversible.
@@ -568,7 +569,7 @@ These apply to every migration proposed below:
 5. **Locked-document immutability triggers** (§6.5) on `invoice`, `supplier_invoice`, `costing`, `quotation`, modelled directly on `protect_validated_entry` (`0220_ledger.sql:134-160`) — allow only the field sets that legitimately change post-lock.
    **Probe:** confirm no legitimate service path updates a locked document outside the allowed fields; the reversal and credit-note paths in particular must be checked against the trigger's allow-list. **Rollback:** `DROP TRIGGER`. Fully reversible.
 6. **Currency FK consistency** (§1.4) — add `REFERENCES currency(code)` to the nine unconstrained columns, `NOT VALID` then `VALIDATE`.
-   **Probe:** every distinct value in those columns must exist in `currency`; seed any that do not *before* validating. **Rollback:** `DROP CONSTRAINT`. Fully reversible.
+   **Probe:** every distinct value in those columns must exist in `currency`; seed any that do not _before_ validating. **Rollback:** `DROP CONSTRAINT`. Fully reversible.
 7. **Optional, gated on Phase 1's probe:** the depreciation backfill. Post the missing GL entries for `posted = true, entry_id IS NULL` schedule rows into open periods, one entry per asset per period, tagged `source = 'SYSTEM_RULE'` with a distinct `source_doc_ref` so they are identifiable and, if wrong, reversible through the existing linked-reversal mechanism.
    **This is a financial correction, not a technical migration.** It requires accounting sign-off per tenant. Rows in closed periods **cannot** be posted retroactively — the period lock trigger (`0464`) will correctly reject them, and forcing it would be wrong. Those become a documented prior-period adjustment. **Flag as requiring manual verification.**
 
@@ -612,7 +613,7 @@ These apply to every migration proposed below:
 **Deliverables**
 
 1. **Enum consistency.** Status vocabularies are inconsistent across tables that model the same lifecycle — `invoice` uses `DRAFT/SUBMITTED_FOR_VALIDATION/SUBMITTED_FOR_APPROVAL/ISSUED_LOCKED/APPROVED_LOCKED/POSTED_LOCKED/CANCELLED/REVERSED`, `costing` uses a five-value subset, `purchase_order` a different six, `journal_entry` lowercase `draft|validated` while everything else is uppercase. Introduce a shared `document_status` domain and align, **additively**: widen each `CHECK` to accept both old and new values, migrate values, then narrow. Three reversible steps per table. Lowercase-to-uppercase on `journal_entry.status` is the riskiest — its value is read by the immutability trigger and by `WHEN (NEW.status = 'validated')` clauses on two constraint triggers, all of which must change in the same transaction.
-   **Assess whether this is worth doing at all.** It is cosmetic relative to Phases 1-3, and it touches the ledger. A defensible outcome is to align the *new* tables and leave `journal_entry` alone, documenting why.
+   **Assess whether this is worth doing at all.** It is cosmetic relative to Phases 1-3, and it touches the ledger. A defensible outcome is to align the _new_ tables and leave `journal_entry` alone, documenting why.
 2. **Over-normalisation review.** Two candidates: `client_type` is a table with three rows feeding one nullable FK, and `milestone_template` / `milestone_template_stage` / `milestone_instance` carries three levels of indirection where instances copy `code`/`label` from the template anyway (`0310_operations.sql`). Neither is causing harm; document the assessment and change nothing unless a concrete problem is identified. Denormalisation for its own sake is not an improvement.
 3. **`ON UPDATE` policy** (§2.3): make the natural-key decision explicit. Recommendation: keep `NO ACTION` on `chart_of_accounts.code` (a posted statutory account code must not be renamed) and document it in the migration and in the COA service's error handling, so a user attempting the rename gets a clear explanation rather than a raw `23503`.
 4. **Forward-fix the silent-failure migrations** (§3.6): a new migration that re-asserts what 0467/0468 were meant to do, with `RAISE WARNING` instead of `NULL`, following `0492`'s example. The originals stay untouched.

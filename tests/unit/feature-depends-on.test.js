@@ -11,7 +11,10 @@
  */
 "use strict";
 
-const { enforceDependencies, toDepsArray } = require("../../src/services/platform/provisioning.service");
+const {
+  enforceDependencies,
+  toDepsArray,
+} = require("../../src/services/platform/provisioning.service");
 
 /** Build the row shape projectFeatures hands the resolver. */
 const f = (feature_key, state, depends_on = []) => ({
@@ -22,12 +25,16 @@ const f = (feature_key, state, depends_on = []) => ({
 });
 
 /** state keyed by feature_key, for terse assertions. */
-const states = (rows) => Object.fromEntries(rows.map((r) => [r.feature_key, r.state]));
+const states = (rows) =>
+  Object.fromEntries(rows.map((r) => [r.feature_key, r.state]));
 
 describe("enforceDependencies", () => {
   it("leaves a feature with no dependencies untouched", () => {
     const rows = [f("fleet", "on"), f("wms", "off")];
-    expect(states(enforceDependencies(rows))).toEqual({ fleet: "on", wms: "off" });
+    expect(states(enforceDependencies(rows))).toEqual({
+      fleet: "on",
+      wms: "off",
+    });
   });
 
   it("forces a child off when its parent is off", () => {
@@ -35,7 +42,9 @@ describe("enforceDependencies", () => {
       f("ai.assistant", "off"),
       f("ai.assistant.backend", "on", ["ai.assistant"]),
     ];
-    expect(states(enforceDependencies(rows))["ai.assistant.backend"]).toBe("off");
+    expect(states(enforceDependencies(rows))["ai.assistant.backend"]).toBe(
+      "off",
+    );
   });
 
   it("keeps a child on when its parent is on", () => {
@@ -43,16 +52,18 @@ describe("enforceDependencies", () => {
       f("ai.assistant", "on"),
       f("ai.assistant.backend", "on", ["ai.assistant"]),
     ];
-    expect(states(enforceDependencies(rows))["ai.assistant.backend"]).toBe("on");
+    expect(states(enforceDependencies(rows))["ai.assistant.backend"]).toBe(
+      "on",
+    );
   });
 
   it("cascades through a chain: C off forces B then A off", () => {
-    const rows = [
-      f("c", "off"),
-      f("b", "on", ["c"]),
-      f("a", "on", ["b"]),
-    ];
-    expect(states(enforceDependencies(rows))).toEqual({ a: "off", b: "off", c: "off" });
+    const rows = [f("c", "off"), f("b", "on", ["c"]), f("a", "on", ["b"])];
+    expect(states(enforceDependencies(rows))).toEqual({
+      a: "off",
+      b: "off",
+      c: "off",
+    });
   });
 
   it("treats an unknown dependency as unmet (an unresolvable key is off)", () => {
@@ -61,18 +72,19 @@ describe("enforceDependencies", () => {
   });
 
   it("requires every dependency in the array, not just one", () => {
-    const rows = [
-      f("b", "on"),
-      f("c", "off"),
-      f("a", "on", ["b", "c"]),
-    ];
+    const rows = [f("b", "on"), f("c", "off"), f("a", "on", ["b", "c"])];
     expect(states(enforceDependencies(rows))["a"]).toBe("off");
   });
 
   it("preserves source while flipping state to off", () => {
     const rows = [
       f("ai.assistant", "off"),
-      { feature_key: "ai.vectorization", state: "on", source: "override", depends_on: ["ai.assistant"] },
+      {
+        feature_key: "ai.vectorization",
+        state: "on",
+        source: "override",
+        depends_on: ["ai.assistant"],
+      },
     ];
     const out = enforceDependencies(rows);
     const child = out.find((r) => r.feature_key === "ai.vectorization");
@@ -81,22 +93,46 @@ describe("enforceDependencies", () => {
   });
 
   it("tolerates a null/absent depends_on", () => {
-    const rows = [{ feature_key: "fleet", state: "on", source: "plan", depends_on: null }];
+    const rows = [
+      { feature_key: "fleet", state: "on", source: "plan", depends_on: null },
+    ];
     expect(states(enforceDependencies(rows))["fleet"]).toBe("on");
   });
 
   // Regression: citext[] comes back from node-postgres as a RAW STRING literal,
   // not a JS array. Iterating the string forced every feature off (prod outage).
   it("does NOT force a no-dependency feature off when depends_on is the string '{}'", () => {
-    const rows = [{ feature_key: "accounting.core", state: "on", source: "plan", depends_on: "{}" }];
+    const rows = [
+      {
+        feature_key: "accounting.core",
+        state: "on",
+        source: "plan",
+        depends_on: "{}",
+      },
+    ];
     expect(states(enforceDependencies(rows))["accounting.core"]).toBe("on");
   });
 
   it("honours a string-literal depends_on the same as an array", () => {
     const rows = [
-      { feature_key: "accounting.core", state: "on", source: "plan", depends_on: "{}" },
-      { feature_key: "accounting.statements", state: "on", source: "plan", depends_on: "{accounting.core}" },
-      { feature_key: "costing", state: "on", source: "plan", depends_on: "{operations}" }, // operations absent → off
+      {
+        feature_key: "accounting.core",
+        state: "on",
+        source: "plan",
+        depends_on: "{}",
+      },
+      {
+        feature_key: "accounting.statements",
+        state: "on",
+        source: "plan",
+        depends_on: "{accounting.core}",
+      },
+      {
+        feature_key: "costing",
+        state: "on",
+        source: "plan",
+        depends_on: "{operations}",
+      }, // operations absent → off
     ];
     const s = states(enforceDependencies(rows));
     expect(s["accounting.core"]).toBe("on");

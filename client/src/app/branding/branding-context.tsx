@@ -19,6 +19,13 @@ import {
 } from "@/lib/pwa-config";
 import { loadFonts, DEFAULT_STACK, DEFAULT_MONO_STACK } from "@/lib/fonts";
 import { EMPTY_USER_APPEARANCE, type UserAppearance } from "@/lib/preferences";
+import { onReconnect } from "@/lib/connection";
+import {
+  readCachedBranding,
+  writeCachedBranding,
+  readCachedPwaConfig,
+  writeCachedPwaConfig,
+} from "@/lib/appearance-cache";
 
 const DEFAULT_PRIMARY = import.meta.env.VITE_BRAND_PRIMARY || "#0f766e";
 
@@ -115,14 +122,24 @@ function paint(b: Branding, u: UserAppearance = EMPTY_USER_APPEARANCE) {
   }
 }
 
+const DEFAULT_BRANDING: Branding = {
+  name: null,
+  primary: DEFAULT_PRIMARY,
+  primaryForeground: "#ffffff",
+  logoUrl: null,
+};
+
 export function BrandingProvider({ children }: { children: React.ReactNode }) {
-  const [branding, setState] = React.useState<Branding>({
-    name: null,
-    primary: DEFAULT_PRIMARY,
-    primaryForeground: "#ffffff",
-    logoUrl: null,
-  });
-  const [pwaConfig, setPwaState] = React.useState<PwaConfig>(EMPTY_PWA_CONFIG);
+  // Seed from the last identity the server gave us (appearance-cache) so an
+  // OFFLINE boot paints the TENANT's colour, name and logo rather than the
+  // build-time "Praxis LS" default. Null cache (first-ever visit) falls straight
+  // back to the default, so nothing about the online first-run changes.
+  const [branding, setState] = React.useState<Branding>(
+    () => readCachedBranding() ?? DEFAULT_BRANDING,
+  );
+  const [pwaConfig, setPwaState] = React.useState<PwaConfig>(
+    () => readCachedPwaConfig() ?? EMPTY_PWA_CONFIG,
+  );
   const [userAppearance, setUserState] = React.useState<UserAppearance>(EMPTY_USER_APPEARANCE);
   const [ready, setReady] = React.useState(false);
 
@@ -135,29 +152,55 @@ export function BrandingProvider({ children }: { children: React.ReactNode }) {
   const brandingRef = React.useRef(branding);
   const userRef = React.useRef(userAppearance);
 
-  // Paint the default immediately, then fetch and re-paint with the tenant's own.
+  // Fetch both public reads, then re-paint and re-CACHE with whatever the server
+  // returned. Shared by boot and by the reconnect handler below, so the identity
+  // that survives an offline stint is refreshed the instant the network is back.
   //
-  // Both public reads go out together and `ready` waits for BOTH: the splash is
-  // already on screen and is driven by the PWA config, so flipping ready on
-  // branding alone would reveal the identity block under the DEFAULT preset and
-  // then restart it. allSettled, not all — an unconfigured or failing PWA read
-  // must not hold back branding, which is what colours the login.
-  React.useEffect(() => {
-    paint(branding, userAppearance);
-    Promise.allSettled([fetchBranding(), fetchPwaConfig()])
-      .then(([b, p]) => {
+  // allSettled, not all — an unconfigured or failing PWA read must not hold back
+  // branding, which is what colours the login. A rejected read is not an error
+  // path: an unconfigured or OFFLINE tenant keeps whatever is already painted
+  // (the cached identity, or the default before the first fetch ever succeeded).
+  const loadAppearance = React.useCallback(() => {
+    return Promise.allSettled([fetchBranding(), fetchPwaConfig()]).then(
+      ([b, p]) => {
         if (b.status === "fulfilled") {
           brandingRef.current = b.value;
           setState(b.value);
           paint(b.value, userRef.current);
+          writeCachedBranding(b.value);
         }
-        // A rejected read is not an error path: an unconfigured or offline
-        // tenant keeps the defaults painted above.
-        if (p.status === "fulfilled" && p.value) setPwaState({ ...EMPTY_PWA_CONFIG, ...p.value });
-      })
-      .finally(() => setReady(true));
+        if (p.status === "fulfilled" && p.value) {
+          const cfg = { ...EMPTY_PWA_CONFIG, ...p.value };
+          setPwaState(cfg);
+          writeCachedPwaConfig(cfg);
+        }
+      },
+    );
+  }, []);
+
+  // Paint the cached-or-default identity immediately, then fetch and re-paint
+  // with the tenant's own.
+  //
+  // `ready` waits for the fetch to settle: the splash is already on screen and is
+  // driven by the PWA config, so flipping ready before the reads resolve would
+  // reveal the identity block under a stale preset and then restart it.
+  React.useEffect(() => {
+    paint(branding, userAppearance);
+    loadAppearance().finally(() => setReady(true));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // FULL RE-HYDRATE ON RECONNECT. The identity was fetched exactly once, at
+  // boot, so a boot that happened OFFLINE left the app wearing the default until
+  // a manual hard refresh — the "why do I have to Ctrl+F5" the offline story is
+  // meant to close. Re-running the reads the moment the server answers again
+  // repaints the real brand in place, with no reload and nothing yanked from a
+  // user mid-task. (The query cache and the session re-hydrate on the same
+  // signal — see connection-watcher.tsx and auth-context.tsx.)
+  React.useEffect(
+    () => onReconnect(() => void loadAppearance()),
+    [loadAppearance],
+  );
 
   const setBranding = React.useCallback((b: Branding) => {
     brandingRef.current = b;

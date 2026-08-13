@@ -26,8 +26,17 @@
  */
 const jwt = require("jsonwebtoken");
 
-const mockSessionStore = { isSessionActive: jest.fn(), indexSession: jest.fn(), removeSession: jest.fn(), listActiveSessionIds: jest.fn() };
-const mockIdentityCache = { getAuthUser: jest.fn(), getGrants: jest.fn(), invalidateUser: jest.fn() };
+const mockSessionStore = {
+  isSessionActive: jest.fn(),
+  indexSession: jest.fn(),
+  removeSession: jest.fn(),
+  listActiveSessionIds: jest.fn(),
+};
+const mockIdentityCache = {
+  getAuthUser: jest.fn(),
+  getGrants: jest.fn(),
+  invalidateUser: jest.fn(),
+};
 
 jest.mock("../../src/shared/cache/session-store", () => mockSessionStore);
 jest.mock("../../src/shared/cache/identity-cache", () => mockIdentityCache);
@@ -50,7 +59,9 @@ function makeReq({ sid, redis, db }) {
 /** Run the middleware and report the AppError code, or "allowed". */
 async function outcome(req) {
   try {
-    await authMiddleware(req, {}, (err) => { if (err) throw err; });
+    await authMiddleware(req, {}, (err) => {
+      if (err) throw err;
+    });
     return "allowed";
   } catch (err) {
     return err.code || err.message;
@@ -60,12 +71,17 @@ async function outcome(req) {
 const liveRow = async () => ({ rows: [{ killed_at: null }] });
 const killedRow = async () => ({ rows: [{ killed_at: new Date() }] });
 const noRow = async () => ({ rows: [] });
-const dbDown = async () => { throw new Error("db unreachable"); };
+const dbDown = async () => {
+  throw new Error("db unreachable");
+};
 
 beforeEach(() => {
   jest.clearAllMocks();
   mockIdentityCache.getAuthUser.mockResolvedValue({
-    user_id: "u1", email: "a@b.c", status: "ACTIVE", role_ids: [],
+    user_id: "u1",
+    email: "a@b.c",
+    status: "ACTIVE",
+    role_ids: [],
   });
 });
 
@@ -82,40 +98,50 @@ describe("SEC-M1 — access tokens respect session revocation", () => {
     // so it issues no SQL, which makes the query counter specific to the
     // session check.
     let queries = 0;
-    const countingDb = async (...args) => { queries += 1; return dbDown(...args); };
-    expect(await outcome(makeReq({ sid: "s1", redis: true, db: countingDb }))).toBe("allowed");
+    const countingDb = async (...args) => {
+      queries += 1;
+      return dbDown(...args);
+    };
+    expect(
+      await outcome(makeReq({ sid: "s1", redis: true, db: countingDb })),
+    ).toBe("allowed");
     expect(queries).toBe(0);
   });
 
   it("REJECTS a killed session", async () => {
-    expect(await outcome(makeReq({ sid: "s1", redis: false, db: killedRow })))
-      .toBe("SESSION_REVOKED");
+    expect(
+      await outcome(makeReq({ sid: "s1", redis: false, db: killedRow })),
+    ).toBe("SESSION_REVOKED");
   });
 
   it("rejects a session whose row is gone, because `sid` is only minted with one", async () => {
-    expect(await outcome(makeReq({ sid: "s1", redis: false, db: noRow })))
-      .toBe("SESSION_REVOKED");
+    expect(await outcome(makeReq({ sid: "s1", redis: false, db: noRow }))).toBe(
+      "SESSION_REVOKED",
+    );
   });
 
   it("allows when the index is COLD but Postgres says the session is live", async () => {
     // The Redis-restart case. This is the one that decides whether the control
     // is safe to keep switched on.
-    expect(await outcome(makeReq({ sid: "s1", redis: false, db: liveRow })))
-      .toBe("allowed");
+    expect(
+      await outcome(makeReq({ sid: "s1", redis: false, db: liveRow })),
+    ).toBe("allowed");
   });
 
   it("allows — loudly — when neither layer can answer", async () => {
     // Both down. We cannot tell a revoked session from an unreachable one, and
     // refusing every request would turn a cache outage into a total sign-out.
     // The 15-minute window this closes is not worth that trade.
-    expect(await outcome(makeReq({ sid: "s1", redis: null, db: dbDown })))
-      .toBe("allowed");
+    expect(await outcome(makeReq({ sid: "s1", redis: null, db: dbDown }))).toBe(
+      "allowed",
+    );
   });
 
   it("allows a legacy token with no `sid`, rather than locking out everyone mid-deploy", async () => {
     // Tokens minted before SEC-C2 carry no sid. They expire on their own; the
     // alternative is signing out every active user the moment this ships.
-    expect(await outcome(makeReq({ sid: null, redis: false, db: killedRow })))
-      .toBe("allowed");
+    expect(
+      await outcome(makeReq({ sid: null, redis: false, db: killedRow })),
+    ).toBe("allowed");
   });
 });

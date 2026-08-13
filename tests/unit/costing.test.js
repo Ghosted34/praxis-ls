@@ -1,23 +1,29 @@
 "use strict";
 /** Costing math (KB §6.7): débours excluded from margin; budget vs actual. */
-const { computeCosting, reconcile } = require("../../src/modules/costing/costing/costing.rules");
+const {
+  computeCosting,
+  reconcile,
+} = require("../../src/modules/costing/costing/costing.rules");
 
 describe("computeCosting", () => {
   const lines = [
     { qty: 1, unit_cost: 1500000, is_disbursement: false }, // last-mile service
-    { qty: 1, unit_cost: 500000, is_disbursement: false },   // commission service
-    { qty: 1, unit_cost: 8000000, is_disbursement: true },   // customs/port/shipping débours
+    { qty: 1, unit_cost: 500000, is_disbursement: false }, // commission service
+    { qty: 1, unit_cost: 8000000, is_disbursement: true }, // customs/port/shipping débours
   ];
   it("splits service vs débours; margin applies to service only (§6.7)", () => {
     const t = computeCosting(lines, 25);
     expect(t.service_cost).toBe(2000000);
     expect(t.disbursement_total).toBe(8000000);
-    expect(t.service_sell_ht).toBe(2500000);   // 2,000,000 * 1.25
+    expect(t.service_sell_ht).toBe(2500000); // 2,000,000 * 1.25
     expect(t.margin_amount).toBe(500000);
-    expect(t.sell_ht).toBe(10500000);          // service sell + débours pass-through
+    expect(t.sell_ht).toBe(10500000); // service sell + débours pass-through
   });
   it("zero margin = cost", () => {
-    const t = computeCosting([{ qty: 2, unit_cost: 100000, is_disbursement: false }], 0);
+    const t = computeCosting(
+      [{ qty: 2, unit_cost: 100000, is_disbursement: false }],
+      0,
+    );
     expect(t.service_sell_ht).toBe(200000);
     expect(t.margin_amount).toBe(0);
   });

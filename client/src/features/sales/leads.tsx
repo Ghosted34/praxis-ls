@@ -16,6 +16,7 @@ import { pageShell } from "@/lib/layout";
 import * as React from "react";
 import { tenant } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
+import { ComposeIconButton } from "@/features/comms/mail";
 import { PageHeader } from "@/components/data-list";
 import { HubCrumb, HubTabs } from "@/components/tabbed-hub";
 import { Input } from "@/components/ui/input";
@@ -128,6 +129,7 @@ function LeadsTab() {
                   </p>
                 </div>
                 <span className="hidden text-xs text-muted-foreground sm:block">{cell(r.source).toLowerCase()}</span>
+                <ComposeIconButton to={String(r.email ?? "") || undefined} className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" />
                 {!terminal && (
                   <div className="flex gap-2">
                     {status === "QUALIFIED" ? (

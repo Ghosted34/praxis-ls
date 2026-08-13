@@ -1,6 +1,6 @@
 # Phase 5 — density, polish, and regression-proofing: status
 
-**Phase 5 deliverables:** *"Density system with usage guidance. Desktop interaction patterns documented. CI gates that fail on contrast, a11y and visual regressions. One canonical frontend guide."* — `DESKTOP_UI_AUDIT.md` §3, Phase 5.
+**Phase 5 deliverables:** _"Density system with usage guidance. Desktop interaction patterns documented. CI gates that fail on contrast, a11y and visual regressions. One canonical frontend guide."_ — `DESKTOP_UI_AUDIT.md` §3, Phase 5.
 
 This is the tracked record, in the shape of `PHASE4_CHECKLIST.md`. It exists so "the phase is done" is a claim someone can check rather than take on trust.
 
@@ -12,19 +12,19 @@ This is the tracked record, in the shape of `PHASE4_CHECKLIST.md`. It exists so 
 
 Eleven now, up from seven. Each fails the build.
 
-| Gate | Command | What it holds |
-|---|---|---|
-| Typecheck | `tsc -b` | strict, `noUnusedLocals`, `noUnusedParameters` — and now the e2e specs too |
-| Lint | `npm run lint` | **0 errors.** `jsx-a11y` and `react-hooks/exhaustive-deps` at `error` |
-| Tests | `npm test` | **729 passing**, up from 563 |
-| **Contrast** | `npm run check:contrast` | every text pair, **composited** — pills measured on their own tinted ground, and no fill token used as type |
-| **Motion** | `npm run check:motion` | **new** — 250ms in-app budget; `prefers-reduced-motion` still honoured |
-| **Docs** | `npm run check:docs` | **new** — the guide may not name a component that does not exist (F5) |
-| **Layout** | `npm run test:e2e` | **new** — four desktop widths **and a phone**, row height, tap targets, sticky/frozen columns, in a real browser |
-| Palette | `npm run check:palette` | zero raw Tailwind palette colours |
-| Bundle | `npm run check:bundle` | no circular chunks |
-| Shared schemas | `npm run check:shared` | `packages/shared` resolves, parses, one Zod instance |
-| **Schema sharing** | `npm run check:schemas` | **new** — every shared domain is imported by BOTH sides; no migrated validator re-declares one |
+| Gate               | Command                  | What it holds                                                                                                    |
+| ------------------ | ------------------------ | ---------------------------------------------------------------------------------------------------------------- |
+| Typecheck          | `tsc -b`                 | strict, `noUnusedLocals`, `noUnusedParameters` — and now the e2e specs too                                       |
+| Lint               | `npm run lint`           | **0 errors.** `jsx-a11y` and `react-hooks/exhaustive-deps` at `error`                                            |
+| Tests              | `npm test`               | **729 passing**, up from 563                                                                                     |
+| **Contrast**       | `npm run check:contrast` | every text pair, **composited** — pills measured on their own tinted ground, and no fill token used as type      |
+| **Motion**         | `npm run check:motion`   | **new** — 250ms in-app budget; `prefers-reduced-motion` still honoured                                           |
+| **Docs**           | `npm run check:docs`     | **new** — the guide may not name a component that does not exist (F5)                                            |
+| **Layout**         | `npm run test:e2e`       | **new** — four desktop widths **and a phone**, row height, tap targets, sticky/frozen columns, in a real browser |
+| Palette            | `npm run check:palette`  | zero raw Tailwind palette colours                                                                                |
+| Bundle             | `npm run check:bundle`   | no circular chunks                                                                                               |
+| Shared schemas     | `npm run check:shared`   | `packages/shared` resolves, parses, one Zod instance                                                             |
+| **Schema sharing** | `npm run check:schemas`  | **new** — every shared domain is imported by BOTH sides; no migrated validator re-declares one                   |
 
 All eleven run in CI (`.github/workflows/ci.yaml`, `frontend` job).
 
@@ -36,24 +36,24 @@ A twelfth command, `npm run prove:gates`, is **not** in CI: it deliberately brea
 
 The audit's Phase 5 scope, and where each landed.
 
-| # | Scope item | Status |
-|---|---|---|
-| 1 | Compact table variant · user-selectable density | ✅ 28 / 32 / 40px, account menu, `data-density` → `--row-py` |
-| 2 | Sticky headers · frozen first columns | ✅ opt-in on `DataList` / `ListPage`; reference screen is chart-of-accounts |
-| 3 | Column visibility controls | ✅ `useColumnVisibility` + `<ColumnsMenu>`, persisted per screen |
-| 4 | Multi-select with shift-click · bulk row actions | ✅ `useRowSelection` + `<BulkBar>`, scope pruned to visible rows |
-| 5 | Keyboard row navigation | ✅ roving tabindex; 200 tab stops → 1, table semantics kept |
-| 6 | Inline edit where it fits | ✅ `<InlineEdit>`, wired to service-type names; §3.2 on where it does **not** fit |
-| 7 | Resizable split panes for master-detail | ✅ `<SplitPane>`, a real `role="separator"` with arrow keys |
-| 8 | Retire the draggable FAB on desktop | ✅ `md:hidden`; `<QuickActionsMenu>` in the top bar carries the unread count |
-| 9 | Motion and reduced-motion review | ✅ hover lifts gone; `check:motion` in CI |
-| 10 | AAA where it pays | ◐ body text and money **gated at 7:1**; pills gated at AA — see §3.1 |
-| 11 | `jsx-a11y` warn → error | ✅ already done in Phase 4, one phase early |
-| 12 | Contrast assertions in CI | ✅ and substantially rewritten — see §3.1 |
-| 13 | Visual regression baselines | ✅ as **measured invariants**, not pixels — see §3.3 |
-| 14 | "New screen" generator | ✅ `npm run new:screen`, itself tested |
-| 15 | Consolidate the six frontend docs | ✅ `doc/FRONTEND_GUIDE.md`, gated by `check:docs` |
-| — | The 2560px tier (deferred by Phases 1, 3, 4) | ✅ `max-w-wide` 1664 → 2160 |
+| #   | Scope item                                       | Status                                                                            |
+| --- | ------------------------------------------------ | --------------------------------------------------------------------------------- |
+| 1   | Compact table variant · user-selectable density  | ✅ 28 / 32 / 40px, account menu, `data-density` → `--row-py`                      |
+| 2   | Sticky headers · frozen first columns            | ✅ opt-in on `DataList` / `ListPage`; reference screen is chart-of-accounts       |
+| 3   | Column visibility controls                       | ✅ `useColumnVisibility` + `<ColumnsMenu>`, persisted per screen                  |
+| 4   | Multi-select with shift-click · bulk row actions | ✅ `useRowSelection` + `<BulkBar>`, scope pruned to visible rows                  |
+| 5   | Keyboard row navigation                          | ✅ roving tabindex; 200 tab stops → 1, table semantics kept                       |
+| 6   | Inline edit where it fits                        | ✅ `<InlineEdit>`, wired to service-type names; §3.2 on where it does **not** fit |
+| 7   | Resizable split panes for master-detail          | ✅ `<SplitPane>`, a real `role="separator"` with arrow keys                       |
+| 8   | Retire the draggable FAB on desktop              | ✅ `md:hidden`; `<QuickActionsMenu>` in the top bar carries the unread count      |
+| 9   | Motion and reduced-motion review                 | ✅ hover lifts gone; `check:motion` in CI                                         |
+| 10  | AAA where it pays                                | ◐ body text and money **gated at 7:1**; pills gated at AA — see §3.1              |
+| 11  | `jsx-a11y` warn → error                          | ✅ already done in Phase 4, one phase early                                       |
+| 12  | Contrast assertions in CI                        | ✅ and substantially rewritten — see §3.1                                         |
+| 13  | Visual regression baselines                      | ✅ as **measured invariants**, not pixels — see §3.3                              |
+| 14  | "New screen" generator                           | ✅ `npm run new:screen`, itself tested                                            |
+| 15  | Consolidate the six frontend docs                | ✅ `doc/FRONTEND_GUIDE.md`, gated by `check:docs`                                 |
+| —   | The 2560px tier (deferred by Phases 1, 3, 4)     | ✅ `max-w-wide` 1664 → 2160                                                       |
 
 ---
 
@@ -65,19 +65,19 @@ Three findings that only appeared by doing rather than reading. Full write-up in
 
 The contrast gate measured status text against `--card`. A status pill does not sit on `--card` — `.st-ok` is `rgb(var(--ok))` over `rgb(var(--ok-fill) / 0.13)`. F13 said so in as many words. Measured on the composite:
 
-| Pill | Was | Now |
-|---|---|---|
+| Pill                    | Was    | Now    |
+| ----------------------- | ------ | ------ |
 | `.st-blue` / `.st-info` | 3.27:1 | 4.55:1 |
-| `.st-orange` | 3.79:1 | 4.57:1 |
-| `.st-ok` | 3.75:1 | 4.55:1 |
-| `.st-warn` | 3.98:1 | 4.60:1 |
-| `.st-bad` | 3.58:1 | 4.58:1 |
+| `.st-orange`            | 3.79:1 | 4.57:1 |
+| `.st-ok`                | 3.75:1 | 4.55:1 |
+| `.st-warn`              | 3.98:1 | 4.60:1 |
+| `.st-bad`               | 3.58:1 | 4.58:1 |
 
-*(worst surface, `--background`, light theme; dark passed throughout)*
+_(worst surface, `--background`, light theme; dark passed throughout)_
 
 The gate now parses the `.st-*` rules out of `index.css` and composites them — 28 measurements where there were six hand-written ones, and a pill added tomorrow is measured without anyone remembering.
 
-**AAA is reported, not gated, for pills.** A pill's value is being legible *and* recognisably coloured; 7:1 on a tinted ground drives the tint to near-white or the ink to near-black, at which point the tone stops carrying meaning. Body text and money figures **are** gated at 7:1 and clear it at ~15:1.
+**AAA is reported, not gated, for pills.** A pill's value is being legible _and_ recognisably coloured; 7:1 on a tinted ground drives the tint to near-white or the ink to near-black, at which point the tone stops carrying meaning. Body text and money figures **are** gated at 7:1 and clear it at ~15:1.
 
 ### 3.2 `--primary` was used as text at 38 files' worth of call sites
 
@@ -135,22 +135,22 @@ Numbers, not adjectives. Both were open questions at the end of Phase 5.
 
 **Bundle** — built at the Phase 4 merge and at Phase 5 HEAD, same `node_modules`:
 
-| | Phase 4 | Phase 5 | delta |
-|---|---|---|---|
-| JS chunks emitted | 86 | 86 | 0 |
+|                                       | Phase 4      | Phase 5      | delta       |
+| ------------------------------------- | ------------ | ------------ | ----------- |
+| JS chunks emitted                     | 86           | 86           | 0           |
 | **first load (entry + vendor), gzip** | **164.5 kB** | **167.0 kB** | **+2.6 kB** |
-| entry chunk, gzip | 47.9 kB | 49.0 kB | +1.1 kB |
-| vendor chunk, gzip | 116.6 kB | 118.1 kB | +1.5 kB |
-| all chunks, gzip | 423.6 kB | 431.4 kB | +7.9 kB |
+| entry chunk, gzip                     | 47.9 kB      | 49.0 kB      | +1.1 kB     |
+| vendor chunk, gzip                    | 116.6 kB     | 118.1 kB     | +1.5 kB     |
+| all chunks, gzip                      | 423.6 kB     | 431.4 kB     | +7.9 kB     |
 
 +1.6% on first load. The vendor growth is the Radix `DropdownMenu` sub-components the density and column menus newly reach (`RadioGroup`, `RadioItem`, `CheckboxItem`, `ItemIndicator`) — previously tree-shaken out.
 
 **Roving tabindex** — the one thing added that scales with row count. It walks the `<tbody>` after every render, deliberately without a deps array:
 
-| Rows | Per walk |
-|---|---|
-| 60 (a real page) | 0.20 ms |
-| 500 (past the API's 200-row cap) | 1.43 ms |
+| Rows                             | Per walk |
+| -------------------------------- | -------- |
+| 60 (a real page)                 | 0.20 ms  |
+| 500 (past the API's 200-row cap) | 1.43 ms  |
 
 Well inside a frame, and the walk is defensive: no deps means a re-render cannot leave a stale tabindex that would be invisible until a keyboard user hit it.
 
@@ -184,7 +184,7 @@ Rolling selection and column visibility across the remaining ~90 list screens is
 
 ### 5.4 `xl:` appears 6 times and `2xl:` once
 
-Unchanged from Phase 4's §4.1, and still not the problem it looks like: after Phase 1 the *container* carries the desktop behaviour, and the dominant content is tables, which fill their container. The remaining `sm:grid-cols-2` sites are overwhelmingly form grids inside width-capped modals, where two columns is correct at every viewport.
+Unchanged from Phase 4's §4.1, and still not the problem it looks like: after Phase 1 the _container_ carries the desktop behaviour, and the dominant content is tables, which fill their container. The remaining `sm:grid-cols-2` sites are overwhelmingly form grids inside width-capped modals, where two columns is correct at every viewport.
 
 What changed is that the container now genuinely uses a 2560px display, and there is a browser assertion proving it.
 
@@ -192,11 +192,11 @@ What changed is that the container now genuinely uses a 2560px display, and ther
 
 Down from four. `hr/pages.tsx` went; the rest are unchanged deliberate keeps:
 
-| File | Lines | Why |
-|---|---|---|
-| `app/layout/app-shell.tsx` | 765 | the shell; Phase 3 took it 924 → 702, Phase 5 added the density menu and quick actions |
-| `security/permission-matrix-page.tsx` | 445 | the audit calls this "the best file in the codebase" and spends a paragraph on why |
-| `auth/login-modal.tsx` | 409 | one auth flow, three stages sharing state; the seams are worse than the size |
+| File                                  | Lines | Why                                                                                    |
+| ------------------------------------- | ----- | -------------------------------------------------------------------------------------- |
+| `app/layout/app-shell.tsx`            | 765   | the shell; Phase 3 took it 924 → 702, Phase 5 added the density menu and quick actions |
+| `security/permission-matrix-page.tsx` | 445   | the audit calls this "the best file in the codebase" and spends a paragraph on why     |
+| `auth/login-modal.tsx`                | 409   | one auth flow, three stages sharing state; the seams are worse than the size           |
 
 `features/scaffold/screen-specs.ts` (930) is a **data** table, not a component.
 

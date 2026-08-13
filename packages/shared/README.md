@@ -59,7 +59,14 @@ const { finalInvoice } = require("@praxis/shared");
 
 const parsed = finalInvoice.createDraft.safeParse(req.body);
 if (!parsed.success) {
-  return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, parsed.error.flatten().fieldErrors));
+  return next(
+    new AppError(
+      "VALIDATION_ERROR",
+      "Invalid body",
+      422,
+      parsed.error.flatten().fieldErrors,
+    ),
+  );
 }
 ```
 
@@ -98,11 +105,11 @@ This is not a style preference. With `module.exports = { … }` the client was
 broken in every bundler path at once, and nobody noticed for as long as no
 routed screen imported the package:
 
-| Path | Symptom |
-|---|---|
-| `vite build` | `"finalInvoice" is not exported by "packages/shared/index.js"` |
-| `vite dev` | the import silently resolved to `undefined` — a form with no validation, then a crash inside `zodResolver` |
-| `vitest` | **passed** — Vitest loads this CommonJS through Node, which does not care |
+| Path         | Symptom                                                                                                    |
+| ------------ | ---------------------------------------------------------------------------------------------------------- |
+| `vite build` | `"finalInvoice" is not exported by "packages/shared/index.js"`                                             |
+| `vite dev`   | the import silently resolved to `undefined` — a form with no validation, then a crash inside `zodResolver` |
+| `vitest`     | **passed** — Vitest loads this CommonJS through Node, which does not care                                  |
 
 That last row is why it survived review: the only path that exercised the
 package was the only one that could not see the problem. `npm run check:shared`
@@ -119,5 +126,5 @@ gets a schema from the "wrong" Zod. The client resolves the single instance in
 One subtlety recorded there and worth repeating: **one copy on disk is not one
 instance.** Zod's `exports` map has separate `import` (`./index.js`, ESM) and
 `require` (`./index.cjs`, CJS) entries, so a bundler alias pointing at the
-package *directory* still hands client code the ESM build and this package's
+package _directory_ still hands client code the ESM build and this package's
 `require("zod")` the CJS one. The alias must pin an entry file.

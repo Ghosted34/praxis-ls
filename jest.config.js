@@ -4,7 +4,11 @@ module.exports = {
   testEnvironment: "node",
   rootDir: ".",
   testMatch: ["<rootDir>/tests/**/*.test.js"],
-  collectCoverageFrom: ["src/**/*.js", "!src/server.js", "!src/jobs/workers.js"],
+  collectCoverageFrom: [
+    "src/**/*.js",
+    "!src/server.js",
+    "!src/jobs/workers.js",
+  ],
   coverageDirectory: "coverage",
   /**
    * TC-Q1 — the threshold is on FUNCTIONS and BRANCHES, never lines or

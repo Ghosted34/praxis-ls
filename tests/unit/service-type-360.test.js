@@ -83,10 +83,10 @@ function stubRepo({
     // Refuse to stub a method the repo does not actually have. See the header.
     if (typeof repo[k] !== "function") {
       throw new Error(
-        `stubRepo: service_type.repo has no \`${k}\` to stub. `
-        + "Assigning it would invent the method and test a fiction — which is exactly "
-        + "how `repo.get` reached production. Check shared/crud/resource.js for what "
-        + "makeRepo actually returns (findById, not get).",
+        `stubRepo: service_type.repo has no \`${k}\` to stub. ` +
+          "Assigning it would invent the method and test a fiction — which is exactly " +
+          "how `repo.get` reached production. Check shared/crud/resource.js for what " +
+          "makeRepo actually returns (findById, not get).",
       );
     }
     original[k] = repo[k];
@@ -103,7 +103,9 @@ describe("service_type_360.dossier", () => {
   test("brand-new service type renders — every collection empty, every figure zero", async () => {
     const restore = stubRepo();
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: true });
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: true,
+      });
 
       expect(out.service_type).toEqual(ROW);
       expect(out.templates).toEqual([]);
@@ -130,13 +132,25 @@ describe("service_type_360.dossier", () => {
   test("readiness.has_active_template flips true when a template is active, and carries its version", async () => {
     const restore = stubRepo({
       templates: [
-        { milestone_template_id: "t1", version: 2, is_active: true, stages: [] },
-        { milestone_template_id: "t0", version: 1, is_active: false, stages: [] },
+        {
+          milestone_template_id: "t1",
+          version: 2,
+          is_active: true,
+          stages: [],
+        },
+        {
+          milestone_template_id: "t0",
+          version: 1,
+          is_active: false,
+          stages: [],
+        },
       ],
       stats: { template_versions: 2 },
     });
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: true });
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: true,
+      });
       expect(out.readiness.has_active_template).toBe(true);
       expect(out.readiness.active_template_version).toBe(2);
     } finally {
@@ -147,8 +161,17 @@ describe("service_type_360.dossier", () => {
   test("money is masked to zeros AND readiness.ever_billed is null when caller has no finance visibility", async () => {
     const restore = stubRepo({
       money: {
-        planned: [{ currency: "XAF", planned_total: 100, planned_disbursement: 20 }],
-        billed: [{ currency: "XAF", billed_ttc: 500, revenue_ht: 400, invoice_count: 3 }],
+        planned: [
+          { currency: "XAF", planned_total: 100, planned_disbursement: 20 },
+        ],
+        billed: [
+          {
+            currency: "XAF",
+            billed_ttc: 500,
+            revenue_ht: 400,
+            invoice_count: 3,
+          },
+        ],
         actual_total: 42,
       },
       // invoicesFor won't even be called by the aggregator when canSee=false,
@@ -156,7 +179,9 @@ describe("service_type_360.dossier", () => {
       invoices: [{ invoice_id: "i1" }],
     });
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: false });
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: false,
+      });
       expect(out.money.masked).toBe(true);
       expect(out.money.planned).toEqual([]);
       expect(out.money.billed).toEqual([]);
@@ -176,15 +201,26 @@ describe("service_type_360.dossier", () => {
     const restore = stubRepo({
       money: {
         planned: [],
-        billed: [{ currency: "XAF", billed_ttc: 500, revenue_ht: 400, invoice_count: 3 }],
+        billed: [
+          {
+            currency: "XAF",
+            billed_ttc: 500,
+            revenue_ht: 400,
+            invoice_count: 3,
+          },
+        ],
         actual_total: 42,
       },
       invoices: [{ invoice_id: "i1", doc_number: "INV-1" }],
     });
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: true });
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: true,
+      });
       expect(out.money.masked).toBe(false);
-      expect(out.money.billed).toEqual([{ currency: "XAF", billed_ttc: 500, revenue_ht: 400, invoice_count: 3 }]);
+      expect(out.money.billed).toEqual([
+        { currency: "XAF", billed_ttc: 500, revenue_ht: 400, invoice_count: 3 },
+      ]);
       expect(out.money.actual_total).toBe(42);
       expect(out.readiness.ever_billed).toBe(true);
       expect(out.invoices).toHaveLength(1);
@@ -199,7 +235,9 @@ describe("service_type_360.dossier", () => {
       stats: { dossiers_total: 30 },
     });
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: true });
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: true,
+      });
       expect(out.dossiers_more).toBe(28);
     } finally {
       restore();
@@ -209,14 +247,24 @@ describe("service_type_360.dossier", () => {
   test("scoped and generic dictionary items are returned as separate collections", async () => {
     const restore = stubRepo({
       dictionary: {
-        scoped: [{ dictionary_item_id: "s1", code: "SEA_HANDLING", is_active: true }],
-        generic: [{ dictionary_item_id: "g1", code: "ADMIN_FEE", is_active: true }],
+        scoped: [
+          { dictionary_item_id: "s1", code: "SEA_HANDLING", is_active: true },
+        ],
+        generic: [
+          { dictionary_item_id: "g1", code: "ADMIN_FEE", is_active: true },
+        ],
       },
     });
     try {
-      const out = await service_360.dossier(fakeClient(), "st-1", { canSeeFinancials: true });
-      expect(out.dictionary_items).toEqual([{ dictionary_item_id: "s1", code: "SEA_HANDLING", is_active: true }]);
-      expect(out.dictionary_items_generic).toEqual([{ dictionary_item_id: "g1", code: "ADMIN_FEE", is_active: true }]);
+      const out = await service_360.dossier(fakeClient(), "st-1", {
+        canSeeFinancials: true,
+      });
+      expect(out.dictionary_items).toEqual([
+        { dictionary_item_id: "s1", code: "SEA_HANDLING", is_active: true },
+      ]);
+      expect(out.dictionary_items_generic).toEqual([
+        { dictionary_item_id: "g1", code: "ADMIN_FEE", is_active: true },
+      ]);
       expect(out.readiness.has_dictionary_line).toBe(true);
     } finally {
       restore();
@@ -226,7 +274,9 @@ describe("service_type_360.dossier", () => {
   test("throws NOT_FOUND when the service type does not exist", async () => {
     const restore = stubRepo({ findById: null });
     try {
-      await expect(service_360.dossier(fakeClient(), "st-missing")).rejects.toMatchObject({
+      await expect(
+        service_360.dossier(fakeClient(), "st-missing"),
+      ).rejects.toMatchObject({
         code: "NOT_FOUND",
         status: 404,
       });

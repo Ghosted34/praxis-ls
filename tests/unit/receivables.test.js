@@ -1,16 +1,24 @@
 "use strict";
-const { ageingBuckets, planAllocation, dunningFor, daysOverdue } = require("../../src/modules/finance/smart_receivables/smart_receivables.rules");
+const {
+  ageingBuckets,
+  planAllocation,
+  dunningFor,
+  daysOverdue,
+} = require("../../src/modules/finance/smart_receivables/smart_receivables.rules");
 
 describe("receivables ageing (MOD-52)", () => {
   const asOf = "2026-07-11";
   test("buckets by overdue age", () => {
-    const r = ageingBuckets([
-      { outstanding: 100, due_on: "2026-08-01" },  // future -> current
-      { outstanding: 200, due_on: "2026-07-01" },  // 10 days -> 1-30
-      { outstanding: 300, due_on: "2026-05-20" },  // ~52 days -> 31-60
-      { outstanding: 400, due_on: "2026-01-01" },  // >90 -> 90+
-      { outstanding: 0, due_on: "2026-01-01" },    // ignored
-    ], asOf);
+    const r = ageingBuckets(
+      [
+        { outstanding: 100, due_on: "2026-08-01" }, // future -> current
+        { outstanding: 200, due_on: "2026-07-01" }, // 10 days -> 1-30
+        { outstanding: 300, due_on: "2026-05-20" }, // ~52 days -> 31-60
+        { outstanding: 400, due_on: "2026-01-01" }, // >90 -> 90+
+        { outstanding: 0, due_on: "2026-01-01" }, // ignored
+      ],
+      asOf,
+    );
     expect(r.current).toBe(100);
     expect(r.d1_30).toBe(200);
     expect(r.d31_60).toBe(300);

@@ -17,16 +17,38 @@
 const fs = require("fs");
 const path = require("path");
 
-const SEED = path.join(__dirname, "..", "..", "migrations", "seeds", "9091_seed_milestone_templates.sql");
+const SEED = path.join(
+  __dirname,
+  "..",
+  "..",
+  "migrations",
+  "seeds",
+  "9091_seed_milestone_templates.sql",
+);
 
 /** The 12 system service types 9080 seeds; each must ship a chain. */
 const SERVICES = [
-  "SEA_FREIGHT_IMPORT", "SEA_FREIGHT_EXPORT", "AIR_FREIGHT_IMPORT", "AIR_FREIGHT_EXPORT",
-  "HINTERLAND_TRANSIT", "INLAND_TRANSPORTATION", "WAREHOUSING", "END_TO_END_AIR_FREIGHT",
-  "END_TO_END_SEA_FREIGHT", "BUSINESS_REPRESENTATION", "CUSTOMS_BROKERAGE", "PROJECT_CARGO",
+  "SEA_FREIGHT_IMPORT",
+  "SEA_FREIGHT_EXPORT",
+  "AIR_FREIGHT_IMPORT",
+  "AIR_FREIGHT_EXPORT",
+  "HINTERLAND_TRANSIT",
+  "INLAND_TRANSPORTATION",
+  "WAREHOUSING",
+  "END_TO_END_AIR_FREIGHT",
+  "END_TO_END_SEA_FREIGHT",
+  "BUSINESS_REPRESENTATION",
+  "CUSTOMS_BROKERAGE",
+  "PROJECT_CARGO",
 ];
 
-const OWNER_TIERS = new Set(["INTERNAL", "CARRIER", "TERMINAL", "AUTHORITY", "CLIENT"]);
+const OWNER_TIERS = new Set([
+  "INTERNAL",
+  "CARRIER",
+  "TERMINAL",
+  "AUTHORITY",
+  "CLIENT",
+]);
 
 /**
  * Parse the `_ms_stage` VALUES rows. Deliberately a narrow regex over the
@@ -37,14 +59,23 @@ const OWNER_TIERS = new Set(["INTERNAL", "CARRIER", "TERMINAL", "AUTHORITY", "CL
  */
 function stages() {
   const sql = fs.readFileSync(SEED, "utf8");
-  const re = /^\s*\('([A-Z_]+)',\s*(\d+),'([A-Z0-9_]+)','((?:[^']|'')*)','((?:[^']|'')*)',(\d+),(\d+),'([A-Z]+)',(true|false),(true|false),(true|false),(NULL|'[A-Z_]+'),'([A-Z]+)'/gm;
+  const re =
+    /^\s*\('([A-Z_]+)',\s*(\d+),'([A-Z0-9_]+)','((?:[^']|'')*)','((?:[^']|'')*)',(\d+),(\d+),'([A-Z]+)',(true|false),(true|false),(true|false),(NULL|'[A-Z_]+'),'([A-Z]+)'/gm;
   const out = [];
   let m;
   while ((m = re.exec(sql)) !== null) {
     out.push({
-      svc: m[1], seq: Number(m[2]), code: m[3], labelEn: m[4], labelFr: m[5],
-      weight: Number(m[6]), minHours: Number(m[7]), owner: m[8],
-      anchor: m[9] === "true", lock: m[10] === "true", visible: m[11] === "true",
+      svc: m[1],
+      seq: Number(m[2]),
+      code: m[3],
+      labelEn: m[4],
+      labelFr: m[5],
+      weight: Number(m[6]),
+      minHours: Number(m[7]),
+      owner: m[8],
+      anchor: m[9] === "true",
+      lock: m[10] === "true",
+      visible: m[11] === "true",
       segment: m[13],
     });
   }
@@ -67,21 +98,28 @@ describe("seeded milestone chains", () => {
 
   it.each(SERVICES)("%s weights sum to 100 per chain segment", (svc) => {
     const bySegment = {};
-    for (const s of forService(svc)) bySegment[s.segment] = (bySegment[s.segment] || 0) + s.weight;
+    for (const s of forService(svc))
+      bySegment[s.segment] = (bySegment[s.segment] || 0) + s.weight;
     for (const [segment, total] of Object.entries(bySegment)) {
       // STEADY runs on a cadence and carries no weight — it is not part of any
       // horizon, so its sum must be zero rather than 100.
-      expect({ segment, total }).toEqual({ segment, total: segment === "STEADY" ? 0 : 100 });
+      expect({ segment, total }).toEqual({
+        segment,
+        total: segment === "STEADY" ? 0 : 100,
+      });
     }
   });
 
-  it.each(SERVICES)("%s has unique stage codes and a contiguous 1..14 sequence", (svc) => {
-    const rows = forService(svc);
-    expect(new Set(rows.map((r) => r.code)).size).toBe(rows.length);
-    expect(rows.map((r) => r.seq).sort((a, b) => a - b)).toEqual(
-      Array.from({ length: 14 }, (_, i) => i + 1),
-    );
-  });
+  it.each(SERVICES)(
+    "%s has unique stage codes and a contiguous 1..14 sequence",
+    (svc) => {
+      const rows = forService(svc);
+      expect(new Set(rows.map((r) => r.code)).size).toBe(rows.length);
+      expect(rows.map((r) => r.seq).sort((a, b) => a - b)).toEqual(
+        Array.from({ length: 14 }, (_, i) => i + 1),
+      );
+    },
+  );
 
   /**
    * One lock and at most one anchor PER SEGMENT, not per chain.
@@ -102,19 +140,30 @@ describe("seeded milestone chains", () => {
     return segs;
   };
 
-  it.each(SERVICES)("%s declares exactly one target lock per bounded segment", (svc) => {
-    for (const [segment, rows] of bounded(svc)) {
-      expect({ segment, locks: rows.filter((s) => s.lock).length }).toEqual({ segment, locks: 1 });
-    }
-  });
+  it.each(SERVICES)(
+    "%s declares exactly one target lock per bounded segment",
+    (svc) => {
+      for (const [segment, rows] of bounded(svc)) {
+        expect({ segment, locks: rows.filter((s) => s.lock).length }).toEqual({
+          segment,
+          locks: 1,
+        });
+      }
+    },
+  );
 
-  it.each(SERVICES)("%s declares at most one anchor per bounded segment", (svc) => {
-    for (const [segment, rows] of bounded(svc)) {
-      expect({ segment, anchors: rows.filter((s) => s.anchor).length })
-        .toEqual({ segment, anchors: expect.any(Number) });
-      expect(rows.filter((s) => s.anchor).length).toBeLessThanOrEqual(1);
-    }
-  });
+  it.each(SERVICES)(
+    "%s declares at most one anchor per bounded segment",
+    (svc) => {
+      for (const [segment, rows] of bounded(svc)) {
+        expect({
+          segment,
+          anchors: rows.filter((s) => s.anchor).length,
+        }).toEqual({ segment, anchors: expect.any(Number) });
+        expect(rows.filter((s) => s.anchor).length).toBeLessThanOrEqual(1);
+      }
+    },
+  );
 
   it("gives every stage a valid owner tier — attribution depends on it", () => {
     const bad = all.filter((s) => !OWNER_TIERS.has(s.owner));
@@ -135,7 +184,10 @@ describe("seeded milestone chains", () => {
   });
 
   it("keeps money-adjacent stages off the client portal", () => {
-    const leaky = all.filter((s) => /INVOICE|BILLING|RETAINER|HANDLING_SETTLED/.test(s.code) && s.visible);
+    const leaky = all.filter(
+      (s) =>
+        /INVOICE|BILLING|RETAINER|HANDLING_SETTLED/.test(s.code) && s.visible,
+    );
     expect(leaky).toEqual([]);
   });
 

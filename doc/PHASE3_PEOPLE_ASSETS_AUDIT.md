@@ -24,14 +24,14 @@ Corrected three-tier split (by how much real code exists, not by folder count):
 1. **Full factory scaffolds — 12 modules.** Controller, repo, service and events
    are all factory one-liners; nothing module-specific except (sometimes) a
    validator. These are stubs: `employees, appraisal, sop_onboarding, talent_pool,
-   driver, fuel_log, vehicle, vehicle_compliance, cycle_count, warehouse_location,
-   payroll, asset`. (Of these, **payroll, asset and employees** have a passthrough
+driver, fuel_log, vehicle, vehicle_compliance, cycle_count, warehouse_location,
+payroll, asset`. (Of these, **payroll, asset and employees** have a passthrough
    validator and no `.ai.js` — the emptiest of all.)
 2. **Thin-helper modules — 8 modules.** ~90% factory: generic repo, generic
    events, factory CRUD — with exactly **one** small custom action bolted on (a
    single status/lifecycle helper on the service + a matching controller method).
    Real, but shallow: `fleet_dispatch, incident, work_order, attendance,
-   hr_contract, leave_allowance, equipment, inbound`. Example: `hr_contract`'s
+hr_contract, leave_allowance, equipment, inbound`. Example: `hr_contract`'s
    only bespoke code is a 12-line `setStatus` transition guard; everything else is
    the factory.
 3. **Genuinely built — 4 modules.** Bespoke repos with hand-written queries plus
@@ -82,44 +82,48 @@ CRUD + one custom action) · ⬜ factory scaffold (all layers generic) ·
 ⬜* scaffold with passthrough validator and no `.ai.js` (emptiest).
 
 ### HR
-| MOD | Module | State | Notes |
-|-----|--------|-------|-------|
-| MOD-02 | Employees (`master/employees`) | ⬜* | Factory across all layers, passthrough-grade validator, no `.ai.js`. Registry only — yet everything references it. |
-| MOD-11 | Vacancy | ✅ | Bespoke repo (26 ln) + service (55 ln), applicant lifecycle |
-| MOD-12 | HR Contract | 🟠 | Factory CRUD + one `setStatus` transition guard (DRAFT→ISSUED→SIGNED→ENDED) |
-| MOD-13 | Appraisal | ⬜ | Factory scaffold; validator only |
-| MOD-14 | Attendance | 🟠 | Factory CRUD + one `clockOut` helper |
-| MOD-15 | Leave & Allowance | 🟠 | Factory CRUD + one lifecycle helper |
-| MOD-16 | SOP / Onboarding | ⬜ | Factory scaffold; onboarding *checklists* unbuilt |
-| MOD-17 | **Payroll** | ⬜* | Factory service + passthrough validator + no `.ai.js`. No CNPS/IRPP/CAC/CFC/RAV compute, no payslip, no journal post. **Headline gap.** |
-| MOD-18 | Training | ✅ | Bespoke repo (26 ln) + service (55 ln), roster |
-| MOD-19 | Talent Pool | ⬜ | Factory scaffold; succession unbuilt |
+
+| MOD    | Module                         | State | Notes                                                                                                                                   |
+| ------ | ------------------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| MOD-02 | Employees (`master/employees`) | ⬜*   | Factory across all layers, passthrough-grade validator, no `.ai.js`. Registry only — yet everything references it.                      |
+| MOD-11 | Vacancy                        | ✅    | Bespoke repo (26 ln) + service (55 ln), applicant lifecycle                                                                             |
+| MOD-12 | HR Contract                    | 🟠    | Factory CRUD + one `setStatus` transition guard (DRAFT→ISSUED→SIGNED→ENDED)                                                             |
+| MOD-13 | Appraisal                      | ⬜    | Factory scaffold; validator only                                                                                                        |
+| MOD-14 | Attendance                     | 🟠    | Factory CRUD + one `clockOut` helper                                                                                                    |
+| MOD-15 | Leave & Allowance              | 🟠    | Factory CRUD + one lifecycle helper                                                                                                     |
+| MOD-16 | SOP / Onboarding               | ⬜    | Factory scaffold; onboarding _checklists_ unbuilt                                                                                       |
+| MOD-17 | **Payroll**                    | ⬜*   | Factory service + passthrough validator + no `.ai.js`. No CNPS/IRPP/CAC/CFC/RAV compute, no payslip, no journal post. **Headline gap.** |
+| MOD-18 | Training                       | ✅    | Bespoke repo (26 ln) + service (55 ln), roster                                                                                          |
+| MOD-19 | Talent Pool                    | ⬜    | Factory scaffold; succession unbuilt                                                                                                    |
 
 ### Fleet
-| MOD | Module | State | Notes |
-|-----|--------|-------|-------|
-| MOD-39 | Vehicle | ⬜ | Factory scaffold; validator only |
-| MOD-40 | Vehicle Compliance | ⬜ | Factory scaffold; renewal alerts rely on event engine off expiry dates |
-| MOD-41 | Work Order | 🟠 | Factory CRUD + one `setStatus`; **GL posting of maintenance cost NOT wired** |
-| MOD-42 | Fleet Dispatch | 🟠 | Factory CRUD + one allocation/status helper |
-| MOD-43 | Fuel Log | ⬜ | Factory scaffold; **fuel→dossier-cost posting NOT wired** (KB §8.7) |
-| MOD-44 | Driver | ⬜ | Factory scaffold over `driver_license`; expiry alerts via event engine |
-| MOD-45 | Incident | 🟠 | Factory CRUD + one status/claim helper |
+
+| MOD    | Module             | State | Notes                                                                        |
+| ------ | ------------------ | ----- | ---------------------------------------------------------------------------- |
+| MOD-39 | Vehicle            | ⬜    | Factory scaffold; validator only                                             |
+| MOD-40 | Vehicle Compliance | ⬜    | Factory scaffold; renewal alerts rely on event engine off expiry dates       |
+| MOD-41 | Work Order         | 🟠    | Factory CRUD + one `setStatus`; **GL posting of maintenance cost NOT wired** |
+| MOD-42 | Fleet Dispatch     | 🟠    | Factory CRUD + one allocation/status helper                                  |
+| MOD-43 | Fuel Log           | ⬜    | Factory scaffold; **fuel→dossier-cost posting NOT wired** (KB §8.7)          |
+| MOD-44 | Driver             | ⬜    | Factory scaffold over `driver_license`; expiry alerts via event engine       |
+| MOD-45 | Incident           | 🟠    | Factory CRUD + one status/claim helper                                       |
 
 ### WMS
-| MOD | Module | State | Notes |
-|-----|--------|-------|-------|
-| MOD-33 | Inbound / GRN | 🟠 | Factory CRUD + one custom action (QA hold / putaway) |
-| MOD-34 | Warehouse Location | ⬜ | Factory scaffold |
-| MOD-35 | Inventory | ✅ | Bespoke repo + service (62 ln) — state machine + signed stock-movement journal + negative-stock guard. Best-built Phase-3 module. |
-| MOD-36 | Outbound | ✅ | Bespoke repo + service (67 ln), pick/pack/dispatch lifecycle + lines |
-| MOD-37 | Equipment | 🟠 | Factory CRUD + one custom action |
-| MOD-38 | Cycle Count | ⬜ | Factory scaffold; variance-to-adjustment unbuilt |
+
+| MOD    | Module             | State | Notes                                                                                                                             |
+| ------ | ------------------ | ----- | --------------------------------------------------------------------------------------------------------------------------------- |
+| MOD-33 | Inbound / GRN      | 🟠    | Factory CRUD + one custom action (QA hold / putaway)                                                                              |
+| MOD-34 | Warehouse Location | ⬜    | Factory scaffold                                                                                                                  |
+| MOD-35 | Inventory          | ✅    | Bespoke repo + service (62 ln) — state machine + signed stock-movement journal + negative-stock guard. Best-built Phase-3 module. |
+| MOD-36 | Outbound           | ✅    | Bespoke repo + service (67 ln), pick/pack/dispatch lifecycle + lines                                                              |
+| MOD-37 | Equipment          | 🟠    | Factory CRUD + one custom action                                                                                                  |
+| MOD-38 | Cycle Count        | ⬜    | Factory scaffold; variance-to-adjustment unbuilt                                                                                  |
 
 ### Asset (finance)
-| MOD | Module | State | Notes |
-|-----|--------|-------|-------|
-| MOD-54 | Asset Management | ⬜* | Tables (`asset`, `depreciation_schedule`) exist; module is factory service + passthrough validator + no `.ai.js`. **acquisition→depreciation→disposal + auto-post unbuilt** (KB §11). |
+
+| MOD    | Module           | State | Notes                                                                                                                                                                                 |
+| ------ | ---------------- | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| MOD-54 | Asset Management | ⬜*   | Tables (`asset`, `depreciation_schedule`) exist; module is factory service + passthrough validator + no `.ai.js`. **acquisition→depreciation→disposal + auto-post unbuilt** (KB §11). |
 
 **Tally:** ✅ built = 4 (Vacancy, Training, Inventory, Outbound) · 🟠 thin-helper
 = 8 · ⬜ factory scaffold = 12 (of which ⬜* emptiest = 3: Employees, Payroll, Asset).
@@ -127,7 +131,9 @@ CRUD + one custom action) · ⬜ factory scaffold (all layers generic) ·
 ## The real remaining work (build order)
 
 ### 1. Payroll (MOD-17) — the one genuinely missing engine
+
 Now unblocked (Phase 1 posting exists). Build a real `payroll.service`:
+
 - CNPS + IRPP/CAC/CFC/RAV auto-compute per KB §9, driven by `payroll_component`
   and each `employee` (uses `cnps_number`, salary base).
 - Payslip generation (PDF worker already exists from Phase 1).
@@ -136,22 +142,27 @@ Now unblocked (Phase 1 posting exists). Build a real `payroll.service`:
 - Replace passthrough validator with a real Zod schema; add `payroll.ai.js`.
 
 ### 2. Asset Management (MOD-54) — depreciation engine
+
 Also unblocked. Build a real `asset.service`:
+
 - acquisition → straight-line/declining depreciation schedule generation →
   monthly auto-post to `journal_entry` → disposal with gain/loss, per KB §11.
 - Real validator + `asset.ai.js`.
 
 ### 3. Deferred GL wiring on Fleet (small, but close it)
+
 - Work Order (MOD-41): post maintenance cost to GL / dossier.
 - Fuel Log (MOD-43): post fuel to dossier cost per KB §8.7.
-Both are now unblocked by Phase 1 posting; wire them where the tables already
-support it.
+  Both are now unblocked by Phase 1 posting; wire them where the tables already
+  support it.
 
 ### 4. HR completeness items (from WORK_TO_BE_DONE)
+
 Onboarding checklists (MOD-16), succession (MOD-19), employee self-service
 portal. Non-blocking; schedule after payroll.
 
 ### 5. Consistency / hygiene
+
 - Add missing `.ai.js` manifests to **Employees, Payroll, Asset** so all Phase-3
   modules satisfy the "every module ships an `.ai.js`" invariant the map asserts
   for Phase 4.
@@ -159,6 +170,7 @@ portal. Non-blocking; schedule after payroll.
   refresh its "Last refresh" line.
 
 ## Bottom line
+
 Phase 3 is **scaffolded, not built.** By real code: 4 modules are genuinely built
 (Vacancy, Training, Inventory, Outbound), 8 are a factory CRUD with a single
 lifecycle helper, and 12 are bare factory scaffolds (3 of them — Employees,

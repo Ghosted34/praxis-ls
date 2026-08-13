@@ -14,7 +14,9 @@
  * ignored, which is invisible until someone asks why a date moved.
  */
 const service = require("../../src/modules/operations/milestone/milestone.service");
-const { DEFAULT_POLICY } = require("../../src/modules/operations/milestone/milestone.schedule");
+const {
+  DEFAULT_POLICY,
+} = require("../../src/modules/operations/milestone/milestone.schedule");
 
 /** A client that returns one `setting` row — the only query resolvePolicy makes. */
 const clientWith = (value) => ({
@@ -31,7 +33,9 @@ describe("resolvePolicy", () => {
   });
 
   it("lets the tenant setting override the engine defaults", async () => {
-    const p = await service.resolvePolicy(clientWith({ earlyCompletion: "PULL_ALWAYS", riskHours: 8 }));
+    const p = await service.resolvePolicy(
+      clientWith({ earlyCompletion: "PULL_ALWAYS", riskHours: 8 }),
+    );
     expect(p.earlyCompletion).toBe("PULL_ALWAYS");
     expect(p.riskHours).toBe(8);
     // Untouched keys still come from the defaults rather than becoming undefined.
@@ -55,20 +59,29 @@ describe("resolvePolicy", () => {
       onFloorReached: "HOLD_AND_ALERT",
       by_service: { [SVC]: { onFloorReached: "AUTO_RELEASE" } },
     };
-    expect((await service.resolvePolicy(clientWith(stored), OTHER)).onFloorReached).toBe("HOLD_AND_ALERT");
-    expect((await service.resolvePolicy(clientWith(stored))).onFloorReached).toBe("HOLD_AND_ALERT");
+    expect(
+      (await service.resolvePolicy(clientWith(stored), OTHER)).onFloorReached,
+    ).toBe("HOLD_AND_ALERT");
+    expect(
+      (await service.resolvePolicy(clientWith(stored))).onFloorReached,
+    ).toBe("HOLD_AND_ALERT");
   });
 
   it("never leaks the override map into the resolved policy", async () => {
     // `by_service` is storage, not a scheduling knob — the scheduler spreads
     // this object straight into its own options.
-    const p = await service.resolvePolicy(clientWith({ by_service: { [SVC]: {} } }), SVC);
+    const p = await service.resolvePolicy(
+      clientWith({ by_service: { [SVC]: {} } }),
+      SVC,
+    );
     expect(p.by_service).toBeUndefined();
   });
 
   it("ignores a malformed setting rather than failing every schedule", async () => {
     for (const bad of ["nonsense", 42, null]) {
-      expect(await service.resolvePolicy(clientWith(bad))).toEqual(DEFAULT_POLICY);
+      expect(await service.resolvePolicy(clientWith(bad))).toEqual(
+        DEFAULT_POLICY,
+      );
     }
   });
 });

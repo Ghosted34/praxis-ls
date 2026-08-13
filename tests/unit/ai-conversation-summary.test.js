@@ -33,7 +33,10 @@ function fakeClient(rows = []) {
 describe("messagesAwaitingSummary", () => {
   it("excludes the messages still inside the replay window", async () => {
     const c = fakeClient();
-    await repo.messagesAwaitingSummary(c, CONV, { keepRecent: 20, sinceMessageId: null });
+    await repo.messagesAwaitingSummary(c, CONV, {
+      keepRecent: 20,
+      sinceMessageId: null,
+    });
     const { sql, params } = c.queries[0];
     // rn > keepRecent is what skips the replayed tail.
     expect(sql).toContain("r.rn > $2");
@@ -42,7 +45,10 @@ describe("messagesAwaitingSummary", () => {
 
   it("resumes after the message the summary already covers", async () => {
     const c = fakeClient();
-    await repo.messagesAwaitingSummary(c, CONV, { keepRecent: 20, sinceMessageId: MSG });
+    await repo.messagesAwaitingSummary(c, CONV, {
+      keepRecent: 20,
+      sinceMessageId: MSG,
+    });
     const { sql, params } = c.queries[0];
     expect(params[2]).toBe(MSG);
     // Row comparison, not a bare timestamp — two messages can share a millisecond.
@@ -74,7 +80,10 @@ describe("messagesAwaitingSummary", () => {
 describe("setSummary", () => {
   it("replaces rather than appends, and advances the watermark together", async () => {
     const c = fakeClient();
-    await repo.setSummary(c, CONV, { summary: "condensed", throughMessageId: MSG });
+    await repo.setSummary(c, CONV, {
+      summary: "condensed",
+      throughMessageId: MSG,
+    });
     const { sql, params } = c.queries[0];
     expect(sql).toContain("SET summary = $2");
     expect(sql).not.toMatch(/summary\s*\|\|/); // no concatenation

@@ -9,7 +9,7 @@ in `doc/ORGANOGRAMME_AUDIT_2026-08-02.md`.
 ## 0. Why "Awaiting me" is empty right now
 
 The panel was not filtering. `workspace.repo.approvals` accepted a `roleIds`
-argument and never used it — the SQL read *every* `PENDING` task in the tenant.
+argument and never used it — the SQL read _every_ `PENDING` task in the tenant.
 So an empty panel does **not** mean "nothing is assigned to you"; it means
 **there are no pending approval tasks at all**.
 
@@ -97,8 +97,8 @@ likely reason a legitimate approval gets refused.
 2. **Assign people.** Expand `DLA` and assign user B. Expand `HQ` and assign
    user A. This writes `user_scope`, which nothing in the product could do
    before today.
-3. **Governance → Workflows.** Open a workflow (e.g. *Purchase order —
-   approval*), **Add step**: role = Finance (or a role user B holds), part of the
+3. **Governance → Workflows.** Open a workflow (e.g. _Purchase order —
+   approval_), **Add step**: role = Finance (or a role user B holds), part of the
    company = `DLA`, capability = Approver.
 4. **Security → Permissions.** Give user B's role `approve` on the module that
    owns the document — `MOD-60` for purchase orders. This is the new per-task
@@ -106,16 +106,16 @@ likely reason a legitimate approval gets refused.
 
 ### Prove each rule
 
-| # | Do this | Expect |
-|---|---------|--------|
-| 1 | As user A, issue a purchase order | A task appears in Approvals and in user B's "Awaiting me" |
-| 2 | As user A, press Approve on the PO screen | **422 APPROVAL_PENDING** — "decide it from Approvals rather than approving it directly" (W4) |
-| 3 | As user A, open Approvals and approve the task | **403 SELF_APPROVAL** — A raised it (W5) |
-| 4 | As user C (in HQ, not in DLA, wrong role) | **403 NOT_ELIGIBLE** — role or scope (W2/W6) |
-| 5 | As user B (Finance, in DLA) | Approves; the PO moves to APPROVED_LOCKED |
-| 6 | As a user in **HQ**, the parent of DLA | Also approves — authority flows down the tree |
-| 7 | Add a VALIDATE step and call it with `approve` | **422 WRONG_ACTION_FOR_STEP** (W9) |
-| 8 | Check user C's Approvals queue | The task is not listed — filtered by role + module (W12) |
+| #   | Do this                                        | Expect                                                                                       |
+| --- | ---------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| 1   | As user A, issue a purchase order              | A task appears in Approvals and in user B's "Awaiting me"                                    |
+| 2   | As user A, press Approve on the PO screen      | **422 APPROVAL_PENDING** — "decide it from Approvals rather than approving it directly" (W4) |
+| 3   | As user A, open Approvals and approve the task | **403 SELF_APPROVAL** — A raised it (W5)                                                     |
+| 4   | As user C (in HQ, not in DLA, wrong role)      | **403 NOT_ELIGIBLE** — role or scope (W2/W6)                                                 |
+| 5   | As user B (Finance, in DLA)                    | Approves; the PO moves to APPROVED_LOCKED                                                    |
+| 6   | As a user in **HQ**, the parent of DLA         | Also approves — authority flows down the tree                                                |
+| 7   | Add a VALIDATE step and call it with `approve` | **422 WRONG_ACTION_FOR_STEP** (W9)                                                           |
+| 8   | Check user C's Approvals queue                 | The task is not listed — filtered by role + module (W12)                                     |
 
 Test 6 is the one that proves the organigramme is real rather than decorative: a
 manager one level up qualifies without being assigned to the child node.
@@ -143,14 +143,14 @@ grant reads client correspondence and can send as the company.
 
 Read the error code — each one names its cause:
 
-| Code | Meaning |
-|------|---------|
-| `SELF_APPROVAL` | You raised it. Use a second user. |
-| `NOT_ELIGIBLE` | Wrong role, outside the scope, or missing the capability. |
-| `APPROVAL_PENDING` | A chain is live — go through Approvals. |
-| `WRONG_ACTION_FOR_STEP` | VALIDATE step actioned with approve, or vice versa. |
-| `PERMISSION_DENIED for MOD-xx` | No `approve` grant on the owning module. |
-| `SCOPE_CYCLE` | The chosen parent sits beneath this scope. |
+| Code                           | Meaning                                                   |
+| ------------------------------ | --------------------------------------------------------- |
+| `SELF_APPROVAL`                | You raised it. Use a second user.                         |
+| `NOT_ELIGIBLE`                 | Wrong role, outside the scope, or missing the capability. |
+| `APPROVAL_PENDING`             | A chain is live — go through Approvals.                   |
+| `WRONG_ACTION_FOR_STEP`        | VALIDATE step actioned with approve, or vice versa.       |
+| `PERMISSION_DENIED for MOD-xx` | No `approve` grant on the owning module.                  |
+| `SCOPE_CYCLE`                  | The chosen parent sits beneath this scope.                |
 
 A step with **no role and no scope is open to anyone** — that is every step built
 before today, so existing chains keep working unchanged.

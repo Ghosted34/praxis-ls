@@ -1,6 +1,9 @@
 "use strict";
 /** Milestone engine (MOD-31): due-date from offsets + stage transitions. */
-const { computeDue, canAdvance } = require("../../src/modules/operations/milestone/milestone.rules");
+const {
+  computeDue,
+  canAdvance,
+} = require("../../src/modules/operations/milestone/milestone.rules");
 
 describe("computeDue", () => {
   it("adds offset days", () => {

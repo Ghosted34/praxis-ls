@@ -69,11 +69,60 @@ function accounts(n: number) {
 const NAV_ACCESS = (() => {
   const byGroup: Record<string, string[]> = {
     monitor: ["MOD-00A", "MOD-64", "MOD-74"],
-    engage: ["MOD-20", "MOD-21", "MOD-23", "MOD-24", "MOD-27", "MOD-28", "MOD-60", "MOD-61", "MOD-62"],
-    fulfill: ["MOD-29", "MOD-30", "MOD-31", "MOD-32", "MOD-33", "MOD-34", "MOD-35", "MOD-36", "MOD-39", "MOD-41", "MOD-42"],
-    transact: ["MOD-46", "MOD-47", "MOD-49", "MOD-51", "MOD-52", "MOD-53", "MOD-54", "MOD-56", "MOD-58", "MOD-59"],
+    engage: [
+      "MOD-20",
+      "MOD-21",
+      "MOD-23",
+      "MOD-24",
+      "MOD-27",
+      "MOD-28",
+      "MOD-60",
+      "MOD-61",
+      "MOD-62",
+    ],
+    fulfill: [
+      "MOD-29",
+      "MOD-30",
+      "MOD-31",
+      "MOD-32",
+      "MOD-33",
+      "MOD-34",
+      "MOD-35",
+      "MOD-36",
+      "MOD-39",
+      "MOD-41",
+      "MOD-42",
+    ],
+    transact: [
+      "MOD-46",
+      "MOD-47",
+      "MOD-49",
+      "MOD-51",
+      "MOD-52",
+      "MOD-53",
+      "MOD-54",
+      "MOD-56",
+      "MOD-58",
+      "MOD-59",
+    ],
     empower: ["MOD-02", "MOD-11", "MOD-12", "MOD-14", "MOD-15", "MOD-17"],
-    configure: ["MOD-01", "MOD-03", "MOD-04", "MOD-05", "MOD-07", "MOD-08", "MOD-09", "MOD-10", "MOD-63", "MOD-65", "MOD-66", "MOD-67", "MOD-68", "MOD-70", "MOD-75"],
+    configure: [
+      "MOD-01",
+      "MOD-03",
+      "MOD-04",
+      "MOD-05",
+      "MOD-07",
+      "MOD-08",
+      "MOD-09",
+      "MOD-10",
+      "MOD-63",
+      "MOD-65",
+      "MOD-66",
+      "MOD-67",
+      "MOD-68",
+      "MOD-70",
+      "MOD-75",
+    ],
   };
   return {
     modules: Object.values(byGroup).flat().sort(),
@@ -85,7 +134,11 @@ const NAV_ACCESS = (() => {
 })();
 
 const ROUTES: Record<string, unknown> = {
-  "/tenant/auth/refresh": { access_token: "at", refresh_token: "rt", user: USER },
+  "/tenant/auth/refresh": {
+    access_token: "at",
+    refresh_token: "rt",
+    user: USER,
+  },
   "/tenant/auth/me": USER,
   "/branding": { name: "Smart Logistics", theme: "light" },
   "/tenant/chart-of-accounts": accounts(60),
@@ -99,13 +152,21 @@ const ROUTES: Record<string, unknown> = {
    * measurements are taken, which is a gate whose numbers depend on when the
    * screenshot happened to land.
    */
-  "/tenant/me/preferences/shell": { ribbonPinned: true, railPins: null, railHintSeen: true },
+  "/tenant/me/preferences/shell": {
+    ribbonPinned: true,
+    railPins: null,
+    railHintSeen: true,
+  },
 };
 
 function payloadFor(pathname: string): unknown {
   let best: string | null = null;
   for (const key of Object.keys(ROUTES)) {
-    if ((pathname === key || pathname.startsWith(key)) && (best === null || key.length > best.length)) best = key;
+    if (
+      (pathname === key || pathname.startsWith(key)) &&
+      (best === null || key.length > best.length)
+    )
+      best = key;
   }
   // An unmocked lookup resolves to an empty list rather than a 404: a screen
   // that renders its empty state is a measurable layout; a screen that renders
@@ -115,13 +176,19 @@ function payloadFor(pathname: string): unknown {
 
 export async function fakeApi(page: Page) {
   await page.route("**/api/**", async (route: Route) => {
-    const pathname = new URL(route.request().url()).pathname.replace(/^\/api/, "");
+    const pathname = new URL(route.request().url()).pathname.replace(
+      /^\/api/,
+      "",
+    );
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       // X-Total-Count is what the paged hooks read; without it a paged screen
       // reports "0 of 0" under a full table.
-      headers: { "X-Total-Count": "60", "Access-Control-Expose-Headers": "X-Total-Count" },
+      headers: {
+        "X-Total-Count": "60",
+        "Access-Control-Expose-Headers": "X-Total-Count",
+      },
       body: JSON.stringify(payloadFor(pathname)),
     });
   });
@@ -154,27 +221,40 @@ export type Density = "compact" | "default" | "comfortable";
  * Navigate, and prove we arrived. `marker` is text that exists ONLY on the
  * screen under test — see the Addendum 7 note at the top of this file.
  */
-export async function openScreen(page: Page, path: string, marker: RegExp, density: Density = "default") {
+export async function openScreen(
+  page: Page,
+  path: string,
+  marker: RegExp,
+  density: Density = "default",
+) {
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
 
   await seedSession(page, density);
   await fakeApi(page);
   await page.goto(path, { waitUntil: "domcontentloaded" });
-  await page.getByRole("heading", { level: 1, name: marker }).waitFor({ timeout: 15_000 });
+  await page
+    .getByRole("heading", { level: 1, name: marker })
+    .waitFor({ timeout: 15_000 });
   return { errors };
 }
 
 /** The width of the routed screen's content column, in CSS pixels. */
 export async function contentWidth(page: Page) {
   return page.evaluate(() => {
-    const el = document.querySelector("main section, main > div > section, main [class*='max-w-']");
+    const el = document.querySelector(
+      "main section, main > div > section, main [class*='max-w-']",
+    );
     return el ? Math.round(el.getBoundingClientRect().width) : -1;
   });
 }
 
 export async function hasHorizontalScroll(page: Page) {
-  return page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1);
+  return page.evaluate(
+    () =>
+      document.documentElement.scrollWidth >
+      document.documentElement.clientWidth + 1,
+  );
 }
 
 /** Desktop widths the audit measures at. 2560 is the case F2 opens with. */

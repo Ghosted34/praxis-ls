@@ -35,7 +35,8 @@ const isoDate = z
  * to a person, and the client used to send it happily because its `canSubmit`
  * boolean tested `value !== ""`.
  */
-const requiredText = (label = "This field") => z.string().trim().min(1, `${label} is required.`);
+const requiredText = (label = "This field") =>
+  z.string().trim().min(1, `${label} is required.`);
 
 /**
  * A money amount.
@@ -48,14 +49,23 @@ const requiredText = (label = "This field") => z.string().trim().min(1, `${label
  */
 const amount = z
   .union([z.number(), z.string()])
-  .transform((v) => (typeof v === "number" ? v : Number(String(v).replace(/\s/g, ""))))
+  .transform((v) =>
+    typeof v === "number" ? v : Number(String(v).replace(/\s/g, "")),
+  )
   .refine((n) => Number.isFinite(n), "Enter a number.");
 
 /** An amount that must be greater than zero (an invoice line, a payment). */
-const positiveAmount = amount.refine((n) => n > 0, "Must be greater than zero.");
+const positiveAmount = amount.refine(
+  (n) => n > 0,
+  "Must be greater than zero.",
+);
 
 /** ISO-4217-ish currency code. Cameroon/OHADA defaults to XAF. */
-const currency = z.string().trim().length(3, "Use a 3-letter currency code.").toUpperCase();
+const currency = z
+  .string()
+  .trim()
+  .length(3, "Use a 3-letter currency code.")
+  .toUpperCase();
 
 /**
  * An optional field as a FORM sends it: `""` means "not filled in", not "the
@@ -74,10 +84,14 @@ const blankToUndefined = (schema) =>
 const optionalText = blankToUndefined(z.string().trim());
 
 /** An optional email, normalised and validated; `""` → undefined. */
-const email = blankToUndefined(z.string().trim().email("Enter a valid email address."));
+const email = blankToUndefined(
+  z.string().trim().email("Enter a valid email address."),
+);
 
 /** An optional 2-letter country code, upper-cased; `""` → undefined. */
-const countryCode = blankToUndefined(z.string().trim().length(2, "Use a 2-letter country code.").toUpperCase());
+const countryCode = blankToUndefined(
+  z.string().trim().length(2, "Use a 2-letter country code.").toUpperCase(),
+);
 
 /** An optional ISO date (`YYYY-MM-DD`, round-trip validated); `""` → undefined. */
 const optionalDate = blankToUndefined(isoDate);
@@ -88,12 +102,21 @@ const optionalDate = blankToUndefined(isoDate);
  * subscriber number and this is what the API stores. `""` → undefined.
  */
 const phone = blankToUndefined(
-  z.string().trim().regex(/^\+?[1-9]\d{6,14}$/, "Enter a phone number in international format, e.g. +237690000000."),
+  z
+    .string()
+    .trim()
+    .regex(
+      /^\+?[1-9]\d{6,14}$/,
+      "Enter a phone number in international format, e.g. +237690000000.",
+    ),
 );
 
 /** An optional percentage 0–100 (number or numeric string in); `""` → undefined. */
 const optionalPercent = blankToUndefined(
-  amount.refine((n) => n >= 0 && n <= 100, "Enter a percentage between 0 and 100."),
+  amount.refine(
+    (n) => n >= 0 && n <= 100,
+    "Enter a percentage between 0 and 100.",
+  ),
 );
 
 // Named `exports.x =` assignments, NOT `module.exports = { x }`.

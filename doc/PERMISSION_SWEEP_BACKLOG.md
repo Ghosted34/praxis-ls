@@ -14,12 +14,12 @@ development because everyone tests as CEO, who bypasses RBAC entirely.
 Four confirmed instances, all found by one non-admin user trying to raise and
 submit a purchase request:
 
-| # | Route | Was gated on | Should be | Status |
-|---|-------|--------------|-----------|--------|
-| 1 | `GET /scopes/tree` (department picker) | MOD-67 IAM view | any signed-in user | **FIXED** — split into `/scopes/options` |
-| 2 | `POST /document-templates/:docType/preview` (every View button) | MOD-70 Settings view | the module owning the doc type | **FIXED** — `moduleKeyForDocType` |
-| 3 | `POST /purchase-requests/:id/transition` (Submit) | MOD-62 **approve** | `edit` to submit, `approve` to decide | **FIXED** — per-target-state |
-| 4 | `GET /catalogue/modules` | MOD-67 IAM view | — | open, see below |
+| #   | Route                                                           | Was gated on         | Should be                             | Status                                   |
+| --- | --------------------------------------------------------------- | -------------------- | ------------------------------------- | ---------------------------------------- |
+| 1   | `GET /scopes/tree` (department picker)                          | MOD-67 IAM view      | any signed-in user                    | **FIXED** — split into `/scopes/options` |
+| 2   | `POST /document-templates/:docType/preview` (every View button) | MOD-70 Settings view | the module owning the doc type        | **FIXED** — `moduleKeyForDocType`        |
+| 3   | `POST /purchase-requests/:id/transition` (Submit)               | MOD-62 **approve**   | `edit` to submit, `approve` to decide | **FIXED** — per-target-state             |
+| 4   | `GET /catalogue/modules`                                        | MOD-67 IAM view      | —                                     | open, see below                          |
 
 ---
 
@@ -36,20 +36,20 @@ cannot move at all.
 state is checked against the enum before it selects a gate. Unmapped states fall
 back to `approve`, so a state added later fails closed.
 
-| Module | Route | `edit` (submit) | `approve` (decide) |
-|---|---|---|---|
-| `procurement/purchase_request` | `/transition` | SUBMITTED, ORDERED | APPROVED, REJECTED |
-| `commercial/quotation` | `/transition` | SENT, CONVERTED, EXPIRED | ACCEPTED, REJECTED |
-| `costing/cash_request` | `/transition` | SUBMITTED, JUSTIFIED | APPROVED, REJECTED, DISBURSED |
-| `costing/costing` | `/status` | SUBMIT_VALIDATION, SUBMIT_APPROVAL | APPROVE, REJECT |
-| `procurement/purchase_order` | `/transition` | ISSUED_LOCKED, RECEIVED, CLOSED, CANCELLED | APPROVED_LOCKED |
-| `hr/payroll` | `/status` | OPEN, COMPUTED, SUBMITTED | APPROVED, VALIDATED, DISBURSED, REJECTED |
-| `finance/final_invoice` | `/submit` | (whole route → `edit`) | — |
-| `finance/tax_declaration` | `/declarations/:id/submit` | (whole route → `edit`) | — |
+| Module                         | Route                      | `edit` (submit)                            | `approve` (decide)                       |
+| ------------------------------ | -------------------------- | ------------------------------------------ | ---------------------------------------- |
+| `procurement/purchase_request` | `/transition`              | SUBMITTED, ORDERED                         | APPROVED, REJECTED                       |
+| `commercial/quotation`         | `/transition`              | SENT, CONVERTED, EXPIRED                   | ACCEPTED, REJECTED                       |
+| `costing/cash_request`         | `/transition`              | SUBMITTED, JUSTIFIED                       | APPROVED, REJECTED, DISBURSED            |
+| `costing/costing`              | `/status`                  | SUBMIT_VALIDATION, SUBMIT_APPROVAL         | APPROVE, REJECT                          |
+| `procurement/purchase_order`   | `/transition`              | ISSUED_LOCKED, RECEIVED, CLOSED, CANCELLED | APPROVED_LOCKED                          |
+| `hr/payroll`                   | `/status`                  | OPEN, COMPUTED, SUBMITTED                  | APPROVED, VALIDATED, DISBURSED, REJECTED |
+| `finance/final_invoice`        | `/submit`                  | (whole route → `edit`)                     | —                                        |
+| `finance/tax_declaration`      | `/declarations/:id/submit` | (whole route → `edit`)                     | —                                        |
 
 Payroll's segregation-of-duties note still holds: compute and approve remain
 different permissions, which is the point — this only stops `approve` being
-required to *compute and submit*.
+required to _compute and submit_.
 
 Left alone deliberately: `quotation/accept` and `cash_request/disburse` keep
 `approve` (accepting a quote and releasing money are decisions), and
@@ -82,8 +82,15 @@ error, so adopting it is three lines per screen and needs no new state:
 
 ```tsx
 const act = useAction();
-<Button loading={act.busyId === r.id} onClick={() => act.run(r.id, () => api.doThing(r.id).then(reload))}>…</Button>
-{act.error && <ErrorState message={act.error} />}
+<Button
+  loading={act.busyId === r.id}
+  onClick={() => act.run(r.id, () => api.doThing(r.id).then(reload))}
+>
+  …
+</Button>;
+{
+  act.error && <ErrorState message={act.error} />;
+}
 ```
 
 **Fixed** (all on the approval path, so a refusal is now readable):

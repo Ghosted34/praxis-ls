@@ -14,12 +14,12 @@ assume anything from the parallel UI/UX audit.
 
 Every finding is tagged:
 
-| Tag | Meaning |
-|---|---|
-| **MEASURED** | Backed by a number produced in this audit against a real, running system. The command and the raw plan are reproducible from §1.1. |
-| **STATIC** | Derived from reading the code. No measurement was possible — the reason is stated. |
-| **Quick win** | Localised change, low blast radius, no architectural rework. |
-| **Structural** | Requires an architectural decision and a staged migration. |
+| Tag            | Meaning                                                                                                                            |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| **MEASURED**   | Backed by a number produced in this audit against a real, running system. The command and the raw plan are reproducible from §1.1. |
+| **STATIC**     | Derived from reading the code. No measurement was possible — the reason is stated.                                                 |
+| **Quick win**  | Localised change, low blast radius, no architectural rework.                                                                       |
+| **Structural** | Requires an architectural decision and a staged migration.                                                                         |
 
 Severity is **impact under real production traffic**, not code aesthetics.
 
@@ -28,14 +28,14 @@ Severity is **impact under real production traffic**, not code aesthetics.
 The task asked for measurements wherever possible and explicit honesty where not. These are
 the gaps:
 
-| Area | Status | Why |
-|---|---|---|
-| Live/staging environment | **Not available** | No deployed environment is reachable from this session. All DB measurements were taken against a **Postgres 16.13 instance provisioned locally from this repo's own `migrations/tenant/*.sql`**, seeded with synthetic data. Schema is real; data distribution is synthetic. |
-| Production traffic profile | **Not available** | Load numbers below are synthetic closed-loop tests, not replayed production traffic. They characterise *the shape* of the bottleneck (where it saturates and why), not absolute production capacity. |
-| pgvector / AI embedding paths | **Not measured** | `pgvector` is not installable in this sandbox. `vector(N)` columns were shimmed to `real[]` and the `ivfflat` index dropped so the rest of the schema would load. **No conclusion is drawn about AI/RAG query performance.** It remains unaudited and should get its own pass. |
-| Browser render profiling (React DevTools Profiler, Lighthouse, real FCP/LCP/TBT) | **Not available** | No browser automation was run against a live app. Frontend **bundle numbers are real** (produced by the repo's own `vite build`). Re-render findings are **STATIC** — code-level reasoning, not profiler traces. Flagged as such individually. |
-| Redis behaviour under load | **Partially** | Redis was not exercised in the load test. The benchmark measures the **cache-miss** path. The cache-**hit** path is *cheaper in queries* but still pays every pool checkout and `SET search_path` — which is the finding that matters (S2). |
-| Real network latency to Postgres | **Not modelled** | All DB timings are over a **local Unix socket (≈0 ms RTT)**. Production round-trips carry real network latency. This makes every round-trip-count finding **worse in production than measured here**, not better. |
+| Area                                                                             | Status            | Why                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Live/staging environment                                                         | **Not available** | No deployed environment is reachable from this session. All DB measurements were taken against a **Postgres 16.13 instance provisioned locally from this repo's own `migrations/tenant/*.sql`**, seeded with synthetic data. Schema is real; data distribution is synthetic.   |
+| Production traffic profile                                                       | **Not available** | Load numbers below are synthetic closed-loop tests, not replayed production traffic. They characterise _the shape_ of the bottleneck (where it saturates and why), not absolute production capacity.                                                                           |
+| pgvector / AI embedding paths                                                    | **Not measured**  | `pgvector` is not installable in this sandbox. `vector(N)` columns were shimmed to `real[]` and the `ivfflat` index dropped so the rest of the schema would load. **No conclusion is drawn about AI/RAG query performance.** It remains unaudited and should get its own pass. |
+| Browser render profiling (React DevTools Profiler, Lighthouse, real FCP/LCP/TBT) | **Not available** | No browser automation was run against a live app. Frontend **bundle numbers are real** (produced by the repo's own `vite build`). Re-render findings are **STATIC** — code-level reasoning, not profiler traces. Flagged as such individually.                                 |
+| Redis behaviour under load                                                       | **Partially**     | Redis was not exercised in the load test. The benchmark measures the **cache-miss** path. The cache-**hit** path is _cheaper in queries_ but still pays every pool checkout and `SET search_path` — which is the finding that matters (S2).                                    |
+| Real network latency to Postgres                                                 | **Not modelled**  | All DB timings are over a **local Unix socket (≈0 ms RTT)**. Production round-trips carry real network latency. This makes every round-trip-count finding **worse in production than measured here**, not better.                                                              |
 
 ### 0.2 Architecture as actually built (verified against files, not assumed)
 
@@ -54,7 +54,7 @@ Host header ─► hostTenantResolver ──► registry.resolveByHost()  [60 s 
 Confirmed properties:
 
 - **Database-per-tenant**, not schema-per-tenant (`doc/DB_ARCHITECTURE.md` §1 governs; the code
-  matches it). `live` and `sandbox` are schemas *inside* each tenant DB.
+  matches it). `live` and `sandbox` are schemas _inside_ each tenant DB.
 - **No ORM.** Plain `pg` + hand-built SQL via `src/shared/db/query-helpers.js`.
 - **93 feature modules** under `src/modules/**`, auto-mounted by `src/shared/http/module-loader.js`.
 - **42,497 LOC** backend across 981 JS files; **38,818 LOC** frontend TS/TSX across 2 SPAs.
@@ -83,17 +83,17 @@ Node.js v22. All figures are **best-case** for that reason.
 Replicating the exact middleware chain (`authMiddleware` → `requirePermission` → controller)
 against the real schema:
 
-| # | Step | As shipped | With indexes added |
-|---|---|---:|---:|
-| 1 | `SET search_path` (auth) | 0.32 ms | 0.36 ms |
-| 2 | `getAuthUser` | 3.30 ms | 3.61 ms |
-| 3 | `SET search_path` (rbac) | 0.36 ms | 0.46 ms |
-| 4 | `getGrants` | 1.02 ms | 1.10 ms |
-| 5 | `getUserScopeClosure` | **8.42 ms** | 3.11 ms |
-| 6 | `SET search_path` (controller) | 0.26 ms | 0.44 ms |
-| 7 | `repo.list` | **53.29 ms** | 2.43 ms |
-| | **Total** | **67.64 ms** | **12.28 ms** |
-| | **DB round-trips** | **7** | **7** |
+| #   | Step                           |   As shipped | With indexes added |
+| --- | ------------------------------ | -----------: | -----------------: |
+| 1   | `SET search_path` (auth)       |      0.32 ms |            0.36 ms |
+| 2   | `getAuthUser`                  |      3.30 ms |            3.61 ms |
+| 3   | `SET search_path` (rbac)       |      0.36 ms |            0.46 ms |
+| 4   | `getGrants`                    |      1.02 ms |            1.10 ms |
+| 5   | `getUserScopeClosure`          |  **8.42 ms** |            3.11 ms |
+| 6   | `SET search_path` (controller) |      0.26 ms |            0.44 ms |
+| 7   | `repo.list`                    | **53.29 ms** |            2.43 ms |
+|     | **Total**                      | **67.64 ms** |       **12.28 ms** |
+|     | **DB round-trips**             |        **7** |              **7** |
 
 **5.5× faster from indexes alone.** The round-trip count does not move — that is S2, and it
 is the structural half of the problem.
@@ -102,13 +102,13 @@ is the structural half of the problem.
 
 Same request path, `TENANT_POOL_MAX=8` (the real default, `src/config/env.js:66`), indexes present:
 
-| Concurrency | req/s | p50 | p95 | p99 |
-|---:|---:|---:|---:|---:|
-| 1 | 319 | 2.9 ms | 4.5 ms | 8.2 ms |
-| 5 | 838 | 5.3 ms | 10.7 ms | 16.0 ms |
-| 10 | 1056 | 8.9 ms | 13.8 ms | 16.8 ms |
-| 25 | 1154 | 21.1 ms | 26.5 ms | 28.6 ms |
-| 50 | 1210 | **41.6 ms** | 45.4 ms | 46.9 ms |
+| Concurrency | req/s |         p50 |     p95 |     p99 |
+| ----------: | ----: | ----------: | ------: | ------: |
+|           1 |   319 |      2.9 ms |  4.5 ms |  8.2 ms |
+|           5 |   838 |      5.3 ms | 10.7 ms | 16.0 ms |
+|          10 |  1056 |      8.9 ms | 13.8 ms | 16.8 ms |
+|          25 |  1154 |     21.1 ms | 26.5 ms | 28.6 ms |
+|          50 |  1210 | **41.6 ms** | 45.4 ms | 46.9 ms |
 
 Throughput plateaus at ~1,200 req/s while **p50 grows 14× (2.9 → 41.6 ms)**. That is textbook
 queueing on a saturated resource: the connection pool. Because each request takes **three**
@@ -137,11 +137,11 @@ Modelling `registry.service.js poolFor()` (one `pg.Pool` per tenant DB, `max: 8`
 `src/shared/crud/resource.js:51` emits `SELECT * FROM <t> … ORDER BY created_at DESC LIMIT/OFFSET`
 for every module. Against 200,000 `lead` rows:
 
-| Query | As shipped | Fixed | Gain |
-|---|---:|---:|---:|
-| List page 1 | 26.34 ms (parallel seq scan, 3,710 buffers) | **0.057 ms** (index scan, 4 buffers) | **462×** |
-| Deep page (`OFFSET 100000`) | 100.43 ms — **external merge sort, 8.0–9.6 MB spilled to disk per worker** | 16.95 ms | 5.9× |
-| Search `ILIKE '%…%'` | 66.96 ms (seq scan, 200k rows filtered) | **4.55 ms** (GIN `pg_trgm` bitmap) | **14.7×** |
+| Query                       |                                                                 As shipped |                                Fixed |      Gain |
+| --------------------------- | -------------------------------------------------------------------------: | -----------------------------------: | --------: |
+| List page 1                 |                                26.34 ms (parallel seq scan, 3,710 buffers) | **0.057 ms** (index scan, 4 buffers) |  **462×** |
+| Deep page (`OFFSET 100000`) | 100.43 ms — **external merge sort, 8.0–9.6 MB spilled to disk per worker** |                             16.95 ms |      5.9× |
+| Search `ILIKE '%…%'`        |                                    66.96 ms (seq scan, 200k rows filtered) |   **4.55 ms** (GIN `pg_trgm` bitmap) | **14.7×** |
 
 ### 1.6 Index coverage
 
@@ -204,7 +204,7 @@ gzipped:   2,381 bytes     → 86.8% reduction (7.6×)
 ---
 
 **S1 — Tenant connection model caps the product at ~12 active tenants per API process** ·
-*Structural* · **MEASURED (§1.4)**
+_Structural_ · **MEASURED (§1.4)**
 
 `src/services/tenant/registry.service.js:68-92` creates one `pg.Pool` per tenant database,
 cached in an unbounded `Map`, `max: TENANT_POOL_MAX` (default **8**, `src/config/env.js:66`).
@@ -224,25 +224,26 @@ ceiling is 12 cannot onboard.
 ---
 
 **S2 — Three pool checkouts and three `SET search_path` round-trips per request** ·
-*Structural* · **MEASURED (§1.2, §1.3)**
+_Structural_ · **MEASURED (§1.2, §1.3)**
 
 `req.identityDb` / `req.tenantDb` (`src/middleware/tenant-context.js:22,29`) each call
 `registry.withTenantConnection`, which does `pool.connect()` + `SET search_path = …` (`registry.service.js:100-102`).
 The chain calls it three times per request: `auth.js:66`, `rbac.js:91`, `resource.js:159`.
 
 Consequences:
+
 1. **7 DB round-trips for one list request** (§1.2). Over a real network (not this audit's
    0 ms Unix socket) each adds full RTT — 7 round-trips × ~1 ms ≈ 7 ms of pure latency floor.
 2. **Effective concurrency is `pool_max / 3`.** With `TENANT_POOL_MAX=8`, ~2.7 in-flight
    requests per tenant before queueing.
 3. `SET search_path` is a wasted statement on every checkout — it can be set once per
    connection at pool creation via `options`, or bound with `pool.on('connect')`.
-4. **Redis cache hits do not help this.** The identity cache saves *queries*, not *checkouts* —
+4. **Redis cache hits do not help this.** The identity cache saves _queries_, not _checkouts_ —
    the three connect + `SET` round-trips are paid regardless.
 
 ---
 
-**S3 — 123 of 126 tables sort by an unindexed `created_at`** · *Quick win* · **MEASURED (§1.5, §1.6)**
+**S3 — 123 of 126 tables sort by an unindexed `created_at`** · _Quick win_ · **MEASURED (§1.5, §1.6)**
 
 `src/shared/crud/resource.js:23` defaults `orderBy = "created_at DESC"`, and all 24 hand-rolled
 repos repeat the same clause (e.g. `src/modules/sales/lead/lead.repo.js:20`).
@@ -259,7 +260,7 @@ application code touched, no behaviour change.
 
 ---
 
-**S4 — Per-request recursive CTE over an unindexed tree** · *Quick win + Structural* · **MEASURED**
+**S4 — Per-request recursive CTE over an unindexed tree** · _Quick win + Structural_ · **MEASURED**
 
 `getUserScopeClosure` (`src/shared/cache/identity-cache.js:180-198`) is called by
 `requirePermission` on **every permission-gated request** (`rbac.js:98`) and is **deliberately
@@ -269,18 +270,18 @@ not cached** — the source comment at `identity-cache.js:169-173` explains the 
 `scope.parent_scope_id` has **no index** (`migrations/tenant/0110_rbac.sql:36`). The plan shows
 `Seq Scan on scope … loops=4` — the entire table re-scanned once per recursion level:
 
-| Tree size | As shipped | With `ix_scope_parent` |
-|---|---:|---:|
-| 1,510 nodes | 0.89 ms | — |
-| 19,510 nodes | **14.78 ms** | **0.92 ms** (16×) |
+| Tree size    |   As shipped | With `ix_scope_parent` |
+| ------------ | -----------: | ---------------------: |
+| 1,510 nodes  |      0.89 ms |                      — |
+| 19,510 nodes | **14.78 ms** |      **0.92 ms** (16×) |
 
 The index is a quick win. Removing the query from the hot path entirely (cache the closure,
 invalidate on `scope` re-parent rather than by user TTL) is the structural fix — and the
-correctness concern in the comment is solved by invalidating on the *tree*, not the *user*.
+correctness concern in the comment is solved by invalidating on the _tree_, not the _user_.
 
 ---
 
-**S5 — Notification fan-out is an N+1 inside the business transaction** · *Structural* · **STATIC**
+**S5 — Notification fan-out is an N+1 inside the business transaction** · _Structural_ · **STATIC**
 
 `src/shared/notifications/notify-events.js:104-111` loops over recipients and awaits
 `service.notify()` sequentially. Each `notify()` (`src/modules/notification/notification.service.js:92-112`)
@@ -296,20 +297,20 @@ is unambiguous from the code.
 
 ---
 
-**S6 — Every write pays 4–6 extra sequential round-trips** · *Quick win* · **STATIC**
+**S6 — Every write pays 4–6 extra sequential round-trips** · _Quick win_ · **STATIC**
 
 `emitEvent` (`src/shared/events/emit.js`) runs on every create/update/archive across all 93
 modules and issues, in sequence:
 
-| Line | Statement |
-|---|---|
-| `emit.js:56` | `SELECT is_security_critical, is_approvable FROM event_type WHERE key = $1` |
-| `emit.js:72` | `INSERT INTO event_log …` |
-| `emit.js:87` | `executor.start(…)` → 2 more queries when approvable |
-| `emit.js:106` | `SELECT full_name … FROM app_user` (security-critical only) |
-| `emit.js:121` | `INSERT INTO notification … SELECT` fan-out |
-| `emit.js:136` | `notify-events.onEvent(…)` → S5 |
-| `emit.js:170` | `INSERT INTO immutable_ledger …` |
+| Line          | Statement                                                                   |
+| ------------- | --------------------------------------------------------------------------- |
+| `emit.js:56`  | `SELECT is_security_critical, is_approvable FROM event_type WHERE key = $1` |
+| `emit.js:72`  | `INSERT INTO event_log …`                                                   |
+| `emit.js:87`  | `executor.start(…)` → 2 more queries when approvable                        |
+| `emit.js:106` | `SELECT full_name … FROM app_user` (security-critical only)                 |
+| `emit.js:121` | `INSERT INTO notification … SELECT` fan-out                                 |
+| `emit.js:136` | `notify-events.onEvent(…)` → S5                                             |
+| `emit.js:170` | `INSERT INTO immutable_ledger …`                                            |
 
 `event_type` is a **static seeded catalogue** (`migrations/seeds/9020_seed_rbac_events.sql`) — it
 is read on every single write and never cached. Caching it in-process turns a per-write
@@ -317,13 +318,13 @@ round-trip into a map lookup, with no behaviour change.
 
 ---
 
-**S7 — No HTTP compression anywhere in the stack** · *Quick win* · **MEASURED (§1.8)**
+**S7 — No HTTP compression anywhere in the stack** · _Quick win_ · **MEASURED (§1.8)**
 
 `compression` is a declared dependency and is never mounted in `src/server.js`. No proxy-level
 compression is documented in `doc/DEPLOYMENT.md`.
 
 **86.8% payload reduction** measured on a representative list response (18,020 → 2,381 bytes).
-This applies to every JSON response *and* to the 1,318 KB of static SPA assets served by
+This applies to every JSON response _and_ to the 1,318 KB of static SPA assets served by
 `express.static` at `server.js:186`. One line of middleware.
 
 Compounded by **173 `SELECT *`** occurrences across `src/` — lists ship every column of every
@@ -331,7 +332,7 @@ row whether the screen renders them or not.
 
 ---
 
-**S8 — The entire frontend loads on first paint; code splitting is cosmetic** · *Quick win* · **MEASURED (§1.7)**
+**S8 — The entire frontend loads on first paint; code splitting is cosmetic** · _Quick win_ · **MEASURED (§1.7)**
 
 `client/src/app/app.tsx:1-46` statically imports all 46 route components. `vite.config.ts`
 `manualChunks` splits the output into 16 files, but **all 16 are `modulepreload`ed** in the
@@ -350,7 +351,7 @@ with a **render-blocking** stylesheet — two extra DNS + TLS handshakes on the 
 
 ---
 
-**S9 — `invalidateGrants()` blocks Redis and flushes every tenant** · *Quick win* · **STATIC**
+**S9 — `invalidateGrants()` blocks Redis and flushes every tenant** · _Quick win_ · **STATIC**
 
 `src/shared/cache/identity-cache.js:295-300`:
 
@@ -360,6 +361,7 @@ if (keys.length) await redis.del(...keys);
 ```
 
 Two problems:
+
 1. **`KEYS` is O(N) over the entire keyspace and blocks the Redis main thread.** Redis is also
    serving BullMQ, sessions and rate limiting — everything stalls for the duration.
 2. **The keyspace is not tenant-namespaced** (`identity:grants:<roleIds>:<module>`). One tenant
@@ -367,7 +369,7 @@ Two problems:
    a synchronised cache-miss stampede straight into the connection pools of S1/S2.
 
 Role UUIDs are per-tenant `gen_random_uuid()` (verified in `9020_seed_rbac_events.sql`), so
-there is no cross-tenant *data* leak — but the blast radius on invalidation is global.
+there is no cross-tenant _data_ leak — but the blast radius on invalidation is global.
 
 ---
 
@@ -375,26 +377,26 @@ there is no cross-tenant *data* leak — but the blast radius on invalidation is
 
 ---
 
-**S10 — `hostCache` is unbounded and keyed by attacker-controlled input** · *Quick win* · **STATIC**
+**S10 — `hostCache` is unbounded and keyed by attacker-controlled input** · _Quick win_ · **STATIC**
 
 `registry.service.js:16,59` caches host→meta in a `Map` that is **never evicted**, and it
 **caches negative results** (`meta = null`) too. Any client can send arbitrary `Host` headers;
-each unknown host allocates a permanent entry *and* costs one platform-DB query. Unbounded
+each unknown host allocates a permanent entry _and_ costs one platform-DB query. Unbounded
 memory growth plus an amplification vector. Needs a max size + TTL sweep.
 
 ---
 
-**S11 — 13 BullMQ workers share a single Redis connection** · *Structural* · **STATIC**
+**S11 — 13 BullMQ workers share a single Redis connection** · _Structural_ · **STATIC**
 
 `src/jobs/workers.js:46` passes `getClient()` — the **one** shared `ioredis` client from
 `src/config/redis.js:60` — as `connection` to all 13 `Worker` instances. BullMQ workers issue
 **blocking** commands (`BZPOPMIN`/`BRPOPLPUSH`); they require a dedicated connection each.
-Sharing one socket serialises them, and the *same* connection also serves the identity cache and
+Sharing one socket serialises them, and the _same_ connection also serves the identity cache and
 rate limiter, which then queue behind blocking job reads.
 
 ---
 
-**S12 — Socket.IO has no Redis adapter — realtime is single-process only** · *Structural* · **STATIC**
+**S12 — Socket.IO has no Redis adapter — realtime is single-process only** · _Structural_ · **STATIC**
 
 `src/config/redis.js:8` documents "Pub/Sub coordination across Socket.io workers (redis adapter)"
 and creates `publisher`/`subscriber` clients — but no adapter is ever attached in
@@ -407,7 +409,7 @@ exactly when the S1 fix forces more replicas.
 
 ---
 
-**S13 — A full Chromium process is spawned per PDF** · *Structural* · **STATIC**
+**S13 — A full Chromium process is spawned per PDF** · _Structural_ · **STATIC**
 
 `src/services/pdf.service.js:30-42` calls `puppeteer.launch()` and `browser.close()` **inside
 the render function**, so every single PDF pays a cold browser start (typically 300–500 ms and
@@ -419,7 +421,7 @@ Not measured: Chromium is not installed in this sandbox.
 
 ---
 
-**S14 — Context providers defeat memoization app-wide** · *Quick win* · **STATIC**
+**S14 — Context providers defeat memoization app-wide** · _Quick win_ · **STATIC**
 
 `client/src/app/auth/auth-context.tsx:237` passes an **inline object literal** as the provider
 value, containing six handler functions (`login`, `verify2fa`, `pinLogin`, `registerPin`,
@@ -431,11 +433,11 @@ consumer in the tree**, regardless of whether anything changed. With **0 `React.
 134 components (§1.7) there is nothing to arrest the cascade.
 
 Marked STATIC: no profiler trace was captured (§0.1). The mechanism is unambiguous from the
-code; the *magnitude* is not quantified.
+code; the _magnitude_ is not quantified.
 
 ---
 
-**S15 — No client-side request cache; unconditional refetch and background polling** · *Quick win* · **STATIC**
+**S15 — No client-side request cache; unconditional refetch and background polling** · _Quick win_ · **STATIC**
 
 `client/src/lib/use-resource.ts` is a hand-rolled fetch hook with **no cache, no request
 dedup, and no `AbortController`** — the `live` flag suppresses the state update but the
@@ -449,7 +451,7 @@ costs **7 DB round-trips**, so ≈ **230 DB round-trips/second** for unread coun
 
 ---
 
-**S16 — Leading-wildcard `ILIKE` search guarantees a full scan** · *Quick win* · **MEASURED (§1.5)**
+**S16 — Leading-wildcard `ILIKE` search guarantees a full scan** · _Quick win_ · **MEASURED (§1.5)**
 
 `resource.js:33` and the hand-rolled repos build `ILIKE '%' || q || '%'`. A leading wildcard
 cannot use a B-tree index. Measured **66.96 ms → 4.55 ms (14.7×)** with a `pg_trgm` GIN index —
@@ -457,7 +459,7 @@ no query rewrite required, the same SQL simply becomes indexable.
 
 ---
 
-**S17 — `OFFSET` pagination degrades and spills to disk** · *Structural* · **MEASURED (§1.5)**
+**S17 — `OFFSET` pagination degrades and spills to disk** · _Structural_ · **MEASURED (§1.5)**
 
 `query-helpers.js:47-51` clamps `limit` to 200 but `offset` is unbounded. At `OFFSET 100000`
 Postgres performs an **external merge sort spilling 8.0–9.6 MB per worker to disk**. Cost grows
@@ -466,7 +468,7 @@ contract, see §4.**
 
 ---
 
-**S18 — No global rate limiting → noisy-neighbour risk** · *Quick win* · **STATIC**
+**S18 — No global rate limiting → noisy-neighbour risk** · _Quick win_ · **STATIC**
 
 `express-rate-limit` is applied to exactly **two** password-reset routes
 (`src/modules/security/app_user/app_user.routes.js:20-21`). There is no global limiter. Combined
@@ -480,7 +482,7 @@ dependency.
 
 ---
 
-**S19 — 50 repos hand-roll an SQL builder that already exists** · *Quick win* · **MEASURED**
+**S19 — 50 repos hand-roll an SQL builder that already exists** · _Quick win_ · **MEASURED**
 
 `grep` finds the identical `update()` body — `const set = keys.map((k, i) => k + " = $" + (i + 2)).join(", ")` —
 copy-pasted into **50 module repos**, despite `query-helpers.updateOne()` doing exactly this. Any
@@ -491,7 +493,7 @@ largely mechanical registration.
 
 ---
 
-**S20 — SQL identifiers are interpolated from object keys with no enforcement** · *Structural* · **STATIC**
+**S20 — SQL identifiers are interpolated from object keys with no enforcement** · _Structural_ · **STATIC**
 
 `query-helpers.js:16-22` and `:30` build column lists directly from `Object.keys(data)`:
 
@@ -517,14 +519,14 @@ this audit was scoped to performance and did not exhaustively trace all 102 rout
 
 ## 3. Scalability — what breaks first, in order
 
-| # | Breaks at | Symptom |
-|---|---|---|
-| 1 | **13th concurrently-active tenant** (S1) | `sorry, too many clients already`. Adding API replicas *accelerates* this. |
-| 2 | **Any table past ~50k rows** (S3) | Every list screen degrades linearly; deep pages spill to disk. |
-| 3 | **First multi-replica deploy** (S12) | Smart Comms silently delivers to a subset of users. No error surfaces. |
-| 4 | **~2.7 concurrent requests per tenant** (S2) | Latency grows linearly; measured 14× p50 increase to concurrency 50. |
-| 5 | **First large org chart** (S4) | 14.78 ms added to *every* gated request at 20k scope nodes. |
-| 6 | **One noisy tenant** (S18) | Cross-tenant outage via connection starvation. |
+| #   | Breaks at                                    | Symptom                                                                    |
+| --- | -------------------------------------------- | -------------------------------------------------------------------------- |
+| 1   | **13th concurrently-active tenant** (S1)     | `sorry, too many clients already`. Adding API replicas _accelerates_ this. |
+| 2   | **Any table past ~50k rows** (S3)            | Every list screen degrades linearly; deep pages spill to disk.             |
+| 3   | **First multi-replica deploy** (S12)         | Smart Comms silently delivers to a subset of users. No error surfaces.     |
+| 4   | **~2.7 concurrent requests per tenant** (S2) | Latency grows linearly; measured 14× p50 increase to concurrency 50.       |
+| 5   | **First large org chart** (S4)               | 14.78 ms added to _every_ gated request at 20k scope nodes.                |
+| 6   | **One noisy tenant** (S18)                   | Cross-tenant outage via connection starvation.                             |
 
 ---
 
@@ -534,14 +536,14 @@ Per the non-negotiable constraint, these are **excluded** from the roadmap below
 unlock a real win but changes something a user or an integrator could notice. None will be
 implemented without explicit written approval.
 
-| # | Proposal | Win | Behaviour change | Recommendation |
-|---|---|---|---|---|
-| **B1** | Route-level `React.lazy` + `Suspense` (S8) | Cuts first-load JS from 365 KB gzip to an estimated 90–120 KB | Navigating to a not-yet-loaded route shows a loading state and requires a network fetch. Offline-after-first-visit behaviour changes unless the SW precache list is tuned. | **Recommend.** Largest frontend win available. Mitigate by keeping the SW precaching all chunks so offline is preserved and only *first paint* changes. |
-| **B2** | Remove `dashboard-mock` from the production build (S8) | −106 kB raw / −24 kB gzip | The Control Tower mock stops rendering. If any customer-facing screen still shows it, that screen goes blank. | Needs a product answer: **is the mock still user-visible?** If not, delete. If yes, it is a feature and should be built properly. |
-| **B3** | Keyset (cursor) pagination replacing `OFFSET` (S17) | Constant-time deep paging; removes disk spill | **API contract change.** `offset` clients break. "Jump to page N" becomes impossible. | Add cursor support **alongside** `offset`, migrate clients, deprecate later. Do not swap. |
-| **B4** | Cache `getUserScopeClosure` (S4) | Removes a query from every gated request | A `scope` re-parent takes up to the TTL to affect permissions instead of being instant. | **Recommend** with tree-level invalidation (invalidate on any `scope` write) — that makes the staleness window effectively zero and preserves current behaviour. Without it, do not ship. |
-| **B5** | `SELECT *` → explicit column lists (S7) | Smaller payloads, index-only scans | Any client relying on an undocumented column stops receiving it. | Per-module, behind response-shape tests. Low priority. |
-| **B6** | Batch the notification fan-out into one `INSERT … SELECT` (S5) | ~250 round-trips → 1 | Per-user preference checks must move into SQL; a user whose preference row is written mid-transaction could see a different outcome. Ordering of `notification_id` changes. | **Recommend.** The semantics are preservable; needs careful test coverage on `notification_preference`. |
+| #      | Proposal                                                       | Win                                                           | Behaviour change                                                                                                                                                            | Recommendation                                                                                                                                                                            |
+| ------ | -------------------------------------------------------------- | ------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **B1** | Route-level `React.lazy` + `Suspense` (S8)                     | Cuts first-load JS from 365 KB gzip to an estimated 90–120 KB | Navigating to a not-yet-loaded route shows a loading state and requires a network fetch. Offline-after-first-visit behaviour changes unless the SW precache list is tuned.  | **Recommend.** Largest frontend win available. Mitigate by keeping the SW precaching all chunks so offline is preserved and only _first paint_ changes.                                   |
+| **B2** | Remove `dashboard-mock` from the production build (S8)         | −106 kB raw / −24 kB gzip                                     | The Control Tower mock stops rendering. If any customer-facing screen still shows it, that screen goes blank.                                                               | Needs a product answer: **is the mock still user-visible?** If not, delete. If yes, it is a feature and should be built properly.                                                         |
+| **B3** | Keyset (cursor) pagination replacing `OFFSET` (S17)            | Constant-time deep paging; removes disk spill                 | **API contract change.** `offset` clients break. "Jump to page N" becomes impossible.                                                                                       | Add cursor support **alongside** `offset`, migrate clients, deprecate later. Do not swap.                                                                                                 |
+| **B4** | Cache `getUserScopeClosure` (S4)                               | Removes a query from every gated request                      | A `scope` re-parent takes up to the TTL to affect permissions instead of being instant.                                                                                     | **Recommend** with tree-level invalidation (invalidate on any `scope` write) — that makes the staleness window effectively zero and preserves current behaviour. Without it, do not ship. |
+| **B5** | `SELECT *` → explicit column lists (S7)                        | Smaller payloads, index-only scans                            | Any client relying on an undocumented column stops receiving it.                                                                                                            | Per-module, behind response-shape tests. Low priority.                                                                                                                                    |
+| **B6** | Batch the notification fan-out into one `INSERT … SELECT` (S5) | ~250 round-trips → 1                                          | Per-user preference checks must move into SQL; a user whose preference row is written mid-transaction could see a different outcome. Ordering of `notification_id` changes. | **Recommend.** The semantics are preservable; needs careful test coverage on `notification_preference`.                                                                                   |
 
 ---
 
@@ -564,6 +566,7 @@ Every phase ends with a benchmark re-run of §1.2/§1.3/§1.5 so each claim is p
 cannot alter behaviour. Buy latency headroom before touching architecture.
 
 **Scope.**
+
 - New migration adding `created_at DESC` indexes across the 123 uncovered tables (S3).
 - Index `scope(parent_scope_id)` (S4).
 - `pg_trgm` GIN indexes on the columns reachable by `searchColumn` / repo `ILIKE` (S16).
@@ -583,6 +586,7 @@ cannot alter behaviour. Buy latency headroom before touching architecture.
 harness committed under `scripts/bench/`.
 
 **Validation.**
+
 - Re-run §1.5 plans — assert index scans replace seq scans on every touched table.
 - Re-run §1.2 — target **67.64 ms → ≤ 13 ms** for the reference request.
 - Assert response `Content-Encoding: gzip` and ~86% payload reduction on a list endpoint.
@@ -597,13 +601,14 @@ harness committed under `scripts/bench/`.
 without changing any response. This is the prerequisite for Phase 3.
 
 **Scope.**
+
 - Introduce a **request-scoped connection**: one checkout per request, reused by
   `req.identityDb` and `req.tenantDb`, released on response finish.
 - Set `search_path` **once per physical connection** (via `pool.on('connect')` or libpq
   `options`) instead of per checkout.
 - Fold `getAuthUser` + `getGrants` + scope resolution into a **single** identity round-trip on
   cache miss.
-- Apply **B4** (scope-closure caching with tree-level invalidation) — *only if signed off*.
+- Apply **B4** (scope-closure caching with tree-level invalidation) — _only if signed off_.
 
 **Files.** `src/middleware/tenant-context.js`, `src/services/tenant/registry.service.js`,
 `src/middleware/auth.js`, `src/middleware/rbac.js`, `src/shared/cache/identity-cache.js`,
@@ -619,11 +624,12 @@ exactly. Requires full RBAC regression coverage before merge.
 API surface, proven by contract tests.
 
 **Validation.**
+
 - **Round-trip assertion test** — instrument `pg` and assert ≤ 3 queries for the reference
   request (down from 7).
 - Re-run §1.3 load test — target **p50 at concurrency 50 below 15 ms** (from 41.6 ms) and
   effective concurrency `pool_max/1` rather than `pool_max/3`.
-- Full RBAC matrix regression: every role × module × action, live *and* sandbox.
+- Full RBAC matrix regression: every role × module × action, live _and_ sandbox.
 
 ---
 
@@ -633,6 +639,7 @@ API surface, proven by contract tests.
 survives horizontal API scaling. This is the phase that makes the product sellable at volume.
 
 **Scope.**
+
 - Introduce **PgBouncer** (transaction pooling) between the API and tenant databases — the
   ladder `doc/DB_ARCHITECTURE.md:46` already commits to. Requires auditing for session-scoped
   state; `SET search_path` per checkout (removed in Phase 2) is precisely what would break under
@@ -652,6 +659,7 @@ session state is set per checkout.
 realtime; per-worker Redis connections; a documented, tested tenant-capacity number.
 
 **Validation.**
+
 - Re-run §1.4 — demonstrate **> 100 concurrently-active tenants** on one process.
 - Two-replica soak test proving Smart Comms delivers to clients on **both** replicas
   (this fails today).
@@ -665,7 +673,8 @@ realtime; per-worker Redis connections; a documented, tested tenant-capacity num
 **Objective.** Make writes and background work cheap now that reads and connections are fixed.
 
 **Scope.**
-- **B6** (batched notification fan-out) — *if signed off*; otherwise parallelise the loop with a
+
+- **B6** (batched notification fan-out) — _if signed off_; otherwise parallelise the loop with a
   bounded concurrency and move it **out** of the business transaction via the outbox that
   `event_log` already provides.
 - Puppeteer **browser pool** with page reuse and a hard render timeout (S13).
@@ -682,6 +691,7 @@ realtime; per-worker Redis connections; a documented, tested tenant-capacity num
 identifier allowlisting.
 
 **Validation.**
+
 - Write-path round-trip count before/after for `POST /leads` with 50 notification recipients —
   target **≥ 10× reduction**.
 - PDF p95 render latency and worker RSS before/after; assert no Chromium process leak over 500
@@ -696,9 +706,10 @@ identifier allowlisting.
 is independently deployable and the backend risks are existential while these are experiential.
 
 **Scope.**
-- **B1** (route-level `React.lazy`) — *if signed off*. Fix the 9 circular-chunk warnings so
+
+- **B1** (route-level `React.lazy`) — _if signed off_. Fix the 9 circular-chunk warnings so
   chunks are independently loadable.
-- **B2** (`dashboard-mock` removal) — *pending the product answer*.
+- **B2** (`dashboard-mock` removal) — _pending the product answer_.
 - Memoize both context provider values; wrap the six auth handlers in `useCallback` (S14).
 - Introduce request caching + dedup + `AbortController` behind the existing `useList`/`useResource`
   signatures, so the 150+ call sites are untouched (S15).
@@ -717,6 +728,7 @@ be stable so frontend measurements are not confounded.
 hook signatures; self-hosted fonts.
 
 **Validation.**
+
 - Bundle diff vs the §1.7 baseline — target **first-load gzip JS from 365.3 KB to ≤ 120 KB**.
 - **A real Lighthouse run** (FCP/LCP/TBT) before and after — this audit could not run one (§0.1),
   and Phase 5 should not be accepted without it.
@@ -729,12 +741,12 @@ hook signatures; self-hosted fonts.
 
 ## 6. Summary
 
-| Severity | Count | Headline |
-|---|---|---|
-| Critical | 3 | 12-tenant ceiling; 7 round-trips/request; 123 unindexed sort columns |
-| High | 6 | Uncached recursive CTE; notification N+1; write-path chain; no compression; whole-app eager load; global cache flush |
-| Medium | 9 | Unbounded host cache; shared worker Redis; no Socket.IO adapter; Chromium per PDF; context re-renders; no client cache; ILIKE scans; OFFSET paging; no rate limit |
-| Low | 2 | 50 duplicated builders; unenforced SQL identifiers |
+| Severity | Count | Headline                                                                                                                                                          |
+| -------- | ----- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Critical | 3     | 12-tenant ceiling; 7 round-trips/request; 123 unindexed sort columns                                                                                              |
+| High     | 6     | Uncached recursive CTE; notification N+1; write-path chain; no compression; whole-app eager load; global cache flush                                              |
+| Medium   | 9     | Unbounded host cache; shared worker Redis; no Socket.IO adapter; Chromium per PDF; context re-renders; no client cache; ILIKE scans; OFFSET paging; no rate limit |
+| Low      | 2     | 50 duplicated builders; unenforced SQL identifiers                                                                                                                |
 
 The two facts that matter most:
 

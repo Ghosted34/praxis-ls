@@ -37,7 +37,7 @@ Identity users ARE mirrored into `sandbox.app_user` (same user_ids) every time t
 seed runs — business writes stamp the acting user, and those FKs must resolve.
 Employee links are real.
 
-**⚠️ Machine/DB switch gotcha (2026-07-22):** if a login user was *re-created* in
+**⚠️ Machine/DB switch gotcha (2026-07-22):** if a login user was _re-created_ in
 live with a new `user_id` (new PC, re-provisioned admin) while the sandbox still
 holds the old row for the same email, every TEST-mode write fails with
 `409 Referenced record not found` (FK 23503 on the actor user). The seed now
@@ -71,7 +71,7 @@ slate: `npm run db:sandbox:wipe -- --slug=smartls` (rebuilds the sandbox schema 
 config seeds), then run the seed again.
 
 **Optional — populate the ledger too (money-path seeder).** The SQL seed above
-deliberately leaves the GL empty (Section 0). To also generate *posted* financial
+deliberately leaves the GL empty (Section 0). To also generate _posted_ financial
 data (so Statements / General Ledger / true ageing light up automatically), run the
 API-driven money-path seeder with the API server up — it logs in and drives the real
 endpoints (advance → invoice submit/post → receipt → payroll compute→validate →
@@ -120,6 +120,7 @@ and the collapsed hubs now.
 **F. Finance — the money path (posts to the GL — do this through the app).**
 This is the part the seed intentionally leaves for you, because posting is what
 proves the ledger:
+
 1. Take proforma `SBX-PRO-0001` → record the client advance → confirm it posts **Dr 521 / Cr 4191** (advance, not revenue).
 2. Take a DRAFT final invoice (`SBX-INV-0002`) → submit → validate → approve → post → confirm **Dr 411 / Cr 706x + Cr 4432**, and that the débours line hits **4731 with no VAT** and stays out of turnover.
 3. Record a receipt against a posted invoice → confirm allocation + ageing update.

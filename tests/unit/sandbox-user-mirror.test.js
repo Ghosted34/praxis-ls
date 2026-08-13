@@ -30,7 +30,11 @@ const USER = "3f1c9a10-0000-4000-8000-000000000001";
  * Minimal fake pg client. `present` decides whether the verification SELECT finds
  * the mirrored row, which is how an email collision is simulated.
  */
-function fakeClient({ sandboxReady = true, present = true, rowCount = 1 } = {}) {
+function fakeClient({
+  sandboxReady = true,
+  present = true,
+  rowCount = 1,
+} = {}) {
   const queries = [];
   return {
     queries,

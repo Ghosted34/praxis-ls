@@ -69,27 +69,27 @@ grant can bypass the chain, and the person who raised the document can approve i
 
 ## Severity summary
 
-| # | Finding | Sev |
-|---|---------|-----|
-| W1 | The step designer collects the fields the engine ignores and omits the ones it uses | **High** |
-| W2 | `act()` performs no eligibility check — any approver can act on any task at any step | **High** |
-| W3 | Approval authority is one global grant on the IAM module — CEO-only by seed | **High** |
-| W4 | Every approvable document has a direct approve route **and button** that bypasses the chain | **High** |
-| W5 | No self-approval prevention, though the requester is already resolved and maker-checker is enforced elsewhere | **High** |
-| W6 | `createTask` drops `scope_id` and `capability_code` — the organigramme dimension never reaches the task | **High** |
-| W7 | `requireCapability` has zero call sites — VALIDATOR/APPROVER is unenforced product-wide | **High** |
-| W8 | 5 of 6 callers ignore `autoApproved` — documents stick forever when no workflow is bound | **Med-High** |
-| A1 | `user_scope` is read in one place and written nowhere — no user can ever be in a scope | **High** |
-| B1 | No position table, no `reports_to` — the reporting line has no data model | **High** |
-| W10 | A null amount silently bypasses the whole chain via `no_applicable_step` | **Med** |
-| W11 | All six default workflows route to one heuristically-picked role; the seed swallows every error | **Med** |
-| W12 | The approvals "inbox" has no user or role filter — everyone sees the whole queue | **Med** |
-| W13 | No delegation, escalation, deadline or reassignment; `assigned_user_id` is never written | **Med** |
-| W9 | `step_kind` isn't enforced against the action, and anyone can `skip` a step | **Med** |
-| A2 | `scopeColumn` has zero adopters — a populated scope would still filter nothing | **Med** |
-| A5 | `DELETE` is a no-op across 32 modules incl. every RBAC screen | **Med** |
-| C2–C3 | Module-map defects found on the way (mail RBAC, MOD-00A) — see Part 4 | **High** |
-| ~~C1~~ | ~~MOD-71 not catalogued~~ — **WITHDRAWN 2026-08-02, was incorrect.** See Part 4 | — |
+| #      | Finding                                                                                                       | Sev          |
+| ------ | ------------------------------------------------------------------------------------------------------------- | ------------ |
+| W1     | The step designer collects the fields the engine ignores and omits the ones it uses                           | **High**     |
+| W2     | `act()` performs no eligibility check — any approver can act on any task at any step                          | **High**     |
+| W3     | Approval authority is one global grant on the IAM module — CEO-only by seed                                   | **High**     |
+| W4     | Every approvable document has a direct approve route **and button** that bypasses the chain                   | **High**     |
+| W5     | No self-approval prevention, though the requester is already resolved and maker-checker is enforced elsewhere | **High**     |
+| W6     | `createTask` drops `scope_id` and `capability_code` — the organigramme dimension never reaches the task       | **High**     |
+| W7     | `requireCapability` has zero call sites — VALIDATOR/APPROVER is unenforced product-wide                       | **High**     |
+| W8     | 5 of 6 callers ignore `autoApproved` — documents stick forever when no workflow is bound                      | **Med-High** |
+| A1     | `user_scope` is read in one place and written nowhere — no user can ever be in a scope                        | **High**     |
+| B1     | No position table, no `reports_to` — the reporting line has no data model                                     | **High**     |
+| W10    | A null amount silently bypasses the whole chain via `no_applicable_step`                                      | **Med**      |
+| W11    | All six default workflows route to one heuristically-picked role; the seed swallows every error               | **Med**      |
+| W12    | The approvals "inbox" has no user or role filter — everyone sees the whole queue                              | **Med**      |
+| W13    | No delegation, escalation, deadline or reassignment; `assigned_user_id` is never written                      | **Med**      |
+| W9     | `step_kind` isn't enforced against the action, and anyone can `skip` a step                                   | **Med**      |
+| A2     | `scopeColumn` has zero adopters — a populated scope would still filter nothing                                | **Med**      |
+| A5     | `DELETE` is a no-op across 32 modules incl. every RBAC screen                                                 | **Med**      |
+| C2–C3  | Module-map defects found on the way (mail RBAC, MOD-00A) — see Part 4                                         | **High**     |
+| ~~C1~~ | ~~MOD-71 not catalogued~~ — **WITHDRAWN 2026-08-02, was incorrect.** See Part 4                               | —            |
 
 ---
 
@@ -148,20 +148,20 @@ changes that.**
 Alongside the engine, each module exposes its own transition route gated by
 `requirePermission(<own module>, 'approve')`:
 
-| Document | Bypass route |
-|---|---|
-| Purchase order | `POST /purchase-orders/:id/transition` → `APPROVED_LOCKED` (`purchase_order.routes.js:16`) |
-| Purchase request | `POST /purchase-requests/:id/transition` (`purchase_request.routes.js:15`) |
-| Cash request | `POST /cash-requests/:id/transition`, `/disburse` (`cash_request.routes.js:16-17`) |
-| Costing | `POST /costings/:id/status` → `APPROVE` (`costing.routes.js:15`) |
-| Payroll run | `POST /payroll/:id/status` (`payroll.routes.js:24`) |
-| Leave | `POST /leave/:id/decision` (`leave_allowance.routes.js:21`) |
-| Supplier invoice | `POST /supplier-invoices/:id/post` (`supplier_invoice.routes.js:16`) |
+| Document         | Bypass route                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| Purchase order   | `POST /purchase-orders/:id/transition` → `APPROVED_LOCKED` (`purchase_order.routes.js:16`) |
+| Purchase request | `POST /purchase-requests/:id/transition` (`purchase_request.routes.js:15`)                 |
+| Cash request     | `POST /cash-requests/:id/transition`, `/disburse` (`cash_request.routes.js:16-17`)         |
+| Costing          | `POST /costings/:id/status` → `APPROVE` (`costing.routes.js:15`)                           |
+| Payroll run      | `POST /payroll/:id/status` (`payroll.routes.js:24`)                                        |
+| Leave            | `POST /leave/:id/decision` (`leave_allowance.routes.js:21`)                                |
+| Supplier invoice | `POST /supplier-invoices/:id/post` (`supplier_invoice.routes.js:16`)                       |
 
 These call the same transition functions the approval dispatcher calls, with **no check for a pending
 `approval_task`**. `purchase_order.transition` sets `approver_id = actor.user_id` and locks the PO
 (`purchase_order.service.js:69`); the comment beside `executor.start` states the position plainly —
-*"the manual APPROVED_LOCKED path is unchanged"* (`:72`).
+_"the manual APPROVED_LOCKED path is unchanged"_ (`:72`).
 
 This is not API-only. `client/src/features/procurement/pages.tsx:205` renders an approve action that
 calls `transitionPO(po_id, "APPROVED_LOCKED")` directly. **One user, one click, chain skipped, and
@@ -182,14 +182,14 @@ pinging the person who triggered the step (`:41`), so the intent is understood; 
 is missing.
 
 The contrast inside the product is stark. Restoring a soft-deleted record enforces two-person
-integrity at **both** the service layer and the database — *"The person who deleted a record cannot
-restore it themselves — needs a second admin"* (`audit_ledger.service.js:50`) backed by
+integrity at **both** the service layer and the database — _"The person who deleted a record cannot
+restore it themselves — needs a second admin"_ (`audit_ledger.service.js:50`) backed by
 `CHECK (restored_by IS NULL OR restored_by <> deleted_by)`
 (`0130_platform_projection.sql:71`). So the ERP enforces maker-checker on undeleting a row, and not
 on approving a payroll run.
 
-Payroll's own routes claim SoD — *"compute (edit) and approval transitions (approve) are separate
-permissions so the same person can't both run and validate payroll"* (`payroll.routes.js:1-4`) — but
+Payroll's own routes claim SoD — _"compute (edit) and approval transitions (approve) are separate
+permissions so the same person can't both run and validate payroll"_ (`payroll.routes.js:1-4`) — but
 nothing stops a role holding both grants, so it is a naming convention rather than a control.
 
 ### W6 — `scope_id` and `capability_code` never reach the task (High)
@@ -229,9 +229,9 @@ The other five discard the return value entirely — `costing.service.js:74`,
 **the record sits in a submitted state permanently** — invisible in the approvals queue because no
 task exists.
 
-`0469_default_workflows.sql` was written to paper over exactly this (*"with no workflow bound they
-auto-approve and never reach the inbox"*) by seeding a default chain for all six events. But the same
-migration invites admins to *"retune/disable these in the Workflow designer"* — and disabling one
+`0469_default_workflows.sql` was written to paper over exactly this (_"with no workflow bound they
+auto-approve and never reach the inbox"_) by seeding a default chain for all six events. But the same
+migration invites admins to _"retune/disable these in the Workflow designer"_ — and disabling one
 re-opens the trap.
 
 ### W9 — `step_kind` is advisory, and anyone can skip (Med)
@@ -239,7 +239,7 @@ re-opens the trap.
 `act` maps the caller's action straight to a status
 (`ACTION_STATUS = { validate, approve, reject, skip }`, `executor.js:91`) without comparing it to
 `step_kind`. A VALIDATE step can be cleared with `approve` and an APPROVE step with `validate`; both
-advance the chain identically. The FE only *offers* the matching verb
+advance the chain identically. The FE only _offers_ the matching verb
 (`governance/pages.tsx:860`), so this is an API-level gap.
 
 `skip` sets `SKIPPED` and advances to the next step with no distinct permission and no reason
@@ -255,8 +255,8 @@ Several callers can legitimately pass null — `cash_request.service.js:71`,
 `payroll.service.js:119`, `purchase_order.service.js:73` and `supplier_invoice.service.js:67` all
 pass `null` when the total is null/undefined. So a document with a missing total skips approval
 entirely, and (per W8) four of those five callers don't even look at the result that told them so.
-A threshold-banded chain should treat "amount unknown" as *needs the highest approval*, not *needs
-none*.
+A threshold-banded chain should treat "amount unknown" as _needs the highest approval_, not _needs
+none_.
 
 ### W11 — The default workflows are one role and a silent failure (Med)
 
@@ -272,14 +272,14 @@ minimum `RAISE WARNING`.
 
 ### W12 — The approvals inbox is not an inbox (Med)
 
-`approval_task` is introduced in schema as *"approvals waiting on me"*
+`approval_task` is introduced in schema as _"approvals waiting on me"_
 (`0120_events_workflow.sql:62-63`). `repo.listApprovals` filters on `status` and nothing else
 (`workflow.repo.js:110-118`) — no filter on the caller's role, scope, or user. Every user with
 `MOD-67` view sees **every pending approval in the tenant**, and the FE tiles count the whole queue
 (`governance/pages.tsx:874-875`).
 
 Given W1 leaves `assigned_role_id` null on UI-created steps, there is currently nothing to filter
-*by* — the two findings have to be fixed together.
+_by_ — the two findings have to be fixed together.
 
 ### W13 — No delegation, escalation, deadline or reassignment (Med)
 
@@ -295,8 +295,8 @@ is blocked on B1.
 
 ## Part 2 — Why the chain cannot route by organisation
 
-`workflow_step.scope_id` points at `scope`, whose `parent_scope_id` is commented *"the organigramme
-tree"* (`0110_rbac.sql:33`) and described to users in those words on the Scopes screen
+`workflow_step.scope_id` points at `scope`, whose `parent_scope_id` is commented _"the organigramme
+tree"_ (`0110_rbac.sql:33`) and described to users in those words on the Scopes screen
 (`client/src/features/security/pages.tsx:638`). This is the ERP's organigramme. It is drawn and not
 wired.
 
@@ -318,7 +318,7 @@ list with an indent.
 
 **A4 — No shape validation (Med).** `scope.validator.js` is a one-line re-export of
 `validate.passthrough`. Nothing rejects a parent cycle or a bad `entity_id`; the FE only excludes the
-node being edited from the parent dropdown (`pages.tsx:635`). Fix this *before* A3 lands — a cycle
+node being edited from the parent dropdown (`pages.tsx:635`). Fix this _before_ A3 lands — a cycle
 becomes an infinite loop the moment anything walks the tree.
 
 **A5 — `DELETE` is a no-op across 32 modules (Med).** `scope.repo.js:3` sets `activeColumn: null`,
@@ -344,12 +344,12 @@ on exact string equality, and `vacancy.service.js:62-63` copies the vacancy's fr
 onto the employee at hire, propagating whatever spelling was typed.
 
 **B2 — `is_line_manager` promises a team nothing can resolve (High).** The flag exists
-(`0110_rbac.sql:15`), is seeded as *"Line Manager — approves for own team"*
+(`0110_rbac.sql:15`), is seeded as _"Line Manager — approves for own team"_
 (`9020_seed_rbac_events.sql:10`), is resolved through the identity cache
 (`identity-cache.js:170-185`) and is checkable via `requireCapability('LINE_MANAGER')`
 (`rbac.js:155`) — which, per W7, is called nowhere. With no subordinate relation (B1) and no scope
-membership (A1), "own team" is unanswerable, so the flag could only ever mean *approves everything of
-this type*. `approval_task` confirms the design settled for that: assignment is to a **role**
+membership (A1), "own team" is unanswerable, so the flag could only ever mean _approves everything of
+this type_. `approval_task` confirms the design settled for that: assignment is to a **role**
 (`assigned_role_id`), never to a person or an org node.
 
 **B3 — Succession points at strings (Med).** `succession_plan` (`0360_hr_breadth.sql:114-122`) keys
@@ -391,7 +391,7 @@ condition documented at the end of `SESSION_HANDOFF.md`. Four separate `grep -r`
 the file was created 2026-07-30 and was invisible to the mount. It surfaced only when read through
 the Windows-side file tools.
 
-**Re-verification performed.** Every other claim in this document that asserts an *absence* was
+**Re-verification performed.** Every other claim in this document that asserts an _absence_ was
 re-checked through the Windows file tools rather than the sandbox: `user_scope` written nowhere (A1),
 `scopeColumn` zero adopters (A2), `requireCapability` zero call sites (W7), `autoApproved` consumed
 only by `final_invoice` (W8), no `role_id`/`scope_id` anywhere in the governance FE (W1), no
@@ -416,7 +416,7 @@ grant seed deliberately doesn't seed (`9021:33-35`). Same for `MOD-63`, which is
 17's fresh-tenant walkthrough ran as CEO, which bypasses RBAC.
 
 **C4 — Nine seeded features are enforced nowhere**, including `hr.payroll`, `procurement` and
-`sales.crm` — three of them parents of children that *are* gated. `sales.crm`, `sales.proposals` and
+`sales.crm` — three of them parents of children that _are_ gated. `sales.crm`, `sales.proposals` and
 `sales.marketing` default to `off`, so the console shows Sales/CRM disabled for every tenant while
 the routes serve normally. This is the known `depends_on` gap with a sharper edge: the parents aren't
 merely unconsulted by `projectFeatures()`, they're unenforceable, so fixing projection alone won't
@@ -451,7 +451,7 @@ controls that do nothing.
    `approval_task` exists on the entity, or they are documented as a deliberate emergency path with
    its own permission and a loud audit entry. Fix W8 first or the bypass is the only working path.
 3. **W8 + W10 + W11 — make absence safe.** Honour `autoApproved` in the five callers that ignore it,
-   treat a null amount as needing the *highest* band rather than none, and let `0469` warn on failure.
+   treat a null amount as needing the _highest_ band rather than none, and let `0469` warn on failure.
 4. **W1 + W6 + W12 — reconnect the designer to the engine.** Add role and scope pickers to the step
    form, carry both onto `approval_task`, then filter the inbox by the caller. Until W1 lands there
    is nothing to filter by.

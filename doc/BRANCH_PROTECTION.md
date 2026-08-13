@@ -1,7 +1,7 @@
 # Branch protection — TC-CI1
 
 **Critical.** `main` is unprotected, 45% of changes are pushed straight to it,
-and every green push auto-deploys to production. This is a GitHub *settings*
+and every green push auto-deploys to production. This is a GitHub _settings_
 change, not code, which is why it lives here rather than in a commit.
 
 It should be done now rather than later, because the rest of the safety net is
@@ -11,7 +11,7 @@ the last structural gap in that chain — the one that stops a bad change reachi
 the chain at all.
 
 The six consecutive deploy failures on 2026-08-04 all went straight to
-production with no review. They happened to be crashes. A crash is the *lucky*
+production with no review. They happened to be crashes. A crash is the _lucky_
 version: it fails loudly and touches nothing. The same path was open to a
 migration that corrupts data.
 
@@ -19,17 +19,17 @@ migration that corrupts data.
 
 ## Do this — Settings → Branches → Add rule, `main`
 
-| Setting | Value | Why |
-|---|---|---|
-| Require a pull request before merging | **on** | Closes the 45% direct-push path |
-| Required approvals | **1** | On a small team, 1 is real review; 2 becomes rubber-stamping |
-| Dismiss stale approvals on new commits | **on** | An approval should describe the code being merged |
-| Require status checks to pass | **on** | See the list below |
-| Require branches to be up to date | **on** | Stops two green PRs merging into a red `main` |
-| Require conversation resolution | **on** | Cheap; stops review comments being merged past |
-| Do not allow bypassing | **on** | Including admins. An exception you can always take is not a control — see below |
-| Allow force pushes | **off** | |
-| Allow deletions | **off** | |
+| Setting                                | Value   | Why                                                                             |
+| -------------------------------------- | ------- | ------------------------------------------------------------------------------- |
+| Require a pull request before merging  | **on**  | Closes the 45% direct-push path                                                 |
+| Required approvals                     | **1**   | On a small team, 1 is real review; 2 becomes rubber-stamping                    |
+| Dismiss stale approvals on new commits | **on**  | An approval should describe the code being merged                               |
+| Require status checks to pass          | **on**  | See the list below                                                              |
+| Require branches to be up to date      | **on**  | Stops two green PRs merging into a red `main`                                   |
+| Require conversation resolution        | **on**  | Cheap; stops review comments being merged past                                  |
+| Do not allow bypassing                 | **on**  | Including admins. An exception you can always take is not a control — see below |
+| Allow force pushes                     | **off** |                                                                                 |
+| Allow deletions                        | **off** |                                                                                 |
 
 ### Required status checks
 
@@ -43,7 +43,7 @@ Tick every job the CI workflow defines:
 - `docker-build`
 
 `docker-build` matters more than it looks: the `@praxis/shared` bug
-(commit 5ed5870) was a broken *image* that every other check passed cleanly.
+(commit 5ed5870) was a broken _image_ that every other check passed cleanly.
 
 ### On "do not allow bypassing"
 
@@ -89,7 +89,7 @@ checkbox.
 
 ## What this does not fix
 
-**TC-CI2** — `main` is red on 15% of runs. Protection stops *new* breakage
+**TC-CI2** — `main` is red on 15% of runs. Protection stops _new_ breakage
 landing, but if `main` is red today it must be made green before the rule starts
 blocking everyone's merges. Check the current state first.
 

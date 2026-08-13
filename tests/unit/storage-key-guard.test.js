@@ -17,12 +17,12 @@ const TRAVERSALS = [
   "/etc/passwd",
   "..",
   "a/../../b",
-  "a\\..\\b",          // Windows separator
-  "a//b",               // empty segment
-  "\0evil",             // null byte
+  "a\\..\\b", // Windows separator
+  "a//b", // empty segment
+  "\0evil", // null byte
   "",
   "  ",
-  ".hidden/x",          // must start alphanumeric
+  ".hidden/x", // must start alphanumeric
 ];
 
 const LEGITIMATE = [
@@ -34,22 +34,33 @@ const LEGITIMATE = [
 
 describe("storage key guard", () => {
   it.each(TRAVERSALS)("rejects %j on read", async (key) => {
-    await expect(storage.get(key)).rejects.toMatchObject({ code: "BAD_STORAGE_KEY" });
+    await expect(storage.get(key)).rejects.toMatchObject({
+      code: "BAD_STORAGE_KEY",
+    });
   });
 
   it.each(TRAVERSALS)("rejects %j on delete", async (key) => {
-    await expect(storage.delete(key)).rejects.toMatchObject({ code: "BAD_STORAGE_KEY" });
+    await expect(storage.delete(key)).rejects.toMatchObject({
+      code: "BAD_STORAGE_KEY",
+    });
   });
 
   // An absent key on write is the documented "generate a random one" path, so it
   // is excluded here rather than treated as a traversal.
-  it.each(TRAVERSALS.filter((k) => k !== ""))("rejects %j on write", async (key) => {
-    await expect(storage.put(Buffer.from("x"), { key, contentType: "text/plain" }))
-      .rejects.toMatchObject({ code: "BAD_STORAGE_KEY" });
-  });
+  it.each(TRAVERSALS.filter((k) => k !== ""))(
+    "rejects %j on write",
+    async (key) => {
+      await expect(
+        storage.put(Buffer.from("x"), { key, contentType: "text/plain" }),
+      ).rejects.toMatchObject({ code: "BAD_STORAGE_KEY" });
+    },
+  );
 
   it("still auto-generates a key when none is given", async () => {
-    const r = await storage.put(Buffer.from("x"), { key: "", contentType: "text/plain" });
+    const r = await storage.put(Buffer.from("x"), {
+      key: "",
+      contentType: "text/plain",
+    });
     expect(r.key).toMatch(/^[a-f0-9]{32}$/);
   });
 
@@ -62,6 +73,8 @@ describe("storage key guard", () => {
   it("rejects a sibling directory whose name merely extends the base", async () => {
     // "/data/storage-evil" starts with "/data/storage" — a naive startsWith
     // check would let it through, which is why the separator is part of the test.
-    await expect(storage.get("../storage-evil/x")).rejects.toMatchObject({ code: "BAD_STORAGE_KEY" });
+    await expect(storage.get("../storage-evil/x")).rejects.toMatchObject({
+      code: "BAD_STORAGE_KEY",
+    });
   });
 });

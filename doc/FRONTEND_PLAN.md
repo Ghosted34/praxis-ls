@@ -53,6 +53,7 @@ the tenant app: the Praxis ops team managing tenants via
 API (already done).
 
 **Proposed:**
+
 - **Where it lives:** same build, `/platform/*` route area, activated on host
   `admin.praxisls.com` (already a platform host). Or a separate `console/` app —
   cleaner isolation, double the deploy.

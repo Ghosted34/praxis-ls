@@ -25,6 +25,7 @@ import { money, num, dateFmt, enumLabel } from "@/lib/format";
 import { SmartCountryPicker } from "@/components/smart-country-picker";
 import { ScanAttachment } from "@/components/scan-attachment";
 import * as api from "@/lib/masterdata-api";
+import { ComposeIconButton } from "@/features/comms/mail";
 
 // Deep-link targets (§3.1) — the real hub-section routes confirmed in
 // src/app/app.tsx. A `focus` query hints the record to the destination list,
@@ -815,7 +816,8 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
               <p className="mt-1 micro">Also known as: {(d.aliases || []).map((a) => a.alias).join(", ")}</p>
             )}
           </div>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <ComposeIconButton to={(p as { email?: string | null }).email || undefined} className="grid h-8 w-8 place-items-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" />
             <Button size="sm" variant="ghost" onClick={onEdit}>Edit</Button>
             {comp.can_verify && p.verification_status !== "VERIFIED" && (
               <Button size="sm" variant="outline" loading={busy} onClick={() => act(() => api.verifyParty(kind, partyId), "Verified")}>Verify</Button>

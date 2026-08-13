@@ -33,153 +33,166 @@ already).
 ## 1. Menu groups → sub-menus
 
 ### Commercial
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Quotation | Standalone | Primary object |
-| Margin simulation | Tab | → Quotation (pricing workbench) |
-| Extra-charge simulation | Tab | → Quotation (pricing workbench) |
-| Pricing variance | Standalone | Analytics (GET-heavy) |
+
+| Sub-menu                | Type       | Parent / notes                  |
+| ----------------------- | ---------- | ------------------------------- |
+| Quotation               | Standalone | Primary object                  |
+| Margin simulation       | Tab        | → Quotation (pricing workbench) |
+| Extra-charge simulation | Tab        | → Quotation (pricing workbench) |
+| Pricing variance        | Standalone | Analytics (GET-heavy)           |
 
 ### Costing
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Costing | Standalone | Job-costing sheet |
-| Cost tracking | Tab | → Costing (actuals vs sheet) |
-| Cash request | Standalone | Own approval workflow |
-| Regie | Standalone | |
+
+| Sub-menu      | Type       | Parent / notes               |
+| ------------- | ---------- | ---------------------------- |
+| Costing       | Standalone | Job-costing sheet            |
+| Cost tracking | Tab        | → Costing (actuals vs sheet) |
+| Cash request  | Standalone | Own approval workflow        |
+| Regie         | Standalone |                              |
 
 ### Finance (all primary accounting objects → all standalone)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Journal entry | Standalone | Journals |
-| Proforma | Standalone | Proforma & advances |
-| Final invoice | Standalone | Invoices |
-| Smart receivables | Standalone | Receivables |
-| Asset | Standalone | Fixed-asset register |
-| Financial statement | Standalone | Internally tabbed: Trial balance / Bilan / Compte de résultat / TAFIRE |
-| Tax declaration | Standalone | Internally tabbed: TVA / IS / withholding. **Read-only backend — see gaps** |
-| Debt | Standalone | **NEW — not yet in screen-registry; partial backend (see gaps)** |
+
+| Sub-menu            | Type       | Parent / notes                                                              |
+| ------------------- | ---------- | --------------------------------------------------------------------------- |
+| Journal entry       | Standalone | Journals                                                                    |
+| Proforma            | Standalone | Proforma & advances                                                         |
+| Final invoice       | Standalone | Invoices                                                                    |
+| Smart receivables   | Standalone | Receivables                                                                 |
+| Asset               | Standalone | Fixed-asset register                                                        |
+| Financial statement | Standalone | Internally tabbed: Trial balance / Bilan / Compte de résultat / TAFIRE      |
+| Tax declaration     | Standalone | Internally tabbed: TVA / IS / withholding. **Read-only backend — see gaps** |
+| Debt                | Standalone | **NEW — not yet in screen-registry; partial backend (see gaps)**            |
 
 ### Fleet (all standalone — matches registry)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Vehicle | Standalone | |
+
+| Sub-menu           | Type       | Parent / notes                       |
+| ------------------ | ---------- | ------------------------------------ |
+| Vehicle            | Standalone |                                      |
 | Vehicle compliance | Standalone | Candidate tab under a Vehicle detail |
-| Fuel log | Standalone | Candidate tab under a Vehicle detail |
-| Work order | Standalone | |
-| Fleet dispatch | Standalone | |
-| Driver | Standalone | Driver licences |
-| Incident | Standalone | |
+| Fuel log           | Standalone | Candidate tab under a Vehicle detail |
+| Work order         | Standalone |                                      |
+| Fleet dispatch     | Standalone |                                      |
+| Driver             | Standalone | Driver licences                      |
+| Incident           | Standalone |                                      |
 
 ### HR (all standalone — matches registry)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Employees | Standalone | (lives in HR; source module is `master/employees`) |
-| Vacancy | Standalone | |
-| Talent pool | Standalone | Candidate tab under Vacancy/Recruitment |
-| HR contract | Standalone | |
-| Appraisal | Standalone | |
-| Attendance | Standalone | |
-| Leave & allowance | Standalone | |
-| SOP / onboarding | Standalone | |
-| Training | Standalone | |
-| Payroll | Standalone | |
+
+| Sub-menu          | Type       | Parent / notes                                     |
+| ----------------- | ---------- | -------------------------------------------------- |
+| Employees         | Standalone | (lives in HR; source module is `master/employees`) |
+| Vacancy           | Standalone |                                                    |
+| Talent pool       | Standalone | Candidate tab under Vacancy/Recruitment            |
+| HR contract       | Standalone |                                                    |
+| Appraisal         | Standalone |                                                    |
+| Attendance        | Standalone |                                                    |
+| Leave & allowance | Standalone |                                                    |
+| SOP / onboarding  | Standalone |                                                    |
+| Training          | Standalone |                                                    |
+| Payroll           | Standalone |                                                    |
 
 ### Master (mixed — primary records vs config lookups)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Client master | Standalone | Clients |
-| Supplier master | Standalone | Suppliers |
-| Chart of accounts | Standalone | → lives under Finance |
-| Employees | Standalone | → lives under HR |
-| Corporate entity | Standalone | → Settings / Company |
-| Treasury account | Standalone | → Finance or Settings |
-| Currency | Tab | → **Reference data** screen (config lookup) |
-| Expense rate | Tab | → Reference data |
-| Financial dictionary | Tab | → Reference data |
-| Tax jurisdiction | Tab | → Reference data (or Settings / Tax) |
+
+| Sub-menu             | Type       | Parent / notes                              |
+| -------------------- | ---------- | ------------------------------------------- |
+| Client master        | Standalone | Clients                                     |
+| Supplier master      | Standalone | Suppliers                                   |
+| Chart of accounts    | Standalone | → lives under Finance                       |
+| Employees            | Standalone | → lives under HR                            |
+| Corporate entity     | Standalone | → Settings / Company                        |
+| Treasury account     | Standalone | → Finance or Settings                       |
+| Currency             | Tab        | → **Reference data** screen (config lookup) |
+| Expense rate         | Tab        | → Reference data                            |
+| Financial dictionary | Tab        | → Reference data                            |
+| Tax jurisdiction     | Tab        | → Reference data (or Settings / Tax)        |
 
 ### Operations (the freight-forwarding file is the hub)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Operations file | Standalone | Central shipment / job file |
-| Milestone | Tab | → Operations file |
-| Transit order | Standalone | Own register; also surfaces as a tab in the file |
-| Delivery note | Standalone | Own register; also surfaces as a tab in the file |
+
+| Sub-menu        | Type       | Parent / notes                                   |
+| --------------- | ---------- | ------------------------------------------------ |
+| Operations file | Standalone | Central shipment / job file                      |
+| Milestone       | Tab        | → Operations file                                |
+| Transit order   | Standalone | Own register; also surfaces as a tab in the file |
+| Delivery note   | Standalone | Own register; also surfaces as a tab in the file |
 
 ### Procurement (procure-to-pay chain — all standalone)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Purchase request | Standalone | |
-| Purchase order | Standalone | |
+
+| Sub-menu             | Type       | Parent / notes                     |
+| -------------------- | ---------- | ---------------------------------- |
+| Purchase request     | Standalone |                                    |
+| Purchase order       | Standalone |                                    |
 | Goods received (GRN) | Standalone | Candidate tab under Purchase order |
-| Supplier invoice | Standalone | AP / 3-way match |
+| Supplier invoice     | Standalone | AP / 3-way match                   |
 
 ### Sales / CRM
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Lead | Standalone | |
-| Inbound intake | Tab | → Lead (capture) |
-| Opportunity | Standalone | Pipeline |
-| Proposal | Tab | → Opportunity (also viable standalone) |
-| Meeting | Tab | → Opportunity / Lead (activities) |
-| Marketing campaign | Standalone | |
-| Success story | Tab | → Marketing campaign (references / case studies) |
+
+| Sub-menu           | Type       | Parent / notes                                   |
+| ------------------ | ---------- | ------------------------------------------------ |
+| Lead               | Standalone |                                                  |
+| Inbound intake     | Tab        | → Lead (capture)                                 |
+| Opportunity        | Standalone | Pipeline                                         |
+| Proposal           | Tab        | → Opportunity (also viable standalone)           |
+| Meeting            | Tab        | → Opportunity / Lead (activities)                |
+| Marketing campaign | Standalone |                                                  |
+| Success story      | Tab        | → Marketing campaign (references / case studies) |
 
 ### Security / IAM (one "IAM & Access" screen, tabbed)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| App user (Users) | Tab | → IAM & Access |
-| IAM role (Roles) | Tab | → IAM & Access |
-| Permission (matrix) | Tab | → IAM & Access |
-| Capability | Tab | → IAM & Access |
-| Scope | Tab | → IAM & Access |
-| Field visibility | Tab | → IAM & Access |
-| Session | Standalone | Sessions (or tab in IAM/Security) |
-| Audit ledger | Standalone | Governance |
-| Setting | Standalone | **Settings hub** — branding + catalogue + numbering as its tabs |
-| Numbering setting | Tab | → Settings |
+
+| Sub-menu            | Type       | Parent / notes                                                  |
+| ------------------- | ---------- | --------------------------------------------------------------- |
+| App user (Users)    | Tab        | → IAM & Access                                                  |
+| IAM role (Roles)    | Tab        | → IAM & Access                                                  |
+| Permission (matrix) | Tab        | → IAM & Access                                                  |
+| Capability          | Tab        | → IAM & Access                                                  |
+| Scope               | Tab        | → IAM & Access                                                  |
+| Field visibility    | Tab        | → IAM & Access                                                  |
+| Session             | Standalone | Sessions (or tab in IAM/Security)                               |
+| Audit ledger        | Standalone | Governance                                                      |
+| Setting             | Standalone | **Settings hub** — branding + catalogue + numbering as its tabs |
+| Numbering setting   | Tab        | → Settings                                                      |
 
 ### Vault
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Document vault | Standalone | **Read-only backend — see gaps** |
-| Document signature | Tab | → Document vault |
-| Document verification | Tab | → Document vault. **Incomplete module — see gaps** |
-| Compliance flag | Standalone | (or tab) |
-| Report | Standalone | Reports |
+
+| Sub-menu              | Type       | Parent / notes                                     |
+| --------------------- | ---------- | -------------------------------------------------- |
+| Document vault        | Standalone | **Read-only backend — see gaps**                   |
+| Document signature    | Tab        | → Document vault                                   |
+| Document verification | Tab        | → Document vault. **Incomplete module — see gaps** |
+| Compliance flag       | Standalone | (or tab)                                           |
+| Report                | Standalone | Reports                                            |
 
 ### WMS (all standalone — matches registry)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Inventory | Standalone | |
+
+| Sub-menu           | Type       | Parent / notes                       |
+| ------------------ | ---------- | ------------------------------------ |
+| Inventory          | Standalone |                                      |
 | Warehouse location | Standalone | Candidate tab/config under Inventory |
-| Inbound | Standalone | GRN / QA gate |
-| Outbound | Standalone | Pick / pack / dispatch |
-| Equipment | Standalone | |
-| Cycle count | Standalone | Candidate tab under Inventory |
+| Inbound            | Standalone | GRN / QA gate                        |
+| Outbound           | Standalone | Pick / pack / dispatch               |
+| Equipment          | Standalone |                                      |
+| Cycle count        | Standalone | Candidate tab under Inventory        |
 
 ### Dashboard (special — the home / control-tower area)
-| Sub-menu | Type | Parent / notes |
-|---|---|---|
-| Dashboard | Standalone | Control Tower home (already `/`) |
-| Workspace | Tab | → home ("My Workspace"), or standalone |
-| Godmode | Standalone | Platform / superadmin only |
+
+| Sub-menu  | Type       | Parent / notes                         |
+| --------- | ---------- | -------------------------------------- |
+| Dashboard | Standalone | Control Tower home (already `/`)       |
+| Workspace | Tab        | → home ("My Workspace"), or standalone |
+| Godmode   | Standalone | Platform / superadmin only             |
 
 ---
 
 ## 2. Previously-ungrouped modules (no sub-folders) — placed as their own screens
 
-These five top-level modules have no sub-folders, so they aren't menu *groups* — but each is a
+These five top-level modules have no sub-folders, so they aren't menu _groups_ — but each is a
 real surface and needs a home. Proposed placement:
 
-| Module | Screen(s) | Placement | Notes |
-|---|---|---|---|
-| `notification` | Notifications | Top-bar / Governance | Caller's own inbox — read + mark-read only (rows written by the event engine; no CRUD by design). |
-| `workflow` | Workflows **+** Approvals | Governance | Event-engine admin (event types / workflows / steps) **and** the runtime approval queue. Two screens; both already in registry. |
-| `smartcomm` | Smart Comms (Messages) | Top-level surface (top-bar icon) | Corporate WhatsApp-style messaging: channels, DMs, presence, drafts, certified export. Rich module. |
-| `platform` | Platform Console | Separate **superadmin** area | Cross-tenant admin: tenants, plans, catalogue, go-live/suspend, capacity. Not a tenant-facing screen. |
-| `portal` | Portal Access (internal) **+** external Client/Investor/Auditor views | Split — **BUILT 2026-08-02** | Internal grant-management screen at `/portal/access`. The external surfaces are **`/client-portal/*`** in this same bundle (`features/portal/portal-app.tsx`), outside `RequireAuth`/`AppShell`, with their own token store — not a separate app, and **not** under `/portal`, which the staff screen owns. Auth is email + password with a one-time invite/reset link (`0482`), not magic-link. Client + Investor views are live; the Auditor room is still a backend placeholder. |
+| Module         | Screen(s)                                                             | Placement                        | Notes                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| -------------- | --------------------------------------------------------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `notification` | Notifications                                                         | Top-bar / Governance             | Caller's own inbox — read + mark-read only (rows written by the event engine; no CRUD by design).                                                                                                                                                                                                                                                                                                                                                                                   |
+| `workflow`     | Workflows **+** Approvals                                             | Governance                       | Event-engine admin (event types / workflows / steps) **and** the runtime approval queue. Two screens; both already in registry.                                                                                                                                                                                                                                                                                                                                                     |
+| `smartcomm`    | Smart Comms (Messages)                                                | Top-level surface (top-bar icon) | Corporate WhatsApp-style messaging: channels, DMs, presence, drafts, certified export. Rich module.                                                                                                                                                                                                                                                                                                                                                                                 |
+| `platform`     | Platform Console                                                      | Separate **superadmin** area     | Cross-tenant admin: tenants, plans, catalogue, go-live/suspend, capacity. Not a tenant-facing screen.                                                                                                                                                                                                                                                                                                                                                                               |
+| `portal`       | Portal Access (internal) **+** external Client/Investor/Auditor views | Split — **BUILT 2026-08-02**     | Internal grant-management screen at `/portal/access`. The external surfaces are **`/client-portal/*`** in this same bundle (`features/portal/portal-app.tsx`), outside `RequireAuth`/`AppShell`, with their own token store — not a separate app, and **not** under `/portal`, which the staff screen owns. Auth is email + password with a one-time invite/reset link (`0482`), not magic-link. Client + Investor views are live; the Auditor room is still a backend placeholder. |
 
 ---
 
@@ -203,7 +216,7 @@ real surface and needs a home. Proposed placement:
    unfinished.
 
 8. **LIVE/TEST toggle logs the user out (auth is env-schema-bound).** `X-Praxis-Env` switches
-   the whole request to a separate DB schema *including* the auth path (`getAuthUser`,
+   the whole request to a separate DB schema _including_ the auth path (`getAuthUser`,
    session/refresh lookups), and accounts exist only in the live schema — so flipping to Test
    points your login at an empty sandbox schema and bounces you to `/login`. Fix: make identity
    env-independent (pin auth/session lookups to the live/identity schema; only sandbox business
@@ -233,7 +246,7 @@ logout/2fa) rather than top-level `router.get(...)` calls.
 
 This is the top item to resolve before Test mode is usable. Two parts: (5a) a **backend**
 architectural fix that stops the toggle from logging you out, and (5b) **frontend** polish for
-the toggle itself. 5b only *works* once 5a lands.
+the toggle itself. 5b only _works_ once 5a lands.
 
 ### 5a. Why the LIVE/TEST toggle logs you out (backend)
 
@@ -264,8 +277,8 @@ sandbox env) → `getActiveSession` in sandbox → no session → `401 SESSION_R
 fails → `/login`. The `window.location.reload()` in `toggleEnv()` isn't the cause; it just fires
 the chain immediately. Even without a reload, the next authenticated call would 401 the same way.
 
-**Recommended fix — make identity env-independent.** "Test mode" should mean *the same you
-looking at sandbox business data*, not a separate empty database. So resolve identity from a
+**Recommended fix — make identity env-independent.** "Test mode" should mean _the same you
+looking at sandbox business data_, not a separate empty database. So resolve identity from a
 fixed schema regardless of `req.env`:
 
 - In `tenant-context.js`, expose an identity-scoped connection alongside the env one, e.g.
@@ -297,8 +310,8 @@ Current shell (`client/src/app/layout/app-shell.tsx`) has a single pill that fli
 `praxis.env` and does `window.location.reload()`. Target (Lovable/pixie reference):
 
 - A **segmented `Live | Test` control** (not a single pill).
-- A **full-width warning banner** when in Test: *"TEST MODE — SANDBOX DATA · OUTBOUND EMAIL & AI
-  DISABLED · SEPARATE NUMBERING"* (yellow hazard styling).
+- A **full-width warning banner** when in Test: _"TEST MODE — SANDBOX DATA · OUTBOUND EMAIL & AI
+  DISABLED · SEPARATE NUMBERING"_ (yellow hazard styling).
 - **No hard reload** — set env, then trigger an in-app data refetch / route remount so the
   in-memory access token is kept (works cleanly once 5a makes identity env-independent).
 
@@ -328,11 +341,12 @@ frontend `Branding` type in `client/src/lib/branding.ts`.
 `businesses[]` where each = `{ id, name, accent, gradientStart, gradientEnd, logoUrl, website }`.
 
 **Login screen, to add:**
+
 - Hero (reuse the existing `hero` block — note it isn't persisted today either):
   `hero { eyebrow, headline, subheadline, imageUrl }`.
 - `login { splashSubline, buttonLabel, background ("mesh"|"image"), showSplash,
-  showWebsiteLinks, showQuickPin, quotes[{text, attribution}], pillars[{icon, title, body}],
-  regionals[{region, title, body}] }`.
+showWebsiteLinks, showQuickPin, quotes[{text, attribution}], pillars[{icon, title, body}],
+regionals[{region, title, body}] }`.
 
 **Images:** all image fields reuse the existing `POST /branding/logo` upload (returns a `/media`
 URL); the backend just needs slots to store the returned URLs (only `logo_url` exists now).
@@ -340,7 +354,7 @@ Favicon ideally also generates app icons.
 
 **Also live-apply (theme.ts):** the token bag uses pixie token names (`--bg`, `--panel`, …)
 which don't match the app's current CSS variables (`--background`, `--card`, …). Persisting the
-tokens is step one; actually *applying* them at runtime needs `src/lib/theme.ts` to map/emit
+tokens is step one; actually _applying_ them at runtime needs `src/lib/theme.ts` to map/emit
 them (or a decision to rename the app's tokens to the pixie set). Until then the token editor
 saves values but doesn't retheme the running app — flagged in-UI as "pending backend".
 
@@ -349,11 +363,12 @@ saves values but doesn't retheme the running app — flagged in-UI as "pending b
 The Appearance + Login editors were built in full (pixie spec), but only `name`, `primary`
 (brand accent), and `logoUrl` (light-background logo) persist today. Everything below is a
 **stub**: fully built and editable in-UI, sent on save, badged "pending backend", but with no
-storage yet. **Team to decide per item** — *keep* (build the BE field), *cut* (remove the
-control + drop from the §6 spec), or *promote now* (trivial single-field adds). Nothing here is
+storage yet. **Team to decide per item** — _keep_ (build the BE field), _cut_ (remove the
+control + drop from the §6 spec), or _promote now_ (trivial single-field adds). Nothing here is
 load-bearing, so cutting any is safe.
 
 Appearance — Layer A (platform):
+
 - [ ] Company name — _promote candidate (trivial)_
 - [ ] Tagline — _promote candidate (trivial)_
 - [ ] Logo (dark background)
@@ -364,9 +379,11 @@ Appearance — Layer A (platform):
 - [ ] Typography (display / body / mono + custom-font URL)
 
 Appearance — Layer B (per-business), the whole block:
+
 - [ ] Businesses[] (tabs, accent, gradient start/end, brand chip, business logo, website)
 
 Login screen editor (the whole screen; `hero` isn't persisted today either):
+
 - [ ] Splash subline
 - [ ] Hero (eyebrow / headline / subline / button label)
 - [ ] Background mode toggle + login background image

@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 998 |
+| Routes | 1000 |
 | Modules mounted | 109 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 998 mounted routes, grouped by path prefix.
+All 1000 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -920,6 +920,7 @@ All 998 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/client/:id/timeline` | — |
 | GET | `/api/tenant/mail/connections` | — |
 | POST | `/api/tenant/mail/connections` | — |
+| POST | `/api/tenant/mail/connections/:id/default` | — |
 | POST | `/api/tenant/mail/connections/:id/sync` | — |
 | POST | `/api/tenant/mail/connections/:id/test` | — |
 | GET | `/api/tenant/mail/inbox` | — |
@@ -927,6 +928,7 @@ All 998 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/mail/oauth/google/start` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/callback` | — |
 | GET | `/api/tenant/mail/oauth/microsoft/start` | — |
+| GET | `/api/tenant/mail/recipients` | — |
 | POST | `/api/tenant/mail/send` | — |
 | GET | `/api/tenant/mail/senders` | — |
 | POST | `/api/tenant/mail/senders` | — |

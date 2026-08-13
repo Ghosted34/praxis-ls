@@ -51,8 +51,22 @@ jest.mock("../../src/services/tenant/registry.service", () => ({
   // revoked. A fake returning `{ rows: [] }` for everything answered that
   // security question without knowing it was being asked, turning every 403
   // assertion here into a 401. Model the query rather than soften the check.
-  acquire: async () => ({ async query(sql) { return /user_session/.test(sql) ? { rows: [{ killed_at: null }] } : { rows: [] }; }, release() {} }),
-  withTenantConnection: async (_t, _e, fn) => fn({ async query(sql) { return /user_session/.test(sql) ? { rows: [{ killed_at: null }] } : { rows: [] }; } }),
+  acquire: async () => ({
+    async query(sql) {
+      return /user_session/.test(sql)
+        ? { rows: [{ killed_at: null }] }
+        : { rows: [] };
+    },
+    release() {},
+  }),
+  withTenantConnection: async (_t, _e, fn) =>
+    fn({
+      async query(sql) {
+        return /user_session/.test(sql)
+          ? { rows: [{ killed_at: null }] }
+          : { rows: [] };
+      },
+    }),
   invalidateHost: () => {},
   poolFor: () => null,
   listActiveTenants: async () => [],
@@ -76,11 +90,16 @@ jest.mock("../../src/shared/cache/identity-cache", () => ({
 
 const { config } = require("../../src/config/env");
 const { requestIdMiddleware } = require("../../src/middleware/request-id");
-const { hostTenantResolver } = require("../../src/middleware/host-tenent-resolver");
+const {
+  hostTenantResolver,
+} = require("../../src/middleware/host-tenent-resolver");
 const { tenantContext } = require("../../src/middleware/tenant-context");
 const { authMiddleware } = require("../../src/middleware/auth");
 const { requirePermission } = require("../../src/middleware/rbac");
-const { errorHandler, notFoundHandler } = require("../../src/middleware/error-handler");
+const {
+  errorHandler,
+  notFoundHandler,
+} = require("../../src/middleware/error-handler");
 
 const HOST = `acme.${config.APP_BASE_DOMAIN}`;
 
@@ -109,14 +128,35 @@ function buildApp() {
   const financeController = (_req, res) => {
     controllerRan.finance += 1;
     res.json({
-      data: [{ doc_number: SECRET_DOC, client: SECRET_CLIENT, total_ttc: SECRET_TOTAL }],
+      data: [
+        {
+          doc_number: SECRET_DOC,
+          client: SECRET_CLIENT,
+          total_ttc: SECRET_TOTAL,
+        },
+      ],
       meta: { total: SECRET_TOTAL, count: 1 },
     });
   };
 
-  tenantRouter.get("/final-invoices", authMiddleware, requirePermission("MOD-51", "view"), financeController);
-  tenantRouter.get("/final-invoices/:id", authMiddleware, requirePermission("MOD-51", "view"), financeController);
-  tenantRouter.post("/final-invoices", authMiddleware, requirePermission("MOD-51", "create"), financeController);
+  tenantRouter.get(
+    "/final-invoices",
+    authMiddleware,
+    requirePermission("MOD-51", "view"),
+    financeController,
+  );
+  tenantRouter.get(
+    "/final-invoices/:id",
+    authMiddleware,
+    requirePermission("MOD-51", "view"),
+    financeController,
+  );
+  tenantRouter.post(
+    "/final-invoices",
+    authMiddleware,
+    requirePermission("MOD-51", "create"),
+    financeController,
+  );
 
   app.use("/api", tenantRouter);
   app.use(notFoundHandler);
@@ -126,8 +166,16 @@ function buildApp() {
 
 const app = buildApp();
 
-const token = () => jwt.sign({ sub: "u-1", typ: "access", sid: "s-1", jti: "j-1" }, config.JWT_ACCESS_SECRET, { expiresIn: "15m" });
-const call = (method, path) => request(app)[method](path).set("Host", HOST).set("Authorization", `Bearer ${token()}`);
+const token = () =>
+  jwt.sign(
+    { sub: "u-1", typ: "access", sid: "s-1", jti: "j-1" },
+    config.JWT_ACCESS_SECRET,
+    { expiresIn: "15m" },
+  );
+const call = (method, path) =>
+  request(app)[method](path)
+    .set("Host", HOST)
+    .set("Authorization", `Bearer ${token()}`);
 
 /** Every scalar in a response, at any depth. */
 function scalars(value, out = []) {
@@ -149,10 +197,24 @@ function scalars(value, out = []) {
 
 beforeEach(() => {
   mockTenants = {
-    [HOST]: { tenant_id: "t-1", slug: "acme", status: "LIVE", is_live: true, live_schema: "live", sandbox_schema: "sandbox" },
+    [HOST]: {
+      tenant_id: "t-1",
+      slug: "acme",
+      status: "LIVE",
+      is_live: true,
+      live_schema: "live",
+      sandbox_schema: "sandbox",
+    },
   };
   // A warehouse role: authenticated, active, and holding nothing in Finance.
-  mockAuthUser = { user_id: "u-1", email: "picker@acme.example", display_name: "Picker", status: "ACTIVE", role_ids: ["r-wms"], is_ceo: false };
+  mockAuthUser = {
+    user_id: "u-1",
+    email: "picker@acme.example",
+    display_name: "Picker",
+    status: "ACTIVE",
+    role_ids: ["r-wms"],
+    is_ceo: false,
+  };
   mockGrants = [];
   controllerRan.finance = 0;
 });
@@ -206,7 +268,10 @@ describe("the page is friendly; the API is not", () => {
     // The direct-link case the friendly page exists for. A 404-vs-403 split
     // here would turn the endpoint into an existence oracle; a body carrying
     // the record's own id would be worse.
-    const res = await call("get", "/api/final-invoices/8f2c1d40-0000-4000-8000-000000000000").expect(403);
+    const res = await call(
+      "get",
+      "/api/final-invoices/8f2c1d40-0000-4000-8000-000000000000",
+    ).expect(403);
     expect(res.body.error.code).toBe("PERMISSION_DENIED");
     expect(JSON.stringify(res.body)).not.toContain("8f2c1d40");
     expect(controllerRan.finance).toBe(0);

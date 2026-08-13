@@ -75,20 +75,39 @@ function toMinor(value) {
  */
 function checkLine(line, index) {
   const at = index + 1;
-  if (!line || typeof line.account_code !== "string" || !line.account_code.trim()) {
-    return { ok: false, code: "LINE_NO_ACCOUNT", message: `Line ${at}: choose an account.`, line: index };
+  if (
+    !line ||
+    typeof line.account_code !== "string" ||
+    !line.account_code.trim()
+  ) {
+    return {
+      ok: false,
+      code: "LINE_NO_ACCOUNT",
+      message: `Line ${at}: choose an account.`,
+      line: index,
+    };
   }
   const d = toMinor(line.debit);
   const c = toMinor(line.credit);
   if (d === null || c === null) {
-    return { ok: false, code: "INVALID_AMOUNT", message: `Line ${at}: at most 2 decimal places.`, line: index };
+    return {
+      ok: false,
+      code: "INVALID_AMOUNT",
+      message: `Line ${at}: at most 2 decimal places.`,
+      line: index,
+    };
   }
   if (d < 0 || c < 0) {
-    return { ok: false, code: "INVALID_AMOUNT", message: `Line ${at}: amounts cannot be negative.`, line: index };
+    return {
+      ok: false,
+      code: "INVALID_AMOUNT",
+      message: `Line ${at}: amounts cannot be negative.`,
+      line: index,
+    };
   }
   // #23.2 — exactly one side. The old client boolean was `d > 0 || c > 0`,
   // which accepts a line with both filled and is the defect above.
-  if ((d > 0) === (c > 0)) {
+  if (d > 0 === c > 0) {
     return {
       ok: false,
       code: "LINE_ONE_SIDE",
@@ -111,7 +130,11 @@ function checkLine(line, index) {
  */
 function checkEntry(lines) {
   if (!Array.isArray(lines) || lines.length < 2) {
-    return { ok: false, code: "ENTRY_TOO_FEW_LINES", message: "A journal entry needs at least two lines." };
+    return {
+      ok: false,
+      code: "ENTRY_TOO_FEW_LINES",
+      message: "A journal entry needs at least two lines.",
+    };
   }
   let debitMinor = 0;
   let creditMinor = 0;

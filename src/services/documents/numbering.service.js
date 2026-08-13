@@ -57,8 +57,20 @@ const MODULE_TOKENS = {
   "MOD-41": "WO", //  work order
   "MOD-42": "DSP", // dispatch
   "MOD-12": "CTR", // HR contract
+  "MOD-01-DOC": "DOC", // corporate entity administrative document
   "MOD-03": "CL", //  client
   "MOD-04": "SUP", // supplier
+  "MOD-03-DOC": "DOC", // client KYC document
+  "MOD-04-DOC": "DOC", // supplier KYC document
+};
+
+// KYC documents can belong to a party that has not yet been linked to one of
+// the tenant's corporate entities. Give those records a useful default too;
+// `schemeFor()` still lets Settings override it per document family.
+const MODULE_DEFAULT_SCHEMES = {
+  "MOD-01-DOC": { prefix: "ENT" },
+  "MOD-03-DOC": { prefix: "CLI" },
+  "MOD-04-DOC": { prefix: "SUP" },
 };
 
 /** Pure formatter — tenant scheme + { year, seq } -> string. */
@@ -109,7 +121,7 @@ async function schemeFor(client, moduleKey, entityId = null) {
     [moduleKey],
   );
   const override = rows[0] ? rows[0].value : {};
-  return { ...DEFAULTS, code, ...(entityPrefix ? { prefix: entityPrefix } : {}), ...override };
+  return { ...DEFAULTS, ...(MODULE_DEFAULT_SCHEMES[String(moduleKey).toUpperCase()] || {}), code, ...(entityPrefix ? { prefix: entityPrefix } : {}), ...override };
 }
 
 /**
@@ -134,4 +146,32 @@ async function allocate(client, { moduleKey, entityId, date }) {
   return { number: formatNumber(cfg, { year, seq }), seq, year };
 }
 
-module.exports = { formatNumber, schemeFor, allocate, DEFAULTS };
+/**
+ * Allocate a party-document number when the client/supplier has no
+ * `corporate_entity` link yet. Party KYC records are allowed before that link
+ * exists, so they cannot use `doc_sequence.entity_id` (which is intentionally
+ * scoped to a real corporate entity). This separate tenant-local counter keeps
+ * the same configurable formatting while preserving that valid onboarding
+ * flow. The caller must already be inside its transaction.
+ */
+async function allocatePartyDocument(client, { moduleKey, partyKind, date }) {
+  if (!moduleKey) throw new AppError("NO_MODULE", "moduleKey is required", 422);
+  if (!["client", "supplier"].includes(String(partyKind).toLowerCase())) {
+    throw new AppError("BAD_PARTY_KIND", "partyKind must be client or supplier", 422);
+  }
+  const cfg = await schemeFor(client, moduleKey);
+  const y = date
+    ? new Date(String(date).slice(0, 10) + "T00:00:00Z").getUTCFullYear()
+    : new Date().getUTCFullYear();
+  const year = cfg.reset === "never" ? 0 : y;
+  const kind = String(partyKind).toLowerCase();
+  const { rows } = await client.query(
+    "INSERT INTO party_document_sequence (party_kind, year, seq) VALUES ($1, $2, 1) " +
+      "ON CONFLICT (party_kind, year) DO UPDATE SET seq = party_document_sequence.seq + 1 RETURNING seq",
+    [kind, year],
+  );
+  const seq = rows[0].seq;
+  return { number: formatNumber(cfg, { year, seq }), seq, year };
+}
+
+module.exports = { formatNumber, schemeFor, allocate, allocatePartyDocument, DEFAULTS };

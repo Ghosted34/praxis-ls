@@ -171,6 +171,14 @@ const DOC_NUMBER_MODULES: { group: string; items: { key: string; label: string }
       { key: "MOD-03", label: "Client code" },
     ],
   },
+  {
+    group: "Master documents",
+    items: [
+      { key: "MOD-01-DOC", label: "Corporate entity document" },
+      { key: "MOD-04-DOC", label: "Supplier KYC document" },
+      { key: "MOD-03-DOC", label: "Client KYC document" },
+    ],
+  },
 ];
 
 const DOC_MODULE_LABEL: Record<string, string> = Object.fromEntries(

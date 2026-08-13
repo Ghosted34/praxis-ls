@@ -143,12 +143,102 @@ const TruckGlyph = () => (
   </svg>
 );
 
+const TrophyGlyph = () => (
+  <svg
+    viewBox="0 0 24 24"
+    className="h-6 w-6"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth={1.75}
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    aria-hidden
+  >
+    <path d="M8 21h8" />
+    <path d="M12 17v4" />
+    <path d="M7 4h10v5a5 5 0 0 1-10 0V4Z" />
+    <path d="M17 5h3v2a3 3 0 0 1-3 3" />
+    <path d="M7 5H4v2a3 3 0 0 0 3 3" />
+  </svg>
+);
+
+/* ── The win ───────────────────────────────────────────────────────────────*/
+
+/**
+ * The celebration. The puzzle's whole job is to turn a wait into something with
+ * an END STATE — so the end state has to feel like one. A solved board that
+ * just recoloured green and swapped a button label read as "nothing happened";
+ * this is the "you won it" the moment earns. It calls back to the door the user
+ * came through — the "Beat the downtime →" link on `ConnectionLost` — and marks
+ * a genuine improvement so a second, faster run is worth attempting.
+ *
+ * Enters with a short pop: mounted at rest, then flipped on the next frame so
+ * the transition has two states to move between. 200ms sits inside the motion
+ * budget (scripts/check-motion.mjs) and the reduced-motion umbrella (index.css)
+ * drops it to an instant appearance.
+ */
+function WinBanner({
+  moves,
+  best,
+  newBest,
+  onNext,
+}: {
+  moves: number;
+  best: number | null;
+  newBest: boolean;
+  onNext: () => void;
+}) {
+  const [shown, setShown] = React.useState(false);
+  React.useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  return (
+    <div
+      role="status"
+      aria-live="polite"
+      className={cn(
+        "mx-auto mt-4 flex max-w-reading flex-col items-center gap-1.5 rounded-xl border border-ok/40 bg-ok/10 p-4 text-center",
+        "transition duration-200 ease-out motion-reduce:transition-none",
+        shown ? "scale-100 opacity-100" : "scale-95 opacity-0",
+      )}
+    >
+      <span className="grid h-11 w-11 place-items-center rounded-full bg-ok/15 text-ok">
+        <TrophyGlyph />
+      </span>
+      <p className="text-title font-semibold text-ok">
+        Delivered — you beat the downtime!
+      </p>
+      <p className="text-sm text-muted-foreground">
+        You linked the warehouse to the truck in {moves}{" "}
+        {moves === 1 ? "move" : "moves"}.
+      </p>
+      {newBest && best !== null && (
+        <span className="mt-0.5 rounded-full border border-ok/40 bg-ok/15 px-2 py-0.5 text-micro font-medium uppercase tracking-wide text-ok">
+          New best · {best} {best === 1 ? "move" : "moves"}
+        </span>
+      )}
+      <Button
+        size="sm"
+        variant="outline"
+        icon={null}
+        onClick={onNext}
+        className="mt-2"
+      >
+        Next route →
+      </Button>
+    </div>
+  );
+}
+
 /* ── The board ─────────────────────────────────────────────────────────────*/
 
 export function SupplyChainPuzzle({ className }: { className?: string }) {
   const [grid, setGrid] = React.useState<Grid>(freshGrid);
   const [moves, setMoves] = React.useState(0);
   const [best, setBest] = React.useState<number | null>(null);
+  const [newBest, setNewBest] = React.useState(false);
   const [focus, setFocus] = React.useState<[number, number]>([0, 1]);
   const cellRefs = React.useRef(new Map<string, HTMLButtonElement>());
 
@@ -160,9 +250,12 @@ export function SupplyChainPuzzle({ className }: { className?: string }) {
   React.useEffect(() => {
     if (solved && !scored.current) {
       scored.current = true;
-      setBest((b) => (b === null ? moves : Math.min(b, moves)));
+      // Beating a PREVIOUS best is the thing worth a badge; a first solve is not
+      // "a new best", it is simply the first — so only flag a genuine improvement.
+      setNewBest(best !== null && moves < best);
+      setBest(best === null ? moves : Math.min(best, moves));
     }
-  }, [solved, moves]);
+  }, [solved, moves, best]);
 
   const rotate = (r: number, c: number) => {
     if (grid[r][c].locked || solved) return;
@@ -178,6 +271,7 @@ export function SupplyChainPuzzle({ className }: { className?: string }) {
 
   const reset = () => {
     scored.current = false;
+    setNewBest(false);
     setGrid(freshGrid());
     setMoves(0);
   };
@@ -286,28 +380,24 @@ export function SupplyChainPuzzle({ className }: { className?: string }) {
         ))}
       </div>
 
-      <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
-        {/* The solve is announced, not just drawn — the same live-region rule
-            the rest of the app follows for async outcomes (audit F13). */}
-        <p
-          role="status"
-          aria-live="polite"
-          className={cn(
-            "font-medium",
-            solved ? "text-ok" : "text-muted-foreground",
+      {/* The solve is celebrated, not just drawn — and still announced, the same
+          live-region rule the rest of the app follows for async outcomes (F13).
+          Until then the counter carries the move tally and the reshuffle. */}
+      {solved ? (
+        <WinBanner moves={moves} best={best} newBest={newBest} onNext={reset} />
+      ) : (
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-sm">
+          <p role="status" aria-live="polite" className="font-medium text-muted-foreground">
+            {moves} {moves === 1 ? "move" : "moves"}
+          </p>
+          {best !== null && (
+            <p className="text-micro text-muted-foreground">Best: {best}</p>
           )}
-        >
-          {solved
-            ? `Route connected in ${moves} ${moves === 1 ? "move" : "moves"}.`
-            : `${moves} ${moves === 1 ? "move" : "moves"}`}
-        </p>
-        {best !== null && !solved && (
-          <p className="text-micro text-muted-foreground">Best: {best}</p>
-        )}
-        <Button size="sm" variant="outline" icon={null} onClick={reset}>
-          {solved ? "Next route" : "New route"}
-        </Button>
-      </div>
+          <Button size="sm" variant="outline" icon={null} onClick={reset}>
+            New route
+          </Button>
+        </div>
+      )}
     </div>
   );
 }

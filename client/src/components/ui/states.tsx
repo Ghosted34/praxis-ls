@@ -9,6 +9,8 @@
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
+import { useConnection } from "@/lib/connection";
+import { ConnectionLost } from "@/components/connection/connection-lost";
 
 // `role="img"` because axe (rule aria-prohibited-attr) refuses aria-label on a
 // bare <span> — a span defaults to role "generic", which does not permit a
@@ -79,11 +81,36 @@ export const EmptyState = ({
   </div>
 );
 
-/** `role="alert"` so a failure arriving after load is announced, not just drawn
- *  — the audit found async failure announced nowhere (F13). */
-export const ErrorState = ({ message, action }: { message: string; action?: React.ReactNode }) => (
-  <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
-    <p>{message}</p>
-    {action && <div className="mt-3">{action}</div>}
-  </div>
-);
+/**
+ * `role="alert"` so a failure arriving after load is announced, not just drawn
+ * — the audit found async failure announced nowhere (F13).
+ *
+ * OFFLINE IS NOT AN ERROR TO PRINT — IT IS THE OFFLINE PAGE. When the connection
+ * monitor says we are unreachable, the string a screen hands us ("Can't reach
+ * the server — you appear to be offline.") is the wrong thing to show: it is a
+ * red box that names no cause and offers no route out. So this swaps it for the
+ * branded `ConnectionLost` — the crafted offline panel, with the opt-in puzzle —
+ * exactly as `ScreenError` does. Doing it HERE means every one of the 30-plus
+ * screens that fell back to `ErrorState` (the Control Tower among them) gets the
+ * offline page for free, without threading connectivity through each call site,
+ * and without a hard refresh to reach it.
+ *
+ * It recovers on its own: the screen's data refetches on reconnect (the query
+ * cache is invalidated globally — see `connection-watcher.tsx`), which clears
+ * the error branch and unmounts this. A screen that wants to thread a retry
+ * label or its own reload uses `<ScreenError>` directly; this is the zero-touch
+ * default for everything else.
+ */
+export const ErrorState = ({ message, action }: { message: string; action?: React.ReactNode }) => {
+  const { status } = useConnection();
+  // `autoRetry={false}`: the global reconnect invalidation owns the refetch, so
+  // this must not also register a per-instance reconnect listener (many screens
+  // can be mounted behind tabs, and each would refetch on the same signal).
+  if (status === "unreachable") return <ConnectionLost autoRetry={false} what="This screen" />;
+  return (
+    <div role="alert" className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive">
+      <p>{message}</p>
+      {action && <div className="mt-3">{action}</div>}
+    </div>
+  );
+};

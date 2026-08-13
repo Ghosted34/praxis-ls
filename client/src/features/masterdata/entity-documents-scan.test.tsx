@@ -111,8 +111,12 @@ describe("Corporate entities · Documents — the Add document form", () => {
     expect(screen.queryByText(/scan due/i)).toBeNull();
   });
 
-  it("shows the dates day-first and takes the file inline", async () => {
+  it("system-generates the reference number, shows dates day-first, and takes the file inline", async () => {
     await openForm();
+
+    expect(screen.getByLabelText(/^Reference number/i)).toHaveValue("Assigned on save");
+    expect(screen.getByLabelText(/^Reference number/i)).toHaveAttribute("readonly");
+    expect(screen.getByText(/generated automatically/i)).toBeInTheDocument();
 
     // "Issued on" carries no hint, so its label text is exactly the field name.
     expect(screen.getByLabelText("Issued on")).toHaveAttribute("placeholder", "dd/mm/yyyy");

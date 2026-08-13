@@ -22,6 +22,7 @@ const { asyncHandler, AppError } = require("../../../utils/errors");
 const { partyCommon, entityCommon } = require("@praxis/shared");
 const { canSeeFinancials, maskBank } = require("./confidential");
 const changeRequest = require("./change-request.service");
+const numbering = require("../../../services/documents/numbering.service");
 
 const actorOf = (req) => req.user || { user_id: null };
 
@@ -34,8 +35,9 @@ const validate = (schema) => (req, _res, next) => {
 };
 
 function buildResource(cfg) {
-  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed } = cfg;
+  const { table, pk, parentCol, parentTable, parentPk, moduleKey, label, writable, touch, isBank, isDocument, kind, governed, numberingKey, immutable = [] } = cfg;
   const insertAllow = [...writable, parentCol];
+  const updateAllow = writable.filter((field) => !immutable.includes(field));
 
   async function assertParent(c, parentId) {
     const { rows } = await c.query(`SELECT 1 FROM ${parentTable} WHERE ${parentPk} = $1`, [parentId]);
@@ -91,7 +93,24 @@ function buildResource(cfg) {
       }
       await c.query("BEGIN");
       try {
-        const row = await insertOne(c, table, { ...data, [parentCol]: parentId }, "*", insertAllow);
+        const insertData = { ...data };
+        if (isDocument && numberingKey) {
+          // Counterparty document numbers are internal system references, not
+          // user-entered values. Prefer the normal entity-scoped allocator when
+          // the party is already linked to a corporate entity; the fallback
+          // keeps onboarding valid for a party created before that link exists.
+          const parent = await c.query(
+            `SELECT entity_id FROM ${parentTable} WHERE ${parentPk} = $1`,
+            [parentId],
+          );
+          const entityId = parent.rows[0] && parent.rows[0].entity_id;
+          const issuedOrToday = insertData.issued_on || new Date().toISOString().slice(0, 10);
+          const allocated = entityId
+            ? await numbering.allocate(c, { moduleKey: numberingKey, entityId, date: issuedOrToday })
+            : await numbering.allocatePartyDocument(c, { moduleKey: numberingKey, partyKind: kind, date: issuedOrToday });
+          insertData.document_number = allocated.number;
+        }
+        const row = await insertOne(c, table, { ...insertData, [parentCol]: parentId }, "*", insertAllow);
         await audit(c, { actorUserId: actor.user_id || null, action: `${label}.created`, moduleKey, entityRef: `${label}:${row[pk]}`, after: row });
         await afterWrite(c, { op: "create", row, actor });
         await c.query("COMMIT");
@@ -120,7 +139,7 @@ function buildResource(cfg) {
       }
       await c.query("BEGIN");
       try {
-        const row = await updateOne(c, table, pk, id, patch, "*", writable, touch ? { touch: "updated_at" } : {});
+        const row = await updateOne(c, table, pk, id, patch, "*", updateAllow, touch ? { touch: "updated_at" } : {});
         await audit(c, { actorUserId: actor.user_id || null, action: `${label}.updated`, moduleKey, entityRef: `${label}:${id}`, before, after: row });
         await afterWrite(c, { op: "update", row, actor });
         await c.query("COMMIT");
@@ -170,7 +189,16 @@ function resourceSpecs(kind) {
     { seg: "contacts", table: `${kind}_contact`, pk: "contact_id", create: partyCommon.contactCreate, update: partyCommon.contactUpdate, touch: true, writable: ["name", "title", "email", "phone", "role_tags", "is_primary", "language", "timezone", "portal_access", "is_active"] },
     { seg: "addresses", table: `${kind}_address`, pk: "address_id", create: partyCommon.addressCreate, update: partyCommon.addressUpdate, touch: true, writable: ["line1", "line2", "city", "region", "postal_code", "country_code", "type", "is_primary", "is_active"] },
     { seg: "banks", table: `${kind}_bank_account`, pk: "bank_account_id", create: partyCommon.bankCreate, update: partyCommon.bankUpdate, touch: true, isBank: true, governed: { create: "BANK_CREATE", update: "BANK_UPDATE" }, writable: ["beneficiary_name", "bank_name", "branch", "account_number", "iban", "swift_bic", "routing_code", "currency", "momo_network", "momo_number", "is_primary", "is_active"] },
-    { seg: "documents", table: `${kind}_document`, pk: "document_id", create: partyCommon.documentCreate, update: partyCommon.documentUpdate, touch: true, isDocument: true, writable: ["document_type_id", "document_number", "issuing_authority", "issued_on", "expires_on", "vault_id", "physical_ref"] },
+    {
+      seg: "documents", table: `${kind}_document`, pk: "document_id",
+      create: partyCommon.documentCreate, update: partyCommon.documentUpdate,
+      touch: true, isDocument: true, numberingKey: kind === "client" ? "MOD-03-DOC" : "MOD-04-DOC",
+      // The number is assigned by the allocator on create and is immutable
+      // afterwards. Keeping it in the insert allow-list lets the service write
+      // the generated value while rejecting a PATCH that tries to renumber it.
+      immutable: ["document_number"],
+      writable: ["document_type_id", "document_number", "issuing_authority", "issued_on", "expires_on", "vault_id", "physical_ref"],
+    },
     { seg: "registrations", table: "party_registration", pk: "registration_id", parentCol: `${kind}_id`, create: partyCommon.registrationCreate, update: partyCommon.registrationUpdate, touch: false, governed: { create: "TAX_REGISTRATION", update: "TAX_REGISTRATION" }, writable: ["country_code", "kind", "number", "issuing_authority", "issued_on", "expires_on"] },
     { seg: "beneficial-owners", table: `${kind}_beneficial_owner`, pk: "owner_id", create: partyCommon.beneficialOwnerCreate, update: partyCommon.beneficialOwnerUpdate, touch: false, writable: ["full_name", "date_of_birth", "nationality", "id_type", "id_number", "ownership_percent", "is_pep", "notes", "vault_id"] },
   ];
@@ -187,7 +215,8 @@ function mountNested(router, { kind, moduleKey, parentTable, parentPk }) {
     const { service, controller } = buildResource({
       table: r.table, pk: r.pk, parentCol: r.parentCol || `${kind}_id`,
       parentTable, parentPk, moduleKey, label: r.table, writable: r.writable,
-      touch: r.touch, isBank: r.isBank, isDocument: r.isDocument, kind, governed: r.governed,
+      touch: r.touch, isBank: r.isBank, isDocument: r.isDocument, numberingKey: r.numberingKey,
+      immutable: r.immutable, kind, governed: r.governed,
     });
     // Bank numbers are masked in the list unless the caller has finance
     // visibility (gate 14) — masking in the serializer, never in the client.
@@ -268,7 +297,10 @@ function entityResourceSpecs() {
       // request cannot assert a verification it has not earned.
       seg: "documents", table: "entity_document", pk: "document_id",
       create: entityCommon.documentCreate, update: entityCommon.documentUpdate,
-      touch: true, isDocument: true,
+      touch: true, isDocument: true, numberingKey: "MOD-01-DOC",
+      // The reference is allocated by the server when the document is created
+      // and is immutable afterwards, just like client/supplier document numbers.
+      immutable: ["document_number"],
       writable: ["document_type_id", "title", "document_number", "issuing_authority",
         "issued_on", "expires_on", "country_code", "establishment_id", "vault_id",
         "physical_ref", "renewal_lead_days", "notes", "is_active"],
@@ -302,6 +334,7 @@ function mountEntityNested(router, { moduleKey, parentTable, parentPk }) {
       table: r.table, pk: r.pk, parentCol: "entity_id",
       parentTable, parentPk, moduleKey, label: r.table,
       writable: r.writable, touch: r.touch, isDocument: r.isDocument,
+      numberingKey: r.numberingKey, immutable: r.immutable,
     });
     // `people` carries the cap table and personal identifiers, and `documents`
     // the statutes and tax certificates — both need the same UPDATE grant that

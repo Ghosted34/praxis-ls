@@ -75,7 +75,9 @@ describe("Clients · Documents — the Add document form", () => {
     expect(screen.queryByText(/^Scan due$/i)).toBeNull();
     // The fields that remain.
     expect(screen.getByLabelText("Type")).toBeInTheDocument();
-    expect(screen.getByLabelText("Number")).toBeInTheDocument();
+    expect(screen.getByLabelText("Number")).toHaveValue("Assigned on save");
+    expect(screen.getByLabelText("Number")).toHaveAttribute("readonly");
+    expect(screen.getByText(/generated automatically/i)).toBeInTheDocument();
     expect(screen.getByLabelText("Physical archive ref")).toBeInTheDocument();
   });
 

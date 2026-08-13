@@ -45,17 +45,48 @@ const create = z.object({
   service_tiers: z.array(tier).optional(),
 });
 
+// CONTAINER_TYPE and LOAD_MODE were seed-only kinds: the registry held them,
+// every consumer read them generically, and only this enum stood between a
+// manager and a new box size. A carrier introducing a 50' unit does not wait
+// for a release, so they are creatable here like every other kind.
+const REF_KINDS = ["SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND", "CONTAINER_TYPE", "LOAD_MODE"];
+
+// A container type whose `extra` is empty is worse than no container type at
+// all, because nothing rejects it: `Number(undefined) || 0` makes it count as
+// zero TEU in the dossier editor and in the shipment-details totals, and a
+// missing `size` leaves the rate card with no lookup key. Both failures are
+// silent under-reporting, so they are refused at the door instead.
+const requireContainerExtra = (v, ctx) => {
+  if (v.kind !== "CONTAINER_TYPE") return;
+  const teu = v.extra?.teu;
+  if (typeof teu !== "number" || !(teu > 0)) {
+    ctx.addIssue({ code: "custom", path: ["extra", "teu"],
+      message: "TEU is required for a container type and must be greater than 0" });
+  }
+  if (!v.extra?.size) {
+    ctx.addIssue({ code: "custom", path: ["extra", "size"],
+      message: "size is required for a container type (the rate-lookup key)" });
+  }
+};
+
 const refCreate = z.object({
-  kind: z.enum(["SUBCATEGORY", "UNIT", "PROOF_SOURCE", "PROVIDER_KIND"]),
+  kind: z.enum(REF_KINDS),
   code: z.string().min(1).max(64),
   name_fr: z.string().min(1),
   name_en: z.string().nullish(),
   extra: z.record(z.any()).optional(),
   sort_order: z.number().int().optional(),
-});
+}).superRefine(requireContainerExtra);
+
+// `extra` is patchable: a typo'd TEU on a tenant-created container type was
+// otherwise unfixable through the UI, which is how a 0-TEU row survives. It
+// REPLACES the stored object rather than merging into it, so a caller sends the
+// whole thing; the service re-checks the container invariant against the result,
+// since only it knows the row's kind.
 const refUpdate = z.object({
   name_fr: z.string().min(1).optional(),
   name_en: z.string().nullish(),
+  extra: z.record(z.any()).optional(),
   sort_order: z.number().int().optional(),
   is_active: z.boolean().optional(),
 });

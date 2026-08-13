@@ -933,20 +933,26 @@ export const downloadDictImportErrors = (rows: ImportRejectedRow[]) =>
   downloadPost("/tenant/financial-dictionary/import/errors", { rows }, "financial-dictionary-rejected.xlsx");
 
 /* dictionary_ref — the seeded-but-editable values behind the dropdowns (gear modal).
- * CONTAINER_TYPE is read-only from here (managed via the Financial Dictionary's
- * own seed/gear surface, not this one) — Expense Rates only lists it. */
+ * CONTAINER_TYPE and LOAD_MODE are managed here too: they were seed-only until
+ * the API enum was opened, which meant a carrier's new box size needed a deploy.
+ * Expense Rates and the dossier container editor both read the same list. */
 // LOAD_MODE (FCL/LCL) joined the list with the SSDC equipment block (0660):
 // a container line records how it was stowed as well as what it is.
 export type DictRefKind = "SUBCATEGORY" | "UNIT" | "PROOF_SOURCE" | "PROVIDER_KIND" | "CONTAINER_TYPE" | "LOAD_MODE";
 /** `extra` carries the structured facts a consumer computes on rather than
  *  displays — for CONTAINER_TYPE that is `teu` (capacity), `size` (the rate
- *  lookup key) and `family`, so the sized variants of one kind group together. */
-export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; extra?: { teu?: number; size?: string; family?: string; special?: boolean }; sort_order?: number; is_system?: boolean; is_active?: boolean };
+ *  lookup key) and `family`, so the sized variants of one kind group together.
+ *  `teu` and `size` are REQUIRED by the API for that kind: a container type
+ *  without them counts as zero TEU and has no rate-card key, and neither
+ *  failure raises anything. */
+export type DictRefExtra = { teu?: number; size?: string; family?: string; special?: boolean; aliases?: string[] };
+export type DictRef = { ref_id: string; kind: DictRefKind; code: string; name_fr: string; name_en?: string | null; extra?: DictRefExtra; sort_order?: number; is_system?: boolean; is_active?: boolean };
 export const listDictRefs = (kind: DictRefKind, includeInactive = false) =>
   tenant<DictRef[]>(`/financial-dictionary/refs?kind=${kind}${includeInactive ? "&include_inactive=true" : ""}`);
-export const createDictRef = (body: { kind: DictRefKind; code: string; name_fr: string; name_en?: string; sort_order?: number }) =>
+export const createDictRef = (body: { kind: DictRefKind; code: string; name_fr: string; name_en?: string; sort_order?: number; extra?: DictRefExtra }) =>
   tenant<DictRef>("/financial-dictionary/refs", { method: "POST", body });
-export const updateDictRef = (id: string, body: Partial<{ name_fr: string; name_en: string; sort_order: number; is_active: boolean }>) =>
+/** `extra` REPLACES the stored object — send the whole thing, not a fragment. */
+export const updateDictRef = (id: string, body: Partial<{ name_fr: string; name_en: string; sort_order: number; is_active: boolean; extra: DictRefExtra }>) =>
   tenant<DictRef>(`/financial-dictionary/refs/${id}`, { method: "PATCH", body });
 
 /* ── Currencies(/currencies) — for selects ──────────────────────── */

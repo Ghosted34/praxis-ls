@@ -35,6 +35,7 @@ import { ErrorState } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
 import { errMsg, useResource } from "@/lib/use-resource";
 import { listDictRefs, type DictRef } from "@/lib/masterdata-api";
+import { groupTypes, teuOf, typeLabel } from "@/lib/container-types";
 import * as api from "@/lib/operations-api";
 
 type Draft = {
@@ -45,18 +46,6 @@ type Draft = {
 };
 
 const blank = (): Draft => ({ container_type_ref_id: "", load_mode_ref_id: "", qty: "1", units: [] });
-
-/** Group the picker by `family` so the sized variants of one kind sit together
- *  — twenty-two flat options is a list nobody reads to the bottom of. */
-function groupTypes(types: DictRef[]) {
-  const out = new Map<string, DictRef[]>();
-  for (const t of types) {
-    const fam = t.extra?.family || "OTHER";
-    if (!out.has(fam)) out.set(fam, []);
-    out.get(fam)!.push(t);
-  }
-  return [...out.entries()];
-}
 
 export function ContainerEditor({
   dossierId,
@@ -106,7 +95,7 @@ export function ContainerEditor({
   const totals = (rows || []).reduce(
     (acc, r) => {
       const n = Number(r.qty) || 0;
-      const teu = Number(byId.get(r.container_type_ref_id)?.extra?.teu) || 0;
+      const teu = teuOf(byId.get(r.container_type_ref_id));
       return { boxes: acc.boxes + n, teu: acc.teu + teu * n };
     },
     { boxes: 0, teu: 0 },
@@ -175,7 +164,7 @@ export function ContainerEditor({
                         <optgroup key={family} label={family}>
                           {list.map((x) => (
                             <option key={x.ref_id} value={x.ref_id}>
-                              {x.name_en || x.name_fr}
+                              {typeLabel(x)}
                             </option>
                           ))}
                         </optgroup>

@@ -12,13 +12,12 @@ import { Input } from "@/components/ui/input";
 import { Modal, Field, Select } from "@/components/ui/modal";
 import * as fin from "@/lib/finance-api";
 import type { InvoiceLineInput } from "@/lib/finance-api";
-import { useOptions, optionLabel, type InvLine, blankInvLine } from "./shared";
+import { useOptions, optionLabel, expandInvLines, type InvLine, blankInvLine } from "./shared";
+import { DictLineCell } from "./line-picker";
 
 export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: clients } = useOptions(fin.loadClients, open);
-  const { opts: items } = useOptions(fin.loadDictionaryItems, open);
-
   const { opts: dossiers } = useOptions(fin.loadDossiers, open);
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
@@ -50,6 +49,7 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
         amount: Number(l.amount),
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
+        container_type_ref_id: l.container_type_ref_id || null,
       }));
       await fin.createInvoiceDraft({
         entity_id: entityId,
@@ -110,21 +110,21 @@ export function InvoiceDraftForm({ open, onClose, onCreated }: { open: boolean; 
             </Button>
           </div>
           {lines.map((l, i) => (
-            <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-              <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
-                <option value="">Dictionary item…</option>
-                {items.map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {optionLabel(o)}
-                  </option>
-                ))}
-              </Select>
+            <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-start gap-2">
+              <DictLineCell
+                line={l}
+                index={i}
+                dossierId={dossierId || null}
+                onPick={(id, label) => setLine(i, { dictionary_item_id: id, label, container_type_ref_id: undefined, container_type_label: undefined })}
+                onPickMulti={(id, label, _hit, picks) => setLines((ls) => expandInvLines(ls, i, id, label, picks))}
+              />
               <Input
                 type="number"
                 min="0"
                 step="0.01"
                 className="num text-right"
                 placeholder="Amount"
+                aria-label={`Amount, line ${i + 1}`}
                 value={l.amount}
                 onChange={(e) => setLine(i, { amount: e.target.value })}
               />
@@ -254,9 +254,11 @@ export function InvoiceEditForm({
 }) {
   const open = !!invoiceId;
   const { opts: clients } = useOptions(fin.loadClients, open);
-  const { opts: items } = useOptions(fin.loadDictionaryItems, open);
 
   const [clientId, setClientId] = React.useState("");
+  // Read-only here (the edit form does not move an invoice between files), but
+  // it is what pre-fills the finder's equipment step from the dossier's boxes.
+  const [dossierId, setDossierId] = React.useState("");
   const [lines, setLines] = React.useState<InvLine[]>([blankInvLine()]);
   const [loading, setLoading] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
@@ -271,11 +273,16 @@ export function InvoiceEditForm({
       .then((inv) => {
         if (!live) return;
         setClientId(inv.client_id ? String(inv.client_id) : "");
+        setDossierId(inv.dossier_id ? String(inv.dossier_id) : "");
         const ls = (inv.lines || []).map((l) => ({
           dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
           amount: l.line_ht !== undefined && l.line_ht !== null ? String(l.line_ht) : "",
           is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
+          // Read back so a re-save does not silently strip the equipment tag
+          // off every line on the draft.
+          container_type_ref_id: l.container_type_ref_id ? String(l.container_type_ref_id) : undefined,
+          container_type_label: l.container_type_en || l.container_type_fr || l.container_type_code || undefined,
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
@@ -300,6 +307,7 @@ export function InvoiceEditForm({
         amount: Number(l.amount),
         is_disbursement: l.is_disbursement || undefined,
         label: l.label || undefined,
+        container_type_ref_id: l.container_type_ref_id || null,
       }));
       await fin.updateInvoiceDraft(invoiceId, {
         client_id: clientId || undefined,
@@ -339,21 +347,21 @@ export function InvoiceEditForm({
               </Button>
             </div>
             {lines.map((l, i) => (
-              <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-center gap-2">
-                <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
-                  <option value="">Dictionary item…</option>
-                  {items.map((o) => (
-                    <option key={o.id} value={o.id}>
-                      {optionLabel(o)}
-                    </option>
-                  ))}
-                </Select>
+              <div key={i} className="grid grid-cols-[1fr_8rem_auto_auto] items-start gap-2">
+                <DictLineCell
+                  line={l}
+                  index={i}
+                  dossierId={dossierId || null}
+                  onPick={(id, label) => setLine(i, { dictionary_item_id: id, label, container_type_ref_id: undefined, container_type_label: undefined })}
+                  onPickMulti={(id, label, _hit, picks) => setLines((ls) => expandInvLines(ls, i, id, label, picks))}
+                />
                 <Input
                   type="number"
                   min="0"
                   step="0.01"
                   className="num text-right"
                   placeholder="Amount"
+                  aria-label={`Amount, line ${i + 1}`}
                   value={l.amount}
                   onChange={(e) => setLine(i, { amount: e.target.value })}
                 />

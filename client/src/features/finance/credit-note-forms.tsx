@@ -9,11 +9,12 @@ import { errMsg } from "@/lib/use-resource";
 import { LoadingRow, ErrorState } from "@/components/ui/states";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Modal, Field, Select } from "@/components/ui/modal";
+import { Modal, Field } from "@/components/ui/modal";
 import { SearchSelect } from "@/components/ui/search-select";
 import * as fin from "@/lib/finance-api";
-import type { Option, CreditNote, CreditNoteLineInput } from "@/lib/finance-api";
-import { useOptions, optionLabel, type InvLine, blankInvLine } from "./shared";
+import type { CreditNote, CreditNoteLineInput } from "@/lib/finance-api";
+import { useOptions, optionLabel, expandInvLines, type InvLine, blankInvLine } from "./shared";
+import { DictLineCell } from "./line-picker";
 
 function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
   return lines
@@ -23,10 +24,11 @@ function cnPayloadLines(lines: InvLine[]): CreditNoteLineInput[] {
       amount: Number(l.amount),
       dictionary_item_id: l.dictionary_item_id || undefined,
       is_disbursement: l.is_disbursement || undefined,
+      container_type_ref_id: l.container_type_ref_id || null,
     }));
 }
 
-function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLines: React.Dispatch<React.SetStateAction<InvLine[]>>; items: Option[] }) {
+function CreditNoteLines({ lines, setLines, dossierId }: { lines: InvLine[]; setLines: React.Dispatch<React.SetStateAction<InvLine[]>>; dossierId?: string | null }) {
   const setLine = (i: number, patch: Partial<InvLine>) => setLines((ls) => ls.map((l, idx) => (idx === i ? { ...l, ...patch } : l)));
   return (
     <div className="space-y-2">
@@ -37,17 +39,18 @@ function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLine
         </Button>
       </div>
       {lines.map((l, i) => (
-        <div key={i} className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-center gap-2">
-          <Input placeholder="Label (required)" value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} />
-          <Select aria-label={`Item, line ${i + 1}`} value={l.dictionary_item_id} onChange={(e) => setLine(i, { dictionary_item_id: e.target.value })}>
-            <option value="">Dictionary item…</option>
-            {items.map((o) => (
-              <option key={o.id} value={o.id}>
-                {optionLabel(o)}
-              </option>
-            ))}
-          </Select>
-          <Input type="number" min="0" step="0.01" className="num text-right" placeholder="Amount" value={l.amount} onChange={(e) => setLine(i, { amount: e.target.value })} />
+        <div key={i} className="grid grid-cols-[1fr_1fr_8rem_auto_auto] items-start gap-2">
+          <Input placeholder="Label (required)" aria-label={`Label, line ${i + 1}`} value={l.label} onChange={(e) => setLine(i, { label: e.target.value })} />
+          {/* Picking a charge fills the label too — it is required here, and the
+              catalogue's own wording is the one that keeps grouping honest. */}
+          <DictLineCell
+            line={l}
+            index={i}
+            dossierId={dossierId}
+            onPick={(id, label) => setLine(i, { dictionary_item_id: id, label: label || l.label, container_type_ref_id: undefined, container_type_label: undefined })}
+            onPickMulti={(id, label, _hit, picks) => setLines((ls) => expandInvLines(ls, i, id, label, picks))}
+          />
+          <Input type="number" min="0" step="0.01" className="num text-right" placeholder="Amount" aria-label={`Amount, line ${i + 1}`} value={l.amount} onChange={(e) => setLine(i, { amount: e.target.value })} />
           <label className="flex items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
             <input type="checkbox" checked={l.is_disbursement} onChange={(e) => setLine(i, { is_disbursement: e.target.checked })} />
             débours
@@ -64,7 +67,6 @@ function CreditNoteLines({ lines, setLines, items }: { lines: InvLine[]; setLine
 export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boolean; onClose: () => void; onCreated: () => void }) {
   const { opts: entities } = useOptions(fin.loadEntities, open);
   const { opts: clients } = useOptions(fin.loadClients, open);
-  const { opts: items } = useOptions(fin.loadDictionaryItems, open);
   const { opts: invoices } = useOptions(fin.loadFinalInvoices, open);
 
   const [entityId, setEntityId] = React.useState("");
@@ -146,7 +148,9 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
           </Field>
         </div>
 
-        <CreditNoteLines lines={lines} setLines={setLines} items={items} />
+        {/* No dossier on a stand-alone credit note — the equipment step lists
+            all active types rather than pre-filling from a file. */}
+        <CreditNoteLines lines={lines} setLines={setLines} dossierId={null} />
 
         {error && <ErrorState message={error} />}
 
@@ -166,10 +170,10 @@ export function CreditNoteCreateForm({ open, onClose, onCreated }: { open: boole
 export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditNoteId: string | null; onClose: () => void; onSaved: () => void }) {
   const open = !!creditNoteId;
   const { opts: clients } = useOptions(fin.loadClients, open);
-  const { opts: items } = useOptions(fin.loadDictionaryItems, open);
   const { opts: invoices } = useOptions(fin.loadFinalInvoices, open);
 
   const [clientId, setClientId] = React.useState("");
+  const [dossierId, setDossierId] = React.useState("");
   const [reversesInvoiceId, setReversesInvoiceId] = React.useState("");
   const [lines, setLines] = React.useState<InvLine[]>([blankInvLine()]);
   const [loading, setLoading] = React.useState(false);
@@ -185,12 +189,16 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
       .then((cn) => {
         if (!live) return;
         setClientId(cn.client_id ? String(cn.client_id) : "");
+        setDossierId(cn.dossier_id ? String(cn.dossier_id) : "");
         setReversesInvoiceId(cn.reverses_invoice_id ? String(cn.reverses_invoice_id) : "");
         const ls = (cn.lines || []).map((l) => ({
           dictionary_item_id: l.dictionary_item_id ? String(l.dictionary_item_id) : "",
           amount: l.amount != null ? String(l.amount) : l.line_ht != null ? String(l.line_ht) : "",
           is_disbursement: !!l.is_disbursement,
           label: l.label ? String(l.label) : "",
+          // Read back so re-saving a draft does not strip the equipment tag.
+          container_type_ref_id: l.container_type_ref_id ? String(l.container_type_ref_id) : undefined,
+          container_type_label: l.container_type_en || l.container_type_fr || l.container_type_code || undefined,
         }));
         setLines(ls.length ? ls : [blankInvLine()]);
       })
@@ -253,7 +261,7 @@ export function CreditNoteEditForm({ creditNoteId, onClose, onSaved }: { creditN
             </Field>
           </div>
 
-          <CreditNoteLines lines={lines} setLines={setLines} items={items} />
+          <CreditNoteLines lines={lines} setLines={setLines} dossierId={dossierId || null} />
 
           {error && <ErrorState message={error} />}
 

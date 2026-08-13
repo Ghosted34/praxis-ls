@@ -1,7 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().positive().optional(), unit_price: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), tax_code_id: z.string().uuid().optional().nullable() });
+const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().positive().optional(), unit_price: z.number().nonnegative().optional(), is_disbursement: z.boolean().optional(), tax_code_id: z.string().uuid().optional().nullable(), container_type_ref_id: z.string().uuid().nullish() });
 const d = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const schemas = {
   create: z.object({ entity_id: z.string().uuid().optional().nullable(), client_id: z.string().uuid().optional().nullable(), dossier_id: z.string().uuid().optional().nullable(), costing_id: z.string().uuid().optional().nullable(), opportunity_id: z.string().uuid().optional().nullable(), currency: z.string().length(3).optional(), quote_model: z.enum(["HT_ON_TOP", "TTC"]).optional(), margin_percent: z.number().optional().nullable(), valid_until: d.optional().nullable(), lines: z.array(line).optional() }),

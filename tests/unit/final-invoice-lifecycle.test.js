@@ -74,7 +74,9 @@ function fakeClient(initial) {
         st.lines = [];
         return { rows: [] };
       }
-      if (/^SELECT \* FROM invoice_line/.test(s))
+      // The line read joins dictionary_ref for the container type (0663), so it
+      // is no longer a bare `SELECT *` — match on the FROM clause instead.
+      if (/^SELECT .* FROM invoice_line/.test(s))
         return {
           rows: st.lines.length
             ? st.lines

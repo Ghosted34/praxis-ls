@@ -40,6 +40,7 @@ const _db = require("./db");
 // what they are asserting — the SQL is. Production always exports both.
 const platformDb = { query: (t, p) => (_db.opsQuery || _db.query)(t, p) };
 const registry = require("../tenant/registry.service");
+const pooler = require("../tenant/pooler-stats.service");
 const provisioning = require("./provisioning.service");
 const { logger } = require("../../config/logger");
 const { config } = require("../../config/env");
@@ -51,8 +52,14 @@ const runtimeConfig = require("./runtime-config.service");
  * RED   — the tenant cannot serve: database unreachable, liveness failing, or
  *         the connection pool saturated with requests queueing behind it.
  * AMBER — degraded or at risk: schema drift, elevated job failures, recent
- *         errors, mail unverified. Serving, but something needs attention.
+ *         errors, mail unverified, or capacity headroom running out. Serving,
+ *         but something needs attention.
  * GREEN — none of the above.
+ *
+ * The AMBER band is where the capacity signals live, and that placement is the
+ * whole point of them: RED means "this is happening now", and every capacity
+ * measurement that existed before WS-S1 could only ever fire once it already
+ * was.
  *
  * Returns the reasons alongside the status, because a colour with no reason is
  * a colour someone has to reverse-engineer at 3am.
@@ -69,6 +76,27 @@ const runtimeConfig = require("./runtime-config.service");
  * no gain. Omitting `thresholds` falls back to env, so existing callers and
  * tests are unaffected.
  */
+/**
+ * First argument that is a usable positive number; the last is the default and
+ * is always one.
+ *
+ * The capacity thresholds are NOT in `.env.example` on purpose — they default
+ * here, so a deployment that never sets them is correctly configured and cannot
+ * be broken by a key it does not have. This helper is what makes that true for
+ * the values that DO arrive: a blank env var, a mistyped one, or a vault row
+ * holding 0 or a string all fall through to the default rather than becoming a
+ * threshold of zero, which would mark the entire fleet amber and train everyone
+ * to ignore the colour.
+ */
+function positive(...candidates) {
+  for (const c of candidates) {
+    const n = Number(c);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  // Unreachable in practice: every caller passes a literal default last.
+  return 0;
+}
+
 function statusFor(signals, thresholds = {}) {
   const reasons = [];
   let status = "GREEN";
@@ -106,6 +134,58 @@ function statusFor(signals, thresholds = {}) {
   if (signals.redis_ok === false) red("redis unreachable");
 
   if (signals.schema_behind > 0) amber(`schema ${signals.schema_behind} migration(s) behind`);
+
+  // ── Capacity headroom (WS-S1) ────────────────────────────────────────────
+  //
+  // `pool_waiting > 0` above is RED and correct, but it is a report of arrival,
+  // not of approach: requests queue only once the pool is already full. Nothing
+  // here previously moved BEFORE saturation, so the first notice of capacity
+  // pressure was users feeling it.
+  //
+  // AMBER rather than RED on purpose. A tenant at 85% of its pool is serving
+  // every request correctly; calling that an incident spends the operator's
+  // attention on something with days of runway, and a colour that cries wolf is
+  // one people learn to skip. This is the number you act on in a planning
+  // meeting, not at 3am.
+  // `positive()` and not `??`: nullish-coalescing passes 0 straight through, and
+  // a 0 threshold here means EVERY tenant is amber forever — a vault row typed
+  // as 0, or an env value that did not parse, would silently turn the whole
+  // fleet grid yellow and make the signal worthless. A threshold that cannot be
+  // read is a threshold that was not set, so it falls to the default.
+  const utilisationAmber = positive(
+    thresholds.healthPoolUtilisationAmber,
+    config.HEALTH_POOL_UTILISATION_AMBER,
+    80,
+  );
+  if (signals.pool_utilisation_pct !== null && signals.pool_utilisation_pct !== undefined) {
+    if (signals.pool_utilisation_pct >= utilisationAmber) {
+      amber(
+        `connection pool ${signals.pool_utilisation_pct}% used` +
+          (signals.pool_max ? ` (${signals.pool_total}/${signals.pool_max})` : ""),
+      );
+    }
+  }
+
+  // The pooler's own queue. Once PgBouncer carries traffic this REPLACES
+  // `pool_waiting` as the meaningful saturation signal — the app-side pool is
+  // then a pool of connections to the pooler, which is cheap and stays green
+  // while the real constraint (server connections against max_connections)
+  // saturates behind it. Both checks coexist because both are correct in their
+  // own era, and the columns are simply NULL in the other one.
+  if (signals.pooler_cl_waiting > 0) {
+    red("pooler queue: clients waiting for a server connection");
+  }
+  const maxwaitAmberMs = positive(
+    thresholds.healthPoolerMaxwaitAmberMs,
+    config.HEALTH_POOLER_MAXWAIT_AMBER_MS,
+    100,
+  );
+  if (signals.pooler_maxwait_us > maxwaitAmberMs * 1000) {
+    // Rises before cl_waiting becomes sustained, which is exactly what makes it
+    // the leading half of the pair.
+    amber(`pooler wait ${Math.round(signals.pooler_maxwait_us / 1000)}ms`);
+  }
+
   if (signals.jobs_failed_24h > jobFailureAmber) {
     amber(`${signals.jobs_failed_24h} job failures in 24h`);
   }
@@ -230,17 +310,47 @@ async function collectFleetHealth(opts = {}) {
   const poolStats = registry.poolStats();
   const poolByDb = new Map(poolStats.detail.map((p) => [p.db, p]));
 
+  // WS-S1 — one admin round-trip per sweep, not per tenant, and null on every
+  // deployment that has not cut over to the pooler. `pooler-stats` never throws
+  // for exactly this reason: telemetry must not be able to abort the sweep that
+  // records whether tenants are alive.
+  const poolerByDb = (await pooler.pools()) || new Map();
+
   const captured = [];
   for (const meta of tenants) {
     const schema = schemaByTenant.get(meta.slug) || {};
     const pool = poolByDb.get(meta.db_name) || {};
+    const bouncer = poolerByDb.get(meta.db_name) || {};
     const liveness = await probeTenant(meta);
     const errors = await errorSignals(meta);
+
+    // The ceiling this tenant's pool was actually built with. Per-tenant
+    // (`tenant_database.pool_max`) with the deploy-wide default behind it —
+    // the same resolution `createPool` uses, because a utilisation figure
+    // computed against a different denominator than the pool enforces is worse
+    // than no figure at all.
+    const poolMax = Number(meta.pool_max || config.TENANT_POOL_MAX) || null;
+
+    // In USE, not merely open. `total` counts connections the pool holds and
+    // `idle` counts the ones sitting unused; a pool that keeps 8 warm
+    // connections and is using 1 is not at 80% of anything.
+    const inUse =
+      pool.total === undefined || pool.idle === undefined
+        ? null
+        : Math.max(0, pool.total - pool.idle);
 
     const signals = {
       pool_total: pool.total ?? null,
       pool_idle: pool.idle ?? null,
       pool_waiting: pool.waiting ?? null,
+      pool_max: poolMax,
+      pool_utilisation_pct:
+        inUse === null || !poolMax ? null : Math.round((inUse / poolMax) * 1000) / 10,
+      pooler_cl_active: bouncer.cl_active ?? null,
+      pooler_cl_waiting: bouncer.cl_waiting ?? null,
+      pooler_sv_active: bouncer.sv_active ?? null,
+      pooler_sv_idle: bouncer.sv_idle ?? null,
+      pooler_maxwait_us: bouncer.maxwait_us ?? null,
       schema_behind: schema.behind ?? null,
       schema_unreachable: Boolean(schema.error),
       jobs_failed_24h: null, // populated by the queue metrics collector
@@ -256,8 +366,12 @@ async function collectFleetHealth(opts = {}) {
         `INSERT INTO platform.tenant_health
            (tenant_id, pool_total, pool_idle, pool_waiting, schema_behind, schema_unreachable,
             jobs_failed_24h, mail_verified, redis_ok, liveness_ok, liveness_ms,
-            last_error_at, error_count_24h, status, reasons)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb)`,
+            last_error_at, error_count_24h, status, reasons,
+            pool_max, pool_utilisation_pct,
+            pooler_cl_active, pooler_cl_waiting, pooler_sv_active, pooler_sv_idle,
+            pooler_maxwait_us)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15::jsonb,
+                 $16,$17,$18,$19,$20,$21,$22)`,
         [
           meta.tenant_id,
           signals.pool_total,
@@ -274,6 +388,13 @@ async function collectFleetHealth(opts = {}) {
           signals.error_count_24h,
           status,
           JSON.stringify(reasons),
+          signals.pool_max,
+          signals.pool_utilisation_pct,
+          signals.pooler_cl_active,
+          signals.pooler_cl_waiting,
+          signals.pooler_sv_active,
+          signals.pooler_sv_idle,
+          signals.pooler_maxwait_us,
         ],
       );
     } catch (err) {

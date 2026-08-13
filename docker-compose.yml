@@ -217,7 +217,16 @@ services:
   # survives an API crash, though not a whole-host loss.
   #
   # Set UPTIME_PROBE_IN_PROCESS=false when this runs, or both probe and every
-  # host is sampled twice per interval, inflating availability.
+  # host is sampled twice per interval, inflating availability. scripts/deploy.sh
+  # now checks that pairing and refuses to start this container while the API is
+  # still sampling in-process, so the two cannot both be on by accident.
+  #
+  # ROLLED BY deploy.sh. It previously was not: `restart: unless-stopped` kept
+  # whatever container already existed alive across every deploy, so on hosts
+  # where it was running it went on running its original image indefinitely,
+  # while on hosts where it had never been started nothing ever started it.
+  # `UPTIME_PROBE_IN_COMPOSE=false` opts out (for deployments running the prober
+  # on another host, which is the better arrangement).
   uptime-probe:
     build:
       context: .

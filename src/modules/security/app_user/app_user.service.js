@@ -726,19 +726,30 @@ async function createUser(client, { data, actor = {}, tenantId = null }) {
   //
   // A tenant with no seat entitlement configured is unlimited, so this is inert
   // until someone sets a limit on the plan.
+  // FAILS CLOSED, changed deliberately.
+  //
+  //   This previously caught anything that was not an ENTITLEMENT_EXCEEDED and
+  //   created the user anyway, so that a platform-side fault could not stop the
+  //   fleet onboarding staff. The reasoning was right about the risk and wrong
+  //   about the remedy: a check that yields whenever it cannot run looks exactly
+  //   like a check that ran and passed, which means the gate was absent in
+  //   precisely the conditions that make a gate matter, and absent silently.
+  //
+  //   `guard` now blocks with ENTITLEMENT_CHECK_UNAVAILABLE (503, distinct from
+  //   the 402 a real breach returns) and pages. The old failure mode is still a
+  //   real cost — while the platform database is unreachable, nobody can add a
+  //   user — but it is now loud, attributable and bounded to one action, rather
+  //   than an invisible hole in what will eventually gate revenue.
+  //
+  //   Note it only ever reaches the throw for a tenant whose plan actually
+  //   carries a seat limit; an unconfigured plan is unlimited and returns early.
   if (tenantId) {
-    try {
-      const seats = await client.query("SELECT count(*)::int AS n FROM app_user WHERE status = 'ACTIVE'");
-      await entitlement.check(tenantId, "seats", { additional: 1, liveUsed: seats.rows[0].n });
-    } catch (err) {
-      // A real entitlement breach must propagate — that is the whole point.
-      if (err && err.code === "ENTITLEMENT_EXCEEDED") throw err;
-      // Anything else (the platform DB being unreachable, say) must NOT stop a
-      // tenant adding a user. Failing closed here would turn a platform-side
-      // hiccup into "nobody in the fleet can onboard staff", which is a far
-      // worse outage than a tenant briefly exceeding a seat count.
-      logger.warn({ err, tenantId }, "seat entitlement check failed — allowing the user to be created");
-    }
+    const seats = await client.query("SELECT count(*)::int AS n FROM app_user WHERE status = 'ACTIVE'");
+    await entitlement.guard(tenantId, "seats", {
+      additional: 1,
+      liveUsed: seats.rows[0].n,
+      action: "app_user.create",
+    });
   }
 
   await client.query("BEGIN");

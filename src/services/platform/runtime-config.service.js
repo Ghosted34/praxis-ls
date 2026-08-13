@@ -156,6 +156,23 @@ async function opsTuning() {
     healthJobFailureAmber: num(pick(v.health_job_failure_amber, config.HEALTH_JOB_FAILURE_AMBER), 5),
     healthErrorAmber: num(pick(v.health_error_amber, config.HEALTH_ERROR_AMBER), 50),
     healthLivenessSlowMs: num(pick(v.health_liveness_slow_ms, config.HEALTH_LIVENESS_SLOW_MS), 2000),
+    // WS-S1 capacity headroom. 80% is the default because it leaves room to act
+    // — a pool at 80% is comfortable today and worth a conversation this week,
+    // which is the only band in which a capacity warning is useful. Tunable from
+    // the vault because the right number depends on how spiky a deployment's
+    // traffic is, and that is not knowable from here.
+    healthPoolUtilisationAmber: num(
+      pick(v.health_pool_utilisation_amber, config.HEALTH_POOL_UTILISATION_AMBER),
+      80,
+    ),
+    // PgBouncer's longest current client wait, in milliseconds. 100ms is
+    // deliberately low: under transaction pooling a healthy wait is sub-
+    // millisecond, so a tenth of a second already means server connections are
+    // the constraint. This fires well before `cl_waiting` becomes sustained.
+    healthPoolerMaxwaitAmberMs: num(
+      pick(v.health_pooler_maxwait_amber_ms, config.HEALTH_POOLER_MAXWAIT_AMBER_MS),
+      100,
+    ),
     uptimeProbePath: pick(v.uptime_probe_path, config.UPTIME_PROBE_PATH, "/api/health/ready"),
     uptimeProbeScheme: pick(v.uptime_probe_scheme, config.UPTIME_PROBE_SCHEME, "https"),
     uptimeProbeTimeoutMs: num(pick(v.uptime_probe_timeout_ms, config.UPTIME_PROBE_TIMEOUT_MS), 10_000),

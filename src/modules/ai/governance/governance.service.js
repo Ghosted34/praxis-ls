@@ -14,6 +14,8 @@ const repo = require("./governance.repo");
 const events = require("./governance.events");
 const { estimateCostXaf, capState, canUse } = require("./governance.rules");
 const encryption = require("../../../services/encryption.service");
+const registry = require("../../../services/tenant/registry.service");
+const entitlement = require("../../../services/platform/entitlement.service");
 const axios = require("axios");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
@@ -93,6 +95,62 @@ async function canUseFeature(client, { userId, featureKey, onDate = null }) {
   const grant = explicit || { revoked_at: null };
   const budget = await budgetStatus(client, { onDate });
   const verdict = canUse({ flag: { is_enabled: enabled }, grant, budgetState: budget.state });
+
+  // ── WS-S3: the PLAN's AI spend limit ──────────────────────────────────────
+  //
+  // `budgetStatus` above is the tenant's OWN cap — what they chose to spend, set
+  // by them, in their own database. This is a different question: what their
+  // PLAN entitles them to, set by Praxis, in the platform database. A tenant
+  // can sit comfortably inside a self-imposed budget they raised last week and
+  // still be past what they are paying for. Only the first of those was ever
+  // enforced, which made the plan limit a number on a dashboard.
+  //
+  // Checked here rather than at each call site because this is the gate every
+  // AI entry point already goes through — the orchestrator, the vision handler,
+  // the transcription handler — and adding a second gate they each had to
+  // remember would reintroduce exactly the "enforcement hole by omission"
+  // problem this work is closing.
+  //
+  // `additional: 0` — the cost of the call about to be made is not knowable
+  // before it is made, so this asks "are they already past the limit" rather
+  // than pretending to price the next request. The overshoot is one call, and
+  // it is recorded.
+  if (verdict.allowed) {
+    const tenantId = registry.tenantIdOf(client);
+    try {
+      await entitlement.guard(tenantId, "ai_spend_xaf", { action: `ai.${featureKey}` });
+    } catch (err) {
+      // Both cases are a refusal, and the REASON is surfaced verbatim by the
+      // orchestrator ("The AI assistant is unavailable: <reason>"), so the two
+      // must read differently to a user: one is "buy more", the other is "not
+      // your fault, try again".
+      if (err && err.code === "ENTITLEMENT_EXCEEDED") {
+        return {
+          allowed: false,
+          reason: "the plan's AI spend limit for this month has been reached",
+          feature_key: featureKey,
+          budget_state: budget.state,
+          spent_xaf: budget.spent_xaf,
+          plan_limited: true,
+        };
+      }
+      if (err && err.code === "ENTITLEMENT_CHECK_UNAVAILABLE") {
+        // Fails closed, consistent with every other guard: an unverifiable
+        // spend limit must not become an unmetered one. Already paged by
+        // `guard`, so this only shapes the message.
+        return {
+          allowed: false,
+          reason: "plan limits cannot be verified right now — this is a platform fault, please retry shortly",
+          feature_key: featureKey,
+          budget_state: budget.state,
+          spent_xaf: budget.spent_xaf,
+          plan_limited: true,
+        };
+      }
+      throw err;
+    }
+  }
+
   return { ...verdict, feature_key: featureKey, budget_state: budget.state, spent_xaf: budget.spent_xaf };
 }
 

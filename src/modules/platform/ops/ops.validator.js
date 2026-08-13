@@ -107,6 +107,7 @@ const PARAM_SCHEMAS = {
   maintenanceId: z.object({ id: uuid }),
   planId: z.object({ planId: uuid }),
   planMetric: z.object({ planId: uuid, metric: METRIC }),
+  ticketId: z.object({ ticketId: uuid }),
 };
 
 function fail(next, message, err) {

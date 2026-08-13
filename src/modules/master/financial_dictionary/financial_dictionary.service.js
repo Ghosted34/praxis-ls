@@ -405,6 +405,14 @@ async function updateRef(c, { id, patch, actor }) {
   const before = await repo.getRef(c, id);
   if (!before) return null;
   if (before.is_system && (patch.code || patch.kind)) { const e = new Error("a system reference's code/kind cannot be changed"); e.status = 422; throw e; }
+  // The create path refuses a container type with no TEU or no size (they are
+  // read as numbers by the TEU totals and as the rate-card key respectively, and
+  // both fail silently when absent). A patch must not be the way back in.
+  if (before.kind === "CONTAINER_TYPE" && patch.extra !== undefined) {
+    const teu = patch.extra?.teu;
+    if (typeof teu !== "number" || !(teu > 0)) { const e = new Error("TEU is required for a container type and must be greater than 0"); e.status = 422; throw e; }
+    if (!patch.extra?.size) { const e = new Error("size is required for a container type (the rate-lookup key)"); e.status = 422; throw e; }
+  }
   const row = await repo.updateRef(c, id, patch);
   await audit(c, { actorUserId: actor.user_id, action: "dictionary_ref.updated", moduleKey: events.MODULE, entityRef: `ref:${before.kind}:${before.code}`, before, after: row });
   return row;

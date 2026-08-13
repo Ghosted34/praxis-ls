@@ -7,6 +7,10 @@ const line = z.object({
   label: z.string().min(1),
   amount: z.number().nonnegative(),
   is_disbursement: z.boolean().optional(),
+  // A credit note writes into invoice_line, so it carries the same equipment
+  // dimension (0663) — crediting "Port Charges" without saying which box is
+  // the reconciliation problem the column exists to solve, one document later.
+  container_type_ref_id: z.string().uuid().nullish(),
 });
 
 const schemas = {

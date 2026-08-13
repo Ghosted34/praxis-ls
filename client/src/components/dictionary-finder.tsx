@@ -26,11 +26,20 @@
  * The description sits under the name because that is what disambiguates two
  * lines whose names look alike — and it is the field the fuzzy search matches
  * on, so the reason a row came back is visible.
+ *
+ * THE EQUIPMENT STEP. Some charges are priced per container type (0632's
+ * `varies_by_equipment`), and until 0663 the document never recorded which box
+ * it had bought. Rather than build that into each of the six forms that use
+ * this control — six near-identical implementations, five of which would drift
+ * — a caller opts in by passing `onPickMulti`, and picking a flagged charge
+ * reveals the equipment step before returning. Callers that do not pass it are
+ * untouched: same one-argument flow, same close-on-pick.
  */
 import * as React from "react";
 import { Popover } from "@/components/ui/popover";
 import { Pill, type Tone } from "@/components/ui/pill";
 import { cn } from "@/lib/cn";
+import { EquipmentStep, type EquipmentPick } from "@/components/equipment-step";
 import { searchDict, type DictSearchHit, type Direction } from "@/lib/masterdata-api";
 
 /**
@@ -59,6 +68,8 @@ export function DictionaryFinder({
   serviceTypeId,
   id,
   allowEmpty = true,
+  dossierId,
+  onPickMulti,
 }: {
   value?: string | null;
   /** Display snapshot for the current value, so the trigger reads correctly
@@ -73,16 +84,28 @@ export function DictionaryFinder({
   serviceTypeId?: string | null;
   id?: string;
   allowEmpty?: boolean;
+  /** Dossier whose containers pre-fill the equipment step. Omit outside dossier
+   *  context (purchase orders, requests) — the step then lists all active types
+   *  with no pre-selection. Ignored without `onPickMulti`. */
+  dossierId?: string | null;
+  /** Opts this finder into the equipment step, and receives the result: one
+   *  entry per container type chosen, for the caller to expand into lines. Not
+   *  passing it keeps the plain single-pick behaviour exactly as it was. */
+  onPickMulti?: (id: string, label: string, hit: DictSearchHit, picks: EquipmentPick[]) => void;
 }) {
   const [open, setOpen] = React.useState(false);
   const [q, setQ] = React.useState("");
   const [hits, setHits] = React.useState<DictSearchHit[]>([]);
   const [loading, setLoading] = React.useState(false);
+  // The charge whose equipment is being chosen. Non-null == the popover is
+  // showing the second step rather than the search results.
+  const [pending, setPending] = React.useState<DictSearchHit | null>(null);
+  const [picks, setPicks] = React.useState<EquipmentPick[]>([]);
   const searchRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
-    if (open) requestAnimationFrame(() => searchRef.current?.focus());
-  }, [open]);
+    if (open && !pending) requestAnimationFrame(() => searchRef.current?.focus());
+  }, [open, pending]);
 
   // Debounced, and every in-flight response is checked against the current term
   // before it is rendered — otherwise a slow "de" lands after a fast "demurage"
@@ -101,11 +124,28 @@ export function DictionaryFinder({
     return () => { cancelled = true; clearTimeout(t); };
   }, [q, open, direction, serviceTypeId]);
 
-  const pick = (hit: DictSearchHit | null) => {
+  const close = () => { setOpen(false); setQ(""); setPending(null); setPicks([]); };
+
+  /** `withEquipment` forces the second step for a charge the catalogue does not
+   *  flag — the escape hatch. Reality disagrees with the flag often enough
+   *  (a one-off per-box surcharge on an item normally priced per BL) that
+   *  refusing to record equipment there would send people back to typing the
+   *  container into the label. */
+  const pick = (hit: DictSearchHit | null, withEquipment = false) => {
+    if (hit && onPickMulti && (withEquipment || hit.varies_by_equipment)) {
+      setPicks([]);
+      setPending(hit);
+      return;
+    }
     if (hit) onPick(hit.dictionary_item_id, labelOf(hit), hit);
     else onPick("", "");
-    setOpen(false);
-    setQ("");
+    close();
+  };
+
+  const confirmEquipment = () => {
+    if (!pending) return;
+    onPickMulti?.(pending.dictionary_item_id, labelOf(pending), pending, picks);
+    close();
   };
 
   const term = q.trim();
@@ -113,7 +153,7 @@ export function DictionaryFinder({
   return (
     <Popover
       open={open}
-      onOpenChange={(o) => { setOpen(o); if (!o) setQ(""); }}
+      onOpenChange={(o) => { setOpen(o); if (!o) close(); }}
       align="start"
       label={label}
       className="w-[min(30rem,92vw)] p-0"
@@ -131,6 +171,17 @@ export function DictionaryFinder({
         </button>
       }
     >
+      {pending ? (
+        <EquipmentStep
+          dossierId={dossierId}
+          itemLabel={labelOf(pending)}
+          value={picks}
+          onChange={setPicks}
+          onBack={() => setPending(null)}
+          onConfirm={confirmEquipment}
+        />
+      ) : (
+      <>
       <div className="border-b p-2">
         <input
           ref={searchRef}
@@ -162,31 +213,53 @@ export function DictionaryFinder({
         ) : (
           hits.map((h) => {
             const badge = DIRECTION_TONE[h.direction] || DIRECTION_TONE.EXPENSE;
+            // The escape hatch (one per row, because it needs to know WHICH
+            // charge): a charge the catalogue does not flag can still be priced
+            // per box on this particular file. Only offered to callers that can
+            // receive the result. A presentational wrapper keeps the option a
+            // direct child of the listbox for assistive tech.
+            const hatch = !!onPickMulti && !h.varies_by_equipment;
             return (
-              <button
-                key={h.dictionary_item_id}
-                type="button"
-                role="option"
-                aria-selected={h.dictionary_item_id === value}
-                onClick={() => pick(h)}
-                className={cn(
-                  "flex w-full flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted",
-                  h.dictionary_item_id === value ? "bg-primary/10" : "",
+              <div key={h.dictionary_item_id} role="presentation" className="flex items-stretch gap-1">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={h.dictionary_item_id === value}
+                  onClick={() => pick(h)}
+                  className={cn(
+                    "flex min-w-0 flex-1 flex-col gap-0.5 rounded-md px-2 py-1.5 text-left hover:bg-muted",
+                    h.dictionary_item_id === value ? "bg-primary/10" : "",
+                  )}
+                >
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span className="font-mono text-xs text-muted-foreground">{h.code}</span>
+                    <span className="min-w-0 flex-1 truncate text-sm text-foreground">{labelOf(h)}</span>
+                    {/* Flagged before the click, not after: the second step is
+                        less of a surprise when the row said it was coming. */}
+                    {onPickMulti && h.varies_by_equipment && <Pill tone="blue">Varies by container type</Pill>}
+                    <Pill tone={badge.tone}>{badge.label}</Pill>
+                  </span>
+                  {h.description && (
+                    <span className="line-clamp-2 text-xs text-muted-foreground">{h.description}</span>
+                  )}
+                </button>
+                {hatch && (
+                  <button
+                    type="button"
+                    onClick={() => pick(h, true)}
+                    title="Price this charge per container type"
+                    className="shrink-0 self-center rounded-md px-2 py-1 text-xs text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  >
+                    + Equipment
+                  </button>
                 )}
-              >
-                <span className="flex min-w-0 items-center gap-2">
-                  <span className="font-mono text-xs text-muted-foreground">{h.code}</span>
-                  <span className="min-w-0 flex-1 truncate text-sm text-foreground">{labelOf(h)}</span>
-                  <Pill tone={badge.tone}>{badge.label}</Pill>
-                </span>
-                {h.description && (
-                  <span className="line-clamp-2 text-xs text-muted-foreground">{h.description}</span>
-                )}
-              </button>
+              </div>
             );
           })
         )}
       </div>
+      </>
+      )}
     </Popover>
   );
 }

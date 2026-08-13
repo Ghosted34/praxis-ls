@@ -18,9 +18,10 @@ import { RowActions } from "@/components/ui/row-actions";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { money, num, dateFmt, todayISO } from "@/lib/format";
 import { reportActionError } from "@/lib/action-error";
-import type { Entity, DictItem, DictRef, DictSearchHit } from "@/lib/masterdata-api";
-import { listDictRefs, resolveExpenseRate } from "@/lib/masterdata-api";
+import type { Entity, DictItem, DictSearchHit } from "@/lib/masterdata-api";
+import { resolveExpenseRate } from "@/lib/masterdata-api";
 import { DictionaryFinder } from "@/components/dictionary-finder";
+import type { EquipmentPick } from "@/components/equipment-step";
 import type { Dossier } from "@/lib/operations-api";
 import * as api from "@/lib/costing-api";
 
@@ -47,15 +48,24 @@ type CostingLineDraft = {
   unit_cost: number;
   variesByEquipment?: boolean;
   containerTypeRefId?: string;
+  /** Display snapshot of the container type, so the line reads correctly without
+   *  the form holding the whole registry. */
+  containerTypeLabel?: string;
   rateStatus?: "idle" | "resolving" | "resolved" | "manual";
 };
 const BLANK_LINE: CostingLineDraft = { label: "", qty: 1, unit_cost: 0, rateStatus: "idle" };
 
 function CostingLineRow({
-  line, containerTypes, onChange, onRemove, removable,
+  line, dossierId, onChange, onPickMulti, onRemove, removable,
 }: {
-  line: CostingLineDraft; containerTypes: DictRef[];
-  onChange: (patch: Partial<CostingLineDraft>) => void; onRemove: () => void; removable: boolean;
+  line: CostingLineDraft;
+  dossierId?: string;
+  onChange: (patch: Partial<CostingLineDraft>) => void;
+  /** One pick, several container types → several lines. The form owns line
+   *  creation; the picker only says what was chosen. */
+  onPickMulti: (id: string, label: string, hit: DictSearchHit, picks: EquipmentPick[]) => void;
+  onRemove: () => void;
+  removable: boolean;
 }) {
   const pickItem = (id: string, label: string, hit?: DictSearchHit) => {
     onChange({
@@ -63,6 +73,7 @@ function CostingLineRow({
       label: id ? label : "",
       variesByEquipment: id ? hit?.varies_by_equipment : false,
       containerTypeRefId: undefined,
+      containerTypeLabel: undefined,
       rateStatus: "idle",
     });
   };
@@ -71,19 +82,26 @@ function CostingLineRow({
     <div className="rounded-lg border bg-card p-2">
       <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
         <Field label="Charge">
-          <DictionaryFinder value={line.dictionary_item_id} valueLabel={line.label} onPick={pickItem} placeholder="Search a charge…" />
+          <DictionaryFinder
+            value={line.dictionary_item_id}
+            valueLabel={line.label}
+            dossierId={dossierId || null}
+            onPick={pickItem}
+            onPickMulti={onPickMulti}
+            placeholder="Search a charge…"
+          />
         </Field>
         <div className="flex items-end">
           <Button type="button" size="sm" variant="outline" disabled={!removable} onClick={onRemove}>✕</Button>
         </div>
       </div>
       <div className="mt-2 grid grid-cols-2 items-end gap-2 sm:grid-cols-4">
-        {line.variesByEquipment && (
+        {/* The container type is CHOSEN in the finder's equipment step and only
+            reported here. A second picker on the row was the thing that used to
+            drift from the file's own equipment, and it is gone. */}
+        {line.containerTypeRefId && (
           <Field label="Container type">
-            <Select value={line.containerTypeRefId ?? ""} onChange={(e) => onChange({ containerTypeRefId: e.target.value || undefined, rateStatus: "idle" })}>
-              <option value="">—</option>
-              {containerTypes.map((ct) => <option key={ct.ref_id} value={ct.ref_id}>{ct.code}</option>)}
-            </Select>
+            <p className="flex h-9 items-center text-sm text-foreground">{line.containerTypeLabel || "—"}</p>
           </Field>
         )}
         <Field label="Qty"><Input type="number" className="num text-right" value={String(line.qty ?? "")} onChange={(e) => onChange({ qty: Number(e.target.value) })} /></Field>
@@ -94,7 +112,7 @@ function CostingLineRow({
           {line.rateStatus === "resolving" ? "Resolving rate…"
             : line.rateStatus === "resolved" ? "Rate filled from the carrier's rate card — still editable."
             : line.rateStatus === "manual" ? "No rate on file for this carrier/container type — entered manually."
-            : line.variesByEquipment && !line.containerTypeRefId ? "Pick a container type to look up the rate."
+            : line.variesByEquipment && !line.containerTypeRefId ? "Re-pick this charge to choose a container type and look up the rate."
             : null}
         </p>
       )}
@@ -104,7 +122,6 @@ function CostingLineRow({
 
 function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () => void }) {
   const { rows: dossiers } = useList<Dossier>("/operations");
-  const typesRes = useResource(() => listDictRefs("CONTAINER_TYPE"), []);
   const [dossierId, setDossierId] = React.useState("");
   const [margin, setMargin] = React.useState("");
   const [lines, setLines] = React.useState<CostingLineDraft[]>([{ ...BLANK_LINE }]);
@@ -141,6 +158,25 @@ function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dossierProviderId]);
 
+  // One pick of an equipment-varying charge becomes one line PER container
+  // type, each resolving its own rate through the cascade that already exists.
+  // The picker returns data; the form owns line creation, which is why the
+  // expansion lives here and not inside the popover.
+  const pickMulti = (at: number) => (id: string, label: string, hit: DictSearchHit, picks: EquipmentPick[]) => {
+    const made: CostingLineDraft[] = picks.map((p) => ({
+      ...BLANK_LINE,
+      dictionary_item_id: id,
+      label,
+      variesByEquipment: hit.varies_by_equipment,
+      containerTypeRefId: p.container_type_ref_id,
+      containerTypeLabel: p.label,
+      qty: p.qty || 1,
+    }));
+    if (!made.length) return;
+    setLines((ls) => [...ls.slice(0, at), ...made, ...ls.slice(at + 1)]);
+    made.forEach((l, k) => resolveLine(at + k, l));
+  };
+
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null);
     try {
@@ -148,6 +184,9 @@ function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
         dossier_id: dossierId, margin_percent: margin === "" ? undefined : Number(margin),
         lines: lines.filter((l) => l.label || l.dictionary_item_id).map((l) => ({
           dictionary_item_id: l.dictionary_item_id, label: l.label, qty: Number(l.qty) || 1, unit_cost: Number(l.unit_cost) || 0,
+          // 0663: the equipment dimension the form used to resolve a rate with
+          // and then throw away.
+          container_type_ref_id: l.containerTypeRefId || null,
         })),
       });
       onSaved(); onClose();
@@ -177,7 +216,8 @@ function CostingForm({ onClose, onSaved }: { onClose: () => void; onSaved: () =>
               <CostingLineRow
                 key={i}
                 line={l}
-                containerTypes={typesRes.data || []}
+                dossierId={dossierId}
+                onPickMulti={pickMulti(i)}
                 removable={lines.length > 1}
                 onRemove={() => setLines((ls) => ls.filter((_, j) => j !== i))}
                 onChange={(patch) => {

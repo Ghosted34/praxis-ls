@@ -1,7 +1,7 @@
 "use strict";
 const { z } = require("zod");
 const { AppError } = require("../../../utils/errors");
-const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().positive().optional(), unit_price: z.number().nonnegative(), tax_code_id: z.string().uuid().optional().nullable(), expense_account: z.string().min(1) });
+const line = z.object({ dictionary_item_id: z.string().uuid().optional().nullable(), label: z.string().optional(), qty: z.number().positive().optional(), unit_price: z.number().nonnegative(), tax_code_id: z.string().uuid().optional().nullable(), container_type_ref_id: z.string().uuid().nullish(), expense_account: z.string().min(1) });
 const schemas = {
   create: z.object({
     entity_id: z.string().uuid(), supplier_id: z.string().uuid().optional().nullable(), po_id: z.string().uuid().optional().nullable(), grn_id: z.string().uuid().optional().nullable(),

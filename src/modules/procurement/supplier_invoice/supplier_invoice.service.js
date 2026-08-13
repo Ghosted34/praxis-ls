@@ -26,7 +26,9 @@ async function replaceLines(client, id, lines) {
   await repo.deleteLines(client, id);
   for (const ln of lines) {
      
-    await repo.insertLine(client, { supplier_invoice_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", qty: ln.qty || 1, unit_price: ln.unit_price || 0, tax_code_id: ln.tax_code_id || null, expense_account: ln.expense_account || null });
+    // container_type_ref_id (0663) is what makes a carrier invoice reconcilable
+    // line-by-line against the rate card it was priced from.
+    await repo.insertLine(client, { supplier_invoice_id: id, dictionary_item_id: ln.dictionary_item_id || null, label: ln.label || "Line", qty: ln.qty || 1, unit_price: ln.unit_price || 0, tax_code_id: ln.tax_code_id || null, container_type_ref_id: ln.container_type_ref_id || null, expense_account: ln.expense_account || null });
   }
 }
 

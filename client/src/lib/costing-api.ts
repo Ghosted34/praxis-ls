@@ -5,7 +5,16 @@
 import { tenant } from "./api-client";
 
 /* ── Costing sheets(/costings) ── */
-export type CostingLine = { dictionary_item_id?: string; label?: string; qty?: number; unit_cost?: number; is_disbursement?: boolean };
+/** `container_type_ref_id` (0663) records which box the charge was priced for.
+ *  NULL for anything with no equipment dimension, which is most of the
+ *  catalogue; the joined `container_type_*` fields are read-only display. */
+export type CostingLine = {
+  dictionary_item_id?: string; label?: string; qty?: number; unit_cost?: number; is_disbursement?: boolean;
+  container_type_ref_id?: string | null;
+  container_type_code?: string | null;
+  container_type_en?: string | null;
+  container_type_fr?: string | null;
+};
 export type Costing = {
   costing_id: string; ref?: string | null; doc_number?: string | null; dossier_id?: string | null; currency?: string;
   margin_percent?: number | null; total_cost?: number | null; total?: number | null; status: string; created_at?: string;

@@ -28,6 +28,7 @@ async function replaceLines(client, invoiceId, lines) {
     await repo.insertLine(client, {
       invoice_id: invoiceId, dictionary_item_id: ln.dictionary_item_id || null,
       label: ln.label || "Line", qty: 1, unit_price: ln.amount, is_disbursement: ln.is_disbursement === true,
+      container_type_ref_id: ln.container_type_ref_id || null,
       line_ht: ln.amount, line_no: i + 1,
     });
   }

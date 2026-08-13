@@ -19,8 +19,16 @@ async function deleteLines(client, invoiceId) {
   await client.query("DELETE FROM invoice_line WHERE invoice_id = $1", [invoiceId]);
 }
 function insertLine(client, data) { return insertOne(client, "invoice_line", data); }
+// The container type is joined so the printed invoice can say which box a
+// charge was for, and `extra` rides along so a document totals its own TEU
+// without a second round-trip. LEFT JOIN: most lines have no equipment, and a
+// since-deactivated type must still render on a posted invoice.
+const LINE_SELECT =
+  "SELECT il.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
+  "FROM invoice_line il LEFT JOIN dictionary_ref dr ON dr.ref_id = il.container_type_ref_id ";
 async function listLines(client, invoiceId) {
-  const { rows } = await client.query("SELECT * FROM invoice_line WHERE invoice_id = $1 ORDER BY line_no", [invoiceId]);
+  const { rows } = await client.query(LINE_SELECT + "WHERE il.invoice_id = $1 ORDER BY il.line_no", [invoiceId]);
   return rows;
 }
 

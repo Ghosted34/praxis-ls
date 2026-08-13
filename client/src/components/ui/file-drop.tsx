@@ -71,8 +71,14 @@ export function FileDrop({
 
   function previewBody(full = false) {
     if (!previewUrl || !file) return null;
+    // codeql[js/xss-through-dom] — previewUrl is a browser-generated blob URL
+    // from a MIME-allowlisted File; it is not DOM text or an HTML string.
+
     if (isImage) return <img src={previewUrl} alt="Selected image preview" className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
-    if (isPdf) return <iframe src={previewUrl} title="Selected PDF preview" className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
+    // codeql[js/xss-through-dom] — PDFs are displayed in a sandboxed iframe and
+    // the URL is generated locally from the selected File, never from text.
+
+    if (isPdf) return <iframe src={previewUrl} title="Selected PDF preview" sandbox="" className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
     return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
   }
 

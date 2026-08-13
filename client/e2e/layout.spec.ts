@@ -205,44 +205,66 @@ test.describe("the ribbon's chrome budget", () => {
    * it beat `hidden` on source order and all ten of Finance's sections rendered
    * at 1280px. The failure was a crowded row, not an error, and the only thing
    * that would ever have caught it is a browser.
+   *
+   * THE MENU IS THERE EXACTLY WHEN SOMETHING IS HIDDEN. This used to assert the
+   * overflow was visible full stop, which is a weaker statement than it looks:
+   * it passed while the "…" sat beside a row that was already showing every
+   * destination it had, a trigger whose only job was to open a list you could
+   * already read in full. The property worth holding is the reachability one —
+   * at any width where the row has shed something the menu is there to reach
+   * it, and at a width where nothing is hidden there is nothing for it to do.
+   * Asserting it as an equivalence also means a future change to REVEAL cannot
+   * strand a destination without failing here.
    */
   test("row B sheds its tail at narrow widths and shows it at wide ones", async ({
     page,
   }) => {
-    const shown = async (width: number) => {
+    const measure = async (width: number) => {
       await page.setViewportSize({ width, height: 900 });
       await openScreen(
         page,
         "/finance/chart-of-accounts",
         /Chart of accounts/i,
       );
-      return page.evaluate(() => {
+      const shown = await page.evaluate(() => {
         const nav = document.querySelector("nav[aria-label$='sections']");
         return Array.from(nav?.querySelectorAll("a") ?? []).filter(
           (a) => a.getBoundingClientRect().width > 0,
         ).length;
       });
+      const overflow = await page
+        .getByRole("button", { name: /All Finance destinations/i })
+        .isVisible();
+      return { shown, overflow };
     };
 
-    // Finance has ten sections — more than fit at any width, which is why the
-    // overflow menu beside the row carries all ten regardless.
-    const narrow = await shown(1280);
-    const wide = await shown(1920);
+    // Finance has ten sections — more than fit at 1280, which is the width the
+    // shed has to be observable at if it is observable anywhere.
+    const narrow = await measure(1280);
+    const wide = await measure(1920);
 
-    expect(narrow).toBeGreaterThan(0);
+    expect(narrow.shown).toBeGreaterThan(0);
     expect(
-      narrow,
+      narrow.shown,
       "nothing was hidden at 1280 — is .ribbon-item beating `hidden`?",
     ).toBeLessThan(10);
     expect(
-      wide,
+      wide.shown,
       "a wider window showed no more than a narrow one",
-    ).toBeGreaterThan(narrow);
+    ).toBeGreaterThan(narrow.shown);
 
-    // Whatever is hidden is still one click away, at every width.
-    await expect(
-      page.getByRole("button", { name: /All Finance destinations/i }),
-    ).toBeVisible();
+    // Hidden ⇔ reachable through the menu, at both widths.
+    for (const [width, m] of [
+      [1280, narrow],
+      [1920, wide],
+    ] as const) {
+      expect(
+        m.overflow,
+        m.shown < 10
+          ? `${10 - m.shown} section(s) were hidden at ${width} with no menu to reach them`
+          : `the row showed every section at ${width} and still drew a redundant "…"`,
+      ).toBe(m.shown < 10);
+    }
   });
 
   test("the hub draws no tab strip of its own on a desktop", async ({

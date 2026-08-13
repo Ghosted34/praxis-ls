@@ -7,8 +7,16 @@ const getSI = (client, id) => getById(client, "supplier_invoice", "supplier_invo
 const insertLine = (client, data) => insertOne(client, "supplier_invoice_line", data);
 
 async function deleteLines(client, id) { await client.query("DELETE FROM supplier_invoice_line WHERE supplier_invoice_id = $1", [id]); }
+// The container type is joined so a carrier's invoice can be read line-by-line
+// against the rate card it was priced from — the whole point of recording it.
+// LEFT JOIN: most lines carry no equipment, and a type retired since the
+// invoice was posted must still render its name.
+const LINE_SELECT =
+  "SELECT sl.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
+  "FROM supplier_invoice_line sl LEFT JOIN dictionary_ref dr ON dr.ref_id = sl.container_type_ref_id ";
 async function listLines(client, id) {
-  const { rows } = await client.query("SELECT * FROM supplier_invoice_line WHERE supplier_invoice_id = $1 ORDER BY supplier_invoice_line_id", [id]);
+  const { rows } = await client.query(LINE_SELECT + "WHERE sl.supplier_invoice_id = $1 ORDER BY sl.supplier_invoice_line_id", [id]);
   return rows;
 }
 async function update(client, id, fields) {

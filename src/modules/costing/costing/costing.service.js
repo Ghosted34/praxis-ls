@@ -27,6 +27,9 @@ async function replaceLines(client, costingId, lines) {
     await repo.insertLine(client, {
       costing_id: costingId, dictionary_item_id: l.dictionary_item_id || null, label: l.label || "Line",
       qty: l.qty || 1, unit_cost: l.unit_cost || 0, is_disbursement: l.is_disbursement === true, tax_code_id: l.tax_code_id || null,
+      // Which box this charge was priced for (0663). NULL for anything with no
+      // equipment dimension, which is most of the catalogue.
+      container_type_ref_id: l.container_type_ref_id || null,
     });
   }
 }

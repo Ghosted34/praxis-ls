@@ -7,8 +7,15 @@ const get = (client, id) => getById(client, "quotation", "quotation_id", id);
 const insertLine = (client, data) => insertOne(client, "quotation_line", data);
 
 async function deleteLines(client, id) { await client.query("DELETE FROM quotation_line WHERE quotation_id = $1", [id]); }
+// The container type is joined so a reader has the name to print and `extra` to
+// total the document's own TEU. LEFT JOIN: most lines carry no equipment, and a
+// type deactivated since the quote was issued must still render its name.
+const LINE_SELECT =
+  "SELECT ql.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
+  "FROM quotation_line ql LEFT JOIN dictionary_ref dr ON dr.ref_id = ql.container_type_ref_id ";
 async function listLines(client, id) {
-  const { rows } = await client.query("SELECT * FROM quotation_line WHERE quotation_id = $1 ORDER BY line_no NULLS LAST, quotation_line_id", [id]);
+  const { rows } = await client.query(LINE_SELECT + "WHERE ql.quotation_id = $1 ORDER BY ql.line_no NULLS LAST, ql.quotation_line_id", [id]);
   return rows;
 }
 async function update(client, id, fields) {

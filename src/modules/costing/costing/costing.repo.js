@@ -13,8 +13,16 @@ async function update(client, id, fields) {
 }
 async function deleteLines(client, costingId) { await client.query("DELETE FROM costing_line WHERE costing_id = $1", [costingId]); }
 function insertLine(client, data) { return insertOne(client, "costing_line", data); }
+// The container type is joined, not just returned as an id: the reader needs
+// the name to display and `extra` to total the sheet's own TEU without a second
+// round-trip. LEFT JOIN because most lines have no equipment dimension, and a
+// deactivated type must still render its name on a five-year-old sheet.
+const LINE_SELECT =
+  "SELECT cl.*, dr.code AS container_type_code, dr.name_en AS container_type_en, " +
+  "dr.name_fr AS container_type_fr, dr.extra AS container_type_extra " +
+  "FROM costing_line cl LEFT JOIN dictionary_ref dr ON dr.ref_id = cl.container_type_ref_id ";
 async function listLines(client, costingId) {
-  const { rows } = await client.query("SELECT * FROM costing_line WHERE costing_id = $1 ORDER BY costing_line_id", [costingId]);
+  const { rows } = await client.query(LINE_SELECT + "WHERE cl.costing_id = $1 ORDER BY cl.costing_line_id", [costingId]);
   return rows;
 }
 async function list(client, q = {}) {

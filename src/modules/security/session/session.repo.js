@@ -50,7 +50,7 @@ async function kill(client, sessionId, killedBy) {
 /** Kill all live sessions for a user (revoke-all). Returns the killed session ids. */
 async function killAllForUser(client, userId, killedBy) {
   const { rows } = await client.query(
-    "UPDATE session SET killed_at = now(), killed_by = $2 WHERE user_id = $1 AND killed_at IS NULL RETURNING session_id",
+    "UPDATE user_session SET killed_at = now(), killed_by = $2 WHERE user_id = $1 AND killed_at IS NULL RETURNING session_id",
     [userId, killedBy || null],
   );
   return rows.map((r) => r.session_id);

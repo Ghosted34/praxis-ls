@@ -83,7 +83,9 @@ export type PayAdvanceInput = {
 export const payAdvance = (body: PayAdvanceInput) =>
   tenant("/proformas/pay", { method: "POST", body });
 
-export type InvoiceLineInput = { dictionary_item_id: string; amount: number; is_disbursement?: boolean; label?: string };
+/** `container_type_ref_id` (0663) says which box the charge was for. Absent for
+ *  the great majority of lines, which have no equipment dimension. */
+export type InvoiceLineInput = { dictionary_item_id: string; amount: number; is_disbursement?: boolean; label?: string; container_type_ref_id?: string | null };
 
 export const createInvoiceDraft = (body: {
   entity_id: string;
@@ -101,7 +103,17 @@ export type InvoiceDetail = {
   client_id?: string | null;
   dossier_id?: string | null;
   status: string;
-  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; line_ht?: number | string; is_disbursement?: boolean }>;
+  /** `container_type_*` are joined from the registry on read (0663) — the id to
+   *  send back on save, the names to display, `extra` to total the document's
+   *  own TEU without a second round-trip. */
+  lines?: Array<{
+    dictionary_item_id?: string | null; label?: string | null; line_ht?: number | string; is_disbursement?: boolean;
+    container_type_ref_id?: string | null;
+    container_type_code?: string | null;
+    container_type_en?: string | null;
+    container_type_fr?: string | null;
+    container_type_extra?: { teu?: number; size?: string; family?: string } | null;
+  }>;
   [k: string]: unknown;
 };
 
@@ -177,6 +189,8 @@ export type CreditNoteLineInput = {
   amount: number;
   dictionary_item_id?: string;
   is_disbursement?: boolean;
+  /** 0663 — which container type the credited charge was for. */
+  container_type_ref_id?: string | null;
 };
 
 export type CreditNote = {
@@ -193,7 +207,14 @@ export type CreditNote = {
 
 export type CreditNoteDetail = CreditNote & {
   dossier_id?: string | null;
-  lines?: Array<{ dictionary_item_id?: string | null; label?: string | null; amount?: number | string; line_ht?: number | string; is_disbursement?: boolean }>;
+  /** `container_type_*` are joined from the registry on read (0663). */
+  lines?: Array<{
+    dictionary_item_id?: string | null; label?: string | null; amount?: number | string; line_ht?: number | string; is_disbursement?: boolean;
+    container_type_ref_id?: string | null;
+    container_type_code?: string | null;
+    container_type_en?: string | null;
+    container_type_fr?: string | null;
+  }>;
 };
 
 /** FINAL invoices only — a credit note reverses a finalised invoice. */

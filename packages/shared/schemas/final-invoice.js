@@ -22,6 +22,9 @@ const line = z.object({
   amount: positiveAmount,
   is_disbursement: z.boolean().optional(),
   label: z.string().optional(),
+  // Which container type the charge was priced for (0663). NULL/absent is the
+  // normal case — most of the catalogue has no equipment dimension at all.
+  container_type_ref_id: uuid.nullish(),
 });
 
 const createDraft = z.object({

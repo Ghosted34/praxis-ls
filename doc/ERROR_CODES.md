@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (278)
+## All codes (282)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -266,6 +266,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `SESSION_EXPIRED` | 401 | 1× | — |
 | `SESSION_REVOKED` | 401 | 8× | — |
 | `SETUP_REQUIRED` | 400 | 1× | — |
+| `SMTP_AUTH_FAILED` | 502 | 1× | — |
+| `SMTP_SENDER_REJECTED` | 502 | 1× | — |
+| `SMTP_SEND_FAILED` | 502 | 1× | — |
+| `SMTP_SEND_REJECTED` | 502 | 1× | — |
 | `SOURCE_DOC_REQUIRED` | 422 | 1× | — |
 | `SYSTEM_ACCOUNT` | 422 | 1× | — |
 | `SYSTEM_CATEGORY` | 422 | 1× | — |

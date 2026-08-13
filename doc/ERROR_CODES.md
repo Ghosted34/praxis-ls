@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (276)
+## All codes (278)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -44,7 +44,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ALREADY_REVERSED` | 409 | 1× | — |
 | `APPROVAL_PENDING` | 422 | 1× | — |
 | `ASSET_DISPOSED` | 422 | 1× | — |
-| `AUTH_REQUIRED` | 401 | 13× | — |
+| `AUTH_REQUIRED` | 401 | 14× | — |
 | `BAD_ACTION` | 422 | 2× | — |
 | `BAD_AMOUNT` | 422 | 8× | `INVALID_AMOUNT` |
 | `BAD_APPLIES_TO` | 422 | 1× | — |
@@ -139,6 +139,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_2FA_CODE` | 401 | 3× | — |
 | `INVALID_AMOUNT` | 422 | 7× | — |
 | `INVALID_CREDENTIALS` | 401 | 2× | — |
+| `INVALID_CURRENT_PASSWORD` | 403 | 1× | — |
 | `INVALID_DATE` | 422 | 1× | — |
 | `INVALID_DAYS` | 422 | 1× | — |
 | `INVALID_FIELD` | — | 1× | — |
@@ -255,6 +256,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `ROOT_LOCKED` | 409 | 1× | — |
 | `RUN_EXISTS` | 409 | 1× | — |
 | `RUN_LOCKED` | 422 | 1× | — |
+| `SAME_PASSWORD` | 422 | 1× | — |
 | `SCAN_REQUIRED` | 422 | 1× | — |
 | `SCOPE_CYCLE` | 422 | 2× | — |
 | `SELF_APPROVAL` | 403 | 2× | — |

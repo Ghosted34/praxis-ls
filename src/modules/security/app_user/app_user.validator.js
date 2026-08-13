@@ -59,6 +59,10 @@ const schemas = {
 const avatar = zValidate(z.object({ data_url: z.string().min(1).max(3_000_000) }));
 const forgotPassword = zValidate(z.object({ email: z.string().trim().email() }));
 const resetPassword = zValidate(z.object({ token: z.string().min(16), new_password: z.string().min(1) }));
+// Signed-in change. `current_password` has no min beyond 1 on purpose: the shape
+// check must not hint at the current password's length, and a wrong one fails
+// the Argon2id compare in the service either way.
+const changePassword = zValidate(z.object({ current_password: z.string().min(1), new_password: z.string().min(1) }));
 
 const signature = zValidate(z.object({ html: z.string().max(20000) }));
 const pinRegister = zValidate(z.object({ pin: z.string().regex(/^\d{4,8}$/), label: z.string().max(80).optional().nullable() }));
@@ -67,7 +71,7 @@ const pinLogin = zValidate(z.object({ email: z.string().trim().email(), device_i
 module.exports = {
   ...passthrough,
   login, refresh, verifyTotp, totpCode, signature, pinRegister, pinLogin,
-  avatar, forgotPassword, resetPassword,
+  avatar, forgotPassword, resetPassword, changePassword,
   create: zValidate(schemas.create),
   update: zValidate(schemas.update),
   password: zValidate(schemas.password),

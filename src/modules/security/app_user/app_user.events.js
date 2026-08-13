@@ -14,4 +14,8 @@ module.exports = {
   TWOFA_DISABLED: "auth.2fa_disabled",
   PASSWORD_RESET_REQUESTED: "auth.password_reset_requested",
   PASSWORD_RESET_COMPLETED: "auth.password_reset_completed",
+  // Signed-in change (current password → new one). Distinct from a RESET so the
+  // audit trail can tell "the account holder changed it, knowing the old one"
+  // from "someone completed a mailed recovery link".
+  PASSWORD_CHANGED: "auth.password_changed",
 };

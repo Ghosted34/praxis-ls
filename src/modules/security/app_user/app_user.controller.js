@@ -80,6 +80,23 @@ const resetPassword = asyncHandler(async (req, res) => {
   res.json({ data: result });
 });
 
+const changePassword = asyncHandler(async (req, res) => {
+  const result = await req.identityDb((client) =>
+    service.changeOwnPassword(client, {
+      // Always the caller's own id — there is no target parameter on this route,
+      // by design. Changing SOMEONE ELSE's password is /users/:id/password, which
+      // is behind the MOD-67 edit grant.
+      userId: req.user.user_id,
+      currentPassword: req.body.current_password,
+      newPassword: req.body.new_password,
+      // Kept alive across the change; every other session is signed out.
+      sessionId: req.user.session_id || null,
+      ip: req.ip,
+    }),
+  );
+  res.json({ data: result });
+});
+
 const verifyTotp = asyncHandler(async (req, res) => {
   const result = await req.identityDb((client) =>
     service.verifyTotp(client, {
@@ -119,6 +136,7 @@ module.exports = {
   setAvatar,
   forgotPassword,
   resetPassword,
+  changePassword,
   verifyTotp,
   setupTotp,
   enableTotp,

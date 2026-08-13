@@ -1,7 +1,7 @@
 /**
- * My Security (self-service) — enrol MFA (authenticator app) and manage
- * device-bound Quick PIN. Talks to the tenant auth routes:
- *   /auth/2fa/setup|enable|disable, /auth/pin/register|devices.
+ * My Security (self-service) — change your password, enrol MFA (authenticator
+ * app) and manage device-bound Quick PIN. Talks to the tenant auth routes:
+ *   /auth/change-password, /auth/2fa/setup|enable|disable, /auth/pin/register|devices.
  * The backend doesn't report current MFA status (no /me), so both the enrol and
  * disable flows are shown with guidance.
  */
@@ -11,6 +11,7 @@ import { useAuth } from "@/app/auth/auth-context";
 import { ApiError, tenant } from "@/lib/api-client";
 import { pinStore } from "@/lib/pin-store";
 import {
+  changePassword,
   setupTotp,
   enableTotp,
   disableTotp,
@@ -67,6 +68,52 @@ export function MySecurityPage() {
       setAvatarMsg({ kind: "err", text: errText(err) });
     } finally {
       setAvatarBusy(false);
+    }
+  }
+
+  // --- Password ---
+  //
+  // The rules are the server's (shared/security/password-policy.js: 12 chars,
+  // upper + lower + digit + symbol, then a breach check). They are mirrored here
+  // as a live checklist rather than a single "password too weak" after the round
+  // trip — the server stays the authority, this just stops the user guessing
+  // which of five rules they missed. The breach check is NOT mirrored: it needs
+  // the HIBP call, so it can only ever be reported by the server.
+  const [currentPw, setCurrentPw] = React.useState("");
+  const [newPw, setNewPw] = React.useState("");
+  const [confirmPw, setConfirmPw] = React.useState("");
+  const [pwBusy, setPwBusy] = React.useState(false);
+  const [pwMsg, setPwMsg] = React.useState<Msg>(null);
+
+  const pwRules = [
+    { label: "At least 12 characters", ok: newPw.length >= 12 },
+    { label: "An uppercase and a lowercase letter", ok: /[A-Z]/.test(newPw) && /[a-z]/.test(newPw) },
+    { label: "A number", ok: /[0-9]/.test(newPw) },
+    { label: "A symbol", ok: /[^A-Za-z0-9]/.test(newPw) },
+  ];
+  const pwMatches = newPw.length > 0 && newPw === confirmPw;
+  const pwReady = pwRules.every((r) => r.ok) && pwMatches && currentPw.length > 0;
+
+  async function onChangePassword(e: React.FormEvent) {
+    e.preventDefault();
+    if (!pwReady) return;
+    setPwBusy(true);
+    setPwMsg(null);
+    try {
+      const { sessions_signed_out: signedOut } = await changePassword(currentPw, newPw);
+      setCurrentPw("");
+      setNewPw("");
+      setConfirmPw("");
+      setPwMsg({
+        kind: "ok",
+        text: signedOut
+          ? `Password changed. You're still signed in here; your other ${signedOut === 1 ? "session was" : `${signedOut} sessions were`} signed out.`
+          : "Password changed. You're still signed in here.",
+      });
+    } catch (err) {
+      setPwMsg({ kind: "err", text: errText(err) });
+    } finally {
+      setPwBusy(false);
     }
   }
 
@@ -166,7 +213,7 @@ export function MySecurityPage() {
 
   return (
     <section className={pageShell.wide}>
-      <PageHeader eyebrow={<HubCrumb area="Security & access" to="/security" />} title="My security" description="Protect your account with an authenticator app and a device-bound Quick PIN." />
+      <PageHeader eyebrow={<HubCrumb area="Security & access" to="/security" />} title="My security" description="Your password, an authenticator app and a device-bound Quick PIN — all for your own account." />
       <HubTabs />
 
       <div className="mt-2 flex flex-col gap-5">
@@ -199,6 +246,70 @@ export function MySecurityPage() {
               )}
             </div>
           </div>
+        </SettingsCard>
+
+        {/* Password */}
+        <SettingsCard
+          title="Password"
+          desc="Change it here whenever you like — you'll need your current one. Your other sessions are signed out; this one stays."
+        >
+          <form onSubmit={onChangePassword} className="flex flex-col gap-3">
+            {/* username hint: gives password managers the account to file the new
+                credential under, since there's no email field on this form. */}
+            <input type="hidden" name="username" autoComplete="username" value={user?.email ?? ""} readOnly />
+            <div className="grid gap-3 lg:grid-cols-3">
+              <Field label="Current password">
+                <Input
+                  type="password"
+                  autoComplete="current-password"
+                  value={currentPw}
+                  onChange={(e) => setCurrentPw(e.target.value)}
+                  placeholder="••••••••••••"
+                />
+              </Field>
+              <Field label="New password">
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={newPw}
+                  onChange={(e) => setNewPw(e.target.value)}
+                  placeholder="••••••••••••"
+                />
+              </Field>
+              <Field label="Confirm new password">
+                <Input
+                  type="password"
+                  autoComplete="new-password"
+                  value={confirmPw}
+                  onChange={(e) => setConfirmPw(e.target.value)}
+                  placeholder="••••••••••••"
+                />
+              </Field>
+            </div>
+
+            <ul className="flex flex-col gap-1 text-xs text-muted-foreground sm:flex-row sm:flex-wrap sm:gap-x-5">
+              {pwRules.map((r) => (
+                <li key={r.label} className={r.ok && newPw ? "text-[rgb(var(--ok))]" : undefined}>
+                  <span aria-hidden>{r.ok && newPw ? "✓" : "•"}</span> {r.label}
+                </li>
+              ))}
+            </ul>
+            {confirmPw.length > 0 && !pwMatches && (
+              <p className="text-xs text-[rgb(var(--bad))]">The two new passwords don&apos;t match.</p>
+            )}
+
+            <div>
+              <Button type="submit" loading={pwBusy} disabled={!pwReady}>
+                Change password
+              </Button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Can&apos;t remember your current password? Sign out and use &ldquo;Forgot password&rdquo; on the sign-in
+                screen — we&apos;ll email you a single-use link.
+              </p>
+            </div>
+          </form>
+
+          {pwMsg && <p className={`mt-4 ${pwMsg.kind === "ok" ? okCls : errCls}`}>{pwMsg.text}</p>}
         </SettingsCard>
 
         <div className="grid gap-5 lg:grid-cols-2 lg:items-start">

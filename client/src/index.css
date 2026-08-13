@@ -1264,14 +1264,35 @@
  * sit inside it, which is what Office does and why its title bar can hold a
  * search field. `max()` keeps it from ever being shorter than the buttons.
  */
+/*
+ * THE HEIGHT LIVES ON `:root`, NOT ON `.wco`.
+ *
+ * It was declared inside `.wco`, which was right for exactly as long as the
+ * strip was the only thing that needed to know how tall it is. It is not any
+ * more: the Praxis drawer is portalled to `<body>` and pinned to the right
+ * edge, so at `inset-y-0` its header ran up to y=0 — directly underneath the
+ * caption buttons in an installed window, which is where its own New chat /
+ * Expand / Close controls sit. A drawer whose close button is behind the OS's
+ * close button is the failure this variable exists to prevent, and the fix has
+ * to be readable from a subtree the strip does not contain. Same reasoning as
+ * `--rail-w` above, same conclusion.
+ *
+ * `--titlebar-h` is the COMPOSED answer — our density-linked height, never
+ * shorter than the caption buttons — so anything that has to clear the strip
+ * says `top: var(--titlebar-h)` once and stays correct through a density
+ * change, through WCO, and through a browser tab where every env() falls back
+ * to zero and the strip is just the app's utility bar.
+ */
+:root { --wco-h: 44px; }
+[data-density="compact"] { --wco-h: 38px; }
+[data-density="comfortable"] { --wco-h: 52px; }
+:root { --titlebar-h: max(var(--wco-h), env(titlebar-area-height, 0px)); }
+
 .wco {
-  --wco-h: 44px;
   padding-left: env(titlebar-area-x, 0px);
   padding-right: calc(100% - env(titlebar-area-x, 0px) - env(titlebar-area-width, 100%));
-  min-height: max(var(--wco-h), env(titlebar-area-height, 0px));
+  min-height: var(--titlebar-h);
 }
-[data-density="compact"] .wco { --wco-h: 38px; }
-[data-density="comfortable"] .wco { --wco-h: 52px; }
 
 /**
  * THE APP MARK SITS ON THE ICON RAIL'S CENTRE LINE.

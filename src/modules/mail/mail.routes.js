@@ -36,7 +36,18 @@ const router = express.Router();
 // tenantContext; CSRF + user identity ride in the signed OAuth `state`, and the
 // webhook echoes Graph's validationToken. Declared BEFORE authMiddleware.
 router.get("/oauth/microsoft/callback", c.msOAuthCallback);
-router.post("/webhook/microsoft", v.msWebhook, c.msWebhook);
+// Graph's subscription-reachability test POSTs an EMPTY body with the token in
+// the query string. Echo it back BEFORE the body validator runs — otherwise the
+// `value`-requiring msWebhook schema 422s the test and the subscription never
+// validates. Real notifications (with a body) fall through to validate + handle.
+router.post(
+  "/webhook/microsoft",
+  (req, res, next) => (req.query && req.query.validationToken
+    ? res.type("text/plain").status(200).send(String(req.query.validationToken))
+    : next()),
+  v.msWebhook,
+  c.msWebhook,
+);
 router.get("/oauth/google/callback", c.ggOAuthCallback);
 router.post("/webhook/google", v.ggWebhook, c.ggWebhook);
 
@@ -59,6 +70,7 @@ router.post("/senders/:id/archive", requirePermission(M, "edit"), c.archiveSende
 router.get("/autodiscover", requirePermission(M, "view"), c.autodiscover);
 router.get("/connections", requirePermission(M, "view"), c.listConnections);
 router.post("/connections", requirePermission(M, "create"), v.connect, c.connect);
+router.patch("/connections/:id", requirePermission(M, "edit"), v.connectPatch, c.updateConnection);
 router.post("/connections/:id/test", requirePermission(M, "edit"), c.testConnection);
 router.post("/connections/:id/sync", requirePermission(M, "edit"), c.syncNow);
 router.post("/connections/:id/default", requirePermission(M, "edit"), c.setDefaultMailbox);

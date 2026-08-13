@@ -265,8 +265,14 @@ function ThreadsSection() {
 
 /* ── Mailboxes (connections) ─────────────────────────────────────────────── */
 
-function ImapConnectForm({ onDone }: { onDone: () => void }) {
-  const [f, setF] = React.useState({ email_address: "", display_name: "", imap_host: "", imap_port: "993", smtp_host: "", smtp_port: "587", auth_user: "", password: "" });
+function ImapConnectForm({ existing, onDone }: { existing?: api.Connection; onDone: () => void }) {
+  const editing = !!existing;
+  const [f, setF] = React.useState({
+    email_address: existing?.email_address || "", display_name: existing?.display_name || "",
+    imap_host: existing?.imap_host || "", imap_port: existing?.imap_port != null ? String(existing.imap_port) : "993",
+    smtp_host: existing?.smtp_host || "", smtp_port: existing?.smtp_port != null ? String(existing.smtp_port) : "587",
+    auth_user: existing?.auth_user || "", password: "",
+  });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
   const [discovering, setDiscovering] = React.useState(false);
@@ -291,12 +297,15 @@ function ImapConnectForm({ onDone }: { onDone: () => void }) {
   async function submit(e: React.FormEvent) {
     e.preventDefault(); setBusy(true); setError(null); setResult(null);
     try {
-      const r = await api.connectImap({
+      const body = {
         email_address: f.email_address, display_name: f.display_name || undefined,
         imap_host: f.imap_host, imap_port: Number(f.imap_port) || undefined,
         smtp_host: f.smtp_host, smtp_port: Number(f.smtp_port) || undefined,
-        auth_user: f.auth_user || undefined, password: f.password,
-      });
+        auth_user: f.auth_user || undefined, password: f.password || undefined,
+      };
+      const r = existing
+        ? await api.updateImapConnection(existing.email_connection_id, body)
+        : await api.connectImap({ ...body, password: f.password });
       setResult(r.test || { ok: r.status === "CONNECTED" });
       onDone();
     } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
@@ -313,14 +322,14 @@ function ImapConnectForm({ onDone }: { onDone: () => void }) {
         <Field label="SMTP host" required><Input value={f.smtp_host} onChange={(e) => set("smtp_host", e.target.value)} placeholder="mail.company.cm" /></Field>
         <Field label="SMTP port"><Input type="number" className="num" value={f.smtp_port} onChange={(e) => set("smtp_port", e.target.value)} /></Field>
         <Field label="Login user" hint="Defaults to the email address."><Input value={f.auth_user} onChange={(e) => set("auth_user", e.target.value)} placeholder="optional" /></Field>
-        <Field label="Password" required><Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••" /></Field>
+        <Field label="Password" required={!editing} hint={editing ? "Leave blank to keep the current password." : undefined}><Input type="password" value={f.password} onChange={(e) => set("password", e.target.value)} placeholder="••••••" /></Field>
       </div>
       {hint && <p className="mt-2 micro">{hint}</p>}
       {error && <div className="mt-2"><ErrorState message={error} /></div>}
       {result && <div className="mt-2 micro">{result.ok ? <span className="text-[rgb(var(--ok))]">✓ Connected</span> : <span className="text-[rgb(var(--bad))]">✗ {String(result.error || "Failed").slice(0, 90)}</span>}</div>}
       <div className="mt-3 flex items-center justify-between gap-3">
         <Button type="button" size="sm" variant="outline" onClick={discover} loading={discovering} disabled={discovering || !f.email_address}>Autodiscover</Button>
-        <Button type="submit" size="sm" loading={busy} disabled={busy || !f.email_address || !f.imap_host || !f.smtp_host || !f.password}>Connect &amp; test</Button>
+        <Button type="submit" size="sm" loading={busy} disabled={busy || !f.email_address || !f.imap_host || !f.smtp_host || (!editing && !f.password)}>{editing ? "Save & test" : "Connect & test"}</Button>
       </div>
     </form>
   );
@@ -368,6 +377,7 @@ function MailboxesSection() {
   const [busyId, setBusyId] = React.useState<string>("");
   const [note, setNote] = React.useState<string>("");
   const [imapOpen, setImapOpen] = React.useState(false);
+  const [editConn, setEditConn] = React.useState<api.Connection | null>(null);
 
   // Surface the OAuth callback result. The provider redirect lands back on
   // /comms/mail?mail_connected=<provider> (or ?mail_error=<code>); show it,
@@ -421,6 +431,7 @@ function MailboxesSection() {
             </div>
             <div className="flex items-center gap-2">
               {!c.is_default && <Button size="sm" variant="outline" onClick={() => makeDefault(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Make default</Button>}
+              {c.provider === "imap_smtp" && <Button size="sm" variant="outline" onClick={() => setEditConn(c)}>Edit</Button>}
               <Button size="sm" variant="outline" onClick={() => test(c.email_connection_id)} disabled={busyId === c.email_connection_id}>Test</Button>
               <Button size="sm" onClick={() => sync(c.email_connection_id)} loading={busyId === c.email_connection_id}>Sync now</Button>
             </div>
@@ -429,8 +440,8 @@ function MailboxesSection() {
         {(conns.data || []).length === 0 && !conns.loading && <p className="micro">No mailboxes connected yet.</p>}
       </div>
 
-      <RightDrawer open={imapOpen} onOpenChange={setImapOpen} title="Connect an IMAP / SMTP mailbox">
-        <ImapConnectForm onDone={() => { conns.reload(); setImapOpen(false); }} />
+      <RightDrawer open={imapOpen || !!editConn} onOpenChange={(v) => { if (!v) { setImapOpen(false); setEditConn(null); } }} title={editConn ? "Edit IMAP / SMTP mailbox" : "Connect an IMAP / SMTP mailbox"}>
+        <ImapConnectForm key={editConn?.email_connection_id ?? "new"} existing={editConn ?? undefined} onDone={() => { conns.reload(); setImapOpen(false); setEditConn(null); }} />
       </RightDrawer>
     </div>
   );

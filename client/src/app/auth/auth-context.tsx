@@ -115,7 +115,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           persistUser(fresh);
           setUser(fresh);
         } catch {
-          /* keep the cached user block */
+          /* @silent:storage */
         }
         return;
       }
@@ -175,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(fresh);
       })
       .catch(() => {
-        /* keep the minimal user */
+        /* @silent:storage */
       });
   }
 
@@ -262,7 +262,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await tenant("/auth/logout", { method: "POST" });
     } catch {
-      /* best-effort */
+      /* @silent:teardown */
     }
     tokenStore.clear();
     persistUser(null);
@@ -273,7 +273,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       localStorage.clear();
       pinStore.restore(pinSnap);
     } catch {
-      /* ignore storage errors */
+      /* @silent:storage */
     }
     setUser(null);
     setStatus("anon");

@@ -8,7 +8,7 @@ const repo = require("./document_vault.repo");
 const events = require("./document_vault.events");
 const { assertDocType } = require("./document_vault.types");
 const storage = require("../../../services/storage.service");
-const { emitEvent, audit } = require("../../../shared/events/emit");
+const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
 
 const EXT = {
@@ -168,7 +168,13 @@ async function createDocument(client, opts) {
     // 0669: the typed filing. `doc_type` (text) stays populated from the
     // registry code so every existing reader keeps working.
     doc_type_ref_id: docTypeRefId, client_id: clientId,
-    original_name: originalName, uploaded_by: actor.user_id || null,
+    original_name: originalName,
+    // Through `resolveActorId`, not `actor.user_id` (DATA 2.4). `uploaded_by`
+    // REFERENCES app_user, but identity lives in the LIVE schema while this
+    // write can land in SANDBOX — where that user does not exist and Postgres
+    // answers 23503, failing the whole upload. Losing an attribution is a much
+    // smaller harm than losing the document, so it resolves to NULL instead.
+    uploaded_by: await resolveActorId(client, actor.user_id),
   });
   await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "document_vault:" + row.doc_id, actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "document_vault:" + row.doc_id, after: { doc_id: row.doc_id, doc_type: row.doc_type, content_hash: contentHash } });

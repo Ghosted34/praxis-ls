@@ -94,7 +94,7 @@ describe("FileDrop preview", () => {
     render(<FileDrop file={png()} onPick={vi.fn()} accept="application/pdf,image/png" label="Document file" />);
 
     const img = await screen.findByAltText("Selected image preview");
-    expect(img).toHaveAttribute("src", "blob:preview");
+    expect(img.getAttribute("src")).toMatch(/^data:image\/png;base64,/);
     expect(loadPdfjs).not.toHaveBeenCalled();
     expect(document.querySelector("iframe")).toBeNull();
   });

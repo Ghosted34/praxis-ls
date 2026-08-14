@@ -59,19 +59,19 @@
     },
     {
       "file": "src/modules/mail/mail.service.js",
-      "line": 264
+      "line": 272
     },
     {
       "file": "src/modules/mail/mail.service.js",
-      "line": 501
+      "line": 509
     },
     {
       "file": "src/modules/mail/mail.service.js",
-      "line": 521
+      "line": 529
     },
     {
       "file": "src/modules/mail/mail.service.js",
-      "line": 544
+      "line": 552
     },
     {
       "file": "src/modules/mail/providers/gmail.provider.js",
@@ -107,7 +107,7 @@
     },
     {
       "file": "src/services/email.service.js",
-      "line": 173
+      "line": 177
     },
     {
       "file": "src/services/geoapify.service.js",

@@ -29,6 +29,7 @@
 
 const repo = require("./shipment_details.repo");
 const rules = require("./shipment_details.rules");
+const geoPlace = require("../geo_place/geo_place.service");
 const { AppError } = require("../../../utils/errors");
 const { logger } = require("../../../config/logger");
 
@@ -132,7 +133,13 @@ function coerce(field, value) {
       if (!/^[A-Z]{3}$/.test(s)) fail("must be a 3-letter currency code (XAF, EUR, USD)");
       return s;
     }
+    // Trimmed, unlike REF below. A place name is matched against the catalogue
+    // by its normalised form, and the stored text has to be the thing that
+    // matched — "  Douala " and "Douala" are one place, and storing the padded
+    // form makes every later exact comparison (verification, the map's name
+    // fallback, a report grouping by port) quietly miss.
     case "GEO_PLACE":
+      return String(value).trim();
     case "REF":
       return String(value);
     default: {
@@ -262,6 +269,106 @@ function partition(fields, values, { existingDetails = {}, enforceRequired = fal
 }
 
 /**
+ * The facet roles that name a geographic point rather than describing one.
+ *
+ * Only these are verified. CARGO_DESC is prose and CUSTOMS_REF is a number; a
+ * place check on either would refuse a perfectly good file. Matches the roles
+ * migration 0676 converted to `GEO_PLACE`, and for the same reason: role, not
+ * field key, so a tenant's own origin field is covered and a renamed one stays
+ * covered.
+ */
+const PLACE_ROLES = new Set(["ORIGIN", "DESTINATION", "ROUTE_VIA", "CUSTODY_LOCATION"]);
+
+/**
+ * A movement file may not be opened with an origin or destination that is not a
+ * real place.
+ *
+ * ── WHAT THIS REPLACES ──────────────────────────────────────────────────────
+ *
+ * Before this, `pol` was a text column and the picker allowed free text, so
+ * "Doula" (one letter short of Cameroon's main port) saved cleanly. What happened
+ * next is the part that matters: `resolvePlaces` forward-geocoded it in the
+ * background, Geoapify answered with something plausible, and the dossier was
+ * silently linked to a coordinate nobody had looked at. No error, no flag, and a
+ * lane on the meeting-room map that was simply in the wrong place. A geocoder
+ * asked to resolve a typo does not fail — it guesses, confidently.
+ *
+ * ── WHY IT IS A LOCAL LOOKUP AND NOT A GEOCODE ──────────────────────────────
+ *
+ * Verified means "a human has already put this place in the catalogue" — either
+ * it shipped in the reference data, or somebody confirmed a provider suggestion,
+ * or somebody entered it by hand. That is one indexed query. Reaching the
+ * network here would make opening a file depend on a third party being up, and
+ * "your file could not be opened because a geocoder was slow" is not a sentence
+ * this product is going to say.
+ *
+ * ── WHY ONLY AT CREATE/PROMOTE ──────────────────────────────────────────────
+ *
+ * `enforceRequired` is true exactly when a file is being OPENED. Later edits are
+ * not gated, which is deliberate and matches how `is_required` already behaves
+ * here: an operator correcting an ETA on a legacy file must not be blocked
+ * because a place typed in 2024 is not in the catalogue. Those files surface in
+ * the location-needed queue and carry an upgrade action instead — visible and
+ * fixable, rather than an error in the way of unrelated work.
+ *
+ * The message names the field and says what to do, because the one thing this
+ * must not become is a wall the operator cannot get past: every branch of the
+ * picker (catalogue, worldwide search, nearby reference point, manual entry)
+ * produces a value that satisfies this check.
+ */
+async function assertPlacesVerified(client, fields, { columns, details }) {
+  const checked = [];
+  for (const field of fields) {
+    if (field.data_type !== "GEO_PLACE") continue;
+    if (!PLACE_ROLES.has(field.facet_role)) continue;
+    const value = field.column_name ? columns[field.column_name] : details[field.key];
+    // Blank is the business of `is_required`, not of this check: an optional
+    // waypoint that was left empty is not an unverified place.
+    if (isBlank(value)) continue;
+    checked.push({ field, value: String(value).trim() });
+  }
+  if (!checked.length) return;
+
+  const resolved = await geoPlace.resolveVerified(client, checked.map((c) => c.value));
+  const unverified = checked.filter((c) => !resolved.get(c.value));
+
+  if (unverified.length) {
+    const fieldsMap = {};
+    for (const { field, value } of unverified) {
+      // `field.key` is a service_type_field ROW, never a request key — the same
+      // property-injection rule the partition loop documents.
+      fieldsMap[field.key] = [
+        `"${value}" is not a place in the catalogue yet. Pick it from the place search, search worldwide, use a nearby reference point, or add it manually.`,
+      ];
+    }
+    const labels = unverified.map(({ field }) => field.label_en || field.label_fr || field.key);
+    throw new AppError(
+      "UNVERIFIED_PLACE",
+      `${labels.join(", ")} ${unverified.length === 1 ? "must be" : "must each be"} a verified place before this file can be opened.`,
+      422,
+      fieldsMap,
+    );
+  }
+
+  /*
+   * Everything verified — so store the CATALOGUE'S spelling, not the caller's.
+   *
+   * The picker already sends the canonical name, so this only bites the API and
+   * AI paths, and there it matters: `pol` is the display value on every document
+   * and the grouping key in every report, and "douala" / "DOUALA" / "Douala"
+   * would otherwise be three ports in a pivot table. Since the value has just
+   * been proven to name exactly one geo_place row, using that row's name loses
+   * nothing and makes the text and the reference agree by construction.
+   */
+  for (const { field, value } of checked) {
+    const row = resolved.get(value);
+    if (!row || row.name === value) continue;
+    if (field.column_name) columns[field.column_name] = row.name;
+    else details[field.key] = row.name;
+  }
+}
+
+/**
  * Resolve the form a dossier should be written against, and apply a bag of
  * values to it.
  *
@@ -291,6 +398,7 @@ async function applyValues(client, { serviceTypeId, fieldSetId = null, values, e
 
   const fields = await repo.fieldsOf(client, fieldSet.service_type_field_set_id);
   const { columns, details, touchedReadonly } = partition(fields, values, { existingDetails, enforceRequired });
+  if (enforceRequired) await assertPlacesVerified(client, fields, { columns, details });
 
   const patch = { ...columns };
   patch.details_json = details;

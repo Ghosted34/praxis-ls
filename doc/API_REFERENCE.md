@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1007 |
+| Routes | 1014 |
 | Modules mounted | 109 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1007 mounted routes, grouped by path prefix.
+All 1014 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -455,6 +455,7 @@ All 1007 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/clients/:id/documents` | — |
 | DELETE | `/api/tenant/clients/:id/documents/:childId` | — |
 | PATCH | `/api/tenant/clients/:id/documents/:childId` | — |
+| POST | `/api/tenant/clients/:id/documents/:childId/verify` | — |
 | POST | `/api/tenant/clients/:id/merge` | — |
 | POST | `/api/tenant/clients/:id/merge-preview` | — |
 | GET | `/api/tenant/clients/:id/registrations` | — |
@@ -656,6 +657,7 @@ All 1007 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/entities/:id/documents` | — |
 | DELETE | `/api/tenant/entities/:id/documents/:childId` | — |
 | PATCH | `/api/tenant/entities/:id/documents/:childId` | — |
+| POST | `/api/tenant/entities/:id/documents/:childId/verify` | — |
 | GET | `/api/tenant/entities/:id/establishments` | — |
 | POST | `/api/tenant/entities/:id/establishments` | — |
 | DELETE | `/api/tenant/entities/:id/establishments/:childId` | — |
@@ -790,6 +792,8 @@ All 1007 mounted routes, grouped by path prefix.
 |---|---|---|
 | GET | `/api/tenant/geo-places/` | — |
 | POST | `/api/tenant/geo-places/` | — |
+| POST | `/api/tenant/geo-places/confirm` | — |
+| GET | `/api/tenant/geo-places/search` | — |
 
 ### `tenant/god-mode`
 
@@ -1042,6 +1046,8 @@ All 1007 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/operations/:id/360` | — |
 | GET | `/api/tenant/operations/:id/containers` | — |
 | PUT | `/api/tenant/operations/:id/containers` | — |
+| GET | `/api/tenant/operations/:id/itinerary` | — |
+| PUT | `/api/tenant/operations/:id/itinerary` | — |
 | POST | `/api/tenant/operations/:id/marks/revert` | — |
 | POST | `/api/tenant/operations/:id/promote` | — |
 | GET | `/api/tenant/operations/:id/shipment-details` | — |
@@ -1494,6 +1500,7 @@ All 1007 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/suppliers/:id/documents` | — |
 | DELETE | `/api/tenant/suppliers/:id/documents/:childId` | — |
 | PATCH | `/api/tenant/suppliers/:id/documents/:childId` | — |
+| POST | `/api/tenant/suppliers/:id/documents/:childId/verify` | — |
 | POST | `/api/tenant/suppliers/:id/merge` | — |
 | POST | `/api/tenant/suppliers/:id/merge-preview` | — |
 | GET | `/api/tenant/suppliers/:id/registrations` | — |

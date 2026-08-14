@@ -110,10 +110,6 @@
       "line": 177
     },
     {
-      "file": "src/services/geoapify.service.js",
-      "line": 38
-    },
-    {
       "file": "src/services/platform/db.js",
       "line": 54
     },

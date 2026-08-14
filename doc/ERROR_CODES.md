@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (290)
+## All codes (295)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -240,6 +240,10 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PERIOD_NOT_OPEN` | 422 | 1× | — |
 | `PERMISSION_DENIED` | 403 | 6× | — |
 | `PIN_LOGIN_UNAVAILABLE` | 401 | 1× | — |
+| `PLACE_NAME_TAKEN` | 409 | 1× | — |
+| `PLACE_NOT_STORED` | 409 | 1× | — |
+| `PLACE_PROVIDER_UNAVAILABLE` | 502 | 1× | — |
+| `PLACE_SUGGESTION_EXPIRED` | 409 | 1× | — |
 | `PLAN_IN_USE` | 409 | 1× | — |
 | `POOL_EXHAUSTED` | 500 | 1× | — |
 | `PORTAL_FORBIDDEN` | 403 | 1× | — |
@@ -308,6 +312,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNKNOWN_STEP_REFERENCE` | 422 | 1× | — |
 | `UNSUPPORTED_FORMAT` | 422 | 1× | — |
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
+| `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
 | `VALIDATION_ERROR` | 422 | 117× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |

@@ -360,24 +360,159 @@ export const publishMilestoneTemplate = (body: {
   stages: MilestoneStage[];
 }) => tenant<MilestoneTemplate[]>("/milestones/templates", { method: "POST", body });
 
-/* ── Places (/geo-places) — POL/POD reference data for the route pickers ── */
+/* ── Places (/geo-places) — the verified place catalogue behind every location
+      field on a file: POL/POD, airports, inland terminals, custody sites ──── */
+
+/** The place kinds migration 0674 allows. Ordered as the picker groups them:
+ *  freight infrastructure first, then places people live, then doors. */
+export const PLACE_KINDS = [
+  "SEAPORT",
+  "AIRPORT",
+  "TERMINAL",
+  "RAIL_TERMINAL",
+  "BORDER_POST",
+  "WAREHOUSE",
+  "INLAND",
+  "CITY",
+  "ADDRESS",
+  "OTHER",
+] as const;
+export type PlaceKind = (typeof PLACE_KINDS)[number];
+
+/** Human labels — never render the SCREAMING_ENUM (FRONTEND_GUIDE §5). */
+export const PLACE_KIND_LABEL: Record<PlaceKind, string> = {
+  SEAPORT: "Seaport",
+  AIRPORT: "Airport",
+  TERMINAL: "Terminal",
+  RAIL_TERMINAL: "Rail terminal",
+  BORDER_POST: "Border post",
+  WAREHOUSE: "Warehouse",
+  INLAND: "Inland point",
+  CITY: "City",
+  ADDRESS: "Address",
+  OTHER: "Other",
+};
+
 export type GeoPlace = {
   geo_place_id: string;
+  /** Normalised lookup key. The dossier stores `name`; this is what matches it. */
+  query_key?: string | null;
   name: string;
   country?: string | null;
+  region?: string | null;
   kind?: string | null;
+  /** UN/LOCODE where the place has one — CMDLA, NLRTM, SGSIN. */
+  unlocode?: string | null;
+  /** The provider's formatted address, or (for airports) the IATA code line. */
+  formatted?: string | null;
   latitude: string | number;
   longitude: string | number;
   source?: string | null;
+  provenance?: string | null;
+  confidence?: string | number | null;
+  /** True when this is a point NEAR the real place, agreed as a stand-in. */
+  is_reference_point?: boolean | null;
+  is_active?: boolean | null;
+  /** When a human last confirmed it. Null = it arrived by background geocoding. */
+  verified_at?: string | null;
+  resolved_at?: string | null;
 };
+
+/**
+ * A provider candidate. NOT a place yet — nothing is stored until the operator
+ * confirms it, and the confirm call re-fetches the coordinate from the provider
+ * rather than trusting anything here.
+ */
+export type PlaceSuggestion = {
+  provider_place_id: string;
+  name: string;
+  formatted?: string | null;
+  country?: string | null;
+  region?: string | null;
+  latitude: number;
+  longitude: number;
+  kind?: string | null;
+  result_type?: string | null;
+  confidence?: number | null;
+};
+
+/** Why a worldwide search returned nothing — each one a different action. */
+export type PlaceProviderStatus =
+  | "NOT_REQUESTED"
+  | "OK"
+  | "NO_KEY"
+  | "TIMEOUT"
+  | "RATE_LIMITED"
+  | "UNAUTHORISED"
+  | "PROVIDER_ERROR"
+  | "QUERY_TOO_SHORT";
+
+export type PlaceSearchResult = {
+  places: GeoPlace[];
+  /** The catalogue already holds an exact match, so no provider call is offered. */
+  has_exact: boolean;
+  provider: {
+    requested: boolean;
+    status: PlaceProviderStatus;
+    /** Operator-facing sentence, composed server-side so there is one copy. */
+    message?: string | null;
+    results: PlaceSuggestion[];
+  };
+};
+
+/** The legacy list, still used by `SearchSelect` callers outside operations. */
 export const listGeoPlaces = (q?: string) =>
   tenant<GeoPlace[]>(`/geo-places${q ? `?q=${encodeURIComponent(q)}` : ""}`);
+
+/**
+ * Search the catalogue, and — only when `provider` is true — ask Geoapify for
+ * what it does not hold.
+ *
+ * `provider` is opt-in on purpose. Typing must never spend provider quota, and
+ * the decision to search the whole world should be one a person made.
+ */
+export const searchGeoPlaces = (params: {
+  q?: string;
+  country?: string;
+  kind?: PlaceKind[];
+  limit?: number;
+  provider?: boolean;
+}) => {
+  const qs = new URLSearchParams();
+  if (params.q) qs.set("q", params.q);
+  if (params.country) qs.set("country", params.country);
+  (params.kind || []).forEach((k) => qs.append("kind", k));
+  if (params.limit) qs.set("limit", String(params.limit));
+  if (params.provider) qs.set("provider", "true");
+  const query = qs.toString();
+  return tenant<PlaceSearchResult>(`/geo-places/search${query ? `?${query}` : ""}`);
+};
+
+/**
+ * Cache a suggestion the operator confirmed, and get back the real place.
+ *
+ * Carries no coordinate: the server re-queries the provider and uses ITS answer,
+ * so a coordinate cannot be forged into the catalogue with a provider's name on
+ * it. `query` therefore has to be the same text the suggestion came from.
+ */
+export const confirmGeoPlace = (body: {
+  query: string;
+  provider_place_id: string;
+  country?: string;
+  kind?: PlaceKind;
+  is_reference_point?: boolean;
+}) => tenant<GeoPlace>("/geo-places/confirm", { method: "POST", body });
+
 export const createGeoPlace = (body: {
   name: string;
   latitude: number;
   longitude: number;
   country?: string;
-  kind?: string;
+  region?: string;
+  kind?: PlaceKind;
+  formatted?: string;
+  unlocode?: string;
+  is_reference_point?: boolean;
 }) => tenant<GeoPlace>("/geo-places", { method: "POST", body });
 
 /* ── Milestones(/milestones) — templates + per-dossier instances ── */

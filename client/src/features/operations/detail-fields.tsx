@@ -19,8 +19,11 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchSelect, type Row } from "@/components/ui/search-select";
+import { PlacePicker } from "@/components/operations/place-picker";
 import { useResource } from "@/lib/use-resource";
+import { useCanUseModule } from "@/lib/route-access";
 import { listCurrencies } from "@/lib/masterdata-api";
+import { PLACE_KINDS, type PlaceKind } from "@/lib/operations-api";
 import type { DetailFieldDef, DetailGroupDef, DetailForm } from "@/lib/operations-api";
 
 /** Values keyed by field key, exactly as the API takes them under `details`. */
@@ -189,13 +192,33 @@ function GeneratedControl({
 }
 
 /**
+ * Which place kinds a field will offer, if it says.
+ *
+ * Read from `ref_kind` — the same column that scopes a RATE_PROVIDER field to
+ * shipping lines or truckers — so an airport field can be restricted to airports
+ * from the Service Types screen with no code change here. A field that declares
+ * nothing offers everything, which is the right default: guessing that a POL must
+ * be a SEAPORT would refuse the perfectly ordinary inland dry port.
+ */
+function placeKindsOf(field: DetailFieldDef): PlaceKind[] | undefined {
+  const declared = String(field.ref_kind || "")
+    .split(",")
+    .map((k) => k.trim().toUpperCase())
+    .filter((k): k is PlaceKind => (PLACE_KINDS as readonly string[]).includes(k));
+  return declared.length ? declared : undefined;
+}
+
+/**
  * One control, chosen by the field's declared type.
  *
- * GEO_PLACE gets the port picker rather than a text box, which is what keeps
- * POL/POD resolving to real `geo_place` rows (0479) — the reference that gives
- * the Control Tower map exact coordinates instead of a fuzzy name match. The
- * text is still what is stored, so a port not yet in the catalogue can be typed
- * and is geocoded server-side on save.
+ * GEO_PLACE gets `PlacePicker`, which will not commit free text. Before it, this
+ * case was a typeahead with `allowFreeText`, and that flag was the whole defect:
+ * "Doula" saved cleanly, the save path forward-geocoded it in the background, and
+ * the file was linked to a plausible wrong coordinate with nothing on screen to
+ * say so. The picker's four routes to a verified place (catalogue, worldwide
+ * search, nearby reference point, manual entry) cover every case that flag was
+ * there for — and the server refuses an unverified movement place at promotion,
+ * so this control is the courtesy rather than the guarantee.
  */
 function Control({
   field,
@@ -203,6 +226,7 @@ function Control({
   display,
   onChange,
   onCreateCarrier,
+  canCreatePlace = false,
   ...aria
 }: {
   field: DetailFieldDef;
@@ -210,6 +234,8 @@ function Control({
   display?: string;
   onChange: (v: unknown) => void;
   onCreateCarrier?: (fieldKey: string, term: string, kinds: string[]) => void;
+  /** May this user add a place by hand? Resolved once by the group renderer. */
+  canCreatePlace?: boolean;
 } & React.AriaAttributes & { id?: string }) {
   /*
    * `aria` is what `<Field>` cloned onto this element — id, aria-labelledby,
@@ -287,15 +313,18 @@ function Control({
       );
     case "GEO_PLACE":
       return (
-        <SearchSelect
-          path="/geo-places"
-          value={asString(value)}
+        <PlacePicker
+          value={asString(value) || null}
+          label={field.label}
           placeholder={field.placeholder || undefined}
-          getKey={(r) => String(r.geo_place_id)}
-          getLabel={(r) => [r.name, r.country].filter(Boolean).join(" · ")}
-          onSelect={(r) => onChange(String(r.name))}
-          allowFreeText
-          onFreeText={(t) => onChange(t)}
+          kinds={placeKindsOf(field)}
+          canCreate={canCreatePlace}
+          // The NAME is stored, exactly as before — `pol` is a text column and
+          // every document renders it. What has changed is that the name is now
+          // guaranteed to be a catalogue place's own spelling, so the server can
+          // resolve it to a coordinate with an equality check rather than a
+          // fuzzy match, and the badge can say whether anybody vetted it.
+          onSelect={({ name }) => onChange(name)}
           {...aria}
         />
       );
@@ -372,6 +401,11 @@ export function DetailFieldGroups({
   disabled?: boolean;
   omitKeys?: readonly string[];
 }) {
+  // Resolved once here rather than inside each control: hooks cannot be called
+  // from a switch, and a form with three place fields should ask about the grant
+  // once. Same reasoning as `onCreateCarrier` above — an affordance that always
+  // 403s is worse than no affordance, so the picker hides manual entry without it.
+  const canCreatePlace = useCanUseModule("MOD-29");
   if (!groups.length) return null;
   const skip = new Set(omitKeys || []);
   const shown = groups
@@ -399,6 +433,7 @@ export function DetailFieldGroups({
                   display={displays?.[f.key]}
                   onChange={(v) => onChange(f.key, v)}
                   onCreateCarrier={onCreateCarrier}
+                  canCreatePlace={canCreatePlace}
                 />
               </Field>
             ))}

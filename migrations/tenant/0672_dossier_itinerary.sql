@@ -21,3 +21,7 @@ CREATE TABLE IF NOT EXISTS dossier_itinerary_leg (
   UNIQUE (dossier_id, seq)
 );
 CREATE INDEX IF NOT EXISTS ix_itinerary_leg_dossier ON dossier_itinerary_leg (dossier_id, seq);
+
+-- DOWN
+-- DROP INDEX IF EXISTS ix_itinerary_leg_dossier;
+-- DROP TABLE IF EXISTS dossier_itinerary_leg;

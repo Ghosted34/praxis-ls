@@ -12,3 +12,6 @@ FROM (VALUES
  ('END_TO_END_SEA_FREIGHT','[{"leg_type":"PICKUP","mode":"LAND"},{"leg_type":"MAIN_CARRIAGE","mode":"SEA"},{"leg_type":"CUSTOMS","mode":"OTHER"},{"leg_type":"FINAL_DELIVERY","mode":"LAND"}]'),
  ('PROJECT_CARGO','[{"leg_type":"MAIN_CARRIAGE","mode":"LAND","is_optional":true},{"leg_type":"FINAL_DELIVERY","mode":"LAND","is_optional":true}]')
 ) AS v(key, template) WHERE service_type.key = v.key AND service_type.itinerary_template = '[]'::jsonb;
+
+-- DOWN
+-- ALTER TABLE service_type DROP COLUMN IF EXISTS itinerary_template;

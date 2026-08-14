@@ -496,7 +496,7 @@ describe("SSDC — a field definition names a format, never a regex", () => {
    * hangs the save path for everyone on the tenant, and Node cannot time a regex
    * out. CodeQL flagged it (js/regex-injection) and was right to.
    */
-  const f = (validation) => ({
+  const withRule = (validation) => ({
     key: "x",
     label_en: "X",
     data_type: "TEXT",
@@ -506,19 +506,19 @@ describe("SSDC — a field definition names a format, never a regex", () => {
   });
 
   it("accepts a value matching a named format", () => {
-    expect(service.coerce(f({ format: "EMAIL" }), "ops@example.com")).toBe(
+    expect(service.coerce(withRule({ format: "EMAIL" }), "ops@example.com")).toBe(
       "ops@example.com",
     );
-    expect(service.coerce(f({ format: "CONTAINER_NO" }), "MSKU1234567")).toBe(
+    expect(service.coerce(withRule({ format: "CONTAINER_NO" }), "MSKU1234567")).toBe(
       "MSKU1234567",
     );
   });
 
   it("rejects one that does not, naming the format in plain words", () => {
     expect(() =>
-      service.coerce(f({ format: "EMAIL" }), "not-an-email"),
+      service.coerce(withRule({ format: "EMAIL" }), "not-an-email"),
     ).toThrow(/must be an email address/);
-    expect(() => service.coerce(f({ format: "CONTAINER_NO" }), "1234")).toThrow(
+    expect(() => service.coerce(withRule({ format: "CONTAINER_NO" }), "1234")).toThrow(
       /container number/,
     );
   });
@@ -526,7 +526,7 @@ describe("SSDC — a field definition names a format, never a regex", () => {
   it("ignores an unknown format rather than failing the save", () => {
     // A definition written against a format this build does not know is the
     // thing to fix; refusing the user's save is not.
-    expect(service.coerce(f({ format: "NOT_A_FORMAT" }), "anything")).toBe(
+    expect(service.coerce(withRule({ format: "NOT_A_FORMAT" }), "anything")).toBe(
       "anything",
     );
   });
@@ -535,7 +535,7 @@ describe("SSDC — a field definition names a format, never a regex", () => {
     // The catastrophic-backtracking payload that made this exploitable. It must
     // be inert: `pattern` is not a key the validator accepts and not one the
     // coercer reads.
-    const evil = f({ pattern: "^(a+)+$" });
+    const evil = withRule({ pattern: "^(a+)+$" });
     const start = Date.now();
     expect(service.coerce(evil, "a".repeat(60) + "!")).toBe(
       "a".repeat(60) + "!",

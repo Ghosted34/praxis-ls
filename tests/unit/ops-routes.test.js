@@ -110,7 +110,6 @@ function makeApp() {
   });
   app.use("/", require("../../src/modules/platform/ops/ops.routes"));
   // Mirrors the app's error envelope closely enough to assert status codes.
-  // eslint-disable-next-line no-unused-vars
   app.use((err, _req, res, _next) => {
     res
       .status(err.status || 500)

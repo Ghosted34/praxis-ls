@@ -329,7 +329,12 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
   }
 
   const serviceRows = services.data || [];
-  const taxRows = taxCodes.data || [];
+  // B1 (class E — degraded read). listSalesTaxCodes now returns
+  // { codes, degraded, failed_jurisdictions }; unwrap the codes here and
+  // surface the degradation warning below the picker rather than silently
+  // shipping a shorter list.
+  const taxRows = taxCodes.data?.codes || [];
+  const taxDegraded = taxCodes.data?.degraded === true;
   const STEPS = ["Basics", "Details", "Review"];
 
   return (
@@ -395,6 +400,11 @@ export function DictForm({ row, onClose, onSaved }: { row: api.DictFull | null; 
                           <option value="">None</option>
                           {taxRows.map((t) => <option key={t.tax_code_id} value={t.tax_code_id}>{t.code}{t.rate_percent != null ? ` (${t.rate_percent}%)` : ""}</option>)}
                         </Select>
+                        {taxDegraded && (
+                          <p className="mt-1 text-[11px] text-[rgb(var(--warn))]">
+                            Some jurisdictions' tax codes couldn't load — the list above is partial.
+                          </p>
+                        )}
                       </Field>
                       <div className="flex items-end"><Checkbox checked={r.is_disbursement} onCheckedChange={(v) => setRule(i, { is_disbursement: !!v, tax_code_id: v ? "" : r.tax_code_id })} label={<span className="text-xs">Disbursement (pass-through)</span>} /></div>
                     </div>

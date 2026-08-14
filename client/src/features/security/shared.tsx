@@ -52,7 +52,10 @@ export type Session = {
   user_agent?: string | null;
   created_at?: string | null;
   last_seen_at?: string | null;
-  revoked_at?: string | null;
+  // Server column is user_session.killed_at (0100_identity.sql:63) —
+  // renamed here 2026-08 after the "Revoke" button always stayed enabled
+  // because revoked_at was declared but never emitted.
+  killed_at?: string | null;
 };
 // (Corporate entities for the scope form now come from `/scopes/entities` and
 // carry their own type — `ScopeEntity` in lib/scope-api. The local shape here

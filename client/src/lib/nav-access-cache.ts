@@ -81,6 +81,7 @@ function read(key: string): string | null {
   try {
     return localStorage.getItem(key);
   } catch {
+    /* @silent:storage — access can throw in private mode */
     return null;
   }
 }
@@ -89,7 +90,7 @@ function write(key: string, value: string): void {
   try {
     localStorage.setItem(key, value);
   } catch {
-    /* private mode, or the quota is full — the shell falls back to the skeleton */
+    /* @silent:storage — private mode or full quota; the shell falls back to the skeleton */
   }
 }
 
@@ -97,7 +98,7 @@ function drop(key: string): void {
   try {
     localStorage.removeItem(key);
   } catch {
-    /* nothing to drop */
+    /* @silent:storage — nothing to drop; storage was unavailable */
   }
 }
 
@@ -121,6 +122,7 @@ export function readCachedAccess(userId: string | null | undefined): NavAccess |
     // first frame than a ribbon that is correctly empty but probably wrong.
     return access.modules.length === 0 ? null : access;
   } catch {
+    /* @silent:parse — corrupt cache entry from an older build; a null return means "cache miss" */
     return null;
   }
 }

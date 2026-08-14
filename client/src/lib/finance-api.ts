@@ -155,7 +155,7 @@ export type TaxDeclaration = {
   amount?: number | string | null;
   due_on?: string | null;
   filed_ref?: string | null;
-  filed_at?: string | null;
+  filed_on?: string | null;
   created_at?: string | null;
   [k: string]: unknown;
 };

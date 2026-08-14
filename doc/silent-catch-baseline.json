@@ -1,0 +1,189 @@
+{
+  "_note": "Committed allow-list for scripts/check-silent-catch.js. Each entry is a file+line of a silent backend catch grandfathered when the scanner was introduced; PR2's work is to burn this list down by classifying each site with a @silent:storage|parse|teardown marker or replacing the catch with real handling.",
+  "entries": [
+    {
+      "file": "src/jobs/mail-idle.js",
+      "line": 81
+    },
+    {
+      "file": "src/middleware/access-log.js",
+      "line": 61
+    },
+    {
+      "file": "src/middleware/api-version.js",
+      "line": 80
+    },
+    {
+      "file": "src/middleware/api-version.js",
+      "line": 133
+    },
+    {
+      "file": "src/middleware/error-handler.js",
+      "line": 76
+    },
+    {
+      "file": "src/modules/ai/assistant/assistant.controller.js",
+      "line": 70
+    },
+    {
+      "file": "src/modules/ai/assistant/assistant.controller.js",
+      "line": 107
+    },
+    {
+      "file": "src/modules/documents/template/template.service.js",
+      "line": 48
+    },
+    {
+      "file": "src/modules/documents/template/template.service.js",
+      "line": 485
+    },
+    {
+      "file": "src/modules/documents/template/template.service.js",
+      "line": 558
+    },
+    {
+      "file": "src/modules/documents/template/template.service.js",
+      "line": 565
+    },
+    {
+      "file": "src/modules/mail/autodiscover.js",
+      "line": 34
+    },
+    {
+      "file": "src/modules/mail/autodiscover.js",
+      "line": 56
+    },
+    {
+      "file": "src/modules/mail/dns-check.js",
+      "line": 110
+    },
+    {
+      "file": "src/modules/mail/mail.service.js",
+      "line": 264
+    },
+    {
+      "file": "src/modules/mail/mail.service.js",
+      "line": 501
+    },
+    {
+      "file": "src/modules/mail/mail.service.js",
+      "line": 521
+    },
+    {
+      "file": "src/modules/mail/mail.service.js",
+      "line": 544
+    },
+    {
+      "file": "src/modules/mail/providers/gmail.provider.js",
+      "line": 156
+    },
+    {
+      "file": "src/modules/mail/providers/imapSmtp.provider.js",
+      "line": 114
+    },
+    {
+      "file": "src/modules/mail/providers/imapSmtp.provider.js",
+      "line": 157
+    },
+    {
+      "file": "src/modules/mail/providers/imapSmtp.provider.js",
+      "line": 160
+    },
+    {
+      "file": "src/realtime/index.js",
+      "line": 236
+    },
+    {
+      "file": "src/services/ai/action-authz.js",
+      "line": 154
+    },
+    {
+      "file": "src/services/ai/action-registrar.js",
+      "line": 36
+    },
+    {
+      "file": "src/services/ai/llm.service.js",
+      "line": 179
+    },
+    {
+      "file": "src/services/email.service.js",
+      "line": 173
+    },
+    {
+      "file": "src/services/geoapify.service.js",
+      "line": 38
+    },
+    {
+      "file": "src/services/platform/db.js",
+      "line": 54
+    },
+    {
+      "file": "src/services/platform/error-escalation.service.js",
+      "line": 354
+    },
+    {
+      "file": "src/services/platform/error-explain.service.js",
+      "line": 78
+    },
+    {
+      "file": "src/services/platform/health.service.js",
+      "line": 110
+    },
+    {
+      "file": "src/services/platform/migrator.js",
+      "line": 159
+    },
+    {
+      "file": "src/services/platform/notifications.service.js",
+      "line": 91
+    },
+    {
+      "file": "src/services/platform/provisioning.service.js",
+      "line": 305
+    },
+    {
+      "file": "src/services/platform/provisioning.service.js",
+      "line": 690
+    },
+    {
+      "file": "src/services/platform/settings.service.js",
+      "line": 124
+    },
+    {
+      "file": "src/services/storage.service.js",
+      "line": 71
+    },
+    {
+      "file": "src/services/tenant/registry.service.js",
+      "line": 369
+    },
+    {
+      "file": "src/services/tenant/registry.service.js",
+      "line": 478
+    },
+    {
+      "file": "src/shared/cache/identity-cache.js",
+      "line": 258
+    },
+    {
+      "file": "src/shared/db/tx.js",
+      "line": 105
+    },
+    {
+      "file": "src/shared/observability/error-reporter.js",
+      "line": 289
+    },
+    {
+      "file": "src/shared/observability/error-store.js",
+      "line": 245
+    },
+    {
+      "file": "src/shared/observability/error-store.js",
+      "line": 388
+    },
+    {
+      "file": "src/shared/push/push.service.js",
+      "line": 37
+    }
+  ]
+}

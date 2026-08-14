@@ -162,6 +162,11 @@ router.post("/client-errors", clientErrorLimiter, express.json({ limit: "64kb" }
     request_id: req.request_id,
     extra: {
       kind: str(b.kind, 40),                 // render | window | unhandledrejection
+      // `surface` (tenant-app | platform-console) — set by each frontend's
+      // reporting client so a console-only bug is filterable apart from a
+      // tenant-app bug, per doc/ERROR_HANDLING.md §7. Deliberately clamped
+      // to 40 chars: a hostile client could otherwise write a novel here.
+      surface: str(b.surface, 40),
       component_stack: str(b.componentStack, 2000),
       user_agent: str(req.headers["user-agent"], 300),
       url: str(b.url, 500),

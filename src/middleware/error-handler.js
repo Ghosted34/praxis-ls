@@ -29,6 +29,12 @@ const PG = {
   40001: [409, "TEMPORARY_CONFLICT", "Please retry — a brief conflict occurred"],
   "40P01": [409, "TEMPORARY_CONFLICT", "Please retry — a brief conflict occurred"],
   P0001: [409, "ACTION_BLOCKED", "That action was blocked by a business rule"],
+  // 42P01 undefined_table / 42703 undefined_column — a repo query names an
+  // object that does not exist in the schema. Distinct from INTERNAL_ERROR so
+  // the class is greppable in error_event, and so the group signature carries
+  // the pg_code instead of a fingerprinted message.
+  "42P01": [500, "SCHEMA_ERROR", "A required table is missing"],
+  42703: [500, "SCHEMA_ERROR", "A required column is missing"],
 };
 
 // The 4-arg signature is what marks this as Express's error handler; `_next` is
@@ -126,7 +132,17 @@ function errorHandler(err, req, res, _next) {
   const mapped = err && err.code && PG[err.code];
   if (mapped) {
     const [status, code, message] = mapped;
-    logger.warn({ request_id, pg_code: err.code, constraint: err.constraint }, "pg error");
+    // 4xx mapped codes are client mistakes and log at warn; the two 5xx entries
+    // (42P01/42703 SCHEMA_ERROR) are real faults and must reach the reporter,
+    // otherwise a repo pointing at a nonexistent table returns 500 with no row
+    // in error_event — exactly the "reports nothing failed" pattern this
+    // programme is meant to end.
+    if (status >= 500) {
+      logger.error({ err, request_id, pg_code: err.code, constraint: err.constraint }, "pg schema error");
+      report(err, { origin: "server", route: `${req.method} ${req.originalUrl || req.path}`, request_id });
+    } else {
+      logger.warn({ request_id, pg_code: err.code, constraint: err.constraint }, "pg error");
+    }
     return res.status(status).json({ error: { code, message }, request_id });
   }
 

@@ -105,7 +105,20 @@ async function renderDocType(client, { docType, data = {}, entityRef, key, rende
   if (!entityRef) throw new AppError("NO_ENTITY_REF", "entityRef is required", 422);
   const template = await getSetting(client, "document_template", docType, null);
   if (!template || typeof template !== "object") {
-    throw new AppError("NOT_CONFIGURED", "No document_template configured for '" + docType + "'", 422);
+    // 424 CONFIG_MISSING — the request was valid; the template that would
+    // render it hasn't been set up yet. The client renders a callout with a
+    // link straight to the templates screen, so the user isn't left staring
+    // at "Something went wrong" with no path forward.
+    throw new AppError(
+      "CONFIG_MISSING",
+      `No '${docType}' document template has been set up yet.`,
+      424,
+      {
+        setting_key: `document_template.${docType}`,
+        settings_route: "/settings/document-templates",
+        feature: `${docType} PDF rendering`,
+      },
+    );
   }
   const status = template.status || "draft";
   if (status !== "published") {

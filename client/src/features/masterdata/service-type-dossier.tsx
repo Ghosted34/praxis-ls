@@ -34,7 +34,7 @@ import { EmptyState, ErrorState, LoadingRow } from "@/components/ui/states";
 import { KpiRow, KpiTile } from "@/components/ui/kpi-tile";
 import { InlineEdit } from "@/components/ui/inline-edit";
 import { useResource } from "@/lib/use-resource";
-import { useAction } from "@/lib/use-action";
+import { useRowAction } from "@/lib/use-action";
 import { DictionaryFinder } from "@/components/dictionary-finder";
 import { cn } from "@/lib/cn";
 import { money, num, dateFmt } from "@/lib/format";
@@ -350,7 +350,7 @@ function DictionaryTab({
   reload: () => void;
 }) {
   const [showGeneric, setShowGeneric] = React.useState(false);
-  const act = useAction();
+  const act = useRowAction();
   const dictHref = (code: string) => `/master/financial-dictionary?focus=${encodeURIComponent(code)}`;
 
   /**

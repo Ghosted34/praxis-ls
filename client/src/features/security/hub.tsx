@@ -62,7 +62,7 @@ function Overview() {
   const navigate = useNavigate();
   const users = useList<User>("/users");
   const roles = useList<Role>("/roles");
-  const sessions = useList<{ session_id: string; created_at?: string | null; ip?: string | null; revoked_at?: string | null }>("/sessions/mine");
+  const sessions = useList<{ session_id: string; created_at?: string | null; ip?: string | null; killed_at?: string | null }>("/sessions/mine");
   const fieldVis = useList<{ field_visibility_id: string }>("/field-visibility");
 
   const all = users.rows || [];
@@ -142,7 +142,7 @@ function Overview() {
             {(sessions.rows || []).slice(0, 5).map((s) => (
               <li key={s.session_id} className="flex items-center justify-between gap-3 border-b border-border pb-2 last:border-0">
                 <span className="flex items-center gap-2">
-                  {s.revoked_at ? <Pill tone="bad">Revoked</Pill> : <Pill tone="ok">Active</Pill>}
+                  {s.killed_at ? <Pill tone="bad">Revoked</Pill> : <Pill tone="ok">Active</Pill>}
                   <span className="num text-muted-foreground">{s.ip || "unknown IP"}</span>
                 </span>
                 <span className="num text-muted-foreground">{dateFmt(s.created_at)}</span>

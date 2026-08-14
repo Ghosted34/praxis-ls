@@ -1018,21 +1018,59 @@ export type TaxJurisdiction = {
 };
 export const listTaxJurisdictions = () => tenant<TaxJurisdiction[]>("/tax-jurisdictions");
 
-export async function listSalesTaxCodes(): Promise<TaxCode[]> {
-  const jurs = await tenant<TaxJurisdiction[]>("/tax-jurisdictions").catch(() => []);
+/**
+ * The sales-applicable VAT codes across every jurisdiction, deduped.
+ *
+ * B1 (class F — mutation-adjacent read on a picker). Both fetches used to be
+ * `.catch(() => [])`, which meant that if either the jurisdictions list or
+ * ANY per-jurisdiction /codes call failed, an invoice line silently offered
+ * zero VAT codes — indistinguishable from a tenant that legitimately has no
+ * tax configured. In an OHADA ledger that is a correctness defect, not a
+ * cosmetic one. Now:
+ *
+ *   - The jurisdictions call throws on failure. The caller (a picker inside
+ *     a useAction / useResource) surfaces the real message.
+ *   - Per-jurisdiction /codes calls STILL tolerate individual failures —
+ *     one jurisdiction whose codes endpoint is broken should not zero out
+ *     every other jurisdiction's codes — but the caller receives
+ *     { codes, degraded, failed_jurisdictions } so a visible marker can be
+ *     rendered next to the picker instead of silently missing rows.
+ */
+export type SalesTaxCodes = {
+  codes: TaxCode[];
+  /** True when at least one jurisdiction failed to list its codes. */
+  degraded: boolean;
+  /** IDs of jurisdictions that failed; the caller can name them in the UI. */
+  failed_jurisdictions: string[];
+};
+
+export async function listSalesTaxCodes(): Promise<SalesTaxCodes> {
+  const jurs = await tenant<TaxJurisdiction[]>("/tax-jurisdictions");
   const perJur = await Promise.all(
-    (jurs || []).map((j) => tenant<TaxCode[]>(`/tax-jurisdictions/${j.jurisdiction_id}/codes`).catch(() => [])),
+    (jurs || []).map(async (j) => {
+      try {
+        const codes = await tenant<TaxCode[]>(`/tax-jurisdictions/${j.jurisdiction_id}/codes`);
+        return { ok: true as const, id: j.jurisdiction_id, codes };
+      } catch {
+        // Class E — degraded read. The user MUST see the degradation
+        // (the returned `degraded` flag drives an inline note in the picker),
+        // so this is silent to the reporter but never silent to the UI.
+        return { ok: false as const, id: j.jurisdiction_id, codes: [] as TaxCode[] };
+      }
+    }),
   );
-  const flat = perJur.flat();
+  const failed_jurisdictions = perJur.filter((r) => !r.ok).map((r) => r.id);
+  const flat = perJur.flatMap((r) => r.codes);
   // VAT codes that apply to sales (or don't scope applies_to). Deduped by id.
   const seen = new Set<string>();
-  return flat.filter((c) => {
+  const codes = flat.filter((c) => {
     if (c.kind !== "VAT") return false;
     if (c.applies_to && c.applies_to !== "sales") return false;
     if (seen.has(c.tax_code_id)) return false;
     seen.add(c.tax_code_id);
     return true;
   });
+  return { codes, degraded: failed_jurisdictions.length > 0, failed_jurisdictions };
 }
 
 /* ═══════════════ Party 360° revamp (PR 2) — src/modules/master ═══════════════ */

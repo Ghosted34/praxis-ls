@@ -103,6 +103,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CODE_TAKEN` | 409 | 2× | — |
 | `COLUMN_TAKEN` | 422 | 1× | — |
 | `COMPLIANCE_BLOCKED` | 409 | 4× | — |
+| `CONFIG_MISSING` | 424 | 1× | — |
 | `CONTAINERS_DISABLED` | 422 | 1× | — |
 | `CURRENCY_IN_USE` | 409 | 1× | — |
 | `CYCLIC_PARENT` | 422 | 2× | — |
@@ -174,7 +175,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_DRAFT` | 422 | 1× | — |
 | `NOT_A_MEMBER` | 403 | 2× | `PERMISSION_DENIED` |
 | `NOT_CASH_ACCOUNT` | 422 | 1× | — |
-| `NOT_CONFIGURED` | 400, 422 | 2× | — |
+| `NOT_CONFIGURED` | 400 | 1× | — |
 | `NOT_CONNECTED` | 409 | 1× | — |
 | `NOT_DOCUMENT` | 422 | 1× | — |
 | `NOT_DONE` | 422 | 1× | — |

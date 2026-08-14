@@ -42,6 +42,14 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
   const [marginPercent, setMarginPercent] = React.useState("");
   const [lines, setLines] = React.useState<QLine[]>([]);
   const [taxCodes, setTaxCodes] = React.useState<TaxCode[]>([]);
+  // B1 (class E — degraded read). listSalesTaxCodes returns
+  // { codes, degraded, failed_jurisdictions } so an empty picker cannot be
+  // confused with a working one — a jurisdiction whose /codes endpoint is
+  // broken now shows an inline note under the picker instead of silently
+  // missing rows. Kept as a boolean here; the failed IDs are for a fuller
+  // breakdown if the picker ever needs one.
+  const [taxCodesDegraded, setTaxCodesDegraded] = React.useState(false);
+  const [taxCodesError, setTaxCodesError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
 
@@ -84,7 +92,22 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
   React.useEffect(() => {
     if (!open) return;
     let live = true;
-    listSalesTaxCodes().then((cs) => live && setTaxCodes(cs)).catch(() => live && setTaxCodes([]));
+    setTaxCodesError(null);
+    listSalesTaxCodes()
+      .then((r) => {
+        if (!live) return;
+        setTaxCodes(r.codes);
+        setTaxCodesDegraded(r.degraded);
+      })
+      .catch((e) => {
+        // B1 — the previous .catch(()=>[]) hid a broken jurisdictions list.
+        // Surfacing the message here means an invoice line cannot silently
+        // offer zero VAT codes when the tenant is correctly configured.
+        if (!live) return;
+        setTaxCodes([]);
+        setTaxCodesDegraded(true);
+        setTaxCodesError(errMsg(e));
+      });
     return () => { live = false; };
   }, [open]);
 
@@ -235,6 +258,13 @@ export function QuotationForm({ open, editing, entities, clients, opportunities,
               </div>
             </div>
           ))}
+          {taxCodesDegraded && (
+            <p className="text-right text-xs text-[rgb(var(--warn))]">
+              {taxCodesError
+                ? `VAT codes couldn't load — ${taxCodesError}`
+                : "Some jurisdictions couldn't load their VAT codes; the picker above is partial."}
+            </p>
+          )}
           <div className="flex justify-end pr-10 text-sm font-semibold">Total (HT): {money(total, currency)}</div>
           <p className="text-right text-xs text-muted-foreground">VAT is applied server-side from each line's tax code (débours lines are never taxed); totals refresh on save.</p>
         </div>

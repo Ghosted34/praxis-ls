@@ -7,6 +7,14 @@ import reactHooks from "eslint-plugin-react-hooks";
 import reactRefresh from "eslint-plugin-react-refresh";
 import jsxA11y from "eslint-plugin-jsx-a11y";
 import tseslint from "typescript-eslint";
+import { createRequire } from "module";
+
+// The local rules (client/eslint-local-rules/) are written as CJS because the
+// rule API is CJS-first everywhere in the ESLint ecosystem; createRequire
+// lets a flat ESM config import them without a bundler step. Each rule is
+// documented against the taxonomy in doc/ERROR_HANDLING.md.
+const require = createRequire(import.meta.url);
+const praxis = require("./eslint-local-rules/index.cjs");
 
 export default tseslint.config(
   {
@@ -31,6 +39,9 @@ export default tseslint.config(
       "react-hooks": reactHooks,
       "react-refresh": reactRefresh,
       "jsx-a11y": jsxA11y,
+      // Local rules — see client/eslint-local-rules/. Namespaced under
+      // "praxis" so a project-specific rule is unmistakable in the config.
+      praxis,
     },
     rules: {
       "react-hooks/rules-of-hooks": "error",
@@ -144,6 +155,16 @@ export default tseslint.config(
           ],
         },
       ],
+
+      /**
+       * R1 from doc/ERROR_HANDLING.md — every silent catch must carry a
+       * taxonomy marker. Set as "warn" for now with the existing violations
+       * grandfathered via `--max-warnings <N>` in the lint script; the flip
+       * to "error" happens once PR2 has classified every legacy site. This
+       * matches the ratchet the backend's `check-silent-catch.js` already
+       * uses.
+       */
+      "praxis/no-unmarked-silent-catch": "warn",
     },
   },
   // Test files run under Vitest globals and legitimately use non-null assertions.

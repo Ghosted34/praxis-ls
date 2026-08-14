@@ -23,6 +23,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/ui/states";
 import { SearchSelect } from "@/components/ui/search-select";
 import { errMsg, useList, type Row } from "@/lib/use-resource";
+import { useToast } from "@/components/ui/toast";
 import { cell } from "@/lib/format";
 import * as api from "@/lib/treasury-api";
 import { NewCategoryModal } from "./new-category-modal";
@@ -75,6 +76,7 @@ export function NewAccountModal({
   const [busy, setBusy]             = React.useState(false);
   const [error, setError]           = React.useState<string | null>(null);
   const [newCatOpen, setNewCatOpen] = React.useState(false);
+  const toast = useToast();
 
   React.useEffect(() => {
     if (!open) return;
@@ -132,8 +134,21 @@ export function NewAccountModal({
 
       const created = await api.createAccount(body);
       if (markPrimary) {
-        try { await api.setAccountPrimary(created.treasury_account_id); } catch { /* soft */ }
+        // B2 (class F — mutation). The previous try/catch swallowed a failing
+        // setAccountPrimary silently, so the user ticked "primary", the modal
+        // closed, and the flag was never set. Now the create still counts
+        // (the account exists), but the follow-up failure is surfaced as a
+        // warning toast so the user knows they need to re-set primary from
+        // the row's menu. The account itself is not rolled back — deleting
+        // a treasury_account is not a lightweight action, and the row is
+        // recoverable state; a lie about "primary" is not.
+        try {
+          await api.setAccountPrimary(created.treasury_account_id);
+        } catch (e) {
+          toast.error(`Account created, but couldn't set it as primary — ${errMsg(e)}`);
+        }
       }
+      toast.success("Treasury account created");
       onCreated(created);
       onClose();
     } catch (e) {

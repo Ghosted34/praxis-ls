@@ -113,7 +113,7 @@ export function buildMapModel(lanes: Lane[]): MapModel | null {
 
   // ── lanes ──
   const outLanes: MapLane[] = [];
-  const counts: Record<ShipmentMode, number> = { sea: 0, road: 0, air: 0 };
+  const counts: Record<ShipmentMode, number> = { sea: 0, road: 0, air: 0, other: 0 };
 
   // Lanes that share a corridor (Antwerp→Douala and Paris CDG→Douala start ~500km
   // apart but converge on the same port) project almost on top of each other. Bow

@@ -111,11 +111,16 @@ const SHIPMENTS: LiveShipment[] = [
 
 const LANES: Lane[] = [
   {
+    // One itinerary leg, with the stable identity the map selects and focuses on.
+    id: "d-142:leg-1",
+    dossierId: "d-142",
     ref: "SBX-OPS-2026-0142",
     mode: "sea",
     status: "In progress",
-    from: { name: "Shanghai", lat: 31.2, lng: 121.5 },
-    to: { name: "Douala", lat: 4.05, lng: 9.7 },
+    legType: "MAIN_CARRIAGE",
+    seq: 1,
+    from: { name: "Shanghai", lat: 31.2, lng: 121.5, kind: "SEAPORT", state: "verified" },
+    to: { name: "Douala", lat: 4.05, lng: 9.7, kind: "SEAPORT", state: "verified" },
   },
 ];
 

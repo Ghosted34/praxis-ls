@@ -21,8 +21,27 @@ export const str = (v: unknown): string => (v === null || v === undefined ? "" :
 export const numOrNull = (v: unknown): number | null =>
   v === null || v === undefined ? null : Number(v);
 
-/** Transport mode, which drives the map lane styling and the row's icon. */
-export type ShipmentMode = "sea" | "road" | "air";
+/**
+ * Transport mode, which drives the map lane styling and the row's icon.
+ *
+ * `other` is new, and it is the honest answer for the three service types that
+ * move nothing: warehousing, customs brokerage, business representation. The
+ * previous vocabulary had no slot for them, so `shipmentMode` fell through to
+ * "sea" — and a storage file with a port name somewhere in it was drawn as a
+ * shipping lane on the screen a Monday meeting runs off. Those files now render
+ * as facility activity instead of as a fabricated route.
+ */
+export type ShipmentMode = "sea" | "road" | "air" | "other";
+
+/** The server's mode vocabulary → ours. The server derives it from the
+ *  itinerary's main carriage, falling back to the service-type key, so this is a
+ *  rename rather than a second heuristic. */
+const MODE_FROM_SERVER: Record<string, ShipmentMode> = {
+  SEA: "sea",
+  AIR: "air",
+  LAND: "road",
+  OTHER: "other",
+};
 
 /**
  * Mode for a live shipment.
@@ -34,7 +53,16 @@ export type ShipmentMode = "sea" | "road" | "air";
  * corridor was drawn as a shipping lane. That is exactly why the key wins.
  */
 export function shipmentMode(s: Row, vessel: string, lane: string): ShipmentMode {
+  // The server's own answer wins outright when it is there. It is derived from
+  // the file's itinerary — the main carriage's actual mode — which is the only
+  // source that gets PROJECT_CARGO right: the key heuristic below had to put it
+  // somewhere, chose the road corridors, and so drew a chartered vessel as a
+  // truck. Everything after this line is the fallback for a payload that predates
+  // the derivation.
+  const fromServer = MODE_FROM_SERVER[str(s.mode).toUpperCase()];
+  if (fromServer) return fromServer;
   const key = str(s.service_key).toUpperCase();
+  if (/WAREHOUS|CUSTOMS_BROKERAGE|BUSINESS_REPRESENTATION/.test(key)) return "other";
   if (/AIR/.test(key)) return "air";
   if (/ROAD|TRANSIT|HINTERLAND|TRUCK|INLAND/.test(key)) return "road";
   if (/SEA|OCEAN|MARITIME/.test(key)) return "sea";
@@ -122,39 +150,205 @@ export function toLiveShipment(s: Row): LiveShipment {
 }
 
 /**
- * A plottable lane: both endpoints resolved to real coordinates by the backend
- * (`geo_place` cache → Geoapify on a miss). A shipment whose POL/POD cannot be
- * resolved produces no lane — it still appears in the list.
+ * How much we actually know about a point on the map.
+ *
+ * The same four states the place picker's badge shows, so a route drawn in the
+ * tower and the field it came from cannot disagree about what is verified. The
+ * map uses them to draw honestly: a `reference` endpoint gets a hollow marker
+ * because it is near the real place rather than at it, and `unknown` never
+ * reaches the map at all — a leg with an unresolved end is not plottable.
+ */
+export type EndpointState = "verified" | "reference" | "unverified" | "unknown";
+
+export type Waypoint = {
+  name: string;
+  lat: number;
+  lng: number;
+  /** `SEAPORT`, `AIRPORT`, `WAREHOUSE`… drives the marker glyph. */
+  kind?: string | null;
+  state?: EndpointState;
+};
+
+/**
+ * ONE DRAWN SEGMENT. Both endpoints resolved to real coordinates server-side.
+ *
+ * A lane used to be a whole file: one line from POL to POD. That is the main
+ * carriage and nothing else, so an end-to-end file — collect, sail, clear, truck
+ * inland, deliver — showed one of its five movements, and the four an operator is
+ * chased about were invisible. A lane is now one ITINERARY LEG, so the same file
+ * draws five segments in three colours, and `dossierId` is what ties them back
+ * together for selection.
+ *
+ * `id` is stable across renders and derived from the leg, not from array index.
+ * The map uses it for `<mpath href>`, for keyboard focus and for selection — all
+ * three break subtly when an id shifts because a filter removed an earlier file.
  */
 export type Lane = {
+  id: string;
+  dossierId: string;
   ref: string;
   mode: ShipmentMode;
   status: string;
-  from: { name: string; lat: number; lng: number };
-  to: { name: string; lat: number; lng: number };
+  /** `MAIN_CARRIAGE`, `PICKUP`, `FINAL_DELIVERY`… what this segment IS. */
+  legType: string;
+  /** Position within the file's itinerary, 1-based. */
+  seq: number;
+  from: Waypoint;
+  to: Waypoint;
 };
 
-/** Lanes from the RAW payload — `toLiveShipment` drops `coords` by design. */
+const finite = (v: unknown): number | null => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+
+/** A leg endpoint from the API's itinerary projection. */
+function waypointOf(raw: Row | null | undefined, fallbackName: string): Waypoint | null {
+  if (!raw) return null;
+  const lat = finite(raw.latitude);
+  const lng = finite(raw.longitude);
+  if (lat === null || lng === null) return null;
+  return {
+    name: str(raw.name) || fallbackName,
+    lat,
+    lng,
+    kind: raw.kind ? str(raw.kind) : null,
+    state: (str(raw.state) as EndpointState) || undefined,
+  };
+}
+
+/**
+ * Lanes from the RAW payload — one per plottable itinerary leg, falling back to
+ * the parent POL→POD lane for a file with no structured itinerary.
+ *
+ * THE FALLBACK IS NOT LEGACY CRUFT. A file created before itineraries existed,
+ * and a file whose service type has no template, both have real POL/POD and
+ * belong on the map. Drawing them as a single synthetic main carriage is exactly
+ * what they are.
+ *
+ * `toLiveShipment` drops `coords` by design, so this reads the raw rows.
+ */
 export function toLanes(rawShipments: Row[]): Lane[] {
   const out: Lane[] = [];
-  rawShipments.forEach((s) => {
+  rawShipments.forEach((s, fileIndex) => {
+    const mapped = toLiveShipment(s);
+    // `dossier_id` is the real key; `ref` is a display string and the index is a
+    // last resort so a payload without ids still produces stable-within-render
+    // selection rather than colliding on an empty string.
+    const dossierId = str(s.dossier_id) || str(s.ref) || `row-${fileIndex}`;
+    const legs = Array.isArray(s.legs) ? (s.legs as Row[]) : [];
+
+    const plotted = legs.filter((l) => l && l.plottable === true);
+    if (plotted.length) {
+      plotted.forEach((leg, i) => {
+        const from = waypointOf(leg.origin as Row, str((leg.origin as Row)?.name));
+        const to = waypointOf(leg.destination as Row, str((leg.destination as Row)?.name));
+        if (!from || !to) return;
+        const seq = finite(leg.seq) ?? i + 1;
+        out.push({
+          id: `${dossierId}:${str(leg.itinerary_leg_id) || `seq-${seq}`}`,
+          dossierId,
+          ref: mapped.ref,
+          mode: MODE_FROM_SERVER[str(leg.mode).toUpperCase()] || "other",
+          status: enumLabel(str(leg.status) || mapped.status),
+          legType: str(leg.leg_type) || "OTHER",
+          seq,
+          from,
+          to,
+        });
+      });
+      return;
+    }
+
     const c = s.coords as { from?: Row; to?: Row } | null | undefined;
     if (!c || !c.from || !c.to) return;
-    const fLat = Number(c.from.latitude);
-    const fLng = Number(c.from.longitude);
-    const tLat = Number(c.to.latitude);
-    const tLng = Number(c.to.longitude);
-    if (![fLat, fLng, tLat, tLng].every(Number.isFinite)) return;
-    const mapped = toLiveShipment(s);
+    const from = waypointOf(c.from, str(s.origin));
+    const to = waypointOf(c.to, str(s.destination));
+    if (!from || !to) return;
     out.push({
+      id: `${dossierId}:parent`,
+      dossierId,
       ref: mapped.ref,
       mode: mapped.mode,
       status: mapped.status,
-      from: { name: str(c.from.name) || str(s.origin), lat: fLat, lng: fLng },
-      to: { name: str(c.to.name) || str(s.destination), lat: tLat, lng: tLng },
+      legType: "MAIN_CARRIAGE",
+      seq: 1,
+      from,
+      to,
     });
   });
   return out;
+}
+
+/**
+ * A file that belongs on the tower but NOT on the map: warehousing, brokerage,
+ * business representation, and anything whose endpoints are still unresolved.
+ *
+ * Split out here rather than filtered in the panel so there is one definition of
+ * "this has no route" and the map, the counts and the activity list cannot
+ * disagree. `needsLocation` is the server's verdict — it knows whether an endpoint
+ * is merely absent or is present-but-unverified, which the browser cannot tell
+ * from coordinates alone.
+ */
+export type ActivityRecord = {
+  dossierId: string;
+  ref: string;
+  serviceName: string;
+  status: string;
+  tone: Tone;
+  stage: string;
+  eta: string;
+  /** Why it is here: no route at all, or a route we cannot trust yet. */
+  reason: "activity" | "needs-location";
+  /** A verified facility, when the file names one — so it can still get a pin. */
+  facility: Waypoint | null;
+};
+
+export function toActivityRecords(rawShipments: Row[]): ActivityRecord[] {
+  const out: ActivityRecord[] = [];
+  rawShipments.forEach((s, i) => {
+    const isMovement = s.is_movement === true;
+    const needsLocation = s.needs_location === true;
+    const legs = Array.isArray(s.legs) ? (s.legs as Row[]) : [];
+    const hasRoute = legs.some((l) => l && l.plottable === true) || !!s.coords;
+    // On the map already and nothing unresolved about it — not an exception.
+    if (hasRoute && !needsLocation) return;
+    if (isMovement && !needsLocation && !hasRoute) {
+      // A movement file with no endpoints named at all. The server does not call
+      // that "needs location" (nothing was typed to verify), but an operator
+      // looking for what is missing wants to see it.
+      out.push(activityOf(s, i, "needs-location", legs));
+      return;
+    }
+    out.push(activityOf(s, i, needsLocation ? "needs-location" : "activity", legs));
+  });
+  return out;
+}
+
+function activityOf(s: Row, i: number, reason: ActivityRecord["reason"], legs: Row[]): ActivityRecord {
+  const mapped = toLiveShipment(s);
+  // A warehousing file's custody location is a real, verified point when the
+  // operator picked one — so it earns a facility pin rather than nothing.
+  let facility: Waypoint | null = null;
+  for (const leg of legs) {
+    facility = waypointOf(leg.origin as Row, "") || waypointOf(leg.destination as Row, "");
+    if (facility) break;
+  }
+  if (!facility) {
+    const c = s.coords as { from?: Row } | null | undefined;
+    facility = waypointOf(c?.from, str(s.origin));
+  }
+  return {
+    dossierId: str(s.dossier_id) || str(s.ref) || `row-${i}`,
+    ref: mapped.ref,
+    serviceName: str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
+    status: mapped.status,
+    tone: mapped.tone,
+    stage: mapped.stage,
+    eta: mapped.eta,
+    reason,
+    facility,
+  };
 }
 
 /**

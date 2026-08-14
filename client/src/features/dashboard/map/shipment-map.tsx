@@ -29,13 +29,19 @@ const LANE_STROKE: Record<ShipmentMode, string> = {
   sea: "rgb(var(--brand-blue-bright))",
   air: "rgb(var(--brand-blue))",
   road: "var(--primary)",
+  // A leg with no transport mode is an activity at a place, not a corridor. It
+  // draws in the neutral ink so it never reads as one of the three modes in the
+  // legend — and it has no lane to draw in the normal case anyway.
+  other: "rgb(var(--ink) / 0.45)",
 };
-const LANE_DASH: Record<ShipmentMode, string> = { sea: "6 7", air: "3 6", road: "2 8" };
-const LANE_WIDTH: Record<ShipmentMode, number> = { sea: 2.2, air: 1.6, road: 2.6 };
+const LANE_DASH: Record<ShipmentMode, string> = { sea: "6 7", air: "3 6", road: "2 8", other: "1 5" };
+const LANE_WIDTH: Record<ShipmentMode, number> = { sea: 2.2, air: 1.6, road: 2.6, other: 1.4 };
 const LANE_ANIM: Record<ShipmentMode, string> = {
   sea: "animate-lane-sea",
   air: "animate-lane-air",
   road: "animate-lane-road",
+  // No dash animation: nothing is travelling along it.
+  other: "",
 };
 
 /** A stable "HH:MM" for the footer, recomputed only when the lanes change. */

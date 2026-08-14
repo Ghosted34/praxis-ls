@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (295)
+## All codes (297)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -156,6 +156,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `INVALID_TOKEN` | 401 | 10× | — |
 | `INVALID_TRANSITION` | 422 | 13× | — |
 | `IN_USE` | 409 | 2× | — |
+| `ITINERARY_INVALID` | 422 | 1× | — |
+| `ITINERARY_LEG_REQUIRED` | — | 1× | — |
 | `KEY_IMMUTABLE` | 422 | 1× | — |
 | `LAST_CEO` | 409 | 2× | — |
 | `LAST_ROOT_ADMIN` | 409 | 2× | — |
@@ -314,7 +316,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `UNSUPPORTED_IMAGE` | 400, 415 | 5× | — |
 | `UNVERIFIED_PLACE` | — | 1× | — |
 | `USER_INACTIVE` | 401 | 3× | — |
-| `VALIDATION_ERROR` | 422 | 117× | — |
+| `VALIDATION_ERROR` | 422 | 118× | — |
 | `VEHICLE_COMMITTED` | — | 1× | — |
 | `VEHICLE_NOT_FOUND` | 404 | 1× | — |
 | `VEHICLE_UNAVAILABLE` | 422 | 1× | — |

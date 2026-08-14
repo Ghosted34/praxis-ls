@@ -17,9 +17,17 @@ const lane = (
   to: [number, number],
   mode: Lane["mode"] = "sea",
 ): Lane => ({
+  // A lane is one itinerary LEG now, not a whole file, so it carries a stable id
+  // and the dossier it belongs to — the map keys `<mpath href>`, keyboard focus
+  // and selection off them, and all three break subtly when an id is an array
+  // index that shifts because a filter removed an earlier file.
+  id: `${ref}:1`,
+  dossierId: `d-${ref}`,
   ref,
   mode,
   status: "In transit",
+  legType: "MAIN_CARRIAGE",
+  seq: 1,
   from: { name: `${ref}-from`, lat: from[0], lng: from[1] },
   to: { name: `${ref}-to`, lat: to[0], lng: to[1] },
 });
@@ -50,7 +58,10 @@ describe("buildMapModel", () => {
 
   it("counts lanes per mode for the footer", () => {
     const m = buildMapModel([ANTWERP_DOUALA, PARIS_DOUALA, DOUALA_NDJAMENA])!;
-    expect(m.counts).toEqual({ sea: 1, air: 1, road: 1 });
+    // `other` is a real mode now — the files that move nothing (warehousing,
+    // brokerage, representation) used to fall through to the sea default and be
+    // drawn as shipping lanes. Zero here, because none of these three is one.
+    expect(m.counts).toEqual({ sea: 1, air: 1, road: 1, other: 0 });
   });
 
   it("de-duplicates a port that several lanes share", () => {

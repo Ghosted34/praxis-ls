@@ -24,6 +24,9 @@ const MODE_CHIP: Record<ShipmentMode, string> = {
   sea: "bg-[rgb(var(--brand-blue)_/_0.13)] text-[rgb(var(--brand-blue-ink))]",
   air: "bg-[rgb(var(--brand-blue-bright)_/_0.15)] text-[rgb(var(--brand-blue-bright))]",
   road: "bg-[color-mix(in_srgb,var(--primary)_14%,transparent)] text-primary-ink",
+  // Neutral on purpose: a file with no route should not borrow a transport
+  // colour, because the colours are the legend on the map beside it.
+  other: "bg-muted text-muted-foreground",
 };
 
 function ShipmentRow({ s }: { s: LiveShipment }) {

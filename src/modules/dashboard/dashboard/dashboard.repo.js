@@ -38,17 +38,92 @@ async function kpis(client) {
  *  counts, the live-shipment list (open/in-progress dossiers), and how many
  *  approvals are waiting. Each query is guarded so a missing table/feature
  *  degrades to a zero/empty value instead of breaking the whole payload. */
+/**
+ * The MODE a file actually travels by.
+ *
+ * Derived from the itinerary's main carriage FIRST, and only then from the
+ * service-type key. That order matters and it fixes a real misclassification:
+ * the key heuristic put PROJECT_CARGO in with the road corridors, because the
+ * pattern list needed somewhere to put it — but project cargo is multimodal by
+ * definition, and a file whose main carriage is a chartered vessel was being
+ * filtered, coloured and counted as a truck. The itinerary knows; the key is the
+ * fallback for a file that has no structured legs yet.
+ *
+ * OTHER is a real answer, not a failure: warehousing, brokerage and business
+ * representation have no transport mode, and forcing one on them is how a
+ * storage file ends up drawn as a shipping lane.
+ */
+const MODE_EXPR = `COALESCE(
+  (SELECT l.mode FROM dossier_itinerary_leg l
+    WHERE l.dossier_id = d.dossier_id AND l.leg_type = 'MAIN_CARRIAGE'
+      AND l.mode IN ('AIR','SEA','LAND')
+    ORDER BY l.seq LIMIT 1),
+  CASE
+    WHEN st.key ILIKE '%AIR%' THEN 'AIR'
+    WHEN st.key ILIKE '%SEA%' THEN 'SEA'
+    WHEN st.key ILIKE '%TRANSIT%' OR st.key ILIKE '%INLAND%' THEN 'LAND'
+    ELSE 'OTHER'
+  END)`;
+
+/**
+ * Does this file MOVE something, or does it record work at a place?
+ *
+ * The Control Tower has to answer this to stay honest. Warehousing, customs
+ * brokerage and business representation are real operations files with real
+ * deadlines and no route — and the previous tower had nowhere to put them, so
+ * they either vanished from the screen or were drawn as a lane between two
+ * places one of them happened to mention. Both are wrong. A file is a movement
+ * file when it names endpoints or carries a transport leg; everything else
+ * belongs in the activity layer.
+ */
+const IS_MOVEMENT_EXPR = `(
+  d.pol IS NOT NULL OR d.pod IS NOT NULL
+  OR EXISTS (SELECT 1 FROM dossier_itinerary_leg l
+              WHERE l.dossier_id = d.dossier_id AND l.mode IN ('AIR','SEA','LAND'))
+)`;
+
+/**
+ * Is any endpoint on this file unresolved?
+ *
+ * TRUE when the file names a place but that place is either not linked at all
+ * (legacy free text, written before the picker existed) or linked to a row
+ * nobody ever confirmed (the background-geocode population — see 0674). Those are
+ * the two states that make a plotted route a guess, and together they are
+ * exactly the location-needed queue.
+ */
+const NEEDS_LOCATION_EXPR = `(
+  (d.pol IS NOT NULL AND (d.pol_place_id IS NULL OR gp_o.verified_at IS NULL))
+  OR (d.pod IS NOT NULL AND (d.pod_place_id IS NULL OR gp_d.verified_at IS NULL))
+)`;
+
+/** One FROM clause, shared by the count and the page, so a filter added to one
+ *  cannot be missing from the other — the class of bug that makes a header count
+ *  disagree with the list under it. */
+const TOWER_FROM = `
+  FROM dossier_visible d
+  LEFT JOIN service_type st ON st.service_type_id = d.service_type_id
+  LEFT JOIN geo_place gp_o ON gp_o.geo_place_id = d.pol_place_id
+  LEFT JOIN geo_place gp_d ON gp_d.geo_place_id = d.pod_place_id`;
+
 async function controlTower(client, options = {}) {
-  const { limit = 50, cursor = null, serviceTypeId = null, territory = null, mode = null, dateField = "created", from = null, to = null, includeCompleted = false } = options;
+  const {
+    limit = 50, cursor = null, serviceTypeId = null, territory = null, mode = null,
+    dateField = "created", from = null, to = null, includeCompleted = false,
+    layer = null, verified = null,
+  } = options;
   const params = [];
   const where = [];
   const add = (v) => { params.push(v); return "$" + params.length; };
   if (!includeCompleted) where.push("d.status IN ('OPEN','IN_PROGRESS')");
   if (serviceTypeId) where.push("d.service_type_id = " + add(serviceTypeId));
   if (territory) where.push("st.territory = " + add(territory));
-  if (mode === "AIR") where.push("st.key ILIKE '%AIR%'");
-  if (mode === "SEA") where.push("st.key ILIKE '%SEA%'");
-  if (mode === "LAND") where.push("(st.key ILIKE '%TRANSIT%' OR st.key ILIKE '%INLAND%' OR st.key ILIKE '%PROJECT%')");
+  if (mode) where.push(MODE_EXPR + " = " + add(String(mode).toUpperCase()));
+  // The two layers partition the result set, which is what makes the tower's
+  // "12 moving / 3 at a facility" counts add up to the page.
+  if (layer === "MOVEMENT") where.push(IS_MOVEMENT_EXPR);
+  if (layer === "ACTIVITY") where.push("NOT " + IS_MOVEMENT_EXPR);
+  if (verified === "UNVERIFIED") where.push(NEEDS_LOCATION_EXPR);
+  if (verified === "VERIFIED") where.push("NOT " + NEEDS_LOCATION_EXPR);
   const dateExpr = { created: "d.created_at", updated: "d.updated_at", arrival: "d.eta", delivery: "d.promised_delivery_date" }[dateField] || "d.created_at";
   if (from) where.push(dateExpr + " >= " + add(from));
   if (to) where.push(dateExpr + " < (" + add(to) + "::date + INTERVAL '1 day')");
@@ -61,11 +136,28 @@ async function controlTower(client, options = {}) {
   };
   const one = async (sql, queryParams = []) => (await rows(sql, queryParams))[0] || {};
 
+  /*
+   * The header counts, over the SAME filter as the page.
+   *
+   * `needs_location` and the two layer counts are computed here rather than from
+   * the page, and that is the point: the page is 50 rows and the queue is a
+   * property of the whole filtered set. A count derived from the visible page
+   * would say "2 files need a location" on page one of eleven, which is worse
+   * than saying nothing.
+   *
+   * The cursor predicate is deliberately NOT excluded — paging forward narrows
+   * the counts alongside the list, so the numbers describe what is on screen and
+   * after it rather than silently disagreeing with the pager.
+   */
   const ops = await one(
     "SELECT COUNT(*) FILTER (WHERE d.status IN ('OPEN','IN_PROGRESS'))::int AS active, " +
       "COUNT(*) FILTER (WHERE d.status='OPEN')::int AS open, " +
-      "COUNT(*) FILTER (WHERE d.status='IN_PROGRESS')::int AS in_progress " +
-      "FROM dossier_visible d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " + filter, params.slice(0),
+      "COUNT(*) FILTER (WHERE d.status='IN_PROGRESS')::int AS in_progress, " +
+      `COUNT(*) FILTER (WHERE ${IS_MOVEMENT_EXPR})::int AS movement, ` +
+      `COUNT(*) FILTER (WHERE NOT ${IS_MOVEMENT_EXPR})::int AS activity, ` +
+      `COUNT(*) FILTER (WHERE ${NEEDS_LOCATION_EXPR})::int AS needs_location ` +
+      TOWER_FROM + " " + filter,
+    params.slice(0),
   );
   // Progress comes from the milestone engine (milestone_instance, 0310) — done
   // stages over total stages for the dossier. Dossiers with no milestone template
@@ -76,26 +168,32 @@ async function controlTower(client, options = {}) {
   // for the dossier list — deliberately identical so the Control Tower bar and the
   // Operations screen can never disagree about how far along a dossier is.
   const shipments = await rows(
-    // service_key drives the map's sea/air/road styling. Without it the client
-    // sniffed the mode out of the vessel string and the port names, which got
-    // HINTERLAND_TRANSIT (a road corridor) wrong — it has no vessel and two
-    // ordinary city names, so it fell through to the "sea" default.
-    // Coordinates come from the FK when the dossier used the port picker (0479),
-    // which is exact. The free-text pol/pod still ride along: they're the display
+    // `dossier_id` now travels with the row. It is what the map selects on, what
+    // the itinerary panel loads from, and what builds the deep link to the file —
+    // the iframe build keyed everything on `ref`, which is a display string that
+    // two tenants can spell the same way.
+    //
+    // Coordinates come from the FK when the dossier used the place picker, which
+    // is exact. The free-text pol/pod still ride along: they are the display
     // label, and they remain the only route info on dossiers created before the
     // picker existed — those still resolve by name in the service layer.
-    "SELECT d.dossier_id, d.created_at, d.ref, d.status, d.pol AS origin, d.pod AS destination, d.vessel_flight, d.eta, " +
-      "st.key AS service_key, " +
+    "SELECT d.dossier_id, d.created_at, d.ref, d.status, d.pol AS origin, d.pod AS destination, " +
+      "d.vessel_flight, d.eta, d.promised_delivery_date, st.key AS service_key, st.name_en AS service_name, " +
+      MODE_EXPR + " AS mode, " +
+      IS_MOVEMENT_EXPR + " AS is_movement, " +
+      NEEDS_LOCATION_EXPR + " AS needs_location, " +
       "gp_o.latitude AS origin_lat, gp_o.longitude AS origin_lng, gp_o.name AS origin_name, " +
+      "gp_o.kind AS origin_kind, gp_o.verified_at AS origin_verified_at, gp_o.is_reference_point AS origin_is_reference_point, " +
       "gp_d.latitude AS dest_lat, gp_d.longitude AS dest_lng, gp_d.name AS dest_name, " +
+      "gp_d.kind AS dest_kind, gp_d.verified_at AS dest_verified_at, gp_d.is_reference_point AS dest_is_reference_point, " +
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id) AS milestone_total, " +
       "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'DONE') AS milestone_done, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id AND mi.status = 'BLOCKED') AS milestone_blocked, " +
+      "(SELECT COUNT(*)::int FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
+      "AND mi.status <> 'DONE' AND mi.due_date IS NOT NULL AND mi.due_date < CURRENT_DATE) AS milestone_overdue, " +
       "(SELECT mi.label FROM milestone_instance mi WHERE mi.dossier_id = d.dossier_id " +
       "AND mi.status IN ('IN_PROGRESS','PENDING') ORDER BY (mi.status = 'IN_PROGRESS') DESC, mi.stage_seq ASC LIMIT 1) AS current_milestone " +
-      "FROM dossier_visible d " +
-      "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
-      "LEFT JOIN geo_place gp_o ON gp_o.geo_place_id = d.pol_place_id " +
-      "LEFT JOIN geo_place gp_d ON gp_d.geo_place_id = d.pod_place_id " +
+      TOWER_FROM + " " +
       filter + " ORDER BY d.created_at DESC, d.dossier_id DESC LIMIT $" + (params.length + 1),
     [...params, pageLimit + 1],
   );
@@ -104,17 +202,42 @@ async function controlTower(client, options = {}) {
   const hasMore = shipments.length > pageLimit;
   const pageRows = hasMore ? shipments.slice(0, pageLimit) : shipments;
   const last = pageRows[pageRows.length - 1];
+
+  /** The four states the place picker's badge shows, for a dossier endpoint. */
+  const endpointState = (lat, verifiedAt, isReference) => {
+    if (lat === null || lat === undefined) return "unknown";
+    if (isReference === true) return "reference";
+    return verifiedAt ? "verified" : "unverified";
+  };
+
   return {
-    operation_files: { active: ops.active || 0, open: ops.open || 0, in_progress: ops.in_progress || 0 },
+    operation_files: {
+      active: ops.active || 0,
+      open: ops.open || 0,
+      in_progress: ops.in_progress || 0,
+      movement: ops.movement || 0,
+      activity: ops.activity || 0,
+      needs_location: ops.needs_location || 0,
+    },
     approvals_awaiting: appr.awaiting || 0,
     page: { limit: pageLimit, has_more: hasMore, next_cursor: hasMore && last ? `${last.created_at || ""}.${last.dossier_id || ""}` : null },
     live_shipments: pageRows.map((s) => {
       const total = Number(s.milestone_total) || 0;
       const done = Number(s.milestone_done) || 0;
       return {
+        dossier_id: s.dossier_id,
         ref: s.ref, status: s.status, origin: s.origin || null, destination: s.destination || null,
-        vessel_flight: s.vessel_flight || null, eta: s.eta || null, service_key: s.service_key || null,
+        vessel_flight: s.vessel_flight || null, eta: s.eta || null,
+        promised_delivery_date: s.promised_delivery_date || null,
+        service_key: s.service_key || null, service_name: s.service_name || null,
+        // Derived server-side from the itinerary, so the map, the list and the
+        // mode filter cannot disagree about what a file travels by.
+        mode: s.mode || "OTHER",
+        is_movement: s.is_movement === true,
+        needs_location: s.needs_location === true,
         milestone_total: total, milestone_done: done,
+        milestone_blocked: Number(s.milestone_blocked) || 0,
+        milestone_overdue: Number(s.milestone_overdue) || 0,
         current_milestone: s.current_milestone || null,
         progress: total > 0 ? Math.round((done / total) * 100) : null,
         // Pre-resolved coordinates when the dossier referenced a real place.
@@ -124,8 +247,16 @@ async function controlTower(client, options = {}) {
         // nothing here anyway.
         coords: s.origin_lat !== null && s.dest_lat !== null
           ? {
-              from: { name: s.origin_name || s.origin, latitude: Number(s.origin_lat), longitude: Number(s.origin_lng) },
-              to: { name: s.dest_name || s.destination, latitude: Number(s.dest_lat), longitude: Number(s.dest_lng) },
+              from: {
+                name: s.origin_name || s.origin, latitude: Number(s.origin_lat), longitude: Number(s.origin_lng),
+                kind: s.origin_kind || null,
+                state: endpointState(s.origin_lat, s.origin_verified_at, s.origin_is_reference_point),
+              },
+              to: {
+                name: s.dest_name || s.destination, latitude: Number(s.dest_lat), longitude: Number(s.dest_lng),
+                kind: s.dest_kind || null,
+                state: endpointState(s.dest_lat, s.dest_verified_at, s.dest_is_reference_point),
+              },
             }
           : null,
       };

@@ -9,6 +9,7 @@
 import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Select } from "@/components/ui/modal";
 import { useList } from "@/lib/use-resource";
 import type { ServiceType } from "@/lib/operations-api";
@@ -148,12 +149,14 @@ export function TowerFilters({ value, page, onChange }: Props) {
           </Select>
         </Field>
 
+        {/* Day-first, like every other date on an operations screen — the window
+            being filtered is read out loud in the meeting these filters drive. */}
         <Field label="From">
-          <Input type="date" value={draft.from ?? ""} onChange={(event) => set("from", event.target.value || undefined)} />
+          <DateField value={draft.from ?? ""} onChange={(iso) => set("from", iso || undefined)} />
         </Field>
 
         <Field label="To">
-          <Input type="date" value={draft.to ?? ""} onChange={(event) => set("to", event.target.value || undefined)} />
+          <DateField value={draft.to ?? ""} onChange={(iso) => set("to", iso || undefined)} />
         </Field>
 
         <Field label="Layer">

@@ -16,6 +16,7 @@
 import * as React from "react";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { SearchSelect, type Row } from "@/components/ui/search-select";
@@ -291,7 +292,18 @@ function Control({
         </Select>
       );
     case "DATE":
-      return <Input type="date" value={asString(value).slice(0, 10)} onChange={(e) => onChange(e.target.value || null)} {...aria} />;
+      // `DateField`, not a native date input: an ETA is read out loud in a room
+      // where dates are day-first, and a native control renders in the OPERATING
+      // SYSTEM's locale — so the same file showed 03/07 as the 3rd of July on one
+      // machine and the 7th of March on the next, with nothing on screen to say
+      // which. It still stores the ISO date the API wants.
+      return (
+        // The field's own placeholder is deliberately NOT forwarded: on a date
+        // field it is almost always an example date in whatever format the seed
+        // author had in mind, and it would displace the one hint that matters
+        // here — the format the box actually expects.
+        <DateField value={asString(value).slice(0, 10)} onChange={(iso) => onChange(iso || null)} {...aria} />
+      );
     case "DATETIME":
       return <Input type="datetime-local" value={asString(value)} onChange={(e) => onChange(e.target.value || null)} {...aria} />;
     case "NUMBER":

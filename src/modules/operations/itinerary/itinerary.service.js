@@ -295,28 +295,117 @@ async function replace(client, dossierId, legs) {
 }
 
 /**
+ * Where each leg type starts and ends, in terms of the dossier's OWN place
+ * columns. `null` means "this leg type has no opinion" and the walk below falls
+ * back to where the cargo currently is.
+ *
+ * These four columns are the whole geographic vocabulary of a file, and 0678
+ * finished giving every freight service type a field for each one it needs:
+ *
+ *   place_receipt   COLLECTION      the shipper's door
+ *   pol             ORIGIN          the main carriage's start
+ *   pod             DESTINATION     …its end (ROUTE_VIA on a door-to-door file)
+ *   place_delivery  FINAL_DELIVERY  the consignee's door
+ */
+const LEG_ENDS = {
+  PICKUP: ["place_receipt", "pol"],
+  MAIN_CARRIAGE: ["pol", "pod"],
+  INLAND_TRANSIT: ["pod", "place_delivery"],
+  FINAL_DELIVERY: ["pod", "place_delivery"],
+};
+
+/**
  * Instantiate a service type's template onto a new file.
  *
  * Called from `operations_file` at promotion. Legs are marked `source:'TEMPLATE'`
  * so the editor can say where they came from and the required-leg rule knows
  * which ones it may insist on.
  *
- * The main carriage inherits the file's POL and POD, which are already verified
- * by then (shipment_details refuses to open a movement file otherwise), so the
- * seeded route is plottable on the first render rather than after somebody edits
- * it. Every other leg starts with no location: guessing that a pickup happens at
- * the port of loading would put a truck leg on the map that nobody planned.
+ * ── THE WALK, AND WHY IT IS A WALK ──────────────────────────────────────────
+ *
+ * This used to fill the main carriage from POL/POD and leave every other leg
+ * blank. That was defensible while POL and POD were the only verified places a
+ * file had — but it meant a door-to-door file opened with four of its five legs
+ * empty, and the create wizard grew its own "collect from the shipper" and
+ * "deliver to the consignee" pickers to compensate. Those pickers then APPENDED
+ * legs, on top of the ones the template had already produced: two PICKUPs, two
+ * FINAL_DELIVERYs, and a delivery address that could differ between the dossier
+ * column and the leg.
+ *
+ * So the template is instantiated as a JOURNEY instead. A cursor follows the
+ * cargo, each leg starts where the last one ended, and a leg's own preference
+ * (`LEG_ENDS`) overrides the cursor when the file names the place — an inland
+ * transit begins at the port of entry, not back at the load port. Every place
+ * comes from a field an operator filled in once, so the wizard has nothing left
+ * to ask and the itinerary cannot disagree with the file.
+ *
+ * ── THE TWO RULES THAT KEEP IT HONEST ───────────────────────────────────────
+ *
+ *   1. BOTH ENDS OR NEITHER. `assertLegsResolvable` refuses a movement leg with
+ *      one end, and rightly: half a leg cannot be drawn or planned against. So a
+ *      leg whose target the file does not name stays entirely blank rather than
+ *      carrying a dangling origin.
+ *   2. A LEG THAT MOVES NOTHING GETS NO PLACES. When a leg's target is where the
+ *      cargo already is, filling it would draw a second line between the same two
+ *      points — which is what a hinterland file would get, its optional
+ *      FINAL_DELIVERY duplicating the inland transit that already ends at the
+ *      final destination.
+ *
+ * Activity legs (customs, warehousing) are pinned to where the cargo is and carry
+ * no destination: a clearance happens at one place, and inventing a second end so
+ * the shape matches a movement leg is how a customs leg ends up drawn as a
+ * journey. `SINGLE_POINT_LEGS` exempts them from rule 1.
+ *
+ * Every place named here has already been verified by `shipment_details`
+ * (a movement file cannot be opened otherwise), so the seeded route is plottable
+ * on first render rather than after somebody edits it.
  */
 function legsFromTemplate(template, dossier) {
-  return (Array.isArray(template) ? template : []).map((t) => ({
-    leg_type: t.leg_type,
-    mode: t.mode || "OTHER",
-    is_optional: t.is_optional === true,
-    status: "PLANNED",
-    source: "TEMPLATE",
-    origin: t.leg_type === "MAIN_CARRIAGE" ? dossier.pol || null : null,
-    destination: t.leg_type === "MAIN_CARRIAGE" ? dossier.pod || null : null,
-  }));
+  const place = (column) => {
+    const value = dossier && dossier[column];
+    const text = value === null || value === undefined ? "" : String(value).trim();
+    return text || null;
+  };
+  // Where the cargo starts: the shipper's door when the file names one, else the
+  // load port. A file that names neither has no geography yet and every leg comes
+  // out blank, which is the correct answer rather than a guess.
+  let cursor = place("place_receipt") || place("pol");
+
+  return (Array.isArray(template) ? template : []).map((t) => {
+    const leg = {
+      leg_type: t.leg_type,
+      mode: t.mode || "OTHER",
+      is_optional: t.is_optional === true,
+      status: "PLANNED",
+      source: "TEMPLATE",
+      origin: null,
+      destination: null,
+    };
+
+    if (SINGLE_POINT_LEGS.has(t.leg_type)) {
+      // Pinned to where the cargo is, and no further: the cursor does not move,
+      // because clearing customs is not a movement.
+      leg.origin = cursor;
+      return leg;
+    }
+
+    const ends = LEG_ENDS[t.leg_type];
+    if (!ends) return leg;
+    const from = place(ends[0]) || cursor;
+    const to = place(ends[1]);
+    if (!from || !to) return leg;
+    // Rule 2, and it is checked against the CURSOR rather than against `from`:
+    // a hinterland file's optional final delivery prefers to start at the port of
+    // entry, but its inland transit has already carried the cargo to the final
+    // destination — so the test that matters is "has the cargo arrived", not
+    // "are this leg's two ends different".
+    if (to === cursor || to === from) return leg;
+
+    leg.origin = from;
+    leg.destination = to;
+    cursor = to;
+    return leg;
+  });
 }
 
 module.exports = {

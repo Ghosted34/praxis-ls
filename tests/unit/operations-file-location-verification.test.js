@@ -167,6 +167,42 @@ describe("opening a movement file", () => {
     });
     await expect(apply(c, { warehouse_location: "Shed 9" })).rejects.toMatchObject({ code: "UNVERIFIED_PLACE" });
   });
+
+  /*
+   * The two door-leg roles 0678 added. They are gated for the same reason the
+   * ports are, and for one more: `itinerary.legsFromTemplate` builds the pickup
+   * and final-delivery legs from these very fields, so an unverified value here is
+   * how a lane gets drawn to a place nobody looked at. Before 0678 the sea
+   * profile's delivery field carried NO role at all — so it was skipped by both
+   * this gate and 0676's conversion, and stayed a free-text box on the commonest
+   * file in the system.
+   */
+  test("a collection address is gated — it is where the itinerary starts", async () => {
+    const c = fakeClient({
+      fields: [field({ key: "place_receipt", facet_role: "COLLECTION", column_name: "place_receipt", label_en: "Place of collection" })],
+    });
+    await expect(apply(c, { place_receipt: "the yard behind the mill" })).rejects.toMatchObject({
+      code: "UNVERIFIED_PLACE",
+    });
+  });
+
+  test("a delivery address is gated, and names itself in the refusal", async () => {
+    const c = fakeClient({
+      fields: [field({ key: "place_delivery", facet_role: "FINAL_DELIVERY", column_name: "place_delivery", label_en: "Place of delivery" })],
+    });
+    const err = await apply(c, { place_delivery: "Yaonde" }).catch((e) => e);
+    expect(err.code).toBe("UNVERIFIED_PLACE");
+    expect(err.message).toContain("Place of delivery");
+    expect(err.details.place_delivery[0]).toContain("Yaonde");
+  });
+
+  test("a verified delivery address passes and is rewritten to the catalogue's spelling", async () => {
+    const c = fakeClient({
+      fields: [field({ key: "place_delivery", facet_role: "FINAL_DELIVERY", column_name: "place_delivery", label_en: "Place of delivery" })],
+    });
+    const { patch } = await apply(c, { place_delivery: "kribi" });
+    expect(patch.place_delivery).toBe("Kribi");
+  });
 });
 
 describe("what is deliberately NOT checked", () => {

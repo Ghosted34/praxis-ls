@@ -89,6 +89,12 @@ describe("every location field gets the verified picker", () => {
     ["final_destination", "Final destination", "DESTINATION"],
     ["warehouse_location", "Warehouse", "CUSTODY_LOCATION"],
     ["entry_port", "Port of entry", "ROUTE_VIA"],
+    // The two door-leg roles 0678 added. The sea profile's delivery field carried
+    // NO facet role at all, so 0676 — which promotes TEXT to GEO_PLACE by role —
+    // skipped it: "Place of delivery" stayed a free-text box on a sea import, the
+    // commonest file in the system and the field a customer phones about.
+    ["place_receipt", "Place of collection", "COLLECTION"],
+    ["place_delivery", "Place of delivery", "FINAL_DELIVERY"],
   ])("%s renders a picker, not a text box", async (key, label, facet) => {
     renderForm([field({ key, label, facet_role: facet, column_name: null })]);
     // A picker is a button that opens a combobox. A text box is an input with no
@@ -162,6 +168,42 @@ describe("non-location fields are untouched", () => {
       }),
     ]);
     expect(await screen.findByRole("textbox", { name: "Commodity" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * A native `<input type="date">` renders in the OPERATING SYSTEM's locale, and no
+ * HTML attribute overrides it — so an ETA typed as 03/07 meaning the 3rd of July
+ * was read back as the 7th of March on a US-configured machine, with nothing on
+ * screen to say which reading applied. `DateField` shows and accepts day-first and
+ * still stores the ISO date the API wants.
+ */
+describe("dates read day-first", () => {
+  it("an ETA shows dd/mm/yyyy, not the browser's locale", async () => {
+    renderForm(
+      [field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" })],
+      { eta: "2026-07-03" },
+    );
+    const box = await screen.findByRole("textbox", { name: "ETA" });
+    expect(box).toHaveValue("03/07/2026");
+  });
+
+  it("typing day-first stores the ISO date", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderForm([
+      field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" }),
+    ]);
+    await user.type(await screen.findByRole("textbox", { name: "ETA" }), "03072026");
+    expect(onChange).toHaveBeenLastCalledWith("eta", "2026-07-03");
+  });
+
+  it("an incomplete date clears the value rather than storing half of one", async () => {
+    const user = userEvent.setup();
+    const { onChange } = renderForm([
+      field({ key: "eta", label: "ETA", data_type: "DATE", facet_role: "ARRIVAL_DATE", column_name: "eta" }),
+    ]);
+    await user.type(await screen.findByRole("textbox", { name: "ETA" }), "0307");
+    expect(onChange).toHaveBeenLastCalledWith("eta", null);
   });
 });
 

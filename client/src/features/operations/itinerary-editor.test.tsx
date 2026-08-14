@@ -161,15 +161,20 @@ describe("editing", () => {
     expect(screen.getByRole("button", { name: "Location" })).toBeInTheDocument();
   });
 
-  it("records actual dates as well as planned ones", async () => {
+  it("records actual dates as well as planned ones, day-first", async () => {
     const user = userEvent.setup();
     renderEditor();
     await screen.findByRole("group", { name: /Main carriage/ });
     // Before 0677 only the plan was storable, so a leg that departed three days
     // late and arrived on time was indistinguishable from one that never moved.
+    //
+    // The control is `DateField`, not a native date input: a leg's dates are read
+    // out loud in the meeting this screen feeds, and a native control renders in
+    // the OS locale — so 04/07 was the 4th of July on one operator's machine and
+    // the 7th of April on the next.
     const actual = screen.getByLabelText(/^Actual departure/);
-    await user.type(actual, "2026-07-04");
-    expect(actual).toHaveValue("2026-07-04");
+    await user.type(actual, "04072026");
+    expect(actual).toHaveValue("04/07/2026");
   });
 });
 

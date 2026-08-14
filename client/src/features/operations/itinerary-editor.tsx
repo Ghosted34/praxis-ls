@@ -36,6 +36,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { ErrorState } from "@/components/ui/states";
 import { Field, Select } from "@/components/ui/modal";
 import { Input } from "@/components/ui/input";
+import { DateField } from "@/components/ui/date-field";
 import { Pill } from "@/components/ui/pill";
 import { PlacePicker } from "@/components/operations/place-picker";
 import { SearchSelect } from "@/components/ui/search-select";
@@ -384,17 +385,15 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
 
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <Field label="Planned departure" error={errorFor(i, "planned_departure")}>
-                <Input
-                  type="date"
+                <DateField
                   value={(leg.planned_departure || "").slice(0, 10)}
-                  onChange={(e) => update(i, { planned_departure: e.target.value || null })}
+                  onChange={(iso) => update(i, { planned_departure: iso || null })}
                 />
               </Field>
               <Field label="Planned arrival" error={errorFor(i, "planned_arrival")}>
-                <Input
-                  type="date"
+                <DateField
                   value={(leg.planned_arrival || "").slice(0, 10)}
-                  onChange={(e) => update(i, { planned_arrival: e.target.value || null })}
+                  onChange={(iso) => update(i, { planned_arrival: iso || null })}
                 />
               </Field>
               {/*
@@ -404,17 +403,15 @@ export function ItineraryEditor({ dossierId }: { dossierId: string }) {
                 plan was stored.
               */}
               <Field label="Actual departure" error={errorFor(i, "actual_departure")}>
-                <Input
-                  type="date"
+                <DateField
                   value={(leg.actual_departure || "").slice(0, 10)}
-                  onChange={(e) => update(i, { actual_departure: e.target.value || null })}
+                  onChange={(iso) => update(i, { actual_departure: iso || null })}
                 />
               </Field>
               <Field label="Actual arrival" error={errorFor(i, "actual_arrival")}>
-                <Input
-                  type="date"
+                <DateField
                   value={(leg.actual_arrival || "").slice(0, 10)}
-                  onChange={(e) => update(i, { actual_arrival: e.target.value || null })}
+                  onChange={(iso) => update(i, { actual_arrival: iso || null })}
                 />
               </Field>
             </div>

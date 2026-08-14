@@ -61,8 +61,8 @@ async function withLaneGeometry(client, shipments) {
 
 module.exports = {
   kpis: (client) => repo.kpis(client),
-  async controlTower(client) {
-    const base = await repo.controlTower(client);
+  async controlTower(client, options = {}) {
+    const base = await repo.controlTower(client, options);
     return { ...base, live_shipments: await withLaneGeometry(client, base.live_shipments) };
   },
 };

@@ -38,17 +38,34 @@ async function kpis(client) {
  *  counts, the live-shipment list (open/in-progress dossiers), and how many
  *  approvals are waiting. Each query is guarded so a missing table/feature
  *  degrades to a zero/empty value instead of breaking the whole payload. */
-async function controlTower(client) {
-  const rows = async (sql) => {
-    try { const r = await client.query(sql); return r.rows; } catch { return []; }
+async function controlTower(client, options = {}) {
+  const { limit = 50, cursor = null, serviceTypeId = null, territory = null, mode = null, dateField = "created", from = null, to = null, includeCompleted = false } = options;
+  const params = [];
+  const where = [];
+  const add = (v) => { params.push(v); return "$" + params.length; };
+  if (!includeCompleted) where.push("d.status IN ('OPEN','IN_PROGRESS')");
+  if (serviceTypeId) where.push("d.service_type_id = " + add(serviceTypeId));
+  if (territory) where.push("st.territory = " + add(territory));
+  if (mode === "AIR") where.push("st.key ILIKE '%AIR%'");
+  if (mode === "SEA") where.push("st.key ILIKE '%SEA%'");
+  if (mode === "LAND") where.push("(st.key ILIKE '%TRANSIT%' OR st.key ILIKE '%INLAND%' OR st.key ILIKE '%PROJECT%')");
+  const dateExpr = { created: "d.created_at", updated: "d.updated_at", arrival: "d.eta", delivery: "d.promised_delivery_date" }[dateField] || "d.created_at";
+  if (from) where.push(dateExpr + " >= " + add(from));
+  if (to) where.push(dateExpr + " < (" + add(to) + "::date + INTERVAL '1 day')");
+  if (cursor) { const [at, id] = String(cursor).split("."); if (at && id) { where.push("(d.created_at, d.dossier_id) < (" + add(at) + "::timestamptz, " + add(id) + "::uuid)"); } }
+  const filter = where.length ? "WHERE " + where.join(" AND ") : "";
+  const pageLimit = Math.max(1, Math.min(Number(limit) || 50, 100));
+
+  const rows = async (sql, queryParams = []) => {
+    try { const r = await client.query(sql, queryParams); return r.rows; } catch { return []; }
   };
-  const one = async (sql) => (await rows(sql))[0] || {};
+  const one = async (sql, queryParams = []) => (await rows(sql, queryParams))[0] || {};
 
   const ops = await one(
-    "SELECT COUNT(*) FILTER (WHERE status IN ('OPEN','IN_PROGRESS'))::int AS active, " +
-      "COUNT(*) FILTER (WHERE status='OPEN')::int AS open, " +
-      "COUNT(*) FILTER (WHERE status='IN_PROGRESS')::int AS in_progress " +
-      "FROM dossier_visible",
+    "SELECT COUNT(*) FILTER (WHERE d.status IN ('OPEN','IN_PROGRESS'))::int AS active, " +
+      "COUNT(*) FILTER (WHERE d.status='OPEN')::int AS open, " +
+      "COUNT(*) FILTER (WHERE d.status='IN_PROGRESS')::int AS in_progress " +
+      "FROM dossier_visible d LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " + filter, params.slice(0),
   );
   // Progress comes from the milestone engine (milestone_instance, 0310) — done
   // stages over total stages for the dossier. Dossiers with no milestone template
@@ -67,7 +84,7 @@ async function controlTower(client) {
     // which is exact. The free-text pol/pod still ride along: they're the display
     // label, and they remain the only route info on dossiers created before the
     // picker existed — those still resolve by name in the service layer.
-    "SELECT d.ref, d.status, d.pol AS origin, d.pod AS destination, d.vessel_flight, d.eta, " +
+    "SELECT d.dossier_id, d.created_at, d.ref, d.status, d.pol AS origin, d.pod AS destination, d.vessel_flight, d.eta, " +
       "st.key AS service_key, " +
       "gp_o.latitude AS origin_lat, gp_o.longitude AS origin_lng, gp_o.name AS origin_name, " +
       "gp_d.latitude AS dest_lat, gp_d.longitude AS dest_lng, gp_d.name AS dest_name, " +
@@ -79,15 +96,19 @@ async function controlTower(client) {
       "LEFT JOIN service_type st ON st.service_type_id = d.service_type_id " +
       "LEFT JOIN geo_place gp_o ON gp_o.geo_place_id = d.pol_place_id " +
       "LEFT JOIN geo_place gp_d ON gp_d.geo_place_id = d.pod_place_id " +
-      "WHERE d.status IN ('OPEN','IN_PROGRESS') " +
-      "ORDER BY d.eta NULLS LAST, d.created_at DESC LIMIT 10",
+      filter + " ORDER BY d.created_at DESC, d.dossier_id DESC LIMIT $" + (params.length + 1),
+    [...params, pageLimit + 1],
   );
   const appr = await one("SELECT COUNT(*)::int AS awaiting FROM approval_task WHERE status = 'PENDING'");
 
+  const hasMore = shipments.length > pageLimit;
+  const pageRows = hasMore ? shipments.slice(0, pageLimit) : shipments;
+  const last = pageRows[pageRows.length - 1];
   return {
     operation_files: { active: ops.active || 0, open: ops.open || 0, in_progress: ops.in_progress || 0 },
     approvals_awaiting: appr.awaiting || 0,
-    live_shipments: shipments.map((s) => {
+    page: { limit: pageLimit, has_more: hasMore, next_cursor: hasMore && last ? `${last.created_at || ""}.${last.dossier_id || ""}` : null },
+    live_shipments: pageRows.map((s) => {
       const total = Number(s.milestone_total) || 0;
       const done = Number(s.milestone_done) || 0;
       return {

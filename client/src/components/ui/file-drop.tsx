@@ -76,9 +76,24 @@ export function FileDrop({
     setPreviewOpen(false);
     setImageUrl(null);
     if (!file || !isImage) return;
-    const url = URL.createObjectURL(file);
-    setImageUrl(url);
-    return () => URL.revokeObjectURL(url);
+
+    let live = true;
+    const reader = new FileReader();
+
+    reader.onload = () => {
+      if (live) setImageUrl(String(reader.result));
+    };
+
+    reader.onerror = () => {
+      if (live) setImageUrl(null);
+    };
+
+    reader.readAsDataURL(file);
+
+    return () => {
+      live = false;
+      reader.abort();
+    };
   }, [file, isImage]);
 
   const canPreview = isImage || isPdf;

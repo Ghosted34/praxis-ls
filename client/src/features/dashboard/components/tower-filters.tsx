@@ -31,6 +31,36 @@ const MODES = [
   { value: "AIR", label: "Air" },
   { value: "SEA", label: "Sea" },
   { value: "LAND", label: "Land" },
+  // A real answer, not a catch-all: warehousing, brokerage and business
+  // representation move nothing, and the server derives this from the file's
+  // itinerary rather than guessing from the service-type name.
+  { value: "OTHER", label: "No transport" },
+] as const;
+
+/**
+ * Movement work versus facility work.
+ *
+ * Server-side, like every other filter here, and for the reason the header note
+ * gives: a layer filtered in the browser would leave the counts and the pager
+ * describing a different set from the list.
+ */
+const LAYERS = [
+  { value: "", label: "Everything" },
+  { value: "MOVEMENT", label: "On the move" },
+  { value: "ACTIVITY", label: "At a facility" },
+] as const;
+
+/**
+ * The location-needed queue, as a filter.
+ *
+ * This is the one an operations lead uses on a Monday: show me the open files
+ * whose origin or destination is not a verified place, because those are the ones
+ * the map cannot honestly draw and somebody has to fix.
+ */
+const VERIFICATION = [
+  { value: "", label: "Any location" },
+  { value: "VERIFIED", label: "Verified only" },
+  { value: "UNVERIFIED", label: "Needs a location" },
 ] as const;
 
 const DATE_FIELDS = [
@@ -90,7 +120,7 @@ export function TowerFilters({ value, page, onChange }: Props) {
         </div>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
         <Field label="Transport mode">
           <Select value={draft.mode ?? ""} onChange={(event) => set("mode", (event.target.value || undefined) as ControlTowerFilters["mode"])}>
             {MODES.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -124,6 +154,24 @@ export function TowerFilters({ value, page, onChange }: Props) {
 
         <Field label="To">
           <Input type="date" value={draft.to ?? ""} onChange={(event) => set("to", event.target.value || undefined)} />
+        </Field>
+
+        <Field label="Layer">
+          <Select
+            value={draft.layer ?? ""}
+            onChange={(event) => set("layer", (event.target.value || undefined) as ControlTowerFilters["layer"])}
+          >
+            {LAYERS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
+        </Field>
+
+        <Field label="Location">
+          <Select
+            value={draft.verified ?? ""}
+            onChange={(event) => set("verified", (event.target.value || undefined) as ControlTowerFilters["verified"])}
+          >
+            {VERIFICATION.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+          </Select>
         </Field>
 
         <Field label="Completion">

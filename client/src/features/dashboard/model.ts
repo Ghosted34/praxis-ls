@@ -89,7 +89,16 @@ export function shipmentTone(status: string): Tone {
 }
 
 export type LiveShipment = {
+  /** The file's real key. `ref` is a display string — two tenants can spell one
+   *  the same way, and the previous tower keyed its deep links on it. */
+  dossierId: string;
   ref: string;
+  /** The service type's own name, for the activity list and the hover card. */
+  serviceName: string;
+  /** Does this file MOVE something, or record work at a place? Server-derived. */
+  isMovement: boolean;
+  /** Any endpoint present but unverified, so it must not be drawn as a route. */
+  needsLocation: boolean;
   mode: ShipmentMode;
   from: string;
   to: string;
@@ -135,7 +144,11 @@ export function toLiveShipment(s: Row): LiveShipment {
   const progress = numOrNull(s.progress);
 
   return {
+    dossierId: str(s.dossier_id) || str(s.ref) || "",
     ref: str(s.ref ?? s.dossier_ref ?? s.reference) || "—",
+    serviceName: str(s.service_name) || enumLabel(str(s.service_key)) || "Operations file",
+    isMovement: s.is_movement !== false,
+    needsLocation: s.needs_location === true,
     mode: shipmentMode(s, vessel, lane),
     from,
     to,
@@ -241,8 +254,10 @@ export function toLanes(rawShipments: Row[]): Lane[] {
     const plotted = legs.filter((l) => l && l.plottable === true);
     if (plotted.length) {
       plotted.forEach((leg, i) => {
-        const from = waypointOf(leg.origin as Row, str((leg.origin as Row)?.name));
-        const to = waypointOf(leg.destination as Row, str((leg.destination as Row)?.name));
+        // `*_endpoint` is the nested projection; `origin`/`destination` stay the
+        // plain text so a leg can be read and written back unchanged.
+        const from = waypointOf(leg.origin_endpoint as Row, str(leg.origin));
+        const to = waypointOf(leg.destination_endpoint as Row, str(leg.destination));
         if (!from || !to) return;
         const seq = finite(leg.seq) ?? i + 1;
         out.push({
@@ -275,6 +290,84 @@ export function toLanes(rawShipments: Row[]): Lane[] {
       seq: 1,
       from,
       to,
+    });
+  });
+  return out;
+}
+
+/**
+ * One leg of a file's itinerary, as the panel and the editor read it.
+ *
+ * A near-mirror of the server's projection (`itinerary.service.projectLeg`) with
+ * the field names the client uses. Deliberately NOT re-derived here: `plottable`
+ * and `needsLocation` are the server's verdicts, because it knows whether an
+ * endpoint is absent or present-but-unverified, and the browser cannot tell those
+ * apart from a coordinate alone.
+ */
+export type ItineraryLeg = {
+  id: string;
+  seq: number;
+  legType: string;
+  mode: ShipmentMode;
+  status: string;
+  isOptional: boolean;
+  /** `TEMPLATE` legs came from the service type; `MANUAL` ones a person added. */
+  source: string;
+  plannedDeparture: string | null;
+  plannedArrival: string | null;
+  actualDeparture: string | null;
+  actualArrival: string | null;
+  providerName: string | null;
+  notes: string | null;
+  origin: { name: string | null; state?: EndpointState };
+  destination: { name: string | null; state?: EndpointState };
+  plottable: boolean;
+  needsLocation: boolean;
+};
+
+const endpointOf = (raw: unknown): ItineraryLeg["origin"] => {
+  const r = (raw || {}) as Row;
+  return {
+    name: str(r.name) || null,
+    state: (str(r.state) as EndpointState) || undefined,
+  };
+};
+
+export function toItineraryLeg(raw: Row, index: number): ItineraryLeg {
+  return {
+    id: str(raw.itinerary_leg_id) || `leg-${index}`,
+    seq: numOrNull(raw.seq) ?? index + 1,
+    legType: str(raw.leg_type) || "OTHER",
+    mode: MODE_FROM_SERVER[str(raw.mode).toUpperCase()] || "other",
+    status: str(raw.status) || "PLANNED",
+    isOptional: raw.is_optional === true,
+    source: str(raw.source) || "MANUAL",
+    plannedDeparture: raw.planned_departure ? str(raw.planned_departure) : null,
+    plannedArrival: raw.planned_arrival ? str(raw.planned_arrival) : null,
+    actualDeparture: raw.actual_departure ? str(raw.actual_departure) : null,
+    actualArrival: raw.actual_arrival ? str(raw.actual_arrival) : null,
+    providerName: raw.provider_name ? str(raw.provider_name) : null,
+    notes: raw.notes ? str(raw.notes) : null,
+    origin: endpointOf(raw.origin_endpoint ?? { name: raw.origin }),
+    destination: endpointOf(raw.destination_endpoint ?? { name: raw.destination }),
+    plottable: raw.plottable === true,
+    needsLocation: raw.needs_location === true,
+  };
+}
+
+/** Every file's legs, keyed by dossier id — what the itinerary panel indexes. */
+export function legsByFile(rawShipments: Row[]): Record<string, ItineraryLeg[]> {
+  const out: Record<string, ItineraryLeg[]> = {};
+  rawShipments.forEach((s, i) => {
+    const key = str(s.dossier_id) || str(s.ref) || `row-${i}`;
+    const legs = Array.isArray(s.legs) ? (s.legs as Row[]) : [];
+    // Property name from the payload, so it is only ever a VALUE here — the same
+    // remote-property-injection rule the server's partition loop documents.
+    Object.defineProperty(out, key, {
+      value: legs.map(toItineraryLeg),
+      enumerable: true,
+      writable: true,
+      configurable: true,
     });
   });
   return out;
@@ -331,7 +424,7 @@ function activityOf(s: Row, i: number, reason: ActivityRecord["reason"], legs: R
   // operator picked one — so it earns a facility pin rather than nothing.
   let facility: Waypoint | null = null;
   for (const leg of legs) {
-    facility = waypointOf(leg.origin as Row, "") || waypointOf(leg.destination as Row, "");
+    facility = waypointOf(leg.origin_endpoint as Row, str(leg.origin)) || waypointOf(leg.destination_endpoint as Row, str(leg.destination));
     if (facility) break;
   }
   if (!facility) {

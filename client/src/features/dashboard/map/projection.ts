@@ -15,30 +15,52 @@
  * in a Douala-centred network does; revisit if one ever routes via the Pacific.
  */
 import type { Lane, ShipmentMode } from "../model";
+import { boundsOf, clusterNodes, labelOffset, type ClusteredNode, type PlacedNode } from "./selection";
 
 export const MAP_W = 760;
 export const MAP_H = 470;
 const MAP_PAD = 54;
+
+/**
+ * Above this many endpoints, markers are clustered.
+ *
+ * OFF BY DEFAULT, ON WHEN IT MATTERS. Clustering four ports at the mouth of one
+ * river into one marker LOSES information, and on a five-file map there is room
+ * to draw all four. Past roughly two dozen endpoints there is not: they project
+ * into the same few pixels and become a smear with no readable name in it — which
+ * is the state a hundred-file tower is in, and the one a meeting is most likely
+ * to hit. The threshold is where "we can show them all" stops being true.
+ */
+const CLUSTER_ABOVE_NODES = 24;
+/** Markers closer than this many pixels are the same dot to a reader. */
+const CLUSTER_RADIUS_PX = 14;
 
 /** A closed ring of [lon, lat] pairs — one Natural Earth landmass outline. */
 export type Ring = [number, number][];
 
 export type MapLane = {
   id: string;
+  /** The FILE this segment belongs to — what selection and focus key on. */
+  dossierId: string;
+  ref: string;
   /** SVG path data for the bowed great-circle-ish arc. */
   d: string;
   mode: ShipmentMode;
+  /** `MAIN_CARRIAGE`, `PICKUP`, `FINAL_DELIVERY`… what this segment IS. */
+  legType: string;
+  seq: number;
+  status: string;
+  fromName: string;
+  toName: string;
+  /** The `<title>` text, kept for the no-JS/screen-reader path. */
   title: string;
+  /** Midpoint in SVG units — where a hover card is anchored. */
+  mid: { x: number; y: number };
   /** Marker travel time in seconds — air is quickest, sea slowest. */
   dur: number;
 };
 
-export type MapNode = {
-  x: number;
-  y: number;
-  name: string;
-  /** Destinations are emphasised; origins are secondary. */
-  emphasis: boolean;
+export type MapNode = ClusteredNode & {
   /** Label offset applied to clear a neighbouring label. */
   dy: number;
 };
@@ -56,21 +78,42 @@ export type MapModel = {
   counts: Record<ShipmentMode, number>;
 };
 
-export function buildMapModel(lanes: Lane[]): MapModel | null {
+export type BuildOptions = {
+  /**
+   * Fit the viewport to THESE lanes instead of to all of them.
+   *
+   * Selecting a file zooms to it. The other lanes are still drawn — de-emphasised
+   * — because a route that vanishes when you click its neighbour makes the map
+   * feel like it lost your data. They are simply outside the frame now, which is
+   * what "focus" means.
+   */
+  focus?: Lane[] | null;
+};
+
+/**
+ * A lane id, made safe to use as an SVG fragment id.
+ *
+ * `<mpath href="#…">` and `getElementById` both need a valid id, and a lane id is
+ * built from a dossier uuid and a leg uuid joined by a colon — which is legal in
+ * HTML5 but is a pseudo-class separator in a CSS selector, so anything that later
+ * reaches for it with `querySelector` breaks in a way that is hard to trace.
+ */
+const cssId = (id: string) => id.replace(/[^A-Za-z0-9_-]/g, "-");
+
+export function buildMapModel(lanes: Lane[], options: BuildOptions = {}): MapModel | null {
   if (!lanes.length) return null;
 
-  const lons: number[] = [];
-  const lats: number[] = [];
-  lanes.forEach((l) => {
-    lons.push(l.from.lng, l.to.lng);
-    lats.push(l.from.lat, l.to.lat);
-  });
-  const cLon = (Math.min(...lons) + Math.max(...lons)) / 2;
-  const cLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  // The fit is computed from the focused subset when there is one, and from
+  // everything otherwise — but the LANES drawn below are always all of them.
+  const framing = options.focus && options.focus.length ? options.focus : lanes;
+  const bounds = boundsOf(framing);
+  if (!bounds) return null;
+  const cLon = (bounds.minLon + bounds.maxLon) / 2;
+  const cLat = (bounds.minLat + bounds.maxLat) / 2;
   // Floor the span so one short corridor doesn't zoom to street level, where a
   // 110m coastline is a blocky mess. 18% headroom keeps node labels off the edge.
-  const spanLon = Math.max(Math.max(...lons) - Math.min(...lons), 12) * 1.18;
-  const spanLat = Math.max(Math.max(...lats) - Math.min(...lats), 12) * 1.18;
+  const spanLon = Math.max(bounds.maxLon - bounds.minLon, 12) * 1.18;
+  const spanLat = Math.max(bounds.maxLat - bounds.minLat, 12) * 1.18;
   // One scale for both axes: true proportions. With real coastline drawn behind,
   // the "dead space" a tall narrow lane set leaves is filled by actual geography,
   // so stretching to fill (which would skew every landmass) buys nothing.
@@ -129,7 +172,7 @@ export function buildMapModel(lanes: Lane[]): MapModel | null {
     return n;
   };
 
-  lanes.forEach((l, i) => {
+  lanes.forEach((l) => {
     const x1 = px(l.from.lng);
     const y1 = py(l.from.lat);
     const x2 = px(l.to.lng);
@@ -147,37 +190,67 @@ export function buildMapModel(lanes: Lane[]): MapModel | null {
     const my = (y1 + y2) / 2 + (dx / len) * bow;
     counts[l.mode] += 1;
     outLanes.push({
-      id: `ct-lane-${i}`,
+      // `ct-lane-<i>` was an ARRAY INDEX, and it is referenced by `<mpath href>`,
+      // by keyboard focus and by selection. A filter that removed an earlier file
+      // renumbered every lane after it, so the travelling marker jumped to a
+      // different route and focus landed on a file nobody chose. The lane's own
+      // id is stable across renders; the prefix keeps it a valid SVG fragment id.
+      id: `ct-lane-${cssId(l.id)}`,
+      dossierId: l.dossierId,
+      ref: l.ref,
       d: `M${x1.toFixed(1)},${y1.toFixed(1)} Q${mx.toFixed(1)},${my.toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`,
       mode: l.mode,
+      legType: l.legType,
+      seq: l.seq,
+      status: l.status,
+      fromName: l.from.name,
+      toName: l.to.name,
       title: `${l.ref} · ${l.from.name} → ${l.to.name} · ${l.status}`,
+      // The Q curve's own control point is not on the curve; its midpoint is at
+      // t=0.5, which is where a hover card should point.
+      mid: { x: (x1 + 2 * mx + x2) / 4, y: (y1 + 2 * my + y2) / 4 },
       dur: l.mode === "air" ? 9 : l.mode === "road" ? 11 : 15,
     });
   });
 
   // ── nodes ──
-  const nodes: MapNode[] = [];
+  //
+  // Placed, then clustered, then labelled — in that order, because clustering
+  // changes how many labels there are to keep apart and labelling a set that is
+  // about to collapse wastes the offsets on markers nobody will see.
+  const placed: PlacedNode[] = [];
   const seen = new Set<string>();
   const mark = (p: Lane["from"], emphasis: boolean) => {
     const k = `${p.lat.toFixed(3)},${p.lng.toFixed(3)}`;
     if (seen.has(k)) return;
     seen.add(k);
-    const x = px(p.lng);
-    const y = py(p.lat);
-    // Nudge a label off any already-placed one it would sit on top of. Ports
-    // cluster (Antwerp and Paris CDG are ~5° apart and collide at this zoom), and
-    // two overlapping names are less useful than one moved 13px. Alternates up
-    // and down so a run of near-coincident nodes fans out rather than drifting.
-    let dy = 0;
-    for (let guard = 0; guard < 6; guard += 1) {
-      const clash = nodes.some((n) => Math.abs(n.x - x) < 84 && Math.abs(n.y + n.dy - (y + dy)) < 13);
-      if (!clash) break;
-      dy = dy <= 0 ? -dy + 13 : -dy;
-    }
-    nodes.push({ x, y, name: p.name, emphasis, dy });
+    placed.push({
+      x: px(p.lng),
+      y: py(p.lat),
+      name: p.name,
+      kind: p.kind ?? null,
+      state: p.state,
+      emphasis,
+    });
   };
+  // Destinations first, so a place that is both a terminus and a waypoint is
+  // marked as the terminus — losing a terminus into a waypoint is the wrong way
+  // round to drop information.
   lanes.forEach((l) => mark(l.to, true));
   lanes.forEach((l) => mark(l.from, false));
+
+  const clustered =
+    placed.length > CLUSTER_ABOVE_NODES
+      ? clusterNodes(placed, CLUSTER_RADIUS_PX)
+      : placed.map((n) => ({ ...n, count: 1, names: [n.name] }));
+
+  const nodes: MapNode[] = [];
+  clustered.forEach((n) => {
+    // Nudge a label off any already-placed one it would sit on top of. Ports
+    // cluster (Antwerp and Paris CDG are ~5° apart and collide at this zoom), and
+    // two overlapping names are less useful than one moved 13px.
+    nodes.push({ ...n, dy: labelOffset(nodes, n.x, n.y) });
+  });
 
   return {
     w: MAP_W,

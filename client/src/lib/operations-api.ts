@@ -914,19 +914,72 @@ export type ShipmentDetails = {
   };
 };
 
+export const LEG_TYPES = [
+  "PICKUP",
+  "MAIN_CARRIAGE",
+  "CUSTOMS",
+  "INLAND_TRANSIT",
+  "WAREHOUSE",
+  "FINAL_DELIVERY",
+  "OTHER",
+] as const;
+export type LegType = (typeof LEG_TYPES)[number];
+
+export const LEG_MODES = ["AIR", "SEA", "LAND", "OTHER"] as const;
+export type LegMode = (typeof LEG_MODES)[number];
+
+export const LEG_STATUSES = ["PLANNED", "IN_PROGRESS", "COMPLETED", "BLOCKED", "CANCELLED"] as const;
+export type LegStatus = (typeof LEG_STATUSES)[number];
+
+/**
+ * One leg of a file's itinerary.
+ *
+ * The server's read projection nests each endpoint (`origin: { name, state, … }`)
+ * while the WRITE shape is flat (`origin` is the place name, `origin_place_id` the
+ * reference). Both are declared here because the editor round-trips a leg it just
+ * read, and check-response-contract.js verifies every snake_case field against
+ * what the API actually emits.
+ */
+export type ItineraryEndpoint = {
+  name?: string | null;
+  place_id?: string | null;
+  kind?: string | null;
+  unlocode?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  /** `verified` | `reference` | `unverified` | `unknown` — see geo_place. */
+  state?: string | null;
+};
+
 export type ItineraryLeg = {
   itinerary_leg_id?: string;
+  dossier_id?: string;
   seq?: number;
-  leg_type: "PICKUP" | "MAIN_CARRIAGE" | "CUSTOMS" | "INLAND_TRANSIT" | "WAREHOUSE" | "FINAL_DELIVERY" | "OTHER";
-  mode: "AIR" | "SEA" | "LAND" | "OTHER";
-  origin?: string | null; destination?: string | null;
-  origin_place_id?: string | null; destination_place_id?: string | null;
-  planned_departure?: string | null; planned_arrival?: string | null;
-  status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED" | "CANCELLED";
-  provider_id?: string | null; notes?: string | null; is_optional?: boolean;
-  origin_name?: string | null; destination_name?: string | null;
-  origin_latitude?: number | string | null; origin_longitude?: number | string | null;
-  destination_latitude?: number | string | null; destination_longitude?: number | string | null;
+  leg_type: LegType;
+  mode: LegMode;
+  /** WRITE shape: the place's name, exactly as the catalogue spells it. */
+  origin?: string | null;
+  destination?: string | null;
+  origin_place_id?: string | null;
+  destination_place_id?: string | null;
+  planned_departure?: string | null;
+  planned_arrival?: string | null;
+  actual_departure?: string | null;
+  actual_arrival?: string | null;
+  status?: LegStatus;
+  provider_id?: string | null;
+  provider_name?: string | null;
+  notes?: string | null;
+  is_optional?: boolean;
+  /** `TEMPLATE` legs came from the service type; `MANUAL` ones a person added. */
+  source?: "TEMPLATE" | "MANUAL";
+  milestone_instance_id?: string | null;
+  /** READ shape: the server's projection of each end, with its coordinate and
+   *  verification state. Absent on a leg the editor has just built locally. */
+  origin_endpoint?: ItineraryEndpoint;
+  destination_endpoint?: ItineraryEndpoint;
+  plottable?: boolean;
+  needs_location?: boolean;
 };
 export const getItinerary = (dossierId: string) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`);
 export const replaceItinerary = (dossierId: string, legs: ItineraryLeg[]) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`, { method: "PUT", body: { legs } });

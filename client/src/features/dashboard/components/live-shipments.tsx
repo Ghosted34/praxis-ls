@@ -11,7 +11,6 @@
  * ABSENT, not zero, for a dossier with no template instantiated: "not tracked"
  * and "not started" are different facts and a 0%-width bar asserts the wrong one.
  */
-import { Link } from "react-router-dom";
 import { Card } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/states";
 import { Pill } from "@/components/ui/pill";
@@ -29,16 +28,38 @@ const MODE_CHIP: Record<ShipmentMode, string> = {
   other: "bg-muted text-muted-foreground",
 };
 
-function ShipmentRow({ s }: { s: LiveShipment }) {
+function ShipmentRow({
+  s,
+  selected,
+  onSelect,
+}: {
+  s: LiveShipment;
+  selected: boolean;
+  onSelect: () => void;
+}) {
   const Icon = MODE_ICON[s.mode];
   const hasRoute = !!(s.from || s.to);
   const meta = [s.stage, s.eta].filter(Boolean).join(" · ");
 
   return (
     <li>
-      <Link
-        to={`/operations/files?ref=${encodeURIComponent(s.ref)}`}
-        className="flex gap-3 rounded-md p-2.5 transition-colors hover:bg-accent/60"
+      {/*
+        A BUTTON NOW, NOT A LINK, and that is a deliberate downgrade in navigation
+        to an upgrade in use. The row used to navigate away to Operations filtered
+        by ref — which answered "show me this file" by throwing away the map, the
+        other eleven files and the meeting's train of thought. Clicking a row now
+        SELECTS the file: the map zooms to it, the itinerary opens beside it, and
+        the link to the full file is one click further on inside that panel, for
+        when the next question actually needs it.
+      */}
+      <button
+        type="button"
+        aria-pressed={selected}
+        onClick={onSelect}
+        className={cn(
+          "flex w-full gap-3 rounded-md p-2.5 text-left transition-colors",
+          selected ? "bg-accent/70" : "hover:bg-accent/60",
+        )}
       >
         <span aria-hidden className={cn("grid h-8 w-8 shrink-0 place-items-center rounded-md", MODE_CHIP[s.mode])}>
           <Icon width={16} height={16} />
@@ -73,12 +94,21 @@ function ShipmentRow({ s }: { s: LiveShipment }) {
             </span>
           )}
         </span>
-      </Link>
+      </button>
     </li>
   );
 }
 
-export function LiveShipments({ shipments }: { shipments: LiveShipment[] }) {
+export function LiveShipments({
+  shipments,
+  selected,
+  onSelect,
+}: {
+  shipments: LiveShipment[];
+  /** The file under discussion, owned by the page. */
+  selected?: string | null;
+  onSelect?: (dossierId: string) => void;
+}) {
   return (
     <Card className="flex min-w-0 flex-col">
       <div className="flex items-center justify-between gap-3 border-b px-4 py-3">
@@ -97,7 +127,12 @@ export function LiveShipments({ shipments }: { shipments: LiveShipment[] }) {
         <ul className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto p-1.5">
 
           {shipments.map((s) => (
-            <ShipmentRow key={s.ref} s={s} />
+            <ShipmentRow
+              key={s.dossierId || s.ref}
+              s={s}
+              selected={selected === s.dossierId}
+              onSelect={() => onSelect?.(s.dossierId)}
+            />
           ))}
         </ul>
       ) : (

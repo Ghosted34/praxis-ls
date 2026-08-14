@@ -39,26 +39,53 @@ import { PageContainer } from "@/components/layout/page-container";
 import { ErrorState } from "@/components/ui/states";
 import { PageSkeleton } from "@/components/ui/skeleton";
 import { tokenStore } from "@/lib/token-store";
+import { Button } from "@/components/ui/button";
 import { AppLauncher } from "./components/app-launcher";
 import { Briefing } from "./components/briefing";
+import { ItineraryPanel } from "./components/itinerary-panel";
 import { KpiDrilldown } from "./components/kpi-drilldown";
 import { KpiStrip } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
+import { MeetingMode, type MeetingStat } from "./components/meeting-mode";
+import { OperationalActivityPanel } from "./components/operational-activity-panel";
 import { RecentActivity } from "./components/recent-activity";
 import { TowerHero } from "./components/tower-hero";
 import { TowerFilters } from "./components/tower-filters";
 import type { ControlTowerFilters } from "./use-control-tower";
 import type { KpiId } from "./drilldowns";
-import { ShipmentMap } from "./map/shipment-map";
+import { LANE_STROKE, ShipmentMap } from "./map/shipment-map";
+import type { Selection } from "./map/selection";
 import { firstNameOf } from "./model";
 import { useControlTower } from "./use-control-tower";
+
+/** The filters in force, in words. Meeting mode shows it so the room knows what
+ *  it is looking at rather than assuming "everything". */
+function summariseFilters(f: ControlTowerFilters): string {
+  const parts = [
+    f.mode && `${f.mode.toLowerCase()} only`,
+    f.layer === "MOVEMENT" && "moving files only",
+    f.layer === "ACTIVITY" && "facility work only",
+    f.verified === "UNVERIFIED" && "unverified locations only",
+    f.verified === "VERIFIED" && "verified locations only",
+    f.territory && `territory ${f.territory}`,
+    f.service_type_id && "one service type",
+    f.from && `from ${f.from}`,
+    f.to && `to ${f.to}`,
+    f.include_completed && "including completed",
+  ].filter(Boolean) as string[];
+  return parts.length ? `Open operation files — ${parts.join(", ")}` : "All open operation files";
+}
 
 export function DashboardPage() {
   const { user } = useAuth();
   const palette = useCommandPalette();
   const [filters, setFilters] = React.useState<ControlTowerFilters>({});
-  const { data, error, loading } = useControlTower(filters);
+  const { data, error, loading, refresh } = useControlTower(filters);
   const [openKpi, setOpenKpi] = React.useState<KpiId | null>(null);
+  /** The file under discussion. Owned here so the map, the list, the activity
+   *  panel and the itinerary panel cannot disagree about which one it is. */
+  const [selected, setSelected] = React.useState<Selection>(null);
+  const [meeting, setMeeting] = React.useState(false);
 
   const firstName = React.useMemo(
     () => firstNameOf(user as { display_name?: string | null; email?: string | null } | null),
@@ -73,6 +100,37 @@ export function DashboardPage() {
   if (loading) return <PageSkeleton tiles={4} rows={5} cols={5} />;
   if (error) return <ErrorState message={error} />;
   if (!data) return null;
+
+  const selectedShipment = selected ? data.byId[selected] : undefined;
+  const selectedLegs = (selected && data.legs[selected]) || [];
+
+  const map = (
+    <ShipmentMap
+      lanes={data.lanes}
+      selected={selected}
+      onSelect={setSelected}
+      shipmentsById={data.byId}
+      activityCount={data.activityFiles}
+      unresolvedCount={data.needsLocation}
+      presenting={meeting}
+    />
+  );
+
+  const meetingStats: MeetingStat[] = [
+    { label: "Active files", value: String(data.activeFiles) },
+    { label: "Moving", value: String(data.movementFiles) },
+    { label: "At a facility", value: String(data.activityFiles) },
+    {
+      label: "Need a location",
+      value: String(data.needsLocation),
+      tone: data.needsLocation > 0 ? "warn" : "ok",
+    },
+    {
+      label: "Approvals waiting",
+      value: String(data.approvals),
+      tone: data.approvals > 0 ? "warn" : "ok",
+    },
+  ];
 
   return (
     <PageContainer width="wide">
@@ -90,10 +148,44 @@ export function DashboardPage() {
       */}
       <TowerFilters value={filters} page={data.page} onChange={setFilters} />
 
-      <div className="mb-5 grid gap-4 xl:grid-cols-[1.62fr_1fr]">
-        <ShipmentMap lanes={data.lanes} />
-        <LiveShipments shipments={data.shipments} />
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <Button type="button" size="sm" variant="outline" onClick={() => setMeeting(true)}>
+          Meeting view
+        </Button>
       </div>
+
+      <div className="mb-5 grid gap-4 xl:grid-cols-[1.62fr_1fr]">
+        {map}
+        {/*
+          The right column answers whichever question is live: the itinerary of
+          the file under discussion, or the list of everything open. One column
+          rather than a third one, because a tower that grows a panel per feature
+          is the wall of information this redesign exists to avoid.
+        */}
+        {selectedShipment ? (
+          <ItineraryPanel
+            shipment={selectedShipment}
+            legs={selectedLegs}
+            onClose={() => setSelected(null)}
+          />
+        ) : (
+          <LiveShipments
+            shipments={data.shipments}
+            selected={selected}
+            onSelect={(dossierId) => setSelected(dossierId)}
+          />
+        )}
+      </div>
+
+      {data.activity.length > 0 && (
+        <div className="mb-5">
+          <OperationalActivityPanel
+            records={data.activity}
+            selected={selected}
+            onSelect={(dossierId) => setSelected((current) => (current === dossierId ? null : dossierId))}
+          />
+        </div>
+      )}
 
       <KpiStrip kpis={data.kpis} onOpen={setOpenKpi} />
 
@@ -116,6 +208,34 @@ export function DashboardPage() {
       <RecentActivity />
 
       <KpiDrilldown id={openKpi} kpis={data.kpis} onClose={() => setOpenKpi(null)} />
+
+      <MeetingMode
+        open={meeting}
+        onClose={() => setMeeting(false)}
+        onRefresh={refresh}
+        stats={meetingStats}
+        counts={{
+          sea: data.lanes.filter((l) => l.mode === "sea").length,
+          air: data.lanes.filter((l) => l.mode === "air").length,
+          road: data.lanes.filter((l) => l.mode === "road").length,
+          other: data.lanes.filter((l) => l.mode === "other").length,
+        }}
+        stroke={LANE_STROKE}
+        activityCount={data.activityFiles}
+        unresolvedCount={data.needsLocation}
+        filterSummary={summariseFilters(filters)}
+      >
+        <div className="grid h-full min-h-0 gap-3 xl:grid-cols-[2fr_1fr]">
+          {map}
+          {selectedShipment && (
+            <ItineraryPanel
+              shipment={selectedShipment}
+              legs={selectedLegs}
+              onClose={() => setSelected(null)}
+            />
+          )}
+        </div>
+      </MeetingMode>
     </PageContainer>
   );
 }

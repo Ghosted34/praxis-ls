@@ -95,8 +95,17 @@ function projectLeg(leg) {
     provider_name: leg.provider_name || null,
     notes: leg.notes || null,
     milestone_instance_id: leg.milestone_instance_id || null,
-    origin,
-    destination,
+    // THE TEXT, under the same key the write shape uses. The nested projections
+    // ride alongside under `*_endpoint` rather than replacing them, because the
+    // editor reads a leg and writes it straight back: if `origin` were an object
+    // on the way out and a string on the way in, every save would be rejected by
+    // the validator, and the round trip is the whole point of an editor.
+    origin: leg.origin || null,
+    destination: leg.destination || null,
+    origin_place_id: leg.origin_place_id || null,
+    destination_place_id: leg.destination_place_id || null,
+    origin_endpoint: origin,
+    destination_endpoint: destination,
     plottable: origin.latitude !== null && destination.latitude !== null,
     // "Is anything about this leg's geography unresolved?" — one boolean for the
     // location-needed queue, so the queue and the map agree by construction.

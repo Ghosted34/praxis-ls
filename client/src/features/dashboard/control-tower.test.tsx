@@ -86,7 +86,11 @@ const KPIS: ControlTowerKpis = {
 
 const SHIPMENTS: LiveShipment[] = [
   {
+    dossierId: "d-142",
     ref: "SBX-OPS-2026-0142",
+    serviceName: "Sea freight import",
+    isMovement: true,
+    needsLocation: false,
     mode: "sea",
     from: "Shanghai",
     to: "Douala",
@@ -97,7 +101,11 @@ const SHIPMENTS: LiveShipment[] = [
     progress: 55,
   },
   {
+    dossierId: "d-137",
     ref: "SBX-OPS-2026-0137",
+    serviceName: "Hinterland transit",
+    isMovement: true,
+    needsLocation: false,
     mode: "road",
     from: "Douala",
     to: "Garoua",
@@ -214,10 +222,24 @@ describe("KpiStrip", () => {
 });
 
 describe("LiveShipments", () => {
-  it("makes each row a link into the dossier's operations file", () => {
-    wrap(<LiveShipments shipments={SHIPMENTS} />);
-    const link = screen.getByRole("link", { name: /SBX-OPS-2026-0142/ });
-    expect(link).toHaveAttribute("href", "/operations/files?ref=SBX-OPS-2026-0142");
+  it("selects the file rather than navigating away from the tower", async () => {
+    // DELIBERATE CHANGE FROM A LINK. The row used to navigate to Operations
+    // filtered by ref, which answered "show me this file" by throwing away the
+    // map, the other files and the meeting's train of thought. It now selects:
+    // the map zooms to the file and the itinerary opens beside it. The link to
+    // the full file lives inside that panel, one click further on.
+    const user = userEvent.setup();
+    const onSelect = vi.fn();
+    wrap(<LiveShipments shipments={SHIPMENTS} selected={null} onSelect={onSelect} />);
+    expect(screen.queryByRole("link", { name: /SBX-OPS-2026-0142/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /SBX-OPS-2026-0142/ }));
+    expect(onSelect).toHaveBeenCalledWith("d-142");
+  });
+
+  it("marks the selected row as pressed, so it is not colour alone", () => {
+    wrap(<LiveShipments shipments={SHIPMENTS} selected="d-142" onSelect={vi.fn()} />);
+    expect(screen.getByRole("button", { name: /SBX-OPS-2026-0142/ })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: /SBX-OPS-2026-0137/ })).toHaveAttribute("aria-pressed", "false");
   });
 
   it("draws a progress bar only for dossiers that have milestones", () => {
@@ -370,19 +392,28 @@ describe("AppLauncher", () => {
 });
 
 describe("ShipmentMap", () => {
+  const noop = () => {};
+
   it("describes its contents for assistive tech", () => {
-    wrap(<ShipmentMap lanes={LANES} />);
-    expect(screen.getByRole("img", { name: /1 sea, 0 road and 0 air routes/ })).toBeInTheDocument();
+    wrap(<ShipmentMap lanes={LANES} selected={null} onSelect={noop} />);
+    // Legs across files, not "routes": one file's route is now several segments,
+    // and the count that matters to a reader is both numbers.
+    expect(screen.getByRole("img", { name: /1 sea, 0 road and 0 air legs across 1 operation file/ })).toBeInTheDocument();
   });
 
   it("explains itself rather than drawing an empty ocean", () => {
-    wrap(<ShipmentMap lanes={[]} />);
-    expect(screen.getByText(/need a port of loading and discharge/)).toBeInTheDocument();
+    wrap(<ShipmentMap lanes={[]} selected={null} onSelect={noop} />);
+    expect(screen.getByText(/need a verified origin and destination/)).toBeInTheDocument();
     expect(screen.getByText("No routes to plot")).toBeInTheDocument();
   });
 
   it("has no axe violations", async () => {
-    const { container } = wrap(<ShipmentMap lanes={LANES} />);
+    const { container } = wrap(<ShipmentMap lanes={LANES} selected={null} onSelect={noop} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no axe violations with a file selected", async () => {
+    const { container } = wrap(<ShipmentMap lanes={LANES} selected="d-142" onSelect={noop} />);
     expect(await axe(container)).toHaveNoViolations();
   });
 });

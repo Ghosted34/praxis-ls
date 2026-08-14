@@ -2,6 +2,7 @@
 const service = require("./operations_file.service");
 const details = require("../shipment_details/shipment_details.service");
 const containers = require("../dossier_container/dossier_container.service");
+const itinerary = require("../itinerary/itinerary.service");
 const { maskForUserVia } = require("../../../shared/rbac/field-mask");
 const { asyncHandler, AppError } = require("../../../utils/errors");
 const { sendPaged } = require("../../../shared/http/paged");
@@ -21,6 +22,8 @@ module.exports = {
   // 360° modal is role-gated on money (PRD §7.3/§11.3): Sales/Ops never see margin.
   // Data on the env client; masked field_keys resolved from the identity schema.
   overview: asyncHandler(async (req, res) => res.json({ data: await maskForUserVia(req.identityDb, req.user, await req.tenantDb((c) => service.overview(c, req.params.id))) })),
+  itinerary: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => itinerary.list(c, req.params.id)) })),
+  replaceItinerary: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => itinerary.replace(c, req.params.id, req.body.legs)) })),
   /**
    * The SSDC projection. `?lang=fr` picks the label language — the field
    * definitions carry both, so a French document and an English one read the

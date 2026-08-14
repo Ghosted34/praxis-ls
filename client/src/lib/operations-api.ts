@@ -779,6 +779,23 @@ export type ShipmentDetails = {
   };
 };
 
+export type ItineraryLeg = {
+  itinerary_leg_id?: string;
+  seq?: number;
+  leg_type: "PICKUP" | "MAIN_CARRIAGE" | "CUSTOMS" | "INLAND_TRANSIT" | "WAREHOUSE" | "FINAL_DELIVERY" | "OTHER";
+  mode: "AIR" | "SEA" | "LAND" | "OTHER";
+  origin?: string | null; destination?: string | null;
+  origin_place_id?: string | null; destination_place_id?: string | null;
+  planned_departure?: string | null; planned_arrival?: string | null;
+  status?: "PLANNED" | "IN_PROGRESS" | "COMPLETED" | "BLOCKED" | "CANCELLED";
+  provider_id?: string | null; notes?: string | null; is_optional?: boolean;
+  origin_name?: string | null; destination_name?: string | null;
+  origin_latitude?: number | string | null; origin_longitude?: number | string | null;
+  destination_latitude?: number | string | null; destination_longitude?: number | string | null;
+};
+export const getItinerary = (dossierId: string) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`);
+export const replaceItinerary = (dossierId: string, legs: ItineraryLeg[]) => tenant<ItineraryLeg[]>(`/operations/${dossierId}/itinerary`, { method: "PUT", body: { legs } });
+
 export const getShipmentDetails = (dossierId: string, lang?: string) =>
   tenant<ShipmentDetails>(`/operations/${dossierId}/shipment-details${lang ? `?lang=${lang}` : ""}`);
 export const getDetailForm = (serviceTypeId: string, lang?: string) =>

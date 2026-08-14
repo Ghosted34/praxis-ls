@@ -69,6 +69,8 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
   const [clientId, setClientId] = React.useState("");
   const [serviceTypeId, setServiceTypeId] = React.useState("");
   const [title, setTitle] = React.useState("");
+  const [includeLastMile, setIncludeLastMile] = React.useState(false);
+  const [lastMileDestination, setLastMileDestination] = React.useState("");
   const [values, setValues] = React.useState<DetailValues>({});
   const [displays, setDisplays] = React.useState<DetailDisplays>({});
   const [addCarrier, setAddCarrier] = React.useState<{ key: string; term: string; kinds: string[] } | null>(null);
@@ -87,6 +89,7 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     [serviceTypeId],
   );
   const chosen = (serviceTypes || []).find((s) => s.service_type_id === serviceTypeId);
+  const supportsLastMile = /SEA|AIR|END_TO_END|PROJECT/i.test(chosen?.key || "");
   const carrierField = carrierFieldOf(form.data ?? null);
   const capturesContainers = form.data?.containers?.enabled === true;
 
@@ -110,6 +113,7 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
   const detailsMissing = missingRequired(form.data ?? null, values).filter(
     (f) => f.key !== carrierField?.key,
   );
+  const lastMileMissing = includeLastMile && !lastMileDestination.trim();
 
   async function startDraft() {
     setBusy(true);
@@ -140,6 +144,13 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     setFieldErrors(null);
     try {
       await api.promoteDossier(draftId, { details: values });
+      if (includeLastMile && lastMileDestination.trim()) {
+        const existingLegs = await api.getItinerary(draftId);
+        await api.replaceItinerary(draftId, [...existingLegs, {
+          leg_type: "FINAL_DELIVERY", mode: "LAND", destination: lastMileDestination.trim(),
+          status: "PLANNED", is_optional: false,
+        }]);
+      }
       onCreated();
       onClose();
     } catch (e) {
@@ -262,6 +273,16 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
         <div className="space-y-4">
           {form.loading && <Skeleton className="h-40 w-full" />}
           {form.error && <ErrorState message={form.error} />}
+          {supportsLastMile && (
+            <section className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input type="checkbox" checked={includeLastMile} onChange={(e) => setIncludeLastMile(e.target.checked)} />
+                Include last-mile delivery
+              </label>
+              <p className="micro text-muted-foreground">Add the final customer delivery after clearance. The address will be resolved by Geoapify and saved for the map.</p>
+              {includeLastMile && <Input value={lastMileDestination} onChange={(e) => setLastMileDestination(e.target.value)} placeholder="Customer delivery address or place" required />}
+            </section>
+          )}
           {form.data?.field_set && (
             <DetailFieldGroups
               groups={form.data.groups}
@@ -333,7 +354,7 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
             </Button>
           )}
           {step === 1 && (
-            <Button type="button" disabled={detailsMissing.length > 0 || busy} onClick={() => setStep(2)}>
+            <Button type="button" disabled={detailsMissing.length > 0 || lastMileMissing || busy} onClick={() => setStep(2)}>
               Continue
             </Button>
           )}

@@ -30,11 +30,13 @@ import { DocGroup, DocRow, MoneyRow, PersonRow } from "./components";
 // what a client sees on an invoice are one projection, not two.
 import { ShipmentDetailsPanel } from "./shipment-details";
 import { ContainerEditor } from "./container-editor";
+import { ItineraryEditor } from "./itinerary-editor";
 
-type Tab360 = "details" | "milestones" | "queries" | "money" | "people" | "documents";
+type Tab360 = "details" | "itinerary" | "milestones" | "queries" | "money" | "people" | "documents";
 const TABS_360: { value: Tab360; label: string }[] = [
   // First: what is actually moving is the question every other tab is about.
   { value: "details", label: "Details" },
+  { value: "itinerary", label: "Itinerary" },
   { value: "milestones", label: "Milestones" },
   { value: "queries", label: "Queries" },
   { value: "money", label: "Money" },
@@ -375,6 +377,7 @@ export function Dossier360Modal({
           <Segmented label="Dossier 360 section" value={tab} options={TABS_360} onChange={setTab} />
 
           {tab === "details" && <DetailsTab dossierId={dossier.dossier_id} />}
+          {tab === "itinerary" && <ItineraryEditor dossierId={dossier.dossier_id} />}
           {tab === "milestones" && <MilestonesTab dossierId={dossier.dossier_id} />}
           {tab === "queries" && <QTickets dossierId={dossier.dossier_id} />}
           {tab === "money" && <MoneyTab m={d.money} />}

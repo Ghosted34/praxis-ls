@@ -14,11 +14,9 @@ const email = require("../../src/services/email.service");
 const svc = require("../../src/modules/notification/notification.service");
 
 const client = {
-  query: jest
-    .fn()
-    .mockResolvedValue({
-      rows: [{ email: "user@acme.com", full_name: "Ada" }],
-    }),
+  query: jest.fn().mockResolvedValue({
+    rows: [{ email: "user@acme.com", full_name: "Ada" }],
+  }),
 };
 
 beforeEach(() => {

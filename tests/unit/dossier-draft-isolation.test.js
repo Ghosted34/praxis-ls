@@ -124,7 +124,9 @@ describe("DRAFT files are invisible to everything that enumerates", () => {
     expect(sql).toMatch(/SELECT \* FROM dossier WHERE status <> 'DRAFT'/);
     // `SELECT *`, not a column list: the view has to gain a column the moment
     // `dossier` does, or the next migration silently breaks every reader.
-    expect(sql).not.toMatch(/CREATE OR REPLACE VIEW dossier_visible AS\s*SELECT\s+[a-z_]+,/);
+    expect(sql).not.toMatch(
+      /CREATE OR REPLACE VIEW dossier_visible AS\s*SELECT\s+[a-z_]+,/,
+    );
   });
 
   it("a draft cannot hold a real ref, and a real file cannot hold a placeholder", () => {

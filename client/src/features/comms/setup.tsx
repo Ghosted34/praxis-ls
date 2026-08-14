@@ -23,6 +23,15 @@ import * as scapi from "@/lib/smartcomm-api";
 import { SmtpErrorGuide, MailTroubleshootingCard } from "@/components/mail/smtp-guide";
 import { MailSetupWizard } from "./mail-setup-wizard";
 
+/* The ERP send points a sender can be bound to. These are the system-mail
+ * purposes the app sends today; a sender bound to one becomes its From. */
+const SECTIONS = [
+  { key: "BILLING", label: "Billing (invoices, receipts)" },
+  { key: "DOCUMENTS", label: "Documents (BLs, delivery notes)" },
+  { key: "NOTIFICATIONS", label: "Notifications (alerts, reminders)" },
+  { key: "SUPPORT", label: "Support (customer replies)" },
+];
+
 type SenderMode = "add" | "edit" | "view";
 
 /* Add / edit / view a section sender — one modal for all three (view = read-only).
@@ -45,6 +54,9 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
   const [f, setF] = React.useState(blank);
   React.useEffect(() => { setF(blank()); }, [blank, open]);
   const set = (k: string, v: string | boolean) => setF((s) => ({ ...s, [k]: v }));
+  const [sections, setSections] = React.useState<string[]>(existing?.sections || []);
+  React.useEffect(() => { setSections(existing?.sections || []); }, [existing, open]);
+  const toggleSection = (k: string) => setSections((s) => (s.includes(k) ? s.filter((x) => x !== k) : [...s, k]));
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<unknown>(null);
 
@@ -54,6 +66,7 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
       await api.upsertSender({
         purpose: f.purpose.trim(), from_address: f.from_address, from_name: f.from_name, reply_to: f.reply_to || undefined,
         smtp_host: f.smtp_host || undefined, smtp_port: f.smtp_port === "" ? undefined : Number(f.smtp_port), is_active: f.is_active,
+        sections,
       });
       onSaved(); onClose();
     } catch (err) { setError(err); } finally { setBusy(false); }
@@ -80,6 +93,15 @@ function SenderModal({ open, mode, existing, onClose, onSaved }: {
         <div />
         <Field label="SMTP host"><Input value={f.smtp_host} disabled={ro} onChange={(e) => set("smtp_host", e.target.value)} placeholder="smtp.provider.com" /></Field>
         <Field label="SMTP port"><Input type="number" className="num" value={f.smtp_port} disabled={ro} onChange={(e) => set("smtp_port", e.target.value)} placeholder="587" /></Field>
+      </div>
+      <div className="mt-3">
+        <Field label="Used for (system mail)" hint="Which system emails send from this address. Unassigned → the tenant default / Praxis fallback handles it. A section can belong to only one sender.">
+          <div className="grid gap-1.5 sm:grid-cols-2">
+            {SECTIONS.map((sec) => (
+              <label key={sec.key} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={sections.includes(sec.key)} disabled={ro} onChange={() => toggleSection(sec.key)} /> {sec.label}</label>
+            ))}
+          </div>
+        </Field>
       </div>
       {ro && (
         <p className="mt-3 rounded-lg border border-border bg-muted/40 p-2.5 text-[11px] leading-relaxed text-muted-foreground">
@@ -175,7 +197,14 @@ export function SetupPage() {
   }
 
   const cols: Column<api.Sender>[] = [
-    { key: "section", label: "Section", render: (s) => <span className="font-medium text-foreground">{s.purpose}</span> },
+    { key: "section", label: "Section", render: (s) => (
+      <div>
+        <span className="font-medium text-foreground">{s.purpose}</span>
+        {(s.sections || []).length > 0 ? (
+          <div className="mt-1 flex flex-wrap gap-1">{(s.sections || []).map((k) => <Pill key={k} tone="blue">{k}</Pill>)}</div>
+        ) : <span className="micro block">Not bound to a send point</span>}
+      </div>
+    ) },
     { key: "from", label: "From", render: (s) => <div><span className="num text-foreground">{s.from_address}</span>{s.from_name ? <span className="micro block">{s.from_name}</span> : null}</div> },
     { key: "status", label: "Status", render: (s) => <Pill tone={s.is_active ? "ok" : "mute"}>{s.is_active ? "Active" : "Off"}</Pill> },
     { key: "actions", label: "", render: (s) => (

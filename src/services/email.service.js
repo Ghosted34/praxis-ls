@@ -43,7 +43,11 @@ async function resolveMail(client, { purpose = "NOTIFICATIONS", moduleKey = null
   let settings = {};
   let encPass = null;
   if (client) {
-    identity = purpose ? await emailRepo.identityFor(client, purpose) : null;
+    // WS-E3: a sender BOUND to this section wins; else the legacy purpose-label
+    // match (a sender whose own `purpose` equals the key). Then the fallback chain.
+    identity = purpose
+      ? (await emailRepo.identityForSection(client, purpose)) || (await emailRepo.identityFor(client, purpose))
+      : null;
     settings = (await getSetting(client, "email", "default", {})) || {};
     // SMTP password now lives ENCRYPTED in the integration_secret vault; the
     // legacy plaintext settings.smtp_pass is kept only as a back-compat fallback.

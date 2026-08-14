@@ -22,19 +22,19 @@ growth has made the answer urgent. That is the entire argument for doing it now.
 ## 2. The sequencing problem — read this before scheduling anything
 
 **Running the test today would measure the wrong system.** The 100-tenant claim describes Praxis
-*behind PgBouncer*. Today the pooler is deployed but carries no traffic, so a test run now
+_behind PgBouncer_. Today the pooler is deployed but carries no traffic, so a test run now
 measures the direct-to-Postgres path — a different ceiling, governed by a different constraint,
 and one nobody is proposing to ship at scale.
 
 Four steps, in this order. Steps 1–2 are not test setup; they are the cutover the test exists to
 validate.
 
-| # | Step | Why it must come first |
-|---|---|---|
-| 1 | **Backfill per-tenant DB credentials (WS-S2)** — `scripts/db/tenant-credentials.js` per tenant | Built but inert: `db-credential.service.js` resolves vault → shared fallback, so an un-rotated tenant still uses the shared password. D3's sign-off note is explicit that the pooler must authenticate against the per-tenant roles, so S2 lands first or PgBouncer's `auth_query` is configured for roles that do not exist yet. |
-| 2 | **Cut over to PgBouncer** — set `TENANT_DB_POOLER_HOST` **and** `TENANT_DB_POOLER_PORT` together | Nothing routes through the pooler until this is set. **Both, or neither** — `registry.service.js` documents the 2026-08-12 incident where a port with an empty host sent every tenant connection to the real Postgres host on 6432. |
-| 3 | **Confirm pooler telemetry is arriving** — `tenant_health.pooler_*` non-NULL | Added in migration `0100`. NULL means the collector cannot read the admin console, and a capacity test with no view of the pooler's own queue measures the app side only — the exact blindness the migration exists to remove. |
-| 4 | **Run the test below** | Now it measures the architecture the number describes. |
+| #   | Step                                                                                             | Why it must come first                                                                                                                                                                                                                                                                                                            |
+| --- | ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Backfill per-tenant DB credentials (WS-S2)** — `scripts/db/tenant-credentials.js` per tenant   | Built but inert: `db-credential.service.js` resolves vault → shared fallback, so an un-rotated tenant still uses the shared password. D3's sign-off note is explicit that the pooler must authenticate against the per-tenant roles, so S2 lands first or PgBouncer's `auth_query` is configured for roles that do not exist yet. |
+| 2   | **Cut over to PgBouncer** — set `TENANT_DB_POOLER_HOST` **and** `TENANT_DB_POOLER_PORT` together | Nothing routes through the pooler until this is set. **Both, or neither** — `registry.service.js` documents the 2026-08-12 incident where a port with an empty host sent every tenant connection to the real Postgres host on 6432.                                                                                               |
+| 3   | **Confirm pooler telemetry is arriving** — `tenant_health.pooler_*` non-NULL                     | Added in migration `0100`. NULL means the collector cannot read the admin console, and a capacity test with no view of the pooler's own queue measures the app side only — the exact blindness the migration exists to remove.                                                                                                    |
+| 4   | **Run the test below**                                                                           | Now it measures the architecture the number describes.                                                                                                                                                                                                                                                                            |
 
 A useful intermediate: run the harness **once before step 2** and once after. The
 before-run is not the answer, but it is a free baseline, and the delta is the clearest
@@ -50,7 +50,7 @@ counts as concurrently active only if, **within the same measurement window**, i
 1. holds at least one authenticated session,
 2. issues a request that reaches its own database (not a cached read, not a 404), and
 3. does so often enough to keep a pooled connection warm — `TENANT_POOL_IDLE_MS` defaults to
-   10s, so slower than roughly one request per 10s per tenant is *not* concurrency, it is
+   10s, so slower than roughly one request per 10s per tenant is _not_ concurrency, it is
    sequential traffic wearing a costume.
 
 **Why this matters:** 100 tenants pinging `/api/health/ready` proves nothing — that path
@@ -82,7 +82,7 @@ Praxis.
 The realistic shape, and it is deliberately not a flat rate:
 
 - **80 tenants at low rate** (~1 req/s) — the long tail that keeps connections warm without
-  consuming them. This is where the pool *cache* is tested (`TENANT_POOL_CACHE_MAX`, default 24 —
+  consuming them. This is where the pool _cache_ is tested (`TENANT_POOL_CACHE_MAX`, default 24 —
   note that is far below 120, so eviction is under test whether or not anyone intended it).
 - **30 tenants at moderate rate** (~10 req/s) — ordinary working tenants.
 - **10 tenants at high rate** (~50 req/s) — the noisy neighbours whose blast radius
@@ -119,16 +119,16 @@ Suggested home: `scripts/ops/capacity-test.js`, next to `tenant-smoke.js` and
 
 Stated as numbers, so the run has a verdict rather than an interpretation.
 
-| # | Criterion | Threshold | Where to read it |
-|---|---|---|---|
-| 1 | Concurrently-active tenants sustained | **≥ 100** by §3's definition | count of distinct tenants with a request in each 10s bucket |
-| 2 | Error rate | **< 0.1%**, and **zero** connection-acquisition failures | harness output; `ECONNREFUSED` / acquire timeouts are an automatic fail |
-| 3 | p95 latency | within **2×** the single-tenant baseline | harness; baseline measured before the run |
-| 4 | Postgres backend connections | stay under `max_connections` with **≥ 20% headroom** | `scripts/db/ops-status.js`, `connection-budget.js` |
-| 5 | Pooler client queue | `pooler_cl_waiting` **= 0** sustained; `pooler_maxwait_us` < 100 ms | `tenant_health`, migration `0100` |
-| 6 | Tenant health | no tenant RED for pool reasons; AMBER on utilisation is **acceptable and expected** | `platform.tenant_health` |
-| 7 | Connections after load stops | return to baseline within 5 min | `registry.poolStats()`, `SHOW POOLS` |
-| 8 | Two-replica soak | connections flat, not doubling | run steps again with 2 API replicas |
+| #   | Criterion                             | Threshold                                                                           | Where to read it                                                        |
+| --- | ------------------------------------- | ----------------------------------------------------------------------------------- | ----------------------------------------------------------------------- |
+| 1   | Concurrently-active tenants sustained | **≥ 100** by §3's definition                                                        | count of distinct tenants with a request in each 10s bucket             |
+| 2   | Error rate                            | **< 0.1%**, and **zero** connection-acquisition failures                            | harness output; `ECONNREFUSED` / acquire timeouts are an automatic fail |
+| 3   | p95 latency                           | within **2×** the single-tenant baseline                                            | harness; baseline measured before the run                               |
+| 4   | Postgres backend connections          | stay under `max_connections` with **≥ 20% headroom**                                | `scripts/db/ops-status.js`, `connection-budget.js`                      |
+| 5   | Pooler client queue                   | `pooler_cl_waiting` **= 0** sustained; `pooler_maxwait_us` < 100 ms                 | `tenant_health`, migration `0100`                                       |
+| 6   | Tenant health                         | no tenant RED for pool reasons; AMBER on utilisation is **acceptable and expected** | `platform.tenant_health`                                                |
+| 7   | Connections after load stops          | return to baseline within 5 min                                                     | `registry.poolStats()`, `SHOW POOLS`                                    |
+| 8   | Two-replica soak                      | connections flat, not doubling                                                      | run steps again with 2 API replicas                                     |
 
 Criterion 8 is the one most likely to be skipped and it is the one that catches a per-process
 assumption. Two replicas is how the fleet actually runs.
@@ -136,7 +136,7 @@ assumption. Two replicas is how the fleet actually runs.
 ### The result that is not a failure
 
 Expect criterion 6 to go AMBER on `pool_utilisation_pct`. That is the new early-warning signal
-working exactly as designed — the point of it is to move *before* saturation. **A run that goes
+working exactly as designed — the point of it is to move _before_ saturation. **A run that goes
 amber on utilisation while criteria 1–5 hold is a pass**, and it is also the first real
 validation that the threshold (default 80%) is set somewhere useful. If nothing ever goes amber
 at 120 tenants, the threshold is too high to warn anybody and should be lowered.
@@ -169,4 +169,4 @@ incident, a migration and an apology.
 
 ---
 
-*No production code is changed by this document.*
+_No production code is changed by this document._

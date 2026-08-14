@@ -9,6 +9,7 @@
 
 jest.mock("../../src/services/email.repo", () => ({
   identityFor: jest.fn(),
+  identityForSection: jest.fn(),
   recordSend: jest.fn(),
 }));
 jest.mock("../../src/shared/config/settings", () => ({
@@ -44,6 +45,7 @@ const FB = {
 beforeEach(() => {
   jest.clearAllMocks();
   emailRepo.identityFor.mockResolvedValue(null);
+  emailRepo.identityForSection.mockResolvedValue(null);
   getSetting.mockResolvedValue({});
   settingService.readSecret.mockResolvedValue(null);
 });

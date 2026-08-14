@@ -9,17 +9,15 @@ jest.mock(
   }),
 );
 jest.mock("../../src/services/accounting/determination", () => ({
-  resolve: jest
-    .fn()
-    .mockResolvedValue({
-      lines: [{ account_code: "4111", debit: 1192500, credit: 0 }],
-      totals: {
-        subtotal_ht: 1000000,
-        disbursement_total: 0,
-        tax_total: 192500,
-        total: 1192500,
-      },
-    }),
+  resolve: jest.fn().mockResolvedValue({
+    lines: [{ account_code: "4111", debit: 1192500, credit: 0 }],
+    totals: {
+      subtotal_ht: 1000000,
+      disbursement_total: 0,
+      tax_total: 192500,
+      total: 1192500,
+    },
+  }),
 }));
 jest.mock("../../src/services/documents/numbering.service", () => ({
   allocate: jest

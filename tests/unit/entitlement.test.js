@@ -349,9 +349,13 @@ describe("guard — failure semantics", () => {
   beforeEach(() => entitlement.resetSoftAlerts());
 
   test("an unevaluable check BLOCKS with a distinct code, not ENTITLEMENT_EXCEEDED", async () => {
-    platformDb.query.mockRejectedValue(new Error("platform database unreachable"));
+    platformDb.query.mockRejectedValue(
+      new Error("platform database unreachable"),
+    );
 
-    await expect(entitlement.guard(TENANT, "seats", { additional: 1 })).rejects.toMatchObject({
+    await expect(
+      entitlement.guard(TENANT, "seats", { additional: 1 }),
+    ).rejects.toMatchObject({
       code: "ENTITLEMENT_CHECK_UNAVAILABLE",
       // 503, not the 402 a real breach returns: nothing is known about the
       // tenant's plan position, and telling them they are over a limit that was
@@ -361,9 +365,19 @@ describe("guard — failure semantics", () => {
   });
 
   test("a real hard breach still surfaces as ENTITLEMENT_EXCEEDED / 402", async () => {
-    givenStatus([{ metric: "seats", used: 20, limit_value: 20, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 20,
+        limit_value: 20,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
 
-    await expect(entitlement.guard(TENANT, "seats", { additional: 1 })).rejects.toMatchObject({
+    await expect(
+      entitlement.guard(TENANT, "seats", { additional: 1 }),
+    ).rejects.toMatchObject({
       code: "ENTITLEMENT_EXCEEDED",
       status: 402,
     });
@@ -373,16 +387,31 @@ describe("guard — failure semantics", () => {
     // The mail sender's case: this one transport carries invoices, resets and
     // OTPs, so refusing a send over an email allowance locks users out of their
     // own account and breaks the billing that would collect on the overage.
-    givenStatus([{ metric: "emails_month", used: 5000, limit_value: 5000, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "emails_month",
+        used: 5000,
+        limit_value: 5000,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
 
-    const r = await entitlement.guard(TENANT, "emails_month", { additional: 1, neverBlock: true });
+    const r = await entitlement.guard(TENANT, "emails_month", {
+      additional: 1,
+      neverBlock: true,
+    });
     expect(r.allowed).toBe(true);
     expect(r.downgraded_from_hard).toBe(true);
   });
 
   test("neverBlock also survives an unevaluable check", async () => {
-    platformDb.query.mockRejectedValue(new Error("platform database unreachable"));
-    const r = await entitlement.guard(TENANT, "emails_month", { neverBlock: true });
+    platformDb.query.mockRejectedValue(
+      new Error("platform database unreachable"),
+    );
+    const r = await entitlement.guard(TENANT, "emails_month", {
+      neverBlock: true,
+    });
     expect(r.allowed).toBe(true);
   });
 
@@ -400,32 +429,76 @@ describe("guard — failure semantics", () => {
     // uncached that put a platform-DB round trip on the hot path of invoices
     // and OTPs. Incident 2026-08-12 was the platform DB being saturated until
     // tenant logins timed out — this is the same database.
-    givenStatus([{ metric: "emails_month", used: 10, limit_value: 5000, hard: false, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "emails_month",
+        used: 10,
+        limit_value: 5000,
+        hard: false,
+        measured_at: null,
+      },
+    ]);
 
     for (let i = 0; i < 25; i += 1) {
-      await entitlement.guard(TENANT, "emails_month", { additional: 1, neverBlock: true });
+      await entitlement.guard(TENANT, "emails_month", {
+        additional: 1,
+        neverBlock: true,
+      });
     }
     expect(platformDb.query).toHaveBeenCalledTimes(1);
   });
 
   test("changing a limit invalidates the cache rather than waiting out the TTL", async () => {
-    givenStatus([{ metric: "seats", used: 5, limit_value: 10, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 5,
+        limit_value: 10,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
     await entitlement.guard(TENANT, "seats", { additional: 1 });
     expect(platformDb.query).toHaveBeenCalledTimes(1);
 
     // An operator raising a limit to unblock a customer must not be told to
     // wait sixty seconds for it to take effect.
-    platformDb.query.mockResolvedValue({ rows: [{ plan_id: "p", metric: "seats" }] });
-    await entitlement.setEntitlement({ planId: "p", metric: "seats", limitValue: 50, hard: true });
+    platformDb.query.mockResolvedValue({
+      rows: [{ plan_id: "p", metric: "seats" }],
+    });
+    await entitlement.setEntitlement({
+      planId: "p",
+      metric: "seats",
+      limitValue: 50,
+      hard: true,
+    });
 
-    givenStatus([{ metric: "seats", used: 5, limit_value: 50, hard: true, measured_at: null }]);
+    givenStatus([
+      {
+        metric: "seats",
+        used: 5,
+        limit_value: 50,
+        hard: true,
+        measured_at: null,
+      },
+    ]);
     const r = await entitlement.guard(TENANT, "seats", { additional: 1 });
     expect(r.limit).toBe(50);
   });
 
   test("a soft breach allows and reports, and never throws", async () => {
-    givenStatus([{ metric: "emails_month", used: 5000, limit_value: 4000, hard: false, measured_at: null }]);
-    const r = await entitlement.guard(TENANT, "emails_month", { additional: 1 });
+    givenStatus([
+      {
+        metric: "emails_month",
+        used: 5000,
+        limit_value: 4000,
+        hard: false,
+        measured_at: null,
+      },
+    ]);
+    const r = await entitlement.guard(TENANT, "emails_month", {
+      additional: 1,
+    });
     expect(r.allowed).toBe(true);
     expect(r.exceeded_soft).toBe(true);
   });

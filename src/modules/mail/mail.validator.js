@@ -39,6 +39,7 @@ const schemas = {
     smtp_host: z.string().trim().max(255).nullable().optional(),
     smtp_port: z.coerce.number().int().min(1).max(65535).nullable().optional(),
     is_active: z.boolean().optional(),
+    sections: z.array(z.string().trim().max(64)).optional(),
   }).strict(),
   // PATCH is the same shape with nothing required; `purpose` selects the row on
   // upsert but must not be repurposed to move an existing one.

@@ -6,10 +6,26 @@ const { insertOne, updateOne, getById, page } = require("../../shared/db/query-h
 
 async function listIdentities(client) {
   const { rows } = await client.query(
-    "SELECT email_identity_id, purpose, from_address, from_name, reply_to, smtp_host, smtp_port, is_active " +
-      "FROM email_identity WHERE archived_at IS NULL ORDER BY purpose",
+    "SELECT i.email_identity_id, i.purpose, i.from_address, i.from_name, i.reply_to, i.smtp_host, i.smtp_port, i.is_active, " +
+      "COALESCE(array_agg(b.section_key) FILTER (WHERE b.section_key IS NOT NULL), '{}') AS sections " +
+      "FROM email_identity i LEFT JOIN email_section_binding b ON b.email_identity_id = i.email_identity_id " +
+      "WHERE i.archived_at IS NULL GROUP BY i.email_identity_id ORDER BY i.purpose",
   );
   return rows;
+}
+
+/** Replace the ERP sections a sender is bound to (WS-E3). A section maps to ONE
+ *  sender, so claiming a section re-points it away from whatever sender had it. */
+async function setBindingsForIdentity(client, identityId, sectionKeys) {
+  await client.query("DELETE FROM email_section_binding WHERE email_identity_id = $1", [identityId]);
+  const keys = [...new Set((sectionKeys || []).map((s) => String(s).trim()).filter(Boolean))];
+  for (const key of keys) {
+    await client.query(
+      "INSERT INTO email_section_binding (email_identity_id, section_key) VALUES ($1, $2) " +
+        "ON CONFLICT (section_key) DO UPDATE SET email_identity_id = EXCLUDED.email_identity_id",
+      [identityId, key],
+    );
+  }
 }
 
 async function listSentLog(client, { limit = 100, offset = 0, identityId = null } = {}) {
@@ -291,7 +307,7 @@ async function searchRecipients(client, q, limit = 20) {
 }
 
 module.exports = {
-  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity,
+  listIdentities, listSentLog, listInbox, updateIdentity, upsertIdentity, archiveIdentity, setBindingsForIdentity,
   insertConnection, getConnection, updateConnection, listConnections, listSyncable, findByAddress, listRenewable, setCursor, setError,
   setDefaultConnection, ensureDefaultConnection, claimConnectionIfUnowned,
   insertInbound, listInboundByConnection, getInbound, markInboundRead,

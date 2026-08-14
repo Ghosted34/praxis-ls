@@ -67,9 +67,18 @@ describe("schemeFor", () => {
 
   it("has useful defaults for entity, client and supplier document numbers", async () => {
     const c = { query: async () => ({ rows: [] }) };
-    expect(await schemeFor(c, "MOD-01-DOC")).toMatchObject({ prefix: "ENT", code: "DOC" });
-    expect(await schemeFor(c, "MOD-03-DOC")).toMatchObject({ prefix: "CLI", code: "DOC" });
-    expect(await schemeFor(c, "MOD-04-DOC")).toMatchObject({ prefix: "SUP", code: "DOC" });
+    expect(await schemeFor(c, "MOD-01-DOC")).toMatchObject({
+      prefix: "ENT",
+      code: "DOC",
+    });
+    expect(await schemeFor(c, "MOD-03-DOC")).toMatchObject({
+      prefix: "CLI",
+      code: "DOC",
+    });
+    expect(await schemeFor(c, "MOD-04-DOC")).toMatchObject({
+      prefix: "SUP",
+      code: "DOC",
+    });
   });
 
   /**
@@ -146,27 +155,43 @@ describe("allocate", () => {
 
 describe("allocatePartyDocument", () => {
   it("allocates a client document without a corporate-entity link", async () => {
-    const { allocatePartyDocument } = require("../../src/services/documents/numbering.service");
+    const {
+      allocatePartyDocument,
+    } = require("../../src/services/documents/numbering.service");
     const calls = [];
     const c = {
       query: async (sql) => {
         calls.push(sql);
         if (/FROM setting/.test(sql)) return { rows: [] };
-        if (/INSERT INTO party_document_sequence/.test(sql)) return { rows: [{ seq: 3 }] };
+        if (/INSERT INTO party_document_sequence/.test(sql))
+          return { rows: [{ seq: 3 }] };
         return { rows: [] };
       },
     };
     const r = await allocatePartyDocument(c, {
-      moduleKey: "MOD-03-DOC", partyKind: "client", date: "2026-08-13",
+      moduleKey: "MOD-03-DOC",
+      partyKind: "client",
+      date: "2026-08-13",
     });
     expect(r.number).toBe("CLI-DOC-2026-0003");
-    expect(calls.some((sql) => /ON CONFLICT \(party_kind, year\)/.test(sql))).toBe(true);
+    expect(
+      calls.some((sql) => /ON CONFLICT \(party_kind, year\)/.test(sql)),
+    ).toBe(true);
   });
 
   it("rejects an unsupported party kind", async () => {
-    const { allocatePartyDocument } = require("../../src/services/documents/numbering.service");
-    await expect(allocatePartyDocument({ query: async () => ({ rows: [] }) }, {
-      moduleKey: "MOD-03-DOC", partyKind: "entity", date: "2026-08-13",
-    })).rejects.toThrow(/client or supplier/i);
+    const {
+      allocatePartyDocument,
+    } = require("../../src/services/documents/numbering.service");
+    await expect(
+      allocatePartyDocument(
+        { query: async () => ({ rows: [] }) },
+        {
+          moduleKey: "MOD-03-DOC",
+          partyKind: "entity",
+          date: "2026-08-13",
+        },
+      ),
+    ).rejects.toThrow(/client or supplier/i);
   });
 });

@@ -41,4 +41,17 @@ async function recordSend(client, { email_identity_id, to_address, subject, enti
   return rows[0] || null;
 }
 
-module.exports = { identityFor, recordSend };
+/** The sender BOUND to an ERP section (WS-E3), if any. This is the override that
+ *  makes a tenant-created section actually resolve — it wins over the legacy
+ *  purpose-label match in resolveMail. */
+async function identityForSection(client, section) {
+  if (!section) return null;
+  const { rows } = await client.query(
+    "SELECT i.* FROM email_section_binding b JOIN email_identity i ON i.email_identity_id = b.email_identity_id " +
+      "WHERE b.section_key = $1 AND i.is_active = true AND i.archived_at IS NULL LIMIT 1",
+    [section],
+  );
+  return rows[0] || null;
+}
+
+module.exports = { identityFor, identityForSection, recordSend };

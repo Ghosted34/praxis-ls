@@ -1529,7 +1529,7 @@ for the new skeletons (throttle to Slow 3G if local is too fast to see them).
 **Also still true from session 9: `npm test` has never run the five campaign merge-field cases.**
 
 0. **Session 9 needs Windows validation + a visual pass** — `npm run lint`, `npm test`, `npm run build
-   --prefix client`. **`npm test` matters more than usual**: jest wouldn't run in the sandbox, so the five
+--prefix client`. **`npm test` matters more than usual**: jest wouldn't run in the sandbox, so the five
    new merge-field cases in `tests/unit/campaign-send.test.js` have never executed. Then `npm run dev` and
    click: the Security and Vault hubs (all sections), the six new Security forms, **all four Control Tower
    KPI cards** incl. CTA routing and one card with a user lacking the grant (empty state), the **access

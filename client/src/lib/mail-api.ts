@@ -14,6 +14,7 @@ export type Sender = {
   smtp_host?: string | null;
   smtp_port?: number | null;
   is_active: boolean;
+  sections?: string[];
 };
 export type SentMail = {
   email_send_id: string;
@@ -56,7 +57,7 @@ export const updateSender = (id: string, patch: Partial<Pick<Sender, "from_name"
 export const putSetting = (section: string, key: string, value: unknown) =>
   tenant<{ ok?: boolean }>(`/settings/${section}/${key}`, { method: "PUT", body: { value } });
 
-export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean }) =>
+export const upsertSender = (body: { purpose: string; from_address?: string; from_name?: string; reply_to?: string; smtp_host?: string; smtp_port?: number; is_active?: boolean; sections?: string[] }) =>
   tenant<Sender>("/mail/senders", { method: "POST", body });
 
 export const archiveSender = (id: string) =>

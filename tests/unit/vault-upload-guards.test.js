@@ -28,17 +28,23 @@ const fakeClient = () => ({
   async query(sql) {
     const s = String(sql).replace(/\s+/g, " ").trim();
     if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(s)) return { rows: [] };
-    if (/^INSERT INTO "?document_vault"?/i.test(s)) return { rows: [{ doc_id: "v1", doc_type: "BL" }] };
-    if (/event_log|immutable_ledger|audit|outbox|event_type|app_user/i.test(s)) return { rows: [{ id: 1 }] };
+    if (/^INSERT INTO "?document_vault"?/i.test(s))
+      return { rows: [{ doc_id: "v1", doc_type: "BL" }] };
+    if (/event_log|immutable_ledger|audit|outbox|event_type|app_user/i.test(s))
+      return { rows: [{ id: 1 }] };
     throw new Error("Unmatched SQL in fakeClient: " + s.slice(0, 160));
   },
 });
 
-const dataUrl = (type, bytes) => `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
+const dataUrl = (type, bytes) =>
+  `data:${type};base64,${Buffer.from(bytes).toString("base64")}`;
 
 /** Real magic numbers — the point of the test is that the CONTENTS decide. */
 const PDF = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(64, 0x20)]);
-const PNG = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), Buffer.alloc(64, 0)]);
+const PNG = Buffer.concat([
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+  Buffer.alloc(64, 0),
+]);
 const EXE = Buffer.concat([Buffer.from("MZ"), Buffer.alloc(64, 0)]);
 
 const opsUpload = (overrides = {}) => ({
@@ -59,39 +65,62 @@ describe("uploading to an operations file", () => {
   });
 
   it("takes a real PNG", async () => {
-    const row = await service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl("image/png", PNG) }));
+    const row = await service.createDocument(
+      fakeClient(),
+      opsUpload({ dataUrl: dataUrl("image/png", PNG) }),
+    );
     expect(row.doc_id).toBe("v1");
   });
 
   it("refuses an executable wearing a .pdf content type", async () => {
     // The whole reason the sniff exists.
     await expect(
-      service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl("application/pdf", EXE) })),
+      service.createDocument(
+        fakeClient(),
+        opsUpload({ dataUrl: dataUrl("application/pdf", EXE) }),
+      ),
     ).rejects.toThrow(/not a PDF or an image/);
   });
 
   it("refuses a file whose contents contradict what it says it is", async () => {
     await expect(
-      service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl("application/pdf", PNG) })),
-    ).rejects.toThrow(/says it is application\/pdf but its contents are image\/png/);
+      service.createDocument(
+        fakeClient(),
+        opsUpload({ dataUrl: dataUrl("application/pdf", PNG) }),
+      ),
+    ).rejects.toThrow(
+      /says it is application\/pdf but its contents are image\/png/,
+    );
   });
 
   it("refuses a type that is not on the list, whatever its bytes say", async () => {
     await expect(
-      service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl("text/csv", "a,b,c") })),
+      service.createDocument(
+        fakeClient(),
+        opsUpload({ dataUrl: dataUrl("text/csv", "a,b,c") }),
+      ),
     ).rejects.toThrow(/Only application\/pdf/);
   });
 
   it("refuses anything over 5 MB", async () => {
-    const big = Buffer.concat([Buffer.from("%PDF-1.7\n"), Buffer.alloc(6 * 1024 * 1024, 0x20)]);
+    const big = Buffer.concat([
+      Buffer.from("%PDF-1.7\n"),
+      Buffer.alloc(6 * 1024 * 1024, 0x20),
+    ]);
     await expect(
-      service.createDocument(fakeClient(), opsUpload({ dataUrl: dataUrl("application/pdf", big) })),
+      service.createDocument(
+        fakeClient(),
+        opsUpload({ dataUrl: dataUrl("application/pdf", big) }),
+      ),
     ).rejects.toThrow(/exceeds 5 MB/);
   });
 
   it("still refuses an empty file", async () => {
     await expect(
-      service.createDocument(fakeClient(), opsUpload({ dataUrl: "data:application/pdf;base64," })),
+      service.createDocument(
+        fakeClient(),
+        opsUpload({ dataUrl: "data:application/pdf;base64," }),
+      ),
     ).rejects.toThrow(/Expected a base64 data URL|empty/i);
   });
 });
@@ -101,7 +130,8 @@ describe("uploading anywhere else is unchanged", () => {
     // An HR contract as .docx, 8 MB: refused by the operations rules, accepted
     // here. Tightening the vault globally would have been a silent regression
     // in modules this work has no business touching.
-    const docx = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+    const docx =
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
     const row = await service.createDocument(fakeClient(), {
       dataUrl: dataUrl(docx, Buffer.alloc(8 * 1024 * 1024, 0x41)),
       entityRef: "employee:e1",

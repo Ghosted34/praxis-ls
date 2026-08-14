@@ -636,6 +636,7 @@ export declare namespace marks {
   /** The whole string for a file's equipment; empty when nothing qualifies. */
   function marksFromContainers(
     lines: MarksLine[],
-    typesById: Map<string, MarksContainerType> | Record<string, MarksContainerType>,
+    typesById:
+      Map<string, MarksContainerType> | Record<string, MarksContainerType>,
   ): string;
 }

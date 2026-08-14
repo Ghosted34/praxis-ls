@@ -22,8 +22,12 @@ jest.mock("../../src/shared/events/emit", () => ({
   emitEvent: jest.fn(),
   audit: jest.fn(),
 }));
-jest.mock("../../src/services/email.service", () => ({ send: jest.fn().mockResolvedValue({}) }));
-jest.mock("../../src/shared/cache/identity-cache", () => ({ invalidateUser: jest.fn() }));
+jest.mock("../../src/services/email.service", () => ({
+  send: jest.fn().mockResolvedValue({}),
+}));
+jest.mock("../../src/shared/cache/identity-cache", () => ({
+  invalidateUser: jest.fn(),
+}));
 jest.mock("../../src/shared/cache/session-store", () => ({
   removeSession: jest.fn(),
   indexSession: jest.fn(),
@@ -79,12 +83,22 @@ describe("changeOwnPassword — proving the current password", () => {
 
     expect(out).toEqual({ changed: true, sessions_signed_out: 2 });
     expect(argon2.verify).toHaveBeenCalledWith("argon2-current", "old-one");
-    expect(policy.assertStrongPassword).toHaveBeenCalledWith(NEW_PASSWORD, { email: "user@acme.com" });
+    expect(policy.assertStrongPassword).toHaveBeenCalledWith(NEW_PASSWORD, {
+      email: "user@acme.com",
+    });
     expect(repo.setPasswordHash).toHaveBeenCalledTimes(1);
     // A link mailed before the change must not outlive it.
-    expect(repo.invalidateUserResets).toHaveBeenCalledWith(expect.anything(), "u-1");
+    expect(repo.invalidateUserResets).toHaveBeenCalledWith(
+      expect.anything(),
+      "u-1",
+    );
     // s-1 is the caller's own session and is spared — the repo is told to keep it.
-    expect(repo.killOtherSessionsForUser).toHaveBeenCalledWith(expect.anything(), "u-1", "s-1", "u-1");
+    expect(repo.killOtherSessionsForUser).toHaveBeenCalledWith(
+      expect.anything(),
+      "u-1",
+      "s-1",
+      "u-1",
+    );
     expect(sessionStore.removeSession).toHaveBeenCalledTimes(2);
     expect(identityCache.invalidateUser).toHaveBeenCalledWith("u-1");
     expect(notificationRepo.insertForUser).toHaveBeenCalledTimes(1);

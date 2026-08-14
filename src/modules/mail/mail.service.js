@@ -56,7 +56,15 @@ const listIdentities = (client) => repo.listIdentities(client);
 const listSent = (client, q = {}) => repo.listSentLog(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id });
 const listInbox = (client, q = {}) => repo.listInbox(client, { limit: q.limit, offset: q.offset, identityId: q.identity_id });
 const updateIdentity = (client, id, fields) => repo.updateIdentity(client, id, fields);
-const upsertIdentity = (client, d) => repo.upsertIdentity(client, d);
+async function upsertIdentity(client, d) {
+  const identity = await repo.upsertIdentity(client, d);
+  // Sections bind the sender to ERP send points (WS-E3). `undefined` = leave
+  // bindings untouched; an empty array clears them.
+  if (d.sections !== undefined && identity && identity.email_identity_id) {
+    await repo.setBindingsForIdentity(client, identity.email_identity_id, d.sections);
+  }
+  return identity;
+}
 const archiveIdentity = (client, id) => repo.archiveIdentity(client, id);
 
 // ── Engine helpers ──

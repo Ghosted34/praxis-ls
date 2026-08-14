@@ -292,8 +292,7 @@ test.describe("the ribbon's chrome budget", () => {
 
     const row = await page.evaluate(() => {
       const nav = document.querySelector("nav[aria-label$='sections']") as
-        | HTMLElement
-        | undefined;
+        HTMLElement | undefined;
       const links = Array.from(nav?.querySelectorAll("a") ?? []).filter(
         (a) => a.getBoundingClientRect().width > 0,
       );

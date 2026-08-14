@@ -390,17 +390,27 @@ describe("SSDC — values are coerced and checked against their definition", () 
     const id = "3f2504e0-4f89-11d3-9a0c-0305e82c3301";
     expect(service.coerce(carrier, id)).toBe(id);
     expect(service.coerce(carrier, ` ${id} `)).toBe(id);
-    expect(() => service.coerce(carrier, "Maersk")).toThrow(/chosen from the list/);
-    expect(() => service.coerce(carrier, "MAERSK")).toThrow(/chosen from the list/);
+    expect(() => service.coerce(carrier, "Maersk")).toThrow(
+      /chosen from the list/,
+    );
+    expect(() => service.coerce(carrier, "MAERSK")).toThrow(
+      /chosen from the list/,
+    );
     // Blank still clears the field — "not confirmed yet" is a legitimate state.
     expect(service.coerce(carrier, "")).toBeNull();
   });
 
   it("normalises a currency rather than storing three spellings of one", () => {
-    const cur = f({ key: "declared_currency", label_en: "Currency", data_type: "CURRENCY" });
+    const cur = f({
+      key: "declared_currency",
+      label_en: "Currency",
+      data_type: "CURRENCY",
+    });
     expect(service.coerce(cur, "usd")).toBe("USD");
     expect(service.coerce(cur, " XAF ")).toBe("XAF");
-    expect(() => service.coerce(cur, "dollars")).toThrow(/3-letter currency code/);
+    expect(() => service.coerce(cur, "dollars")).toThrow(
+      /3-letter currency code/,
+    );
   });
 });
 

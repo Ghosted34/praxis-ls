@@ -16,14 +16,12 @@ const mockSendEmail = jest.fn();
 const mockEmitEvent = jest.fn(async () => {});
 
 jest.mock("../../src/modules/mail/providers/imapSmtp.provider", () => ({
-  ImapSmtpProvider: jest
-    .fn()
-    .mockImplementation(() => ({
-      fetchSince: mockFetchSince,
-      verify: mockVerify,
-      markAsRead: mockMarkAsRead,
-      sendEmail: mockSendEmail,
-    })),
+  ImapSmtpProvider: jest.fn().mockImplementation(() => ({
+    fetchSince: mockFetchSince,
+    verify: mockVerify,
+    markAsRead: mockMarkAsRead,
+    sendEmail: mockSendEmail,
+  })),
 }));
 jest.mock("../../src/modules/security/setting/setting.service", () => ({
   SECRET_SECTION: "integration_secret",
@@ -280,15 +278,25 @@ test("records the error on the connection and does not throw", async () => {
  * can act on it. The dead function is deleted rather than re-wired.
  */
 test("send maps a '550 Sender verify failed' SMTP rejection to an actionable 422 AppError", async () => {
-  const smtpErr = Object.assign(new Error("Can't send mail - all recipients were rejected: 550 Sender verify failed"), {
-    responseCode: 550,
-    response: "550 Sender verify failed",
-    code: "EENVELOPE",
-  });
+  const smtpErr = Object.assign(
+    new Error(
+      "Can't send mail - all recipients were rejected: 550 Sender verify failed",
+    ),
+    {
+      responseCode: 550,
+      response: "550 Sender verify failed",
+      code: "EENVELOPE",
+    },
+  );
   mockSendEmail.mockRejectedValueOnce(smtpErr);
 
-  await expect(service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }))
-    .rejects.toMatchObject({ name: "AppError", code: "SENDER_NOT_AUTHORIZED", status: 422 });
+  await expect(
+    service.send({}, { connectionId: "conn-1", to: "x@y.cm", subject: "hi" }),
+  ).rejects.toMatchObject({
+    name: "AppError",
+    code: "SENDER_NOT_AUTHORIZED",
+    status: 422,
+  });
   // The failed send must not be recorded as an outbound thread copy.
   expect(repo.insertInbound).not.toHaveBeenCalled();
 });

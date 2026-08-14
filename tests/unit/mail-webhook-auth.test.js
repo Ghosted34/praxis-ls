@@ -10,13 +10,11 @@
 
 const mockFetchSince = jest.fn();
 jest.mock("../../src/modules/mail/providers/imapSmtp.provider", () => ({
-  ImapSmtpProvider: jest
-    .fn()
-    .mockImplementation(() => ({
-      fetchSince: mockFetchSince,
-      verify: jest.fn(),
-      markAsRead: jest.fn(),
-    })),
+  ImapSmtpProvider: jest.fn().mockImplementation(() => ({
+    fetchSince: mockFetchSince,
+    verify: jest.fn(),
+    markAsRead: jest.fn(),
+  })),
 }));
 jest.mock("../../src/modules/mail/providers/microsoftGraph.provider", () => ({
   MicrosoftGraphProvider: jest.fn(),

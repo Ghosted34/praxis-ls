@@ -16,22 +16,34 @@
  *     an outage for every un-migrated tenant.
  */
 
-const { idempotency, hashRequest, KEY_PATTERN } = require("../../src/middleware/idempotency");
+const {
+  idempotency,
+  hashRequest,
+  KEY_PATTERN,
+} = require("../../src/middleware/idempotency");
 
 /** A stand-in for the tenant lease, scripted per test. */
 function fakeDb(handlers) {
   return {
     query: jest.fn((sql, params) => {
-      if (/^INSERT INTO idempotency_key/.test(sql.trim())) return handlers.insert(params);
+      if (/^INSERT INTO idempotency_key/.test(sql.trim()))
+        return handlers.insert(params);
       if (/^SELECT state/.test(sql.trim())) return handlers.select(params);
-      if (/^UPDATE idempotency_key/.test(sql.trim())) return handlers.update ? handlers.update(params) : { rows: [] };
-      if (/^DELETE FROM idempotency_key/.test(sql.trim())) return handlers.del ? handlers.del(params) : { rows: [] };
+      if (/^UPDATE idempotency_key/.test(sql.trim()))
+        return handlers.update ? handlers.update(params) : { rows: [] };
+      if (/^DELETE FROM idempotency_key/.test(sql.trim()))
+        return handlers.del ? handlers.del(params) : { rows: [] };
       throw new Error(`unexpected sql: ${sql}`);
     }),
   };
 }
 
-function makeReq({ method = "POST", key = "11111111-2222-3333-4444-555555555555", body = { code: "SLAS" }, db } = {}) {
+function makeReq({
+  method = "POST",
+  key = "11111111-2222-3333-4444-555555555555",
+  body = { code: "SLAS" },
+  db,
+} = {}) {
   return {
     method,
     originalUrl: "/api/tenant/entities",
@@ -89,7 +101,10 @@ function run(req, res) {
 
 describe("Idempotency-Key handling", () => {
   test("ignores safe methods and requests without the header", async () => {
-    const db = fakeDb({ insert: () => ({ rows: [] }), select: () => ({ rows: [] }) });
+    const db = fakeDb({
+      insert: () => ({ rows: [] }),
+      select: () => ({ rows: [] }),
+    });
 
     const get = makeReq({ method: "GET", db });
     expect((await run(get, makeRes())).outcome).toBe("next");
@@ -104,7 +119,10 @@ describe("Idempotency-Key handling", () => {
     // Mounted above each module's auth, so an unauthenticated caller could
     // otherwise take a tenant connection and INSERT a row of their choosing
     // before anything established they were allowed to be here.
-    const db = fakeDb({ insert: () => ({ rows: [] }), select: () => ({ rows: [] }) });
+    const db = fakeDb({
+      insert: () => ({ rows: [] }),
+      select: () => ({ rows: [] }),
+    });
     const req = makeReq({ db });
     req.headers.authorization = "";
 
@@ -120,7 +138,11 @@ describe("Idempotency-Key handling", () => {
     // answering it, and there is no body to replay — so the key is released and
     // the next attempt simply re-runs.
     const del = jest.fn(() => ({ rows: [] }));
-    const db = fakeDb({ insert: () => ({ rows: [{ key: "k" }] }), select: () => ({ rows: [] }), del });
+    const db = fakeDb({
+      insert: () => ({ rows: [{ key: "k" }] }),
+      select: () => ({ rows: [] }),
+      del,
+    });
     const res = makeRes();
 
     await run(makeReq({ method: "DELETE", db }), res);
@@ -132,8 +154,14 @@ describe("Idempotency-Key handling", () => {
   });
 
   test("rejects a malformed key rather than putting it in a primary key", async () => {
-    const db = fakeDb({ insert: () => ({ rows: [] }), select: () => ({ rows: [] }) });
-    const { err } = await run(makeReq({ key: "no spaces allowed!", db }), makeRes());
+    const db = fakeDb({
+      insert: () => ({ rows: [] }),
+      select: () => ({ rows: [] }),
+    });
+    const { err } = await run(
+      makeReq({ key: "no spaces allowed!", db }),
+      makeRes(),
+    );
 
     expect(err).toBeTruthy();
     expect(err.code).toBe("IDEMPOTENCY_KEY_INVALID");
@@ -141,7 +169,10 @@ describe("Idempotency-Key handling", () => {
   });
 
   test("a first request claims the key and runs normally", async () => {
-    const db = fakeDb({ insert: () => ({ rows: [{ key: "k" }] }), select: () => ({ rows: [] }) });
+    const db = fakeDb({
+      insert: () => ({ rows: [{ key: "k" }] }),
+      select: () => ({ rows: [] }),
+    });
     const req = makeReq({ db });
 
     const { outcome } = await run(req, makeRes());
@@ -189,13 +220,18 @@ describe("Idempotency-Key handling", () => {
             state: "completed",
             status_code: 200,
             response_body: { data: { entity_id: "e-1" } },
-            request_hash: hashRequest("POST", "/api/tenant/entities", { code: "SOMETHING-ELSE" }),
+            request_hash: hashRequest("POST", "/api/tenant/entities", {
+              code: "SOMETHING-ELSE",
+            }),
           },
         ],
       }),
     });
 
-    const { err } = await run(makeReq({ body: { code: "SLAS" }, db }), makeRes());
+    const { err } = await run(
+      makeReq({ body: { code: "SLAS" }, db }),
+      makeRes(),
+    );
 
     expect(err.code).toBe("IDEMPOTENCY_KEY_REUSED");
     expect(err.status).toBe(422);
@@ -206,7 +242,14 @@ describe("Idempotency-Key handling", () => {
     const db = fakeDb({
       insert: () => ({ rows: [] }),
       select: () => ({
-        rows: [{ state: "in_flight", status_code: null, response_body: null, request_hash: hashRequest("POST", "/api/tenant/entities", body) }],
+        rows: [
+          {
+            state: "in_flight",
+            status_code: null,
+            response_body: null,
+            request_hash: hashRequest("POST", "/api/tenant/entities", body),
+          },
+        ],
       }),
     });
     const res = makeRes();
@@ -221,7 +264,11 @@ describe("Idempotency-Key handling", () => {
 
   test("records the response BEFORE sending it, so no replay can slip through", async () => {
     const update = jest.fn(() => ({ rows: [] }));
-    const db = fakeDb({ insert: () => ({ rows: [{ key: "k" }] }), select: () => ({ rows: [] }), update });
+    const db = fakeDb({
+      insert: () => ({ rows: [{ key: "k" }] }),
+      select: () => ({ rows: [] }),
+      update,
+    });
     const req = makeReq({ db });
     const res = makeRes();
 
@@ -241,12 +288,19 @@ describe("Idempotency-Key handling", () => {
   test("RELEASES the key on a failure so the user can fix the input and retry", async () => {
     const del = jest.fn(() => ({ rows: [] }));
     const update = jest.fn(() => ({ rows: [] }));
-    const db = fakeDb({ insert: () => ({ rows: [{ key: "k" }] }), select: () => ({ rows: [] }), update, del });
+    const db = fakeDb({
+      insert: () => ({ rows: [{ key: "k" }] }),
+      select: () => ({ rows: [] }),
+      update,
+      del,
+    });
     const res = makeRes();
 
     await run(makeReq({ db }), res);
     res.statusCode = 422;
-    res.json({ error: { code: "VALIDATION_ERROR", message: "code: required" } });
+    res.json({
+      error: { code: "VALIDATION_ERROR", message: "code: required" },
+    });
     await new Promise((r) => setImmediate(r));
 
     // Caching a validation failure would pin the user to their own typo for as
@@ -261,7 +315,10 @@ describe("Idempotency-Key handling", () => {
     // prevents data loss a cause of it.
     const db = {
       query: jest.fn(() => {
-        throw Object.assign(new Error('relation "idempotency_key" does not exist'), { code: "42P01" });
+        throw Object.assign(
+          new Error('relation "idempotency_key" does not exist'),
+          { code: "42P01" },
+        );
       }),
     };
     const { outcome, err } = await run(makeReq({ db }), makeRes());
@@ -278,10 +335,18 @@ describe("hashRequest", () => {
     // identical request must not read as a key reuse.
     const reparsed = JSON.parse(JSON.stringify(body));
 
-    expect(hashRequest("POST", "/x", body)).toBe(hashRequest("POST", "/x", reparsed));
-    expect(hashRequest("POST", "/x", body)).not.toBe(hashRequest("PATCH", "/x", body));
-    expect(hashRequest("POST", "/x", body)).not.toBe(hashRequest("POST", "/y", body));
-    expect(hashRequest("POST", "/x", body)).not.toBe(hashRequest("POST", "/x", { code: "OTHER" }));
+    expect(hashRequest("POST", "/x", body)).toBe(
+      hashRequest("POST", "/x", reparsed),
+    );
+    expect(hashRequest("POST", "/x", body)).not.toBe(
+      hashRequest("PATCH", "/x", body),
+    );
+    expect(hashRequest("POST", "/x", body)).not.toBe(
+      hashRequest("POST", "/y", body),
+    );
+    expect(hashRequest("POST", "/x", body)).not.toBe(
+      hashRequest("POST", "/x", { code: "OTHER" }),
+    );
   });
 });
 

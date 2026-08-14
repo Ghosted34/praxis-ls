@@ -215,7 +215,7 @@ export function ShellProvider({ children }: { children: React.ReactNode }) {
 
   const setPrefs = React.useCallback((patch: Partial<ShellPrefs>) => {
     setLocalPrefs((cur) => ({ ...cur, ...patch }));
-    saveShellPrefs(patch).catch(() => {});
+    saveShellPrefs(patch).catch(() => { /* @silent:storage */ });
   }, []);
 
   const dismissGrantNotice = React.useCallback(() => {

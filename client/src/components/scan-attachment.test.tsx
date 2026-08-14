@@ -19,7 +19,7 @@ import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const uploadVaultDocument = vi.fn();
-vi.mock("@/lib/masterdata-api", () => ({ uploadVaultDocument: (b: unknown) => uploadVaultDocument(b) }));
+vi.mock("@/lib/masterdata-api", () => ({ uploadVaultDocument: (b: unknown, p?: (percent: number) => void) => uploadVaultDocument(b, p) }));
 
 import { ScanAttachment } from "./scan-attachment";
 import { SCAN_MAX_BYTES } from "@/lib/vault-file";
@@ -49,6 +49,7 @@ describe("ScanAttachment", () => {
     await waitFor(() => expect(onAttached).toHaveBeenCalledWith("vault-1"));
     expect(uploadVaultDocument).toHaveBeenCalledWith(
       expect.objectContaining({ doc_type: "CLIENT_DOCUMENT", entity_ref: "client_document:d1" }),
+      expect.any(Function),
     );
     // The file is sent as the base64 data URL POST /documents parses, not as a
     // FormData part — the endpoint accepts nothing else.

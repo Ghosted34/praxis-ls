@@ -121,6 +121,12 @@ export async function apiClientMock() {
     ...actual,
     api: (p: string) => fake(p),
     tenant: (p: string) => fake(p),
+    tenantWithProgress: async (p: string, _body: unknown, onProgress: (percent: number) => void) => {
+      onProgress?.(0);
+      const value = await fake(p);
+      onProgress?.(100);
+      return value;
+    },
     platform: (p: string) => fake(p),
     // The fake `Paged<T>` — extend when `Paged<T>` extends. `limit`/`offset`
     // stay null because a screen test's fixture is already the whole result;

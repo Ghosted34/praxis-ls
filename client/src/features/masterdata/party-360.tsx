@@ -149,20 +149,28 @@ function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdd
   const [fileError, setFileError] = React.useState<string | null>(null);
   const [busy, setBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [uploadProgress, setUploadProgress] = React.useState<number | null>(null);
+  const [uploadSuccess, setUploadSuccess] = React.useState(false);
   const set = (k: string, v: string) => setValues((s) => ({ ...s, [k]: v }));
 
   function pick(f: File | null) {
     setFileError(null);
+    setUploadProgress(null);
+    setUploadSuccess(false);
     if (!f) { setFile(null); return; }
     const problem = scanFileProblem(f);
     if (problem) { setFileError(problem); return; }
     setFile(f);
   }
 
-  async function save(e: React.FormEvent) {
+  async function save(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const submitter = (e.nativeEvent as SubmitEvent).submitter as HTMLButtonElement | null;
+    const keepOpen = submitter?.value === "add-another";
     setBusy(true);
     setError(null);
+    setUploadProgress(file ? 0 : null);
+    setUploadSuccess(false);
     try {
       const created = await api.documents.create(kind, partyId, {
         document_type_id: values.document_type_id || undefined,
@@ -177,12 +185,25 @@ function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdd
           data_url: await readFileAsDataUrl(file),
           doc_type: isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT",
           entity_ref: `${kind}_document:${created.document_id}`,
-        });
+        }, setUploadProgress);
         await api.documents.update(kind, partyId, created.document_id, { vault_id: vaulted.doc_id });
+        setUploadProgress(100);
+        setUploadSuccess(true);
+        await new Promise((resolve) => setTimeout(resolve, 450));
       }
       onAdded(!!file);
+      if (keepOpen) {
+        setValues({});
+        setFile(null);
+        setFileError(null);
+        setUploadProgress(null);
+        setUploadSuccess(false);
+        return;
+      }
       onClose();
     } catch (err) {
+      setUploadProgress(null);
+      setUploadSuccess(false);
       setError(errMsg(err));
     } finally {
       setBusy(false);
@@ -220,11 +241,18 @@ function AddDocumentModal({ kind, partyId, isClient, typeOptions, onClose, onAdd
           accept={SCAN_ACCEPT}
           disabled={busy}
           error={fileError}
+          uploadProgress={uploadProgress}
+          uploadSuccess={uploadSuccess}
           hint="PDF or image (PNG, JPEG, WebP), up to 25 MB. Optional — you can attach it from the row later."
         />
 
         {error && <ErrorState message={error} />}
-        <FormButtons busy={busy} onCancel={onClose} saveLabel="Add document" />
+        <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
+          <Button type="submit" variant="ghost" name="submitIntent" value="add-another" disabled={busy}>
+            Save & add another
+          </Button>
+          <FormButtons busy={busy} onCancel={onClose} saveLabel="Add document" />
+        </div>
       </form>
     </Modal>
   );
@@ -1088,7 +1116,8 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
         <Section title="KYC / compliance documents" onAdd={() => setAdding("document")}>
           <p className="mb-2 micro text-muted-foreground">
             Add each compliance document and upload its file — a PDF or a clear photo. No file yet? Add the
-            details now and attach it later from the row.
+            details now and attach it later from the row. Uploading marks the scan as scanned; use Verify after
+            checking the file against the original so the record's verification status becomes Verified.
           </p>
           <MiniTable empty={d.documents.length === 0} head={<><Th>Type</Th><Th>Number</Th><Th>Expires</Th><Th>Scan</Th><Th>Verification</Th><Th r>File</Th></>}>
             {d.documents.map((doc: api.PartyDocument) => (
@@ -1097,15 +1126,31 @@ export function PartyDossier({ kind, partyId, onEdit, onChanged }: { kind: api.P
                 <Td>{doc.document_number || (doc.physical_ref ? `📄 ${doc.physical_ref}` : "—")}</Td>
                 <Td>{dateFmt(doc.expires_on)}</Td>
                 <Td><Pill tone={SCAN_TONE[doc.scan_status || "PENDING"] || "mute"}>{enumLabel(doc.scan_status)}</Pill></Td>
-                <Td>{enumLabel(doc.verification_status)}</Td>
+                <Td>
+                  <Pill tone={doc.verification_status === "VERIFIED" ? "ok" : doc.verification_status === "REJECTED" ? "bad" : "warn"}>
+                    {enumLabel(doc.verification_status)}
+                  </Pill>
+                </Td>
                 <Td r>
-                  <ScanAttachment
-                    vaultId={doc.vault_id}
-                    docType={isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"}
-                    entityRef={`${kind}_document:${doc.document_id}`}
-                    onAttached={(vaultId) => linkScan(doc, vaultId)}
-                    onError={setError}
-                  />
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <ScanAttachment
+                      vaultId={doc.vault_id}
+                      docType={isClient ? "CLIENT_DOCUMENT" : "SUPPLIER_DOCUMENT"}
+                      entityRef={`${kind}_document:${doc.document_id}`}
+                      onAttached={(vaultId) => linkScan(doc, vaultId)}
+                      onError={setError}
+                    />
+                    {doc.vault_id && doc.verification_status !== "VERIFIED" && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        loading={busy}
+                        onClick={() => void act(() => api.verifyDocument(kind, partyId, doc.document_id), "Document verified")}
+                      >
+                        Verify
+                      </Button>
+                    )}
+                  </div>
                 </Td>
               </tr>
             ))}

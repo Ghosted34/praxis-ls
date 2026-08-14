@@ -56,13 +56,22 @@ export function FileDrop({
 
   React.useEffect(() => {
     setPreviewOpen(false);
-    if (!file || typeof URL.createObjectURL !== "function") {
-      setPreviewUrl(null);
-      return;
-    }
-    const url = URL.createObjectURL(file);
-    setPreviewUrl(url);
-    return () => URL.revokeObjectURL(url);
+    setPreviewUrl(null);
+    if (!file) return;
+
+    let live = true;
+    const reader = new FileReader();
+    reader.onload = () => {
+      // FileReader returns a data URL; the picker and scanFileProblem allowlist
+      // the only MIME types this component may preview (PDF/PNG/JPEG/WebP).
+      if (live) setPreviewUrl(String(reader.result));
+    };
+    reader.onerror = () => live && setPreviewUrl(null);
+    reader.readAsDataURL(file);
+    return () => {
+      live = false;
+      reader.abort();
+    };
   }, [file]);
 
   const isImage = !!file && (file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name));
@@ -71,13 +80,7 @@ export function FileDrop({
 
   function previewBody(full = false) {
     if (!previewUrl || !file) return null;
-
-    // Local blob URL created from a MIME-allowlisted File.
-    // codeql[js/xss-through-dom]
     if (isImage) return <img src={previewUrl} alt="Selected image preview" className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
-
-    // Local blob URL created from a MIME-allowlisted File and rendered sandboxed.
-    // codeql[js/xss-through-dom]
     if (isPdf) return <iframe src={previewUrl} title="Selected PDF preview" sandbox="" className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
     return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
   }

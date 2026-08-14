@@ -40,14 +40,32 @@ const { AppError } = require("../../../utils/errors");
  * the template, instantiate later). A dossier that FAILED TO BE CREATED because
  * its milestones couldn't be seeded is not. Never let the tail wag the dog.
  */
+/**
+ * Instantiate the service type's default itinerary on a newly opened file.
+ *
+ * BEST-EFFORT, like the milestone chain beside it: a file must open even if its
+ * service type has no template, or the template is malformed, or 0673's column is
+ * missing on this tenant. The itinerary is editable afterwards from the file, so
+ * a failure here costs a default, not the work.
+ *
+ * The legs go through `itinerary.replace`, which validates them — so a template
+ * naming a place that is not in the catalogue is refused rather than seeding a
+ * route nobody can plot. `legsFromTemplate` only ever puts the file's own
+ * (already verified) POL/POD on the main carriage, so the normal path is clean.
+ */
 async function seedItinerary(client, dossier) {
   if (!dossier || !dossier.service_type_id) return;
   try {
-    const { rows } = await client.query("SELECT itinerary_template, pol, pod, place_receipt, place_delivery FROM dossier d JOIN service_type st ON st.service_type_id = d.service_type_id WHERE d.dossier_id = $1", [dossier.dossier_id]);
-    const template = Array.isArray(rows[0]?.itinerary_template) ? rows[0].itinerary_template : [];
-    const legs = template.map((l) => ({ ...l, origin: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pol || null) : l.origin || null, destination: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pod || null) : l.destination || null }));
+    const { rows } = await client.query(
+      "SELECT st.itinerary_template FROM dossier d " +
+        "JOIN service_type st ON st.service_type_id = d.service_type_id WHERE d.dossier_id = $1",
+      [dossier.dossier_id],
+    );
+    const legs = itinerary.legsFromTemplate(rows[0] && rows[0].itinerary_template, dossier);
     if (legs.length) await itinerary.replace(client, dossier.dossier_id, legs);
-  } catch (err) { logger.warn({ err, dossier: dossier.ref }, "[operations] itinerary defaults not seeded"); }
+  } catch (err) {
+    logger.warn({ err, dossier: dossier.ref }, "[operations] itinerary defaults not seeded");
+  }
 }
 
 async function seedMilestones(client, dossier, actor) {

@@ -39,8 +39,16 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { ToastProvider } from "@/components/ui/toast";
 import { TooltipProvider } from "@/components/ui/tooltip";
 
-/** What a faked endpoint returns: a payload, or a thrown ApiError. */
-export type RouteFixture = unknown | { __error: { status: number; message: string; code?: string } };
+/**
+ * What a faked endpoint returns: a payload, or a thrown ApiError.
+ *
+ * `fields` carries per-field validation messages — the half of a 422 that API F-2
+ * was about. Without it here, no test could cover a form marking the control that
+ * was rejected, which is the whole point of the server sending them.
+ */
+export type RouteFixture =
+  | unknown
+  | { __error: { status: number; message: string; code?: string; fields?: Record<string, string[]> } };
 
 export type ScreenFixtures = {
   /**
@@ -59,11 +67,18 @@ export type ScreenFixtures = {
 };
 
 /** Build the ApiError shape screens branch on, without importing the real class. */
-export function apiError(status: number, message: string, code = "ERROR") {
-  return { __error: { status, message, code } };
+export function apiError(
+  status: number,
+  message: string,
+  code = "ERROR",
+  fields?: Record<string, string[]>,
+) {
+  return { __error: { status, message, code, fields } };
 }
 
-function isErrorFixture(v: unknown): v is { __error: { status: number; message: string; code?: string } } {
+function isErrorFixture(
+  v: unknown,
+): v is { __error: { status: number; message: string; code?: string; fields?: Record<string, string[]> } } {
   return !!v && typeof v === "object" && "__error" in (v as Record<string, unknown>);
 }
 
@@ -112,7 +127,12 @@ export async function apiClientMock() {
     if (f.pending) return new Promise(() => {}); // never settles — the loading branch
     const hit = resolveFixture(path, f.routes ?? {});
     if (isErrorFixture(hit)) {
-      throw new actual.ApiError(hit.__error.code ?? "ERROR", hit.__error.message, hit.__error.status);
+      throw new actual.ApiError(
+        hit.__error.code ?? "ERROR",
+        hit.__error.message,
+        hit.__error.status,
+        hit.__error.fields,
+      );
     }
     return hit;
   }

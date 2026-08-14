@@ -41,6 +41,19 @@ export const MODE_ICON: Record<ShipmentMode, (p: IP) => React.JSX.Element> = {
       <circle cx="16" cy="16" r="2" />
     </>,
   ),
+  /**
+   * A building, for the files that move nothing.
+   *
+   * Warehousing, customs brokerage and business representation are real files
+   * with real deadlines and no route. They used to fall through to the sea glyph
+   * and get drawn as shipping lanes; a facility mark is what they actually are.
+   */
+  other: mi(
+    <>
+      <path d="M3 20V9l9-5 9 5v11" />
+      <path d="M9 20v-6h6v6" />
+    </>,
+  ),
 };
 
 /** Human label for a mode, for legends and counts. */
@@ -48,4 +61,5 @@ export const MODE_LABEL: Record<ShipmentMode, string> = {
   sea: "Sea",
   air: "Air",
   road: "Road corridor",
+  other: "No transport",
 };

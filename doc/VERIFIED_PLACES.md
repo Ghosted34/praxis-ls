@@ -143,12 +143,20 @@ The key never reaches a log: `logger.warn({ err })` on an axios error serialises
 `err.config.params`, which is where `apiKey` lives. Every call site logs
 `describeError(err)` instead, and a test asserts on the whole logged payload.
 
-## What PR2 builds on this
+## What was built on this
 
-- Itinerary legs with verified endpoints, and the editor for them.
-- Pickup and last-mile legs from the service-type template.
-- Per-leg map geometry with correct Air/Sea/Land semantics.
-- Hover, selection, route focus, itinerary panel, dossier deep links.
-- The **location-needed queue** — every place with `verified_at IS NULL` on an
-  active file — and the operational-activity layer for non-movement services.
+All of it, in [CONTROL_TOWER.md](CONTROL_TOWER.md):
+
+- Itinerary legs with verified endpoints, and a real editor for them.
+- Pickup and last-mile legs at creation, both requiring a verified place.
+- Per-leg map geometry, with mode derived from the itinerary's main carriage
+  rather than from the service type's name.
+- Hover, selection, route focus, keyboard traversal, itinerary panel, deep links.
+- The **location-needed queue** — every active file naming a place with
+  `verified_at IS NULL` or no reference at all — and the activity layer for the
+  three service types that move nothing.
 - Full-screen and meeting mode.
+
+The two halves meet at one rule: a route is only drawn when **both** of its
+endpoints resolve to a verified coordinate. Everything else is listed, with what is
+missing and a way to fix it.

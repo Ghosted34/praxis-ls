@@ -9,6 +9,7 @@ const validator = require("./operations_file.validator");
 // `validateX` naming so scripts/check-write-route-validators.js can see it —
 // see the note in service_type.routes.js.
 const { replace: validateContainerLines } = require("../dossier_container/dossier_container.validator");
+const { replace: validateItinerary } = require("../itinerary/itinerary.validator");
 const MODULE = "MOD-29";
 /**
  * API F-21. This lifecycle was gated by ONE flat permission for every target
@@ -29,6 +30,8 @@ router.use(authMiddleware);
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.get("/:id/360", requirePermission(MODULE, "view"), controller.overview);
+router.get("/:id/itinerary", requirePermission(MODULE, "view"), controller.itinerary);
+router.put("/:id/itinerary", requirePermission(MODULE, "edit"), validateItinerary, controller.replaceItinerary);
 /**
  * The Shared Shipment/Service Detail Component's data — the canonical
  * projection every costing, quotation, proforma, invoice, transit order,

@@ -12,6 +12,7 @@ const numbering = require("../../../services/documents/numbering.service");
 const milestones = require("../milestone/milestone.service");
 const geoPlace = require("../geo_place/geo_place.service");
 const details = require("../shipment_details/shipment_details.service");
+const itinerary = require("../itinerary/itinerary.service");
 const compliance = require("../../master/compliance/compliance.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { logger } = require("../../../config/logger");
@@ -39,6 +40,16 @@ const { AppError } = require("../../../utils/errors");
  * the template, instantiate later). A dossier that FAILED TO BE CREATED because
  * its milestones couldn't be seeded is not. Never let the tail wag the dog.
  */
+async function seedItinerary(client, dossier) {
+  if (!dossier || !dossier.service_type_id) return;
+  try {
+    const { rows } = await client.query("SELECT itinerary_template, pol, pod, place_receipt, place_delivery FROM dossier d JOIN service_type st ON st.service_type_id = d.service_type_id WHERE d.dossier_id = $1", [dossier.dossier_id]);
+    const template = Array.isArray(rows[0]?.itinerary_template) ? rows[0].itinerary_template : [];
+    const legs = template.map((l) => ({ ...l, origin: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pol || null) : l.origin || null, destination: l.leg_type === "MAIN_CARRIAGE" ? (dossier.pod || null) : l.destination || null }));
+    if (legs.length) await itinerary.replace(client, dossier.dossier_id, legs);
+  } catch (err) { logger.warn({ err, dossier: dossier.ref }, "[operations] itinerary defaults not seeded"); }
+}
+
 async function seedMilestones(client, dossier, actor) {
   if (!dossier || !dossier.service_type_id) return;
   try {
@@ -218,6 +229,7 @@ async function promote(client, { id, data = {}, actor = {} }) {
   // Outside the transaction for the same reasons `create` does it — milestone
   // instantiation opens its own, and geocoding may wait on HTTP.
   await seedMilestones(client, row, actor);
+  await seedItinerary(client, row);
   return await resolvePlaces(client, row);
 }
 
@@ -289,6 +301,7 @@ async function create(client, { data, actor = {} }) {
   // milestone.instantiate opens its own BEGIN/COMMIT (nesting would make its
   // COMMIT close ours), and resolvePlaces may wait on an HTTP geocode.
   await seedMilestones(client, row, actor);
+  await seedItinerary(client, row);
   return await resolvePlaces(client, row);
 }
 

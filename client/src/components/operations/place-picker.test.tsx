@@ -408,8 +408,28 @@ describe("adding a place by hand", () => {
     const save = within(dialog).getByRole("button", { name: /add place/i });
     expect(save).toBeDisabled();
 
-    await user.type(within(dialog).getByLabelText(/^Latitude/), "999");
-    expect(within(dialog).getByText(/between -90 and 90/i)).toBeInTheDocument();
+    /*
+     * FOCUS FIRST, AND WAIT FOR IT.
+     *
+     * The dialog is a Radix `DialogContent`, which moves focus into itself in an
+     * effect after mount. `user.type` clicks the field to focus it and then
+     * types — so on a slow runner the sequence interleaves: the click focuses
+     * Latitude, Radix's mount effect pulls focus back to the first focusable
+     * element (Name), and all three keystrokes land in the wrong box. Latitude
+     * stays empty, no range error renders, and the assertion below fails with a
+     * DOM dump that looks nothing like the bug.
+     *
+     * This failed exactly once, in CI, and passed on every local run — which is
+     * the signature of that race and the reason the wait is asserted rather than
+     * slept through. Waiting for focus to settle on the element under test makes
+     * the interaction deterministic without weakening it.
+     */
+    const latitude = within(dialog).getByLabelText(/^Latitude/);
+    await user.click(latitude);
+    await waitFor(() => expect(latitude).toHaveFocus());
+    await user.keyboard("999");
+
+    expect(await within(dialog).findByText(/between -90 and 90/i)).toBeInTheDocument();
     expect(save).toBeDisabled();
   });
 });

@@ -109,6 +109,16 @@ Dates are ISO-8601, UTC.
 
 ### Fixed
 
+- **PDF preview on client / supplier / corporate-entity document uploads showed
+  Chrome's "This content is blocked" interstitial.** `FileDrop` previewed a
+  picked PDF in a `sandbox=""` iframe pointed at a `data:` URL. Chrome's built-in
+  PDF viewer is a plugin, so Helmet's default `object-src 'none'` and the empty
+  sandbox (no plugin token exists) both refuse it — images kept working because
+  they render in `<img>`. Previews now paint pages onto a canvas via pdf.js
+  (loaded on demand, left out of the vendor chunk) so the operator can confirm
+  they picked the right scan before submitting. A render failure still offers
+  "Open in a new tab", which is top-level navigation and is not subject to
+  `object-src`.
 - **Saved dates came back blank on every edit form, and could not be re-saved
   (`NEW-11`).** node-postgres parsed a `date` column into a JS `Date` at midnight
   in the API's timezone, so `res.json()` sent `2021-09-20T23:00:00.000Z` for a

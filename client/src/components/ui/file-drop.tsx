@@ -9,17 +9,32 @@
  * owns the chosen `File` and what to do with it (validate, upload to the vault,
  * link it onto the record); this component only surfaces the picker and reflects
  * what has been chosen.
+ *
+ * PREVIEW. Images render in `<img>` (img-src already allows blob: / data:).
+ * PDFs cannot use the browser plugin — see `lib/pdfjs.ts` — so they are painted
+ * onto a canvas by `<PdfPreview>`. A sandboxed iframe pointed at a data URL is
+ * what produced Chrome's "This content is blocked" interstitial on every KYC
+ * upload; do not put that back.
  */
 import * as React from "react";
 import { cn } from "@/lib/cn";
 import { UploadIcon } from "@/components/ui/icons";
 import { Modal } from "@/components/ui/modal";
+import { PdfPreview } from "@/components/ui/pdf-preview";
 
 /** Compact human file size for the chosen-file chip. */
 function fileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function isImageFile(file: File): boolean {
+  return file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name);
+}
+
+function isPdfFile(file: File): boolean {
+  return file.type === "application/pdf" || /\.pdf$/i.test(file.name);
 }
 
 export function FileDrop({
@@ -52,36 +67,35 @@ export function FileDrop({
   uploadSuccess?: boolean;
 }) {
   const [previewOpen, setPreviewOpen] = React.useState(false);
-  const [previewUrl, setPreviewUrl] = React.useState<string | null>(null);
+  const [imageUrl, setImageUrl] = React.useState<string | null>(null);
+
+  const isImage = !!file && isImageFile(file);
+  const isPdf = !!file && isPdfFile(file);
 
   React.useEffect(() => {
     setPreviewOpen(false);
-    setPreviewUrl(null);
-    if (!file) return;
+    setImageUrl(null);
+    if (!file || !isImage) return;
+    const url = URL.createObjectURL(file);
+    setImageUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file, isImage]);
 
-    let live = true;
-    const reader = new FileReader();
-    reader.onload = () => {
-      // FileReader returns a data URL; the picker and scanFileProblem allowlist
-      // the only MIME types this component may preview (PDF/PNG/JPEG/WebP).
-      if (live) setPreviewUrl(String(reader.result));
-    };
-    reader.onerror = () => live && setPreviewUrl(null);
-    reader.readAsDataURL(file);
-    return () => {
-      live = false;
-      reader.abort();
-    };
-  }, [file]);
-
-  const isImage = !!file && (file.type.startsWith("image/") || /\.(png|jpe?g|webp)$/i.test(file.name));
-  const isPdf = !!file && (file.type === "application/pdf" || /\.pdf$/i.test(file.name));
+  const canPreview = isImage || isPdf;
   const percent = uploadProgress == null ? null : Math.max(0, Math.min(100, Math.round(uploadProgress)));
 
   function previewBody(full = false) {
-    if (!previewUrl || !file) return null;
-    if (isImage) return <img src={previewUrl} alt="Selected image preview" className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"} />;
-    if (isPdf) return <iframe src={previewUrl} title="Selected PDF preview" sandbox="" className={full ? "h-[70vh] w-full rounded-lg border" : "h-28 w-full rounded-md border"} />;
+    if (!file) return null;
+    if (isImage && imageUrl) {
+      return (
+        <img
+          src={imageUrl}
+          alt="Selected image preview"
+          className={full ? "max-h-[70vh] max-w-full rounded-lg object-contain" : "h-28 w-full rounded-md object-contain"}
+        />
+      );
+    }
+    if (isPdf) return <PdfPreview file={file} full={full} />;
     return <div className="flex h-28 items-center justify-center rounded-md border text-sm text-muted-foreground">Preview unavailable for this file type.</div>;
   }
 
@@ -123,7 +137,7 @@ export function FileDrop({
           onChange={(e) => { const f = e.target.files?.[0] ?? null; e.target.value = ""; onPick(f); }}
         />
       </label>
-      {file && previewUrl && (
+      {file && canPreview && (
         <div className="rounded-lg border bg-muted/20 p-2">
           <div className="mb-2 flex items-center justify-between gap-2">
             <span className="micro font-medium text-foreground">Preview</span>
@@ -152,7 +166,7 @@ export function FileDrop({
         </button>
       )}
       {error && <p className="text-xs text-destructive">{error}</p>}
-      {previewOpen && previewUrl && file && (
+      {previewOpen && file && canPreview && (
         <Modal open onClose={() => setPreviewOpen(false)} title="Document preview" size="xl">
           {previewBody(true)}
         </Modal>

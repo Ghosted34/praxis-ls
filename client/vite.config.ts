@@ -20,12 +20,14 @@ const TENANT_HOST = process.env.VITE_TENANT_HOST || "smartls.praxisls.com";
  * can attach them to whichever lazy route actually imports them.
  *
  * world-atlas is ~500 kB of Natural Earth geometry read only by the Control
- * Tower map; a user sitting on the login screen should not download it. Leaving
- * a package out is always safe — Rollup then places it, and Rollup's own
- * chunking never produces a cycle. It is ADDING a bucket that is forbidden (see
- * the note on `build` below).
+ * Tower map; a user sitting on the login screen should not download it.
+ * pdfjs-dist (~1 MB) is the same shape: only FileDrop's PDF preview loads it,
+ * via a dynamic import, so stuffing it into `vendor` would tax every page for
+ * a picker most visits never open. Leaving a package out is always safe —
+ * Rollup then places it, and Rollup's own chunking never produces a cycle. It
+ * is ADDING a bucket that is forbidden (see the note on `build` below).
  */
-const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client"];
+const ROUTE_LOCAL_VENDOR = ["world-atlas", "topojson-client", "pdfjs-dist"];
 
 const inPackage = (id: string, pkg: string) =>
   id.replace(/\\/g, "/").includes(`/node_modules/${pkg}/`);

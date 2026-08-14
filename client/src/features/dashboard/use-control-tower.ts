@@ -47,6 +47,18 @@ export type ControlTowerKpis = {
   fleetTotal: number | null;
 };
 
+export type ControlTowerFilters = {
+  mode?: "AIR" | "SEA" | "LAND";
+  territory?: string;
+  service_type_id?: string;
+  date_field?: "created" | "updated" | "arrival" | "delivery";
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string | null;
+  include_completed?: boolean;
+};
+
 export type ControlTowerData = {
   shipments: LiveShipment[];
   lanes: Lane[];
@@ -55,6 +67,7 @@ export type ControlTowerData = {
   complianceFlags: number;
   unpostedJournals: number;
   kpis: ControlTowerKpis;
+  page: { limit: number; has_more: boolean; next_cursor: string | null };
 };
 
 /** A query whose failure must not take the page down (feature-gated module,
@@ -66,14 +79,22 @@ function tolerant<T>(path: string) {
   };
 }
 
-export function useControlTower(): {
+const EMPTY_FILTERS: ControlTowerFilters = {};
+
+export function useControlTower(filters: ControlTowerFilters = EMPTY_FILTERS): {
   data: ControlTowerData | null;
   error: string | null;
   loading: boolean;
 } {
+  const query = React.useMemo(() => {
+    const p = new URLSearchParams();
+    Object.entries(filters).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") p.set(k, String(v)); });
+    return p.toString();
+  }, [filters]);
+  const towerPath = `/dashboard/control-tower${query ? `?${query}` : ""}`;
   const tower = useQuery({
-    queryKey: tenantKey("/dashboard/control-tower"),
-    queryFn: () => tenant<Row>("/dashboard/control-tower"),
+    queryKey: tenantKey(towerPath),
+    queryFn: () => tenant<Row>(towerPath),
   });
   const kpis = useQuery(tolerant<Row>("/dashboard/kpis"));
   const overdue = useQuery(tolerant<OverduePayload>("/receivables/overdue"));
@@ -97,6 +118,7 @@ export function useControlTower(): {
       // the briefing silently never mentioned unposted journals. Both are read
       // now, real key first.
       unpostedJournals: Number(k.unposted_journal_entries ?? k.unposted_journals ?? 0) || 0,
+      page: (ct.page as ControlTowerData["page"]) || { limit: 50, has_more: false, next_cursor: null },
       kpis: {
         revenue: numOrNull(k.revenue_final_ttc),
         currency: str(k.revenue_currency) || "XAF",

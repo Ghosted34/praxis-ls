@@ -46,6 +46,8 @@ import { KpiStrip } from "./components/kpi-strip";
 import { LiveShipments } from "./components/live-shipments";
 import { RecentActivity } from "./components/recent-activity";
 import { TowerHero } from "./components/tower-hero";
+import { TowerFilters } from "./components/tower-filters";
+import type { ControlTowerFilters } from "./use-control-tower";
 import type { KpiId } from "./drilldowns";
 import { ShipmentMap } from "./map/shipment-map";
 import { firstNameOf } from "./model";
@@ -54,7 +56,8 @@ import { useControlTower } from "./use-control-tower";
 export function DashboardPage() {
   const { user } = useAuth();
   const palette = useCommandPalette();
-  const { data, error, loading } = useControlTower();
+  const [filters, setFilters] = React.useState<ControlTowerFilters>({});
+  const { data, error, loading } = useControlTower(filters);
   const [openKpi, setOpenKpi] = React.useState<KpiId | null>(null);
 
   const firstName = React.useMemo(
@@ -85,6 +88,8 @@ export function DashboardPage() {
         from xl — which is the breakpoint the frame never had. Below xl the map
         stacks above the shipment list rather than being squeezed to a strip.
       */}
+      <TowerFilters value={filters} page={data.page} onChange={setFilters} />
+
       <div className="mb-5 grid gap-4 xl:grid-cols-[1.62fr_1fr]">
         <ShipmentMap lanes={data.lanes} />
         <LiveShipments shipments={data.shipments} />

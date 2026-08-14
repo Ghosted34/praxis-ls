@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (289)
+## All codes (290)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|

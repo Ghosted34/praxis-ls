@@ -163,3 +163,26 @@ describe("getConfig redaction", () => {
     expect(s).not.toContain("smtp-pass-99");
   });
 });
+
+describe("emailTest validator (POST /config/email/test)", () => {
+  const { schemas } = require("../../src/modules/smartcomm/smartcomm.validator");
+
+  // Regression: the "Test" button on the shared SMTP login card posts no body,
+  // and the service defaults purpose to NOTIFICATIONS. The validator previously
+  // required purpose, so every connectivity test 422'd with "purpose: Required".
+  it("accepts an empty body (generic transport test)", () => {
+    const p = schemas.emailTest.safeParse({});
+    expect(p.success).toBe(true);
+    expect(p.data.purpose).toBeUndefined();
+  });
+
+  it("still accepts an explicit purpose", () => {
+    const p = schemas.emailTest.safeParse({ purpose: "BILLING" });
+    expect(p.success).toBe(true);
+    expect(p.data.purpose).toBe("BILLING");
+  });
+
+  it("rejects an unknown key (strict)", () => {
+    expect(schemas.emailTest.safeParse({ nope: 1 }).success).toBe(false);
+  });
+});

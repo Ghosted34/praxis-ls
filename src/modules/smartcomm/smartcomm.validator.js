@@ -11,7 +11,11 @@ const schemas = {
   flag: z.object({ archived: z.boolean().optional(), pinned: z.boolean().optional(), muted: z.boolean().optional() })
     .strict()
     .refine((o) => Object.keys(o).length === 1, "send exactly one of archived, pinned, muted"),
-  emailTest: z.object({ purpose: z.string().trim().min(1).max(64) }).strict(),
+  // The "Test" button on the shared SMTP login checks the generic transport, so
+  // it sends no body. purpose is optional here (the service defaults it to
+  // NOTIFICATIONS in verifyTransport) — requiring it 422'd every connectivity
+  // test with "purpose: Required".
+  emailTest: z.object({ purpose: z.string().trim().min(1).max(64).optional() }).strict(),
   // Mail-setup wizard. The domain is the From address's domain; the send target
   // is any address the admin wants the test message delivered to.
   emailDnsCheck: z.object({ domain: z.string().trim().min(4).max(253).regex(/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i, "not a domain name") }).strict(),

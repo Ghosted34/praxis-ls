@@ -376,6 +376,18 @@ export type Vacancy = {
   /** The public careers credential. NULL = not published. */
   public_token?: string | null;
   published_at?: string | null;
+  // 0526 — who is hiring, how many, and where the advert came from.
+  entity_id?: string | null;
+  headcount?: number | null;
+  /** The model that drafted this, or `template` when none was reachable.
+   *  NULL on a hand-written vacancy. Shown in the editor, because a template
+   *  draft that looks model-written is how boilerplate gets published. */
+  ai_provider?: string | null;
+  ai_generated?: boolean | null;
+  /** The interview answers, verbatim — kept so a draft can be regenerated
+   *  without re-interviewing anybody. Open by shape: the later questions are
+   *  generated from the earlier answers. */
+  intake_json?: Record<string, unknown> | null;
 };
 export type Applicant = {
   applicant_id: string;
@@ -463,6 +475,24 @@ export const createVacancy = (body: {
   department?: string;
   description?: string;
 }) => tenant<Vacancy>("/vacancies", { method: "POST", body });
+/** Edit the advert itself. The wizard drafts straight into a saved DRAFT row,
+ *  so this — not `createVacancy` — is what the editor writes through. */
+export const updateVacancy = (
+  id: string,
+  patch: {
+    title?: string;
+    scope_id?: string | null;
+    department?: string;
+    description?: string;
+    employment_type?: string;
+    location?: string;
+    headcount?: number;
+    experience_years_min?: number;
+    salary_min?: number;
+    salary_max?: number;
+    skills_required?: string[];
+  },
+) => tenant<Vacancy>(`/vacancies/${id}`, { method: "PATCH", body: patch });
 export const setVacancyStatus = (id: string, status: string) =>
   tenant<Vacancy>(`/vacancies/${id}/status`, {
     method: "POST",

@@ -327,7 +327,6 @@ export function PlacePicker({
     };
     document.addEventListener("mousedown", onDoc, true);
     return () => document.removeEventListener("mousedown", onDoc, true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, manualOpen]);
 
   function close(restoreFocus = true) {

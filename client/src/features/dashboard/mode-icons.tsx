@@ -8,6 +8,36 @@
 import * as React from "react";
 import type { ShipmentMode } from "./model";
 
+/**
+ * The path data, on its own, in a 24×24 box centred on (12,12).
+ *
+ * Separate from the components below because the MAP draws these too — as the
+ * marker travelling along each lane, in place of the anonymous dot it used to
+ * draw. A ship on a sea leg and a plane on a flight is the whole point, and two
+ * copies of the same path data is how the map's ship and the legend's ship drift
+ * into being different ships.
+ *
+ * Filled, not stroked: at the ~11px the map draws them, a 1.7px stroke on a 24px
+ * glyph closes up into a blob. The icon components below stroke the same outlines,
+ * which at 14px with a label beside them is the lighter, more legible treatment.
+ */
+export const MODE_GLYPH: Record<ShipmentMode, string> = {
+  // A hull with a mast. Reads as a ship at 10px, which a more detailed vessel
+  // does not.
+  sea: "M2.5 13.5h19l-3 6h-13z M12 13V4 M12.6 5.5l6 3-6 2.5z",
+  air: "M12 2.2l2 7.3 8.3 3.2v2l-8.3-1.6-1 5.2 3 2.2v1.5l-4-1.3-4 1.3v-1.5l3-2.2-1-5.2-8.3 1.6v-2l8.3-3.2z",
+  // A cab, a box body and two wheels — the silhouette, not a technical drawing.
+  road: "M2 8h11v8H2z M13.5 10.5h3.5l3 3.5v2h-6.5z M6.5 15.5a2 2 0 104 0 2 2 0 10-4 0 M15 15.5a2 2 0 104 0 2 2 0 10-4 0",
+  /**
+   * A building, for the files that move nothing.
+   *
+   * Warehousing, customs brokerage and business representation are real files
+   * with real deadlines and no route. They used to fall through to the sea glyph
+   * and get drawn as shipping lanes; a facility mark is what they actually are.
+   */
+  other: "M3.5 20V9.5L12 4.5l8.5 5V20z",
+};
+
 type IP = React.SVGProps<SVGSVGElement>;
 const mi = (d: React.ReactNode) => (p: IP) => (
   <svg
@@ -41,13 +71,6 @@ export const MODE_ICON: Record<ShipmentMode, (p: IP) => React.JSX.Element> = {
       <circle cx="16" cy="16" r="2" />
     </>,
   ),
-  /**
-   * A building, for the files that move nothing.
-   *
-   * Warehousing, customs brokerage and business representation are real files
-   * with real deadlines and no route. They used to fall through to the sea glyph
-   * and get drawn as shipping lanes; a facility mark is what they actually are.
-   */
   other: mi(
     <>
       <path d="M3 20V9l9-5 9 5v11" />

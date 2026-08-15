@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/ui/pill";
 import { cn } from "@/lib/cn";
 import { MapLegend } from "./map-legend";
+import { ScreenOverlay } from "./screen-overlay";
 import type { ShipmentMode } from "../model";
 
 /** How often auto-refresh fires when enabled. Two minutes: long enough that the
@@ -92,13 +93,15 @@ export function MeetingMode({
   const refreshed = refreshedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-label="Operations meeting view"
-      className="fixed inset-0 z-50 flex flex-col gap-3 overflow-y-auto bg-background p-3 sm:p-5"
-    >
-      <header className="flex flex-wrap items-start justify-between gap-3">
+    <ScreenOverlay label="Operations meeting view" className="gap-3 p-3 sm:p-5">
+      {/*
+        Three rows, and only the middle one grows. The header, the stat tiles and
+        the legend are `flex-none`, so a short viewport takes the height out of the
+        MAP rather than out of the numbers the room is reading — and nothing
+        scrolls, because a projected view that has to be scrolled to be complete is
+        one whose bottom half nobody ever sees.
+      */}
+      <header className="flex flex-none flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-heading font-semibold leading-tight tracking-tight">Operations meeting</h1>
           <p className="mt-1 text-label text-muted-foreground">{filterSummary}</p>
@@ -135,7 +138,7 @@ export function MeetingMode({
 
       {/* The numbers the meeting opens on. Exceptions are a tone, not a colour
           alone — every tile carries its own label. */}
-      <ul className="m-0 grid list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-5">
+      <ul className="m-0 grid flex-none list-none grid-cols-2 gap-2 p-0 sm:grid-cols-3 lg:grid-cols-5">
         {stats.map((s) => (
           <li
             key={s.label}
@@ -160,9 +163,10 @@ export function MeetingMode({
         ))}
       </ul>
 
-      <div className="min-h-0 flex-1">{children}</div>
+      {/* The map. `flex flex-col` so its own Card can fill this box as a flex child. */}
+      <div className="flex min-h-0 flex-1 flex-col">{children}</div>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t pt-3">
+      <footer className="flex flex-none flex-wrap items-center justify-between gap-3 border-t pt-3">
         <MapLegend
           counts={counts}
           stroke={stroke}
@@ -171,6 +175,6 @@ export function MeetingMode({
         />
         <Pill tone="mute">Read-only view</Pill>
       </footer>
-    </div>
+    </ScreenOverlay>
   );
 }

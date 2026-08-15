@@ -81,13 +81,52 @@ header say 12 above a list of 3.
 - **Hover is never the only route to information** (WCAG §1.4.13). The card
   renders on focus, and everything in it is in the panel a click opens.
 
+## Colour and shape
+
+Three modes, three fixed hues, from three declared tokens:
+
+| Mode | Colour | Token |
+|---|---|---|
+| Sea | Green | `--mode-sea` |
+| Air | Blue | `--mode-air` |
+| Road | Orange | `--mode-road` |
+
+They are their own tokens rather than borrowed ones, and that is a fix. Sea was
+`--brand-blue-bright` and air was `--brand-blue` — the same hue two steps apart,
+which on a 2px dashed line at this zoom is not a distinction: on the deployed map a
+vessel leg and a flight leg drew as one colour. Road was `--primary`, so the third
+was a function of the *tenant's* brand, and a tenant with a blue brand would have
+lost road onto air as well while the legend went on naming three colours the map
+drew as two. A mode is not decoration and it is not brand — it is what the cargo is
+on.
+
+**Two glyph vocabularies, because there are two questions.**
+
+| Marker | Shows | Vocabulary |
+|---|---|---|
+| The one **travelling** the lane | What the cargo is *on* | Ship / plane / truck, by mode, turned along the path so it also shows direction |
+| The **fixed endpoint** | What kind of place it is | Ship for a seaport, plane for an airport, rooftops for a city, warehouse for a terminal, gate for a border post |
+
+A port is a port whichever leg touches it, and a port that ends a sea leg and starts
+a road leg cannot be given one mode without picking a side — its *kind* is
+unambiguous. So a road leg's endpoints are cities and addresses rather than trucks,
+which is right: the truck is the thing moving between them.
+
+Before this the map drew one anonymous circle for every place, so a twelve-file map
+was twelve identical dots and the only way to tell a port from a customer's door was
+to read the label.
+
 ## Honesty on the map
+
+Shape and fill are two separate axes on the same marker. Shape says what kind of
+place; **fill says whether the coordinate is trusted**, and adding shape did not
+cost that:
 
 | Drawn as | Means |
 |---|---|
-| Solid marker | A verified place at a confirmed coordinate |
-| **Hollow** marker | A **reference point** — verified, and explicitly not the exact address |
-| Larger marker with `+n` | A cluster: several places that project into the same few pixels |
+| Solid glyph | A verified place at a confirmed coordinate |
+| **Hollow** glyph | A **reference point** — verified, and explicitly not the exact address |
+| Larger **circle** with `+n` | A cluster. It keeps the circle deliberately: it stands for several places of possibly different kinds, and stamping the first one's shape on the group would claim they are all ports |
 | Not drawn at all | No verified coordinate. It is in the exception list instead |
 
 Clustering is **off below 24 endpoints**. Collapsing four ports at the mouth of one
@@ -103,6 +142,46 @@ neither.
 Both are fixed overlays with `role="dialog"`, `aria-modal` and Escape — **not** the
 Fullscreen API, which takes the whole display and is unavailable on non-video
 elements in iOS Safari and inside an iframe-embedded deployment.
+
+### They are portalled, and that was a bug fix
+
+Both were `fixed inset-0 z-50`, rendered in place. `z-50` beats the ribbon's `z-30`
+and the title bar's `z-40` on paper — and on screen the ribbon painted straight over
+the top of them, clipping the heading and the exit button behind the nav tabs.
+
+`z-index` only orders siblings **within a stacking context**. The overlays were
+rendered deep inside the scrolling content region, whose own ancestor establishes a
+context, so `z-50` competed with the map card's siblings rather than with the app
+chrome. No z-index on the overlay could ever have escaped it. `ScreenOverlay`
+portals to `document.body`, where the z-index means what it says.
+
+### They start below the title bar, by geometry
+
+`top: var(--titlebar-h)`, not `inset-0`. The title bar carries the window controls
+and *is* the draggable region in the desktop build — an overlay across it leaves no
+way to move or close the window. `--titlebar-h` is the composed height
+(density-linked, widened by `env(titlebar-area-height)` under Window Controls
+Overlay), so this survives a density change and macOS's taller strip.
+
+Geometry rather than z-order because an overlay that merely sits *behind* the title
+bar still paints its own background under it and the two surfaces fight. Starting
+below it leaves nothing to resolve.
+
+### And they fit
+
+`min-h-0` on every flex ancestor, and the map's `<svg>` switches from `h-auto`
+(derive height from width — correct in the dashboard card, which has no box to fit)
+to `h-full` with `preserveAspectRatio="xMidYMid meet"`. A flex item defaults to
+`min-height: auto` and refuses to shrink below its content, which is exactly how a
+fixed-aspect map computed a height from the full viewport width and ran off the
+bottom of the screen with the southern hemisphere cut off.
+
+Nothing scrolls in either overlay. In the meeting view the header, the stat tiles
+and the legend are `flex-none` and only the map grows, so a short viewport takes
+height out of the map rather than out of the numbers the room is reading — a
+projected view that has to be scrolled to be complete is one whose bottom half
+nobody sees. The page behind is locked while an overlay is up and released when it
+closes.
 
 Meeting mode is a **mode, not a route**: a separate screen would be a second
 surface to keep in step, and it would drift. It wraps the same components with a

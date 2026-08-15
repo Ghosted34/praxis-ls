@@ -60,6 +60,30 @@ that it exists.
 
 There is deliberately **no** "use what I typed". That affordance is the defect.
 
+### The bug that made step 2 unusable
+
+Reported as: *"I search for an address, I find the address, then when I click on it,
+it disappears and the box becomes empty."*
+
+The picker closes on a press outside itself, and that listener was on the **bubble**
+phase — after React's own handler for the same event. Picking a suggestion swaps the
+results list for the confirmation step, React flushes that synchronously for a
+discrete event like `mousedown`, and the row the operator pressed is unmounted. So
+by the time the listener ran, `e.target` was **detached**, `Node.contains()` on a
+detached node is false, and the control read its own row as "outside" and closed
+itself. Nothing was stored and nothing said why.
+
+Catalogue rows hid it completely: they call `close()` themselves and commit a value,
+so the spurious close was invisible on the path everyone tests. It also only
+reproduced in a browser — jsdom's flush lands after the listener, so the bug shipped
+green through the picker's whole suite. The regression test therefore pins the
+**phase**, which is the invariant that actually prevents it.
+
+The same listener also treated the manual-entry dialog as "outside", because a portal
+is outside by construction — so every press inside that dialog collapsed the picker
+behind it, and cancelling dropped the operator on an empty closed field instead of
+back on the search they had already typed.
+
 ## Why confirmation re-queries the provider
 
 `POST /geo-places/confirm` takes a query string and a `provider_place_id` — and

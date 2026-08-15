@@ -21,9 +21,11 @@
  * anywhere. Hover is never the only path to information (WCAG §1.4.13): the card
  * renders on focus too, and everything in it is in the panel a click opens.
  *
- * COLOUR. Road corridors draw in `--primary`, so a tenant's brand colour reaches
- * the map. Sea and air are the brand blues, which are semantic here (water and
- * sky), not decorative.
+ * COLOUR AND SHAPE. Sea is green, air is blue, road is orange, from three declared
+ * `--mode-*` tokens rather than borrowed brand colours — see `LANE_STROKE`. The
+ * marker travelling each lane is that mode's own glyph (a ship, a plane, a truck)
+ * turned along the path, and each endpoint is shaped by what kind of place it is,
+ * so a map of twelve files is no longer twelve identical dots.
  *
  * ARCS. Lanes bow slightly. That is the usual origin-destination convention and
  * keeps overlapping lanes legible; it is NOT a claim about the sailed track.
@@ -34,6 +36,8 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/cn";
 import { usePrefersReducedMotion } from "@/lib/use-reduced-motion";
 import { MapLegend } from "../components/map-legend";
+import { ScreenOverlay } from "../components/screen-overlay";
+import { MODE_GLYPH } from "../mode-icons";
 import { MapTooltip, type HoverTarget } from "../components/map-tooltip";
 import type { Lane, LiveShipment, ShipmentMode } from "../model";
 import { buildMapModel, landPaths, MAP_H, MAP_W, type MapLane } from "./projection";
@@ -41,17 +45,24 @@ import { focusOrder, isSelected, lanesOfFile, nextSelection, stepFocus, type Sel
 import { useLandRings } from "./use-land";
 
 /**
- * Stroke colour per mode. Road tracks the tenant accent; sea/air are the brand
- * blues, which are semantic here (water and sky), not decorative.
+ * Stroke colour per mode: sea GREEN, air BLUE, road ORANGE.
+ *
+ * These read three declared tokens (`--mode-*`) rather than borrowing brand
+ * colours, and that is a fix rather than a refactor. Sea was
+ * `--brand-blue-bright` and air was `--brand-blue` — the same hue two steps
+ * apart, which on a 2px dashed line at this zoom is not a distinction: on the
+ * deployed map a vessel leg and a flight leg were one colour. Road was
+ * `--primary`, so the third was a function of the tenant's brand and a blue-brand
+ * tenant would have lost road onto air as well. See index.css for the values.
  *
  * Exported because the legend renders in three places — the map footer, full
  * screen and meeting mode — and a second copy of this table is how the legend
  * ends up describing a colour the map no longer uses.
  */
 export const LANE_STROKE: Record<ShipmentMode, string> = {
-  sea: "rgb(var(--brand-blue-bright))",
-  air: "rgb(var(--brand-blue))",
-  road: "var(--primary)",
+  sea: "rgb(var(--mode-sea))",
+  air: "rgb(var(--mode-air))",
+  road: "rgb(var(--mode-road))",
   // A leg with no transport mode is an activity at a place, not a corridor. It
   // draws in the neutral ink so it never reads as one of the three modes in the
   // legend — and it has no lane to draw in the normal case anyway.
@@ -78,6 +89,86 @@ function useUpdatedAt(dep: unknown): string {
 
 /** Marker radius by role. A cluster is drawn larger because it stands for several. */
 const nodeRadius = (emphasis: boolean, count: number) => (count > 1 ? 7.5 : emphasis ? 6 : 4.5);
+
+/**
+ * The glyph for a PLACE, by what kind of place it is.
+ *
+ * Two vocabularies on this map, and they answer two different questions — which is
+ * the reason they are not the same table:
+ *
+ *   what MOVES  → `MODE_GLYPH`, on the marker travelling along the lane. A ship
+ *                 on a vessel leg, a plane on a flight, a truck on a road leg.
+ *   where it STOPS → this, on the fixed endpoint. A port is a port whichever leg
+ *                 touches it, and a port that is the end of a sea leg and the
+ *                 start of a road leg cannot be given one mode without picking a
+ *                 side. Its KIND is unambiguous.
+ *
+ * So a road leg's endpoints are cities and addresses rather than trucks, and that
+ * is correct: the truck is the thing moving between them.
+ *
+ * These are the same shapes `place-result.tsx` puts on each row of the picker, so
+ * the place an operator chose and the marker that appears for it look alike.
+ */
+const KIND_GLYPH: Record<string, string> = {
+  SEAPORT: MODE_GLYPH.sea,
+  AIRPORT: MODE_GLYPH.air,
+  TERMINAL: MODE_GLYPH.other,
+  RAIL_TERMINAL: MODE_GLYPH.other,
+  WAREHOUSE: MODE_GLYPH.other,
+  // A gate: two posts and a bar.
+  BORDER_POST: "M4.5 20V5h2v15z M17.5 20V5h2v15z M6.5 9h11v2.5h-11z",
+  // Three rooftops of differing heights.
+  CITY: "M3.5 20V9l4.5-2.5V20z M9 20V11.5l5-1.8V20z M15 20v-8l5.5 2.2V20z",
+  INLAND: "M3.5 20V9l4.5-2.5V20z M9 20V11.5l5-1.8V20z M15 20v-8l5.5 2.2V20z",
+};
+
+/** `viewBox` units per side of the glyph box, so a marker can be sized in px. */
+const GLYPH_BOX = 24;
+
+/**
+ * One marker, drawn as a glyph in a 24-unit box scaled to `size` and centred on
+ * (x, y). A plain `<path>` cannot be centred on a point, so the transform does it.
+ */
+function Glyph({
+  d,
+  x,
+  y,
+  size,
+  fill,
+  stroke,
+  strokeWidth = 0,
+  rotate,
+  children,
+}: {
+  d: string;
+  x: number;
+  y: number;
+  size: number;
+  fill: string;
+  stroke?: string;
+  strokeWidth?: number;
+  rotate?: number;
+  /** A `<title>`, which is how a marker gets an accessible name. */
+  children?: React.ReactNode;
+}) {
+  const k = size / GLYPH_BOX;
+  return (
+    <path
+      d={d}
+      fill={fill}
+      stroke={stroke}
+      strokeWidth={strokeWidth ? strokeWidth / k : undefined}
+      strokeLinejoin="round"
+      transform={
+        `translate(${x.toFixed(1)} ${y.toFixed(1)})` +
+        (rotate ? ` rotate(${rotate})` : "") +
+        ` scale(${k.toFixed(4)}) translate(${-GLYPH_BOX / 2} ${-GLYPH_BOX / 2})`
+      }
+    >
+      {children}
+    </path>
+  );
+}
 
 export type ShipmentMapProps = {
   lanes: Lane[];
@@ -184,11 +275,33 @@ export function ShipmentMap({
 
   const hoveredShipment = hover ? shipmentsById[hover.lane.dossierId] : undefined;
 
+  /**
+   * Does the map get a box to fit inside, or does it set its own height?
+   *
+   * In the dashboard card it sets its own: `h-auto w-full` derives the height from
+   * the width through the viewBox, which is what makes the card the right shape.
+   *
+   * In full screen and the meeting view it is handed the leftover height instead,
+   * and it must FIT that — `h-full` plus the viewBox's default "meet" letterboxes
+   * it. Left on `h-auto` it computed a height from a much wider viewport, overflowed
+   * the bottom of the screen, and cut the southern half of the world off; on the
+   * deployed build Rio de Janeiro sat on the very edge with its label clipped.
+   */
+  const fit = fullScreen || presenting;
+
   const mapBody = (
-    <div className="relative flex flex-1 items-center bg-[linear-gradient(135deg,rgb(var(--brand-blue-bright)/0.12),rgb(var(--brand-blue-deep)/0.05))]">
+    <div
+      className={cn(
+        "relative flex bg-[linear-gradient(135deg,rgb(var(--brand-blue-bright)/0.12),rgb(var(--brand-blue-deep)/0.05))]",
+        // `min-h-0` is what lets it shrink: a flex item defaults to
+        // `min-height:auto` and refuses to go below its content's height.
+        fit ? "min-h-0 flex-1 items-stretch" : "flex-1 items-center",
+      )}
+    >
       <svg
         viewBox={`0 0 ${MAP_W} ${MAP_H}`}
-        className="block h-auto w-full"
+        preserveAspectRatio="xMidYMid meet"
+        className={cn("block w-full", fit ? "h-full" : "h-auto")}
         role="img"
         aria-label={
           laneCount
@@ -319,11 +432,31 @@ export function ShipmentMap({
               model.lanes
                 .filter((l) => selected === null || l.dossierId === selected)
                 .map((l) => (
-                  <circle key={`${l.id}-marker`} r={4} fill={LANE_STROKE[l.mode]} stroke="var(--card)" strokeWidth={1.4}>
+                  /*
+                   * The mode's own glyph, not a dot — a ship on a vessel leg, a
+                   * plane on a flight, a truck on a road leg. `rotate="auto"`
+                   * turns it along the path, so it also shows the DIRECTION of
+                   * travel, which an anonymous dot never did.
+                   *
+                   * The glyphs are drawn nose-up in their box and the path
+                   * tangent is nose-right, so each is pre-rotated 90° inside the
+                   * <g> that animateMotion is turning.
+                   */
+                  <g key={`${l.id}-marker`}>
+                    <Glyph
+                      d={MODE_GLYPH[l.mode]}
+                      x={0}
+                      y={0}
+                      size={l.mode === "air" ? 13 : 12}
+                      rotate={90}
+                      fill={LANE_STROKE[l.mode]}
+                      stroke="var(--card)"
+                      strokeWidth={1.1}
+                    />
                     <animateMotion dur={`${l.dur}s`} repeatCount="indefinite" rotate="auto">
                       <mpath href={`#${l.id}`} />
                     </animateMotion>
-                  </circle>
+                  </g>
                 ))}
 
             {model.nodes.map((n) => {
@@ -336,6 +469,7 @@ export function ShipmentMap({
               // the real address rather than at it, and a solid pin would claim a
               // precision nobody promised. The legend says so in words.
               const hollow = n.state === "reference";
+              const glyph = n.kind ? KIND_GLYPH[n.kind] : undefined;
               const label = n.count > 1 ? `${n.name} +${n.count - 1}` : n.name;
               return (
                 <g key={`${n.x}-${n.y}-${n.name}`}>
@@ -350,16 +484,47 @@ export function ShipmentMap({
                       fill="none"
                     />
                   )}
-                  <circle
-                    cx={n.x.toFixed(1)}
-                    cy={n.y.toFixed(1)}
-                    r={nodeRadius(n.emphasis, n.count)}
-                    fill={hollow ? "var(--card)" : colour}
-                    stroke={hollow ? colour : "var(--card)"}
-                    strokeWidth={hollow ? 2 : n.emphasis ? 2 : 1.5}
-                  >
-                    <title>{n.names.join(", ")}</title>
-                  </circle>
+                  {/*
+                    A SHAPE, not a dot — a ship for a port, a plane for an
+                    airport, rooftops for a city, a warehouse for a terminal. The
+                    map used to draw one anonymous circle for all of them, so a
+                    twelve-file map was twelve identical marks and the only way to
+                    tell a port from a customer address was to read the label.
+
+                    THE TWO AXES STAY SEPARATE. Shape says what kind of place;
+                    fill says whether the coordinate is trusted. A reference point
+                    is still drawn HOLLOW — verified, and explicitly not the exact
+                    address — so adding shape did not cost the honesty the legend
+                    describes in words.
+
+                    A cluster keeps the circle. It stands for several places of
+                    possibly different kinds, and stamping the first one's shape on
+                    the group would claim they are all ports.
+                  */}
+                  {glyph && n.count === 1 ? (
+                    <Glyph
+                      d={glyph}
+                      x={n.x}
+                      y={n.y}
+                      size={n.emphasis ? 15 : 12}
+                      fill={hollow ? "var(--card)" : colour}
+                      stroke={colour}
+                      strokeWidth={hollow ? 1.6 : 1}
+                    >
+                      <title>{n.names.join(", ")}</title>
+                    </Glyph>
+                  ) : (
+                    <circle
+                      cx={n.x.toFixed(1)}
+                      cy={n.y.toFixed(1)}
+                      r={nodeRadius(n.emphasis, n.count)}
+                      fill={hollow ? "var(--card)" : colour}
+                      stroke={hollow ? colour : "var(--card)"}
+                      strokeWidth={hollow ? 2 : n.emphasis ? 2 : 1.5}
+                    >
+                      <title>{n.names.join(", ")}</title>
+                    </circle>
+                  )}
                   <text
                     x={lx.toFixed(1)}
                     y={ly.toFixed(1)}
@@ -389,7 +554,7 @@ export function ShipmentMap({
   );
 
   const header = (
-    <div className="pointer-events-none absolute inset-x-4 top-4 z-[1] flex items-start justify-between gap-4">
+    <div className="pointer-events-none absolute inset-x-4 top-4 z-[2] flex items-start justify-between gap-4">
       <div className="min-w-0">
         <h2 className="text-title font-semibold leading-tight tracking-tight">Live shipment map</h2>
         <p className="mt-0.5 text-label text-muted-foreground">
@@ -422,7 +587,10 @@ export function ShipmentMap({
   );
 
   const footer = (
-    <div className="mt-auto flex flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-2.5">
+    // `flex-none`: the legend and the clock are the two things that must survive a
+    // short viewport intact. Without it the map's flex-1 competes with them and the
+    // footer is the half that loses.
+    <div className="mt-auto flex flex-none flex-wrap items-center gap-x-5 gap-y-2 border-t px-4 py-2.5">
       {/*
         Meeting mode renders the legend itself, in its own footer, at full size.
         Drawing it here as well would stack two identical legends with the same
@@ -459,23 +627,26 @@ export function ShipmentMap({
    */
   if (fullScreen) {
     return (
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label="Live shipment map, full screen"
-        className="fixed inset-0 z-50 flex flex-col bg-background p-3 sm:p-4"
-      >
-        <Card className="relative flex flex-1 flex-col overflow-hidden">
+      <ScreenOverlay label="Live shipment map, full screen" className="p-3 sm:p-4">
+        <Card className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
           {header}
           {mapBody}
           {footer}
         </Card>
-      </div>
+      </ScreenOverlay>
     );
   }
 
   return (
-    <Card className={cn("relative flex flex-col overflow-hidden", presenting && "min-h-[60vh]")}>
+    <Card
+      className={cn(
+        "relative flex flex-col overflow-hidden",
+        // Presenting: take the height the meeting view has left rather than
+        // demanding 60vh of it, which on a laptop pushed the footer legend off the
+        // bottom of the screen.
+        presenting && "min-h-0 flex-1",
+      )}
+    >
       {header}
       {mapBody}
       {footer}

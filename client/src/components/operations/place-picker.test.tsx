@@ -14,7 +14,7 @@
  * is worse than the free text it replaced.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
@@ -297,6 +297,110 @@ describe("the worldwide search", () => {
     // missing API key gets reported for months as "the address book is broken".
     expect(await screen.findByText(/not configured/i)).toBeInTheDocument();
     expect(screen.getByText(/Platform Console/)).toBeInTheDocument();
+  });
+});
+
+/**
+ * The outside-press rule, and the bug that hid inside it.
+ *
+ * REPORTED AS: "I search for an address, I find the address, then when I click on
+ * it, it disappears and the box becomes empty."
+ *
+ * The listener was on the bubble phase, so it ran AFTER React's handler for the
+ * same mousedown. Picking a suggestion swaps the results list for the confirmation
+ * step, React flushes that synchronously for a discrete event, and the row the
+ * operator pressed is unmounted — so `contains(e.target)` was asked about a
+ * DETACHED node, answered false, and the control closed itself on its own row.
+ *
+ * These tests remove the target explicitly rather than relying on React's flush
+ * timing, because that timing is exactly what differs between a browser and jsdom:
+ * the original bug shipped green through this whole file.
+ */
+describe("pressing inside the control never closes it", () => {
+  /** A press that really is elsewhere on the page. */
+  async function pressOutside() {
+    await act(async () => {
+      document.body.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+    });
+  }
+
+  /**
+   * This one asserts the PHASE, which is unusual and deliberate.
+   *
+   * The listener asks "was `e.target` inside this control?". Picking a provider
+   * suggestion swaps the results list for the confirmation step, and React flushes
+   * that synchronously for a discrete event like mousedown — so on the bubble
+   * phase the row the operator pressed has already been unmounted, and
+   * `Node.contains()` on a detached node is false. The control read its own row as
+   * "outside" and closed itself: search an address, find it, click it, and the
+   * popup vanishes leaving an empty box.
+   *
+   * There is no honest way to reproduce that through the DOM here. Ripping the row
+   * out by hand is a different bug (React then reconciles against a tree it did not
+   * change), and jsdom's flush lands after the listener — which is why the original
+   * shipped green through every behavioural test in this file. The invariant that
+   * actually prevents it is "ask in the capture phase, while the target is still
+   * attached", so that is what is pinned.
+   */
+  it("asks in the capture phase, because the pressed row may already be gone", async () => {
+    const user = userEvent.setup();
+    const captured: boolean[] = [];
+    const original = document.addEventListener.bind(document);
+    const spy = vi
+      .spyOn(document, "addEventListener")
+      .mockImplementation((type, listener, options) => {
+        if (type === "mousedown") {
+          captured.push(options === true || (typeof options === "object" && options?.capture === true));
+        }
+        return original(type, listener, options as AddEventListenerOptions);
+      });
+
+    withCatalogue([DOUALA]);
+    renderPicker();
+    await open(user);
+    await screen.findByRole("listbox");
+    spy.mockRestore();
+
+    expect(captured.length).toBeGreaterThan(0);
+    expect(captured.every(Boolean)).toBe(true);
+  });
+
+  it("still closes on a press that really is outside", async () => {
+    const user = userEvent.setup();
+    withCatalogue([DOUALA]);
+    renderPicker();
+    await open(user);
+    await screen.findByRole("listbox");
+
+    await pressOutside();
+
+    expect(screen.queryByRole("combobox", { name: "Port of loading" })).not.toBeInTheDocument();
+    // …and back to the trigger, with nothing committed.
+    expect(screen.getByRole("button", { name: "Port of loading" })).toBeInTheDocument();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("survives the manual dialog, which renders in a portal outside it", async () => {
+    // Every press inside that dialog — including in its own name field — is outside
+    // this element by construction, so it used to collapse the picker behind the
+    // dialog. Cancelling then dropped the operator on an empty closed field instead
+    // of back on the search they had already typed.
+    //
+    // Queried through the DOM rather than by role: Radix marks the rest of the page
+    // aria-hidden while a modal dialog is up, which is correct and would make a
+    // role query fail whether or not the picker is still mounted.
+    const user = userEvent.setup();
+    withCatalogue([]);
+    const { container } = renderPicker({ canCreate: true });
+    const input = await open(user);
+    await user.type(input, "zone industrielle bassa");
+    await user.click(await screen.findByRole("button", { name: /by hand/i }));
+    await screen.findByRole("dialog");
+
+    await pressOutside();
+
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(container.querySelector('[role="combobox"]')).not.toBeNull();
   });
 });
 

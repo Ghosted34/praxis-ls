@@ -10,6 +10,7 @@ const { assertDocType } = require("./document_vault.types");
 const storage = require("../../../services/storage.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { parseDataUrl } = require("../../../utils/data-url");
 
 const EXT = {
   "application/pdf": "pdf", "image/png": "png", "image/jpeg": "jpg", "image/jpg": "jpg",
@@ -131,10 +132,13 @@ async function createDocument(client, opts) {
   } = opts;
   // Ad-hoc uploads are free-form (scanned contracts, IDs, …) — no registry guard
   // here; the doc_type registry constrains system-generated captures, not uploads.
-  const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
-  if (!m) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
-  const contentType = m[1].toLowerCase();
-  const buffer = Buffer.from(m[2], "base64");
+  // Parameters are legal in a data URL's media type (`;codecs=`, `;charset=`)
+  // and the pattern this replaced could not cross them — see utils/data-url.
+  // `mimeType` is the bare type, which is what `allowedTypes` compares against.
+  const parsed = parseDataUrl(dataUrl);
+  if (!parsed) throw new AppError("BAD_FILE", "Expected a base64 data URL", 400);
+  const contentType = parsed.mimeType;
+  const buffer = parsed.buffer;
   if (!buffer.length) throw new AppError("EMPTY_FILE", "File is empty", 422);
   if (buffer.length > maxBytes) {
     throw new AppError("FILE_TOO_LARGE", `File exceeds ${Math.round(maxBytes / (1024 * 1024))} MB`, 413);

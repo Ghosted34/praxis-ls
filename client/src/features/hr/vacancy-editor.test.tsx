@@ -177,6 +177,16 @@ describe("the vacancy editor", () => {
     );
   });
 
+  it("keeps the department scope it was given", async () => {
+    const user = userEvent.setup();
+    view({ ...DRAFT, scope_id: "scope-7" });
+    // Saving without touching the department control must not unassign the
+    // vacancy from the organigramme — `scope_id` is what record-level access
+    // filters on and what the hire inherits.
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateVacancy.mock.calls[0][1].scope_id).toBe("scope-7");
+  });
+
   it("has no accessibility violations", async () => {
     const { container } = view();
     expect(await axe(container)).toHaveNoViolations();

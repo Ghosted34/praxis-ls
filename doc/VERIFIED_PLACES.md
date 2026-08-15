@@ -80,9 +80,10 @@ something nobody confirmed.
 `shipment_details.assertPlacesVerified` runs when `enforceRequired` is true —
 that is, when a file is being **opened**, and only then.
 
-- Scoped by `facet_role` (`ORIGIN`, `DESTINATION`, `ROUTE_VIA`,
-  `CUSTODY_LOCATION`), not by field key, so a tenant's own origin field is covered
-  and a renamed one stays covered.
+- Scoped by `facet_role` — `ORIGIN`, `DESTINATION`, `ROUTE_VIA`,
+  `CUSTODY_LOCATION`, and the two door-leg roles `COLLECTION` and `FINAL_DELIVERY`
+  (0678) — not by field key, so a tenant's own origin field is covered and a
+  renamed one stays covered.
 - A **local** lookup, never a geocode. Opening a file must not depend on a third
   party being up.
 - Editing an existing file is never blocked. A value typed in 2024 must not stand
@@ -119,12 +120,42 @@ on the insert, and the one gap-filling `UPDATE` is scoped to rows that are
 | `0674_geo_place_verification.sql` | `unlocode`, `region`, `provider_place_id`, `confidence`, `is_reference_point`, `is_active`, `verified_at`, `provenance`; widened `kind`/`source` vocabularies; search indexes |
 | `0675_geo_place_catalogue.sql` | The 322-place catalogue, plus the airport block |
 | `0676_movement_fields_use_places.sql` | Converts seeded `TEXT` location fields to `GEO_PLACE` by facet role |
+| `0678_delivery_place_asked_once.sql` | The `COLLECTION` / `FINAL_DELIVERY` roles, and the delivery/collection fields three profiles were missing |
 
 0676 is the one that matters most to the road service types: `place_receipt`,
 `place_delivery`, `final_destination` and `warehouse_location` were seeded as
 `TEXT`, so the two service types whose entire job is a road movement — and the one
 whose job is custody at a location — were the ones that could not name a mappable
 place.
+
+## Where 0676 missed, and what 0678 does about it
+
+0676 scopes by role, which is right — and left one gap that mattered more than the
+four it closed. The sea profile's `place_delivery` was seeded with **no facet role
+at all**, so the promotion skipped it: on a sea import, the commonest file in the
+system and the field a customer phones about, "Place of delivery" stayed a
+free-text box with no picker, no verification and no coordinate.
+
+The reason it had no role is worth keeping: `DESTINATION` was already taken by
+`pod`, and the facet map is keyed by role, so a second `DESTINATION` on one form
+means one of the two silently wins. 0678 gives the door legs their own names —
+
+| Role | Column | Means |
+|---|---|---|
+| `ORIGIN` / `DESTINATION` | `pol` / `pod` | The **main carriage** — the pair on the bill of lading |
+| `COLLECTION` | `place_receipt` | The shipper's door, **before** the main carriage |
+| `FINAL_DELIVERY` | `place_delivery` | The consignee's door, **after** it |
+
+— and fills three gaps in the seeded forms: air and project files had a delivery
+leg in their template and no field to fill it from, and the two end-to-end types
+had a *required* pickup leg and no collection field, so a door-to-door file could
+not record the address it is sold on. The end-to-end pair keeps `place_delivery`
+tagged `DESTINATION` deliberately: on a door-to-door file the delivery address IS
+the destination every document prints, which is why 9092 re-tags their POD to
+`ROUTE_VIA`.
+
+Both new roles are in the gate, so a delivery address is verified at promote
+exactly like a POL.
 
 ## Provider error taxonomy
 
@@ -148,7 +179,8 @@ The key never reaches a log: `logger.warn({ err })` on an axios error serialises
 All of it, in [CONTROL_TOWER.md](CONTROL_TOWER.md):
 
 - Itinerary legs with verified endpoints, and a real editor for them.
-- Pickup and last-mile legs at creation, both requiring a verified place.
+- The whole journey derived from the file's four place fields at creation — so the
+  delivery address is asked once and the wizard has no second question.
 - Per-leg map geometry, with mode derived from the itinerary's main carriage
   rather than from the service type's name.
 - Hover, selection, route focus, keyboard traversal, itinerary panel, deep links.

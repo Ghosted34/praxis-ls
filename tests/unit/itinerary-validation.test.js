@@ -329,33 +329,186 @@ describe("the read projection", () => {
   });
 });
 
-describe("legsFromTemplate", () => {
+/**
+ * The template is instantiated as a JOURNEY, from the four place columns a file
+ * owns: `place_receipt` → `pol` → `pod` → `place_delivery` (0678 gave every
+ * freight service type a field for each one it needs).
+ *
+ * This is what removed the create wizard's second delivery question. The wizard
+ * used to carry its own pickup and last-mile pickers and APPEND legs after
+ * promotion — on top of the PICKUP and FINAL_DELIVERY legs 0673's templates
+ * already produced. Two delivery legs, two identical lines drawn between the same
+ * two places, and a delivery address stored twice with nothing keeping the copies
+ * in step.
+ */
+describe("legsFromTemplate builds the journey from the file's own places", () => {
+  /** The real 0673 templates, so these tests break if a seed changes shape. */
+  const SEA_IMPORT = [
+    { leg_type: "MAIN_CARRIAGE", mode: "SEA" },
+    { leg_type: "CUSTOMS", mode: "OTHER", is_optional: true },
+    { leg_type: "FINAL_DELIVERY", mode: "LAND", is_optional: true },
+  ];
+  const END_TO_END_SEA = [
+    { leg_type: "PICKUP", mode: "LAND" },
+    { leg_type: "MAIN_CARRIAGE", mode: "SEA" },
+    { leg_type: "CUSTOMS", mode: "OTHER" },
+    { leg_type: "FINAL_DELIVERY", mode: "LAND" },
+  ];
+  const HINTERLAND = [
+    { leg_type: "INLAND_TRANSIT", mode: "LAND" },
+    { leg_type: "FINAL_DELIVERY", mode: "LAND", is_optional: true },
+  ];
+  const INLAND = [
+    { leg_type: "PICKUP", mode: "LAND" },
+    { leg_type: "INLAND_TRANSIT", mode: "LAND" },
+    { leg_type: "FINAL_DELIVERY", mode: "LAND" },
+  ];
+
+  /** Just the geography, so a failure reads as a route rather than a diff. */
+  const route = (legs) => legs.map((l) => `${l.leg_type}: ${l.origin || "—"} → ${l.destination || "—"}`);
+
   test("the main carriage inherits the file's verified POL and POD", () => {
-    const legs = itinerary.legsFromTemplate(
-      [{ leg_type: "MAIN_CARRIAGE", mode: "SEA" }, { leg_type: "FINAL_DELIVERY", mode: "LAND", is_optional: true }],
-      { pol: "Shanghai", pod: "Douala" },
-    );
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, { pol: "Shanghai", pod: "Douala" });
     expect(legs[0]).toMatchObject({ origin: "Shanghai", destination: "Douala", source: "TEMPLATE" });
   });
 
-  test("every other leg starts empty rather than guessing", () => {
-    // Assuming a pickup happens at the port of loading would put a truck leg on
-    // the map that nobody planned.
-    const legs = itinerary.legsFromTemplate(
-      [{ leg_type: "PICKUP", mode: "LAND" }],
-      { pol: "Shanghai", pod: "Douala" },
-    );
-    expect(legs[0]).toMatchObject({ origin: null, destination: null });
+  test("a sea import's delivery leg runs from the port to the place of delivery", () => {
+    // The `place_delivery` field is the ONE place this is asked. Before 0678 it was
+    // a free-text box with no picker on the commonest file in the system, and the
+    // wizard asked a second time to make up for it.
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    expect(route(legs)).toEqual([
+      "MAIN_CARRIAGE: Shanghai → Douala",
+      "CUSTOMS: Douala → —",
+      "FINAL_DELIVERY: Douala → Yaoundé",
+    ]);
+  });
+
+  test("a door-to-door file opens with all four legs, in the order the cargo moves", () => {
+    const legs = itinerary.legsFromTemplate(END_TO_END_SEA, {
+      place_receipt: "Antwerp",
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    expect(route(legs)).toEqual([
+      "PICKUP: Antwerp → Shanghai",
+      "MAIN_CARRIAGE: Shanghai → Douala",
+      "CUSTOMS: Douala → —",
+      "FINAL_DELIVERY: Douala → Yaoundé",
+    ]);
+  });
+
+  test("a leg the file gives no destination for stays entirely blank, not half-filled", () => {
+    // `assertLegsResolvable` refuses a movement leg with one end, and rightly:
+    // half a leg cannot be drawn or planned against. A sea import whose consignee
+    // collects at the quay is a normal file, and its optional delivery leg is
+    // simply empty.
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, { pol: "Shanghai", pod: "Douala" });
+    expect(legs[2]).toMatchObject({ leg_type: "FINAL_DELIVERY", origin: null, destination: null });
+  });
+
+  test("a leg that moves nothing gets no places — no line drawn twice", () => {
+    // The hinterland case: its inland transit already ends at the final
+    // destination, so filling the optional delivery leg from the same pair would
+    // put a second identical line on the map.
+    const legs = itinerary.legsFromTemplate(HINTERLAND, {
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    expect(route(legs)).toEqual([
+      "INLAND_TRANSIT: Douala → Yaoundé",
+      "FINAL_DELIVERY: — → —",
+    ]);
+  });
+
+  test("…including when the delivery place IS the discharge port", () => {
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Douala",
+    });
+    expect(legs[2]).toMatchObject({ origin: null, destination: null });
+  });
+
+  test("an inland haul walks from the collection place with no ports at all", () => {
+    const legs = itinerary.legsFromTemplate(INLAND, {
+      place_receipt: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    expect(route(legs)).toEqual([
+      // Nothing said where the truck takes it after collecting; the transit leg
+      // carries the geometry and the pickup stays honest about knowing one place.
+      "PICKUP: — → —",
+      "INLAND_TRANSIT: Douala → Yaoundé",
+      "FINAL_DELIVERY: — → —",
+    ]);
+  });
+
+  test("an activity leg is pinned to where the cargo is, and does not move it", () => {
+    // Customs clears at ONE place. Inventing a second end so the shape matches a
+    // movement leg is how a clearance ends up drawn as a journey.
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    expect(legs[1]).toMatchObject({ leg_type: "CUSTOMS", origin: "Douala", destination: null });
+    // The cursor did not advance: the delivery leg still starts at the port.
+    expect(legs[2].origin).toBe("Douala");
+  });
+
+  test("a file with no geography yet produces legs with no places, not guesses", () => {
+    const legs = itinerary.legsFromTemplate(END_TO_END_SEA, {});
+    expect(legs).toHaveLength(4);
+    expect(legs.every((l) => l.origin === null && l.destination === null)).toBe(true);
+  });
+
+  test("whitespace is trimmed, so a padded value cannot look like a different place", () => {
+    const legs = itinerary.legsFromTemplate(SEA_IMPORT, {
+      pol: " Shanghai ",
+      pod: "Douala",
+      place_delivery: "  Douala  ",
+    });
+    expect(legs[0]).toMatchObject({ origin: "Shanghai", destination: "Douala" });
+    // …and the delivery leg is still recognised as going nowhere.
+    expect(legs[2]).toMatchObject({ origin: null, destination: null });
   });
 
   test("a missing or malformed template yields no legs rather than throwing", () => {
     expect(itinerary.legsFromTemplate(null, {})).toEqual([]);
     expect(itinerary.legsFromTemplate("nonsense", {})).toEqual([]);
+    expect(itinerary.legsFromTemplate(SEA_IMPORT, null)).toHaveLength(3);
   });
 
   test("template legs are marked as such, so the required-leg rule can act", () => {
     const legs = itinerary.legsFromTemplate([{ leg_type: "CUSTOMS", mode: "OTHER", is_optional: true }], {});
     expect(legs[0]).toMatchObject({ source: "TEMPLATE", is_optional: true });
+  });
+
+  test("an unknown leg type in a template is carried but left placeless", () => {
+    const legs = itinerary.legsFromTemplate([{ leg_type: "WAREHOUSE", mode: "OTHER" }], { pol: "Douala" });
+    // WAREHOUSE is an activity leg, so it pins to the cargo's position.
+    expect(legs[0]).toMatchObject({ leg_type: "WAREHOUSE", origin: "Douala", destination: null });
+  });
+
+  test("what the template produces passes its own validation", async () => {
+    // The seeded route goes straight through `replace`, so a shape this function
+    // can emit but `assertLegsResolvable` refuses would mean a file that opens
+    // with no itinerary and a warning in a log nobody reads.
+    const c = fakeClient({ template: END_TO_END_SEA });
+    const legs = itinerary.legsFromTemplate(END_TO_END_SEA, {
+      place_receipt: "Antwerp",
+      pol: "Shanghai",
+      pod: "Douala",
+      place_delivery: "Yaoundé",
+    });
+    await expect(itinerary.replace(c, "d-1", legs)).resolves.toHaveLength(4);
   });
 });
 

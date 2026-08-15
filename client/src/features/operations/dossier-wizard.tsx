@@ -31,9 +31,7 @@ import * as React from "react";
 import { Dialog } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Field, Select } from "@/components/ui/modal";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
-import { PlacePicker } from "@/components/operations/place-picker";
 import { Callout } from "@/components/ui/callout";
 import { ErrorState } from "@/components/ui/states";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -65,31 +63,29 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
   const { rows: clients } = useList<Client>("/clients");
   const { rows: serviceTypes } = useList<api.ServiceType>("/service-types");
   const canAddCarrier = useCanUseModule("MOD-10");
-  const canCreatePlace = useCanUseModule("MOD-29");
 
   const [step, setStep] = React.useState(0);
   const [entityId, setEntityId] = React.useState("");
   const [clientId, setClientId] = React.useState("");
   const [serviceTypeId, setServiceTypeId] = React.useState("");
   const [title, setTitle] = React.useState("");
-  /**
-   * The two door-to-door legs the wizard can add up front.
+  /*
+   * THERE IS NO SEPARATE DOOR-TO-DOOR SECTION HERE, and its removal is the point.
    *
-   * WHY HERE AND NOT ONLY IN THE EDITOR. A door-to-door file is sold as
-   * door-to-door: the pickup address and the delivery address are known on the day
-   * the booking lands, and they are the two things the client asks about first.
-   * Making the operator open the file, find the itinerary tab and add two legs is
-   * how those legs end up in a notes field instead.
+   * The wizard used to carry its own "collect from the shipper" and "deliver to the
+   * consignee" pickers, which appended PICKUP and FINAL_DELIVERY legs after
+   * promotion. Every freight service type's template already declared both legs
+   * (0673), so the toggles produced a SECOND one each — two delivery legs, two
+   * identical lines on the map — and the delivery address existed twice over,
+   * once in the leg and once in the `place_delivery` field on this very form.
    *
-   * Each holds the place NAME and its verified reference, because a leg with only
-   * text cannot be drawn — see `itinerary.service.assertLegsResolvable`.
+   * A place is asked once now, in the service type's own form, where it renders as
+   * the same verified PlacePicker every other location field uses (0678 gave the
+   * profiles that were missing one a Place of collection / Place of delivery
+   * field). `itinerary.legsFromTemplate` walks the template at promotion and fills
+   * each leg from those fields, so the journey the tower draws and the values on
+   * the file cannot disagree.
    */
-  const [includeLastMile, setIncludeLastMile] = React.useState(false);
-  const [lastMileDestination, setLastMileDestination] = React.useState("");
-  const [lastMilePlaceId, setLastMilePlaceId] = React.useState<string | null>(null);
-  const [includePickup, setIncludePickup] = React.useState(false);
-  const [pickupOrigin, setPickupOrigin] = React.useState("");
-  const [pickupPlaceId, setPickupPlaceId] = React.useState<string | null>(null);
   const [values, setValues] = React.useState<DetailValues>({});
   const [displays, setDisplays] = React.useState<DetailDisplays>({});
   const [addCarrier, setAddCarrier] = React.useState<{ key: string; term: string; kinds: string[] } | null>(null);
@@ -108,11 +104,6 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     [serviceTypeId],
   );
   const chosen = (serviceTypes || []).find((s) => s.service_type_id === serviceTypeId);
-  const supportsLastMile = /SEA|AIR|END_TO_END|PROJECT/i.test(chosen?.key || "");
-  /** Only an end-to-end file collects from the shipper: a port-to-port sea file
-   *  starts at the port, and offering a pickup leg there invites a leg nobody
-   *  agreed to move. `INLAND` already has pickup in its own template. */
-  const supportsPickup = /END_TO_END/i.test(chosen?.key || "");
   const carrierField = carrierFieldOf(form.data ?? null);
   const capturesContainers = form.data?.containers?.enabled === true;
 
@@ -136,10 +127,6 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
   const detailsMissing = missingRequired(form.data ?? null, values).filter(
     (f) => f.key !== carrierField?.key,
   );
-  // A verified place, not just text. The picker cannot produce anything else, so
-  // this only guards the case where the toggle is on and nothing was picked yet.
-  const lastMileMissing = includeLastMile && !lastMilePlaceId;
-  const pickupMissing = includePickup && !pickupPlaceId;
 
   async function startDraft() {
     setBusy(true);
@@ -169,48 +156,21 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
     setError(null);
     setFieldErrors(null);
     try {
-      await api.promoteDossier(draftId, { details: values });
       /*
-       * Pickup goes FIRST and last-mile goes LAST, and the order is the point:
-       * the itinerary's sequence is its array order, so a pickup appended after
-       * the main carriage would draw a truck leg that happens after the vessel
-       * sails. Promotion has already seeded the service type's own template, so
-       * these two bracket it.
+       * Promotion is the whole of it. It seeds the itinerary from the service
+       * type's template, filling each leg from the places captured above — so the
+       * pickup, main carriage, customs and final-delivery legs all exist, in
+       * order, before this dialog closes. There is nothing for the wizard to
+       * append afterwards, which is why it no longer tries.
        */
-      if (includePickup && pickupPlaceId) {
-        const existing = await api.getItinerary(draftId);
-        await api.replaceItinerary(draftId, [
-          {
-            leg_type: "PICKUP",
-            mode: "LAND",
-            origin: pickupOrigin.trim(),
-            origin_place_id: pickupPlaceId,
-            status: "PLANNED",
-            is_optional: false,
-            source: "MANUAL",
-          },
-          ...existing,
-        ]);
-      }
-      if (includeLastMile && lastMilePlaceId) {
-        const existing = await api.getItinerary(draftId);
-        await api.replaceItinerary(draftId, [
-          ...existing,
-          {
-            leg_type: "FINAL_DELIVERY",
-            mode: "LAND",
-            destination: lastMileDestination.trim(),
-            destination_place_id: lastMilePlaceId,
-            status: "PLANNED",
-            is_optional: false,
-            source: "MANUAL",
-          },
-        ]);
-      }
+      await api.promoteDossier(draftId, { details: values });
       onCreated();
       onClose();
     } catch (e) {
-      const detail = (e as { details?: Record<string, string[]> })?.details;
+      // `.fields` is the canonical shape (API F-2); `.details` is the deprecated
+      // alias, still read so an older server's reply is not dropped on the floor.
+      const err = e as { fields?: Record<string, string[]>; details?: Record<string, string[]> };
+      const detail = err?.fields ?? err?.details;
       if (detail && typeof detail === "object") {
         setFieldErrors(detail);
         // Send them back to the step that owns the offending control.
@@ -329,69 +289,6 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
         <div className="space-y-4">
           {form.loading && <Skeleton className="h-40 w-full" />}
           {form.error && <ErrorState message={form.error} />}
-          {(supportsPickup || supportsLastMile) && (
-            <section className="space-y-3 rounded-lg border border-primary/30 bg-primary/5 p-4">
-              <p className="text-sm font-medium text-foreground">Door-to-door legs</p>
-              <p className="micro text-muted-foreground">
-                Optional. Adds a road leg either side of the main carriage, so the Control Tower shows the
-                whole journey rather than just the port-to-port part.
-              </p>
-
-              {supportsPickup && (
-                <div className="space-y-2">
-                  <Checkbox
-                    checked={includePickup}
-                    onCheckedChange={(c: boolean) => setIncludePickup(c === true)}
-                    label="Collect from the shipper"
-                  />
-                  {includePickup && (
-                    <Field
-                      label="Collection place"
-                      required
-                      hint="Where the truck loads. If the exact yard is not in the catalogue, search worldwide or use a nearby reference point."
-                    >
-                      <PlacePicker
-                        value={pickupOrigin || null}
-                        label="Collection place"
-                        canCreate={canCreatePlace}
-                        onSelect={({ name, place }) => {
-                          setPickupOrigin(name);
-                          setPickupPlaceId(place.geo_place_id);
-                        }}
-                      />
-                    </Field>
-                  )}
-                </div>
-              )}
-
-              {supportsLastMile && (
-                <div className="space-y-2">
-                  <Checkbox
-                    checked={includeLastMile}
-                    onCheckedChange={(c: boolean) => setIncludeLastMile(c === true)}
-                    label="Deliver to the consignee"
-                  />
-                  {includeLastMile && (
-                    <Field
-                      label="Delivery place"
-                      required
-                      hint="Where the cargo is dropped. Delivery instructions stay on the file — this is the point the map uses."
-                    >
-                      <PlacePicker
-                        value={lastMileDestination || null}
-                        label="Delivery place"
-                        canCreate={canCreatePlace}
-                        onSelect={({ name, place }) => {
-                          setLastMileDestination(name);
-                          setLastMilePlaceId(place.geo_place_id);
-                        }}
-                      />
-                    </Field>
-                  )}
-                </div>
-              )}
-            </section>
-          )}
           {form.data?.field_set && (
             <DetailFieldGroups
               groups={form.data.groups}
@@ -463,7 +360,7 @@ export function DossierWizard({ onClose, onCreated }: { onClose: () => void; onC
             </Button>
           )}
           {step === 1 && (
-            <Button type="button" disabled={detailsMissing.length > 0 || lastMileMissing || pickupMissing || busy} onClick={() => setStep(2)}>
+            <Button type="button" disabled={detailsMissing.length > 0 || busy} onClick={() => setStep(2)}>
               Continue
             </Button>
           )}

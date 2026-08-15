@@ -277,7 +277,18 @@ function partition(fields, values, { existingDetails = {}, enforceRequired = fal
  * field key, so a tenant's own origin field is covered and a renamed one stays
  * covered.
  */
-const PLACE_ROLES = new Set(["ORIGIN", "DESTINATION", "ROUTE_VIA", "CUSTODY_LOCATION"]);
+/**
+ * The facet roles that mean "a geographic point".
+ *
+ * `COLLECTION` and `FINAL_DELIVERY` (0678) are the door legs either side of the
+ * main carriage, and they are gated for exactly the reason the ports are: the
+ * delivery address is the field a customer phones about, `legsFromTemplate` builds
+ * the itinerary's delivery leg from it, and an unverified one is how a lane gets
+ * drawn to a place nobody looked at.
+ */
+const PLACE_ROLES = new Set([
+  "ORIGIN", "DESTINATION", "ROUTE_VIA", "CUSTODY_LOCATION", "COLLECTION", "FINAL_DELIVERY",
+]);
 
 /**
  * A movement file may not be opened with an origin or destination that is not a

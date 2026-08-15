@@ -150,19 +150,65 @@ Ordering is what the array means; honouring a client's numbering is how you get 
 legs numbered 3 and a `UNIQUE (dossier_id, seq)` violation reported as a database
 error.
 
-## Door-to-door legs at creation
+## The itinerary is derived, not asked for twice
 
-The wizard offers a pickup leg (end-to-end service types) and a last-mile delivery
-leg (sea, air, end-to-end, project). Both require a **verified** place, both go
-through the same picker as every other location field, and pickup is prepended
-while last-mile is appended — the itinerary's order is its array order, so a pickup
-added after the main carriage would draw a truck leg that happens after the vessel
-sails.
+A file's geography is four fields — collection, POL, POD, delivery — and
+`legsFromTemplate` walks the service type's template at promotion, filling each leg
+from them. A door-to-door sea file opens with all four of its legs already drawn:
 
-These exist at creation, not only in the editor, because a door-to-door file is
-sold as door-to-door: both addresses are known on the day the booking lands, and
-they are the first two things the client asks about. Making the operator open the
-file and find the itinerary tab is how those legs end up in a notes field.
+```
+PICKUP:         Antwerp  → Shanghai     (from place_receipt → pol)
+MAIN_CARRIAGE:  Shanghai → Douala       (pol → pod)
+CUSTOMS:        Douala                  (pinned; a clearance is not a movement)
+FINAL_DELIVERY: Douala   → Yaoundé      (pod → place_delivery)
+```
+
+### What this replaced
+
+The wizard used to carry its own "collect from the shipper" and "deliver to the
+consignee" pickers, which **appended** PICKUP and FINAL_DELIVERY legs after
+promotion. Every freight template has declared both legs since 0673 — so the
+toggles produced a *second* one each. Two delivery legs, two identical lines
+between the same two places, and the delivery address stored twice with nothing
+keeping the copies in step, while the `place_delivery` field sat on the very same
+form asking the same question.
+
+The wizard now asks nothing extra, and creating a file is one call.
+
+### The two rules that keep the walk honest
+
+- **Both ends or neither.** `assertLegsResolvable` refuses a movement leg with one
+  end, and rightly: half a leg cannot be drawn or planned against. A sea import
+  whose consignee collects at the quay is a normal file, and its optional delivery
+  leg is simply empty rather than a dangling origin.
+- **A leg that moves nothing gets no places.** Checked against where the cargo
+  *is*, not against the leg's own two ends — a hinterland file's inland transit
+  already reaches the final destination, so filling its optional delivery leg from
+  the same pair would put a second identical line on the map.
+
+Activity legs pin to the cargo's position and carry no destination. Inventing a
+second end so a clearance matches the shape of a movement is how customs ends up
+drawn as a journey.
+
+Migration `0678` is what makes the walk possible: air and project files had a
+delivery leg in their template and no field to fill it from, the two end-to-end
+types had a required pickup leg and no collection field, and the sea profile's
+delivery field had no facet role — so it was still a free-text box. See
+[VERIFIED_PLACES.md](VERIFIED_PLACES.md#where-0676-missed-and-what-0678-does-about-it).
+
+## Dates are day-first
+
+Every date on an operations screen and on the tower's filters is `dd/mm/yyyy`,
+through the repo's `DateField`.
+
+A native `<input type="date">` renders in the **operating system's** locale, and no
+HTML attribute overrides it — `lang` is ignored for the value display. So the same
+ETA read as the 3rd of July on one operator's machine and the 7th of March on the
+next, with nothing on screen to say which. For a day-first audience that is a
+papercut on every file, and on a leg's actual-arrival date it is a wrong number in
+a meeting. `DateField` shows and accepts day-first, masks the slashes as you type,
+keeps the platform calendar one click away, and still stores the ISO date the API
+wants — so nothing downstream changed.
 
 ## Deep links
 

@@ -96,6 +96,31 @@
   --ok-fill: 40 148 94;
   --warn-fill: 176 128 24;
   --bad-fill: 210 68 58;
+
+  /*
+   * TRANSPORT MODES — sea green, air blue, road orange.
+   *
+   * WHY THESE ARE THEIR OWN TOKENS rather than borrowed ones. The Control Tower
+   * first drew sea in --brand-blue-bright, air in --brand-blue and road in
+   * --primary. Two of the three modes were therefore the same hue two steps
+   * apart, which on a 2px dashed line at this zoom is not a distinction at all:
+   * on the deployed map a vessel leg and a flight leg were the same colour.
+   *
+   * Borrowing also made the palette a function of the tenant's brand. --primary
+   * (and --brand-orange, which applyBrand overwrites from brand.primary) is
+   * whatever the tenant chose — so a tenant with a blue brand would have had
+   * road collapse onto air as well, and the legend would have been describing
+   * three colours the map drew as two.
+   *
+   * A mode is not decorative and it is not brand: it is what the cargo is on.
+   * Three fixed, mutually distinguishable hues, declared once, and the legend
+   * and the map read the same three. They keep the palette's own values (--ok's
+   * green, --brand-blue's blue, the house orange) so the map still looks like the
+   * rest of the product.
+   */
+  --mode-sea: 40 148 94;
+  --mode-air: 28 155 215;
+  --mode-road: 224 122 26;
   --ink: 16 30 52;
   /* 132 150 176 measured 3.01:1 on --card and 2.78:1 on --background — the
      single most-used failing token in the app (198 uses via .micro). Now
@@ -191,6 +216,12 @@
   --ok-fill: 74 176 120;
   --warn-fill: 224 180 66;
   --bad-fill: 232 104 96;
+  /* Lifted for the dark map, which is where these are actually read: a 2px
+     dashed line carries far less colour than a filled pill, so the light values
+     read as grey-ish against the deep-navy ocean. Same three hues, brighter. */
+  --mode-sea: 74 190 133;
+  --mode-air: 98 196 245;
+  --mode-road: 247 158 66;
 }
 
 @layer base {

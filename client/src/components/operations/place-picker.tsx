@@ -284,15 +284,51 @@ export function PlacePicker({
     };
   }, [value, place]);
 
+  /**
+   * Close when the operator presses somewhere else — decided in the CAPTURE phase,
+   * and that is the whole fix.
+   *
+   * ── THE BUG ─────────────────────────────────────────────────────────────────
+   *
+   * This listener used to be on the BUBBLE phase, which puts it after React's own
+   * handler for the same event. Pressing a provider suggestion calls
+   * `setStage({ kind: "confirming" })`; React flushes that synchronously for a
+   * discrete event like mousedown, so the row the operator just pressed is
+   * unmounted and replaced by the confirmation step. By the time this ran,
+   * `e.target` was DETACHED — and `Node.contains()` on a detached node is false.
+   * So the control read its own row as "outside" and closed itself.
+   *
+   * What that looked like: search for an address, find it, click it, and the popup
+   * vanishes leaving an empty box. Nothing stored, nothing said. Catalogue rows hid
+   * it completely, because `commit` calls `close()` itself and sets a value, so the
+   * spurious close was invisible on the path everybody tests.
+   *
+   * It also only reproduced in a browser. Under jsdom the flush lands after this
+   * listener, so the target was still attached and every test passed — which is
+   * why the regression test below removes the target explicitly rather than hoping
+   * the environment reproduces React's timing.
+   *
+   * Capture runs BEFORE React's handler, so the target is always still in the tree
+   * and the question being asked is the one intended: "was the press inside this
+   * control, as it was when the operator made it?"
+   *
+   * ── AND THE PORTAL ──────────────────────────────────────────────────────────
+   *
+   * `manualOpen` disables this outright. The manual-place dialog renders in a
+   * portal, which is outside this element by construction, so every press inside
+   * it — including on its own form fields — looked "outside" and collapsed the
+   * picker behind the dialog.
+   */
   React.useEffect(() => {
-    if (!open) return;
+    if (!open || manualOpen) return;
     const onDoc = (e: MouseEvent) => {
-      if (boxRef.current && !boxRef.current.contains(e.target as Node)) close();
+      const box = boxRef.current;
+      if (box && !box.contains(e.target as Node)) close();
     };
-    document.addEventListener("mousedown", onDoc);
-    return () => document.removeEventListener("mousedown", onDoc);
+    document.addEventListener("mousedown", onDoc, true);
+    return () => document.removeEventListener("mousedown", onDoc, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open]);
+  }, [open, manualOpen]);
 
   function close(restoreFocus = true) {
     setOpen(false);

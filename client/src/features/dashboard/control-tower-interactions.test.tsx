@@ -22,6 +22,8 @@ vi.mock("@/app/auth/auth-context", async () => authContextMock());
 
 import { DashboardPage } from "./index";
 import { ItineraryPanel } from "./components/itinerary-panel";
+import { LANE_STROKE } from "./map/shipment-map";
+import { MODE_GLYPH } from "./mode-icons";
 import { OperationalActivityPanel } from "./components/operational-activity-panel";
 import type { ActivityRecord, ItineraryLeg, LiveShipment } from "./model";
 
@@ -275,6 +277,59 @@ describe("the map's own semantics", () => {
     await user.keyboard("{Escape}");
     expect(await screen.findByRole("heading", { name: "Live shipments" })).toBeInTheDocument();
   });
+
+  /**
+   * Sea GREEN, air BLUE, road ORANGE, from three declared tokens.
+   *
+   * Sea used to be `--brand-blue-bright` and air `--brand-blue` — the same hue two
+   * steps apart, which on a 2px dashed line is not a distinction at all: on the
+   * deployed map a vessel leg and a flight leg drew as one colour. Road was
+   * `--primary`, the TENANT'S accent, so a tenant with a blue brand would have lost
+   * road onto air as well and the legend would have been naming three colours the
+   * map drew as two.
+   *
+   * Pinned as a set rather than one assertion per mode, because the property that
+   * matters is that the three are DIFFERENT and none of them is brand-dependent.
+   */
+  it("draws the three modes in three distinct, non-brand colours", async () => {
+    renderTower();
+    await screen.findByRole("application");
+    expect(LANE_STROKE.sea).toBe("rgb(var(--mode-sea))");
+    expect(LANE_STROKE.air).toBe("rgb(var(--mode-air))");
+    expect(LANE_STROKE.road).toBe("rgb(var(--mode-road))");
+    const routes = [LANE_STROKE.sea, LANE_STROKE.air, LANE_STROKE.road];
+    expect(new Set(routes).size).toBe(3);
+    // Nothing on a route reads the brand or the tenant accent any more.
+    expect(routes.join(" ")).not.toMatch(/--primary|--brand-/);
+  });
+
+  it("draws a mode glyph on each lane, not an anonymous dot", async () => {
+    // A ship on a vessel leg, a plane on a flight, a truck on a road leg — and
+    // turned along the path, so the marker also shows the direction of travel.
+    const { container } = renderTower();
+    await screen.findByRole("application");
+    const motions = container.querySelectorAll("animateMotion");
+    expect(motions.length).toBeGreaterThan(0);
+    motions.forEach((m) => {
+      const marker = m.parentElement!;
+      const glyph = marker.querySelector("path");
+      expect(glyph).not.toBeNull();
+      // The glyph is FILLED with the lane's own mode colour, and the four mode
+      // paths are the only things it may be.
+      expect(glyph!.getAttribute("fill")).toMatch(/var\(--mode-|var\(--ink\)/);
+      expect(Object.values(MODE_GLYPH)).toContain(glyph!.getAttribute("d"));
+    });
+  });
+
+  it("shapes each endpoint by what kind of place it is", async () => {
+    const { container } = renderTower();
+    await screen.findByRole("application");
+    // Douala and Kribi are seaports in the fixtures, Paris CDG an airport, so the
+    // map must carry both a ship and a plane among its fixed markers.
+    const shapes = [...container.querySelectorAll("path[transform]")].map((n) => n.getAttribute("d"));
+    expect(shapes).toContain(MODE_GLYPH.sea);
+    expect(shapes).toContain(MODE_GLYPH.air);
+  });
 });
 
 describe("full screen", () => {
@@ -306,6 +361,95 @@ describe("full screen", () => {
     // Out of full screen, selection intact — the mode entered last is the one left.
     await waitFor(() => expect(screen.queryByRole("dialog", { name: /full screen/i })).not.toBeInTheDocument());
     expect(screen.getByRole("heading", { name: "SBX-OPS-2026-0142" })).toBeInTheDocument();
+  });
+});
+
+/**
+ * Both overlays are meant to cover the whole application except the title bar, and
+ * to FIT — and the deployed build did neither.
+ *
+ * They were `fixed inset-0 z-50`, which is above the ribbon's `z-30` and the title
+ * bar's `z-40` on paper. On screen the ribbon painted over them, clipping the
+ * heading and the exit button behind the nav tabs, because `z-index` only orders
+ * siblings within a STACKING CONTEXT and these were rendered deep inside the
+ * scrolling content region — whose own ancestor establishes one. No z-index could
+ * have escaped it; the fix is to portal out to `document.body`.
+ *
+ * The map then overflowed the bottom of the screen, because its `<svg>` was
+ * `h-auto w-full` and so derived a height from the full viewport width. On the
+ * deployed map the southern half of the world was cut off with Rio de Janeiro's
+ * label on the very edge.
+ */
+describe("the overlays cover the app and fit inside it", () => {
+  const overlays: [string, RegExp, RegExp][] = [
+    ["full screen", /^Full screen$/, /full screen/i],
+    ["meeting view", /meeting view/i, /operations meeting/i],
+  ];
+
+  it.each(overlays)("%s renders at the document root, not inside the page", async (_name, open, dialogName) => {
+    const user = userEvent.setup();
+    const { container } = renderTower();
+    await user.click(await screen.findByRole("button", { name: open }));
+    const dialog = await screen.findByRole("dialog", { name: dialogName });
+
+    // Portalled: outside the rendered tree, directly under <body>.
+    expect(container.contains(dialog)).toBe(false);
+    expect(dialog.parentElement).toBe(document.body);
+  });
+
+  it.each(overlays)("%s starts below the title bar and covers the rest", async (_name, open, dialogName) => {
+    const user = userEvent.setup();
+    renderTower();
+    await user.click(await screen.findByRole("button", { name: open }));
+    const dialog = await screen.findByRole("dialog", { name: dialogName });
+
+    // Geometry, not z-order. The title bar is the draggable window region in the
+    // desktop build and carries the window controls, so an overlay across it leaves
+    // no way to move or close the window.
+    expect(dialog.style.top).toBe("var(--titlebar-h)");
+    expect(dialog.className).toMatch(/\bfixed\b/);
+    expect(dialog.className).toMatch(/\bbottom-0\b/);
+    expect(dialog.className).toMatch(/\bleft-0\b/);
+    expect(dialog.className).toMatch(/\bright-0\b/);
+    // Above the ribbon (z-30) and the title bar's own strip (z-40).
+    expect(dialog.className).toMatch(/z-\[55\]/);
+  });
+
+  it.each(overlays)("%s makes the map fit its box instead of overflowing", async (_name, open, dialogName) => {
+    const user = userEvent.setup();
+    renderTower();
+    await user.click(await screen.findByRole("button", { name: open }));
+    const dialog = await screen.findByRole("dialog", { name: dialogName });
+
+    const svg = within(dialog).getByRole("img", { name: /Live shipment map/ });
+    // `h-full` + "meet" letterboxes the map into whatever height is left. `h-auto`
+    // is what computed a height from the viewport width and ran off the bottom.
+    expect(svg.getAttribute("class")).toMatch(/\bh-full\b/);
+    expect(svg.getAttribute("class")).not.toMatch(/\bh-auto\b/);
+    expect(svg.getAttribute("preserveAspectRatio")).toBe("xMidYMid meet");
+  });
+
+  it.each(overlays)("%s stops the page behind it scrolling, and restores it", async (_name, open, dialogName) => {
+    const user = userEvent.setup();
+    renderTower();
+    await user.click(await screen.findByRole("button", { name: open }));
+    await screen.findByRole("dialog", { name: dialogName });
+    expect(document.body.style.overflow).toBe("hidden");
+
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: dialogName })).not.toBeInTheDocument());
+    // Restored, not left locked — an overlay that forgets this leaves the whole app
+    // unscrollable until a reload.
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
+  it("the dashboard card still sizes itself from its width", async () => {
+    // The other half of the same change: outside an overlay the map has no box to
+    // fit, so it must keep deriving its height from the viewBox or the card
+    // collapses to nothing.
+    renderTower();
+    const svg = await screen.findByRole("img", { name: /Live shipment map/ });
+    expect(svg.getAttribute("class")).toMatch(/\bh-auto\b/);
   });
 });
 

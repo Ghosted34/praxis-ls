@@ -72,13 +72,36 @@ export function MapLegend({
       )}
 
       {!compact && (
-        <span
-          className="flex items-center gap-1.5 text-micro font-medium normal-case text-muted-foreground"
-          title="A hollow marker is a point NEAR the real address, agreed as a stand-in for the map. The file still carries the exact delivery instructions."
-        >
-          <span aria-hidden className="h-2.5 w-2.5 rounded-full border-[1.5px] border-current bg-transparent" />
-          Hollow marker = reference point, not the exact address
-        </span>
+        <>
+          {/*
+            Shape and fill are two axes on the same marker, so they get two
+            sentences. Collapsing them into one ("hollow ship = …") is how a reader
+            comes away thinking a hollow marker is a kind of place.
+          */}
+          <span
+            className="flex items-center gap-1.5 text-micro font-medium normal-case text-muted-foreground"
+            title="A marker's shape is the kind of place it is: a ship for a seaport, a plane for an airport, rooftops for a city, a warehouse for a terminal or depot."
+          >
+            {(() => {
+              const Sea = MODE_ICON.sea;
+              const Air = MODE_ICON.air;
+              return (
+                <span aria-hidden className="flex items-center gap-0.5">
+                  <Sea width={12} height={12} />
+                  <Air width={12} height={12} />
+                </span>
+              );
+            })()}
+            Marker shape = kind of place
+          </span>
+          <span
+            className="flex items-center gap-1.5 text-micro font-medium normal-case text-muted-foreground"
+            title="A hollow marker is a point NEAR the real address, agreed as a stand-in for the map. The file still carries the exact delivery instructions."
+          >
+            <span aria-hidden className="h-2.5 w-2.5 rounded-full border-[1.5px] border-current bg-transparent" />
+            Hollow marker = reference point, not the exact address
+          </span>
+        </>
       )}
     </div>
   );

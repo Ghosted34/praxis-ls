@@ -78,17 +78,22 @@ export function ClientForm({ row, onClose, onSaved }: { row: (api.Client & Parti
   // primary contact/address are local state, merged into the payload on submit —
   // the service writes them as their own rows.
 
-  // Sync legal_name / trading_name back to the hidden `name` field so the client-side
-  // schema doesn't block the submit on a missing required field before onSubmit is even called.
+  /**
+   * `name` is the ONE field `clientMaster` hard-requires, and this form has no
+   * control for it — it collects the legal and trading names and derives `name`
+   * from them on submit (§2.1, below). But `handleSubmit` runs the schema BEFORE
+   * it calls `onSubmit`, so that derivation happened too late to matter: the
+   * schema rejected the empty `name`, submit never ran, and — `name` having no
+   * `<Field>` to render its message — the Save button silently did nothing.
+   *
+   * Deriving it here as well keeps the value the schema sees in step with the
+   * one the payload is built from.
+   */
   const legalName = form.watch("legal_name");
   const tradingName = form.watch("trading_name");
   React.useEffect(() => {
     const derived = (legalName || "").trim() || (tradingName || "").trim();
-    if (derived) {
-      form.setValue("name", derived, { shouldValidate: true });
-    } else {
-      form.setValue("name", "", { shouldValidate: true });
-    }
+    form.setValue("name", derived, { shouldValidate: true });
   }, [legalName, tradingName, form]);
 
   const country = String(form.watch("country_code") ?? "");

@@ -4689,6 +4689,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/entities/:id/ops-reference-prefix": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/entities/:id/people": {
       "auth": true,
       "rbac": true,

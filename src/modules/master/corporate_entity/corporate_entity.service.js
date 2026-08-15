@@ -22,6 +22,7 @@ const { maskBank } = require("../_shared/confidential");
 const storage = require("../../../services/storage.service");
 const { emitEvent, audit, resolveActorId } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const opsRef = require("../../../services/documents/operation-reference");
 
 const ref = (id) => "corporate_entity:" + id;
 
@@ -64,11 +65,78 @@ async function create(client, {
       ...(parentEntityId ? { parent_entity_id: parentEntityId } : {}),
       ...(relationshipType ? { relationship_type: relationshipType } : {}),
     });
+    // The two-character marker that leads this entity's OPERATION-file
+    // references (`SL` in `SL7Z3K9QW2M4XBSM`) — derived from the name, walked
+    // past anything already taken, and persisted once. Assigned here, in the
+    // same transaction, rather than lazily on the entity's first dossier: it
+    // shows on the entity's own page, and an administrator who wants a
+    // different one should see what they are changing before any file has been
+    // opened against it.
+    const opsPrefix = await opsRef.entityPrefix(client, row.entity_id);
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.entity_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.entity_id), after: row });
     await client.query("COMMIT");
-    return row;
+    return { ...row, ops_reference_prefix: opsPrefix };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
+}
+
+/**
+ * Set the entity's operation-reference prefix.
+ *
+ * ONCE A FILE HAS USED IT, IT IS FROZEN. A reference is a string stored on the
+ * dossier row and printed on documents that have left the building; changing
+ * the prefix afterwards cannot rewrite them and must not try. It would only
+ * mean two prefixes meaning "this entity", with nothing recording when the
+ * meaning changed. Before the first file, an administrator is free to pick the
+ * initials the business actually uses.
+ *
+ * The uniqueness itself is `ux_corporate_entity_ops_reference_prefix`; this
+ * turns its 23505 into a field error, because a bare 409 from the generic
+ * handler does not say which of the entity's forty columns is at fault.
+ */
+async function setOpsReferencePrefix(client, { id, prefix, actor = {} }) {
+  const before = await repo.get(client, id);
+  if (!before) throw new AppError("NOT_FOUND", "Entity not found", 404);
+  if (before.ops_reference_prefix === prefix) return before;
+
+  if (before.ops_reference_prefix) {
+    // `dossier_visible`, so a half-finished wizard draft — which holds a
+    // `DRAFT-` placeholder, not a reference built from this prefix — does not
+    // freeze the prefix of an entity nobody has actually opened a file against.
+    const used = await client.query(
+      "SELECT 1 FROM dossier_visible WHERE entity_id = $1 LIMIT 1",
+      [id],
+    );
+    if (used.rowCount) {
+      throw new AppError(
+        "PREFIX_IN_USE",
+        `Operation files already carry the prefix "${before.ops_reference_prefix}". It cannot be changed without renaming references that have been issued.`,
+        422,
+        { ops_reference_prefix: ["already used by existing operation files"] },
+      );
+    }
+  }
+
+  let row;
+  try {
+    row = await repo.updateInternal(client, id, { ops_reference_prefix: prefix });
+  } catch (err) {
+    if (err && err.code === "23505" && /ops_reference_prefix/.test(String(err.constraint || ""))) {
+      throw new AppError("PREFIX_TAKEN", `Another entity already uses the prefix "${prefix}"`, 422, {
+        ops_reference_prefix: ["already in use"],
+      });
+    }
+    throw err;
+  }
+  await audit(client, {
+    actorUserId: actor.user_id || null,
+    action: events.OPS_PREFIX_CHANGED,
+    moduleKey: events.MODULE,
+    entityRef: ref(id),
+    before: { ops_reference_prefix: before.ops_reference_prefix },
+    after: { ops_reference_prefix: row.ops_reference_prefix },
+  });
+  return row;
 }
 
 async function update(client, { id, patch = {}, actor = {} }) {
@@ -292,5 +360,5 @@ const list = (client, q) => repo.list(client, q);
 
 module.exports = {
   create, update, setStatus, setActive, setStructure, uploadLogo, capTable,
-  letterhead, saveLetterhead, renewals, get, list,
+  letterhead, saveLetterhead, renewals, get, list, setOpsReferencePrefix,
 };

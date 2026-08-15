@@ -677,6 +677,7 @@ All 1048 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/entities/:id/letterhead` | — |
 | PUT | `/api/tenant/entities/:id/letterhead` | — |
 | POST | `/api/tenant/entities/:id/logo` | — |
+| POST | `/api/tenant/entities/:id/ops-reference-prefix` | — |
 | GET | `/api/tenant/entities/:id/people` | — |
 | POST | `/api/tenant/entities/:id/people` | — |
 | DELETE | `/api/tenant/entities/:id/people/:childId` | — |

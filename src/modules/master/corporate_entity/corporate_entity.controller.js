@@ -74,6 +74,9 @@ module.exports = {
   update: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch: req.body, actor: actor(req) })) })),
 
+  setOpsReferencePrefix: asyncHandler(async (req, res) =>
+    res.json({ data: await req.tenantDb((c) => service.setOpsReferencePrefix(c, { id: req.params.id, prefix: req.body.ops_reference_prefix, actor: actor(req) })) })),
+
   setStatus: asyncHandler(async (req, res) =>
     res.json({ data: await req.tenantDb((c) => service.setStatus(c, { id: req.params.id, status: req.body.status, reason: req.body.reason || null, actor: actor(req) })) })),
 

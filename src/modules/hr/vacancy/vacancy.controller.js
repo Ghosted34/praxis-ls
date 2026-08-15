@@ -13,14 +13,21 @@ module.exports = {
   // Department is a scope (0490). Overrides the generic create/update so the
   // reference is resolved on the identity client — the scope tree is in the live
   // schema, `vacancy` is not — and so the text snapshot can't drift from it.
-  create: asyncHandler(async (req, res) =>
+  // The department is resolved BEFORE the tenant callback opens, not inside it.
+  // `withDepartment` reads the identity schema, and both share one connection —
+  // resolving it inside left the connection pointed at LIVE for the rest of the
+  // callback, which under sandbox meant this handler looked for (and wrote) the
+  // row in the wrong schema. See `withPinned` in middleware/tenant-context.
+  create: asyncHandler(async (req, res) => {
+    const data = await withDepartment(req, req.body);
     res.status(201).json({
-      data: await req.tenantDb(async (c) =>
-        service.create(c, { data: await withDepartment(req, req.body), actor: actor(req) })),
-    })),
+      data: await req.tenantDb((c) => service.create(c, { data, actor: actor(req) })),
+    });
+  }),
   update: asyncHandler(async (req, res) => {
-    const row = await req.tenantDb(async (c) =>
-      service.update(c, { id: req.params.id, patch: await withDepartment(req, req.body), actor: actor(req) }));
+    const patch = await withDepartment(req, req.body);
+    const row = await req.tenantDb((c) =>
+      service.update(c, { id: req.params.id, patch, actor: actor(req) }));
     if (!row) throw new AppError("NOT_FOUND", "Vacancy not found", 404);
     res.json({ data: row });
   }),

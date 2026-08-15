@@ -37,13 +37,40 @@
  *
  * Usage:
  *   node scripts/db/mark-migration-applied.js --scope=platform --file=platform/0100_b.sql
- *   node scripts/db/mark-migration-applied.js --scope=tenant --file=tenant/0530_x.sql --slug=smartls
+ *   node scripts/db/mark-migration-applied.js --scope=live    --file=tenant/0530_x.sql --slug=smartls
+ *   node scripts/db/mark-migration-applied.js --scope=sandbox --file=tenant/0530_x.sql --slug=smartls
  *   node scripts/db/mark-migration-applied.js ... --all-tenants
  *   node scripts/db/mark-migration-applied.js ... --force     # skip the catalog proof
  *   node scripts/db/mark-migration-applied.js ... --dry-run
  *
- * Scopes match the migrator's own: platform | tenant | tenant-seed | platform-seed.
+ * ── SCOPES: THERE IS NO "tenant" SCOPE ──────────────────────────────────────
+ *
+ * This docblock used to say `platform | tenant | tenant-seed | platform-seed`,
+ * and only one of those four is real. `migrateTenantDb` (provisioning.service)
+ * applies the tenant migrations ONCE PER SCHEMA and passes the SCHEMA NAME as
+ * the scope:
+ *
+ *     for (const schema of ["live", "sandbox"])
+ *       applyTracked(cli, files.tenantSchema(), { scope: schema, … })
+ *
+ * So a tenant migration is recorded twice, under `live` and under `sandbox`, and
+ * `--scope=tenant` writes a row that NOTHING EVER READS. The script accepted it
+ * and printed `recorded ✓`, so the operator re-ran migrate, got the identical
+ * error, and had no way to tell the tool had done nothing useful.
+ *
+ * A tenant file therefore needs BOTH scopes marked, or the sandbox schema fails
+ * on the next run even after live is reconciled. The valid set is asserted below
+ * rather than documented and hoped for.
  */
+const VALID_SCOPES = new Set([
+  "platform",       // platform DB migrations
+  "platform-seed",  // platform DB seeds
+  "db",             // tenant DB bootstrap (extensions, roles) — schema-independent
+  "live",           // tenant migrations, live schema
+  "sandbox",        // tenant migrations, sandbox schema
+  "live-seed",      // tenant seeds, live schema
+  "sandbox-seed",   // tenant seeds, sandbox schema
+]);
 "use strict";
 
 const fs = require("fs");
@@ -182,9 +209,30 @@ async function markOne(dbName, { scope, file, force, dryRun }) {
   }
 }
 
+/**
+ * The ledger key, in the EXACT form the migrator writes it.
+ *
+ * `applyTracked` keys on `path.relative(MIGRATIONS, f)` (migrator.js), which is
+ * platform-native: `tenant/0483_x.sql` on Linux, `tenant\0483_x.sql` on Windows.
+ * This script used to insert the `--file` argument verbatim, so a Windows
+ * operator typing the forward-slash form from the usage line above wrote a row
+ * the migrator could never match — and the script reported `recorded ✓` while
+ * changing nothing observable. A reconciliation tool that cannot tell "done"
+ * from "no-op" is worse than no tool: the operator re-runs migrate, gets the
+ * identical error, and now distrusts the one thing that would have fixed it.
+ *
+ * `path.normalize` converts to the native separator on both platforms, which is
+ * precisely what `path.relative` produces, so the two agree by construction
+ * rather than by the operator having guessed the right slash.
+ */
+// `arg()` returns `true` for a bare `--file` with no value, so this guards the
+// type as well as the separator — `path.normalize(true)` would throw a
+// TypeError instead of reaching the usage message below.
+const ledgerName = (file) => (typeof file === "string" ? path.normalize(file) : null);
+
 async function main() {
   const scope = arg("scope");
-  const file = arg("file");
+  const file = ledgerName(arg("file"));
   const slug = arg("slug");
   const allTenants = arg("all-tenants") === true;
   const force = arg("force") === true;
@@ -192,7 +240,21 @@ async function main() {
 
   if (!scope || !file) {
     console.error(
-      "Usage: node scripts/db/mark-migration-applied.js --scope=<platform|tenant|tenant-seed|platform-seed> --file=<scope/name.sql> [--slug=x | --all-tenants] [--force] [--dry-run]",
+      `Usage: node scripts/db/mark-migration-applied.js --scope=<${[...VALID_SCOPES].join("|")}> --file=<dir/name.sql> [--slug=x | --all-tenants] [--force] [--dry-run]`,
+    );
+    return 1;
+  }
+
+  // Refuse an unknown scope rather than inserting a row nobody reads. The whole
+  // point of this tool is to make a migrate run stop failing; silently writing
+  // to a scope the migrator never queries produces a green log and an unchanged
+  // outcome, which is the most expensive kind of wrong answer here.
+  if (!VALID_SCOPES.has(scope)) {
+    console.error(
+      `Unknown scope "${scope}". Valid: ${[...VALID_SCOPES].join(", ")}.`
+      + "\n\nThere is no \"tenant\" scope: tenant migrations are applied once per SCHEMA,"
+      + "\nso they are recorded under `live` AND `sandbox`. Mark both, or the sandbox"
+      + "\nschema fails on the next run even after live is reconciled.",
     );
     return 1;
   }

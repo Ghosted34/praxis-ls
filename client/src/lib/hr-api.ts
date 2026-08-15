@@ -26,6 +26,9 @@ export type AttendanceRow = {
   distance_m?: number | string | null;
   within_geofence?: boolean | null;
   geo_label?: string | null;
+  hr_device_id?: string | null;
+  /** Was the punching device trusted AT PUNCH TIME. null = none presented. */
+  device_trusted?: boolean | null;
   is_late?: boolean;
   minutes_late?: number;
   department?: string | null;
@@ -43,8 +46,68 @@ function qs(params?: Record<string, string | undefined>) {
   return s ? "?" + s : "";
 }
 
+/* ── Registered devices (0524) ────────────────────────────────────────────────
+ *
+ * WHAT THIS IS NOT. The fingerprint below is a random id this browser generated
+ * once and kept — it is not a hardware identifier and it is not an
+ * authentication factor. Anyone who wants to copy it can. Its value is that a
+ * SECOND device showing up against one employee becomes a dated row a manager
+ * can see, which is what turns casual buddy-punching into something deliberate
+ * that leaves a trace.
+ *
+ * NOT a browser-signal fingerprint (canvas, fonts, screen metrics) on purpose:
+ * those identify the person across sites whether or not they consented, which is
+ * a far larger thing to do to an employee than the problem warrants. A random
+ * value in this app's own storage identifies the device only to this app, and
+ * clearing site data resets it — the cost of which is one re-registration.
+ */
+const DEVICE_KEY = "praxis.device.id";
+
+/** This browser's device id, minted on first read. Empty string when storage is
+ *  unavailable (private mode, embedded webview) — the server treats a missing
+ *  fingerprint as "no device presented" rather than failing the punch. */
+export function deviceId(): string {
+  try {
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = (crypto.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`).replace(/-/g, "");
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
+  } catch {
+    return "";
+  }
+}
+
+export type DeviceInfo = { fingerprint: string; label?: string; platform?: string };
+/** The device block sent with a punch, or null when this browser can't keep an
+ *  id. `user_agent` is deliberately absent — the server reads the real header. */
+export function deviceInfo(): DeviceInfo | null {
+  const fingerprint = deviceId();
+  if (!fingerprint) return null;
+  const platform = (navigator as { userAgentData?: { platform?: string } }).userAgentData?.platform || navigator.platform || undefined;
+  return { fingerprint, platform };
+}
+
+export type HrDevice = {
+  hr_device_id: string;
+  employee_id: string;
+  employee_name?: string | null;
+  label: string;
+  platform?: string | null;
+  user_agent?: string | null;
+  status: "PENDING" | "TRUSTED" | "REVOKED";
+  first_seen_at?: string | null;
+  last_seen_at?: string | null;
+};
+export const listDevices = (params?: { employee_id?: string }) => tenant<HrDevice[]>("/attendance/devices" + qs(params));
+export const registerDevice = (body: { employee_id?: string; device: DeviceInfo }) =>
+  tenant<HrDevice>("/attendance/devices", { method: "POST", body });
+export const setDeviceStatus = (id: string, patch: { status?: "TRUSTED" | "REVOKED"; label?: string }) =>
+  tenant<HrDevice>(`/attendance/devices/${id}`, { method: "PATCH", body: patch });
+
 export const openPunch = () => tenant<AttendanceRow | null>("/attendance/open");
-export const clockIn = (body: Partial<Fix> & { employee_id?: string }) =>
+export const clockIn = (body: Partial<Fix> & { employee_id?: string; device?: DeviceInfo | null }) =>
   tenant<AttendanceRow>("/attendance/clock-in", { method: "POST", body });
 export const clockOut = (body: { latitude?: number; longitude?: number; id?: string } = {}) =>
   tenant<AttendanceRow>("/attendance/clock-out", { method: "POST", body });
@@ -196,6 +259,18 @@ export type Vacancy = {
   status: string; // DRAFT | OPEN | CLOSED
   posted_to_website?: boolean | null;
   created_at?: string | null;
+  // 0525 — the structured shape the scorer compares candidates against.
+  employment_type?: string | null;
+  location?: string | null;
+  experience_years_min?: number | null;
+  skills_required?: string[] | null;
+  salary_min?: number | string | null;
+  salary_max?: number | string | null;
+  salary_currency?: string | null;
+  closes_on?: string | null;
+  /** The public careers credential. NULL = not published. */
+  public_token?: string | null;
+  published_at?: string | null;
 };
 export type Applicant = {
   applicant_id: string;
@@ -204,6 +279,70 @@ export type Applicant = {
   email?: string | null;
   phone?: string | null;
   status: string; // APPLIED | SHORTLISTED | INTERVIEWED | HIRED | REJECTED | TALENT_POOL
+  // 0525
+  address?: string | null;
+  skills?: string[] | null;
+  experience_years?: number | string | null;
+  expected_salary?: number | string | null;
+  portfolio_url?: string | null;
+  cover_note?: string | null;
+  cv_vault_id?: string | null;
+  source?: string | null;
+  applied_at?: string | null;
+  ai_score?: number | null;
+  ai_breakdown?: AiBreakdown | null;
+  ai_summary?: string | null;
+  /**
+   * TRUE = a cheap estimate from the fields the candidate typed; THE CV HAS NOT
+   * BEEN READ. FALSE = a full model read of the résumé.
+   *
+   * Never render `ai_score` without this. The two numbers live in one column and
+   * are not comparable — showing "97% match" without saying which kind it is is
+   * how somebody gets rejected on a score that never opened their CV.
+   */
+  ai_provisional?: boolean;
+  ai_scored_at?: string | null;
+  ai_model?: string | null;
+  /** The interviewer's average, 0–5. Derived from the per-question ratings and
+   *  deliberately NEVER folded into ai_score — the point of a scorecard is that
+   *  a human may disagree with the model. */
+  rating?: number | string | null;
+  /** Only present on talent-pool results. */
+  vacancy_title?: string | null;
+};
+export type AiCriterionScore = { label: string; weight?: number; score: number | null; note?: string | null };
+export type AiBreakdown = {
+  skills?: number | null;
+  experience?: number | null;
+  salary_fit?: number | null;
+  portfolio?: number | null;
+  criteria?: AiCriterionScore[];
+  /** False when the CV could not be opened — the score stands, with a dimension
+   *  missing, and the panel must say so rather than implying a full read. */
+  cv_read?: boolean;
+};
+export type VacancyCriterion = {
+  vacancy_criterion_id: string;
+  vacancy_id: string;
+  label: string;
+  guidance?: string | null;
+  weight: number | string;
+  position?: number;
+};
+export type VacancyQuestion = {
+  vacancy_question_id: string;
+  vacancy_id: string;
+  position: number;
+  question: string;
+  rationale?: string | null;
+  ai_generated: boolean;
+};
+export type ApplicantAnswer = {
+  applicant_answer_id: string;
+  applicant_id: string;
+  vacancy_question_id: string;
+  rating?: number | string | null;
+  notes?: string | null;
 };
 export const listVacancies = () => tenant<Vacancy[]>("/vacancies");
 // `scope_id` is the department reference (0490), carried onto the employee
@@ -217,6 +356,45 @@ export const addApplicant = (vacancyId: string, body: { full_name: string; email
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, { method: "POST", body });
 export const setApplicantStatus = (vacancyId: string, applicantId: string, status: string) =>
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants/${applicantId}`, { method: "PATCH", body: { status } });
+
+/* ── AI scoring, criteria, questions, scorecard, publishing (0525) ── */
+
+/** The FULL read — opens the CV and scores it against the JD and criteria.
+ *  Seconds, not milliseconds, and it spends the tenant's AI budget: this is
+ *  never called on render, only when somebody presses Score. */
+export const scoreApplicant = (vacancyId: string, applicantId: string) =>
+  tenant<Applicant>(`/vacancies/${vacancyId}/applicants/${applicantId}/score`, { method: "POST", body: {} });
+
+export const listCriteria = (vacancyId: string) => tenant<VacancyCriterion[]>(`/vacancies/${vacancyId}/criteria`);
+export const addCriterion = (vacancyId: string, body: { label: string; guidance?: string; weight?: number }) =>
+  tenant<VacancyCriterion>(`/vacancies/${vacancyId}/criteria`, { method: "POST", body });
+export const removeCriterion = (vacancyId: string, criterionId: string) =>
+  tenant(`/vacancies/${vacancyId}/criteria/${criterionId}`, { method: "DELETE" });
+
+export const listQuestions = (vacancyId: string) => tenant<VacancyQuestion[]>(`/vacancies/${vacancyId}/questions`);
+export const addQuestion = (vacancyId: string, body: { question: string; rationale?: string }) =>
+  tenant<VacancyQuestion>(`/vacancies/${vacancyId}/questions`, { method: "POST", body });
+export const removeQuestion = (vacancyId: string, questionId: string) =>
+  tenant(`/vacancies/${vacancyId}/questions/${questionId}`, { method: "DELETE" });
+/** Redrafts the AI-written questions. Hand-written ones survive. */
+export const generateQuestions = (vacancyId: string) =>
+  tenant<VacancyQuestion[]>(`/vacancies/${vacancyId}/questions/generate`, { method: "POST", body: {} });
+
+export const listAnswers = (vacancyId: string, applicantId: string) =>
+  tenant<ApplicantAnswer[]>(`/vacancies/${vacancyId}/applicants/${applicantId}/answers`);
+export const rateAnswer = (vacancyId: string, applicantId: string, body: { vacancy_question_id: string; rating: number | null; notes?: string }) =>
+  tenant<ApplicantAnswer & { overall_rating?: number | null }>(
+    `/vacancies/${vacancyId}/applicants/${applicantId}/answers`, { method: "POST", body });
+
+/** Everyone previously seen who wasn't hired — across every vacancy, which is
+ *  the whole point: the right person for this role applied for another one. */
+export const searchTalentPool = (params?: { q?: string; limit?: number }) =>
+  tenant<Applicant[]>("/vacancies/talent-pool" + qs({ q: params?.q, limit: params?.limit ? String(params.limit) : undefined }));
+
+/** Publishing MINTS a token; unpublishing DISCARDS it. Re-publishing produces a
+ *  DIFFERENT link — every URL handed out under the old one stops working. */
+export const setVacancyPublished = (id: string, published: boolean) =>
+  tenant<Vacancy>(`/vacancies/${id}/publish`, { method: "POST", body: { published } });
 
 /* ── Trainings + attendance roster ── */
 export type Training = {
@@ -242,6 +420,42 @@ export const addTrainingAttendee = (trainingId: string, employee_id: string) =>
   tenant<TrainingAttendee>(`/trainings/${trainingId}/attendees`, { method: "POST", body: { employee_id } });
 export const setTrainingAttendee = (trainingId: string, attendeeId: string, attended: boolean) =>
   tenant<TrainingAttendee>(`/trainings/${trainingId}/attendees/${attendeeId}`, { method: "PATCH", body: { attended } });
+
+/* ── Worksite place search (Geoapify, via the HR endpoint) ──────────────────
+ * Not /geo-places/search: that one is gated on MOD-29 + the `operations`
+ * feature because it WRITES the ports catalogue. Placing a geofence pin is a
+ * read, and HR admins have neither grant. */
+export type PlaceHit = {
+  provider_place_id?: string | null;
+  name?: string | null;
+  formatted?: string | null;
+  country?: string | null;
+  region?: string | null;
+  latitude: number;
+  longitude: number;
+  confidence?: number | null;
+};
+export type PlaceSearch = {
+  /** OK | QUERY_TOO_SHORT | NO_KEY | TIMEOUT | UNAUTHORISED | RATE_LIMITED | PROVIDER_ERROR */
+  status: string;
+  results: PlaceHit[];
+  query: string;
+};
+/** Why the search came back empty, in words the person reading it can act on.
+ *  A bare "no results" turns a missing provider key into a user who believes
+ *  their own yard does not exist. */
+export const PLACE_SEARCH_MESSAGE: Record<string, string> = {
+  QUERY_TOO_SHORT: "Type at least 3 characters.",
+  NO_KEY: "Location search isn't configured — ask your administrator to set the Geoapify key.",
+  TIMEOUT: "The location provider didn't answer in time. Try again, or enter coordinates by hand.",
+  UNAUTHORISED: "The location provider rejected our key — ask your administrator to check it.",
+  RATE_LIMITED: "Today's location-search quota is used up. Enter coordinates by hand for now.",
+  PROVIDER_ERROR: "The location provider failed. Enter coordinates by hand, or try again shortly.",
+};
+export const searchPlaces = (q: string, opts: { country?: string; limit?: number } = {}) =>
+  tenant<PlaceSearch>(
+    "/attendance/place-search" + qs({ q, country: opts.country, limit: opts.limit ? String(opts.limit) : undefined }),
+  );
 
 export const listSites = () => tenant<WorkSite[]>("/attendance/work-sites");
 export const createSite = (body: { name: string; latitude: number; longitude: number; radius_m?: number }) =>

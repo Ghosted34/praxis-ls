@@ -55,6 +55,9 @@ function lazyNamed<K extends string, M extends { [P in K]: ComponentType }>(
 
 const ResetPasswordPage = lazyNamed(() => import("@/features/auth/reset-password-page"), "ResetPasswordPage");
 const PortalApp = lazyNamed(() => import("@/features/portal/portal-app"), "PortalApp");
+// Public careers. Lazy like everything else — it is the one route most visitors
+// to this origin will never load, and staff never load it at all.
+const CareersPage = lazyNamed(() => import("@/features/careers/careers-page"), "CareersPage");
 const PortalAccessPage = lazyNamed(() => import("@/features/portal/pages"), "PortalAccessPage");
 
 const DashboardPage = lazyNamed(() => import("@/features/dashboard"), "DashboardPage");
@@ -227,6 +230,24 @@ export function App() {
             route added later and an external user is looking at a staff screen.
             Separate prefix, no overlap, and it reads better in an invite email. */}
         <Route path="/client-portal/*" element={<PortalApp />} />
+
+        {/* Public careers. OUTSIDE RequireAuth and OUTSIDE AppShell, for the
+            same reason the client portal is: the visitor is a stranger with no
+            account. The shell would put the icon rail, the ribbon, the LIVE/TEST
+            toggle, the clock and the copilot in front of a job applicant —
+            several of which fire authenticated requests on mount and would send
+            an anonymous visitor down the session-death path.
+
+            The token in the URL is the vacancy's minted `public_token`, which is
+            the ONLY credential the apply endpoint accepts. It is never a
+            vacancy_id: ids appear in staff URLs and logs, and accepting one here
+            would make every internal identifier a public credential.
+
+            Two routes rather than a splat, so `/careers/anything/else` falls to
+            the catch-all rather than rendering a detail view for a token that
+            has a slash in it. */}
+        <Route path="/careers" element={<CareersPage />} />
+        <Route path="/careers/:token" element={<CareersPage />} />
 
       {/* ShellProvider sits INSIDE RequireAuth (its two reads need a token) and
           OUTSIDE AppShell, so the routed screens are inside it too — the rail

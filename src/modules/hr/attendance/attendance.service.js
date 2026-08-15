@@ -41,6 +41,83 @@ async function geofenceMode(client) {
 }
 
 /**
+ * off | warn | block, DEFAULT OFF — and the difference from the geofence
+ * default is deliberate.
+ *
+ * A tenant that upgrades into this migration has no registered devices, by
+ * definition. Defaulting to `warn` would mark every punch in the company
+ * untrusted on day one, which trains everybody to ignore the flag before it
+ * has ever meant anything. Defaulting to `block` would stop the clock outright.
+ * Off means nothing changes until an administrator turns it on, having first
+ * let people register.
+ */
+async function devicePolicy(client) {
+  const v = await getSetting(client, "hr", "device_policy", "off");
+  const mode = typeof v === "string" ? v : (v && v.mode) || "off";
+  return ["off", "warn", "block"].includes(mode) ? mode : "off";
+}
+
+/** A recognisable name for a device nobody has named yet. */
+function deviceLabelFrom(userAgent) {
+  const ua = String(userAgent || "");
+  const os =
+    /Android/i.test(ua) ? "Android" :
+    /iPhone|iPad|iPod/i.test(ua) ? "iOS" :
+    /Windows/i.test(ua) ? "Windows" :
+    /Mac OS X|Macintosh/i.test(ua) ? "Mac" :
+    /Linux/i.test(ua) ? "Linux" : null;
+  const browser =
+    // Order matters: Edge and Opera both claim Chrome, Chrome claims Safari.
+    /Edg\//i.test(ua) ? "Edge" :
+    /OPR\/|Opera/i.test(ua) ? "Opera" :
+    /Chrome\//i.test(ua) ? "Chrome" :
+    /Firefox\//i.test(ua) ? "Firefox" :
+    /Safari\//i.test(ua) ? "Safari" : null;
+  return [os, browser].filter(Boolean).join(" · ") || "Unrecognised device";
+}
+
+/**
+ * Resolve the device presented with a punch against the register + the policy.
+ *
+ * Returns { device, trusted, blocked, reason }. `trusted` is null when no
+ * device was presented at all (an older client, or the policy is off) — the
+ * same three-valued convention `within_geofence` uses, and for the same reason:
+ * "we did not check" must not be recorded as "we checked and it failed".
+ */
+async function resolveDevice(client, { employeeId, device }) {
+  const mode = await devicePolicy(client);
+  const fingerprint = device && typeof device.fingerprint === "string" ? device.fingerprint.trim() : "";
+  if (mode === "off" || !fingerprint) {
+    // Under `block`, a client that sends nothing must not sail through — that
+    // is the whole point of the setting, and "my app is old" is not a defence
+    // an attendance policy can accept.
+    if (mode === "block" && !fingerprint) {
+      return { device: null, trusted: null, blocked: true, reason: "This device isn't registered — register it before clocking in" };
+    }
+    return { device: null, trusted: null, blocked: false, reason: null };
+  }
+  const row = await repo.upsertDevice(client, {
+    employeeId,
+    fingerprint,
+    label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+    userAgent: device.user_agent || null,
+    platform: device.platform || null,
+  });
+  const trusted = row.status === "TRUSTED";
+  if (mode === "block" && !trusted) {
+    return {
+      device: row,
+      trusted,
+      blocked: true,
+      reason: row.status === "REVOKED"
+        ? "This device has been blocked for clocking in — speak to HR"
+        : "This device is waiting for approval before it can clock you in",
+    };
+  }
+  return { device: row, trusted, blocked: false, reason: null };
+}
+
+/**
  * Resolve a captured point against the entity's worksites + reverse-geocode it.
  * within = true/false when a site exists; null when no coords or no sites (so the
  * "block" policy never traps a tenant that hasn't defined any geofence yet).
@@ -121,8 +198,8 @@ module.exports = {
     return repo.openForEmployee(client, empId);
   },
 
-  /** Clock in: geofenced, one open shift at a time. */
-  async clockIn(client, { employeeId = null, latitude = null, longitude = null, accuracy = null, actor = {} }) {
+  /** Clock in: geofenced, device-checked, one open shift at a time. */
+  async clockIn(client, { employeeId = null, latitude = null, longitude = null, accuracy = null, device = null, actor = {} }) {
     const empId = await resolveEmployee(client, employeeId, actor);
     await employeeService.assertActive(client, empId);
     if (await repo.openForEmployee(client, empId)) {
@@ -138,18 +215,40 @@ module.exports = {
         422,
       );
     }
+    /*
+     * The device is resolved BEFORE the refusal below, not after, and that
+     * ordering is the point: an unapproved device that is turned away must
+     * still be ON THE REGISTER, dated, for the manager who has to decide about
+     * it. Refusing first would mean the only devices anyone could ever see are
+     * the ones that were already allowed — the register would list exactly the
+     * rows nobody needed to look at.
+     */
+    const dev = await resolveDevice(client, { employeeId: empId, device });
+    if (dev.blocked) throw new AppError("DEVICE_NOT_REGISTERED", dev.reason, 422);
     const row = await repo.insert(client, {
       employee_id: empId,
       clock_in_at: new Date(),
       latitude, longitude, accuracy_m: accuracy,
       work_site_id: geo.work_site_id, distance_m: geo.distance_m,
       within_geofence: geo.within, geo_label: geo.label,
+      hr_device_id: dev.device ? dev.device.hr_device_id : null,
+      device_trusted: dev.trusted,
       location: latitude !== null && latitude !== undefined && longitude !== null && longitude !== undefined ? { lat: latitude, lng: longitude, accuracy } : null,
     });
     const entityRef = `attendance:${row.attendance_id}`;
     await emitEvent(client, { eventTypeKey: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null, payload: { within_geofence: geo.within, work_site_id: geo.work_site_id } });
     if (geo.within === false) {
       await emitEvent(client, { eventTypeKey: events.OFFSITE, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null, payload: { distance_m: geo.distance_m } });
+    }
+    // A punch from a device nobody has approved is the signal this table exists
+    // to raise — under `warn` it is accepted, so the event is the ONLY trace a
+    // manager gets in the moment.
+    if (dev.device && !dev.trusted) {
+      await emitEvent(client, {
+        eventTypeKey: events.UNTRUSTED_DEVICE, moduleKey: events.MODULE, entityRef,
+        actorUserId: actor.user_id || null,
+        payload: { hr_device_id: dev.device.hr_device_id, status: dev.device.status },
+      });
     }
     await audit(client, { actorUserId: actor.user_id || null, action: events.CLOCKED_IN, moduleKey: events.MODULE, entityRef, after: row });
     return row;
@@ -180,6 +279,78 @@ module.exports = {
     const entityRef = `attendance:${before.attendance_id}`;
     await emitEvent(client, { eventTypeKey: events.CLOCKED_OUT, moduleKey: events.MODULE, entityRef, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CLOCKED_OUT, moduleKey: events.MODULE, entityRef, before, after: row });
+    return row;
+  },
+
+  /**
+   * Candidate places for the worksite form — "where is the Douala yard?"
+   *
+   * WHY THIS EXISTS RATHER THAN REUSING /geo-places/search. That endpoint is
+   * gated on MOD-29 + the `operations` feature, because it writes into the ports
+   * catalogue every dossier and the Control Tower map inherit. An HR admin
+   * defining a geofence has neither grant and should not need them: they are
+   * placing ONE pin on ONE worksite row, not adding reference data. So this is a
+   * read-only pass-through to the provider gated on MOD-14 edit — the same grant
+   * that creates the worksite the coordinate is for. Nothing is persisted here.
+   *
+   * Never throws: `searchPlaces` returns a { status, results } taxonomy so the
+   * form can distinguish "no such place" from "nobody configured a provider key",
+   * which are different problems with different owners.
+   */
+  searchPlaces: (q, { country = null, limit = 6 } = {}) =>
+    geoapify.searchPlaces(q, { limit, countryCodes: country ? [country] : null }),
+
+  // ── Registered devices (0524) ──
+  listDevices: (client, q = {}) => repo.listDevices(client, { employeeId: q.employee_id || null }),
+
+  /**
+   * Register the caller's current device, without punching.
+   *
+   * The clock registers on first use anyway, so this exists for the case that
+   * would otherwise have no route: a tenant on `block`, where the first punch
+   * from a new device is refused and the employee needs SOMETHING that puts the
+   * row in front of a manager. Idempotent — the same device twice is one row.
+   */
+  async registerDevice(client, { employeeId = null, device = {}, actor = {} }) {
+    const empId = await resolveEmployee(client, employeeId, actor);
+    const fingerprint = String(device.fingerprint || "").trim();
+    if (!fingerprint) throw new AppError("NO_FINGERPRINT", "This browser didn't provide a device id", 422);
+    const row = await repo.upsertDevice(client, {
+      employeeId: empId,
+      fingerprint,
+      label: (device.label && String(device.label).trim()) || deviceLabelFrom(device.user_agent),
+      userAgent: device.user_agent || null,
+      platform: device.platform || null,
+    });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.DEVICE_CHANGED, moduleKey: events.MODULE, entityRef: `hr_device:${row.hr_device_id}`, after: row });
+    return row;
+  },
+
+  /**
+   * Approve, revoke or rename a device.
+   *
+   * REVOKED IS TERMINAL, and the check is here rather than in the validator
+   * because it is a rule about the record's history, not about the shape of the
+   * request. Un-revoking silently would let a device that a manager blocked
+   * come back as merely "pending" and then be waved through by whoever handles
+   * the queue next, with nothing on screen saying it had been blocked before.
+   * Re-admitting a blocked device should mean deleting it and registering it
+   * again, deliberately.
+   */
+  async setDeviceStatus(client, { id, patch = {}, actor = {} }) {
+    const before = await repo.getDevice(client, id);
+    if (!before) throw new AppError("NOT_FOUND", "Device not found", 404);
+    const fields = {};
+    if (patch.label !== undefined) fields.label = String(patch.label).trim();
+    if (patch.status !== undefined) {
+      if (before.status === "REVOKED" && patch.status !== "REVOKED") {
+        throw new AppError("DEVICE_REVOKED", "This device was blocked. Remove it and register it again rather than re-approving it.", 422);
+      }
+      fields.status = patch.status;
+    }
+    const row = await repo.updateDevice(client, id, fields);
+    await emitEvent(client, { eventTypeKey: events.DEVICE_CHANGED, moduleKey: events.MODULE, entityRef: `hr_device:${id}`, actorUserId: actor.user_id || null, payload: { status: row.status } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.DEVICE_CHANGED, moduleKey: events.MODULE, entityRef: `hr_device:${id}`, before, after: row });
     return row;
   },
 

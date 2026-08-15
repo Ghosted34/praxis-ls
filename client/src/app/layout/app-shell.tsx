@@ -51,6 +51,7 @@ import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { getMode, setMode, resolved } from "@/lib/theme-mode";
+import { ClockPunchChip } from "@/components/clock-punch";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
@@ -788,9 +789,12 @@ export function AppShell() {
             <span className="hidden text-xs lg:inline">Search…</span>
             <span className="ml-4 hidden rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold lg:inline">⌘K</span>
           </button>
-          {/* Two renderings of one control, split at `sm`: the segmented toggle
-              for a pointer, the chip + sheet + confirmation for a thumb. Only
-              ever one of them is on screen. */}
+          {/* Clocking in is a STATE, not a quick action — it lasts a shift, and
+              until now the only desktop route to it was one click deep inside
+              the quick-actions menu, whose burst icon gives no hint whether a
+              shift is running. It sits with the other always-true facts of the
+              session (which environment, which account). */}
+          <ClockPunchChip />
           <EnvToggle env={env} onSwitch={switchEnv} />
           <EnvChip env={env} onSwitch={switchEnv} />
           {/* `sm:` — 36px is a lot of a 360px strip to hold permanently for a

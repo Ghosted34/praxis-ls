@@ -19,6 +19,7 @@ import { useResource, errMsg } from "@/lib/use-resource";
 import { enumLabel } from "@/lib/format";
 import * as api from "@/lib/hr-api";
 import { LoadingRow } from "@/components/ui/states";
+import { ApplicantDrawer, CriteriaEditor } from "./applicant-drawer";
 
 const shell = pageShell.wide;
 const VAC_TONE: Record<string, Tone> = { DRAFT: "mute", OPEN: "ok", CLOSED: "mute" };
@@ -101,6 +102,35 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
   const [adding, setAdding] = React.useState(false);
   const [busy, setBusy] = React.useState<string | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [openApplicant, setOpenApplicant] = React.useState<api.Applicant | null>(null);
+  const [copied, setCopied] = React.useState(false);
+
+  const publicUrl = vacancy.public_token
+    // Same origin: the tenant is resolved from the HOST, so the careers page for
+    // this workspace is on this workspace's own domain. Building it from
+    // window.location rather than a configured base means a tenant on a custom
+    // domain gets their own domain in the link.
+    ? `${window.location.origin}/careers/${vacancy.public_token}`
+    : null;
+
+  async function togglePublish() {
+    const next = !vacancy.public_token;
+    if (!next && !window.confirm(
+      "Unpublish this role?\n\nThe careers link stops working immediately, and re-publishing creates a DIFFERENT link — anyone holding the old one will not be able to apply again.",
+    )) return;
+    setBusy("publish"); setError(null);
+    try { setVacancy(await api.setVacancyPublished(vacancy.vacancy_id, next)); onChanged(); }
+    catch (e) { setError(errMsg(e)); } finally { setBusy(null); }
+  }
+
+  async function copyLink() {
+    if (!publicUrl) return;
+    try {
+      await navigator.clipboard.writeText(publicUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch { setError("Couldn't copy — select the link and copy it by hand."); }
+  }
 
   async function vacStatus(status: string) {
     setBusy("vac:" + status); setError(null);
@@ -147,9 +177,25 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
           {(VAC_TRANSITIONS[vacancy.status] || []).map((s) => (
             <Button key={s} size="sm" variant={s === "CLOSED" ? "outline" : "default"} loading={busy === "vac:" + s} onClick={() => vacStatus(s)}>{VAC_LABEL[s] || s}</Button>
           ))}
+          {/* Publishing is only offered on an OPEN role — the server refuses
+              otherwise, and an enabled button that always fails is worse than
+              no button. */}
+          {vacancy.status === "OPEN" && (
+            <Button size="sm" variant="outline" loading={busy === "publish"} onClick={togglePublish}>
+              {vacancy.public_token ? "Unpublish" : "Publish to careers"}
+            </Button>
+          )}
           <Button size="sm" onClick={() => setAdding(true)}>Add applicant</Button>
         </div>
       </div>
+
+      {publicUrl && (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 px-3 py-2">
+          <Pill tone="ok">Live</Pill>
+          <code className="min-w-0 flex-1 truncate text-xs text-muted-foreground">{publicUrl}</code>
+          <Button size="sm" variant="outline" onClick={copyLink}>{copied ? "Copied" : "Copy link"}</Button>
+        </div>
+      )}
 
       {error && <ErrorState message={error} />}
 
@@ -163,8 +209,31 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
             <div className="max-h-[62vh] space-y-2 overflow-y-auto rounded-lg border bg-muted/30 p-2 min-h-24">
               {applicants.loading ? <LoadingRow /> : (byStatus[col] || []).map((a) => (
                 <div key={a.applicant_id} className="rounded-md border bg-card p-3">
-                  <div className="text-sm font-medium text-foreground">{a.full_name}</div>
+                  {/* The name opens the panel. The card stays a div rather than
+                      becoming a button, because it also contains the stage
+                      buttons — nesting those inside a button is invalid markup
+                      and makes the whole card one confused tab stop. */}
+                  <button
+                    type="button"
+                    onClick={() => setOpenApplicant(a)}
+                    className="block w-full truncate text-left text-sm font-medium text-foreground hover:underline"
+                  >
+                    {a.full_name}
+                  </button>
                   {(a.email || a.phone) && <div className="mt-0.5 micro truncate">{a.email || a.phone}</div>}
+                  <div className="mt-1.5 flex items-center gap-1.5">
+                    {typeof a.ai_score === "number" && (
+                      // Provisional scores are muted and marked with a tilde.
+                      // The same number means two different things in this
+                      // column and the card is where a recruiter skims fastest,
+                      // so the distinction has to survive at this size.
+                      <Pill tone={a.ai_provisional === false ? "ok" : "mute"}>
+                        {a.ai_provisional === false ? "" : "~"}{a.ai_score}
+                      </Pill>
+                    )}
+                    {a.rating != null && <span className="micro">★ {Number(a.rating).toFixed(1)}</span>}
+                    {a.cv_vault_id && <span className="micro">CV</span>}
+                  </div>
                   <div className="mt-2">{cardActions(a)}</div>
                 </div>
               ))}
@@ -173,7 +242,16 @@ function Pipeline({ vacancy: initial, onChanged }: { vacancy: api.Vacancy; onCha
         ))}
       </div>
 
+      <CriteriaEditor vacancyId={vacancy.vacancy_id} />
+
       {adding && <AddApplicantForm vacancyId={vacancy.vacancy_id} onClose={() => setAdding(false)} onSaved={applicants.reload} />}
+      {openApplicant && (
+        <ApplicantDrawer
+          applicant={openApplicant}
+          onClose={() => setOpenApplicant(null)}
+          onChanged={applicants.reload}
+        />
+      )}
     </div>
   );
 }

@@ -7,6 +7,7 @@
  * than in a banner — the two halves of F12 that PR1's errMsg consolidation
  * could not reach from a helper.
  */
+import * as React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -84,6 +85,90 @@ function InvoiceForm({
       <FormError form={form} />
       <button type="submit">Submit invoice</button>
     </Form>
+  );
+}
+
+/**
+ * The shape `clients.tsx` has: `name` is required by the schema but has no
+ * control — it is derived from the legal/trading name the user actually types.
+ */
+const derivedName = z.object({
+  name: z.string().trim().min(1, "Client name is required."),
+  legal_name: z.string().optional(),
+});
+
+function DerivedNameForm({
+  onSubmit,
+}: {
+  onSubmit: (v: { name: string; legal_name?: string }) => Promise<void>;
+}) {
+  const form = useZodForm(derivedName, {
+    defaultValues: { name: "", legal_name: "" },
+  });
+  const legalName = form.watch("legal_name");
+  React.useEffect(() => {
+    form.setValue("name", (legalName || "").trim(), { shouldValidate: true });
+  }, [legalName, form]);
+
+  return (
+    <Form form={form} onSubmit={onSubmit}>
+      <FormField form={form} name="legal_name" label="Legal name" required>
+        {(field) => <Input {...field} />}
+      </FormField>
+      <FormError form={form} />
+      <button type="submit">Save client</button>
+    </Form>
+  );
+}
+
+const nestedContact = z.object({
+  contact: z.object({
+    email: z.string().email("Enter a valid email address."),
+  }),
+});
+
+function NestedForm() {
+  const form = useZodForm(nestedContact, {
+    defaultValues: { contact: { email: "" } },
+  });
+  return (
+    <Form form={form} onSubmit={vi.fn()}>
+      <FormField
+        form={form}
+        name="contact.email"
+        label="Contact email"
+        required
+      >
+        {/* `field.value` types as the union of every path, so coerce as the screens do. */}
+        {(field) => <Input {...field} value={String(field.value ?? "")} />}
+      </FormField>
+      <FormError form={form} />
+      <button type="submit">Save contact</button>
+    </Form>
+  );
+}
+
+const titled = z.object({ title: z.string().min(1, "A title is required.") });
+
+/** A modal over a page, both owning a field called `title`. */
+function TwoForms() {
+  const page = useZodForm(titled, { defaultValues: { title: "" } });
+  const modal = useZodForm(titled, { defaultValues: { title: "" } });
+  return (
+    <>
+      <Form form={page} onSubmit={vi.fn()}>
+        <FormField form={page} name="title" label="Page title" required>
+          {(field) => <Input {...field} />}
+        </FormField>
+        <button type="submit">Save page</button>
+      </Form>
+      <Form form={modal} onSubmit={vi.fn()}>
+        <FormField form={modal} name="title" label="Modal title" required>
+          {(field) => <Input {...field} />}
+        </FormField>
+        <button type="submit">Save modal</button>
+      </Form>
+    </>
   );
 }
 
@@ -216,6 +301,98 @@ describe("Form", () => {
         "You don't have permission to do this.",
       ),
     );
+  });
+
+  /**
+   * THE SILENT FAIL, at the primitive.
+   *
+   * `clientMaster.create` hard-requires `name`; the client form collects
+   * `legal_name`/`trading_name` and derives `name` on submit. `handleSubmit`
+   * runs the schema FIRST, so it rejected the empty `name`, never called
+   * `onSubmit`, and — `name` having no `<Field>` to render its message — left
+   * the Save button doing nothing at all, with nothing on screen to explain it.
+   *
+   * A rule the screen cannot show must reach the user somewhere, or "invalid"
+   * and "broken" are indistinguishable from the outside.
+   */
+  it("names a rule the screen has no field for, instead of silently doing nothing", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn();
+    render(<DerivedNameForm onSubmit={onSubmit} />);
+
+    await user.click(screen.getByRole("button", { name: "Save client" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        "Client name is required.",
+      ),
+    );
+    expect(onSubmit).not.toHaveBeenCalled();
+  });
+
+  it("drops that banner once the stranded rule is satisfied", async () => {
+    const user = userEvent.setup();
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<DerivedNameForm onSubmit={onSubmit} />);
+
+    await user.click(screen.getByRole("button", { name: "Save client" }));
+    await waitFor(() => expect(screen.getByRole("alert")).toBeInTheDocument());
+
+    // Typing a legal name derives `name`, which is the whole point of the sync.
+    await user.type(
+      screen.getByRole("textbox", { name: "Legal name" }),
+      "Bolloré Transport",
+    );
+    await user.click(screen.getByRole("button", { name: "Save client" }));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalled());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  /**
+   * REGRESSION — the error object is a TREE.
+   *
+   * A failure on `contact.email` arrives as `{ contact: { email: {…} } }`.
+   * Reading only the top level yields the CONTAINER: no `message`, and a path
+   * (`contact`) no control answers to — so a form behaving perfectly, with its
+   * message already on the input, also announced "contact: Invalid".
+   */
+  it("does not invent a banner for a nested field that already shows its message", async () => {
+    const user = userEvent.setup();
+    render(<NestedForm />);
+
+    await user.click(screen.getByRole("button", { name: "Save contact" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Contact email" }),
+      ).toHaveAttribute("aria-invalid", "true"),
+    );
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  /**
+   * REGRESSION — a modal and the page behind it both have a `name` field.
+   *
+   * The lookup that decides "is this message on screen?" used to be a
+   * `document`-wide `querySelector('[name=…]')`, which resolves to the FIRST
+   * match in the document — the page's field, not the submitting modal's. It
+   * then focused and smooth-scrolled to it, which both moved the viewport to an
+   * unrelated form and, by touching that field, lit it up as invalid.
+   */
+  it("leaves an identically-named field in another form alone", async () => {
+    const user = userEvent.setup();
+    render(<TwoForms />);
+    const pageField = screen.getByRole("textbox", { name: "Page title" });
+
+    await user.click(screen.getByRole("button", { name: "Save modal" }));
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("textbox", { name: "Modal title" }),
+      ).toHaveAttribute("aria-invalid", "true"),
+    );
+    expect(pageField).not.toHaveAttribute("aria-invalid");
   });
 
   it("has no axe violations, valid or invalid", async () => {

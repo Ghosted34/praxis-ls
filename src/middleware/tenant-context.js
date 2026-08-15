@@ -80,6 +80,47 @@ function tenantContext(req, res, next) {
   let leaseEnv = null;
   let released = false;
 
+  /** Point the shared lease at an environment's schema, acquiring it first
+   *  time. `registry.acquire` owns the SET on checkout, so a later switch is
+   *  the one place that repeats it. */
+  async function pin(wantEnv) {
+    if (!lease) {
+      lease = await registry.acquire(req.tenant, wantEnv);
+      leaseEnv = wantEnv;
+      return;
+    }
+    if (leaseEnv === wantEnv) return;
+    const schema =
+      wantEnv === "sandbox"
+        ? req.tenant.sandbox_schema || "sandbox"
+        : req.tenant.live_schema || "live";
+    await lease.query(`SET search_path = ${schema}, public`);
+    lease[registry.SCHEMA] = schema;
+    leaseEnv = wantEnv;
+  }
+
+  /**
+   * Run `fn` with the connection pinned to `wantEnv`, then PUT THE PIN BACK.
+   *
+   * The restore is the whole point, and it is a bug fix. `tenantDb` and
+   * `identityDb` share one connection, and switching between them re-binds
+   * `search_path` — so a NESTED call left the connection pointing somewhere the
+   * outer callback did not expect:
+   *
+   *     req.tenantDb(async (c) =>                       // sandbox
+   *       service.update(c, { patch: await withDepartment(req, body) }))
+   *                              ^ req.identityDb → SET search_path = live
+   *                                …and `service.update` then ran on LIVE.
+   *
+   * Under sandbox that made `PATCH /vacancies/:id` answer "Vacancy not found"
+   * (it looked in live for a sandbox row) and, far worse, made `POST` on the
+   * same controllers INSERT a sandbox session's row into the LIVE schema.
+   * Employees and vacancies both took that path.
+   *
+   * Restoring costs one extra `SET` per nested call and makes the nesting safe
+   * everywhere rather than in the four handlers that happened to be found. The
+   * call sites were also unnested, so this is the belt and that is the braces.
+   */
   async function withPinned(wantEnv, fn) {
     if (released) {
       // Called after releaseDb() or after the response finished. Fall back to
@@ -87,21 +128,17 @@ function tenantContext(req, res, next) {
       // failing is worse than one extra connection.
       return registry.withTenantConnection(req.tenant, wantEnv, fn);
     }
-    if (!lease) {
-      lease = await registry.acquire(req.tenant, wantEnv);
-      leaseEnv = wantEnv;
-    } else if (leaseEnv !== wantEnv) {
-      // Same connection, different schema. registry.acquire owns the SET, so
-      // go through it rather than duplicating the search_path string here.
-      const schema =
-        wantEnv === "sandbox"
-          ? req.tenant.sandbox_schema || "sandbox"
-          : req.tenant.live_schema || "live";
-      await lease.query(`SET search_path = ${schema}, public`);
-      lease[registry.SCHEMA] = schema;
-      leaseEnv = wantEnv;
+    const outerEnv = lease ? leaseEnv : null;
+    await pin(wantEnv);
+    try {
+      return await fn(lease);
+    } finally {
+      // Only when this call actually moved the pin, and only while the lease is
+      // still ours — a handler that released mid-flight has nothing to restore.
+      if (outerEnv && outerEnv !== wantEnv && !released && lease) {
+        await pin(outerEnv);
+      }
     }
-    return fn(lease);
   }
 
   req.releaseDb = () => {

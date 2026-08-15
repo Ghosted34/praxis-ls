@@ -36,8 +36,18 @@ module.exports = {
   })),
   // Department is a scope (0490) — resolved on the identity client, since the
   // scope tree lives in the live schema while `employee` does not.
-  create: asyncHandler(async (req, res) => res.status(201).json({ data: await req.tenantDb(async (c) => service.create(c, { data: await withDepartment(req, req.body), actor: actor(req) })) })),
-  update: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb(async (c) => service.update(c, { id: req.params.id, patch: await withDepartment(req, req.body), actor: actor(req) })) })),
+  // Resolved BEFORE the tenant callback opens: `withDepartment` reads the
+  // identity schema on the same connection, and doing it inside left the
+  // connection on LIVE for the rest of the callback — so a sandbox session
+  // wrote employee rows into the live schema. See middleware/tenant-context.
+  create: asyncHandler(async (req, res) => {
+    const data = await withDepartment(req, req.body);
+    res.status(201).json({ data: await req.tenantDb((c) => service.create(c, { data, actor: actor(req) })) });
+  }),
+  update: asyncHandler(async (req, res) => {
+    const patch = await withDepartment(req, req.body);
+    res.json({ data: await req.tenantDb((c) => service.update(c, { id: req.params.id, patch, actor: actor(req) })) });
+  }),
   setActive: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.setActive(c, { id: req.params.id, is_active: req.body.is_active, actor: actor(req) })) })),
   remove: asyncHandler(async (req, res) => res.json({ data: await req.tenantDb((c) => service.remove(c, { id: req.params.id, actor: actor(req) })) })),
 };

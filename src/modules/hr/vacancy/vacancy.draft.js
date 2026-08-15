@@ -213,7 +213,11 @@ const DRAFT_SHAPE = `{
   "department": string,
   "employment_type": "Full-time" | "Part-time" | "Contract" | "Internship" | "Temporary",
   "work_mode": "On-site" | "Hybrid" | "Remote",
-  "location": string,
+  "working_hours": "the daily hours and days as the advert would state them, e.g. '9am-5pm, Mon-Fri' — from what the hiring manager said about the working pattern; empty string if they did not say",
+  "location": "the location line a candidate reads, e.g. 'Douala, Cameroon'",
+  "location_city": "the city alone, empty string if the role is fully remote or no city was given",
+  "location_state": "the state, region or province alone, empty string if not given",
+  "location_country": "the country alone, in full — 'Cameroon', not 'CM'",
   "experience_years_min": integer,
   "skills_required": [string],
   "salary_min": number|null,
@@ -278,15 +282,25 @@ function shape(out, { entity, answers }) {
   const description = typeof out.description === "string" ? out.description.trim() : "";
   if (description.length < 60) return null; // not a usable advert
 
+  const text = (v, max) => {
+    const t = v === null || v === undefined ? "" : String(v).trim();
+    return t ? t.slice(0, max) : null;
+  };
+
   return {
     title: String(out.title || answers.title || "New role").trim().slice(0, 200),
     department: out.department ? String(out.department).trim().slice(0, 120) : null,
     employment_type: out.employment_type ? String(out.employment_type).trim().slice(0, 60) : null,
-    // `work_mode` has no column of its own — it belongs to the location line a
-    // candidate reads ("Lekki, Lagos · Hybrid"), and inventing a column for a
-    // three-value string the advert already states would be a migration for a
-    // label.
-    location: [out.location, out.work_mode].filter(Boolean).join(" · ").slice(0, 160) || null,
+    // 0684 gave each of these a column of its own. Until then `work_mode` was
+    // appended to the location line — which read fine on the careers page and
+    // left the editor's Work-mode control empty on a freshly drafted vacancy,
+    // because the answer had been baked into a sentence nothing could parse.
+    work_mode: text(out.work_mode, 40),
+    working_hours: text(out.working_hours, 120),
+    location: text(out.location, 160),
+    location_city: text(out.location_city, 120),
+    location_state: text(out.location_state, 120),
+    location_country: text(out.location_country, 120),
     experience_years_min: clampInt(out.experience_years_min, 0, 60),
     skills_required: Array.isArray(out.skills_required)
       ? [...new Set(out.skills_required.map((s) => String(s).trim()).filter(Boolean))].slice(0, 40)
@@ -305,6 +319,40 @@ function shape(out, { entity, answers }) {
  * rather than an apology. It says less than a model would; it never says
  * anything untrue.
  */
+/** "on-site five days a week" → "On-site". Null when the sentence does not say. */
+function workModeFrom(pattern) {
+  const t = String(pattern || "").toLowerCase();
+  if (/\bhybrid\b/.test(t)) return "Hybrid";
+  if (/\bremote\b|\bwork from home\b|\bwfh\b/.test(t)) return "Remote";
+  if (/\bon[-\s]?site\b|\bin[-\s]?office\b|\bon premises\b/.test(t)) return "On-site";
+  return null;
+}
+
+/**
+ * "Lekki, Lagos, Nigeria" → city / state / country.
+ *
+ * The question that produced this string asks for exactly that, in that order
+ * ("City, state, country — it matters for on-site and hybrid roles"), so the
+ * split is reading the answer rather than parsing an address. Two parts are read
+ * as city + country, which is how people actually answer it; one part is a city
+ * and nothing more is claimed.
+ */
+function splitLocation(location) {
+  const parts = String(location || "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  if (!parts.length) return {};
+  if (parts.length === 1) return { location_city: parts[0].slice(0, 120) };
+  if (parts.length === 2)
+    return { location_city: parts[0].slice(0, 120), location_country: parts[1].slice(0, 120) };
+  return {
+    location_city: parts[0].slice(0, 120),
+    location_state: parts[1].slice(0, 120),
+    location_country: parts[parts.length - 1].slice(0, 120),
+  };
+}
+
 function templateDraft({ entity, answers }) {
   const a = answers || {};
   const title = String(a.title || "New role").trim();
@@ -338,6 +386,14 @@ function templateDraft({ entity, answers }) {
     department: a.department ? String(a.department).trim().slice(0, 120) : null,
     employment_type: null,
     location: a.location ? String(a.location).trim().slice(0, 160) : null,
+    // What can be read off the answers WITHOUT inventing anything: the working
+    // pattern names its own mode, and the location question asks for "city,
+    // state, country" in that order. Anything less certain (the hours, which are
+    // buried in prose) stays null rather than being guessed — a template draft
+    // says less than a model's, and that is the deal it makes.
+    work_mode: workModeFrom(a.work_pattern),
+    working_hours: null,
+    ...splitLocation(a.location),
     experience_years_min: null,
     skills_required: [],
     salary_min: money(a.salary_min),
@@ -382,6 +438,9 @@ async function draft(client, { entity, answers }) {
 
 module.exports = {
   draft,
+  // Exported for the test that pins it: the shape IS the contract with the
+  // model, and a column the model is never asked to fill stays null forever.
+  DRAFT_SHAPE,
   followUpQuestions,
   templateDraft,
   entityContext,

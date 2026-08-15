@@ -365,3 +365,83 @@ describe("vacancy.service — calls only repo methods that exist", () => {
     expect(typeof realRepo[name]).toBe("function");
   });
 });
+
+/**
+ * The drafted advert fills the columns the editor shows (0684).
+ *
+ * 0684 gave work mode, the hours and the address parts columns of their own,
+ * and the editor a control for each — but the DRAFTING code still wrote the
+ * pre-0684 shape, folding the mode into the location line ("Douala, Cameroon ·
+ * On-site") and never mentioning the hours at all. So a recruiter who answered
+ * "on-site five days, 9am–5pm, based in Douala" got a draft with Work mode,
+ * Working hours, City and Country all empty and had to retype what they had
+ * just said. The model was never asked for them.
+ */
+describe("vacancy.draft — the advert's own fields", () => {
+  const drafting = require("../../src/modules/hr/vacancy/vacancy.draft");
+
+  it.each([
+    ["work_mode"],
+    ["working_hours"],
+    ["location_city"],
+    ["location_state"],
+    ["location_country"],
+  ])("asks the model for %s by name", (key) => {
+    // The shape IS the contract with the model. A column it is never asked to
+    // fill stays null forever, however many controls the editor grows.
+    expect(drafting.DRAFT_SHAPE).toContain(`"${key}"`);
+  });
+
+  it("keeps the model's answers in their own columns, not in the location line", () => {
+    const out = drafting.shape(
+      {
+        title: "Accountant",
+        description: "x".repeat(80),
+        work_mode: "On-site",
+        working_hours: "9am–5pm, Mon–Fri",
+        location: "Douala, Cameroon",
+        location_city: "Douala",
+        location_state: "Littoral",
+        location_country: "Cameroon",
+      },
+      { entity: null, answers: {} },
+    );
+
+    expect(out.work_mode).toBe("On-site");
+    expect(out.working_hours).toBe("9am–5pm, Mon–Fri");
+    expect(out.location_city).toBe("Douala");
+    expect(out.location_state).toBe("Littoral");
+    expect(out.location_country).toBe("Cameroon");
+    // The line a candidate reads stays a line — the mode is no longer glued on.
+    expect(out.location).toBe("Douala, Cameroon");
+  });
+
+  it("reads what it honestly can from the answers when no model was reachable", () => {
+    const out = drafting.templateDraft({
+      entity: null,
+      answers: {
+        title: "Accountant",
+        work_pattern: "On-site five days a week, 9am to 5pm",
+        location: "Douala, Littoral, Cameroon",
+      },
+    });
+
+    expect(out.work_mode).toBe("On-site");
+    expect(out.location_city).toBe("Douala");
+    expect(out.location_state).toBe("Littoral");
+    expect(out.location_country).toBe("Cameroon");
+    // The hours are buried in prose. A template draft says less rather than
+    // guessing — that is the deal it makes.
+    expect(out.working_hours).toBeNull();
+  });
+
+  it("reads a two-part answer as city and country, claiming nothing about the middle", () => {
+    const out = drafting.templateDraft({
+      entity: null,
+      answers: { title: "Accountant", location: "Lagos, Nigeria" },
+    });
+    expect(out.location_city).toBe("Lagos");
+    expect(out.location_country).toBe("Nigeria");
+    expect(out.location_state).toBeUndefined();
+  });
+});

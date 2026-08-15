@@ -164,12 +164,29 @@ const transcribe = z.object({
   audio_data_url: z.string().min(32).max(2_800_000),
 });
 
-const schemas = { create, update, status, applicant, applicantStatus, criterion, question, answer, publish, intake, transcribe };
+/** The city search behind the advert's address (0684). Same bounds as the
+ *  attendance module's — it is the same provider and the same quota. */
+const placeSearch = z.object({
+  q: z.string().min(1).max(200),
+  country: z.string().regex(/^[A-Za-z]{2}$/).optional(),
+  limit: z.coerce.number().int().min(1).max(10).optional(),
+});
+
+const schemas = { create, update, status, applicant, applicantStatus, criterion, question, answer, publish, intake, transcribe, placeSearch };
 
 const mw = (k) => (req, _res, next) => {
   const p = schemas[k].safeParse(req.body);
   if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid body", 422, p.error.flatten().fieldErrors));
   req.body = p.data;
+  return next();
+};
+
+/** Same, for a query string. `req.query` is a getter on Express 5, so the
+ *  parsed value goes to `req.validatedQuery` rather than being assigned back. */
+const qmw = (k) => (req, _res, next) => {
+  const p = schemas[k].safeParse(req.query);
+  if (!p.success) return next(new AppError("VALIDATION_ERROR", "Invalid query", 422, p.error.flatten().fieldErrors));
+  req.validatedQuery = p.data;
   return next();
 };
 
@@ -185,5 +202,6 @@ module.exports = {
   publish: mw("publish"),
   intake: mw("intake"),
   transcribe: mw("transcribe"),
+  placeSearch: qmw("placeSearch"),
   schemas,
 };

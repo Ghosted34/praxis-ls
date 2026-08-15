@@ -1326,6 +1326,29 @@
 }
 
 /**
+ * A TOUCH CONTROL IN THE TITLE BAR IS AS TALL AS THE STRIP LETS IT BE.
+ *
+ * Below `lg` the search button is icon-only and below `sm` the environment chip
+ * appears beside it, so the strip now carries controls a thumb has to hit
+ * rather than only ones a pointer does. Both want ≥40px; the strip is 38px at
+ * compact density, and a control taller than the bar does not overflow it (the
+ * bar is `min-height`) — it silently makes compact density 40px, which is the
+ * one thing a user who picked compact asked it not to be.
+ *
+ * So the height is the smaller of the two: 40px where there is room, the
+ * strip's own height where there is not. DERIVED rather than a pair of
+ * hand-tuned numbers, for the same reason `.wco-mark` computes its offset from
+ * `--rail-w` — change `--wco-h` for a density and this follows.
+ *
+ * A class, not a Tailwind arbitrary value, because two files need it (the
+ * search button in app-shell.tsx and the chip in env-switcher.tsx) and a
+ * duplicated `min()` expression is a drift waiting to happen. `lg:h-auto` on
+ * the search button unsets it above the breakpoint, where the labelled pill
+ * keeps its original intrinsic height.
+ */
+.wco-touch { height: min(2.5rem, var(--wco-h)); }
+
+/**
  * THE APP MARK SITS ON THE ICON RAIL'S CENTRE LINE.
  *
  * The mark and the rail's Home button are the top two things down the left edge

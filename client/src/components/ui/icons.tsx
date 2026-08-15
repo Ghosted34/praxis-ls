@@ -149,6 +149,23 @@ export const UploadIcon = (p: P) => (
     <path d="M12 15V3m0 0 4 4m-4-4-4 4M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4" />
   </svg>
 );
+/** Dictation. The mic is the one control in the app a user has met before —
+ *  the legacy discovery modal uses exactly this glyph — so it carries its own
+ *  meaning without a label beside it. */
+export const MicIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="9" y="2" width="6" height="12" rx="3" />
+    <path d="M5 11a7 7 0 0 0 14 0M12 18v4M8 22h8" />
+  </svg>
+);
+/** Stop — a filled square, deliberately not another mic. A recording control
+ *  that changes only its colour is one people press twice. */
+export const StopIcon = (p: P) => (
+  <svg {...base(p)} fill="currentColor" stroke="none">
+    <rect x="6" y="6" width="12" height="12" rx="2" />
+  </svg>
+);
+
 /** The tenant brand glyph — a soft "X" mark echoing the hub logo. Uses currentColor. */
 export const BrandGlyph = (p: P) => (
   <svg

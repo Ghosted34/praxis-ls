@@ -172,11 +172,22 @@ const token = () =>
     config.JWT_ACCESS_SECRET,
     { expiresIn: "15m" },
   );
-const call = (method, path) =>
-  request(app)
-    [method](path)
+/**
+ * `request(app)` is held in a local before the computed access, so `[method]`
+ * can never begin a line.
+ *
+ * Written inline it formats as `request(app)\n  [method](path)`, and a newline
+ * between an expression and a `[` is the ASI hazard `no-unexpected-multiline`
+ * exists for: the two lines read as one indexed call to a human and could read
+ * as a subscript of the previous statement to the parser. The rule is right to
+ * refuse it, and a disable comment would only survive until the next reformat.
+ */
+const call = (method, path) => {
+  const req = request(app);
+  return req[method](path)
     .set("Host", HOST)
     .set("Authorization", `Bearer ${token()}`);
+};
 
 /** Every scalar in a response, at any depth. */
 function scalars(value, out = []) {

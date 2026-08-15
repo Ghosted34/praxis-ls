@@ -447,11 +447,16 @@ export function LoginModal({ onClose }: { onClose: () => void }) {
             {/* Focus moves to the OTP field when the 2FA stage replaces the
                 password form — the element the user was typing in is gone by
                 then, so this is focus RECOVERY, not an unsolicited grab. */}
-            {/* eslint-disable-next-line jsx-a11y/no-autofocus */}
             <OtpInput
               value={code}
               onChange={setCode}
               onComplete={submitCode}
+              // Directly above the prop it excuses, INSIDE the tag. As a
+              // `{/* */}` above the element it guarded whichever line came
+              // next — which stopped being `autoFocus` the moment the element
+              // wrapped across lines, leaving an unused directive and an
+              // unsuppressed error. Same placement place-picker.tsx uses.
+              // eslint-disable-next-line jsx-a11y/no-autofocus
               autoFocus
               disabled={busy}
             />

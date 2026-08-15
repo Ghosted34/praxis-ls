@@ -166,9 +166,14 @@ export function humanizeEvent(key?: string | null): string {
   // imports types from features/dashboard/use-my-audit-feed which itself imports
   // from lib. A dynamic-shape row is enough — humanize reads only .action,
   // .entity_ref and .metadata off it.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  /* eslint-disable @typescript-eslint/no-require-imports --
+     A BLOCK disable, not disable-next-line: the statement below is long enough
+     that the formatter breaks it after the `=`, which moves the `require()`
+     off the guarded line and leaves the directive pointing at nothing. A block
+     is not line-anchored, so it survives a reflow. */
   const { humanize } =
     require("./audit-humanize") as typeof import("./audit-humanize");
+  /* eslint-enable @typescript-eslint/no-require-imports */
   const row = {
     ledger_id: 0,
     created_at: "",

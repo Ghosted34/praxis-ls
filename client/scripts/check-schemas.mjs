@@ -208,10 +208,24 @@ const WRITTEN_ELSEWHERE = {
 const literalKeys = (src) =>
   [...src.matchAll(/^\s+([a-z_][a-z0-9_]*)\s*(?::|,\s*$)/gim)].map((m) => m[1]);
 
-/** Everything between `marker` and the first line that closes it at `depth` 0. */
+/**
+ * Everything between `marker` and the first line that closes it at `depth` 0.
+ *
+ * `closer` may be a string or a RegExp. The regex form exists because a
+ * whitespace-exact closer is a gate that a reformat silently switches off: the
+ * documents builder closed with the literal `"\n  ], ["` until the formatter
+ * moved the dependency array onto its own line, at which point `sliceBody`
+ * returned null, rule 5 reported "could not find the field builder", and the
+ * collection stopped being watched at all. A pattern survives the wrap.
+ */
 function sliceBody(text, marker, closer) {
   const start = text.indexOf(marker);
   if (start === -1) return null;
+  if (closer instanceof RegExp) {
+    const rest = text.slice(start);
+    const at = rest.search(closer);
+    return at === -1 ? null : rest.slice(0, at);
+  }
   const end = text.indexOf(closer, start);
   return end === -1 ? null : text.slice(start, end);
 }
@@ -268,7 +282,14 @@ const CHILD_BUILDERS = {
   registrations: ["const registrationFields = ", "\n];"],
   "tax-registrations": ["const taxRegistrationFields = ", "\n];"],
   establishments: ["const establishmentFields = ", "\n];"],
-  documents: ["const fields = React.useMemo<FieldSpec[]>", "\n  ], ["],
+  // The array's closing bracket followed by the useMemo dependency array —
+  // whether the formatter leaves them on one line (`], [typeList]`) or splits
+  // them (`],\n    [typeList],`). The indent bound keeps it from matching a
+  // nested array inside a field spec.
+  documents: [
+    "const fields = React.useMemo<FieldSpec[]>",
+    /\n {2,6}\],\s*\n? *\[/,
+  ],
 };
 
 /** Nested fields written by something other than a `FieldSpec`, and by what. */

@@ -324,8 +324,32 @@ function extractServerAliases() {
       for (const m of src.matchAll(/\b(?:AS|as)\s+([a-z_][a-z0-9_]*)\b/g)) {
         out.add(m[1].toLowerCase());
       }
-      // Object literal keys `foo_bar:` — noisy but the union is what matters.
-      for (const m of src.matchAll(/^\s*([a-z][a-z0-9_]*)\s*:/gm)) {
+      /*
+       * Object-literal keys `foo_bar:` — noisy but the union is what matters.
+       *
+       * ANCHORED ON THE PRECEDING `{` OR `,`, NOT ON THE START OF A LINE.
+       *
+       * The line-anchored version (`/^\s*([a-z][a-z0-9_]*)\s*:/gm`) could only
+       * see a key that the formatter happened to put first on its line, so a
+       * compact literal hid every key but the first:
+       *
+       *   return { lines: n, off_lines: o, net_variance: v, has_discrepancy: d };
+       *
+       * Every one of those IS emitted, and all but `lines` were invisible. The
+       * consequence is not a missed bug, it is 26 FALSE ALARMS naming fields
+       * the server sends perfectly well — and a guard that cries wolf gets its
+       * findings pasted into the baseline, which is how the real drift it
+       * exists to catch gets waved through next to them.
+       *
+       * The lookahead also picks up SHORTHAND (`{ state, days_remaining }`),
+       * which the old pattern could never match in any position.
+       *
+       * Still deliberately conservative about what it will NOT match, because
+       * every false positive here WIDENS the allow-list and weakens the check:
+       * a ternary's `cond ? a_b : c` is preceded by `?`, and array elements and
+       * function parameters are followed by `]` or `)`, so none of them qualify.
+       */
+      for (const m of src.matchAll(/(?:^|[{,])\s*([a-z][a-z0-9_]*)\s*(?=[:,}])/gm)) {
         const id = m[1];
         if (id.includes("_")) out.add(id.toLowerCase());
       }

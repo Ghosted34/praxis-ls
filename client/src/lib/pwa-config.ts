@@ -209,6 +209,7 @@ export function applyPwaDocument(cfg: EffectivePwa) {
   try {
     localStorage.setItem(`praxis.titlebar.${theme}`, bar.base);
   } catch {
+     /* @silent:storage|parse|teardown */ 
     /* private mode — the pre-boot bar falls back to the token default */
   }
   root.style.setProperty(

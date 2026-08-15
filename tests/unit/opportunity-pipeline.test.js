@@ -20,20 +20,28 @@ describe("F7 stage ladder", () => {
   });
 
   test("PRICING_IN_PROGRESS is the missing one, at 50%", () => {
-    const s = rules.DEFAULT_STAGES.find((x) => x.code === "PRICING_IN_PROGRESS");
+    const s = rules.DEFAULT_STAGES.find(
+      (x) => x.code === "PRICING_IN_PROGRESS",
+    );
     expect(s).toBeDefined();
     expect(s.probability).toBe(50);
     // It sits between QUALIFIED and PROPOSAL — the handoff to commercial
     // pricing, not an afterthought appended to the end of the board.
     const codes = rules.DEFAULT_STAGES.map((x) => x.code);
-    expect(codes.indexOf("PRICING_IN_PROGRESS")).toBeGreaterThan(codes.indexOf("QUALIFIED"));
-    expect(codes.indexOf("PRICING_IN_PROGRESS")).toBeLessThan(codes.indexOf("PROPOSAL"));
+    expect(codes.indexOf("PRICING_IN_PROGRESS")).toBeGreaterThan(
+      codes.indexOf("QUALIFIED"),
+    );
+    expect(codes.indexOf("PRICING_IN_PROGRESS")).toBeLessThan(
+      codes.indexOf("PROPOSAL"),
+    );
   });
 
   test("the legacy's four probabilities are carried over unchanged", () => {
     // STAGE_CONFIG, sales-pipelining.php ~515. PROPOSAL is this repo's name
     // for the legacy's QUOTATION_SENT.
-    const p = Object.fromEntries(rules.DEFAULT_STAGES.map((s) => [s.code, s.probability]));
+    const p = Object.fromEntries(
+      rules.DEFAULT_STAGES.map((s) => [s.code, s.probability]),
+    );
     expect(p.NEW).toBe(10);
     expect(p.QUALIFIED).toBe(30);
     expect(p.PRICING_IN_PROGRESS).toBe(50);
@@ -43,7 +51,9 @@ describe("F7 stage ladder", () => {
   });
 
   test("sort_order is dense and starts at zero, and exactly one stage wins", () => {
-    expect(rules.DEFAULT_STAGES.map((s) => s.sort_order)).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(rules.DEFAULT_STAGES.map((s) => s.sort_order)).toEqual([
+      0, 1, 2, 3, 4, 5, 6,
+    ]);
     expect(rules.DEFAULT_STAGES.filter((s) => s.is_won)).toHaveLength(1);
     expect(rules.DEFAULT_STAGES.filter((s) => s.is_lost)).toHaveLength(1);
   });
@@ -52,7 +62,10 @@ describe("F7 stage ladder", () => {
     // The SQL and the JS are two statements of one fact, and they are edited
     // in different files months apart. This is the join.
     const sql = fs.readFileSync(
-      path.join(__dirname, "../../migrations/tenant/0684_sales_crm_f7_pipeline.sql"),
+      path.join(
+        __dirname,
+        "../../migrations/tenant/0686_sales_crm_f7_pipeline.sql",
+      ),
       "utf8",
     );
     for (const s of rules.DEFAULT_STAGES) {
@@ -75,14 +88,18 @@ describe("F7 probability derivation", () => {
   });
 
   test("a hand-typed number wins and claims the field", () => {
-    expect(rules.deriveProbability({ stage, current: 70, explicit: 15 })).toEqual({
+    expect(
+      rules.deriveProbability({ stage, current: 70, explicit: 15 }),
+    ).toEqual({
       probability: 15,
       probability_is_manual: true,
     });
   });
 
   test("a manual value SURVIVES a stage move — the whole point of the flag", () => {
-    expect(rules.deriveProbability({ stage, current: 15, isManual: true })).toBeNull();
+    expect(
+      rules.deriveProbability({ stage, current: 15, isManual: true }),
+    ).toBeNull();
   });
 
   test("no change is signalled as null, so the caller writes no column", () => {
@@ -92,7 +109,10 @@ describe("F7 probability derivation", () => {
 
   test("an unconfigured stage leaves the existing value alone rather than nulling it", () => {
     expect(
-      rules.deriveProbability({ stage: { default_probability: null }, current: 42 }),
+      rules.deriveProbability({
+        stage: { default_probability: null },
+        current: 42,
+      }),
     ).toBeNull();
     expect(rules.deriveProbability({ stage: null, current: 42 })).toBeNull();
   });
@@ -141,8 +161,12 @@ describe("F7 win rate — both denominators, by hand", () => {
 describe("F7 settled lock", () => {
   test("a settled opportunity refuses to move — the legacy accepts any status by POST", () => {
     expect(rules.assertOpen({ status: "OPEN" }, "move")).toBe(true);
-    expect(() => rules.assertOpen({ status: "WON" }, "move")).toThrow(/settled/i);
-    expect(() => rules.assertOpen({ status: "LOST" }, "move")).toThrow(/settled/i);
+    expect(() => rules.assertOpen({ status: "WON" }, "move")).toThrow(
+      /settled/i,
+    );
+    expect(() => rules.assertOpen({ status: "LOST" }, "move")).toThrow(
+      /settled/i,
+    );
   });
 
   test("a missing opportunity is a 404, not a lock error", () => {
@@ -161,7 +185,10 @@ describe("F7 source vocabulary", () => {
 
   test("the CHECK constraint in the migration lists exactly these values", () => {
     const sql = fs.readFileSync(
-      path.join(__dirname, "../../migrations/tenant/0684_sales_crm_f7_pipeline.sql"),
+      path.join(
+        __dirname,
+        "../../migrations/tenant/0686_sales_crm_f7_pipeline.sql",
+      ),
       "utf8",
     );
     const m = sql.match(/CHECK \(source IN \(([^)]+)\)\)/);

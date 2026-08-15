@@ -42,6 +42,10 @@ router.post("/:id/status", requirePermission(MODULE, "edit"), validator.setStatu
 router.post("/:id/active", requirePermission(MODULE, "edit"), validator.setActive, controller.setActive);
 // Group structure (parent, relationship, ownership, consolidation).
 router.post("/:id/structure", requirePermission(MODULE, "edit"), validator.setStructure, controller.setStructure);
+// The two characters that lead this entity's OPERATION-file references. Its own
+// endpoint rather than a column on PATCH: it is only changeable before the first
+// file has used it, and it carries its own audit action.
+router.post("/:id/ops-reference-prefix", requirePermission(MODULE, "edit"), validator.opsReferencePrefix, controller.setOpsReferencePrefix);
 
 // Per-entity letterhead logo (light/dark). MOD-01 edit — deliberately not the
 // MOD-70-gated /branding/logo, so entity admins don't need settings-admin rights.

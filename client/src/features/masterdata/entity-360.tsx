@@ -1109,6 +1109,7 @@ export function EntityDossier({
   }>(null);
   const [statusOpen, setStatusOpen] = React.useState(false);
   const [structureOpen, setStructureOpen] = React.useState(false);
+  const [opsPrefixOpen, setOpsPrefixOpen] = React.useState(false);
   // Blank means "today", which is what the /360 bundle already carries — so the
   // common case costs no extra request and only a deliberate date fetches.
   const [capAsOf, setCapAsOf] = React.useState("");
@@ -1378,6 +1379,27 @@ export function EntityDossier({
                   : null}
               </Detail>
               <Detail label="Document prefix">{e.doc_prefix}</Detail>
+              {/*
+                Two prefixes, two audiences. `doc_prefix` leads INVOICE numbers
+                and an accountant reads it; this one leads OPERATION-FILE
+                references and a client reads it. They are shown side by side so
+                nobody edits one believing it is the other — the mistake the
+                single-prefix version of this screen invited.
+              */}
+              <Detail label="Operation reference prefix">
+                {e.ops_reference_prefix ? (
+                  <span className="inline-flex items-center gap-2">
+                    <span className="font-mono">{e.ops_reference_prefix}</span>
+                    <button
+                      type="button"
+                      className="micro underline underline-offset-2 hover:text-foreground"
+                      onClick={() => setOpsPrefixOpen(true)}
+                    >
+                      Change
+                    </button>
+                  </span>
+                ) : null}
+              </Detail>
               <Detail label="Numbering resets">
                 {e.numbering_reset ? enumLabel(e.numbering_reset) : null}
               </Detail>
@@ -2587,6 +2609,15 @@ export function EntityDossier({
           onSaved={reload}
         />
       )}
+
+      {opsPrefixOpen && (
+        <OpsReferencePrefixModal
+          entityId={entityId}
+          current={e.ops_reference_prefix ?? ""}
+          onClose={() => setOpsPrefixOpen(false)}
+          onSaved={reload}
+        />
+      )}
     </div>
   );
 }
@@ -3616,6 +3647,75 @@ function StructureModal({
           </Button>
           <Button loading={busy} disabled={busy} onClick={save}>
             Save structure
+          </Button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * The two characters that lead this entity's operation-file references.
+ *
+ * WHY IT IS NOT A BOX ON THE ENTITY FORM. Every other field there is a fact
+ * about the company that an administrator may correct at any time. This one is
+ * an identifier that goes out to clients on documents and then belongs to the
+ * past: the API refuses to change it once an operation file has used one, and
+ * records the change on the audit trail when it does allow it. A field with
+ * those rules sitting between "Website" and "Phone" would look like an ordinary
+ * edit right up until it came back 422.
+ *
+ * The client keeps no copy of the rule — it sends the change and shows what
+ * comes back, so "has a file used this?" is answered by the only thing that can
+ * actually answer it.
+ */
+function OpsReferencePrefixModal({ entityId, current, onClose, onSaved }: {
+  entityId: string;
+  current: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const toast = useToast();
+  const [prefix, setPrefix] = React.useState(current);
+  const [busy, setBusy] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+
+  async function save() {
+    setBusy(true); setError(null);
+    try {
+      await api.setEntityOpsReferencePrefix(entityId, prefix);
+      toast.success("Operation reference prefix updated.");
+      onSaved(); onClose();
+    } catch (err) { setError(errMsg(err)); } finally { setBusy(false); }
+  }
+
+  return (
+    <Modal
+      open
+      onClose={onClose}
+      title="Operation reference prefix"
+      description="The two characters every operation file of this entity starts with. Fixed once a file has used it."
+    >
+      <div className="space-y-3">
+        <Field label="Prefix" hint="Two characters, A–Z or 0–9. Unique across this tenant's entities.">
+          <Input
+            value={prefix}
+            onChange={(ev) => setPrefix(ev.target.value.toUpperCase().slice(0, 2))}
+            maxLength={2}
+            placeholder="SL"
+            className="font-mono"
+          />
+        </Field>
+        <p className="micro text-muted-foreground">
+          A file would read <span className="font-mono">{(prefix || "SL")}7Z3K9QW2M4XBSM</span>. This is not the
+          invoice prefix — that is <span className="font-mono">Document prefix</span>, and it leads a different
+          set of numbers.
+        </p>
+        {error && <ErrorState message={error} />}
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" onClick={onClose}>Cancel</Button>
+          <Button loading={busy} disabled={busy || prefix.length !== 2 || prefix === current} onClick={save}>
+            Save prefix
           </Button>
         </div>
       </div>

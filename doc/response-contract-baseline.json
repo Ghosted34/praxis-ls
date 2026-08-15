@@ -29,6 +29,7 @@
     "committed_count",
     "container_type_label",
     "credit_note_id",
+    "cv_read",
     "date_field",
     "deactivation_reason",
     "declaration_id",

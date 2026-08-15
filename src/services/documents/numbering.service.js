@@ -14,10 +14,25 @@
  * Replaces the storefront `services/numbering.service.js`, which read
  * `shared.document_numbering` / `shared.business_config` (Pixie Girl), not the
  * tenant `doc_sequence`.
+ *
+ * ── ONE EXCEPTION, AND ONLY ONE ─────────────────────────────────────────────
+ *
+ * The OPERATION FILE does not number this way any more. Its reference is the
+ * one a client holds, so a sequential number hands them the tenant's file
+ * volume, its chronology and its neighbours' positions — and invites them to
+ * try the number either side. That allocator lives in `operation-reference.js`
+ * and is re-exported below so callers still have one numbering entry point.
+ *
+ * `allocate()` itself is UNCHANGED and stays the only path for every financial
+ * and statutory document — invoices, proformas, receipts, journal entries,
+ * purchase orders, supplier invoices, tax filings. Those must stay gap-free per
+ * entity and per year; randomising them would break reconciliation to fix a
+ * problem they do not have (nobody outside the tenant sees them in sequence).
  */
 "use strict";
 
 const { AppError } = require("../../utils/errors");
+const operationReference = require("./operation-reference");
 
 const DEFAULTS = { prefix: "DOC", padding: 4, reset: "yearly", separator: "-" };
 
@@ -174,4 +189,18 @@ async function allocatePartyDocument(client, { moduleKey, partyKind, date }) {
   return { number: formatNumber(cfg, { year, seq }), seq, year };
 }
 
-module.exports = { formatNumber, schemeFor, allocate, allocatePartyDocument, DEFAULTS };
+module.exports = {
+  formatNumber,
+  schemeFor,
+  allocate,
+  allocatePartyDocument,
+  DEFAULTS,
+  /**
+   * The operation file's own allocator — a cryptographically random,
+   * non-enumerable reference (`SL7Z3K9QW2M4XBSM`), NOT a `doc_sequence` number.
+   * Re-exported here so a caller reaching for "how do I number this" finds both
+   * and the difference between them in one place. See operation-reference.js.
+   */
+  allocateOperationReference: operationReference.allocateOperationReference,
+  operationReference,
+};

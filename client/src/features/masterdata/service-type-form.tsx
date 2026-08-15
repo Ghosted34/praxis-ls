@@ -30,6 +30,7 @@ export function ServiceTypeForm({
     name_fr: row?.name_fr ?? "",
     name_en: row?.name_en ?? "",
     territory: row?.territory ?? "",
+    ops_reference_code: row?.ops_reference_code ?? "",
   });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const [busy, setBusy] = React.useState(false);
@@ -40,12 +41,16 @@ export function ServiceTypeForm({
     setBusy(true);
     setError(null);
     try {
+      // Blank means "derive one from the key" — sending "" would fail the
+      // two-character rule for a field the user never touched.
+      const opsCode = f.ops_reference_code.trim().toUpperCase() || undefined;
       if (isNew) {
         await api.createServiceType({
           key: f.key.trim().toUpperCase(),
           name_fr: f.name_fr,
           name_en: f.name_en || undefined,
           territory: f.territory || undefined,
+          ops_reference_code: opsCode,
         });
       } else {
         // `key` is intentionally absent: it's the stable identifier referenced by
@@ -54,6 +59,10 @@ export function ServiceTypeForm({
           name_fr: f.name_fr,
           name_en: f.name_en || null,
           territory: f.territory || null,
+          // Unchanged codes are not resent: the API refuses a change once a file
+          // has used one, and echoing the same value would turn a name edit into
+          // a rejected save on a service type that has been in use for months.
+          ...(opsCode && opsCode !== (row!.ops_reference_code || "") ? { ops_reference_code: opsCode } : {}),
         });
       }
       onSaved();
@@ -117,6 +126,27 @@ export function ServiceTypeForm({
               onChange={(e) => set("name_en", e.target.value)}
               placeholder="Sea freight import"
             />
+          </Field>
+          {/*
+            The two characters that CLOSE an operation file's reference —
+            `SM` in `SL7Z3K9QW2M4XBSM`. Shown here rather than hidden because the
+            business already reads these off legacy paperwork ("that's an SM
+            file"), and because it is frozen the moment a file uses it: better to
+            let someone set the code they actually use before that happens than
+            to discover it afterwards.
+          */}
+          <Field label="Reference code">
+            <Input
+              value={f.ops_reference_code}
+              onChange={(e) => set("ops_reference_code", e.target.value.toUpperCase().slice(0, 2))}
+              placeholder={isNew ? "auto" : "SM"}
+              maxLength={2}
+            />
+            <p className="micro mt-1">
+              Closes this service&rsquo;s operation-file references, e.g.{" "}
+              <span className="font-mono">SL7Z3K9QW2M4XB{f.ops_reference_code || "SM"}</span>. Leave blank to
+              generate one. Fixed once a file has used it.
+            </p>
           </Field>
         </div>
         {error && <p className="text-sm text-[rgb(var(--bad))]">{error}</p>}

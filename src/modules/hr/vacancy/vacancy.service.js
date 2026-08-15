@@ -3,6 +3,7 @@ const crypto = require("crypto");
 const { makeService } = require("../../../shared/crud/resource");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { parseDataUrl } = require("../../../utils/data-url");
 const repo = require("./vacancy.repo");
 const events = require("./vacancy.events");
 const scoring = require("./vacancy.scoring");
@@ -203,12 +204,15 @@ module.exports = {
    * input is not set up, because the person keeps pressing it.
    */
   async transcribeAnswer(dataUrl) {
-    const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
-    if (!m) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
-    const audio = Buffer.from(m[2], "base64");
+    // MediaRecorder produces `audio/webm;codecs=opus`, so the media type here
+    // carries a parameter. The hand-rolled pattern this replaced could not cross
+    // that semicolon and rejected every real recording — see utils/data-url.
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
+    const audio = parsed.buffer;
     if (!audio.length) throw new AppError("EMPTY_AUDIO", "Nothing was recorded — try holding the button a little longer", 422);
     try {
-      const { text } = await transcription.transcribe({ audio, mimeType: m[1].toLowerCase() });
+      const { text } = await transcription.transcribe({ audio, mimeType: parsed.mimeType });
       return { text: String(text || "").trim() };
     } catch (err) {
       // The service throws a clear "not configured" for a missing key; anything
@@ -244,7 +248,11 @@ module.exports = {
     const drafted = await drafting.draft(client, { entity, answers });
     const { ai_provider, ...fields } = drafted;
 
-    const row = await repo.insert(client, {
+    // `create`, not `insert`: the shared CRUD repo names it `create`, and this
+    // repo adds `insertApplicant` for the child table but never an `insert`.
+    // Calling one that does not exist threw a TypeError from inside the drafting
+    // endpoint — after the model call had already been paid for.
+    const row = await repo.create(client, {
       ...fields,
       status: "DRAFT",
       ai_generated: ai_provider !== "template",

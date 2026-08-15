@@ -327,3 +327,41 @@ describe("vacancy.service — re-score all (0684)", () => {
     expect(await service.scoreAllApplicants({}, { vacancyId: "nope" })).toBeNull();
   });
 });
+
+/**
+ * Every repo method the service calls actually exists.
+ *
+ * WHAT BROKE. `draftVacancy` called `repo.insert(...)`. The shared CRUD repo
+ * names it `create`, and this repo adds `insertApplicant` for the child table
+ * but never an `insert` — so the drafting endpoint threw
+ * `TypeError: repo.insert is not a function`, in production, AFTER the model
+ * call it had already paid for. Several sibling HR repos DO define `insert`,
+ * which is exactly why the wrong name reads as right.
+ *
+ * WHY THE TESTS ABOVE DID NOT CATCH IT. They mock the repo. A mock answers to
+ * whatever name it is asked for, so a missing method is invisible to every test
+ * that stubs it — and the endpoint's other tests never reached line 247 because
+ * the `legal_name` bug killed the request earlier.
+ *
+ * So this asserts against the REAL module: every `repo.x(` the service names has
+ * to be a function on the repo. It is a grep with teeth, and it generalises —
+ * the next renamed helper fails here rather than on a customer's tenant.
+ */
+describe("vacancy.service — calls only repo methods that exist", () => {
+  const realRepo = jest.requireActual("../../src/modules/hr/vacancy/vacancy.repo");
+  const source = fs.readFileSync(
+    path.join(ROOT, "src", "modules", "hr", "vacancy", "vacancy.service.js"),
+    "utf8",
+  );
+  const called = [...new Set([...source.matchAll(/\brepo\.([a-zA-Z_][\w]*)\s*\(/g)].map((m) => m[1]))];
+
+  it("names at least the handful we know it uses", () => {
+    // Guards the guard: a regex that matched nothing would pass every case.
+    expect(called).toEqual(expect.arrayContaining(["create", "findById", "listApplicants"]));
+    expect(called).not.toContain("insert");
+  });
+
+  it.each(called.map((n) => [n]))("repo.%s is a real function", (name) => {
+    expect(typeof realRepo[name]).toBe("function");
+  });
+});

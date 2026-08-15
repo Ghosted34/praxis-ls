@@ -205,7 +205,13 @@ export function EnvChip({ env, onSwitch }: { env: string; onSwitch: (next: Env) 
                 <span className="block text-sm font-semibold text-foreground">{ROW[e].title}</span>
                 <span className="block text-xs text-muted-foreground">{ROW[e].hint}</span>
               </span>
-              {e === current && <CheckIcon aria-hidden className="shrink-0 text-primary" />}
+              {/* `-ink`, not `text-primary`. `--primary` is a FILL — it measures
+                  2.59:1 as type on `--card` (audit F13), and the tick is type
+                  here, drawn in stroke at 18px. The ink variant is
+                  token-for-token the same brand colour at a legible value, and
+                  `scripts/check-contrast.mjs` fails the build on the other
+                  spelling precisely because it is the shorter one to type. */}
+              {e === current && <CheckIcon aria-hidden className="shrink-0 text-primary-ink" />}
             </button>
           ))}
         </div>

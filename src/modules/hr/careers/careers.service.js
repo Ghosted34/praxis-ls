@@ -99,11 +99,42 @@ async function list(client) {
   return rows.map(publicVacancy);
 }
 
+/**
+ * Find which environment a careers token belongs to, and return it with the row.
+ *
+ * ── WHY A PUBLIC PAGE LOOKS IN TWO SCHEMAS ─────────────────────────────────
+ *
+ * A candidate has no session and sends no `X-Praxis-Env`, so tenant-context
+ * resolves them to LIVE. That made whether a careers link worked depend on a
+ * value in the VIEWER's localStorage: it opened for the recruiter who had just
+ * been in Test, and 404'd for the candidate they sent it to. A public URL must
+ * mean the same thing to everyone who holds it.
+ *
+ * So the token — which is minted per vacancy and is the only way in — decides.
+ * LIVE is tried first, so a live role can never be shadowed by a rehearsal, and
+ * the environment travels with the answer: the page badges a sandbox role as
+ * TEST, and an application lands in the schema the role lives in rather than
+ * somewhere the recruiter would never look for it.
+ *
+ * The INDEX (`list`) stays live-only on purpose. It is the shop window, and a
+ * rehearsal posting has no business in it — nobody is given a link to a test
+ * role by accident, but everybody sees the index.
+ */
+async function findByToken(req, token) {
+  const live = await req.tenantDbIn("live", (c) => vacancyRepo.publishedByToken(c, token));
+  if (live) return { env: "live", row: live };
+  // Only when the tenant actually has one; a live-only workspace should not pay
+  // for a second lookup on every miss.
+  if (!req.tenant || !req.tenant.sandbox_schema) return null;
+  const sandbox = await req.tenantDbIn("sandbox", (c) => vacancyRepo.publishedByToken(c, token));
+  return sandbox ? { env: "sandbox", row: sandbox } : null;
+}
+
 /** One role by token. 404 for closed, unpublished and non-existent alike. */
-async function get(client, token) {
-  const row = await vacancyRepo.publishedByToken(client, token);
-  if (!row) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
-  return publicVacancy(row);
+async function get(req, token) {
+  const found = await findByToken(req, token);
+  if (!found) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
+  return { ...publicVacancy(found.row), environment: found.env };
 }
 
 /**
@@ -116,9 +147,16 @@ async function get(client, token) {
  * the recruiter sees an applicant with no CV attached — which is recoverable.
  * The alternative loses the candidate entirely, and they do not come back.
  */
-async function apply(client, { token, data, slug }) {
-  const vacancy = await vacancyRepo.publishedByToken(client, token);
-  if (!vacancy) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
+async function applyToToken(req, { token, data, slug }) {
+  const found = await findByToken(req, token);
+  if (!found) throw new AppError("NOT_FOUND", "This role is no longer accepting applications", 404);
+  // Written where the role lives. An application to a Test posting that landed
+  // in live would be a candidate nobody is expecting, in a pipeline nobody is
+  // working — and the recruiter rehearsing in Test would see nothing at all.
+  return req.tenantDbIn(found.env, (c) => apply(c, { vacancy: found.row, data, slug }));
+}
+
+async function apply(client, { vacancy, data, slug }) {
 
   // What the recruiter marked as required (0684). Enforced HERE and not only in
   // the page's own markup, because the endpoint is public: a toggle a curl can
@@ -200,4 +238,4 @@ async function apply(client, { token, data, slug }) {
   };
 }
 
-module.exports = { list, get, apply, CV_MAX_BYTES, CV_TYPES };
+module.exports = { list, get, applyToToken, findByToken, CV_MAX_BYTES, CV_TYPES };

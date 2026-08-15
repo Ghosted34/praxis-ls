@@ -49,12 +49,16 @@ const router = express.Router();
 router.get("/", readLimiter, asyncHandler(async (req, res) =>
   res.json({ data: await req.tenantDb((c) => service.list(c)) })));
 
+// These two take `req`, not a client, because they choose their own
+// environment: the token says which schema the role lives in (see
+// careers.service.findByToken). The index above does not — the shop window is
+// live-only.
 router.get("/:token", readLimiter, asyncHandler(async (req, res) =>
-  res.json({ data: await req.tenantDb((c) => service.get(c, req.params.token)) })));
+  res.json({ data: await service.get(req, req.params.token) })));
 
 router.post("/:token/apply", applyLimiter, validator.apply, asyncHandler(async (req, res) =>
   res.status(201).json({
-    data: await req.tenantDb((c) => service.apply(c, { token: req.params.token, data: req.body, slug: req.tenant.slug })),
+    data: await service.applyToToken(req, { token: req.params.token, data: req.body, slug: req.tenant.slug }),
   })));
 
 // `idParam: "text"` — :token is a base64url string, not a uuid or a number, so

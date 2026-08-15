@@ -161,6 +161,14 @@ function tenantContext(req, res, next) {
   // reads/writes go through req.tenantDb(env). See doc/SESSION_HANDOFF.md
   // (LIVE/TEST toggle) + doc/DB_ARCHITECTURE.md.
   req.identityDb = (fn) => withPinned("live", fn);
+  /**
+   * Business data in a NAMED environment, rather than the one the request asked
+   * for. One caller: the public careers page, which has no session and no
+   * `X-Praxis-Env` to read, so it finds the environment a careers token belongs
+   * to and then stays in it. Everything else must use `req.tenantDb` — the
+   * environment a request runs in is the header's decision, not a handler's.
+   */
+  req.tenantDbIn = (wantEnv, fn) => withPinned(wantEnv === "sandbox" ? "sandbox" : "live", fn);
 
   const ctx = {
     tenant: req.tenant.slug,

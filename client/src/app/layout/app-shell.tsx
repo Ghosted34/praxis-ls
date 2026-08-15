@@ -46,6 +46,7 @@ import { tokenStore } from "@/lib/token-store";
 import { tenant } from "@/lib/api-client";
 import { disconnectCommsSocket } from "@/lib/comms-socket";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { ClockPunchChip } from "@/components/clock-punch";
 import { openInstallUi, isStandalone } from "@/lib/pwa-install";
 import { NotificationBell } from "@/components/notification-bell";
 import { CommandPalette } from "@/components/command-palette";
@@ -697,6 +698,12 @@ export function AppShell() {
             <span className="text-xs">Search…</span>
             <span className="ml-4 rounded bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold">⌘K</span>
           </button>
+          {/* Clocking in is a STATE, not a quick action — it lasts a shift, and
+              until now the only desktop route to it was one click deep inside
+              the quick-actions menu, whose burst icon gives no hint whether a
+              shift is running. It sits with the other always-true facts of the
+              session (which environment, which account). */}
+          <ClockPunchChip />
           <EnvToggle env={env} onSwitch={switchEnv} />
           <ThemeToggle />
           <span className="hidden md:inline-flex">

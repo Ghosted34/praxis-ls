@@ -12,21 +12,10 @@ import { axe } from "jest-axe";
 import { MemoryRouter } from "react-router-dom";
 import { QuickActionsMenu, useQuickActions } from "@/components/quick-actions";
 
-// The AI action is tenant-gated and the clock hits /attendance; neither is what
-// these assertions are about.
+// The AI action is tenant-gated; that gate is not what these assertions are
+// about. The clock is no longer mocked here because it is no longer in this
+// menu — see the "does NOT carry the clock" case below.
 vi.mock("@/components/ai-actions", () => ({ useAiEnabled: () => true }));
-vi.mock("@/components/clock-punch", () => ({
-  useClockPunch: () => ({
-    label: "09:41",
-    action: "Clock in",
-    clockedIn: false,
-    canPunch: true,
-    busy: false,
-    toggle: vi.fn(),
-    msg: null,
-    timeStr: "09:41",
-  }),
-}));
 
 const wrap = (ui: React.ReactNode) => render(<MemoryRouter>{ui}</MemoryRouter>);
 
@@ -72,10 +61,15 @@ describe("QuickActionsMenu", () => {
     expect(screen.getByRole("button", { name: "Quick actions" })).toBeInTheDocument();
   });
 
-  it("offers the clock without a second trip to the HR module", async () => {
+  it("does NOT carry the clock — that moved to its own title-bar chip", async () => {
+    // The punch was a menu item here, which put it one click deep behind an
+    // icon that gives no hint whether a shift is running. It is now a chip two
+    // controls to the left in the same strip; keeping both would put two clocks
+    // side by side, one of them invisible until opened.
     wrap(<QuickActionsMenu />);
     await userEvent.click(screen.getByRole("button", { name: "Quick actions" }));
-    expect(await screen.findByRole("menuitem", { name: /Clock in/ })).toBeInTheDocument();
+    await screen.findByRole("menu");
+    expect(screen.queryByRole("menuitem", { name: /Clock (in|out)/ })).toBeNull();
   });
 
   it("has no axe violations, closed or open", async () => {

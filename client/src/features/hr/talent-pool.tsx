@@ -16,6 +16,7 @@ import { HubTabs } from "@/components/tabbed-hub";
 import { useList, useResource, errMsg } from "@/lib/use-resource";
 import { tenant } from "@/lib/api-client";
 import { num, dateFmt } from "@/lib/format";
+import * as api from "@/lib/hr-api";
 import { READINESS, eyebrow, readinessMeta } from "./sops";
 import { shell, type EmployeeLite } from "./shared";
 
@@ -109,6 +110,72 @@ function SuccessionForm({ employees, onClose, onSaved }: { employees: EmployeeLi
   );
 }
 
+/* ── Past applicants (0525) ──────────────────────────────────────────────────
+ *
+ * The bench above is HAND-ENTERED contacts — people somebody met and typed in.
+ * This is everyone who actually applied and was not hired, across every vacancy,
+ * and it is the more valuable of the two by a distance: their CV is on file,
+ * they have been scored, and the vacancy they came through is recorded. A
+ * candidate who was right but late is the cheapest hire available next quarter,
+ * and until this panel there was no way to find them again.
+ *
+ * Deliberately NOT copied into `talent_pool`: doing so would have flattened all
+ * of that into a name and a comma-separated skills string, which is precisely
+ * the information that makes going back to somebody worthwhile.
+ */
+function PastApplicants() {
+  const [term, setTerm] = React.useState("");
+  const [q, setQ] = React.useState("");
+  // Committed on submit rather than per keystroke — this query scans applicants
+  // across every vacancy and does not belong on a typing path.
+  const pool = useResource(() => api.searchTalentPool({ q: q || undefined, limit: 100 }), [q]);
+
+  const cols: Column<api.Applicant>[] = [
+    { key: "name", label: "Name", render: (r) => <span className="font-medium text-foreground">{r.full_name}</span> },
+    {
+      key: "skills", label: "Skills",
+      render: (r) => (r.skills || []).length
+        ? <span className="flex flex-wrap gap-1">{(r.skills || []).slice(0, 6).map((s) => <Pill key={s} tone="mute">{s}</Pill>)}</span>
+        : <span className="text-muted-foreground">—</span>,
+    },
+    { key: "from", label: "Applied for", render: (r) => <span className="text-muted-foreground">{r.vacancy_title || "—"}</span> },
+    {
+      key: "score", label: "AI match",
+      // The provisional marker survives into this table for the same reason it
+      // survives onto the pipeline card: the number means two different things
+      // and this is a list somebody skims.
+      render: (r) => typeof r.ai_score === "number"
+        ? <Pill tone={r.ai_provisional === false ? "ok" : "mute"}>{r.ai_provisional === false ? "" : "~"}{r.ai_score}</Pill>
+        : <span className="micro">—</span>,
+    },
+    { key: "when", label: "Applied", render: (r) => <span className="num text-muted-foreground">{dateFmt(r.applied_at)}</span> },
+  ];
+
+  return (
+    <>
+      <div className="sec"><h2>Past applicants</h2><span className="ln" /></div>
+      <form
+        className="mb-3 flex gap-2"
+        onSubmit={(e) => { e.preventDefault(); setQ(term.trim()); }}
+      >
+        <Input value={term} onChange={(e) => setTerm(e.target.value)} placeholder="Search by name, skill or assessment…" aria-label="Search past applicants" />
+        <Button type="submit" variant="outline">Search</Button>
+      </form>
+      <DataList
+        columns={cols}
+        rows={pool.data}
+        error={pool.error}
+        loading={pool.loading}
+        rowKey={(r) => r.applicant_id}
+        empty={{
+          title: q ? "Nobody matched" : "No past applicants yet",
+          hint: q ? "Try a different skill or spelling." : "Candidates you reject or move to the pool appear here for future roles.",
+        }}
+      />
+    </>
+  );
+}
+
 export function TalentPoolPage() {
   const { rows, error, loading, reload } = useList<Talent>("/talent-pool");
   const plans = useResource(() => tenant<Succession[]>("/succession").then((r) => r), []);
@@ -166,8 +233,10 @@ export function TalentPoolPage() {
         </div>
       )}
 
+      <PastApplicants />
+
       <div className="sec"><h2>Talent pool</h2><span className="ln" /><button className="text-primary-ink" onClick={() => setCreating(true)}>Add candidate</button></div>
-      <DataList columns={cols} rows={rows} error={error} loading={loading} rowKey={(r) => r.talent_pool_id} empty={{ title: "Talent pool is empty", hint: "Add promising candidates to revisit later." }} />
+      <DataList columns={cols} rows={rows} error={error} loading={loading} rowKey={(r) => r.talent_pool_id} empty={{ title: "Talent pool is empty", hint: "Add promising candidates you met outside a vacancy." }} />
 
       {creating && <TalentForm onClose={() => setCreating(false)} onSaved={reload} />}
       {planning && <SuccessionForm employees={employees || []} onClose={() => setPlanning(false)} onSaved={plans.reload} />}

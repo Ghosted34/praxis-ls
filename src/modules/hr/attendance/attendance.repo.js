@@ -63,6 +63,61 @@ module.exports = {
     return updateOne(client, "work_site", "work_site_id", id, fields, "*", null, { touch: "updated_at" });
   },
 
+  // ── Registered devices (0524) ──
+  /**
+   * See a device: create it PENDING, or bump `last_seen_at` on the row that is
+   * already there. Returns the row either way.
+   *
+   * ON CONFLICT rather than SELECT-then-INSERT because two punches racing from
+   * the same freshly-installed device would otherwise both miss the select and
+   * both insert, and the unique index would fail the second — a punch lost to a
+   * constraint violation the user cannot act on.
+   *
+   * The status is DELIBERATELY NOT in the update list. A revoked device that
+   * reappears must stay revoked; letting the upsert reset it to PENDING would
+   * make revocation decay back into "nobody has looked yet" every time the
+   * device was used again, which is the opposite of what revoking means. The
+   * label is only refreshed while it is still the auto-seeded one, so an
+   * employee's rename survives them opening the app on a new browser version.
+   */
+  upsertDevice(client, { employeeId, fingerprint, label, userAgent = null, platform = null }) {
+    return client
+      .query(
+        `INSERT INTO hr_device (employee_id, fingerprint, label, user_agent, platform)
+              VALUES ($1,$2,$3,$4,$5)
+         ON CONFLICT (employee_id, fingerprint) DO UPDATE
+            SET last_seen_at = now(),
+                updated_at   = now(),
+                user_agent   = COALESCE(EXCLUDED.user_agent, hr_device.user_agent),
+                platform     = COALESCE(EXCLUDED.platform, hr_device.platform)
+          RETURNING *`,
+        [employeeId, fingerprint, label, userAgent, platform],
+      )
+      .then((r) => r.rows[0]);
+  },
+  listDevices(client, { employeeId = null } = {}) {
+    const params = [];
+    let where = "";
+    if (employeeId) { params.push(employeeId); where = "WHERE d.employee_id = $1"; }
+    return client
+      .query(
+        `SELECT d.*, e.full_name AS employee_name
+           FROM hr_device d
+           LEFT JOIN employee e ON e.employee_id = d.employee_id
+           ${where}
+          ORDER BY (d.status = 'PENDING') DESC, d.last_seen_at DESC`,
+        params,
+      )
+      .then((r) => r.rows);
+  },
+  getDevice(client, id) {
+    return client.query("SELECT * FROM hr_device WHERE hr_device_id = $1", [id]).then((r) => r.rows[0] || null);
+  },
+  updateDevice(client, id, fields) {
+    if (!Object.keys(fields).length) return this.getDevice(client, id);
+    return updateOne(client, "hr_device", "hr_device_id", id, fields, "*", null, { touch: "updated_at" });
+  },
+
   async list(client, q = {}) {
     const { limit, offset } = page(q);
     const params = [limit, offset];

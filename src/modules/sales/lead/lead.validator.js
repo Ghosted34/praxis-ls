@@ -15,6 +15,7 @@ const CLIENT_TYPE = ["SHIPPER", "CONSIGNEE", "BOTH", "CARRIER", "AGENT"];
 
 const schemas = {
   create: z.object({
+    entity_id: z.string().uuid().optional().nullable(),
     company_name: z.string().min(1),
     contact_name: z.string().optional(),
     email: z.string().email().optional(),
@@ -33,6 +34,7 @@ const schemas = {
   }),
 
   update: z.object({
+    entity_id: z.string().uuid().optional().nullable(),
     company_name: z.string().optional(),
     contact_name: z.string().optional(),
     email: z.string().email().optional(),
@@ -60,8 +62,10 @@ const schemas = {
    */
   convert: z.object({
     client: z.object({
+      entity_id: z.string().uuid().optional().nullable(),
       name: z.string().min(1).optional(),
       legal_name: z.string().optional(),
+      contact_name: z.string().optional(),
       country_code: z.string().length(2).optional(),
       email: z.string().email().optional(),
       phone: z.string().optional(),
@@ -77,8 +81,10 @@ const schemas = {
   // `lead_id` resolves to a list_leads picker in the copilot form.
   aiTransition: z.object({ lead_id: z.string().uuid(), to: z.enum(["CONTACTED", "QUALIFIED", "LOST"]) }),
   aiConvert: z.object({ lead_id: z.string().uuid(), client: z.object({
+    entity_id: z.string().uuid().optional().nullable(),
     name: z.string().min(1).optional(),
     legal_name: z.string().optional(),
+    contact_name: z.string().optional(),
     country_code: z.string().length(2).optional(),
     email: z.string().email().optional(),
     phone: z.string().optional(),

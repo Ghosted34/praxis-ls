@@ -1,57 +1,101 @@
 /**
  * Quote request (MOD-20-intake) — service layer.
  *
- * Vertical slice for F6 (doc/SALES_CRM_FEATURES.md#F6). Owns:
- *   - intake register (CRUD + transition)
- *   - KPI tiles (computed correctly: same WHERE for list and total; status
- *     filter is removed from the KPI so RECEIVED, etc. are not zeroed out
- *     when the user has filtered to QUOTED)
- *   - attachments (with the cleanup-on-rollback invariant: the route uploads
- *     to the vault first, then asks the service to link — if the service
- *     rolls back, the vault row is deleted by the controller; if the service
- *     commits, the vault row is kept and the link survives)
- *   - convert-to-opportunity (the second half of the legacy "convert" — the
- *     lead path stays on lead.service; the intake-flow path lives here)
+ * The intake register from F6 (doc/SALES_CRM_FEATURES.md): a request for a
+ * quote arrives from the website or is keyed in by staff, carrying the whole
+ * logistics scope; staff work it; when it becomes real it converts into a
+ * tracked opportunity.
+ *
+ * THREE THINGS THIS LAYER IS RESPONSIBLE FOR, EACH OF WHICH WAS WRONG BEFORE:
+ *
+ * 1. THE REFERENCE. `numbering.allocate` refuses a null entity — `doc_sequence`
+ *    is keyed (module, year, entity) so a tenant with two corporate entities
+ *    cannot share one counter. It was being called with `entityId: null` on
+ *    every create, so every create raised 422 NO_ENTITY and the register could
+ *    not take a single row. The entity is now resolved (payload → the lead's →
+ *    the tenant's only active entity) and the number is allocated BEFORE the
+ *    insert, so the row and its reference are one statement, not two.
+ *
+ * 2. CONVERSION IS ONE TRANSACTION. The opportunity used to be created — and
+ *    COMMITTED, since opportunity.service opens its own BEGIN/COMMIT — before
+ *    this function opened its transaction. A failure on the quote_request
+ *    update then left an opportunity in the pipeline that no request pointed
+ *    at, which is exactly the "converted computed two ways" defect F6 exists to
+ *    correct. Both writes now share one transaction, opened here, and the
+ *    opportunity repo is called directly so no nested BEGIN can commit early.
+ *
+ * 3. AN ATTACHMENT THAT FAILS LEAVES NOTHING BEHIND. There was no upload path
+ *    at all — the controller took a `vault_id` from the request body and linked
+ *    it — while a comment asserted that the controller deleted the vault row on
+ *    rollback. It did not. The upload now happens here, inside the transaction
+ *    that writes the link, and the stored object is deleted when that
+ *    transaction rolls back.
  */
 "use strict";
 const repo = require("./quote_request.repo");
 const events = require("./quote_request.events");
-const { assertTransition } = require("./quote_request.rules");
+const rules = require("./quote_request.rules");
+const opportunityRepo = require("../opportunity/opportunity.repo");
+const opportunityEvents = require("../opportunity/opportunity.events");
+const vault = require("../../vault/document_vault/document_vault.service");
+const storage = require("../../../services/storage.service");
 const numbering = require("../../../services/documents/numbering.service");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { logger } = require("../../../config/logger");
 
 const ref = (id) => "quote_request:" + id;
 
+/** An enquiry attachment: a packing list, a photo of the cargo, a spec sheet. */
+const ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024;
+const ATTACHMENT_TYPES = ["application/pdf", "image/png", "image/jpeg", "image/jpg", "image/webp"];
+
+/** Rows a CSV export will stream before it tells the caller it truncated. */
+const EXPORT_CAP = 10000;
+
 /**
- * Allocate the public reference (SQ-YYYY-NNNN) inside the caller's
- * transaction so the number and the row commit together (BUILD_CONVENTIONS
- * §3). The numbering service reads the tenant's own scheme; we override the
- * prefix to "SQ" to match the legacy's `SQ-{year}-{seq}` shape.
+ * Which corporate entity this enquiry belongs to.
+ *
+ * Order: what the caller said → what the linked lead already belongs to → the
+ * tenant's only active entity. A tenant with two entities and no explicit
+ * choice gets a 422 naming the field rather than a guess: the entity decides
+ * which counter the reference comes from and whose letterhead the quotation
+ * will eventually carry, and picking one silently files the enquiry under the
+ * wrong company.
  */
-async function allocatePublicRef(client, { entityId }) {
-  const { number } = await numbering.allocate(client, {
-    moduleKey: "MOD-20-INTAKE",
-    entityId,
-    date: new Date().toISOString().slice(0, 10),
-  });
-  return number;
+async function resolveEntityId(client, { data = {} }) {
+  if (data.entity_id) return data.entity_id;
+  if (data.lead_id) {
+    const { rows } = await client.query("SELECT entity_id FROM lead WHERE lead_id = $1", [data.lead_id]);
+    if (rows[0] && rows[0].entity_id) return rows[0].entity_id;
+  }
+  const fallback = await repo.defaultEntityId(client);
+  if (fallback) return fallback;
+  throw new AppError(
+    "ENTITY_REQUIRED",
+    "This tenant has more than one corporate entity — say which one the request belongs to",
+    422,
+    { entity_id: ["required when the tenant has several corporate entities"] },
+  );
 }
 
 async function create(client, { data, actor = {} }) {
+  const entityId = await resolveEntityId(client, { data });
   await client.query("BEGIN");
   try {
-    // The intake module token is "SQR" — fallback to the service's default
-    // prefix when the tenant hasn't customised. We register a one-off scheme
-    // allocation that doesn't require entity_id by using the platform key
-    // (numbering.service allows null entityId in the legacy path).
-    const public_ref = data.public_ref || null;
-    const row = await repo.insert(client, { ...data, public_ref, created_by_user_id: actor.user_id || null });
-    if (!public_ref) {
-      const allocated = await allocatePublicRef(client, { entityId: null });
-      const updated = await repo.update(client, row.quote_request_id, { public_ref: allocated });
-      Object.assign(row, updated);
-    }
+    // Allocated INSIDE the transaction (BUILD_CONVENTIONS §3) so the number and
+    // the row commit together — a rolled-back create must not burn a reference.
+    const { number } = await numbering.allocate(client, {
+      moduleKey: "MOD-20-INTAKE",
+      entityId,
+      date: new Date().toISOString().slice(0, 10),
+    });
+    const row = await repo.insert(client, {
+      ...data,
+      entity_id: entityId,
+      public_ref: data.public_ref || number,
+      created_by_user_id: actor.user_id || null,
+    });
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.quote_request_id), actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: ref(row.quote_request_id), after: row });
     await client.query("COMMIT");
@@ -62,18 +106,16 @@ async function create(client, { data, actor = {} }) {
 async function update(client, { id, patch = {}, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Quote request not found", 404);
-  if (["CONVERTED_TO_OPPORTUNITY", "CLOSED_NO_ACTION"].includes(before.status)) {
+  if (rules.isTerminal(before.status)) {
     throw new AppError("LOCKED", "A " + before.status + " quote request cannot be edited", 422);
   }
-  // Strip read-only fields.
-  const allowed = [
-    "lead_id", "intake_channel", "requester_name", "requester_company", "requester_email", "requester_phone",
-    "service_category", "service_type", "origin_location", "destination_location",
-    "warehouse_location", "warehouse_duration", "estimated_weight", "project_cargo_flag",
-    "cargo_description", "incoterm", "owner_user_id",
-  ];
   const fields = {};
-  for (const k of allowed) if (patch[k] !== undefined) fields[k] = patch[k];
+  for (const k of repo.WRITABLE) {
+    // public_ref is allocated once and is history; entity_id decides the
+    // counter that produced it, so neither is patchable after the fact.
+    if (k === "public_ref" || k === "entity_id") continue;
+    if (patch[k] !== undefined) fields[k] = patch[k];
+  }
   const row = await repo.update(client, id, fields);
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
   return row;
@@ -82,7 +124,7 @@ async function update(client, { id, patch = {}, actor = {} }) {
 async function transition(client, { id, to, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Quote request not found", 404);
-  assertTransition(before.status, to);
+  rules.assertTransition(before.status, to);
   const row = await repo.update(client, id, { status: to });
   await emitEvent(client, { eventTypeKey: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
   await audit(client, { actorUserId: actor.user_id || null, action: events.transition(to), moduleKey: events.MODULE, entityRef: ref(id), before, after: row });
@@ -90,51 +132,49 @@ async function transition(client, { id, to, actor = {} }) {
 }
 
 /**
- * Convert a quote request into an opportunity. This is the second half of
- * the legacy "convert" flow: the lead was already promoted to a client; now
- * the quote_request becomes the source of a tracked opportunity in the
- * pipeline. The trigger `quote_request_sync_converted()` keeps
- * `status='CONVERTED_TO_OPPORTUNITY'` and `converted_at` consistent with
- * the FK.
+ * Convert a quote request into an opportunity — ONE transaction.
  *
- * `converted_opportunity_id` is set here; the trigger owns the rest.
+ * The opportunity row is written through its own repo rather than through
+ * opportunity.service.create, precisely because that service opens and commits
+ * its own transaction: calling it here would commit the opportunity before this
+ * function's own write, and a failure afterwards would strand it. The events
+ * and audit rows the opportunity module would have emitted are emitted here
+ * with the same keys, so nothing downstream loses a record.
+ *
+ * `converted_opportunity_id` is the single source of truth for "is converted";
+ * the trg_quote_request_sync_converted trigger keeps `status` and `converted_at`
+ * in step with it, so the two can never disagree the way the legacy's did.
  */
-async function convertToOpportunity(client, { id, opportunity, actor = {} }) {
+async function convertToOpportunity(client, { id, opportunity = {}, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Quote request not found", 404);
-  if (before.status === "CONVERTED_TO_OPPORTUNITY") {
+  if (before.converted_opportunity_id) {
     throw new AppError("ALREADY_CONVERTED", "Quote request is already converted", 422);
   }
-  assertTransition(before.status, "CONVERTED_TO_OPPORTUNITY");
-
-  // The opportunity insert is in the same transaction as the quote_request
-  // update. The opportunity module already exists (MOD-24) and has its own
-  // service; we delegate the row creation to keep one definition of an
-  // opportunity. If the caller's permissions don't allow opportunity.create,
-  // the requirePermission gate upstream catches it.
-  const oppSvc = require("../opportunity/opportunity.service");
-  const opp = await oppSvc.create(client, {
-    data: {
-      name: opportunity.name,
-      lead_id: before.lead_id || null,
-      estimated_value: opportunity.estimated_value ?? null,
-      currency: opportunity.currency || "XAF",
-      owner_user_id: opportunity.owner_user_id || actor.user_id || null,
-    },
-    actor,
-  });
-  // The opportunity starts with no pipeline stage. The existing module's
-  // stage-transition rules take over from here — staff move it from
-  // NEW → QUALIFIED → … as the deal progresses.
+  rules.assertTransition(before.status, "CONVERTED_TO_OPPORTUNITY");
 
   await client.query("BEGIN");
   try {
+    const opp = await opportunityRepo.insert(client, {
+      name: opportunity.name,
+      lead_id: before.lead_id || null,
+      client_id: opportunity.client_id || null,
+      pipeline_stage_id: opportunity.pipeline_stage_id || null,
+      estimated_value: opportunity.estimated_value ?? null,
+      currency: opportunity.currency || "XAF",
+      owner_user_id: opportunity.owner_user_id || before.owner_user_id || actor.user_id || null,
+      probability: opportunity.probability ?? null,
+      status: "OPEN",
+    });
+    await emitEvent(client, { eventTypeKey: opportunityEvents.CREATED, moduleKey: opportunityEvents.MODULE, entityRef: "opportunity:" + opp.opportunity_id, actorUserId: actor.user_id || null });
+    await audit(client, { actorUserId: actor.user_id || null, action: opportunityEvents.CREATED, moduleKey: opportunityEvents.MODULE, entityRef: "opportunity:" + opp.opportunity_id, after: opp });
+
     const row = await repo.update(client, id, {
       converted_opportunity_id: opp.opportunity_id,
       status: "CONVERTED_TO_OPPORTUNITY",
     });
     await emitEvent(client, { eventTypeKey: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), after: { opportunity_id: opp.opportunity_id } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), before, after: { opportunity_id: opp.opportunity_id } });
     await client.query("COMMIT");
     return { quote_request: row, opportunity: opp };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
@@ -142,27 +182,81 @@ async function convertToOpportunity(client, { id, opportunity, actor = {} }) {
 
 /* ─── attachments ─────────────────────────────────────────────────────────── */
 
-async function addAttachment(client, { id, vault_id, kind, actor = {} }) {
+/**
+ * Upload a document against an enquiry — bytes and link in one transaction.
+ *
+ * THE ORPHAN RULE. Two things can be left behind by a half-done upload: a
+ * `document_vault` row and the stored object it names. The row is inside this
+ * transaction and disappears with the ROLLBACK. The object is not — object
+ * storage has no transaction to join — so it is deleted explicitly on the
+ * failure path, keyed on the storage_path the vault just returned. The delete
+ * is best-effort and logged rather than thrown: failing the caller a SECOND
+ * time, over cleanup, would replace a recoverable orphan with a lost document.
+ *
+ * `sniff` is on. An enquiry attachment arrives from a stranger through the
+ * public intake in F13, and a .exe renamed .pdf is refused on its bytes.
+ */
+async function uploadAttachment(client, { id, dataUrl, filename = null, kind = "ADDITIONAL", slug, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Quote request not found", 404);
-  if (["CONVERTED_TO_OPPORTUNITY", "CLOSED_NO_ACTION"].includes(before.status)) {
+  if (rules.isTerminal(before.status)) {
     throw new AppError("LOCKED", "Cannot add attachments to a " + before.status + " quote request", 422);
   }
-  const row = await repo.addAttachment(client, { quote_request_id: id, vault_id, kind: kind || "ADDITIONAL", uploaded_by_user_id: actor.user_id || null });
-  await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_ADDED, moduleKey: events.MODULE, entityRef: ref(id), after: row });
-  return row;
+
+  let storedPath = null;
+  await client.query("BEGIN");
+  try {
+    const doc = await vault.createDocument(client, {
+      dataUrl,
+      docType: "QUOTE_REQUEST_ATTACHMENT",
+      entityRef: ref(id),
+      originalName: filename,
+      maxBytes: ATTACHMENT_MAX_BYTES,
+      allowedTypes: ATTACHMENT_TYPES,
+      sniff: true,
+      slug,
+      actor,
+    });
+    storedPath = doc.storage_path;
+    if (kind === "PRIMARY") await repo.demotePrimary(client, id);
+    const link = await repo.addAttachment(client, {
+      quote_request_id: id, vault_id: doc.doc_id, kind, uploaded_by_user_id: actor.user_id || null,
+    });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_ADDED, moduleKey: events.MODULE, entityRef: ref(id), after: link });
+    await client.query("COMMIT");
+    return { ...link, original_name: doc.original_name, content_hash: doc.content_hash };
+  } catch (err) {
+    await client.query("ROLLBACK");
+    if (storedPath) {
+      try { await storage.delete(storedPath); } catch (cleanupErr) {
+        logger.error({ err: cleanupErr, storedPath, quoteRequestId: id },
+          "[quote-request] attachment rolled back but its stored object could not be deleted");
+      }
+    }
+    throw err;
+  }
 }
 
 async function removeAttachment(client, { id, attachment_id, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Quote request not found", 404);
-  if (["CONVERTED_TO_OPPORTUNITY", "CLOSED_NO_ACTION"].includes(before.status)) {
+  if (rules.isTerminal(before.status)) {
     throw new AppError("LOCKED", "Cannot remove attachments from a " + before.status + " quote request", 422);
   }
-  const ok = await repo.removeAttachment(client, { quote_request_id: id, attachment_id });
-  if (!ok) throw new AppError("NOT_FOUND", "Attachment not found", 404);
-  await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_REMOVED, moduleKey: events.MODULE, entityRef: ref(id), after: { attachment_id } });
-  return { removed: true };
+  const link = await repo.getAttachment(client, { quote_request_id: id, attachment_id });
+  if (!link) throw new AppError("NOT_FOUND", "Attachment not found", 404);
+  await client.query("BEGIN");
+  try {
+    await repo.removeAttachment(client, { quote_request_id: id, attachment_id });
+    // The vault row is ARCHIVED, never deleted: the document is evidence of what
+    // the client sent, and MOD-64's whole contract is that vault rows are
+    // retained. Detaching it from the enquiry is the operator's intent; erasing
+    // it is not.
+    await vault.archiveDocument(client, { id: link.vault_id, actor });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.ATTACHMENT_REMOVED, moduleKey: events.MODULE, entityRef: ref(id), before: link, after: { attachment_id } });
+    await client.query("COMMIT");
+    return { removed: true };
+  } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 
 async function listAttachments(client, id) {
@@ -171,9 +265,34 @@ async function listAttachments(client, id) {
   return repo.listAttachments(client, id);
 }
 
-/* ─── read helpers ────────────────────────────────────────────────────────── */
+/* ─── reads ───────────────────────────────────────────────────────────────── */
 
 const get = (client, id) => repo.get(client, id);
-const list = (client, q) => repo.list(client, q);
 
-module.exports = { create, update, transition, convertToOpportunity, addAttachment, removeAttachment, listAttachments, get, list };
+/**
+ * List + the KPI tiles.
+ *
+ * The fold lives in `rules.kpiFrom`, which derives one tile per status from the
+ * status list itself, and `assertPartitions` proves the tiles add up to TOTAL
+ * before the response leaves. The previous version hand-listed four tiles while
+ * the CHECK constraint allowed six, so every CLARIFICATION_REQUIRED and
+ * CLOSED_NO_ACTION row was counted into TOTAL and shown in no tile — the
+ * register disagreed with itself, which is the legacy defect verbatim.
+ */
+async function list(client, q = {}) {
+  const { rows, total, kpiRows, limit, offset } = await repo.list(client, q);
+  const kpi = rules.kpiFrom(kpiRows);
+  rules.assertPartitions(kpi);
+  return { rows, total, kpi, limit, offset };
+}
+
+/** Every matching row, for the CSV export. `truncated` is reported, never hidden. */
+const listForExport = (client, q = {}) => repo.listForExport(client, q, EXPORT_CAP);
+
+module.exports = {
+  create, update, transition, convertToOpportunity,
+  uploadAttachment, removeAttachment, listAttachments,
+  get, list, listForExport,
+  resolveEntityId,
+  ATTACHMENT_MAX_BYTES, ATTACHMENT_TYPES, EXPORT_CAP,
+};

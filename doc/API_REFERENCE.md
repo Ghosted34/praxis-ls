@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1057 |
+| Routes | 1065 |
 | Modules mounted | 111 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1057 mounted routes, grouped by path prefix.
+All 1065 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -358,8 +358,12 @@ All 1057 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/campaigns/` | — |
 | POST | `/api/tenant/campaigns/` | — |
 | GET | `/api/tenant/campaigns/:id` | — |
+| PATCH | `/api/tenant/campaigns/:id` | — |
+| POST | `/api/tenant/campaigns/:id/approve` | — |
+| POST | `/api/tenant/campaigns/:id/reject` | — |
 | POST | `/api/tenant/campaigns/:id/send` | — |
 | POST | `/api/tenant/campaigns/:id/transition` | — |
+| GET | `/api/tenant/campaigns/export.csv` | — |
 | GET | `/api/tenant/campaigns/senders` | — |
 | POST | `/api/tenant/campaigns/senders` | — |
 | DELETE | `/api/tenant/campaigns/senders/:id` | — |
@@ -372,6 +376,7 @@ All 1057 mounted routes, grouped by path prefix.
 | DELETE | `/api/tenant/campaigns/templates/:id` | — |
 | GET | `/api/tenant/campaigns/templates/:id` | — |
 | PATCH | `/api/tenant/campaigns/templates/:id` | — |
+| GET | `/api/tenant/campaigns/tiles` | — |
 
 ### `tenant/capabilities`
 
@@ -1088,6 +1093,8 @@ All 1057 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/opportunities/:id/move` | — |
 | POST | `/api/tenant/opportunities/:id/win` | — |
 | GET | `/api/tenant/opportunities/board` | — |
+| GET | `/api/tenant/opportunities/export.csv` | — |
+| GET | `/api/tenant/opportunities/metrics` | — |
 | GET | `/api/tenant/opportunities/stages` | — |
 
 ### `tenant/outbound`
@@ -1266,6 +1273,7 @@ All 1057 mounted routes, grouped by path prefix.
 | POST | `/api/tenant/quote-requests/:id/convert-to-opportunity` | — |
 | POST | `/api/tenant/quote-requests/:id/transition` | — |
 | GET | `/api/tenant/quote-requests/export.csv` | — |
+| GET | `/api/tenant/quote-requests/tiles` | — |
 
 ### `tenant/rate-providers`
 

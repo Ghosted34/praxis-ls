@@ -11,6 +11,7 @@
 const path = require("path");
 
 // Resolve the lead service with a stubbed clientMaster dependency.
+const TYPE_ID = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const SERVICE_PATH = path.resolve(__dirname, "../../src/modules/sales/lead/lead.service.js");
 const REPO_PATH = path.resolve(__dirname, "../../src/modules/sales/lead/lead.repo.js");
 const EVENTS_PATH = path.resolve(__dirname, "../../src/modules/sales/lead/lead.events.js");
@@ -23,6 +24,13 @@ const EMIT_PATH = path.resolve(__dirname, "../../src/shared/events/emit.js");
 jest.doMock(REPO_PATH, () => ({
   get: jest.fn(),
   update: jest.fn(),
+  // Added with the column fix: the convert path resolves the client_type CODE
+  // to its FK and stamps the corporate entity, because `client_master` has
+  // `client_type_id` and no `client_type`, and allocates the client's own
+  // reference only when `entity_id` is present. Both are repo reads, so the
+  // stub has to answer them or this suite tests a path that no longer exists.
+  clientTypeIdByCode: jest.fn(async () => "cccccccc-cccc-4ccc-8ccc-cccccccccccc"),
+  defaultEntityId: jest.fn(async () => "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee"),
 }));
 jest.doMock(EVENTS_PATH, () => ({
   MODULE: "MOD-20",
@@ -100,7 +108,13 @@ describe("lead.service.convert — F6 anti-hardcode", () => {
     expect(out.payment_terms_days).toBe(45);
     expect(clientMaster.create).toHaveBeenCalledTimes(1);
     const arg = clientMaster.create.mock.calls[0][1].data;
-    expect(arg.client_type).toBe("SHIPPER");
+    // The CODE is what the caller supplies and what the service reports back;
+    // what reaches client_master is the FK, because that table has
+    // `client_type_id` and no `client_type` column. Asserting the code here
+    // would re-assert the 42703 this suite's sibling
+    // (lead-convert-client-columns.test.js) exists to prevent.
+    expect(arg).not.toHaveProperty("client_type");
+    expect(arg.client_type_id).toBe(TYPE_ID);
     expect(arg.payment_terms_days).toBe(45);
     // Registrations built from lead NIU/RCCM.
     expect(arg.registrations).toEqual(expect.arrayContaining([

@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 111,
-  "route_count": 1057,
+  "route_count": 1065,
   "tiers": {
     "public": 22,
-    "self-scoped": 65,
-    "gated": 970
+    "self-scoped": 66,
+    "gated": 977
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1023,6 +1023,12 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/campaigns/export.csv": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/campaigns/senders": {
       "auth": true,
       "rbac": true,
@@ -1042,6 +1048,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/campaigns/templates/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/campaigns/tiles": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -2151,6 +2163,18 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/opportunities/export.csv": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/opportunities/metrics": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/opportunities/stages": {
       "auth": true,
       "rbac": true,
@@ -2434,6 +2458,12 @@
       "tier": "gated"
     },
     "GET /api/tenant/quote-requests/export.csv": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/quote-requests/tiles": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -3284,6 +3314,12 @@
       "rbac": true,
       "validated": false,
       "tier": "gated"
+    },
+    "PATCH /api/tenant/campaigns/:id": {
+      "auth": true,
+      "rbac": false,
+      "validated": false,
+      "tier": "self-scoped"
     },
     "PATCH /api/tenant/campaigns/templates/:id": {
       "auth": true,
@@ -4312,6 +4348,18 @@
       "tier": "gated"
     },
     "POST /api/tenant/campaigns/": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/campaigns/:id/approve": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/campaigns/:id/reject": {
       "auth": true,
       "rbac": true,
       "validated": false,

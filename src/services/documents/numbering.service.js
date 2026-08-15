@@ -74,6 +74,9 @@ const MODULE_TOKENS = {
   "MOD-12": "CTR", // HR contract
   "MOD-01-DOC": "DOC", // corporate entity administrative document
   "MOD-03": "CL", //  client
+  "MOD-20-INTAKE": "SQ", // quote-request intake register (F6). NOT "MOD-20":
+  //                     the lead register and the intake register are two
+  //                     document families and must not share one counter.
   "MOD-04": "SUP", // supplier
   "MOD-03-DOC": "DOC", // client KYC document
   "MOD-04-DOC": "DOC", // supplier KYC document

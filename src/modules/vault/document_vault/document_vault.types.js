@@ -56,6 +56,15 @@ const DOC_TYPES = {
    */
   MEETING_TRANSCRIPT:    { label: "Meeting transcript",       module: "sales/meeting",                  moduleKey: "MOD-21" },
   /*
+   * An enquiry attachment (MOD-20, F6) — a packing list, a cargo photo, a spec
+   * sheet the requester sent with their quote request. Registered for the same
+   * reason as MEETING_TRANSCRIPT above: `moduleKeyForDocType` falls back to
+   * MOD-70 for an unregistered type, so without this row the salesperson
+   * working the enquiry could not open the file attached to it unless they also
+   * administered the application.
+   */
+  QUOTE_REQUEST_ATTACHMENT: { label: "Quote request attachment", module: "sales/quote_request",          moduleKey: "MOD-20" },
+  /*
    * Master-data scans — the file behind a register entry, not a document this
    * system issues. There is no template for these three and there never will
    * be: nobody prints a client's tax clearance from here, they photograph the

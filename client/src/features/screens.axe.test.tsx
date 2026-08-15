@@ -481,14 +481,38 @@ const AREAS: Area[] = [
         name: "Campaigns",
         render: () => <CampaignsPage />,
         routes: {
-          "/campaigns": [
-            {
-              campaign_id: "ca1",
-              name: "Q3 push",
-              channel: "EMAIL",
-              status: "DRAFT",
+          // F8: the register returns { rows, total, kpi } rather than a bare
+          // array — the four KPI tiles and the rows are one response.
+          "/campaigns": {
+            rows: [
+              {
+                campaign_id: "ca1",
+                name: "Q3 push",
+                channel: "EMAIL",
+                platform: "META",
+                status: "DRAFT",
+                budget_amount: 1200000,
+                budget_currency: "XAF",
+                owner_name: "A. Marketer",
+                target_leads: 60,
+                target_opportunities: 20,
+                target_won: 6,
+                actual_leads: 43,
+                actual_opportunities: 12,
+                actual_won: 4,
+                cost_per_lead: 27906.98,
+                actuals_updated_at: "2026-08-10T09:00:00Z",
+              },
+            ],
+            total: 1,
+            kpi: {
+              TOTAL_BUDGET: 1200000,
+              LEADS: 43,
+              WON: 4,
+              AVG_CONVERSION: 9.3,
+              CAMPAIGNS: 1,
             },
-          ],
+          },
           "/subscribers": [],
           "/templates": [],
           "/senders": [],

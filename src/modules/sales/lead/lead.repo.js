@@ -19,4 +19,39 @@ async function list(client, q = {}) {
   const { rows } = await client.query("SELECT * FROM lead " + where + " ORDER BY created_at DESC LIMIT $1 OFFSET $2", params);
   return rows;
 }
-module.exports = { insert, get, update, list };
+/**
+ * Resolve a client_type CODE ('SHIPPER', 'BOTH', …) to its id.
+ *
+ * `client_master` has a `client_type_id` FK and NO `client_type` column, so the
+ * code the convert drawer collects has to be looked up before the master row is
+ * written. Passing the code straight through — which is what the convert path
+ * did — reached `insertOne` with an allow-list of null, which puts every key
+ * into the INSERT column list verbatim, and Postgres answered 42703 "column
+ * client_type of relation client_master does not exist". The conversion failed
+ * for every lead, and the unit test did not see it because it mocks
+ * clientMaster.create.
+ *
+ * citext PK on `code`, so the comparison is already case-insensitive.
+ */
+async function clientTypeIdByCode(client, code) {
+  if (!code) return null;
+  const { rows } = await client.query(
+    "SELECT client_type_id FROM client_type WHERE code = $1", [code],
+  );
+  return rows[0] ? rows[0].client_type_id : null;
+}
+
+/**
+ * The tenant's default corporate entity, or null when the choice is genuinely
+ * ambiguous. Same rule as the intake register's: one active entity is a
+ * default, two is a question. Never "the oldest" — that files a client, and its
+ * reference number, under the wrong company.
+ */
+async function defaultEntityId(client) {
+  const { rows } = await client.query(
+    "SELECT entity_id FROM corporate_entity WHERE is_active IS NOT false LIMIT 2",
+  );
+  return rows.length === 1 ? rows[0].entity_id : null;
+}
+
+module.exports = { insert, get, update, list, clientTypeIdByCode, defaultEntityId };

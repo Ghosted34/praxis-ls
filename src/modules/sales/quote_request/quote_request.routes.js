@@ -29,6 +29,9 @@ router.use(authMiddleware);
 
 router.get("/", requirePermission(MODULE, "view"), controller.list);
 router.get("/export.csv", requirePermission(MODULE, "view"), controller.exportCsv);
+// The tile vocabulary the register renders, so the screen does not keep its
+// own copy of the status list and drift from the one the API partitions on.
+router.get("/tiles", requirePermission(MODULE, "view"), controller.tiles);
 router.get("/:id", requirePermission(MODULE, "view"), controller.get);
 router.post("/", requirePermission(MODULE, "create"), validator.create, controller.create);
 router.patch("/:id", requirePermission(MODULE, "edit"), validator.update,
@@ -38,7 +41,7 @@ router.post("/:id/convert-to-opportunity", requirePermission(MODULE, "approve"),
 
 // Attachments
 router.get("/:id/attachments", requirePermission(MODULE, "view"), controller.listAttachments);
-router.post("/:id/attachments", requirePermission(MODULE, "edit"), controller.addAttachment);
+router.post("/:id/attachments", requirePermission(MODULE, "edit"), validator.attachment, controller.addAttachment);
 router.delete("/:id/attachments/:attachmentId", requirePermission(MODULE, "edit"), controller.removeAttachment);
 
 module.exports = { basePath: "/quote-requests", feature: null, router };

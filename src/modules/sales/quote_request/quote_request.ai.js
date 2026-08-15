@@ -6,7 +6,7 @@ module.exports = {
   module_key: "MOD-20",
   screens: [],
   reads: [
-    { key: "list_quote_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), describe: "List intake quote requests. Returns rows + total + the 5 KPI tiles (TOTAL, RECEIVED, UNDER_REVIEW, QUOTED, CONVERTED_TO_OPPORTUNITY)." },
+    { key: "list_quote_requests", service: (c, p) => service.list(c, p).then((r) => ({ rows: r.rows, total: r.total, kpi: r.kpi })), describe: "List intake quote requests. Returns rows + total + the KPI tiles, one per intake status plus TOTAL, which partition the filtered set." },
     { key: "get_quote_request", service: (c, p) => service.get(c, p.id || p), describe: "Get a quote request by id, with attachments." },
   ],
   writes: [

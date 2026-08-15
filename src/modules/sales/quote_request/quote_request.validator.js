@@ -26,6 +26,10 @@ const text255 = z.string().trim().max(255).optional();
 const text5000 = z.string().trim().max(5000).optional();
 
 const base = {
+  // Which corporate entity the enquiry belongs to. Optional: the service
+  // resolves it from the linked lead, or from the tenant's only active
+  // entity, and 422s naming this field when a tenant has several.
+  entity_id: z.string().uuid().optional().nullable(),
   lead_id: z.string().uuid().optional().nullable(),
   intake_channel: z.enum(INTAKE_CHANNEL).optional(),
   requester_name: text255,
@@ -57,6 +61,18 @@ const schemas = {
       owner_user_id: z.string().uuid().optional().nullable(),
     }),
   }),
+  /**
+   * An attachment upload. `file` is a base64 data URL; the vault sniffs the
+   * bytes and enforces the type and size ceilings, so this only bounds what is
+   * cheap to bound here — a 15 MB base64 string is ~11 MB of file, comfortably
+   * above the vault's 10 MB limit, and rejecting it before decoding keeps a
+   * hostile payload from being buffered.
+   */
+  attachment: z.object({
+    file: z.string().min(1).max(15 * 1024 * 1024).regex(/^data:[^;]+;base64,/, "expected a base64 data URL"),
+    filename: z.string().trim().max(255).optional().nullable(),
+    kind: z.enum(["PRIMARY", "ADDITIONAL"]).optional(),
+  }),
   // AI-facing variants carry quote_request_id in the payload.
   aiTransition: z.object({ quote_request_id: z.string().uuid(), to: z.enum(STATUSES) }),
   aiConvert: z.object({ quote_request_id: z.string().uuid(), opportunity: z.object({
@@ -79,6 +95,7 @@ module.exports = {
   update: mw("update"),
   transition: mw("transition"),
   convertToOpportunity: mw("convertToOpportunity"),
+  attachment: mw("attachment"),
   schemas,
   INTAKE_CHANNEL,
   WAREHOUSE_DURATION,

@@ -23,7 +23,7 @@ const { AppError } = require("../../../utils/errors");
 const ref = (id) => "lead:" + id;
 
 const LEAD_FIELDS = [
-  "company_name", "contact_name", "email", "phone", "country", "address",
+  "entity_id", "company_name", "contact_name", "email", "phone", "country", "address",
   "niu", "rccm", "source", "intake_channel", "service_interest",
   "client_type_hint", "payment_terms_days", "owner_user_id",
 ];
@@ -32,6 +32,7 @@ async function create(client, { data, actor = {} }) {
   await client.query("BEGIN");
   try {
     const row = await repo.insert(client, {
+      entity_id: data.entity_id || null,
       company_name: data.company_name,
       contact_name: data.contact_name || null,
       email: data.email || null,
@@ -124,26 +125,68 @@ async function convert(client, { id, clientData = {}, actor = {} }) {
 
   await client.query("BEGIN");
   try {
+    // The code the drawer collects is not a column. `client_master` carries a
+    // `client_type_id` FK and no `client_type`; `insertOne` is called with a
+    // null allow-list, so an unknown key goes straight into the INSERT column
+    // list and Postgres answers 42703. Resolve it, and refuse a code the tenant
+    // has not configured rather than silently writing a client with no type —
+    // an untyped client is one Finance has to complete, which is the exact
+    // outcome this feature exists to prevent.
+    const clientTypeId = await repo.clientTypeIdByCode(client, clientType);
+    if (!clientTypeId) {
+      throw new AppError(
+        "UNKNOWN_CLIENT_TYPE",
+        `client_type "${clientType}" is not configured for this tenant`,
+        422,
+        { client_type: ["not a configured client type"] },
+      );
+    }
+
+    // Likewise `phone`: there is no phone column on client_master. The number
+    // belongs on the party's primary contact, which party-write.writeChildren
+    // creates in the same transaction — so it is kept rather than dropped, and
+    // it lands where the 360 and the portal already look for it.
+    const contactName = clientData.contact_name || lead.contact_name || null;
+    const contactPhone = clientData.phone || lead.phone || null;
+    const contactEmail = clientData.email || lead.email || null;
+    const primary_contact = contactName
+      ? { name: contactName, phone: contactPhone || undefined, email: contactEmail || undefined }
+      : undefined;
+
+    // The entity decides which counter allocates the client's `CL-` reference.
+    // Without it client_master.create skips the allocation entirely and the
+    // client arrives with a null ref.
+    const entityId = clientData.entity_id || lead.entity_id || (await repo.defaultEntityId(client));
+    if (!entityId) {
+      throw new AppError(
+        "ENTITY_REQUIRED",
+        "This tenant has more than one corporate entity — say which one the client belongs to",
+        422,
+        { entity_id: ["required when the tenant has several corporate entities"] },
+      );
+    }
+
     const created = await clientMaster.create(client, {
       data: {
+        entity_id: entityId,
         name: clientData.name || lead.company_name,
         legal_name: clientData.legal_name || lead.company_name,
         country_code: country,
-        email: clientData.email || lead.email || undefined,
-        phone: clientData.phone || lead.phone || undefined,
+        email: contactEmail || undefined,
         address: clientData.address || lead.address || undefined,
-        client_type: clientType,
+        client_type_id: clientTypeId,
         payment_terms_days: paymentTerms,
         registrations,
+        primary_contact,
       },
       actor,
     });
     const clientId = created.client_id || created.id;
     const row = await repo.update(client, id, { status: "CONVERTED", client_id: clientId });
     await emitEvent(client, { eventTypeKey: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), actorUserId: actor.user_id || null });
-    await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), after: { client_id: clientId, client_type: clientType, payment_terms_days: paymentTerms } });
+    await audit(client, { actorUserId: actor.user_id || null, action: events.CONVERTED, moduleKey: events.MODULE, entityRef: ref(id), after: { client_id: clientId, client_type: clientType, client_type_id: clientTypeId, payment_terms_days: paymentTerms } });
     await client.query("COMMIT");
-    return { lead: row, client_id: clientId, client_type: clientType, payment_terms_days: paymentTerms };
+    return { lead: row, client_id: clientId, entity_id: entityId, client_type: clientType, client_type_id: clientTypeId, payment_terms_days: paymentTerms };
   } catch (err) { await client.query("ROLLBACK"); throw err; }
 }
 

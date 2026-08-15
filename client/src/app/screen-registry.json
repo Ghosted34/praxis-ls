@@ -1173,10 +1173,11 @@
       "route": "/sales/opportunities",
       "area": "sales",
       "module_key": "MOD-24",
-      "purpose": "Pipeline of open opportunities by stage.",
+      "purpose": "Kanban of open opportunities by stage (seven stages, each with a win probability). KPI strip is server-computed: open pipeline value, weighted forecast, won value, and BOTH win rates — settled (won / won+lost) and all-deals (the legacy denominator). Filter by source and search; CSV export carries the money columns as numbers.",
       "actions": [
         "list_opportunities",
         "pipeline_board",
+        "pipeline_metrics",
         "get_opportunity",
         "create_opportunity",
         "move_opportunity",
@@ -1221,12 +1222,14 @@
       "route": "/sales/campaigns",
       "area": "sales",
       "module_key": "MOD-22",
-      "purpose": "Marketing campaigns and sends.",
+      "purpose": "Campaign register: budget, targets, hand-entered performance, approval, and newsletter sends.",
       "actions": [
         "list_campaigns",
+        "get_campaign",
         "list_subscribers",
         "create_campaign",
-        "transition_campaign"
+        "transition_campaign",
+        "record_campaign_actuals"
       ]
     },
     {

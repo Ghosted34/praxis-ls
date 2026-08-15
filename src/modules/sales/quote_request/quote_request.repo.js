@@ -7,13 +7,33 @@ const ATTACHMENT_TABLE = "quote_request_attachment";
 
 /**
  * Coerce empty string to null for nullable text columns. The legacy PHP sent
- * `""` for blank form fields and they landed as `""`; we drop them so the
- * status filter `WHERE service_category = $n` matches expected behaviour.
+ * `""` for blank form fields and they landed as `""`, so `WHERE
+ * service_category = $n` matched nothing and the filter looked broken.
  */
 const blankToNull = (v) => (v === "" || v === undefined ? null : v);
 
+/** Columns a caller may write. Everything else is set by the service or a trigger. */
+const WRITABLE = [
+  "entity_id", "public_ref", "lead_id", "intake_channel",
+  "requester_name", "requester_company", "requester_email", "requester_phone",
+  "service_category", "service_type", "origin_location", "destination_location",
+  "warehouse_location", "warehouse_duration", "estimated_weight",
+  "project_cargo_flag", "cargo_description", "incoterm", "owner_user_id",
+];
+
+/**
+ * INSERT.
+ *
+ * `public_ref` is written HERE, in the same statement as the row — not by a
+ * follow-up UPDATE. The previous shape inserted the row, allocated the number,
+ * then updated; `public_ref` was also absent from this field map, so a
+ * caller-supplied reference was silently discarded and the column relied
+ * entirely on the second write landing. One statement, one row, one number.
+ */
 function insert(client, data) {
-  return insertOne(client, TABLE, {
+  const row = {
+    entity_id: blankToNull(data.entity_id),
+    public_ref: blankToNull(data.public_ref),
     lead_id: blankToNull(data.lead_id),
     intake_channel: data.intake_channel || "MANUAL",
     requester_name: blankToNull(data.requester_name),
@@ -33,7 +53,8 @@ function insert(client, data) {
     status: "RECEIVED",
     owner_user_id: blankToNull(data.owner_user_id),
     created_by_user_id: blankToNull(data.created_by_user_id),
-  });
+  };
+  return insertOne(client, TABLE, row);
 }
 
 function get(client, id) {
@@ -46,27 +67,42 @@ async function update(client, id, fields) {
 }
 
 /**
- * List with filters. Mirrors the legacy `quote_requests/list.php` parameter
- * set (q, status, channel, month, year, sort, page, pageSize) but the KPI
- * computation is the new way: one source of truth, two summaries.
+ * The tenant's default corporate entity, for numbering.
  *
- * Returns { rows, total, kpi }. The KPI is computed from the SAME WHERE
- * clause as the list (minus the `status` filter — that would be tautological),
- * so the five tiles sum to the visible total under any non-status filter.
+ * Returns the single active entity, or null when there are none or more than
+ * one. Null is deliberate and is NOT "pick the oldest": a tenant trading
+ * through two entities has no default, and guessing would file an enquiry — and
+ * its reference number — under the wrong company. The service turns null into a
+ * 422 naming the field, so the operator chooses.
  */
-async function list(client, q = {}) {
-  const { limit, offset } = page(q);
+async function defaultEntityId(client) {
+  const { rows } = await client.query(
+    "SELECT entity_id FROM corporate_entity WHERE is_active IS NOT false LIMIT 2",
+  );
+  return rows.length === 1 ? rows[0].entity_id : null;
+}
+
+/* ─── filtering ───────────────────────────────────────────────────────────── */
+
+/**
+ * ONE WHERE builder, used by the list, the total, the KPI and the export.
+ *
+ * `includeStatus` is the only difference between them. Four hand-copied WHERE
+ * clauses is how the list and its own summary drift apart, which is the defect
+ * class this feature is correcting — so they are built from one function and
+ * the divergence is a single boolean.
+ */
+function buildWhere(q = {}, { includeStatus = true } = {}) {
   const wh = [];
   const params = [];
-
-  if (q.status) { params.push(q.status); wh.push("status = $" + params.length); }
+  if (includeStatus && q.status) { params.push(q.status); wh.push("status = $" + params.length); }
   if (q.intake_channel) { params.push(q.intake_channel); wh.push("intake_channel = $" + params.length); }
   if (q.service_category) { params.push(q.service_category); wh.push("service_category = $" + params.length); }
+  if (q.entity_id) { params.push(q.entity_id); wh.push("entity_id = $" + params.length); }
   if (q.month) { params.push(Number(q.month)); wh.push("EXTRACT(MONTH FROM created_at) = $" + params.length); }
   if (q.year) { params.push(Number(q.year)); wh.push("EXTRACT(YEAR FROM created_at) = $" + params.length); }
   if (q.q) {
-    const pat = "%" + q.q + "%";
-    params.push(pat);
+    params.push("%" + q.q + "%");
     const i = params.length;
     wh.push(
       `(public_ref ILIKE $${i} OR requester_name ILIKE $${i} OR requester_email ILIKE $${i}` +
@@ -74,51 +110,62 @@ async function list(client, q = {}) {
       ` OR destination_location ILIKE $${i} OR cargo_description ILIKE $${i})`,
     );
   }
-  const where = wh.length ? "WHERE " + wh.join(" AND ") : "";
-  const sortCol = ["created_at", "public_ref", "status", "requester_name"].includes(q.sort) ? q.sort : "created_at";
-  const sortDir = q.dir === "asc" ? "ASC" : "DESC";
+  return { where: wh.length ? "WHERE " + wh.join(" AND ") : "", params };
+}
 
-  const listSql = `SELECT * FROM ${TABLE} ${where} ORDER BY ${sortCol} ${sortDir} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
-  const listParams = params.concat([limit, offset]);
-  const { rows } = await client.query(listSql, listParams);
+const SORTABLE = ["created_at", "public_ref", "status", "requester_name"];
+const orderBy = (q = {}) =>
+  `ORDER BY ${SORTABLE.includes(q.sort) ? q.sort : "created_at"} ${q.dir === "asc" ? "ASC" : "DESC"}`;
 
-  // Total under the same filters (with status if given).
-  const totalSql = `SELECT COUNT(*)::int AS c FROM ${TABLE} ${where}`;
-  const { rows: totalRows } = await client.query(totalSql, params);
-  const total = totalRows[0]?.c || 0;
+/**
+ * List + total + the KPI GROUP BY.
+ *
+ * The KPI drops the STATUS filter and keeps every other one, so a user looking
+ * at status=QUOTED still sees the whole summary rather than one tile equal to
+ * the total and the rest at zero (which is a tautology, not data). It groups by
+ * status with no hand-written list of which statuses count — the fold in
+ * `rules.kpiFrom` owns that, and it is proven to partition.
+ */
+async function list(client, q = {}) {
+  const { limit, offset } = page(q);
+  const { where, params } = buildWhere(q);
 
-  // KPI tiles: rebuild WHERE without the status filter so RECEIVED, etc. are
-  // NOT zeroed by a status=QUOTED filter. Everything else (channel, month,
-  // year, q) is applied — that's the whole point of "KPIs under every
-  // filter combination". A status filter would still make the corresponding
-  // tile = total and the others = 0, which is a tautology the legacy
-  // accidentally computed as data.
-  const kpiWh = [];
-  const kpiParams = [];
-  if (q.intake_channel) { kpiParams.push(q.intake_channel); kpiWh.push("intake_channel = $" + kpiParams.length); }
-  if (q.service_category) { kpiParams.push(q.service_category); kpiWh.push("service_category = $" + kpiParams.length); }
-  if (q.month) { kpiParams.push(Number(q.month)); kpiWh.push("EXTRACT(MONTH FROM created_at) = $" + kpiParams.length); }
-  if (q.year) { kpiParams.push(Number(q.year)); kpiWh.push("EXTRACT(YEAR FROM created_at) = $" + kpiParams.length); }
-  if (q.q) {
-    const pat = "%" + q.q + "%";
-    kpiParams.push(pat);
-    const i = kpiParams.length;
-    kpiWh.push(
-      `(public_ref ILIKE $${i} OR requester_name ILIKE $${i} OR requester_email ILIKE $${i}` +
-      ` OR requester_company ILIKE $${i} OR origin_location ILIKE $${i}` +
-      ` OR destination_location ILIKE $${i} OR cargo_description ILIKE $${i})`,
-    );
-  }
-  const kpiWhere = kpiWh.length ? "WHERE " + kpiWh.join(" AND ") : "";
-  const kpiSql = `SELECT status, COUNT(*)::int AS c FROM ${TABLE} ${kpiWhere} GROUP BY status`;
-  const { rows: kpiRows } = await client.query(kpiSql, kpiParams);
-  const kpi = { TOTAL: 0, RECEIVED: 0, UNDER_REVIEW: 0, QUOTED: 0, CONVERTED_TO_OPPORTUNITY: 0 };
-  for (const r of kpiRows) {
-    kpi.TOTAL += r.c;
-    if (kpi[r.status] !== undefined && kpi[r.status] !== null) kpi[r.status] = r.c;
-  }
+  const { rows } = await client.query(
+    `SELECT * FROM ${TABLE} ${where} ${orderBy(q)} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`,
+    params.concat([limit, offset]),
+  );
 
-  return { rows, total, kpi };
+  const { rows: totalRows } = await client.query(`SELECT COUNT(*)::int AS c FROM ${TABLE} ${where}`, params);
+
+  const kpiQ = buildWhere(q, { includeStatus: false });
+  const { rows: kpiRows } = await client.query(
+    `SELECT status, COUNT(*)::int AS c FROM ${TABLE} ${kpiQ.where} GROUP BY status`,
+    kpiQ.params,
+  );
+
+  return { rows, total: totalRows[0] ? totalRows[0].c : 0, kpiRows, limit, offset };
+}
+
+/**
+ * Every matching row, unpaginated — for the CSV export ONLY.
+ *
+ * Separate from list() on purpose. The export used to call list() with
+ * `pageSize: 100000`, and `page()` reads `limit`/`offset` and clamps to 200, so
+ * `pageSize` was ignored entirely and the export silently wrote the first 50
+ * rows. A truncated export that reports no error is worse than one that
+ * refuses: the operator opens it in Excel and believes it.
+ *
+ * `cap` bounds the statement so an export cannot become an unbounded scan; the
+ * caller is told when it bites (see the service) rather than being handed a
+ * prefix.
+ */
+async function listForExport(client, q = {}, cap = 10000) {
+  const { where, params } = buildWhere(q);
+  const { rows } = await client.query(
+    `SELECT * FROM ${TABLE} ${where} ${orderBy(q)} LIMIT $${params.length + 1}`,
+    params.concat([cap + 1]),
+  );
+  return { rows: rows.slice(0, cap), truncated: rows.length > cap };
 }
 
 /* ─── attachments ─────────────────────────────────────────────────────────── */
@@ -129,14 +176,23 @@ function addAttachment(client, { quote_request_id, vault_id, kind = "ADDITIONAL"
 
 async function listAttachments(client, quote_request_id) {
   const { rows } = await client.query(
-    `SELECT a.quote_request_attachment_id AS id, a.kind, a.created_at, a.vault_id, v.storage_path, v.original_name, v.content_hash
-     FROM ${ATTACHMENT_TABLE} a
-     LEFT JOIN document_vault v ON v.doc_id = a.vault_id
-     WHERE a.quote_request_id = $1
-     ORDER BY (CASE WHEN a.kind = 'PRIMARY' THEN 0 ELSE 1 END), a.created_at`,
+    `SELECT a.quote_request_attachment_id AS id, a.kind, a.created_at, a.vault_id,
+            v.storage_path, v.original_name, v.content_hash
+       FROM ${ATTACHMENT_TABLE} a
+       LEFT JOIN document_vault v ON v.doc_id = a.vault_id
+      WHERE a.quote_request_id = $1
+      ORDER BY (CASE WHEN a.kind = 'PRIMARY' THEN 0 ELSE 1 END), a.created_at`,
     [quote_request_id],
   );
   return rows;
+}
+
+async function getAttachment(client, { quote_request_id, attachment_id }) {
+  const { rows } = await client.query(
+    `SELECT * FROM ${ATTACHMENT_TABLE} WHERE quote_request_attachment_id = $1 AND quote_request_id = $2`,
+    [attachment_id, quote_request_id],
+  );
+  return rows[0] || null;
 }
 
 async function removeAttachment(client, { quote_request_id, attachment_id }) {
@@ -147,4 +203,16 @@ async function removeAttachment(client, { quote_request_id, attachment_id }) {
   return rowCount > 0;
 }
 
-module.exports = { insert, get, update, list, addAttachment, listAttachments, removeAttachment };
+/** Demote whatever is currently PRIMARY, so at most one ever is. */
+async function demotePrimary(client, quote_request_id) {
+  await client.query(
+    `UPDATE ${ATTACHMENT_TABLE} SET kind = 'ADDITIONAL' WHERE quote_request_id = $1 AND kind = 'PRIMARY'`,
+    [quote_request_id],
+  );
+}
+
+module.exports = {
+  insert, get, update, list, listForExport, defaultEntityId,
+  addAttachment, listAttachments, getAttachment, removeAttachment, demotePrimary,
+  buildWhere, WRITABLE,
+};

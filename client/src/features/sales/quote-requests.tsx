@@ -3,12 +3,20 @@
  *
  * doc/SALES_CRM_FEATURES.md#F6. The logistics-scope intake register with its
  * own lifecycle (RECEIVED -> UNDER_REVIEW -> CLARIFICATION_REQUIRED -> QUOTED
- * -> CONVERTED_TO_OPPORTUNITY, plus CLOSED_NO_ACTION). The page surfaces
- * the 5 KPI tiles (TOTAL / RECEIVED / UNDER_REVIEW / QUOTED / CONVERTED) that
- * the legacy broke by storing intake status and pipeline stage in the same
- * column. The fix lives in the repo: the KPI WHERE clause drops the status
- * filter, so a user looking at status=QUOTED still sees the 5-tile summary
- * for the whole result set.
+ * -> CONVERTED_TO_OPPORTUNITY, plus CLOSED_NO_ACTION).
+ *
+ * THE TILES PARTITION THE SET. There is one tile per intake status, plus
+ * TOTAL, and they add up — under every filter combination, with no row left
+ * over. That is the defect F6 exists to correct: the legacy stored intake
+ * status and pipeline stage in one column, so its counters described a
+ * fraction of the register and "converted: 0" was false. This screen briefly
+ * reproduced it in a different way, listing four tiles against six possible
+ * statuses, so every CLARIFICATION_REQUIRED and CLOSED_NO_ACTION row was
+ * counted into TOTAL and displayed nowhere.
+ *
+ * Two things stop it coming back: the API derives the tiles from its own
+ * status list and asserts they sum to TOTAL before responding, and this screen
+ * renders whatever it is given rather than keeping a hand-written list.
  *
  * The page is its own tab on the Sales & CRM hub (not nested under Leads)
  * because it is a different state machine from `lead.status`. Leads carry
@@ -35,13 +43,24 @@ import { AiActions } from "@/components/ai-actions";
 import type { AiAction } from "@/features/scaffold/screen-specs";
 import { QuoteRequestForm, ConvertToOpportunityModal } from "./quote-request-forms";
 
-type Kpi = {
-  TOTAL: number;
-  RECEIVED: number;
-  UNDER_REVIEW: number;
-  QUOTED: number;
-  CONVERTED_TO_OPPORTUNITY: number;
-};
+/** TOTAL plus one count per intake status; `OTHER` only ever appears if a row
+ *  carries a status the API does not know, which the screen shows rather than
+ *  hides. */
+type Kpi = Record<string, number>;
+
+/** Tile order and captions — lifecycle order, TOTAL first. Kept beside
+ *  STATUS_FILTERS below so the two cannot drift apart. */
+const KPI_TILES: { key: string; label: string; accent: string }[] = [
+  { key: "TOTAL", label: "Total", accent: "text-foreground" },
+  { key: "RECEIVED", label: "Received", accent: "text-primary-ink" },
+  { key: "UNDER_REVIEW", label: "Under review", accent: "text-warn" },
+  { key: "CLARIFICATION_REQUIRED", label: "Needs clarification", accent: "text-warn" },
+  { key: "QUOTED", label: "Quoted", accent: "text-ok" },
+  { key: "CONVERTED_TO_OPPORTUNITY", label: "Converted", accent: "text-primary-ink" },
+  { key: "CLOSED_NO_ACTION", label: "Closed", accent: "text-muted-foreground" },
+];
+
+const EMPTY_KPI: Kpi = KPI_TILES.reduce((a, t) => ({ ...a, [t.key]: 0 }), {} as Kpi);
 
 const QUOTE_REQUEST_AI: AiAction[] = [
   {
@@ -65,6 +84,7 @@ const STATUS_FILTERS = [
   { value: "", label: "All" },
   { value: "RECEIVED", label: "Received" },
   { value: "UNDER_REVIEW", label: "Under review" },
+  { value: "CLARIFICATION_REQUIRED", label: "Needs clarification" },
   { value: "QUOTED", label: "Quoted" },
   { value: "CONVERTED_TO_OPPORTUNITY", label: "Converted" },
   { value: "CLOSED_NO_ACTION", label: "Closed" },
@@ -120,7 +140,7 @@ export function QuoteRequestsPage() {
       setData({
         rows: payload?.rows || [],
         total: payload?.total || 0,
-        kpi: payload?.kpi || { TOTAL: 0, RECEIVED: 0, UNDER_REVIEW: 0, QUOTED: 0, CONVERTED_TO_OPPORTUNITY: 0 },
+        kpi: payload?.kpi || EMPTY_KPI,
       });
     } catch (e) {
       setError(errMsg(e));
@@ -155,27 +175,26 @@ export function QuoteRequestsPage() {
   }
 
   const rows = data?.rows || [];
-  const kpi = data?.kpi || { TOTAL: 0, RECEIVED: 0, UNDER_REVIEW: 0, QUOTED: 0, CONVERTED_TO_OPPORTUNITY: 0 };
+  const kpi = data?.kpi || EMPTY_KPI;
 
   return (
     <section className={pageShell.wide}>
       <PageHeader
         eyebrow={<HubCrumb area="Sales & CRM" to="/sales" />}
         title="Quote requests"
-        description="Logistics-scope intake register. Five KPI tiles partition the result set under every filter; conversion produces a tracked opportunity in the pipeline."
+        description="Logistics-scope intake register. One tile per intake state, and they add up under every filter; conversion produces a tracked opportunity in the pipeline."
       />
       <HubTabs />
 
-      {/* The 5 KPI tiles. TOTAL + RECEIVED + UNDER_REVIEW + QUOTED + CONVERTED_TO_OPPORTUNITY.
-          CLARIFICATION_REQUIRED and CLOSED_NO_ACTION are not in the 5-tile summary by design —
-          the same split the legacy had; their counts land in TOTAL and surface in the
-          per-row StatusPill. */}
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-5">
-        <KpiTile label="Total" value={kpi.TOTAL} accent="text-foreground" />
-        <KpiTile label="Received" value={kpi.RECEIVED} accent="text-primary-ink" />
-        <KpiTile label="Under review" value={kpi.UNDER_REVIEW} accent="text-warning" />
-        <KpiTile label="Quoted" value={kpi.QUOTED} accent="text-success" />
-        <KpiTile label="Converted" value={kpi.CONVERTED_TO_OPPORTUNITY} accent="text-primary-ink" />
+      {/* One tile per intake status, plus TOTAL — they sum to TOTAL under every
+          filter. `OTHER` is rendered only when the API reports a status it does
+          not recognise, so a counter that stops adding up is visible instead of
+          silently absorbed. */}
+      <div className="mb-6 grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
+        {KPI_TILES.map((t) => (
+          <KpiTile key={t.key} label={t.label} value={kpi[t.key] ?? 0} accent={t.accent} />
+        ))}
+        {kpi.OTHER ? <KpiTile label="Unrecognised" value={kpi.OTHER} accent="text-bad" /> : null}
       </div>
 
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

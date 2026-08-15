@@ -25,7 +25,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_A_MEMBER` | `PERMISSION_DENIED` | 2× |
 | `NOT_YOURS` | `PERMISSION_DENIED` | 2× |
 
-## All codes (297)
+## All codes (309)
 
 | Code | Status | Raised | Alias of |
 |---|---|---|---|
@@ -74,6 +74,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `BAD_RATE` | 422 | 3× | — |
 | `BAD_REPLACEMENT` | 422 | 1× | — |
 | `BAD_ROLE` | 422 | 1× | — |
+| `BAD_SAVEPOINT` | 500 | 1× | — |
 | `BAD_SCHEME` | 422 | 2× | — |
 | `BAD_SEARCH` | 422 | 1× | — |
 | `BAD_SECRET` | 422 | 2× | — |
@@ -100,6 +101,8 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `CLIENT_REQUIRED` | 422 | 3× | — |
 | `CLOSE_BLOCKED` | 422 | 1× | — |
 | `COA_IS_MANAGED` | 422 | 1× | — |
+| `CODE_IN_USE` | 422 | 1× | — |
+| `CODE_RESERVED` | 422 | 1× | — |
 | `CODE_TAKEN` | 409 | 2× | — |
 | `COLUMN_TAKEN` | 422 | 1× | — |
 | `COMPLIANCE_BLOCKED` | 409 | 4× | — |
@@ -184,7 +187,7 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NOT_EDITABLE` | 400 | 1× | — |
 | `NOT_ELIGIBLE` | 403 | 3× | — |
 | `NOT_ENABLED` | 400 | 1× | — |
-| `NOT_FOUND` | 404 | 302× | — |
+| `NOT_FOUND` | 404 | 303× | — |
 | `NOT_LEAF` | 422 | 1× | — |
 | `NOT_OPERATIONAL` | 422 | 1× | — |
 | `NOT_QUALIFIED` | 422 | 1× | — |
@@ -234,6 +237,9 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `NO_WORKING_DAYS` | 422 | 1× | — |
 | `OAUTH_PROBE_FAILED` | 502 | 1× | — |
 | `ODOMETER_BACKWARDS` | 422 | 1× | — |
+| `OPS_CODE_TAKEN` | 422 | 1× | — |
+| `OPS_MARKER_EXHAUSTED` | 500 | 1× | — |
+| `OPS_MARKER_TARGET_GONE` | 422 | 1× | — |
 | `ORDER_LOCKED` | 422 | 1× | — |
 | `OUT_OF_GEOFENCE` | 422 | 1× | — |
 | `OVERRIDE_REASON_REQUIRED` | 422 | 1× | — |
@@ -251,13 +257,19 @@ Recorded, deliberately NOT renamed: a code a client already switches on cannot b
 | `PORTAL_FORBIDDEN` | 403 | 1× | — |
 | `PORTAL_USER_INACTIVE` | 401 | 1× | — |
 | `PO_NOT_RECEIVABLE` | 422 | 1× | — |
+| `PREFIX_IN_USE` | 422 | 1× | — |
+| `PREFIX_TAKEN` | 422 | 1× | — |
 | `PRIVILEGED_TARGET` | 403 | 1× | — |
 | `PROTECTED_ROLE` | 409 | 1× | — |
 | `PROVIDER_UNSUPPORTED` | 400 | 3× | — |
 | `PUBLISHED_SET` | — | 1× | — |
 | `REASON_REQUIRED` | 422 | 2× | — |
 | `REFERENCED` | 409 | 2× | — |
+| `REF_COLLISION_RETRY_EXHAUSTED` | 500 | 1× | — |
+| `REF_ENTITY_REQUIRED` | 422 | 2× | — |
+| `REF_IMMUTABLE` | 422 | 1× | — |
 | `REF_REQUIRED` | 422 | 2× | — |
+| `REF_WRITE_REQUIRED` | 500 | 1× | — |
 | `REPORTING_CYCLE` | 422 | 2× | — |
 | `REQUIRED_FIELDS_MISSING` | — | 1× | — |
 | `RESTORE_NOT_SUPPORTED` | 422 | 1× | — |

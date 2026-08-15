@@ -153,6 +153,9 @@ export type ServiceType = {
   created_at?: string | null;
   template_versions?: number;
   has_active_template?: boolean;
+  /** The two characters that close this service's operation-file references
+   *  (`SM` in `SL7Z3K9QW2M4XBSM`). Frozen once a file has used it. */
+  ops_reference_code?: string | null;
 };
 export type ServiceTypeInput = {
   key?: string;
@@ -160,6 +163,7 @@ export type ServiceTypeInput = {
   name_en?: string | null;
   territory?: string | null;
   is_active?: boolean;
+  ops_reference_code?: string;
 };
 // Kept in step with TERRITORY in src/modules/operations/service_type/
 // service_type.validator.js — the seeded service types (9080) use the last

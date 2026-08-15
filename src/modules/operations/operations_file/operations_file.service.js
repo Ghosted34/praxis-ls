@@ -237,8 +237,15 @@ async function promote(client, { id, data = {}, actor = {} }) {
   try {
     const entityId = write.entity_id || before.entity_id;
     if (!entityId) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
-    const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId, date: new Date().toISOString().slice(0, 10) });
-    row = await repo.update(client, id, { ...write, ref: alloc.number, status: "OPEN" });
+    // The allocator owns generate → write → retry as one step, so the reference
+    // and the promoted row commit together and the unique index on `dossier.ref`
+    // stays the thing that decides a collision. See operation-reference.js.
+    const alloc = await numbering.allocateOperationReference(client, {
+      entityId,
+      serviceTypeId: write.service_type_id || before.service_type_id || null,
+      write: (ref) => repo.update(client, id, { ...write, ref, status: "OPEN" }),
+    });
+    row = alloc.row;
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });
     await client.query("COMMIT");
@@ -303,13 +310,21 @@ async function create(client, { data, actor = {} }) {
   await client.query("BEGIN");
   let row;
   try {
-    let ref = write.ref || null;
-    if (!ref && write.entity_id) {
-      const alloc = await numbering.allocate(client, { moduleKey: events.MODULE, entityId: write.entity_id, date: new Date().toISOString().slice(0, 10) });
-      ref = alloc.number;
-    }
-    if (!ref) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
-    row = await repo.insert(client, { ...write, ref, status: "OPEN" });
+    if (!write.entity_id) throw new AppError("REF_REQUIRED", "entity_id is required to allocate a dossier ref", 422);
+    // `ref` used to be taken from the payload when one was supplied. It is now
+    // dropped, unconditionally and for every caller — the REST validator never
+    // accepted one, but `service.create` is also called IN PROCESS by the
+    // sales→operations handoff, the outbox handler and the AI action registry,
+    // and none of those should be able to choose a file's reference either. A
+    // reference nobody outside this allocator can pick is the whole point.
+    const fields = { ...write };
+    delete fields.ref;
+    const alloc = await numbering.allocateOperationReference(client, {
+      entityId: fields.entity_id,
+      serviceTypeId: fields.service_type_id || null,
+      write: (ref) => repo.insert(client, { ...fields, ref, status: "OPEN" }),
+    });
+    row = alloc.row;
     await emitEvent(client, { eventTypeKey: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, actorUserId: actor.user_id || null });
     await audit(client, { actorUserId: actor.user_id || null, action: events.CREATED, moduleKey: events.MODULE, entityRef: "dossier:" + row.dossier_id, after: row });
     await client.query("COMMIT");
@@ -375,11 +390,45 @@ async function rescheduleOnTargetChange(client, { before, after, actor }) {
   }
 }
 
+/**
+ * A file's reference is fixed at the moment it opens.
+ *
+ * It has been printed on a transit order, quoted in an email and typed into a
+ * client's own system by then, so changing it does not rename the file — it
+ * creates a second name for it that only we know about. That holds however the
+ * file changes afterwards: a different service type, a different entity, a
+ * status transition, a correction to every other field. None of them touch it.
+ *
+ * REJECTED RATHER THAN STRIPPED, so a caller trying to set one finds out. An
+ * echo of the value the file already has is allowed through: a client that
+ * PATCHes back the object it read is not attempting a rename, and failing that
+ * would punish the commonest shape of update in the system.
+ *
+ * The REST validator never accepted `ref` in the first place (`update` is
+ * `create.partial()`, and `create` has no such field). This guard is for the
+ * in-process callers — the AI action registry, the orchestration handlers —
+ * which reach `service.update` directly with no zod anywhere near them.
+ */
+function assertReferenceUnchanged(before, patch) {
+  if (!Object.prototype.hasOwnProperty.call(patch, "ref")) return;
+  if (patch.ref === before.ref) return;
+  throw new AppError(
+    "REF_IMMUTABLE",
+    "An operation file's reference is permanent and cannot be changed",
+    422,
+    { ref: ["already allocated as " + before.ref] },
+  );
+}
+
 async function update(client, { id, patch, actor = {} }) {
   const before = await repo.get(client, id);
   if (!before) throw new AppError("NOT_FOUND", "Dossier not found", 404);
   if (isTerminal(before.status)) throw new AppError("LOCKED", "A " + before.status + " dossier cannot be edited", 422);
+  assertReferenceUnchanged(before, patch);
   const { status, ...rest } = patch;
+  // An echo of the file's own reference got this far (see above); it is dropped
+  // rather than rewritten, so `ref` never appears in an UPDATE statement.
+  delete rest.ref;
   const fields = await foldDetails(client, { data: rest, existing: before, enforceRequired: false });
   const row = await repo.update(client, id, fields);
   await audit(client, { actorUserId: actor.user_id || null, action: events.UPDATED, moduleKey: events.MODULE, entityRef: "dossier:" + id, before, after: row });

@@ -109,7 +109,13 @@ export function ServiceTypesPage() {
                         <Pill tone={r.is_active ? "ok" : "mute"}>{r.is_active ? "Active" : "Off"}</Pill>
                       </div>
                     </div>
-                    <span className="micro">{r.key}</span>
+                    <span className="micro">
+                      {r.key}
+                      {/* The code every operation file of this service ends
+                          with. On the row because "which service is an …SM
+                          file?" is a question the list should answer. */}
+                      {r.ops_reference_code ? <span className="ml-1.5 font-mono opacity-70">·&nbsp;{r.ops_reference_code}</span> : null}
+                    </span>
                   </button>
                 ))
               )}

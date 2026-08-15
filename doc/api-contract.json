@@ -2,11 +2,11 @@
   "generated_by": "scripts/check-api-contract.js",
   "api_version": "v1",
   "modules_mounted": 110,
-  "route_count": 1037,
+  "route_count": 1046,
   "tiers": {
     "public": 22,
     "self-scoped": 65,
-    "gated": 950
+    "gated": 959
   },
   "routes": {
     "DELETE /api/platform/escalation/rules/:id": {
@@ -1989,6 +1989,30 @@
       "validated": false,
       "tier": "gated"
     },
+    "GET /api/tenant/meetings/:id/discovery": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/meetings/discovery/client/:clientId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/meetings/discovery/lead/:leadId": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "GET /api/tenant/meetings/discovery/prompts": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "GET /api/tenant/milestones/assumptions/:serviceTypeId": {
       "auth": true,
       "rbac": true,
@@ -3502,6 +3526,18 @@
       "tier": "gated"
     },
     "PATCH /api/tenant/mail/senders/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/meetings/:id": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "PATCH /api/tenant/meetings/discovery/prompts/:promptId": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -5049,7 +5085,19 @@
       "validated": false,
       "tier": "gated"
     },
+    "POST /api/tenant/meetings/:id/discovery/:sectionKey/dictate": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
     "POST /api/tenant/meetings/:id/notes": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
+    },
+    "POST /api/tenant/meetings/discovery/prompts": {
       "auth": true,
       "rbac": true,
       "validated": false,
@@ -6146,6 +6194,12 @@
       "rbac": false,
       "validated": true,
       "tier": "self-scoped"
+    },
+    "PUT /api/tenant/meetings/:id/discovery/:sectionKey": {
+      "auth": true,
+      "rbac": true,
+      "validated": false,
+      "tier": "gated"
     },
     "PUT /api/tenant/milestones/assumptions/:serviceTypeId": {
       "auth": true,

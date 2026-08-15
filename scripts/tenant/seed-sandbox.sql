@@ -335,11 +335,24 @@ BEGIN
          AS v(code, price, svc)
    WHERE dictionary_item.code = v.code;
 
-  -- Expense rates (feeds costing simulators)
-  INSERT INTO expense_rate (dictionary_item_id,shipping_line,variant,rate) VALUES
-    (v_di_freight,'Maersk','20ft',1650000),
-    (v_di_freight,'Maersk','40ft',2400000),
-    (v_di_freight,'MSC','40ft',2300000);
+  -- Expense rates (feeds costing simulators).
+  --
+  -- 0634 replaced this table's free-text `shipping_line` / `variant` pair with
+  -- real relations — rate_provider and the CONTAINER_TYPE dictionary_ref — and
+  -- DROPPED both columns, which left this seed inserting into a shape that no
+  -- longer exists. The rows are the same three rates; they now resolve their
+  -- provider and container type by code, which is the point of the change: a
+  -- rate is scoped by picking a real row, not by typing a string that happens
+  -- to match another string.
+  INSERT INTO expense_rate (dictionary_item_id, rate_provider_id, container_type_ref_id, rate)
+  SELECT v_di_freight, rp.rate_provider_id, ct.ref_id, v.rate
+    FROM (VALUES
+      ('MAERSK', 'FT20', 1650000::numeric),
+      ('MAERSK', 'FT40', 2400000::numeric),
+      ('MSC',    'FT40', 2300000::numeric)
+    ) AS v(provider_code, container_code, rate)
+    JOIN rate_provider  rp ON rp.kind = 'SHIPPING_LINE'  AND rp.code = v.provider_code
+    JOIN dictionary_ref ct ON ct.kind = 'CONTAINER_TYPE' AND ct.code = v.container_code;
 
   -- Treasury accounts
   INSERT INTO treasury_account (entity_id,kind,label,coa_code,currency)
@@ -364,41 +377,77 @@ BEGIN
   -- ==========================================================================
   -- 2. OPERATIONS — service taxonomy, dossiers, milestones
   -- ==========================================================================
+  -- The service taxonomy is no longer this seed's to create: 9080 seeds all
+  -- twelve service types as `is_system`, so these three INSERTs collided on
+  -- service_type_key_key and took the whole transaction with them. Claim the
+  -- seeded row instead — DO NOTHING rather than DO UPDATE, because 9080's
+  -- names and territories are the canonical ones and this seed's older
+  -- lower-case variants should not overwrite them.
   INSERT INTO service_type (key,name_fr,name_en,territory,is_system)
-    VALUES ('SEA_FREIGHT_IMPORT','Fret maritime import','Sea freight import','INTERNATIONAL_IMPORT',true) RETURNING service_type_id INTO v_st_sea;
-  INSERT INTO service_type (key,name_fr,name_en,territory)
-    VALUES ('AIR_FREIGHT_IMPORT','Fret aérien import','Air freight import','INTERNATIONAL_IMPORT') RETURNING service_type_id INTO v_st_air;
-  INSERT INTO service_type (key,name_fr,name_en,territory)
-    VALUES ('HINTERLAND_TRANSIT','Transit hinterland','Hinterland transit','DOMESTIC_INLAND') RETURNING service_type_id INTO v_st_transit;
+    VALUES ('SEA_FREIGHT_IMPORT','Fret maritime import','Sea freight import','INTERNATIONAL_IMPORT',true)
+    ON CONFLICT (key) DO NOTHING;
+  SELECT service_type_id INTO v_st_sea FROM service_type WHERE key = 'SEA_FREIGHT_IMPORT';
 
-  INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_sea,1) RETURNING milestone_template_id INTO v_mt;
-  INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
-    (v_mt,1,'BOOKING','Réservation','Booking',0),
-    (v_mt,2,'DEPARTURE','Départ navire','Vessel departure',5),
-    (v_mt,3,'ARRIVAL','Arrivée port','Port arrival',30),
-    (v_mt,4,'CUSTOMS','Dédouanement','Customs clearance',33),
-    (v_mt,5,'DELIVERY','Livraison finale','Final delivery',37);
+  INSERT INTO service_type (key,name_fr,name_en,territory)
+    VALUES ('AIR_FREIGHT_IMPORT','Fret aérien import','Air freight import','INTERNATIONAL_IMPORT')
+    ON CONFLICT (key) DO NOTHING;
+  SELECT service_type_id INTO v_st_air FROM service_type WHERE key = 'AIR_FREIGHT_IMPORT';
+
+  INSERT INTO service_type (key,name_fr,name_en,territory)
+    VALUES ('HINTERLAND_TRANSIT','Transit hinterland','Hinterland transit','DOMESTIC_INLAND')
+    ON CONFLICT (key) DO NOTHING;
+  SELECT service_type_id INTO v_st_transit FROM service_type WHERE key = 'HINTERLAND_TRANSIT';
+
+  -- Milestone chains are NOT this seed's to author either. 9091 seeds a real
+  -- fourteen-stage chain for every service type, and 0680 exists precisely to
+  -- repair the tenants that got the five-stage demo chain below first — so
+  -- creating it again would re-open the defect that migration closes. The demo
+  -- chain is kept only as a fallback for a service type that somehow has no
+  -- template at all; on a migrated tenant these three blocks are no-ops and the
+  -- dossiers below instantiate against the shipped chain.
+  SELECT milestone_template_id INTO v_mt
+    FROM milestone_template WHERE service_type_id = v_st_sea AND is_active
+    ORDER BY version DESC LIMIT 1;
+  IF v_mt IS NULL THEN
+    INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_sea,1) RETURNING milestone_template_id INTO v_mt;
+    INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
+      (v_mt,1,'BOOKING','Réservation','Booking',0),
+      (v_mt,2,'DEPARTURE','Départ navire','Vessel departure',5),
+      (v_mt,3,'ARRIVAL','Arrivée port','Port arrival',30),
+      (v_mt,4,'CUSTOMS','Dédouanement','Customs clearance',33),
+      (v_mt,5,'DELIVERY','Livraison finale','Final delivery',37);
+  END IF;
 
   -- Air + hinterland templates. Only SEA had one, so an air or transit dossier
   -- could not be instantiated at all (milestone.service throws 422 NO_TEMPLATE)
   -- and its 360 tab read "no milestone chain seeded for this file yet" with no
   -- way to fix it from the UI. Offsets are shorter than sea for air, longer for
   -- the N'Djamena corridor, so due-date behaviour differs visibly between modes.
-  INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_air,1) RETURNING milestone_template_id INTO v_mt_air;
-  INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
-    (v_mt_air,1,'BOOKING','Réservation','Booking',0),
-    (v_mt_air,2,'DEPARTURE','Départ vol','Flight departure',2),
-    (v_mt_air,3,'ARRIVAL','Arrivée aéroport','Airport arrival',4),
-    (v_mt_air,4,'CUSTOMS','Dédouanement','Customs clearance',6),
-    (v_mt_air,5,'DELIVERY','Livraison finale','Final delivery',8);
+  SELECT milestone_template_id INTO v_mt_air
+    FROM milestone_template WHERE service_type_id = v_st_air AND is_active
+    ORDER BY version DESC LIMIT 1;
+  IF v_mt_air IS NULL THEN
+    INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_air,1) RETURNING milestone_template_id INTO v_mt_air;
+    INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
+      (v_mt_air,1,'BOOKING','Réservation','Booking',0),
+      (v_mt_air,2,'DEPARTURE','Départ vol','Flight departure',2),
+      (v_mt_air,3,'ARRIVAL','Arrivée aéroport','Airport arrival',4),
+      (v_mt_air,4,'CUSTOMS','Dédouanement','Customs clearance',6),
+      (v_mt_air,5,'DELIVERY','Livraison finale','Final delivery',8);
+  END IF;
 
-  INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_transit,1) RETURNING milestone_template_id INTO v_mt_transit;
-  INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
-    (v_mt_transit,1,'T1_LODGED','Déclaration T1 déposée','T1 declaration lodged',0),
-    (v_mt_transit,2,'ESCORT','Escorte douanière','Customs escort',2),
-    (v_mt_transit,3,'BORDER','Passage frontière','Border crossing',5),
-    (v_mt_transit,4,'ARRIVAL','Arrivée destination','Destination arrival',8),
-    (v_mt_transit,5,'DISCHARGE','Déchargement','Discharge',9);
+  SELECT milestone_template_id INTO v_mt_transit
+    FROM milestone_template WHERE service_type_id = v_st_transit AND is_active
+    ORDER BY version DESC LIMIT 1;
+  IF v_mt_transit IS NULL THEN
+    INSERT INTO milestone_template (service_type_id,version) VALUES (v_st_transit,1) RETURNING milestone_template_id INTO v_mt_transit;
+    INSERT INTO milestone_template_stage (milestone_template_id,stage_seq,code,label_fr,label_en,default_offset_days) VALUES
+      (v_mt_transit,1,'T1_LODGED','Déclaration T1 déposée','T1 declaration lodged',0),
+      (v_mt_transit,2,'ESCORT','Escorte douanière','Customs escort',2),
+      (v_mt_transit,3,'BORDER','Passage frontière','Border crossing',5),
+      (v_mt_transit,4,'ARRIVAL','Arrivée destination','Destination arrival',8),
+      (v_mt_transit,5,'DISCHARGE','Déchargement','Discharge',9);
+  END IF;
 
   INSERT INTO dossier (ref,entity_id,client_id,service_type_id,status,incoterm,bl_mawb,vessel_flight,pol,pod,customs_regime,eta,ata)
     VALUES ('SBX-2026-0001',v_ent1,v_cl1,v_st_sea,'IN_PROGRESS','CIF','MAEU12345678','MSC LUCIA','Antwerp','Douala','IM4',CURRENT_DATE-5,NULL) RETURNING dossier_id INTO v_do1;

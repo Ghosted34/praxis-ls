@@ -6,7 +6,7 @@ Closes API F-25. Derived from `doc/api-contract.json`, which `check-api-contract
 
 | | |
 |---|---|
-| Routes | 1037 |
+| Routes | 1046 |
 | Modules mounted | 110 |
 | API version | v1 |
 
@@ -43,7 +43,7 @@ What IS true and worth stating: 61 authenticated routes carry no `requirePermiss
 
 ## Routes
 
-All 1037 mounted routes, grouped by path prefix.
+All 1046 mounted routes, grouped by path prefix.
 
 ### `platform/ai-vendors`
 
@@ -995,7 +995,16 @@ All 1037 mounted routes, grouped by path prefix.
 | GET | `/api/tenant/meetings/` | — |
 | POST | `/api/tenant/meetings/` | — |
 | GET | `/api/tenant/meetings/:id` | — |
+| PATCH | `/api/tenant/meetings/:id` | — |
+| GET | `/api/tenant/meetings/:id/discovery` | — |
+| PUT | `/api/tenant/meetings/:id/discovery/:sectionKey` | — |
+| POST | `/api/tenant/meetings/:id/discovery/:sectionKey/dictate` | — |
 | POST | `/api/tenant/meetings/:id/notes` | — |
+| GET | `/api/tenant/meetings/discovery/client/:clientId` | — |
+| GET | `/api/tenant/meetings/discovery/lead/:leadId` | — |
+| GET | `/api/tenant/meetings/discovery/prompts` | — |
+| POST | `/api/tenant/meetings/discovery/prompts` | — |
+| PATCH | `/api/tenant/meetings/discovery/prompts/:promptId` | — |
 
 ### `tenant/milestones`
 

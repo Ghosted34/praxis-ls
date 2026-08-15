@@ -36,8 +36,11 @@ vi.mock("@/lib/hr-api", async () => {
 });
 
 import { VacancyEditor } from "./vacancy-editor";
+import type { Vacancy } from "@/lib/hr-api";
 
-const DRAFT = {
+// Typed as the real row, so a test can vary a field the editor added without
+// the fixture's inferred shape refusing it.
+const DRAFT: Vacancy = {
   vacancy_id: "v9",
   title: "Senior Stylist",
   department: "Salon",
@@ -125,6 +128,63 @@ describe("the vacancy editor", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
     expect(updateVacancy).not.toHaveBeenCalled();
+  });
+
+  it("saves the working pattern, the address and the start date", async () => {
+    const user = userEvent.setup();
+    view();
+    await user.type(screen.getByLabelText("Working hours"), "9am–5pm, Mon–Fri");
+    await user.type(screen.getByLabelText("Days on-site"), "4");
+    await user.type(screen.getByLabelText("City"), "Douala");
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(updateVacancy).toHaveBeenCalledWith(
+      "v9",
+      expect.objectContaining({
+        working_hours: "9am–5pm, Mon–Fri",
+        days_on_site: 4,
+        location_city: "Douala",
+      }),
+    );
+  });
+
+  it("clears a field rather than leaving the old value on the advert", async () => {
+    const user = userEvent.setup();
+    view({ ...DRAFT, working_hours: "9–5", days_on_site: 5 });
+    await user.clear(screen.getByLabelText("Working hours"));
+    await user.clear(screen.getByLabelText("Days on-site"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    // null, not undefined — undefined would be "leave it alone".
+    const patch = updateVacancy.mock.calls[0][1];
+    expect(patch.working_hours).toBeNull();
+    expect(patch.days_on_site).toBeNull();
+  });
+
+  it("carries the confidential-salary flag and what applicants must send", async () => {
+    const user = userEvent.setup();
+    view();
+    await user.click(screen.getByLabelText("Keep the salary confidential"));
+    await user.click(screen.getByLabelText("A covering note"));
+    await user.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(updateVacancy).toHaveBeenCalledWith(
+      "v9",
+      expect.objectContaining({
+        salary_hidden: true,
+        apply_config: { require_cover_letter: true, require_portfolio: false },
+      }),
+    );
+  });
+
+  it("keeps the department scope it was given", async () => {
+    const user = userEvent.setup();
+    view({ ...DRAFT, scope_id: "scope-7" });
+    // Saving without touching the department control must not unassign the
+    // vacancy from the organigramme — `scope_id` is what record-level access
+    // filters on and what the hire inherits.
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    expect(updateVacancy.mock.calls[0][1].scope_id).toBe("scope-7");
   });
 
   it("has no accessibility violations", async () => {

@@ -376,6 +376,23 @@ export type Vacancy = {
   /** The public careers credential. NULL = not published. */
   public_token?: string | null;
   published_at?: string | null;
+  /** The department REFERENCE (0490); `department` is the display snapshot.
+   *  The editor has to read it back or a save would clear it — see there. */
+  scope_id?: string | null;
+  // 0684 — the detail a candidate reads before deciding to apply.
+  work_mode?: string | null;
+  working_hours?: string | null;
+  days_on_site?: number | null;
+  days_off_site?: number | null;
+  days_off?: number | null;
+  probation_months?: number | null;
+  location_city?: string | null;
+  location_state?: string | null;
+  location_country?: string | null;
+  target_start_date?: string | null;
+  /** The band stays on the row; the PUBLIC payload omits it when this is set. */
+  salary_hidden?: boolean | null;
+  apply_config?: { require_cover_letter?: boolean; require_portfolio?: boolean } | null;
   // 0526 — who is hiring, how many, and where the advert came from.
   entity_id?: string | null;
   headcount?: number | null;
@@ -474,6 +491,8 @@ export const createVacancy = (body: {
   scope_id?: string;
   department?: string;
   description?: string;
+  /** Who is hiring. Optional — a single-entity tenant is resolved server-side. */
+  entity_id?: string;
 }) => tenant<Vacancy>("/vacancies", { method: "POST", body });
 /** Edit the advert itself. The wizard drafts straight into a saved DRAFT row,
  *  so this — not `createVacancy` — is what the editor writes through. */
@@ -491,6 +510,21 @@ export const updateVacancy = (
     salary_min?: number;
     salary_max?: number;
     skills_required?: string[];
+    closes_on?: string;
+    // 0684. Nullable, not just optional: clearing a working pattern is as real
+    // an edit as setting one, and `undefined` would leave the old value.
+    work_mode?: string | null;
+    working_hours?: string | null;
+    days_on_site?: number | null;
+    days_off_site?: number | null;
+    days_off?: number | null;
+    probation_months?: number | null;
+    location_city?: string | null;
+    location_state?: string | null;
+    location_country?: string | null;
+    target_start_date?: string | null;
+    salary_hidden?: boolean;
+    apply_config?: { require_cover_letter?: boolean; require_portfolio?: boolean };
   },
 ) => tenant<Vacancy>(`/vacancies/${id}`, { method: "PATCH", body: patch });
 export const setVacancyStatus = (id: string, status: string) =>
@@ -500,9 +534,32 @@ export const setVacancyStatus = (id: string, status: string) =>
   });
 export const listApplicants = (vacancyId: string) =>
   tenant<Applicant[]>(`/vacancies/${vacancyId}/applicants`);
+/**
+ * Add a candidate by hand.
+ *
+ * The same shape the public careers form posts, minus the CV upload: somebody
+ * who arrived by referral or walked in should end up as the same KIND of record
+ * as somebody who applied online — the AI scorer reads `skills`,
+ * `expected_salary` and `cover_note`, and a hand-entered applicant that carries
+ * only a name and a phone number is one it can say almost nothing about.
+ */
 export const addApplicant = (
   vacancyId: string,
-  body: { full_name: string; email?: string; phone?: string },
+  body: {
+    full_name: string;
+    email?: string;
+    phone?: string;
+    address?: string;
+    skills?: string[];
+    experience_years?: number;
+    expected_salary?: number;
+    portfolio_url?: string;
+    cover_note?: string;
+    source?: string;
+    /** A CV read into a base64 data URL — the same road the careers form uses. */
+    cv_data_url?: string;
+    cv_filename?: string;
+  },
 ) =>
   tenant<Applicant>(`/vacancies/${vacancyId}/applicants`, {
     method: "POST",
@@ -526,20 +583,32 @@ export const setApplicantStatus = (
  * what makes them specific to the role rather than generic. */
 export type IntakeQuestion = {
   key: string;
-  /** text | number | textarea | salary — drives which control is rendered. */
+  /** text | number | textarea | salary | entity — drives which control is
+   *  rendered. Unknown kinds fall back to a text box rather than to nothing. */
   type: string;
   question: string;
   hint?: string | null;
   optional?: boolean;
   min?: number;
   max?: number;
+  /** `entity` questions only: who could be hiring, and in which currency. The
+   *  currency rides along so picking one relabels the salary question without
+   *  another round trip. */
+  options?: { value: string; label: string; currency?: string | null }[];
 };
+/** One company a vacancy can be opened under. */
+export type HiringEntity = { entity_id: string; name: string; currency?: string | null };
 export type IntakeStart = {
   questions: IntakeQuestion[];
-  /** Fixed + generated, so the wizard can show "Question 1 of 10" honestly. */
+  /** Fixed + generated + the entity question when there is a choice to make, so
+   *  the wizard's "Question 1 of N" is whatever the server says it is. */
   total: number;
-  /** The hiring entity's currency — the salary inputs are labelled with it. */
+  /** The salary label BEFORE anything is answered. On a tenant with several
+   *  entities it is a fallback: the entity question's options carry the real
+   *  one, and the wizard relabels once that question is answered. */
   currency: string;
+  /** Already settled — a single-entity tenant, or an `entity_id` that was
+   *  passed in. Null when the interview is going to ask. */
   entity: { entity_id: string; name?: string | null } | null;
 };
 /** Answers are open by shape: the generated questions bring their own keys. */
@@ -547,6 +616,10 @@ export type IntakeAnswers = Record<string, string | number | boolean | null>;
 
 export const intakeQuestions = (entityId?: string) =>
   tenant<IntakeStart>("/vacancies/intake/questions" + qs({ entity_id: entityId }));
+/** The choosable employers. Served by the recruitment module, not master data,
+ *  so posting a role does not require the grant to browse the group structure. */
+export const hiringEntities = () =>
+  tenant<HiringEntity[]>("/vacancies/hiring-entities");
 export const intakeFollowUps = (body: { entity_id?: string | null; answers: IntakeAnswers }) =>
   tenant<{ questions: IntakeQuestion[] }>("/vacancies/intake/follow-ups", { method: "POST", body });
 /** Drafts AND saves, as a DRAFT vacancy — four minutes of answers must survive
@@ -566,6 +639,14 @@ export const scoreApplicant = (vacancyId: string, applicantId: string) =>
     method: "POST",
     body: {},
   });
+
+/** Re-score everyone on the vacancy after the criteria or the advert changed.
+ *  Sequential model calls server-side, so this is slow by design and capped. */
+export const scoreAllApplicants = (vacancyId: string) =>
+  tenant<{ scored: number; failed: number; total: number; skipped: number }>(
+    `/vacancies/${vacancyId}/score-all`,
+    { method: "POST", body: {} },
+  );
 
 export const listCriteria = (vacancyId: string) =>
   tenant<VacancyCriterion[]>(`/vacancies/${vacancyId}/criteria`);

@@ -26,7 +26,7 @@ async function transcribe({ audio, mimeType = "audio/mpeg", vendor = null }) {
   const model = (vendor && vendor.model) || "whisper-large-v3";
   try {
     const res = await groq.audio.transcriptions.create({
-      file: await toFile(audio, "audio", mimeType),
+      file: await toFile(audio, `audio.${extFor(mimeType)}`, mimeType),
       model,
     });
     return { text: (res && res.text) || "", audio_seconds: res.duration || 0, provider: "groq" };
@@ -34,6 +34,29 @@ async function transcribe({ audio, mimeType = "audio/mpeg", vendor = null }) {
     logger.warn({ err }, "transcription failed");
     throw err;
   }
+}
+
+/**
+ * The extension Whisper is given.
+ *
+ * The endpoint decides what a file IS partly from its name, and a buffer sent as
+ * a bare "audio" is a coin flip — so the container the browser recorded in is
+ * named explicitly. Falls back to mp3, which is what the default mimeType says.
+ */
+function extFor(mimeType) {
+  const type = String(mimeType || "").split(";")[0].trim().toLowerCase();
+  return (
+    {
+      "audio/webm": "webm",
+      "audio/ogg": "ogg",
+      "audio/mp4": "mp4",
+      "audio/m4a": "m4a",
+      "audio/x-m4a": "m4a",
+      "audio/wav": "wav",
+      "audio/x-wav": "wav",
+      "audio/mpeg": "mp3",
+    }[type] || "mp3"
+  );
 }
 
 // openai SDK's toFile helper (lazy so tests without the dep still load this file).

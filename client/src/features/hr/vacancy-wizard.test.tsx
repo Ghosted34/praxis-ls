@@ -19,7 +19,7 @@
  *   - The escape hatch is reachable from any card.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { screen } from "@testing-library/react";
+import { screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { axe } from "jest-axe";
 
@@ -85,6 +85,35 @@ const FOLLOW_UPS = [
 ];
 
 const DRAFT = { vacancy_id: "v9", title: "Senior Stylist", status: "DRAFT" };
+
+/**
+ * The same interview on a tenant running several companies: the server puts
+ * "which company is hiring?" first and counts it, so the whole set is eleven.
+ */
+const ENTITY_QUESTION = {
+  key: "entity_id",
+  type: "entity",
+  question: "Which company is hiring?",
+  options: [
+    { value: "e1", label: "JBS Praxis SA", currency: "XAF" },
+    { value: "e2", label: "JBS Praxis Nigeria", currency: "NGN" },
+  ],
+};
+const MULTI = {
+  questions: [ENTITY_QUESTION, ...QUESTIONS],
+  total: 11,
+  currency: "XAF",
+  entity: null,
+};
+
+/** Pick from the Radix select — click the trigger, then the option. */
+async function pickCompany(
+  user: ReturnType<typeof userEvent.setup>,
+  label: string,
+) {
+  await user.click(await screen.findByRole("combobox", { name: "Company" }));
+  await user.click(within(await screen.findByRole("listbox")).getByText(label));
+}
 
 function view() {
   const onDrafted = vi.fn();
@@ -240,6 +269,64 @@ describe("the vacancy drafting interview", () => {
     await user.type(screen.getByLabelText("Your answer"), "Senior Stylist");
     for (let i = 0; i < 3; i++) await forward(user);
     expect(await axe(container)).toHaveNoViolations();
+  });
+
+  describe("when the tenant runs several companies", () => {
+    beforeEach(() => intakeQuestions.mockResolvedValue(MULTI));
+
+    it("asks which one first, and counts the question", async () => {
+      view();
+      expect(await screen.findByText("Which company is hiring?")).toBeInTheDocument();
+      expect(screen.getByText("Question 1 of 11")).toBeInTheDocument();
+      expect(screen.getByRole("progressbar", { name: /progress/i })).toHaveAttribute(
+        "aria-valuemax",
+        "11",
+      );
+    });
+
+    it("will not move on until one is chosen", async () => {
+      const user = userEvent.setup();
+      view();
+      expect(await screen.findByRole("button", { name: "Skip" })).toBeDisabled();
+      await pickCompany(user, "JBS Praxis Nigeria");
+      expect(screen.getByRole("button", { name: "Next" })).toBeEnabled();
+    });
+
+    it("labels the salary in the chosen company's currency, not the fallback", async () => {
+      const user = userEvent.setup();
+      view();
+      await pickCompany(user, "JBS Praxis Nigeria");
+      await forward(user); // → title
+      await user.type(screen.getByLabelText("Your answer"), "Senior Stylist");
+      for (let i = 0; i < 5; i++) await forward(user); // → salary
+
+      // XAF is what the server sent as the pre-answer fallback. The pick wins.
+      expect(screen.getByLabelText("From (NGN/month)")).toBeInTheDocument();
+      expect(screen.queryByLabelText("From (XAF/month)")).not.toBeInTheDocument();
+      expect(screen.getByText(/JBS Praxis Nigeria/)).toBeInTheDocument();
+    });
+
+    it("sends the chosen company with the follow-ups and the draft", async () => {
+      const user = userEvent.setup();
+      view();
+      await pickCompany(user, "JBS Praxis Nigeria");
+      await forward(user);
+      await answerFixedSet(user);
+      await forward(user); // → the last follow-up
+      await user.click(
+        await screen.findByRole("button", { name: /Draft the whole vacancy with AI/ }),
+      );
+
+      expect(intakeFollowUps).toHaveBeenCalledWith(
+        expect.objectContaining({ entity_id: "e2" }),
+      );
+      expect(draftVacancy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          entity_id: "e2",
+          answers: expect.objectContaining({ entity_id: "e2", title: "Senior Stylist" }),
+        }),
+      );
+    });
   });
 
   it("offers the blank form from the first card", async () => {

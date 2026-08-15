@@ -17,18 +17,32 @@
  * spoken paragraph instead — and a spoken paragraph is what the model needs.
  *
  * The count is honest about what is coming: the server says how many questions
- * there are in total (eight fixed plus the follow-ups it intends to generate),
- * so the bar is sized for ten from the first card rather than reaching the end
- * and then growing. If the model returns fewer follow-ups — or none, when it is
+ * there are in total (the fixed set, plus the follow-ups it intends to
+ * generate, plus the entity question when it means to ask one), so the bar is
+ * sized for the whole interview from the first card rather than reaching the
+ * end and then growing. If the model returns fewer follow-ups — or none, when it is
  * unreachable — the total shrinks and the interview simply ends sooner.
  *
- * ── NOTHING HERE IS MANDATORY EXCEPT THE ROLE ──────────────────────────────
+ * ── WHO IS HIRING IS A QUESTION, WHEN THERE IS A CHOICE ────────────────────
  *
- * Only the title blocks. Every other question can be skipped, because a
- * recruiter who does not yet know the salary band or the exact office should
- * still reach a draft — the model proposes what it was not told, and the editor
- * is where it gets corrected. A wizard that will not let you past question five
- * is one people route around by inventing an answer, which is worse than a gap.
+ * A tenant running several corporate entities is asked which one first, and the
+ * server decides whether to ask: it puts the question in the set (and in the
+ * count) only when more than one is active, because a single-entity workspace
+ * should not answer a question with one possible answer. The choice sets the
+ * currency the salary card is labelled in, the labour market the AI proposes a
+ * band for, what it is told the company does, and the `entity_id` the vacancy
+ * carries into the hire it eventually provisions. Without it a multi-entity
+ * tenant got generic copy in a fallback currency on a vacancy attached to no
+ * company — and nothing said so.
+ *
+ * ── NOTHING ELSE IS MANDATORY EXCEPT THE ROLE ──────────────────────────────
+ *
+ * The title and the company block; nothing else does. Every other question can
+ * be skipped, because a recruiter who does not yet know the salary band or the
+ * exact office should still reach a draft — the model proposes what it was not
+ * told, and the editor is where it gets corrected. A wizard that will not let
+ * you past question five is one people route around by inventing an answer,
+ * which is worse than a gap.
  *
  * ── AND THE ESCAPE HATCH IS ALWAYS THERE ───────────────────────────────────
  *
@@ -41,6 +55,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Modal, Field } from "@/components/ui/modal";
+import { Select } from "@/components/ui/select";
 import { ErrorState, LoadingRow } from "@/components/ui/states";
 import { VoiceInput } from "@/components/voice-input";
 import { useResource, errMsg } from "@/lib/use-resource";
@@ -80,8 +95,26 @@ export function VacancyWizard({
     () => [...base, ...(followUps || [])],
     [base, followUps],
   );
-  const currency = start.data?.currency || "";
-  const entity = start.data?.entity || null;
+  /**
+   * Who is hiring, and therefore in what currency.
+   *
+   * Either the server settled it (one entity, or an id was passed in) or the
+   * interview asked, and the answer is an `entity_id` in `answers`. The picked
+   * option carries its own currency, so the salary card is labelled correctly
+   * the moment the choice is made rather than after another round trip.
+   */
+  const picked = React.useMemo(() => {
+    const chosen = String(answers.entity_id ?? "");
+    if (!chosen) return null;
+    for (const question of start.data?.questions || [])
+      for (const o of question.options || [])
+        if (o.value === chosen) return o;
+    return null;
+  }, [answers.entity_id, start.data?.questions]);
+
+  const entityId = picked?.value ?? start.data?.entity?.entity_id ?? null;
+  const entityName = picked?.label ?? start.data?.entity?.name ?? null;
+  const currency = picked?.currency || start.data?.currency || "";
 
   // Until the model has told us how many follow-ups it wants, trust the total
   // the server declared — so the bar is sized for the whole interview from the
@@ -108,8 +141,11 @@ export function VacancyWizard({
     return typeof v === "number" ? true : Boolean(String(v ?? "").trim());
   }, [q, answers]);
 
-  // Only the role title blocks — see the header.
-  const blocked = q?.key === "title" && !answered;
+  // Two questions block, and only two: the role, because there is no advert
+  // without one, and the company, because it decides the currency, the labour
+  // market and the entity the eventual hire lands on. Everything else can be
+  // skipped — see the header.
+  const blocked = !answered && (q?.key === "title" || q?.type === "entity");
 
   async function next() {
     setError(null);
@@ -120,7 +156,7 @@ export function VacancyWizard({
       setThinking(true);
       try {
         const { questions: extra } = await api.intakeFollowUps({
-          entity_id: entity?.entity_id ?? null,
+          entity_id: entityId,
           answers,
         });
         setFollowUps(extra || []);
@@ -144,10 +180,7 @@ export function VacancyWizard({
     setError(null);
     try {
       onDrafted(
-        await api.draftVacancy({
-          entity_id: entity?.entity_id ?? null,
-          answers,
-        }),
+        await api.draftVacancy({ entity_id: entityId, answers }),
       );
     } catch (e) {
       setError(errMsg(e));
@@ -210,7 +243,7 @@ export function VacancyWizard({
               <span>
                 Question {Math.min(i + 1, total)} of {total}
               </span>
-              {entity?.name && <span className="truncate">Hiring for {entity.name}</span>}
+              {entityName && <span className="truncate">Hiring for {entityName}</span>}
             </div>
             <div
               role="progressbar"
@@ -340,6 +373,26 @@ function QuestionControl({
       onEnter();
     }
   };
+
+  if (q.type === "entity") {
+    // A select rather than a card of buttons: a group running twelve companies
+    // is as ordinary here as one running two, and twelve buttons is a wall.
+    return (
+      <Field label="Company">
+        <Select
+          value={str(q.key)}
+          onValueChange={(v) => onSet(q.key, v)}
+          disabled={disabled}
+          placeholder="Choose the hiring company…"
+          options={(q.options || []).map((o) => ({
+            value: o.value,
+            label: o.label,
+            hint: o.currency ? `Salaries in ${o.currency}` : undefined,
+          }))}
+        />
+      </Field>
+    );
+  }
 
   if (q.type === "salary") {
     const [lo, hi] = salaryKeys(q.key);

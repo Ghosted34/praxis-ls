@@ -3,18 +3,32 @@ const crypto = require("crypto");
 const { makeService } = require("../../../shared/crud/resource");
 const { emitEvent, audit } = require("../../../shared/events/emit");
 const { AppError } = require("../../../utils/errors");
+const { parseDataUrl } = require("../../../utils/data-url");
 const repo = require("./vacancy.repo");
 const events = require("./vacancy.events");
 const scoring = require("./vacancy.scoring");
 const questions = require("./vacancy.questions");
 const drafting = require("./vacancy.draft");
 const transcription = require("../../../services/ai/transcription.service");
+const vault = require("../../vault/document_vault/document_vault.service");
+const { logger } = require("../../../config/logger");
+
+/** Matches the careers form's limits — the same document either way, so a file
+ *  a stranger could upload must not be one a recruiter cannot. */
+const CV_MAX_BYTES = 8 * 1024 * 1024;
+const CV_TYPES = ["application/pdf", "image/png", "image/jpeg"];
 
 // Recruitment: vacancy head + applicant pipeline. Vacancy lifecycle
-// DRAFT → OPEN → CLOSED; applicants move through their own status pipeline.
+// DRAFT → OPEN ⇄ PAUSED → CLOSED; applicants move through their own pipeline.
+//
+// PAUSED (0683) is reversible and keeps the careers token, so OPEN ⇄ PAUSED is
+// a round trip and resuming restores the SAME public link. CLOSED is still an
+// ending: nothing leads out of it, and reopening a closed role is a new record
+// rather than a state change.
 const TRANSITIONS = {
   DRAFT: ["OPEN"],
-  OPEN: ["CLOSED"],
+  OPEN: ["PAUSED", "CLOSED"],
+  PAUSED: ["OPEN", "CLOSED"],
   CLOSED: [],
 };
 
@@ -41,6 +55,30 @@ module.exports = {
   async addApplicant(client, { vacancyId, data, actor }) {
     const vacancy = await repo.findById(client, vacancyId);
     if (!vacancy) return null;
+
+    /*
+     * A CV attached by hand takes the SAME road as one uploaded to the careers
+     * page (0684): the vault sniffs the bytes, caps the size and refuses a type
+     * it does not recognise. Without this a referral could never be scored on
+     * anything but the typed fields, while an online applicant is read in full
+     * — and the score column would quietly mean two different things depending
+     * on how the candidate happened to arrive.
+     */
+    const { cv_data_url: cvDataUrl, cv_filename: cvFilename, ...fields } = data;
+    if (cvDataUrl && !fields.cv_vault_id) {
+      const doc = await vault.createDocument(client, {
+        dataUrl: cvDataUrl,
+        docType: "CV",
+        entityRef: `vacancy:${vacancyId}`,
+        originalName: cvFilename || null,
+        maxBytes: CV_MAX_BYTES,
+        allowedTypes: CV_TYPES,
+        sniff: true,
+        actor,
+      });
+      fields.cv_vault_id = doc.doc_id;
+    }
+    data = fields;
     /*
      * The provisional score is computed ON INSERT, not on first read.
      *
@@ -109,15 +147,47 @@ module.exports = {
     return (await repo.getEntity(client, entityId)) || (await repo.soleEntity(client));
   },
 
-  /** The fixed questions, plus the entity so the wizard can label the salary
-   *  inputs in the right currency before anything has been answered. */
+  /** Every entity a vacancy could be opened under. Also the plain create form's
+   *  source, so a vacancy made without the interview still knows who is hiring. */
+  async hiringEntities(client) {
+    const rows = await repo.listHiringEntities(client);
+    return rows.map((e) => ({
+      entity_id: e.entity_id,
+      name: e.trading_name || e.legal_name,
+      currency: e.default_currency || null,
+    }));
+  },
+
+  /**
+   * The questions, and who is asking them.
+   *
+   * On a tenant with several active entities the set OPENS with "which company
+   * is hiring?", and `total` counts it — the wizard's "Question 1 of N" is
+   * whatever the server says it is, so a question set that grows does not need
+   * a client release. On a single-entity tenant the answer is resolved here
+   * instead and the question is not asked.
+   *
+   * `currency` is the one the salary question is labelled in before anything is
+   * answered; once the entity question IS answered, its option carries the
+   * currency and the wizard relabels without another round trip.
+   */
   async intakeQuestions(client, { entityId = null } = {}) {
     const entity = await this.draftEntity(client, entityId);
+    // Only looked up when the answer is not already settled — a single-entity
+    // tenant pays for one query here, not two.
+    const rows = entity ? [] : await repo.listHiringEntities(client);
+    // Not `questions` — that is the interview-question module imported above,
+    // and shadowing it here would read as the wrong thing to the next person.
+    const questionSet =
+      rows.length > 1
+        ? [drafting.entityQuestion(rows), ...drafting.BASE_QUESTIONS]
+        : drafting.BASE_QUESTIONS;
+
     return {
-      questions: drafting.BASE_QUESTIONS,
-      total: drafting.TOTAL_QUESTIONS,
+      questions: questionSet,
+      total: questionSet.length + drafting.FOLLOW_UP_COUNT,
       currency: (entity && entity.default_currency) || "XAF",
-      entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.name } : null,
+      entity: entity ? { entity_id: entity.entity_id, name: entity.trading_name || entity.legal_name } : null,
     };
   },
 
@@ -134,12 +204,15 @@ module.exports = {
    * input is not set up, because the person keeps pressing it.
    */
   async transcribeAnswer(dataUrl) {
-    const m = /^data:([^;]+);base64,(.+)$/s.exec(String(dataUrl || ""));
-    if (!m) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
-    const audio = Buffer.from(m[2], "base64");
+    // MediaRecorder produces `audio/webm;codecs=opus`, so the media type here
+    // carries a parameter. The hand-rolled pattern this replaced could not cross
+    // that semicolon and rejected every real recording — see utils/data-url.
+    const parsed = parseDataUrl(dataUrl);
+    if (!parsed) throw new AppError("BAD_AUDIO", "Expected a base64 audio data URL", 400);
+    const audio = parsed.buffer;
     if (!audio.length) throw new AppError("EMPTY_AUDIO", "Nothing was recorded — try holding the button a little longer", 422);
     try {
-      const { text } = await transcription.transcribe({ audio, mimeType: m[1].toLowerCase() });
+      const { text } = await transcription.transcribe({ audio, mimeType: parsed.mimeType });
       return { text: String(text || "").trim() };
     } catch (err) {
       // The service throws a clear "not configured" for a missing key; anything
@@ -175,7 +248,11 @@ module.exports = {
     const drafted = await drafting.draft(client, { entity, answers });
     const { ai_provider, ...fields } = drafted;
 
-    const row = await repo.insert(client, {
+    // `create`, not `insert`: the shared CRUD repo names it `create`, and this
+    // repo adds `insertApplicant` for the child table but never an `insert`.
+    // Calling one that does not exist threw a TypeError from inside the drafting
+    // endpoint — after the model call had already been paid for.
+    const row = await repo.create(client, {
       ...fields,
       status: "DRAFT",
       ai_generated: ai_provider !== "template",
@@ -232,6 +309,61 @@ module.exports = {
     const entityRef = `vacancy:${vacancyId}`;
     await audit(client, { actorUserId: actor.user_id || null, action: events.APPLICANT_SCORED, moduleKey: events.MODULE, entityRef, before: applicant, after: row });
     return row;
+  },
+
+  /**
+   * Re-score every applicant on this vacancy.
+   *
+   * WHY IT EXISTS. Criteria and the job description are what a score MEANS, and
+   * both are edited after applicants have already arrived. Without this, the
+   * only way to make a shortlist comparable again is to open every candidate and
+   * press Score — so in practice nobody does, and the column silently mixes
+   * scores taken against three different versions of the role.
+   *
+   * ONE AT A TIME, DELIBERATELY. Each assessment is a model call of several
+   * seconds against a 12-connection-per-tenant ceiling, so this does not fan
+   * out: parallelism here would spend the tenant's pool and its AI budget at the
+   * same time. The cap is the other half of that — an unbounded loop over a
+   * popular role is a request that never returns.
+   *
+   * A FAILURE IS COUNTED, NOT THROWN. One unreadable CV must not abandon the
+   * other forty applicants, and the caller is told how many of each so "12
+   * scored, 3 failed" can be said out loud rather than implied by a spinner
+   * that stopped.
+   */
+  async scoreAllApplicants(client, { vacancyId, actor = {}, limit = 100 }) {
+    const vacancy = await repo.findById(client, vacancyId);
+    if (!vacancy) return null;
+    const applicants = await repo.listApplicants(client, vacancyId);
+    const criteria = await repo.listCriteria(client, vacancyId);
+
+    const queue = applicants.slice(0, limit);
+    let scored = 0;
+    let failed = 0;
+    for (const applicant of queue) {
+      try {
+        const result = await scoring.assess(client, { vacancy, applicant, criteria });
+        if (!result) {
+          failed += 1;
+          continue;
+        }
+        await repo.updateApplicant(client, applicant.applicant_id, { ...result, ai_scored_at: new Date() });
+        scored += 1;
+      } catch (err) {
+        failed += 1;
+        logger.warn({ err, applicantId: applicant.applicant_id }, "[vacancy] re-score failed for one applicant — continuing");
+      }
+    }
+
+    const entityRef = `vacancy:${vacancyId}`;
+    await audit(client, {
+      actorUserId: actor.user_id || null,
+      action: events.APPLICANT_SCORED,
+      moduleKey: events.MODULE,
+      entityRef,
+      after: { scored, failed, total: applicants.length },
+    });
+    return { scored, failed, total: applicants.length, skipped: Math.max(0, applicants.length - queue.length) };
   },
 
   /* ── Custom scoring criteria ── */

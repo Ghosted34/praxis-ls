@@ -111,6 +111,12 @@ function Stars({
               // hiring decision is later defended with.
               onClick={() => { if (value === n) onChange(null); }}
             />
+            {/* The star is `aria-hidden`, so without this the label wraps a
+                radio and nothing else: an interviewer on a screen reader heard
+                five unnamed options inside "Rating out of 5" and had no way to
+                tell which one they were on. `title` is not an accessible name
+                for a label — hence the lint rule this satisfies. */}
+            <span className="sr-only">{n} of 5</span>
             <svg viewBox="0 0 24 24" width={18} height={18} aria-hidden
               className={cn("transition-colors", on ? "text-[rgb(var(--warn))]" : "text-muted-foreground/40")}
               fill={on ? "currentColor" : "none"} stroke="currentColor" strokeWidth={1.6} strokeLinejoin="round">

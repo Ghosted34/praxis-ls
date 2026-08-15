@@ -530,7 +530,13 @@ const AREAS: Area[] = [
     area: "HR",
     screens: [
       { name: "SOPs", render: () => <SopsPage />, routes: { "/sops": [{ sop_document_id: "s1", title: "Cargo handling", category: "Ops", version_no: 2, is_active: true }], "/onboarding": [], "/employees": [] } },
-      { name: "Talent pool", render: () => <TalentPoolPage />, routes: { "/talent-pool": [{ talent_pool_id: "t1", full_name: "Marie N.", skills: "Customs" }], "/succession": [{ succession_id: "sc1", role_title: "Head of Ops", employee_id: "e1", readiness: "ready_now" }], "/employees": [{ employee_id: "e1", full_name: "Marie N." }] }, populatedProof: /Marie N\./ },
+      // `/vacancies/talent-pool` feeds the Past applicants panel, which is a
+      // THIRD collection on this screen (0525) and not the same thing as
+      // `/talent-pool`: one is the hand-curated bench, the other is everyone who
+      // ever applied to a vacancy. Without a fixture that panel renders its
+      // empty state, and the populated-state assertion fails on a screen whose
+      // other two collections have rows.
+      { name: "Talent pool", render: () => <TalentPoolPage />, routes: { "/talent-pool": [{ talent_pool_id: "t1", full_name: "Marie N.", skills: "Customs" }], "/vacancies/talent-pool": [{ applicant_id: "ap1", vacancy_id: "v1", full_name: "Marie N.", status: "TALENT_POOL", skills: ["Customs"], vacancy_title: "Declarant" }], "/succession": [{ succession_id: "sc1", role_title: "Head of Ops", employee_id: "e1", readiness: "ready_now" }], "/employees": [{ employee_id: "e1", full_name: "Marie N." }] }, populatedProof: /Marie N\./ },
     ],
   },
   {

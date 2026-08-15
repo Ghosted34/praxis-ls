@@ -21,11 +21,20 @@ import { axe } from "jest-axe";
 import { ClockPunchChip } from "@/components/clock-punch";
 import * as api from "@/lib/hr-api";
 
+/**
+ * `deviceInfo` is mocked because the chip CALLS it — `clock-punch.tsx` passes
+ * `device: api.deviceInfo()` on every punch. A factory that omits an export the
+ * component uses does not merely leave it undefined: vitest replaces it with a
+ * getter that throws, so the punch handler died before reaching `clockIn` and
+ * three tests failed on "expected spy to be called" while the real defect sat in
+ * the mock. The component rendered the vitest error message as its own label.
+ */
 vi.mock("@/lib/hr-api", () => ({
   openPunch: vi.fn(),
   clockIn: vi.fn(),
   clockOut: vi.fn(),
   getFix: vi.fn(),
+  deviceInfo: vi.fn(),
 }));
 
 const mocked = vi.mocked(api);
